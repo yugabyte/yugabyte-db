@@ -131,7 +131,7 @@ impl LeaderServices {
     /// `IsLoadBalancerIdle`.
     pub fn is_load_balancer_idle(&self, resp: &mut IsLoadBalancerIdleResponsePB) {
         if let Err(status) = self.balancer_idle() {
-            resp.error = Some(master_error_from(
+            resp.error = Some(crate::tagged_error_from(
                 Code::LOAD_BALANCER_RECENTLY_ACTIVE,
                 &status,
             ))

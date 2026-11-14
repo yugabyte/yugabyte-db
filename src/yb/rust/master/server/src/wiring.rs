@@ -125,6 +125,21 @@ static CHECK_TS_COUNT_FOR_CREATE_TABLE: FlagRef<bool> =
 static TABLET_CREATION_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("tablet_creation_timeout_ms");
 static USE_PARENT_TABLE_ID_FIELD: FlagRef<bool> = FlagRef::new("use_parent_table_id_field");
 static TRANSACTION_TABLE_NUM_TABLETS: FlagRef<i32> = FlagRef::new("transaction_table_num_tablets");
+static AUTOSCALE_TRANSACTION_TABLES: FlagRef<bool> = FlagRef::new("autoscale_transaction_tables");
+static COLOCATED_TABLES_WITH_TABLESPACES: FlagRef<bool> =
+    FlagRef::new("ysql_enable_colocated_tables_with_tablespaces");
+static VECTOR_INDEX_STORE_PAYLOAD: FlagRef<bool> = FlagRef::new("vector_index_store_payload");
+static VECTOR_INDEX_BACKEND: FlagRef<String> = FlagRef::new("vector_index_backend");
+static SPLIT_UNCOMMITTED_YSQL_TABLES: FlagRef<bool> =
+    FlagRef::new("enable_tablet_split_of_uncommitted_ysql_tables");
+static SPLIT_TABLES_WITH_VECTOR_INDEX: FlagRef<bool> =
+    FlagRef::new("enable_tablet_split_of_tables_with_vector_index");
+static SEQUENTIAL_COLOCATION_IDS: FlagRef<bool> = FlagRef::new("TEST_sequential_colocation_ids");
+static COLOCATION_IDS: FlagRef<String> = FlagRef::new("TEST_colocation_ids");
+static LEGACY_COLOCATED_DATABASE_CREATION: FlagRef<bool> =
+    FlagRef::new("ysql_legacy_colocated_database_creation");
+static TRANSACTION_TABLE_CHECK_INTERVAL_SEC: FlagRef<i32> =
+    FlagRef::new("transaction_table_check_interval_sec");
 static TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER: FlagRef<i32> =
     FlagRef::new("transaction_table_num_tablets_per_tserver");
 static ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE: FlagRef<bool> =
@@ -200,6 +215,19 @@ static BACKENDS_CLIENT_MARGIN_MS: FlagRef<u32> =
 static YSQL_INDEX_BACKFILL_RPC_TIMEOUT_MS: FlagRef<i32> =
     FlagRef::new("ysql_index_backfill_rpc_timeout_ms");
 static YSQL_DISABLE_INDEX_BACKFILL: FlagRef<bool> = FlagRef::new("ysql_disable_index_backfill");
+static DISABLE_INDEX_BACKFILL: FlagRef<bool> = FlagRef::new("disable_index_backfill");
+static DISABLE_INDEX_BACKFILL_FOR_NON_TXN_TABLES: FlagRef<bool> =
+    FlagRef::new("disable_index_backfill_for_non_txn_tables");
+static DEFER_INDEX_BACKFILL: FlagRef<bool> = FlagRef::new("defer_index_backfill");
+static ALLOW_BATCHING_NON_DEFERRED_INDEXES: FlagRef<bool> =
+    FlagRef::new("allow_batching_non_deferred_indexes");
+static INDEX_BACKFILL_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("index_backfill_rpc_timeout_ms");
+static DDL_REQUESTER_LIVENESS_CHECK_INTERVAL_SECS: FlagRef<i32> =
+    FlagRef::new("ddl_requester_liveness_check_interval_secs");
+static SKIP_DDL_REQUESTER_LIVENESS_CHECK: FlagRef<bool> =
+    FlagRef::new("TEST_skip_ddl_requester_liveness_check");
+static NODES_SAFE_TO_TAKE_DOWN_BUFFER_MS: FlagRef<i32> =
+    FlagRef::new("are_nodes_safe_to_take_down_timeout_buffer_ms");
 static DISABLE_TRUNCATE_TABLE: FlagRef<bool> = FlagRef::new("disable_truncate_table");
 static YSQL_ENABLE_ALTER_TABLE_REWRITE: FlagRef<bool> =
     FlagRef::new("ysql_yb_enable_alter_table_rewrite");
@@ -338,15 +366,20 @@ fn retry_policy(limit_attempts: bool) -> RetryPolicy {
     }
 }
 
-/// `ClusterLoadBalancer::ReportMetrics` and `UpdatePerRunMetrics`: the host keeps them in the
-/// "cluster" metric entity, as C++ does.
+/// `ClusterLoadBalancer::ReportMetrics`, `UpdatePerRunMetrics` and `CatalogManager::ReportMetrics`:
+/// the host keeps them in the "cluster" metric entity, as C++ does.
 fn report_cluster_metrics(
     host: &dyn SchemaHost,
+    ts_manager: &TsManager,
     enabled: bool,
     metrics: Option<&master_cluster_balancer::RunMetrics>,
 ) {
     let mut req = SetClusterMetricsRequestPB::new();
     req.set_is_load_balancing_enabled(enabled);
+    // `CatalogManager::ReportMetrics`, which runs with the balancer in C++.
+    let live = ts_manager.live().len();
+    req.set_num_tablet_servers_live(live as u32);
+    req.set_num_tablet_servers_dead(ts_manager.all().len().saturating_sub(live) as u32);
     if let Some(m) = metrics {
         req.set_tablets_in_wrong_placement(m.tablets_in_wrong_placement);
         req.set_blacklisted_leaders(m.blacklisted_leaders);
@@ -460,6 +493,8 @@ impl Core {
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
                 interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
                 auto: AutoSplitOptions {
+                    split_uncommitted_ysql_tables: || SPLIT_UNCOMMITTED_YSQL_TABLES.get(),
+                    split_tables_with_vector_index: || SPLIT_TABLES_WITH_VECTOR_INDEX.get(),
                     enabled: || AUTO_SPLIT.get(),
                     interval: || millis(SPLIT_CANDIDATES_INTERVAL_MS.get().max(0)),
                     outstanding_limit: || OUTSTANDING_SPLIT_LIMIT.get(),
@@ -513,12 +548,40 @@ impl Core {
                 },
                 use_create_table_leader_hint: || USE_CREATE_TABLE_LEADER_HINT.get(),
                 ysql_disable_index_backfill: || YSQL_DISABLE_INDEX_BACKFILL.get(),
+                disable_index_backfill: || DISABLE_INDEX_BACKFILL.get(),
+                disable_index_backfill_for_non_txn_tables: || {
+                    DISABLE_INDEX_BACKFILL_FOR_NON_TXN_TABLES.get()
+                },
+                defer_index_backfill: || DEFER_INDEX_BACKFILL.get(),
+                allow_batching_non_deferred_indexes: || ALLOW_BATCHING_NON_DEFERRED_INDEXES.get(),
+                index_backfill_rpc_timeout: || millis(INDEX_BACKFILL_RPC_TIMEOUT_MS.get().max(0)),
+                ddl_requester_liveness_check_interval: || {
+                    Duration::from_secs(
+                        DDL_REQUESTER_LIVENESS_CHECK_INTERVAL_SECS.get().max(1) as u64
+                    )
+                },
+                skip_ddl_requester_liveness_check: || SKIP_DDL_REQUESTER_LIVENESS_CHECK.get(),
+                nodes_safe_to_take_down_buffer: || {
+                    millis(NODES_SAFE_TO_TAKE_DOWN_BUFFER_MS.get().max(0))
+                },
                 ysql_index_backfill_rpc_timeout: || {
                     millis(YSQL_INDEX_BACKFILL_RPC_TIMEOUT_MS.get())
                 },
                 tablet_creation_timeout_ms: || TABLET_CREATION_TIMEOUT_MS.get() as i64,
                 use_parent_table_id_field: || USE_PARENT_TABLE_ID_FIELD.get(),
                 transaction_table_num_tablets: || TRANSACTION_TABLE_NUM_TABLETS.get(),
+                autoscale_transaction_tables: || AUTOSCALE_TRANSACTION_TABLES.get(),
+                colocated_tables_with_tablespaces: || COLOCATED_TABLES_WITH_TABLESPACES.get(),
+                vector_index_store_payload: || VECTOR_INDEX_STORE_PAYLOAD.get(),
+                vector_index_backend: || VECTOR_INDEX_BACKEND.get(),
+                sequential_colocation_ids: || SEQUENTIAL_COLOCATION_IDS.get(),
+                colocation_ids: || COLOCATION_IDS.get(),
+                legacy_colocated_database_creation: || LEGACY_COLOCATED_DATABASE_CREATION.get(),
+                transaction_table_check_interval: || {
+                    std::time::Duration::from_secs(
+                        TRANSACTION_TABLE_CHECK_INTERVAL_SEC.get().max(1) as u64,
+                    )
+                },
                 transaction_table_num_tablets_per_tserver: || {
                     TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER.get()
                 },
@@ -527,6 +590,7 @@ impl Core {
                 },
             },
         );
+        splits.set_tablespaces(tables.tablespaces());
         let leases = YsqlLeases::new(
             writer.clone(),
             leadership.clone(),
@@ -886,8 +950,9 @@ fn start_term(
                 pause_after_run: || PAUSE_BG_LOOP_END.get(),
                 report: {
                     let host = host.clone();
+                    let ts_manager = leader.ts_manager.clone();
                     Arc::new(move |enabled, metrics| {
-                        report_cluster_metrics(&*host, enabled, metrics)
+                        report_cluster_metrics(&*host, &ts_manager, enabled, metrics)
                     })
                 },
                 tablespaces: Some(leader.tables.tablespaces()),

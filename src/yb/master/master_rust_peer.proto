@@ -139,6 +139,23 @@ message AlterTableSchemaResponsePB {
   // Unset when the request has no schema change.
   optional SchemaPB schema = 2;
   optional int32 next_column_id = 3;
+  // The DDL log entries the alter writes (one per step), and their row ids.
+  repeated bytes ddl_log_entry_ids = 4;
+  repeated DdlLogEntryPB ddl_log_entries = 5;
+}
+
+// A DDL log entry for a table at the current hybrid time, with its row id
+// (MasterHost::HandleOnHost "NewDdlLogEntry", DdlLogEntry).
+message NewDdlLogEntryRequestPB {
+  optional bytes table_id = 1;
+  optional SysTablesEntryPB table = 2;
+  optional string action = 3;
+}
+
+message NewDdlLogEntryResponsePB {
+  optional bytes id = 1;
+  optional DdlLogEntryPB entry = 2;
+  optional MasterErrorPB error = 3;
 }
 
 // The encoded (DocDB) keys of partition keys, as a split sends them to the tablet leader
@@ -273,6 +290,17 @@ message YsqlDatabaseExistsResponsePB {
   optional bool exists = 2;
 }
 
+// TableSchemaVerificationTask's check without DDL atomicity: whether PG still has the table.
+message YsqlTableExistsRequestPB {
+  optional bytes table_id = 1;
+  optional SysTablesEntryPB table = 2;
+}
+
+message YsqlTableExistsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool exists = 2;
+}
+
 // The cluster balancer's metrics, which C++ keeps in the "cluster" metric entity
 // (MasterHost::HandleOnHost "SetClusterMetrics", ClusterLoadBalancer::ReportMetrics and
 // UpdatePerRunMetrics). A field left unset keeps its value.
@@ -282,6 +310,10 @@ message SetClusterMetricsRequestPB {
   optional uint32 blacklisted_leaders = 3;
   optional uint32 total_table_load_difference = 4;
   optional uint64 estimated_data_to_balance_bytes = 5;
+  // CatalogManager::ReportMetrics; the host adds max_follower_heartbeat_delay from its sys
+  // catalog consensus.
+  optional uint32 num_tablet_servers_live = 6;
+  optional uint32 num_tablet_servers_dead = 7;
 }
 
 message SetClusterMetricsResponsePB {

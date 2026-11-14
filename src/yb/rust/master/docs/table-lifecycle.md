@@ -6,7 +6,7 @@ persisted rows alone, so a new leader picks it up where the last one stopped (K1
 
 ## Served so far
 
-YCQL keyspaces and tables that are not indexes:
+YCQL keyspaces, tables and indexes:
 
 | RPC | Notes |
 |---|---|
@@ -16,14 +16,12 @@ YCQL keyspaces and tables that are not indexes:
 | `ListTables`, `GetTableSchema` | From the snapshot, with C++'s visibility rules and relation types. |
 | `CreateTable`, `IsCreateTableDone` | Below. |
 | `AlterTable`, `IsAlterTableDone` | Below. |
-| `DeleteTable`, `IsDeleteTableDone` | Below. Dropping an index on its own, and a table a snapshot schedule covers (which C++ hides rather than deletes), are not served yet. |
+| `DeleteTable`, `IsDeleteTableDone` | Below. A table a snapshot schedule covers (which C++ hides rather than deletes) is not served yet. |
 | `FlushTables`, `IsFlushTablesDone` | `flush.rs`, as C++'s `FlushManager`: one `FlushTablets` per tserver with a replica of the tables' (and with `add_indexes`, their indexes') tablets; a compaction records `last_full_compaction_request_time`. Not persisted, so a new leader answers NotFound for an old leader's request, as C++ does. |
 | `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is refused until W11. |
 
 YSQL databases, tables and indexes (below), in a tablegroup or not, in any tablespace.
-`AlterNamespace` renames a running namespace. Tables of a legacy colocated database (colocated
-"via database", before tablegroups) and vector indexes answer `NotSupported`. Roles, permissions
-and UDTs are `master-ycql`'s.
+`AlterNamespace` renames a running namespace. YCQL roles, permissions and UDTs are below too.
 
 ## YSQL tables and DDL verification (`ysql.rs`)
 
@@ -52,7 +50,10 @@ A table a DDL transaction creates or drops carries the transaction and a
 subtransaction) until the transaction ends. A drop in a transaction only marks the table, since a
 statement may drop and create a table again. When PG reports the outcome
 (`ReportYsqlDdlTxnStatus`), each table carrying the transaction keeps or undoes the change: a
-committed drop and an aborted create become DELETING, anything else just loses the state.
+committed drop and an aborted create become DELETING, anything else just loses the state. A
+table that becomes DELETING takes the indexes still in its `indexes` with it, as
+`DeleteTableInMemory` does: a rewrite drops the old DocDB table and builds new indexes, so nothing
+else would drop the old ones.
 An ALTER of a YSQL table in a DDL transaction records the table as it was (`previous_schema`,
 `previous_table_name`) with `contains_alter_table_op`. An abort restores that as an alter of its
 own; a commit drops the columns the transaction marked for deletion, also as an alter. Either way
@@ -77,6 +78,9 @@ sends). The first table that tells decides; a transaction that changed no DocDB 
 as committed. The outcome goes through the same path as `ReportYsqlDdlTxnStatus`, so whichever
 comes first wins. A database created in a transaction keeps the transaction until the verifier
 finds the database in `pg_database` (it is then cleared) or not (the database becomes DELETING).
+A running table created in a transaction without DDL atomicity (`ysql_yb_ddl_rollback_enabled`
+off, so no DDL state) is treated the same way (`VerifyTablePgLayer`): kept if `pg_class` still has
+it, by oid and relfilenode, or `pg_yb_tablegroup` its tablegroup (`YsqlTableExists`), else dropped.
 The work is derived from the rows, so a new leader verifies what the old one left.
 `TEST_disable_ysql_ddl_txn_verification`, `TEST_ysql_ddl_transaction_verification_failure_probability`
 and `TEST_pause_ddl_rollback` act as in C++.
@@ -168,13 +172,24 @@ The `table-alters` controller sends `AlterSchema` (`ChangeMetadataRequestPB`) to
 tablet's leader once per (tablet, table row version) in a term; the row version rather than the
 schema version, since a `wal_retention_secs` alter keeps the schema version. When every tablet
 has acknowledged it (an answer that the schema is already there, or newer, counts), it writes
-RUNNING and clears the fully applied fields, if the row is still the one it sent. A tablet with
-no known leader, or whose target answers that it lacks the tablet or does not lead it, is sent
-again on the next pass to the leader the locations then name. C++ instead completes an alter from
-tablet reports, and re-sends from heartbeats when a tablet reports an older version.
+RUNNING and clears the fully applied fields, if the row is still the one it sent. It does so on
+the last acknowledgement, not the next pass: until then `GetTableSchema` serves the previous
+schema, which the tablets no longer accept for reads. A tablet with no known leader, or whose
+target answers that it lacks the tablet or does not lead it, is sent again on the next pass to the
+leader the locations then name. C++ instead completes an alter from tablet reports, and re-sends
+from heartbeats when a tablet reports an older version.
 
-Only YCQL alters with no index permission change in flight are completed here. A YSQL table, or
-one in a backfill's multi-stage alter (which a C++ leader may have started), stays ALTERING.
+As `AsyncAlterTable` does, the `AlterSchema` of the schema version a YSQL `AlterTable` request
+in a DDL transaction made asks the tablet to abort the other transactions on it
+(`should_abort_active_txns`, excluding the DDL's own), only those not using table locks when the
+DDL uses them. The request's transaction is kept in memory with that version
+(`SendAlterTableRequest` gets the request): alters an index's creation, the DDL verifier or a new
+leader sends abort nothing, so a `CREATE TABLE t (a INT UNIQUE)` in a transaction block does not
+abort its own transaction. Every alter gives the first DDL state's previous next column id as
+`first_provisional_column_id`, which a rollback returns to.
+
+A YCQL table with an index in a transient permission moves on once every tablet has the version
+(below), instead of becoming RUNNING.
 
 ## DROP TABLE (K1)
 
@@ -185,6 +200,8 @@ index skips deleting tables. The `table-deletes` controller then, for each DELET
 its tablets DELETED in writes of at most 1000, queues `DeleteTablet` (`TABLET_DATA_DELETED`, with
 `should_abort_active_txns`, which report-driven deletes also set when the table is gone or being
 dropped, as `AsyncDeleteReplica` does) for every replica in the committed config or the observed locations,
+sparing the DDL transaction whose rollback to a savepoint dropped the table and its indexes
+(`SetExcludeAbortingTransactionId`, kept in memory in `TsManager` until the table is DELETED),
 and marks the table DELETED once no tablet is left. All of it is derived from the rows, so a new
 leader finishes a drop the last one started; a replica missed here gets its delete from report
 processing. C++ writes DELETING, then the tablets, then DELETED, with in-memory bookkeeping in
@@ -200,6 +217,12 @@ else is kept, so C++'s `YsqlTablegroupManager` has no counterpart. `ListTablegro
 parents; `DeleteTablegroup` drops the parent once the group holds no table that the same DDL
 transaction is not dropping.
 
+A legacy colocated database (`ysql_legacy_colocated_database_creation`, from before tablegroups)
+has a parent table of its own, `<database id>.colocated.parent.uuid`, created by `CreateNamespace`
+while the database is PREPARING; `IsCreateNamespaceDone` waits for it. Its tables are colocated
+"via database" unless the request or the indexed table opts out, and join the parent's tablet as
+tablegroup tables do.
+
 A table created with a `tablegroup_id` joins its group in its create mutation: it names the
 parent as `parent_table_id`, owns no tablet, and gets a colocation id unique in the group (the
 requested one, or random from 16384). It is created PREPARING; the `colocated-tables` controller
@@ -212,8 +235,8 @@ alterer tracks acknowledgements per table and tablet, since colocated tables sha
 `GetTableSchema` gives a colocated table's `tablegroup_id`, from which PG places its indexes in
 the same group.
 
-Joining a group tablet whose row lists its tables (made before `use_parent_table_id_field`) is
-refused for now.
+A table joining a group tablet whose row lists its tables (made before
+`use_parent_table_id_field`) is not added to that list; it names the parent table, as C++ does.
 
 ## DROP DATABASE (`ysql.rs`, K1)
 
@@ -286,16 +309,23 @@ A table's placement is its own replication info, else its tablespace's placement
 cluster's. A new YSQL table re-reads `pg_tablespace` if its tablespace is newer than the last
 refresh (`GetTablespaceReplicationInfoWithRetry`). Tablet assignment and the balancer read the same
 `Tablespaces` object. The balancer skips a table whose tablespace the last refresh did not see
-(`NeedsRefreshToFindTablePlacement`). Tablet splitting still sizes a tablespace table's split
-phases by the cluster's placement.
+(`NeedsRefreshToFindTablePlacement`). Tablet splitting reads it too: the split phase, the replica
+check and the partition limit use the table's tablespace placement.
 
 `ValidateReplicationInfo`, which PG calls for `CREATE TABLESPACE` and `ALTER ... SET TABLESPACE`,
 checks the per-block maximums, enough live tservers for a quorum, and leader preferences inside
 the placement. `CreateTransactionStatusTable` creates a named status table.
 `GetTransactionStatusTablets` with a placement also returns the status tablets whose placement
 contains it: grouped by tablespace with `enable_tablespace_based_transaction_placement`, and as
-region-local ones when that placement stays in one region. `AddTransactionStatusTablet` is not
-served.
+region-local ones when that placement stays in one region.
+
+`AddTransactionStatusTablet` halves the first serving tablet whose hash range can be split and adds
+a PREPARING tablet for the right half, writing both tablets in one mutation (C++ lost the shrunk
+partition on failover before it did the same). With `autoscale_transaction_tables`, the
+`transaction-table` controller adds tablets every `transaction_table_check_interval_sec` in which
+the live tserver count changed, until each status table has `transaction_table_num_tablets`, or
+`transaction_table_num_tablets_per_tserver` per live tserver (all of them for
+`system.transactions`, those in its placement for a tablespace's). Tables are never scaled down.
 
 The host's `ReadPgClassInfo` keeps every relation (`SysCatalogContext::HasTable`), because the host
 has no table catalog; the controller drops relations with no table row.
@@ -320,6 +350,56 @@ RUNNING:
    the tablets' progress are cleared.
 
 PG learns the outcome from the indexed table's schema or `GetBackfillStatus`. Dropping an index
-also takes it out of its table's `indexes`, as an alter (`DeleteIndexInfoFromTable`). Not done
-yet: the backfill's row counts and `GetIndexBackfillProgress`, the requester liveness check, and
-xCluster's replicated backfill.
+also takes it out of its table's `indexes`, as an alter (`DeleteIndexInfoFromTable`). Each chunk's
+row counts add up on the job and end on the index's `IndexInfoPB`, where PG reads them for
+`reltuples` (`GetIndexBackfillProgress`). The backfill watches the transaction of the PG backend
+that asked for it (`requester_transaction`, kept in memory with the DO_BACKFILL version, as
+`DdlRequesterLivenessTask` does): once it is ABORTED, say the backend was terminated, the backfill
+stops and its indexes fail. xCluster's replicated backfill comes with W11.
+
+A vector index (`ybhnsw`) is stored on its indexed table's tablets: it joins them as a colocated
+table does (`parent_table_id` is the table owning them, a colocation id unique among its children,
+`AddTableToTablet` to each tablet), with the indexed table's partition list version, which a split
+of the table moves for its vector indexes too. Its options get the id, payload and HNSW backend
+C++ sets (`vector_index_store_payload`, `vector_index_backend`). A flush or compaction whose last
+table is a vector index covers only vector indexes, as `AsyncFlushTablets` does.
+
+## YCQL indexes (`create.rs`, `alter.rs`, `drop.rs`)
+
+A YCQL index is created with its own tablets and joins its table's `indexes` in the same write.
+A client before 2.0 names only `indexed_table_id`; its `IndexInfoPB` is built from the two schemas
+by column name, as `IndexInfoBuilder` does.
+With backfill on (`disable_index_backfill`, and for a table that is not transactional
+`disable_index_backfill_for_non_txn_tables`) it starts at DELETE_ONLY and keeps delete markers;
+`IsCreateTableDone` waits until the table's fully applied indexes have it. Each time every tablet
+has the table's version, the alterer takes the next step, as `HandleSchemaVersionReported` does:
+the next permission of each transient index (DELETE_ONLY, WRITE_AND_DELETE, DO_BACKFILL; and on
+the way out WRITE_AND_DELETE_WHILE_REMOVING, DELETE_ONLY_WHILE_REMOVING, INDEX_UNUSED), the delete
+of an index at INDEX_UNUSED, or the backfill of those at DO_BACKFILL, together
+(`allow_batching_non_deferred_indexes`) and with any deferred ones; a job a former leader started
+is resumed alone. An index deferred (`defer_index_backfill`, or `is_backfill_deferred`) waits at
+DO_BACKFILL for `LaunchBackfillIndexForTable`, which records the job and has the alterer run it.
+`DROP INDEX` moves the index to WRITE_AND_DELETE_WHILE_REMOVING, or without backfill deletes it at
+once. `GetBackfillJobs` reads the table's job.
+
+## YCQL roles and types (`roles.rs`, `udtypes.rs`)
+
+Each role request is one write with the security config's `roles_version` bump, so a client's
+permissions cache never sees a change without its version. `GetPermissions` builds C++'s cache
+(`BuildResourcePermissionsUnlocked`: each role's permissions with those of the roles granted to
+it) from the snapshot on each call. The creator of a keyspace, table or role gets every
+permission on it after it is created, and a dropped keyspace, table or role takes the permissions
+on it along, in the drop's write. `DeleteRole` checks the superuser rule before changing anything;
+C++ first edits the roles the deleted one was granted to. UDTs are unique by keyspace and name;
+`DeleteUDType` is refused while a live table's column or another type's field uses the type.
+
+## Admin reads (`ddl_log.rs`, `health.rs`, `flush.rs`, `read.rs`)
+
+A dropped or altered table gets a `DDL_LOG_ENTRY` row per action (`DdlLogEntry`): "Drop", "Drop
+index <name>" on an index's table, and one per alter step from the host's `ApplyAlterSteps`. The
+host encodes the row ids (the time as a `DocHybridTime`), so `DdlLog` lists them newest first.
+`GetCompactionStatus` reads the replicas' full compaction states from heartbeats.
+`AreNodesSafeToTakeDown` asks the tservers and masters that stay for their replicas' health and
+answers whether every tablet keeps a majority, as `TabletHealthManager` does; C++ takes the master
+majority from the cluster's replication factor, and so does this. `GetTabletsMetadata` gives a row
+per tablet, or the tablet holding a partition key.

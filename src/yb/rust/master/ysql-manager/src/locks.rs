@@ -34,7 +34,9 @@ use tokio::task::JoinSet;
 use tokio::time::Instant;
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::catalog_entity_info::SysObjectLockEntryPB;
+use yb_proto::pb::catalog_entity_info::{
+    sys_tables_entry_pb, SysObjectLockEntryPB, SysTablesEntryPB,
+};
 use yb_proto::pb::master_ddl::{
     AcquireObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalRequestPB,
     WaitForLockersMultipleGlobalRequestPB,
@@ -61,6 +63,25 @@ pub trait LocalLockManager: Send + Sync {
     fn release(&self, req: &ReleaseObjectLockRequestPB, timeout: Duration) -> Result<(), Status>;
     /// Starts a new lock manager holding `entries` (a new leader term's).
     fn reset(&self, entries: &DdlLockEntriesPB) -> Result<(), Status>;
+    /// `PopulateDbCatalogVersionCache`: a release asking for it (`populate_db_catalog_info`)
+    /// gets every database's catalog version and invalidation messages, which also refresh the
+    /// heartbeat catalog versions cache. On failure the request goes without them and tservers
+    /// catch up from heartbeats.
+    fn populate_catalog_info(&self, _req: &mut ReleaseObjectLockRequestPB) {}
+}
+
+/// `IsDdlVerificationInProgress`: a table still carries the transaction's DDL verifier state.
+fn ddl_verification_in_progress(snapshot: &CatalogSnapshot, txn_id: &[u8]) -> bool {
+    snapshot.iter(SysRowEntryType::TABLE).any(|table| {
+        table.parse::<SysTablesEntryPB>().is_ok_and(|pb| {
+            !pb.ysql_ddl_txn_verifier_state.is_empty()
+                && pb.transaction.transaction_id() == txn_id
+                && !matches!(
+                    pb.state(),
+                    sys_tables_entry_pb::State::DELETED | sys_tables_entry_pb::State::DELETING
+                )
+        })
+    })
 }
 
 /// Flags, read when used.
@@ -561,9 +582,20 @@ impl ObjectLocks {
     async fn finish_release(
         &self,
         token: &LeaderToken,
-        req: ReleaseObjectLockRequestPB,
+        mut req: ReleaseObjectLockRequestPB,
     ) -> Result<(), Status> {
+        // The DDL transaction's locks stay until its DDL verification is over, so no other DDL
+        // sees the objects before their DocDB schema is final. C++ drops such a release and
+        // releases all the transaction's locks when verification ends; PG always sends its final
+        // release, so holding the release back has the same effect.
+        while ddl_verification_in_progress(&self.catalog.snapshot(), req.txn_id()) {
+            self.check_leader(token)?;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
         let deadline = Instant::now() + RELEASE_TIMEOUT;
+        if req.populate_db_catalog_info() {
+            self.local.populate_catalog_info(&mut req);
+        }
         let live = live_leases(&self.catalog.snapshot())?;
         tracing::debug!(
             "release start txn {} subtxn {:?} id {} locks {}",

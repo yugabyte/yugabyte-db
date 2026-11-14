@@ -34,7 +34,7 @@ use yb_proto::pb::catalog_entity_info::{
     SysTablesEntryPB, SysTabletsEntryPB,
 };
 use yb_proto::pb::catalog_entity_info::{sys_namespace_entry_pb, SysNamespaceEntryPB};
-use yb_proto::pb::common_types::{TableType, YQLDatabase};
+use yb_proto::pb::common_types::{IndexPermissions, TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     DeleteTableRequestPB, DeleteTableResponsePB, IsDeleteTableDoneRequestPB,
     IsDeleteTableDoneResponsePB,
@@ -49,7 +49,7 @@ use crate::namespaces::short_debug;
 use crate::placement::cluster_config;
 use crate::schedules::covering_schedules;
 use crate::time::local_time_string;
-use crate::{error, TableLifecycle};
+use crate::{coded_error, error, tagged_error, TableLifecycle};
 
 use sys_tables_entry_pb::State as TableState;
 use sys_tablets_entry_pb::State as TabletState;
@@ -63,8 +63,7 @@ fn is_index(pb: &SysTablesEntryPB) -> bool {
 }
 
 impl TableLifecycle {
-    /// `DeleteTable` for a YCQL table and its indexes. Dropping an index on its own, a table a
-    /// snapshot schedule covers (which C++ hides), and YSQL tables are not served yet.
+    /// `DeleteTable`. A table a snapshot schedule covers (which C++ hides) is not served yet.
     pub async fn delete_table(
         &self,
         token: &LeaderToken,
@@ -94,7 +93,7 @@ impl TableLifecycle {
                 .is_some_and(|t| t.table_type == TableType::YQL_TABLE_TYPE.value())
             && xcluster_replicated(&snapshot, &table.key.id)
         {
-            return Err(error(
+            return Err(coded_error(
                 Code::INVALID_REQUEST,
                 StatusCode::NotSupported,
                 format!(
@@ -107,6 +106,14 @@ impl TableLifecycle {
             return Err(not_yet(
                 "Dropping a table a snapshot schedule covers (it is hidden, W10)",
             ));
+        }
+        let index_pb: SysTablesEntryPB = table
+            .parse()
+            .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+        if req.is_index_table() && is_index(&index_pb) {
+            return self
+                .delete_ycql_index(token, deadline, &table.key.id, &index_pb, resp)
+                .await;
         }
         // The name is released by the write: hold the name lock so a create cannot interleave.
         let _names = self.names.lock().await;
@@ -128,13 +135,11 @@ impl TableLifecycle {
                     ));
                 }
                 if pb.state() == TableState::DELETING || pb.state() == TableState::DELETED {
-                    return Err(error(
+                    return Err(tagged_error(
                         Code::OBJECT_NOT_FOUND,
                         StatusCode::NotFound,
-                        format!(
-                            "The object was deleted: {}",
-                            String::from_utf8_lossy(pb.state_msg())
-                        ),
+                        // C++'s format has no placeholder for the state message.
+                        "The object was deleted",
                     ));
                 }
                 let status_table = pb.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE;
@@ -145,13 +150,13 @@ impl TableLifecycle {
                     TableType::PGSQL_TABLE_TYPE => return Err(not_yet("YSQL DROP TABLE (W7)")),
                     other => return Err(not_yet(&format!("DROP TABLE of {other:?}"))),
                 }
-                if is_index(&pb) {
-                    return Err(not_yet("DROP INDEX (W7)"));
-                }
                 // The table and its indexes; the dying table's index list is left as is, as C++
                 // leaves it.
                 let message = format!("Started deleting at {}", local_time_string());
                 let mut mutation = Mutation::new();
+                for row in &self.drop_ddl_log_entries(snapshot, &table.key.id, &pb)? {
+                    mutation = crate::ddl_log::add(mutation, row)?;
+                }
                 let mut deleted = Vec::new();
                 for index in &pb.indexes {
                     let Some(index_table) = snapshot.get(SysRowEntryType::TABLE, index.table_id())
@@ -186,6 +191,16 @@ impl TableLifecycle {
                     // Tservers stop picking its tablets on the version change.
                     mutation = crate::create::bump_transaction_tables_version(snapshot, mutation)?;
                 }
+                // Permissions on the table would carry over to a new one of the same name; C++
+                // names it from the request.
+                mutation = crate::roles::remove_all_permissions_for_resource(
+                    snapshot,
+                    mutation,
+                    &crate::roles::canonical_table(
+                        req.table.namespace.name(),
+                        req.table.table_name(),
+                    ),
+                )?;
                 Ok((mutation, deleted))
             })
             .await?;
@@ -207,6 +222,87 @@ impl TableLifecycle {
         Ok(())
     }
 
+    /// `DeleteTable` of a YCQL index. With index backfill on, the index walks down to
+    /// INDEX_UNUSED through the alterer, which then deletes it (`MarkIndexInfoFromTableForDeletion`
+    /// with `multi_stage`); else it is deleted at once and leaves its table's `indexes`.
+    async fn delete_ycql_index(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        index_id: &[u8],
+        pb: &SysTablesEntryPB,
+        resp: &mut DeleteTableResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        if matches!(pb.state(), TableState::DELETING | TableState::DELETED) {
+            return Err(tagged_error(
+                Code::OBJECT_NOT_FOUND,
+                StatusCode::NotFound,
+                "The object was deleted",
+            ));
+        }
+        let indexed_id = crate::ysql::indexed_table_of(pb);
+        let snapshot = self.catalog.snapshot();
+        let indexed = snapshot.get(SysRowEntryType::TABLE, &indexed_id);
+        if let Some(indexed) = indexed {
+            let indexed_pb: SysTablesEntryPB = indexed
+                .parse()
+                .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+            let out = resp.indexed_table.mut_or_insert_default();
+            out.set_table_id(indexed_id.clone());
+            out.set_table_name(String::from_utf8_lossy(indexed_pb.name()).into_owned());
+            let ns = out.namespace.mut_or_insert_default();
+            ns.set_id(indexed_pb.namespace_id().to_vec());
+            if let Some(n) = snapshot
+                .get(SysRowEntryType::NAMESPACE, indexed_pb.namespace_id())
+                .and_then(|n| n.namespace())
+            {
+                ns.set_name(n.name.clone());
+            }
+        }
+        let backfill = !(self.options.disable_index_backfill)()
+            && (pb.schema.table_properties.is_transactional()
+                || !(self.options.disable_index_backfill_for_non_txn_tables)());
+        if indexed.is_none() || !backfill {
+            self.mark_deleting(token, deadline, index_id).await?;
+            resp.deleted_table_ids.push(index_id.to_vec());
+            return Ok(());
+        }
+        self.write(token, deadline, |snapshot| {
+            let Some(indexed) = snapshot.get(SysRowEntryType::TABLE, &indexed_id) else {
+                return Ok((Mutation::new(), ()));
+            };
+            let mut indexed_pb: SysTablesEntryPB = indexed
+                .parse()
+                .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+            if !matches!(
+                indexed_pb.state(),
+                TableState::RUNNING | TableState::ALTERING
+            ) {
+                return Err(error(
+                    Code::UNKNOWN_ERROR,
+                    StatusCode::IllegalState,
+                    format!(
+                        "Table {} is not in ALTERING or RUNNING state: {:?}",
+                        String::from_utf8_lossy(indexed_pb.name()),
+                        indexed_pb.state()
+                    ),
+                ));
+            }
+            let mut perms = std::collections::BTreeMap::new();
+            perms.insert(
+                index_id.to_vec(),
+                IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING,
+            );
+            crate::backfill::set_index_permissions(&mut indexed_pb, &perms);
+            let mutation = Mutation::new()
+                .read(indexed)
+                .upsert_message(SysRowEntryType::TABLE, &indexed_id, &indexed_pb)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            Ok((mutation, ()))
+        })
+        .await
+    }
+
     /// `IsDeleteTableDone`.
     pub fn is_delete_table_done(
         &self,
@@ -221,7 +317,38 @@ impl TableLifecycle {
             return Ok(());
         };
         let state = table.table().map_or(0, |t| t.state);
-        if state == TableState::DELETED as i32 || is_hidden(&table) {
+        let deleted = state == TableState::DELETED as i32 || is_hidden(&table);
+        // A YCQL index dropped with backfill on is first walked down its permissions
+        // (`AttachedYCQLIndexDeletionInProgress`): done once it is deleted.
+        if let Ok(pb) = table.parse::<SysTablesEntryPB>() {
+            let indexed_id = crate::ysql::indexed_table_of(&pb);
+            if !indexed_id.is_empty()
+                && pb.table_type() != TableType::PGSQL_TABLE_TYPE
+                && !(self.options.disable_index_backfill)()
+                && (pb.schema.table_properties.is_transactional()
+                    || !(self.options.disable_index_backfill_for_non_txn_tables)())
+            {
+                let removing = snapshot
+                    .get(SysRowEntryType::TABLE, &indexed_id)
+                    .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                    .is_some_and(|indexed| {
+                        indexed
+                            .indexes
+                            .iter()
+                            .find(|i| i.table_id() == table.key.id.as_ref())
+                            .is_none_or(|i| {
+                                i.index_permissions().value()
+                                    >= IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING
+                                        .value()
+                            })
+                    });
+                if removing {
+                    resp.set_done(deleted);
+                    return Ok(());
+                }
+            }
+        }
+        if deleted {
             resp.set_done(true);
             return Ok(());
         }
@@ -407,6 +534,12 @@ impl TableDeleter {
                 pb.set_state_msg(
                     format!("Deleted with tablets at {}", local_time_string()).into_bytes(),
                 );
+                self.lifecycle
+                    .ts_manager
+                    .abort_exclusions
+                    .lock()
+                    .unwrap()
+                    .remove(table_id);
                 let mutation = Mutation::new().read(table).upsert(
                     SysRowEntryType::TABLE,
                     table_id,
@@ -423,7 +556,8 @@ impl TableDeleter {
     /// delete from report processing.
     fn queue_deletes(&self, token: &LeaderToken, tablets: &[Arc<Entity>]) {
         let reason = format!("Table deleted at {}", local_time_string());
-        let locations = &self.lifecycle.ts_manager.locations;
+        let ts_manager = &self.lifecycle.ts_manager;
+        let locations = &ts_manager.locations;
         for tablet in tablets {
             let mut replicas: Vec<Vec<u8>> = tablet
                 .parse::<SysTabletsEntryPB>()
@@ -441,6 +575,14 @@ impl TableDeleter {
             }
             replicas.sort();
             replicas.dedup();
+            let exclude_txn = tablet.tablet().and_then(|t| {
+                ts_manager
+                    .abort_exclusions
+                    .lock()
+                    .unwrap()
+                    .get(&t.table_id)
+                    .cloned()
+            });
             for ts_uuid in replicas {
                 self.lifecycle.ts_manager.deletes.push(DeleteReplica {
                     token: *token,
@@ -450,6 +592,7 @@ impl TableDeleter {
                     cas_config_index: None,
                     hide_only: false,
                     abort_active_txns: true,
+                    exclude_txn: exclude_txn.clone(),
                     reason: reason.clone(),
                 });
             }

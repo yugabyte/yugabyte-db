@@ -87,6 +87,9 @@ RPCs. The second column covers the same area on Rust masters until then.
 | `AutoFlagsMiniClusterTest.*` (they crash on the null `master()`) | `AutoFlagsExternalMiniClusterTest.*` |
 | `PgDdlSavepointMiniClusterTest.*` (reads the C++ DDL verifier state) | `a_rollback_to_a_savepoint_undoes_only_later_ddl` (`master-table-lifecycle`), `PgDdlTransactionTest.*` |
 | MiniCluster YSQL tests whose helpers call `catalog_manager()` or `master()` (`PgMiniTestBase::RestartMaster`) | `pg_libpq-test`, `pg_catalog_version-test` |
+| `MasterTxnStatusCheck.*` (`transaction_status_check-test`: counts C++ background-task runs, `TEST_catalog_manager_bg_task_run_count`, and matches C++ log lines) | `CqlGeoTransactionsTest.AddTransactionTablet` |
+| `CqlIndexTest.*` (`cql-index-test`, a MiniCluster suite; `EmptyIndexRecovery` and `DropTableWithIndexesIsAtomic` read `catalog_manager_impl()`) | `org.yb.cql.TestIndex`, `AdminCliTest.DdlLog` |
+| `PgDdlAtomicityMiniClusterTest.*`, `PgDdlAtomicityTxnBlockMiniClusterTest.*`, `PgDdlAtomicitySavepointMiniClusterTest.*` (C++ master sync points, `catalog_manager()`, `RestartMaster`; a sync point the Rust master never reaches hangs the test) | The `PgDdlAtomicity*` ExternalMiniCluster tests, including `DdlRollbackMasterRestart` and `TestCreateDbAndRestartGC` |
 
 `WaitForInitDb` asks `IsInitDbDone` over RPC on Rust masters, so `PgMiniTestBase` suites that use
 no other C++ accessor (`pg_advisory_lock-test`, `pg_auto_analyze-test`) run on Rust masters.

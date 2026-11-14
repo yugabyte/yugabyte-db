@@ -56,6 +56,27 @@ pub struct Replica {
     /// From the tserver's metrics heartbeats. Not part of equality: it changes with every
     /// heartbeat and is not a change of the replica set.
     pub drive: DriveInfo,
+    /// From the tserver's heartbeats, as the drive info.
+    pub full_compaction: FullCompaction,
+}
+
+/// `FullCompactionStatus`: a replica's full compaction, from `FullCompactionStatusPB`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FullCompaction {
+    /// A `tablet::FullCompactionState`; UNKNOWN until the tserver reports it.
+    pub state: i32,
+    /// When the last full compaction finished (a hybrid time); meaningless while UNKNOWN.
+    pub last_time: u64,
+}
+
+impl Default for FullCompaction {
+    fn default() -> FullCompaction {
+        FullCompaction {
+            state: yb_proto::pb::tablet_types::FullCompactionState::FULL_COMPACTION_STATE_UNKNOWN
+                as i32,
+            last_time: 0,
+        }
+    }
 }
 
 impl Replica {
@@ -69,6 +90,7 @@ impl Replica {
             should_disable_lb_move: false,
             fs_data_dir: Arc::from(""),
             drive: DriveInfo::default(),
+            full_compaction: FullCompaction::default(),
         }
     }
 }
@@ -101,6 +123,8 @@ pub struct DriveInfo {
     pub total_size: u64,
     /// A vector index backfill runs on the tserver, which blocks automatic splits.
     pub has_active_vector_index_backfill: bool,
+    /// The tablet's vector indexes on disk.
+    pub vector_index_size: u64,
 }
 
 impl Default for DriveInfo {
@@ -112,6 +136,7 @@ impl Default for DriveInfo {
             may_have_orphaned_post_split_data: true,
             total_size: 0,
             has_active_vector_index_backfill: false,
+            vector_index_size: 0,
         }
     }
 }
@@ -248,6 +273,7 @@ impl TabletLocations {
                 for replica in &mut replicas.replicas {
                     if let Some(o) = old.replicas.iter().find(|o| o.ts_uuid == replica.ts_uuid) {
                         replica.drive = o.drive.clone();
+                        replica.full_compaction = o.full_compaction;
                     }
                 }
             }
@@ -274,6 +300,18 @@ impl TabletLocations {
         }
     }
 
+    /// Records a replica's full compaction status from a heartbeat
+    /// (`ProcessTabletReplicaFullCompactionStatus`), as `record_drive_info`.
+    pub fn record_full_compaction(&self, tablet_id: &[u8], ts_uuid: &[u8], status: FullCompaction) {
+        let mut shard = self.shard(tablet_id).lock().unwrap();
+        if let Some(replica) = shard
+            .get_mut(tablet_id)
+            .and_then(|t| t.replicas.iter_mut().find(|r| &*r.ts_uuid == ts_uuid))
+        {
+            replica.full_compaction = status;
+        }
+    }
+
     /// Sets one tserver's replica of the tablet, keeping the others, and confirms the entry.
     pub fn update_replica(&self, tablet_id: &[u8], replica: Replica) {
         let (added, changed) = {
@@ -288,7 +326,12 @@ impl TabletLocations {
             {
                 Some(existing) => {
                     let drive = std::mem::take(&mut existing.drive);
-                    *existing = Replica { drive, ..replica };
+                    let full_compaction = existing.full_compaction;
+                    *existing = Replica {
+                        drive,
+                        full_compaction,
+                        ..replica
+                    };
                 }
                 None => entry.replicas.push(replica),
             }

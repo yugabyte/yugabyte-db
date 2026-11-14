@@ -94,6 +94,7 @@ fn from_master_error(e: &MasterErrorPB) -> Status {
 
 fn to_app_status(s: &Status) -> AppStatusPB {
     let mut pb = AppStatusPB::new();
+    pb.set_errors(vec![0]);
     pb.code = Some(protobuf::EnumOrUnknown::from_i32(s.code as i32));
     pb.set_message(s.message.clone());
     pb

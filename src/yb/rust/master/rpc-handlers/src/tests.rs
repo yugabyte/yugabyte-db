@@ -785,6 +785,20 @@ mod leader_tests {
         assert_eq!(resp.tablet_locations.len(), 1);
         assert_eq!(resp.errors.len(), 1);
 
+        // DumpState lists the namespaces, the tables with their tablets, and the configs.
+        let mut req = yb_proto::pb::master_cluster::DumpMasterStateRequestPB::new();
+        req.set_return_dump_as_string(true);
+        let resp = yb_proto::pb::master_cluster::DumpMasterStateResponsePB::parse_from_bytes(
+            &success(harness.call("DumpState", req.write_to_bytes().unwrap())),
+        )
+        .unwrap();
+        assert!(resp.error.is_none(), "{resp:?}");
+        let dump = resp.dump();
+        assert!(dump.starts_with("Follower Master self-uuid:\nDumping current state of master.\n"));
+        assert!(dump.contains("table1:\n"), "{dump}");
+        assert!(dump.contains("    tablet-b: "), "{dump}");
+        assert!(dump.contains("Cluster config: "), "{dump}");
+
         // Cluster config: a stale version is refused, the current one bumps it.
         let config = GetMasterClusterConfigResponsePB::parse_from_bytes(&success(
             harness.call("GetMasterClusterConfig", vec![]),

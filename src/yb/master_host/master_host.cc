@@ -43,6 +43,7 @@
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master-path-handlers.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_test.pb.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/catalog_manager_util.h"
@@ -137,6 +138,9 @@ METRIC_DECLARE_gauge_uint32(tablets_in_wrong_placement);
 METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
 METRIC_DECLARE_gauge_uint32(total_table_load_difference);
 METRIC_DECLARE_gauge_uint64(estimated_data_to_balance_bytes);
+METRIC_DECLARE_gauge_uint32(num_tablet_servers_live);
+METRIC_DECLARE_gauge_uint32(num_tablet_servers_dead);
+METRIC_DECLARE_gauge_uint64(max_follower_heartbeat_delay);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
@@ -733,6 +737,12 @@ Status MasterHost::DoInit() {
       METRIC_total_table_load_difference.Instantiate(metric_entity_cluster_, 0);
   estimated_data_to_balance_bytes_metric_ =
       METRIC_estimated_data_to_balance_bytes.Instantiate(metric_entity_cluster_, 0);
+  num_tablet_servers_live_metric_ =
+      METRIC_num_tablet_servers_live.Instantiate(metric_entity_cluster_, 0);
+  num_tablet_servers_dead_metric_ =
+      METRIC_num_tablet_servers_dead.Instantiate(metric_entity_cluster_, 0);
+  max_follower_heartbeat_delay_metric_ =
+      METRIC_max_follower_heartbeat_delay.Instantiate(metric_entity_cluster_, 0);
   RETURN_NOT_OK(fs_manager_->ListTabletIds(CleanupTemporaryFiles::kTrue));
 
   WARN_NOT_OK(
@@ -1531,6 +1541,36 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return encryption_manager_->HasUniverseKeyInMemory(&req, resp);
         });
   }
+  if (name == "TestRetry") {
+    // TestAsyncRpcManager::TestRetry: TryAgain until called num_retries times.
+    return HandleRequest<master::TestRetryRequestPB, master::TestRetryResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto& uuid = fs_manager()->uuid();
+          if (req.dest_uuid() != uuid) {
+            return STATUS_FORMAT(
+                InvalidArgument, "Requested uuid $0 did not match actual uuid $1", req.dest_uuid(),
+                uuid);
+          }
+          auto num_calls = num_test_retry_calls_.fetch_add(1) + 1;
+          if (num_calls < req.num_retries()) {
+            return master::SetupError(
+                resp->mutable_error(),
+                STATUS_FORMAT(TryAgain, "Got $0 calls of $1", num_calls, req.num_retries()));
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "AccessYsqlBackendsManagerTestRegister") {
+    // YsqlBackendsManager::AccessYsqlBackendsManagerTestRegister.
+    return HandleRequest<master::AccessYsqlBackendsManagerTestRegisterRequestPB,
+                         master::AccessYsqlBackendsManagerTestRegisterResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          resp->set_value(
+              req.has_value() ? ysql_backends_test_register_.exchange(req.value())
+                              : ysql_backends_test_register_.load());
+          return Status::OK();
+        });
+  }
   if (name == "DumpSysCatalogEntries") {
     // CatalogManager::DumpSysCatalogEntries and FetchFromSysCatalog.
     return HandleRequest<master::DumpSysCatalogEntriesRequestPB,
@@ -1974,6 +2014,25 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
             estimated_data_to_balance_bytes_metric_->set_value(
                 req.estimated_data_to_balance_bytes());
           }
+          if (req.has_num_tablet_servers_live()) {
+            num_tablet_servers_live_metric_->set_value(req.num_tablet_servers_live());
+          }
+          if (req.has_num_tablet_servers_dead()) {
+            num_tablet_servers_dead_metric_->set_value(req.num_tablet_servers_dead());
+          }
+          // CatalogManager::ReportMetrics: how long ago the leader last heard from its least
+          // recently heard follower master.
+          auto consensus = sys_catalog_->tablet_peer()->GetConsensus();
+          if (consensus.ok()) {
+            MonoTime earliest = MonoTime::kUninitialized;
+            for (const auto& time : (*consensus)->GetFollowerCommunicationTimes()) {
+              earliest.MakeAtMost(time.last_successful_communication);
+            }
+            auto delay_ms =
+                earliest ? MonoTime::Now().GetDeltaSince(earliest).ToMilliseconds() : 0;
+            max_follower_heartbeat_delay_metric_->set_value(
+                static_cast<uint64_t>(std::max<int64_t>(delay_ms, 0)));
+          }
           return Status::OK();
         });
   }
@@ -2093,6 +2152,47 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return Status::OK();
         });
   }
+  if (name == "YsqlTableExists") {
+    // TableSchemaVerificationTask::CheckTableExists.
+    return HandleRequest<master::YsqlTableExistsRequestPB, master::YsqlTableExistsResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          resp->set_exists(
+              VERIFY_RESULT(master::YsqlTableExists(*sys_catalog_, req.table_id(), req.table())));
+          return Status::OK();
+        });
+  }
+  if (name == "GetObjectLockStatus") {
+    // CatalogManager::GetObjectLockStatus: the locks the master's lock manager holds.
+    return HandleRequest<master::GetObjectLockStatusRequestPB,
+                         master::GetObjectLockStatusResponsePB>(
+        request, [this](const auto&, auto* resp) -> Status {
+          std::shared_ptr<tserver::TSLocalLockManager> lock_manager;
+          {
+            std::lock_guard lock(local_lock_manager_mutex_);
+            lock_manager = local_lock_manager_;
+          }
+          SCHECK(lock_manager, IllegalState, "The DDL lock manager is not started");
+          lock_manager->PopulateObjectLocks(resp->mutable_object_lock_infos());
+          return Status::OK();
+        });
+  }
+  if (name == "GetMasterHeartbeatDelays") {
+    // TabletHealthManager::GetMasterHeartbeatDelays: how long ago the sys catalog tablet's leader
+    // last heard from each follower master.
+    return HandleRequest<master::GetMasterHeartbeatDelaysRequestPB,
+                         master::GetMasterHeartbeatDelaysResponsePB>(
+        request, [this](const auto&, auto* resp) -> Status {
+          auto consensus = VERIFY_RESULT(sys_catalog_->tablet_peer()->GetConsensus());
+          auto now = MonoTime::Now();
+          for (auto& time : consensus->GetFollowerCommunicationTimes()) {
+            auto* delay = resp->add_heartbeat_delay();
+            delay->set_master_uuid(std::move(time.peer_uuid));
+            delay->set_last_heartbeat_delta_ms(
+                now.GetDeltaSince(time.last_successful_communication).ToMilliseconds());
+          }
+          return Status::OK();
+        });
+  }
   if (name == "CheckIfPitrActive") {
     // CatalogManager::CheckIfPitrActive: a snapshot schedule that is not deleted, as the
     // coordinator applied them.
@@ -2101,6 +2201,17 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           resp->set_is_pitr_active(snapshot_coordinator_->IsPitrActive());
           return Status::OK();
         });
+  }
+  if (name == "PopulateReleaseCatalogInfo") {
+    // ObjectLockInfoManager::PopulateDbCatalogVersionCache: the request back with every
+    // database's catalog version and invalidation messages; they also go into the heartbeat
+    // cache, so the cache is never older than what a release told tservers.
+    tserver::ReleaseObjectLockRequestPB req;
+    if (!req.ParseFromArray(request.data(), narrow_cast<int>(request.size()))) {
+      ThrowIfNotOk(STATUS(InvalidArgument, "Unparsable ReleaseObjectLockRequestPB"));
+    }
+    PopulateReleaseCatalogInfo(&req);
+    return ToRustBytes(req.SerializeAsString());
   }
   if (name == "RefreshPgCatalogVersionCache") {
     return HandleRequest<master::RefreshPgCatalogVersionCacheRequestPB,
@@ -2186,6 +2297,19 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           }
           SchemaToPB(new_schema, resp->mutable_schema());
           resp->set_next_column_id(next_col_id);
+          for (const auto& entry : ddl_log_entries) {
+            resp->add_ddl_log_entry_ids(entry.id());
+            *resp->add_ddl_log_entries() = entry.new_pb();
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "NewDdlLogEntry") {
+    return HandleRequest<master::NewDdlLogEntryRequestPB, master::NewDdlLogEntryResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          master::DdlLogEntry entry(clock()->Now(), req.table_id(), req.table(), req.action());
+          resp->set_id(entry.id());
+          *resp->mutable_entry() = entry.new_pb();
           return Status::OK();
         });
   }
@@ -2622,6 +2746,73 @@ bool MasterHost::RefreshPgCatalogVersionCache() {
     pg_messages_ = std::move(messages);
   }
   return !messages_failed;
+}
+
+void MasterHost::PopulateReleaseCatalogInfo(tserver::ReleaseObjectLockRequestPB* req) {
+  if (!req->populate_db_catalog_info()) {
+    return;
+  }
+  uint64_t generation;
+  {
+    SharedLock lock(pg_versions_mutex_);
+    generation = pg_versions_generation_;
+  }
+  master::DbOidToCatalogVersionMap versions;
+  HybridTime read_ht;
+  auto s =
+      sys_catalog_->ReadYsqlAllDBCatalogVersions(kPgYbCatalogVersionTableId, &versions, &read_ht);
+  if (!s.ok()) {
+    LOG(WARNING) << "Couldn't populate catalog version on exclusive lock release: " << s;
+    return;
+  }
+  if (versions.empty()) {
+    return;
+  }
+  auto* version_data = req->mutable_db_catalog_version_data();
+  // The data may be stale by the time a retried request reaches a tserver.
+  version_data->set_ignore_catalog_version_staleness_check(true);
+  for (const auto& [db_oid, version] : versions) {
+    auto* pb = version_data->add_db_catalog_versions();
+    pb->set_db_oid(db_oid);
+    pb->set_current_version(version.current_version);
+    pb->set_last_breaking_version(version.last_breaking_version);
+  }
+  std::optional<master::DbOidVersionToMessageListMap> messages;
+  if (FLAGS_ysql_yb_enable_invalidation_messages) {
+    auto read = sys_catalog_->ReadYsqlCatalogInvalationMessages();
+    if (read.ok()) {
+      messages = std::move(*read);
+    } else {
+      LOG(WARNING) << "Couldn't populate invalidation messages in lock release request "
+                   << read.status();
+    }
+  }
+  if (FLAGS_enable_heartbeat_pg_catalog_versions_cache && read_ht.is_valid()) {
+    // InstallPgCatalogVersionsSnapshot: unless the term changed or a newer read is there.
+    std::lock_guard lock(pg_versions_mutex_);
+    if (generation == pg_versions_generation_ &&
+        (!pg_versions_read_ht_.is_valid() || read_ht > pg_versions_read_ht_)) {
+      pg_versions_fingerprint_ =
+          FingerprintCatalogVersions<master::DbOidToCatalogVersionMap>(versions);
+      pg_versions_ = versions;
+      pg_versions_read_ht_ = read_ht;
+      if (FLAGS_ysql_yb_enable_invalidation_messages) {
+        pg_messages_ = messages;
+      }
+    }
+  }
+  if (!messages) {
+    return;
+  }
+  auto* messages_data = req->mutable_db_catalog_inval_messages_data();
+  for (auto& [db_oid_version, message_list] : *messages) {
+    auto* pb = messages_data->add_db_catalog_inval_messages();
+    pb->set_db_oid(db_oid_version.first);
+    pb->set_current_version(db_oid_version.second);
+    if (message_list.has_value()) {
+      pb->set_message_list(std::move(*message_list));
+    }
+  }
 }
 
 bool MasterHost::CachedDBCatalogVersion(

@@ -46,6 +46,7 @@ impl WebMasterList {
         ));
         resp.write_to_bytes().unwrap_or_else(|e| {
             let mut status = AppStatusPB::new();
+            status.set_errors(vec![0]);
             status.set_code(app_status_pb::ErrorCode::INTERNAL_ERROR);
             status.set_message(format!("Serializing the master list: {e}"));
             let mut error = MasterErrorPB::new();

@@ -25,7 +25,10 @@ pub mod placement;
 mod report;
 
 pub use deletes::{DeleteReplica, DeleteReplicaQueue};
-pub use heartbeat::{master_error, ContributorContext, HeartbeatContext, HeartbeatContributor};
+pub use heartbeat::{
+    master_error, master_error_coded, master_error_tagged, ContributorContext, HeartbeatContext,
+    HeartbeatContributor,
+};
 pub use order::Ticket;
 pub use peer::{
     apply_push, full_push, FollowerStreamState, LocationStream, Peer, SERVICE as PEER_SERVICE,
@@ -216,6 +219,9 @@ pub struct TsManager {
     pub locations: Arc<TabletLocations>,
     /// Replica deletes the report processing asks for.
     pub deletes: DeleteReplicaQueue,
+    /// By dropped table: the transaction its tablets' deletes do not abort (`TableInfo`'s
+    /// `exclude_aborting_transaction_id_`), until the table is deleted. In memory, as in C++.
+    pub abort_exclusions: Mutex<std::collections::HashMap<Vec<u8>, Vec<u8>>>,
     /// Tservers whose row could not be written yet; the liveness controller retries them.
     unpersisted: Mutex<HashSet<EntityId>>,
     /// Tservers to tell, once the leader-blacklisted ones have no leaders left, which those are
@@ -244,6 +250,7 @@ impl TsManager {
             unchanged_responses: AtomicU64::new(0),
             locations,
             deletes: DeleteReplicaQueue::default(),
+            abort_exclusions: Mutex::default(),
             unpersisted: Mutex::default(),
             pending_leader_drain: Mutex::default(),
             cdc_enabled: AtomicBool::new(false),

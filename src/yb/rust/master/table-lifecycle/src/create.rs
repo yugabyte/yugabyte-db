@@ -30,7 +30,7 @@ use yb_proto::pb::catalog_entity_info::{
     SysTabletsEntryPB,
 };
 use yb_proto::pb::common::{ColumnSchemaPB, QLTypePB};
-use yb_proto::pb::common_types::{StatefulServiceKind, TableType, YQLDatabase};
+use yb_proto::pb::common_types::{IndexPermissions, StatefulServiceKind, TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     CreateTableRequestPB, CreateTableResponsePB, IsCreateTableDoneRequestPB,
     IsCreateTableDoneResponsePB,
@@ -46,15 +46,6 @@ use crate::placement::{
 };
 use crate::{error, TableLifecycle};
 
-/// A request the Rust leader does not serve yet, naming who will.
-fn not_yet(what: &str) -> MasterErrorPB {
-    error(
-        Code::INVALID_REQUEST,
-        StatusCode::NotSupported,
-        format!("{what} is not served by a Rust master leader yet"),
-    )
-}
-
 /// The user-defined type ids a column type refers to, as `QLType::GetUserDefinedTypeIds`.
 fn udt_ids(ty: &QLTypePB, out: &mut BTreeSet<String>) {
     if let Some(info) = ty.udtype_info.as_ref() {
@@ -68,7 +59,7 @@ fn udt_ids(ty: &QLTypePB, out: &mut BTreeSet<String>) {
 }
 
 impl TableLifecycle {
-    /// `CreateTable` for a YCQL table that is neither transactional nor an index.
+    /// `CreateTable`.
     pub async fn create_table(
         &self,
         token: &LeaderToken,
@@ -117,9 +108,35 @@ impl TableLifecycle {
         if req.schema.table_properties.is_transactional() {
             self.ensure_transaction_table(token, deadline).await?;
         }
-        if req.index_info.is_some() || req.has_indexed_table_id() {
-            return Err(not_yet("A YCQL index (W7)"));
+        // An index: its indexed table must be there and visible.
+        // A client before 2.0 sends `indexed_table_id` without `index_info`.
+        let indexed_table_id = if req.index_info.is_some() {
+            Some(req.index_info.indexed_table_id().to_vec())
+        } else if req.has_indexed_table_id() {
+            Some(req.indexed_table_id().to_vec())
+        } else {
+            None
+        };
+        if let Some(id) = &indexed_table_id {
+            let indexed = snapshot.get(SysRowEntryType::TABLE, id).ok_or_else(|| {
+                error(
+                    Code::UNKNOWN_ERROR,
+                    StatusCode::NotFound,
+                    format!(
+                        "The indexed table {} does not exist",
+                        String::from_utf8_lossy(id)
+                    ),
+                )
+            })?;
+            check_visible(indexed, false)?;
         }
+        // `IsIndexBackfillEnabled`: the index starts at DELETE_ONLY and keeps delete markers
+        // until its backfill is done.
+        let backfill = indexed_table_id.is_some()
+            && !req.skip_index_backfill()
+            && !(self.options.disable_index_backfill)()
+            && (req.schema.table_properties.is_transactional()
+                || !(self.options.disable_index_backfill_for_non_txn_tables)());
 
         let config = cluster_config(&snapshot);
         let replication = self
@@ -134,7 +151,25 @@ impl TableLifecycle {
         let max_tablets =
             (self.options.max_create_tablets_per_ts)() as i64 * self.ts_manager.live().len() as i64;
         let max_tablets = if rf > 1 { max_tablets.max(0) } else { 0 };
-        let prepared = self.prepare_schema(req, tservers.len(), max_tablets)?;
+        // A legacy colocated keyspace's parent table owns its one colocated tablet.
+        let colocated_parent = req.is_colocated_via_database()
+            && crate::ysql::is_colocated_db_parent_table_id(req.table_id());
+        let mut prepared = self.prepare_schema_in(
+            req,
+            tservers.len(),
+            max_tablets,
+            None,
+            colocated_parent,
+            colocated_parent,
+        )?;
+        if backfill {
+            prepared
+                .schema
+                .mut_or_insert_default()
+                .table_properties
+                .mut_or_insert_default()
+                .set_retain_delete_markers(true);
+        }
 
         // C++ checks the namespace's type after the schema.
         let namespace = find_namespace(&snapshot, &req.namespace)?;
@@ -244,9 +279,45 @@ impl TableLifecycle {
                 } else {
                     req.table_id().to_vec()
                 };
-                let table = new_table_row(req, &prepared, &namespace.key.id, &ns.name);
-                let mut mutation = Mutation::new()
-                    .read(&namespace)
+                let mut table = new_table_row(req, &prepared, &namespace.key.id, &ns.name);
+                if colocated_parent {
+                    table.set_colocated(true);
+                }
+                let mut mutation = Mutation::new().read(&namespace);
+                if let Some(indexed_id) = &indexed_table_id {
+                    let mut info = if req.index_info.is_some() {
+                        // The index's columns get the ids its schema was given.
+                        let mut info = req.index_info.clone().unwrap_or_default();
+                        for (column, schema_column) in
+                            info.columns.iter_mut().zip(&prepared.schema.columns)
+                        {
+                            column.set_column_id(schema_column.id());
+                        }
+                        info
+                    } else {
+                        let indexed: SysTablesEntryPB = snapshot
+                            .get(SysRowEntryType::TABLE, indexed_id)
+                            .map(|t| t.parse())
+                            .transpose()
+                            .map_err(|e| {
+                                error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
+                            })?
+                            .unwrap_or_default();
+                        legacy_index_info(req, &indexed.schema, &prepared.schema)?
+                    };
+                    info.set_table_id(table_id.clone());
+                    table.set_indexed_table_id(indexed_id.clone());
+                    table.set_is_local_index(info.is_local());
+                    table.set_is_unique_index(info.is_unique());
+                    table.index_info = Some(info.clone()).into();
+                    if backfill {
+                        info.set_index_permissions(IndexPermissions::INDEX_PERM_DELETE_ONLY);
+                    }
+                    mutation = crate::ysql::add_index_to_indexed_table(
+                        snapshot, mutation, indexed_id, &info,
+                    )?;
+                }
+                let mut mutation = mutation
                     .read_absent(SysRowEntryType::TABLE, &table_id)
                     .upsert(SysRowEntryType::TABLE, &table_id, encode(&table)?);
                 mutation = add_new_tablets(
@@ -255,7 +326,7 @@ impl TableLifecycle {
                     &table_id,
                     &prepared.partitions,
                     use_parent_table_id,
-                    false,
+                    colocated_parent,
                 )?;
                 if req.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
                     // `IncrementTransactionTablesVersion`, in the same write: tservers learn of
@@ -265,16 +336,27 @@ impl TableLifecycle {
                 Ok((mutation, Ok(table_id)))
             })
             .await?;
-        match created {
-            Ok(id) => {
-                resp.set_table_id(id);
-                Ok(())
-            }
+        let id = match created {
+            Ok(id) => id,
             Err((id, e)) => {
                 resp.set_table_id(id);
-                Err(e)
+                return Err(e);
             }
+        };
+        resp.set_table_id(id);
+        drop(_names);
+        if req.has_creator_role_name() {
+            let canonical = crate::roles::canonical_table(req.namespace.name(), req.name());
+            let resource = crate::roles::Resource {
+                canonical: &canonical,
+                name: req.name(),
+                keyspace: req.namespace.name(),
+                resource_type: yb_proto::pb::common_types::ResourceType::TABLE,
+            };
+            self.grant_creator_permissions(token, deadline, req.creator_role_name(), resource)
+                .await?;
         }
+        Ok(())
     }
 
     /// `IsCreateTableDone`: done once the table leaves PREPARING.
@@ -288,6 +370,33 @@ impl TableLifecycle {
         check_visible(&table, false)?;
         let state = table.table().map_or(0, |t| t.state);
         let mut done = state != sys_tables_entry_pb::State::PREPARING as i32;
+        // A user index is done once its indexed table's fully applied indexes have it (YCQL: at
+        // DELETE_ONLY; the backfill goes on after). A YSQL system index joins no table's list.
+        if done {
+            let pb: SysTablesEntryPB = table
+                .parse()
+                .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+            let indexed_id = crate::ysql::indexed_table_of(&pb);
+            let user_index = !indexed_id.is_empty()
+                && (pb.table_type() == TableType::YQL_TABLE_TYPE
+                    || (pb.table_type() == TableType::PGSQL_TABLE_TYPE
+                        && crate::read::is_user_created(snapshot, &table, &pb)));
+            if user_index {
+                done = snapshot
+                    .get(SysRowEntryType::TABLE, &indexed_id)
+                    .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                    .is_some_and(|indexed| {
+                        let indexes = if indexed.fully_applied_schema.is_some() {
+                            &indexed.fully_applied_indexes
+                        } else {
+                            &indexed.indexes
+                        };
+                        indexes
+                            .iter()
+                            .any(|i| i.table_id() == table.key.id.as_ref())
+                    });
+            }
+        }
         // A transactional table also waits for the transaction status table.
         if done
             && table
@@ -468,17 +577,8 @@ impl TableLifecycle {
         Ok(table_replication_info(None, config))
     }
 
-    /// The host's schema steps of `CreateTable`.
-    pub(crate) fn prepare_schema(
-        &self,
-        req: &CreateTableRequestPB,
-        num_live_tservers: usize,
-        max_num_tablets: i64,
-    ) -> Result<PrepareTableSchemaResponsePB, MasterErrorPB> {
-        self.prepare_schema_in(req, num_live_tservers, max_num_tablets, None, false, false)
-    }
-
-    /// [`Self::prepare_schema`], also building the table's row in `namespace` (id, name).
+    /// The host's schema steps of `CreateTable`, also building the table's row in `namespace` (id,
+    /// name) when given.
     pub(crate) fn prepare_schema_in(
         &self,
         req: &CreateTableRequestPB,
@@ -583,6 +683,52 @@ fn new_table_row(
     table
 }
 
+/// `IndexInfoBuilder`: the `IndexInfoPB` of an index a client before 2.0 asks for, from the
+/// indexed table's schema and the index's, matching columns by name.
+fn legacy_index_info(
+    req: &CreateTableRequestPB,
+    indexed: &yb_proto::pb::common::SchemaPB,
+    index: &yb_proto::pb::common::SchemaPB,
+) -> Result<yb_proto::pb::common::IndexInfoPB, MasterErrorPB> {
+    let mut info = yb_proto::pb::common::IndexInfoPB::new();
+    info.set_indexed_table_id(req.indexed_table_id().to_vec());
+    info.set_version(0);
+    info.set_is_local(req.is_local_index());
+    info.set_is_unique(req.is_unique_index());
+    for column in &index.columns {
+        let indexed_column = indexed
+            .columns
+            .iter()
+            .find(|c| c.name() == column.name())
+            .ok_or_else(|| {
+                error(
+                    Code::UNKNOWN_ERROR,
+                    StatusCode::NotFound,
+                    format!("The indexed table column does not exist: {}", column.name()),
+                )
+            })?;
+        let mut out = yb_proto::pb::common::index_info_pb::IndexColumnPB::new();
+        out.set_column_id(column.id());
+        out.set_indexed_column_id(indexed_column.id());
+        info.columns.push(out);
+    }
+    let hash =
+        |s: &yb_proto::pb::common::SchemaPB| s.columns.iter().filter(|c| c.is_hash_key()).count();
+    let keys = |s: &yb_proto::pb::common::SchemaPB| s.columns.iter().filter(|c| c.is_key()).count();
+    info.set_hash_column_count(hash(index) as u32);
+    info.set_range_column_count((keys(index) - hash(index)) as u32);
+    // Key columns come first in a schema, hash ones before range ones.
+    let indexed_hash = hash(indexed);
+    for (i, column) in indexed.columns.iter().take(keys(indexed)).enumerate() {
+        if i < indexed_hash {
+            info.indexed_hash_column_ids.push(column.id());
+        } else {
+            info.indexed_range_column_ids.push(column.id());
+        }
+    }
+    Ok(info)
+}
+
 /// `kSystemNamespaceId`, the `system` keyspace.
 pub(crate) const SYSTEM_NAMESPACE_ID: &[u8] = b"00000000000000000000000000000001";
 /// `kGlobalTransactionsTableName`.
@@ -620,14 +766,58 @@ pub(crate) fn bump_transaction_tables_version_by(
 /// The `transaction-table` controller for one term: with YSQL on, `system.transactions` is
 /// created once `max(txn_table_wait_min_ts_count, replication_factor)` tservers have registered,
 /// as C++'s leader does from its tserver count callback, since every YSQL session needs it.
+/// With `autoscale_transaction_tables`, every `transaction_table_check_interval_sec` in which the
+/// live tserver count changed, the transaction status tables get tablets to match it.
 pub struct TransactionTableController {
     tables: Arc<TableLifecycle>,
+    /// When the scale-up last checked, and the live tserver count it last succeeded for.
+    scale_up: std::sync::Mutex<(Option<Instant>, usize)>,
 }
 
 impl TransactionTableController {
     /// A controller for the term that just began.
     pub fn new(tables: Arc<TableLifecycle>) -> Arc<TransactionTableController> {
-        Arc::new(TransactionTableController { tables })
+        Arc::new(TransactionTableController {
+            tables,
+            scale_up: std::sync::Mutex::new((None, 0)),
+        })
+    }
+
+    /// `ScaleUpTransactionStatusTablesIfNeeded`.
+    async fn scale_up_if_needed(&self) {
+        let options = &self.tables.options;
+        if !(options.autoscale_transaction_tables)() {
+            return;
+        }
+        let live = self.tables.ts_manager.live().len();
+        {
+            let mut state = self.scale_up.lock().unwrap();
+            let now = Instant::now();
+            if state
+                .0
+                .is_some_and(|last| now - last < (options.transaction_table_check_interval)())
+            {
+                return;
+            }
+            state.0 = Some(now);
+            if state.1 == live {
+                return;
+            }
+        }
+        let Ok(token) = self.tables.leadership.token() else {
+            return;
+        };
+        match self
+            .tables
+            .scale_up_transaction_status_tables(&token, live)
+            .await
+        {
+            Ok(()) => self.scale_up.lock().unwrap().1 = live,
+            Err(e) => tracing::warn!(
+                "Transaction status table scaleup failed. Will retry in next iteration: {}",
+                e.status.message()
+            ),
+        }
     }
 }
 
@@ -643,9 +833,6 @@ impl Controller for TransactionTableController {
     fn reconcile<'a>(&'a self, _scope: &'a TermScope) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             let options = &self.tables.options;
-            if !(options.enable_ysql)() {
-                return;
-            }
             if self
                 .tables
                 .catalog
@@ -653,6 +840,10 @@ impl Controller for TransactionTableController {
                 .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
                 .is_some()
             {
+                self.scale_up_if_needed().await;
+                return;
+            }
+            if !(options.enable_ysql)() {
                 return;
             }
             let wait = (options.txn_table_wait_min_ts_count)().max((options.replication_factor)());
@@ -688,9 +879,9 @@ pub fn stateful_service_table_name(kind: StatefulServiceKind) -> String {
 pub const ADVISORY_LOCKS_TABLE: &str = "pg_advisory_locks";
 
 /// The `ysql-system-tables` controller for one term: the tables `YsqlManager::RunBgTasks` creates
-/// with YSQL on, except during a YSQL major upgrade: `system.pg_advisory_locks`
-/// (`CreateYbAdvisoryLocksTableIfNeeded`) and the auto analyze service's table
-/// (`CreatePgAutoAnalyzeService`).
+/// with YSQL on, once `system.transactions` exists, except during a YSQL major upgrade:
+/// `system.pg_advisory_locks` (`CreateYbAdvisoryLocksTableIfNeeded`) and the auto analyze
+/// service's table (`CreatePgAutoAnalyzeService`).
 pub struct YsqlSystemTablesController {
     tables: Arc<TableLifecycle>,
     options: YsqlSystemTablesOptions,
@@ -794,6 +985,16 @@ impl Controller for YsqlSystemTablesController {
             if (self.major_upgrade_in_progress)(&snapshot) {
                 return;
             }
+            // These tables are transactional, so creating one creates `system.transactions` with
+            // whatever tservers have registered. Wait for the `transaction-table` controller, which
+            // waits for enough tservers to replicate it fully, as C++'s does from its tserver count
+            // callback, which in practice runs before the YSQL background tasks do.
+            if snapshot
+                .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
+                .is_none()
+            {
+                return;
+            }
             let mut wanted = vec![self.advisory_locks()];
             if (self.options.auto_analyze)() {
                 wanted.push(self.auto_analyze());
@@ -824,5 +1025,57 @@ impl Controller for YsqlSystemTablesController {
                 }
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod legacy_index_tests {
+    use super::*;
+    use yb_proto::pb::common::SchemaPB;
+
+    fn schema(columns: &[(&str, u32, bool, bool)]) -> SchemaPB {
+        let mut s = SchemaPB::new();
+        for (name, id, hash, key) in columns {
+            let mut c = ColumnSchemaPB::new();
+            c.set_name(name.to_string());
+            c.set_id(*id);
+            c.set_is_hash_key(*hash);
+            c.set_is_key(*key);
+            s.columns.push(c);
+        }
+        s
+    }
+
+    #[test]
+    fn maps_index_columns_to_the_indexed_table_by_name() {
+        let indexed = schema(&[
+            ("h", 10, true, true),
+            ("r", 11, false, true),
+            ("v", 12, false, false),
+        ]);
+        let index = schema(&[
+            ("v", 0, true, true),
+            ("h", 1, false, true),
+            ("r", 2, false, true),
+        ]);
+        let mut req = CreateTableRequestPB::new();
+        req.set_indexed_table_id(b"t".to_vec());
+        req.set_is_unique_index(true);
+        let info = legacy_index_info(&req, &indexed, &index).unwrap();
+        let ids: Vec<_> = info
+            .columns
+            .iter()
+            .map(|c| (c.column_id(), c.indexed_column_id()))
+            .collect();
+        assert_eq!(ids, vec![(0, 12), (1, 10), (2, 11)]);
+        assert_eq!(
+            (info.hash_column_count(), info.range_column_count()),
+            (1, 2)
+        );
+        assert_eq!(info.indexed_hash_column_ids, vec![10]);
+        assert_eq!(info.indexed_range_column_ids, vec![11]);
+        assert!(info.is_unique());
+        let missing = schema(&[("x", 0, true, true)]);
+        assert!(legacy_index_info(&req, &indexed, &missing).is_err());
     }
 }

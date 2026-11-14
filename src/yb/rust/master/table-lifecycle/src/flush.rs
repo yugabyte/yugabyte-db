@@ -27,12 +27,14 @@ use protobuf::{EnumOrUnknown, Message};
 use tokio::time::Instant;
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::{Status, StatusCode};
+use yb_proto::pb::catalog_entity_info::sys_tables_entry_pb::State as TableState;
 use yb_proto::pb::catalog_entity_info::SysTablesEntryPB;
 use yb_proto::pb::master_admin::{
-    FlushTablesRequestPB, FlushTablesResponsePB, IsFlushTablesDoneRequestPB,
-    IsFlushTablesDoneResponsePB,
+    FlushTablesRequestPB, FlushTablesResponsePB, GetCompactionStatusRequestPB,
+    GetCompactionStatusResponsePB, IsFlushTablesDoneRequestPB, IsFlushTablesDoneResponsePB,
 };
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
+use yb_proto::pb::tablet_types::FlushCompactFlags;
 use yb_proto::pb::tserver_admin::{
     flush_tablets_request_pb::Operation, FlushTabletsRequestPB, FlushTabletsResponsePB,
 };
@@ -40,7 +42,7 @@ use yb_proto::pb::tserver_types::tablet_server_error_pb;
 
 use crate::backfill::{hybrid_time_now, ts_status};
 use crate::lookup::find_table;
-use crate::{error, TableLifecycle};
+use crate::{coded_error, error, TableLifecycle};
 
 const ADMIN_SERVICE: &str = "yb.tserver.TabletServerAdminService";
 
@@ -135,6 +137,15 @@ impl Flushes {
             self.record_compaction_request(token, deadline, &tables)
                 .await?;
         }
+        // `AsyncFlushTablets` of the last table: a vector index has only the vector indexes
+        // flushed or compacted.
+        let vector_index = tables.last().filter(|id| {
+            snapshot
+                .get(SysRowEntryType::TABLE, id)
+                .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                .is_some_and(|pb| pb.index_info.vector_idx_options.is_some())
+        });
+        let vector_index = vector_index.cloned();
         let flush_id = uuid_hex();
         {
             let mut requests = self.requests.lock().unwrap();
@@ -161,11 +172,26 @@ impl Flushes {
             let rpc = rpc.clone();
             let token = *token;
             let flush_id = flush_id.clone();
-            let flags = req.flags;
+            let (flags, vector_index) = match &vector_index {
+                Some(id) => (
+                    Some(EnumOrUnknown::new(
+                        FlushCompactFlags::FLUSH_COMPACT_VECTOR_INDEX_ONLY,
+                    )),
+                    vec![id.clone()],
+                ),
+                None => (req.flags, Vec::new()),
+            };
             tokio::spawn(async move {
                 let result = this
                     .flush_on(
-                        &rpc, &token, &ts_uuid, tablet_ids, operation, flags, &policy,
+                        &rpc,
+                        &token,
+                        &ts_uuid,
+                        tablet_ids,
+                        operation,
+                        flags,
+                        vector_index,
+                        &policy,
                     )
                     .await;
                 if let Err(status) = &result {
@@ -199,6 +225,7 @@ impl Flushes {
         tablet_ids: Vec<Vec<u8>>,
         operation: Operation,
         flags: Option<EnumOrUnknown<yb_proto::pb::tablet_types::FlushCompactFlags>>,
+        vector_index_ids: Vec<Vec<u8>>,
         policy: &RetryPolicy,
     ) -> Result<(), Status> {
         let lifecycle = &self.lifecycle;
@@ -213,6 +240,7 @@ impl Flushes {
                 req.tablet_ids = tablet_ids.clone();
                 req.operation = Some(EnumOrUnknown::new(operation));
                 req.flags = flags;
+                req.vector_index_ids = vector_index_ids.clone();
                 let rpc = rpc.clone();
                 async move {
                     current.map_err(Attempt::Fail)?;
@@ -283,7 +311,7 @@ impl Flushes {
     ) -> Result<(), MasterErrorPB> {
         let requests = self.requests.lock().unwrap();
         let request = requests.get(req.flush_request_id()).ok_or_else(|| {
-            error(
+            coded_error(
                 Code::INVALID_REQUEST,
                 StatusCode::NotFound,
                 format!(
@@ -333,4 +361,89 @@ fn uuid_hex() -> Vec<u8> {
         .map(|b| format!("{b:02x}"))
         .collect::<String>()
         .into_bytes()
+}
+
+impl TableLifecycle {
+    /// `GetCompactionStatus`: the table's last full compaction request, and its replicas' full
+    /// compaction states as heartbeats report them: UNKNOWN if any replica's is, else COMPACTING
+    /// if any is; the table's last full compaction is the earliest replica's.
+    pub fn get_compaction_status(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &GetCompactionStatusRequestPB,
+        resp: &mut GetCompactionStatusResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        use yb_proto::pb::tablet_types::FullCompactionState;
+        let table = snapshot
+            .get(SysRowEntryType::TABLE, req.table.table_id())
+            .filter(|t| t.table().map(|h| h.state) != Some(TableState::DELETED as i32))
+            .ok_or_else(|| {
+                crate::tagged_error(
+                    Code::OBJECT_NOT_FOUND,
+                    StatusCode::NotFound,
+                    format!(
+                        "Table with id {} does not exist",
+                        String::from_utf8_lossy(req.table.table_id())
+                    ),
+                )
+            })?;
+        let pb: SysTablesEntryPB = table
+            .parse()
+            .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+        let tablets = snapshot.hosting_tablets_of(&table.key.id);
+        let unknown = FullCompactionState::FULL_COMPACTION_STATE_UNKNOWN as i32;
+        let mut state = if tablets.is_empty() {
+            unknown
+        } else {
+            FullCompactionState::IDLE as i32
+        };
+        let mut last_time = 0u64;
+        'tablets: for tablet in &tablets {
+            if state == unknown {
+                break;
+            }
+            let observed = self.lifecycle_locations(&tablet.key.id);
+            for replica in &observed {
+                let status = replica.full_compaction;
+                if status.state == unknown {
+                    state = unknown;
+                    break 'tablets;
+                }
+                if status.state == FullCompactionState::COMPACTING as i32 {
+                    state = status.state;
+                }
+                last_time = if last_time == 0 {
+                    status.last_time
+                } else {
+                    last_time.min(status.last_time)
+                };
+            }
+        }
+        resp.set_last_request_time(pb.last_full_compaction_request_time());
+        resp.set_last_full_compaction_time(last_time);
+        resp.full_compaction_state = Some(EnumOrUnknown::from_i32(state));
+        if req.show_tablets() {
+            for tablet in &tablets {
+                for replica in self.lifecycle_locations(&tablet.key.id) {
+                    let mut out =
+                        yb_proto::pb::master_admin::TabletReplicaFullCompactionStatus::new();
+                    out.set_ts_id(replica.ts_uuid.to_vec());
+                    out.set_tablet_id(tablet.key.id.to_vec());
+                    out.full_compaction_state =
+                        Some(EnumOrUnknown::from_i32(replica.full_compaction.state));
+                    out.set_last_full_compaction_time(replica.full_compaction.last_time);
+                    resp.replica_statuses.push(out);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn lifecycle_locations(&self, tablet_id: &[u8]) -> Vec<master_tablet_locations::Replica> {
+        self.ts_manager
+            .locations
+            .get(tablet_id)
+            .map(|r| r.replicas)
+            .unwrap_or_default()
+    }
 }

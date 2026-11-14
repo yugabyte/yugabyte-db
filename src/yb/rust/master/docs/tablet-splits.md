@@ -7,8 +7,11 @@ The leader side of tablet splitting: `CatalogManager::SplitTablet`, `DoSplitTabl
 ## A split
 
 1. `MasterAdmin.SplitTablet` checks the candidate (`ValidateSplitCandidateTable` and
-   `ValidateSplitCandidateTablet` for what a Rust leader serves: not a transaction status,
-   system, YEDIS or YSQL table, not one hosting stateful services, covered by a snapshot
+   `ValidateSplitCandidateTablet`: not a transaction status, system, sequences, YEDIS, xCluster
+   DDL replication or vector index table, not one whose creating YSQL transaction has not
+   committed (`enable_tablet_split_of_uncommitted_ysql_tables`), with a vector index only when
+   manual or `enable_tablet_split_of_tables_with_vector_index`, not a range-partitioned index
+   before partitioning version 1, not one hosting stateful services, covered by a snapshot
    schedule, in an xCluster or CDC stream or backfilling an index, not colocated, RUNNING, and a
    split child only once its parent is gone), then the table limits
    (`max_create_tablets_per_ts` per live tserver, `tablet_split_limit_per_table`), and answers.
@@ -16,7 +19,8 @@ The leader side of tablet splitting: `CatalogManager::SplitTablet`, `DoSplitTabl
    split key (`TabletServerService.GetSplitKey`) in the background.
 2. `DoSplitTablet` is one catalog mutation (K1): the children as CREATING tablets (ids sorted,
    the parent's committed config, `split_depth` + 1, `split_parent_tablet_id`), the parent's
-   `split_tablet_ids`, and the table's next `partition_list_version`. A tablet that already has
+   `split_tablet_ids`, and the next `partition_list_version` of the table and of its vector
+   indexes, which share its tablets. A tablet that already has
    children resumes with them. An automatic split is checked again first
    (`ShouldSplitValidCandidate`), since the table may have changed phase or gained a replica
    since it was picked; a resumed one is not, so a registered split is always finished.

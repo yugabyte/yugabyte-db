@@ -434,6 +434,13 @@ impl TsManager {
             state == sys_tables_entry_pb::State::DELETING.value()
                 || state == sys_tables_entry_pb::State::DELETED.value()
         };
+        let table_id = ctx
+            .snapshot
+            .get(SysRowEntryType::TABLET, tablet_id)
+            .and_then(|t| t.tablet())
+            .map(|t| t.table_id.clone());
+        let exclude_txn =
+            table_id.and_then(|id| self.abort_exclusions.lock().unwrap().get(&id).cloned());
         let abort_active_txns = ctx
             .snapshot
             .get(SysRowEntryType::TABLET, tablet_id)
@@ -449,6 +456,7 @@ impl TsManager {
             cas_config_index,
             hide_only,
             abort_active_txns,
+            exclude_txn,
             reason,
         });
     }

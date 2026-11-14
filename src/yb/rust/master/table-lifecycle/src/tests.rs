@@ -125,10 +125,28 @@ impl SchemaHost for FakeSchemaHost {
                 resp.set_next_column_id(next);
                 Ok(resp.write_to_bytes().unwrap())
             }
+            "NewDdlLogEntry" => {
+                // A row id that sorts newest first, as the DocDB encoding of the time does.
+                let req =
+                    yb_proto::pb::master_rust_peer::NewDdlLogEntryRequestPB::parse_from_bytes(
+                        request,
+                    )
+                    .unwrap();
+                let seq = DDL_LOG_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let mut resp = yb_proto::pb::master_rust_peer::NewDdlLogEntryResponsePB::new();
+                resp.set_id((u64::MAX - seq).to_be_bytes().to_vec());
+                let entry = resp.entry.mut_or_insert_default();
+                entry.set_table_id(String::from_utf8_lossy(req.table_id()).into_owned());
+                entry.set_table_name(String::from_utf8_lossy(req.table.name()).into_owned());
+                entry.set_action(req.action().to_string());
+                Ok(resp.write_to_bytes().unwrap())
+            }
             _ => Err(Status::new(StatusCode::NotSupported, method)),
         }
     }
 }
+
+static DDL_LOG_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 struct Harness {
     lifecycle: Arc<TableLifecycle>,

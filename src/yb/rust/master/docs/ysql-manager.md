@@ -73,9 +73,12 @@ then sent to every live lease and removed from the row and the master's lock man
 leader rebuilds its lock manager from every persisted lock (`ResetLocalObjectLocks`, before the
 term is ready) and relaunches the releases in progress. The locks of a lease epoch that ended are
 released by the master, with `ignore_lease_epochs_before` so tservers refuse that epoch's late
-acquires. `WaitForLockersMultipleGlobal` is sent to every live lease. A release does not carry
-catalog versions yet; tservers get them from the next heartbeat. DDL verification does not yet
-hold back a release of the transaction it verifies.
+acquires. `WaitForLockersMultipleGlobal` is sent to every live lease. A release that asks for it
+(`populate_db_catalog_info`) carries every database's catalog version and invalidation messages,
+read by the host, which installs the same read in the heartbeat cache so the cache is never behind
+what tservers were told. A release of a transaction whose DDL verification is still running (a
+table carries its verifier state) waits for the verification to end before it is sent; C++ drops
+such a release and releases all the transaction's locks when verification ends.
 
 ## YSQL on the sys catalog tablet
 
@@ -142,7 +145,11 @@ YSQL major upgrade: `system.pg_advisory_locks` (`num_advisory_locks_tablets` tab
 columns hashed) and, with `ysql_enable_auto_analyze_infra`, the auto analyze service's
 `system.pg_auto_analyze_table`, a one-tablet table that hosts the `PG_AUTO_ANALYZE` stateful
 service. `GetStatefulServiceLocation` answers with the tserver leading that tablet. The LISTEN/NOTIFY
-objects (`ysql_yb_enable_listen_notify`, off by default) are not created.
+objects (`ysql_yb_enable_listen_notify`, off by default) are not created. The controller waits
+for `system.transactions`: these tables are transactional, so creating one first would create the
+transaction table on whatever tservers have registered, possibly fewer than the replication
+factor. C++ has the same race, but its tserver count callback creates the table before its first
+background pass.
 
 `ReservePgsqlOids` reserves the next OIDs of a database's normal or secondary space from its
 namespace row (`next_normal_pg_oid`, `next_secondary_pg_oid`), as C++ does; the response carries

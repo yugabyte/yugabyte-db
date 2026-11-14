@@ -33,7 +33,7 @@ use yb_proto::pb::common_types::TableType;
 use yb_proto::pb::master_admin::DeleteNotServingTabletRequestPB;
 use yb_proto::pb::master_types::SysRowEntryType;
 
-use crate::{child_partitions, validate_split_candidate, TabletSplitManager};
+use crate::{child_partitions, validate_split_candidate, AutoSplitOptions, TabletSplitManager};
 
 struct NoHost;
 
@@ -234,7 +234,8 @@ async fn the_parent_goes_once_its_children_cover_it() {
     h.set_running(&children[0]).await;
     let snapshot = h.snapshot();
     let child = snapshot.get(SysRowEntryType::TABLET, &children[0]).unwrap();
-    let e = validate_split_candidate(&snapshot, child, true).unwrap_err();
+    let e =
+        validate_split_candidate(&snapshot, child, true, &AutoSplitOptions::default()).unwrap_err();
     assert!(
         e.status.message().contains("parent is not yet deleted"),
         "{e:?}"
@@ -263,7 +264,7 @@ async fn the_parent_goes_once_its_children_cover_it() {
     // With the parent gone, a child can be split.
     let snapshot = h.snapshot();
     let child = snapshot.get(SysRowEntryType::TABLET, &children[0]).unwrap();
-    validate_split_candidate(&snapshot, child, true).unwrap();
+    validate_split_candidate(&snapshot, child, true, &AutoSplitOptions::default()).unwrap();
 }
 
 #[tokio::test]
@@ -375,7 +376,8 @@ async fn split_candidates_follow_cpp() {
         .unwrap();
     let snapshot = h.snapshot();
     let tablet = snapshot.get(SysRowEntryType::TABLET, b"parent").unwrap();
-    let e = validate_split_candidate(&snapshot, tablet, true).unwrap_err();
+    let e = validate_split_candidate(&snapshot, tablet, true, &AutoSplitOptions::default())
+        .unwrap_err();
     assert!(
         e.status.message().contains("transaction status tables"),
         "{e:?}"

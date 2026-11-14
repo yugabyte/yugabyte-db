@@ -49,7 +49,7 @@ use yb_proto::pb::tserver_types::tablet_server_error_pb;
 
 use crate::backfill::{call_tablet_leader, corrupt, ts_status, BackfillContext};
 use crate::ysql::{is_tablegroup_parent_table_id, tablegroup_parent_of};
-use crate::{error, TableLifecycle};
+use crate::{coded_error, error, TableLifecycle};
 
 use sys_tables_entry_pb::State as TableState;
 
@@ -366,7 +366,7 @@ impl TableLifecycle {
             let namespace = snapshot
                 .get(SysRowEntryType::NAMESPACE, req.namespace_id())
                 .ok_or_else(|| {
-                    error(
+                    coded_error(
                         Code::NAMESPACE_NOT_FOUND,
                         StatusCode::NotFound,
                         format!(

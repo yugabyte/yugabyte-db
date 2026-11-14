@@ -28,6 +28,7 @@ use yb_proto::pb::catalog_entity_info::YsqlDdlTxnVerifierStatePB;
 use yb_proto::pb::catalog_entity_info::{
     sys_namespace_entry_pb, sys_tables_entry_pb, SysNamespaceEntryPB, SysTablesEntryPB,
 };
+use yb_proto::pb::common::HnswBackend;
 use yb_proto::pb::common_types::{IndexPermissions, TableType, YQLDatabase};
 use yb_proto::pb::master_ddl::{
     CreateTableRequestPB, CreateTableResponsePB, DeleteTableRequestPB, DeleteTableResponsePB,
@@ -41,17 +42,9 @@ use crate::lookup::{find_namespace, find_table};
 use crate::major_upgrade::{is_prior_version_catalog_table, DbTables};
 use crate::placement::{check_placement, cluster_config, live_tservers, num_replicas};
 use crate::time::local_time_string;
-use crate::{error, tagged_error, TableLifecycle};
+use crate::{coded_error, error, tagged_error, LifecycleOptions, TableLifecycle};
 
 use sys_tables_entry_pb::State as TableState;
-
-fn not_yet(what: &str) -> MasterErrorPB {
-    error(
-        Code::INVALID_REQUEST,
-        StatusCode::NotSupported,
-        format!("{what} is not served by a Rust master leader yet"),
-    )
-}
 
 fn corrupt(e: impl std::fmt::Display) -> MasterErrorPB {
     error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
@@ -169,9 +162,9 @@ impl TableLifecycle {
         } else {
             None
         };
-        if req.index_info.vector_idx_options.is_some() {
-            return Err(not_yet("A vector index"));
-        }
+        // A vector index is stored on its indexed table's tablets (copartitioned), so it joins
+        // them as a colocated table does.
+        let is_vector_index = req.index_info.vector_idx_options.is_some();
         if crate::placement::replication_info_set(&req.replication_info) {
             return Err(error(
                 Code::INVALID_REQUEST,
@@ -199,30 +192,61 @@ impl TableLifecycle {
                 "Namespace not found",
             ));
         }
-        // A database colocated before tablegroups existed has a parent table of its own, and its
-        // tables are colocated "via database" (`IsColocatedNamespace`). A database colocated since
-        // has a default tablegroup, which PG names in each colocated table's request.
+        // A database colocated before tablegroups existed (legacy) has a parent table of its own,
+        // and its tables are colocated "via database" (`IsColocatedNamespace`) unless the request
+        // or the indexed table opted out. A database colocated since has a default tablegroup,
+        // which PG names in each colocated table's request.
+        let db_parent_id = [&namespace.key.id[..], COLOCATED_DB_PARENT_SUFFIX].concat();
+        let is_db_parent = is_colocated_db_parent_table_id(req.table_id());
         let opted_out = req.has_is_colocated_via_database() && !req.is_colocated_via_database();
-        if is_colocated_db_parent_table_id(req.table_id())
-            || (ns.colocated()
-                && !opted_out
-                && !req.has_tablegroup_id()
-                && snapshot
-                    .get(
-                        SysRowEntryType::TABLE,
-                        &[&namespace.key.id[..], COLOCATED_DB_PARENT_SUFFIX].concat(),
-                    )
-                    .is_some())
-        {
-            return Err(not_yet("A table in a legacy colocated database"));
-        }
+        let indexed_colocated = indexed_table_id.as_ref().is_none_or(|id| {
+            snapshot
+                .get(SysRowEntryType::TABLE, id)
+                .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                .is_some_and(|pb| pb.colocated())
+        });
+        let via_database = !req.has_tablegroup_id()
+            && (is_db_parent || live_table(&snapshot, &db_parent_id).is_some())
+            && !opted_out
+            && indexed_colocated;
         let tablegroup_id = req
             .has_tablegroup_id()
             .then(|| req.tablegroup_id().to_vec());
-        let colocated = tablegroup_id.is_some();
-        let is_parent = colocated && is_tablegroup_parent_table_id(req.table_id());
+        let colocated = tablegroup_id.is_some() || via_database || is_vector_index;
+        let is_parent = if is_vector_index {
+            false
+        } else if via_database {
+            is_db_parent
+        } else {
+            colocated && is_tablegroup_parent_table_id(req.table_id())
+        };
         // A colocated table that is not the parent joins its group's tablet.
         let joining = colocated && !is_parent;
+        // A vector index's tablespace only mirrors its indexed table's.
+        if colocated
+            && indexed_table_id.is_some()
+            && !is_vector_index
+            && req.has_tablespace_id()
+            && !(self.options.colocated_tables_with_tablespaces)()
+        {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InvalidArgument,
+                "TABLESPACE is not supported for indexes on colocated tables.",
+            ));
+        }
+        // PG does not know the index is colocated: its hash columns become range ones.
+        let colocated_index;
+        let req = if colocated && indexed_table_id.is_some() {
+            let mut r = req.clone();
+            for column in &mut r.schema.mut_or_insert_default().columns {
+                column.set_is_hash_key(false);
+            }
+            colocated_index = r;
+            &colocated_index
+        } else {
+            req
+        };
         let ns_name = String::from_utf8_lossy(ns.name()).into_owned();
 
         let config = cluster_config(&snapshot);
@@ -276,6 +300,57 @@ impl TableLifecycle {
         let backfill = indexed_table_id.is_some()
             && !(self.options.ysql_disable_index_backfill)()
             && !req.skip_index_backfill();
+        if is_vector_index {
+            let indexed_id = indexed_table_id.as_deref().unwrap_or_default();
+            let indexed_pb = snapshot
+                .get(SysRowEntryType::TABLE, indexed_id)
+                .map(|t| t.parse::<SysTablesEntryPB>().map_err(corrupt))
+                .transpose()?
+                .ok_or_else(|| {
+                    error(
+                        Code::OBJECT_NOT_FOUND,
+                        StatusCode::NotFound,
+                        format!(
+                            "Indexed table {} not found",
+                            String::from_utf8_lossy(indexed_id)
+                        ),
+                    )
+                })?;
+            let options = table
+                .index_info
+                .mut_or_insert_default()
+                .vector_idx_options
+                .mut_or_insert_default();
+            let oid = pg_table_oid(req.table_id()).ok_or_else(|| {
+                error(
+                    Code::UNKNOWN_ERROR,
+                    StatusCode::InvalidArgument,
+                    format!(
+                        "Invalid YSQL table id {}",
+                        String::from_utf8_lossy(req.table_id())
+                    ),
+                )
+            })?;
+            options.set_id(oid.to_string());
+            // An index on a table that does not write the reverse mapping must store the payload,
+            // the only way for its search to resolve rows.
+            options.set_store_payload(
+                (self.options.vector_index_store_payload)()
+                    || indexed_pb
+                        .schema
+                        .table_properties
+                        .skip_vector_reverse_mapping(),
+            );
+            options.hnsw.mut_or_insert_default().set_backend(
+                if (self.options.vector_index_backend)() == "yb_hnsw_usearch" {
+                    HnswBackend::YB_HNSW_USEARCH
+                } else {
+                    HnswBackend::YB_HNSW_HNSWLIB
+                },
+            );
+            // It shares the indexed table's tablets, so it has their partition list version.
+            table.set_partition_list_version(indexed_pb.partition_list_version());
+        }
         let index_info = indexed_table_id.as_ref().map(|_| {
             let info = table.index_info.mut_or_insert_default();
             info.set_table_id(req.table_id().to_vec());
@@ -330,7 +405,9 @@ impl TableLifecycle {
                     return Ok((Mutation::new(), Err(e)));
                 }
                 use sys_namespace_entry_pb::State as NsState;
-                if ns.state != NsState::RUNNING as i32 {
+                // A legacy colocated database's parent table is created with the database.
+                let creating_db_parent = is_db_parent && ns.state == NsState::PREPARING as i32;
+                if ns.state != NsState::RUNNING as i32 && !creating_db_parent {
                     let state = NsState::from_i32(ns.state).unwrap_or(NsState::UNKNOWN);
                     let code = match state {
                         NsState::PREPARING | NsState::DELETING => Code::IN_TRANSITION_CAN_RETRY,
@@ -347,7 +424,36 @@ impl TableLifecycle {
                     ));
                 }
                 let mut table = table.clone();
-                if let Some(tablegroup_id) = &tablegroup_id {
+                if is_vector_index {
+                    let indexed_id = indexed_table_id.as_deref().unwrap_or_default();
+                    // The table that owns the indexed table's tablets: itself, or its colocation
+                    // parent.
+                    let owner = match snapshot
+                        .get(SysRowEntryType::TABLE, indexed_id)
+                        .and_then(|t| t.table())
+                    {
+                        Some(h) if !h.parent_table_id.is_empty() => h.parent_table_id.clone(),
+                        _ => indexed_id.to_vec(),
+                    };
+                    let parent = live_table(snapshot, &owner).ok_or_else(|| {
+                        error(
+                            Code::OBJECT_NOT_FOUND,
+                            StatusCode::NotFound,
+                            format!(
+                                "Indexed table {} not found",
+                                String::from_utf8_lossy(indexed_id)
+                            ),
+                        )
+                    })?;
+                    join_colocation_group(snapshot, &self.options, req, parent, &mut table)?;
+                    // A split since the snapshot above changed the version.
+                    if let Some(pb) = snapshot
+                        .get(SysRowEntryType::TABLE, indexed_id)
+                        .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                    {
+                        table.set_partition_list_version(pb.partition_list_version());
+                    }
+                } else if let Some(tablegroup_id) = &tablegroup_id {
                     let parent = tablegroup_parent_of(snapshot, tablegroup_id);
                     let tablegroup = String::from_utf8_lossy(tablegroup_id);
                     if is_parent && parent.is_some() {
@@ -365,8 +471,17 @@ impl TableLifecycle {
                                 format!("Tablegroup with ID {tablegroup} does not exist"),
                             )
                         })?;
-                        join_colocation_group(snapshot, req, parent, &mut table)?;
+                        join_colocation_group(snapshot, &self.options, req, parent, &mut table)?;
                     }
+                } else if via_database && joining {
+                    let parent = live_table(snapshot, &db_parent_id).ok_or_else(|| {
+                        error(
+                            Code::INTERNAL_ERROR,
+                            StatusCode::IllegalState,
+                            format!("Database {} doesn't have a colocation tablet", ns.name),
+                        )
+                    })?;
+                    join_colocation_group(snapshot, &self.options, req, parent, &mut table)?;
                 }
                 let mut mutation = Mutation::new().read(&namespace);
                 // A dropped table's DELETED row with this id is replaced.
@@ -483,7 +598,7 @@ impl TableLifecycle {
     }
 
     /// Marks a YSQL table DELETING (`DeleteTableInternal`); the table deleter does the rest.
-    async fn mark_deleting(
+    pub(crate) async fn mark_deleting(
         &self,
         token: &LeaderToken,
         deadline: Instant,
@@ -497,6 +612,7 @@ impl TableLifecycle {
             if pb.state() == TableState::DELETING || pb.state() == TableState::DELETED {
                 return Ok((Mutation::new(), ()));
             }
+            let ddl_log = self.drop_ddl_log_entries(snapshot, table_id, &pb)?;
             pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
             pb.set_state_msg(format!("Started deleting at {}", local_time_string()).into_bytes());
             pb.ysql_ddl_txn_verifier_state.clear();
@@ -505,6 +621,29 @@ impl TableLifecycle {
                 .read(table)
                 .upsert_message(SysRowEntryType::TABLE, table_id, &pb)
                 .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            for row in &ddl_log {
+                mutation = crate::ddl_log::add(mutation, row)?;
+            }
+            // `DeleteTableInMemory`: a table's indexes go with it. A rewrite drops the old DocDB
+            // table and builds its indexes anew, so the old ones are left only in its list.
+            for index in &pb.indexes {
+                let Some(index_table) = snapshot.get(SysRowEntryType::TABLE, index.table_id())
+                else {
+                    continue;
+                };
+                let mut index_pb: SysTablesEntryPB = index_table.parse().map_err(corrupt)?;
+                if matches!(index_pb.state(), TableState::DELETING | TableState::DELETED) {
+                    continue;
+                }
+                index_pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
+                index_pb.set_state_msg(pb.state_msg().to_vec());
+                index_pb.ysql_ddl_txn_verifier_state.clear();
+                index_pb.transaction = Default::default();
+                mutation = mutation
+                    .read(index_table)
+                    .upsert_message(SysRowEntryType::TABLE, &index_table.key.id, &index_pb)
+                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+            }
             // DeleteIndexInfoFromTable: an index leaves its table's `indexes`, as an alter.
             let indexed_id = indexed_table_of(&pb);
             if !indexed_id.is_empty() {
@@ -853,7 +992,26 @@ impl TableLifecycle {
                 .await?;
             match outcome {
                 Outcome::Done => {}
-                Outcome::Delete => self.mark_deleting(token, deadline, &table_id).await?,
+                Outcome::Delete => {
+                    // The table's tablets and its indexes' are deleted without aborting the DDL
+                    // transaction itself (`IsTableDeletionDueToRollbackToSubTxnWithLock`).
+                    let mut dropped = vec![table_id.clone()];
+                    if let Some(pb) = self
+                        .catalog
+                        .snapshot()
+                        .get(SysRowEntryType::TABLE, &table_id)
+                        .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+                    {
+                        dropped.extend(pb.indexes.iter().map(|i| i.table_id().to_vec()));
+                    }
+                    {
+                        let mut exclusions = self.ts_manager.abort_exclusions.lock().unwrap();
+                        for id in dropped {
+                            exclusions.insert(id, uuid(txn_id).into_bytes());
+                        }
+                    }
+                    self.mark_deleting(token, deadline, &table_id).await?
+                }
                 Outcome::Altered => altered.push(table_id),
             }
         }
@@ -934,7 +1092,7 @@ impl TableLifecycle {
 
 /// `PrepareAddIndexInfoToTable`: the index joins its table's `indexes`, as an alter, in the
 /// index's create mutation, so an index is never persisted without the reference to it.
-fn add_index_to_indexed_table(
+pub(crate) fn add_index_to_indexed_table(
     snapshot: &CatalogSnapshot,
     mutation: Mutation,
     indexed_table_id: &[u8],
@@ -976,7 +1134,7 @@ fn add_index_to_indexed_table(
 }
 
 /// `GetIndexedTableId`: empty for a table that is not an index.
-fn indexed_table_of(pb: &SysTablesEntryPB) -> Vec<u8> {
+pub(crate) fn indexed_table_of(pb: &SysTablesEntryPB) -> Vec<u8> {
     if pb.index_info.is_some() {
         pb.index_info.indexed_table_id().to_vec()
     } else {
@@ -1012,7 +1170,7 @@ pub(crate) const PG_FIRST_NORMAL_OID: u32 = 16384;
 
 /// `IsPgsqlId`: a 32-digit id whose UUID version is 3, which YSQL ids repurpose.
 /// A transaction id as `TransactionId::ToString` prints it (a dashed UUID).
-fn uuid(bytes: &[u8]) -> String {
+pub(crate) fn uuid(bytes: &[u8]) -> String {
     let h = hex(bytes);
     if h.len() != 32 {
         return h;
@@ -1230,11 +1388,19 @@ impl TableLifecycle {
             }
         };
         resp.set_id(id.clone());
-        if req.colocated() {
-            tracing::warn!(
-                "Database {} is colocated; its parent table is not created by a Rust master yet",
-                req.name()
-            );
+        if (self.options.legacy_colocated_database_creation)()
+            && req.colocated()
+            && !self.ysql_major_upgrade_in_progress(&self.catalog.snapshot())
+        {
+            // A legacy colocated database: its parent table owns the database's one tablet.
+            if let Err(e) = self
+                .create_colocated_db_parent(token, deadline, &id, req.name())
+                .await
+            {
+                tracing::warn!("Keyspace creation failed: {}", e.status.message());
+                let _ = self.set_namespace_state(token, &id, false).await;
+                return Err(e);
+            }
         }
         // The template's PG catalog tables, as the catalog has them now.
         let mut sources: Vec<(Vec<u8>, SysTablesEntryPB)> = Vec::new();
@@ -1288,6 +1454,37 @@ impl TableLifecycle {
                 .remove(&(token.term(), id));
         });
         Ok(())
+    }
+
+    /// The parent table of a legacy colocated database (`CreateNamespace` with
+    /// `ysql_legacy_colocated_database_creation`), created while the database is PREPARING.
+    async fn create_colocated_db_parent(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        namespace_id: &[u8],
+        namespace_name: &str,
+    ) -> Result<(), MasterErrorPB> {
+        let ns = String::from_utf8_lossy(namespace_id);
+        let mut req = CreateTableRequestPB::new();
+        req.set_name(format!("{ns}.colocated.parent.tablename"));
+        req.set_table_id([namespace_id, COLOCATED_DB_PARENT_SUFFIX].concat());
+        let ident = req.namespace.mut_or_insert_default();
+        ident.set_id(namespace_id.to_vec());
+        ident.set_name(namespace_name.to_string());
+        req.table_type = Some(protobuf::EnumOrUnknown::new(TableType::PGSQL_TABLE_TYPE));
+        req.set_is_colocated_via_database(true);
+        // As C++ builds it, so the transaction status table is created for it.
+        req.schema
+            .mut_or_insert_default()
+            .table_properties
+            .mut_or_insert_default()
+            .set_is_transactional(true);
+        let mut resp = CreateTableResponsePB::new();
+        match Box::pin(self.create_ysql_table_as(token, deadline, &req, &mut resp, true)).await {
+            Err(e) if e.code() == Code::OBJECT_ALREADY_PRESENT => Ok(()),
+            result => result,
+        }
     }
 
     /// `ProcessPendingNamespace`: copies the PG catalog tables, then writes their rows, the sys
@@ -1508,7 +1705,7 @@ pub(crate) fn start_database_drop(
     let id = &namespace.key.id;
     let schedules = crate::schedules::covering_schedules(snapshot, SysRowEntryType::NAMESPACE, id);
     if !schedules.is_empty() {
-        return Err(error(
+        return Err(tagged_error(
             Code::NAMESPACE_IS_NOT_EMPTY,
             StatusCode::InvalidArgument,
             format!(
@@ -1872,7 +2069,7 @@ impl TableLifecycle {
 }
 
 /// `kColocatedDbParentTableIdSuffix`: a legacy colocated database's parent table.
-const COLOCATED_DB_PARENT_SUFFIX: &[u8] = b".colocated.parent.uuid";
+pub(crate) const COLOCATED_DB_PARENT_SUFFIX: &[u8] = b".colocated.parent.uuid";
 /// `kTablegroupParentTableIdSuffix`, and `kColocationParentTableIdSuffix` for a colocated
 /// database's tablegroups.
 const TABLEGROUP_PARENT_SUFFIXES: [&[u8]; 2] =
@@ -1881,7 +2078,7 @@ const TABLEGROUP_PARENT_SUFFIXES: [&[u8]; 2] =
 const FIRST_NORMAL_COLOCATION_ID: u32 = 16384;
 
 /// `IsColocatedDbParentTableId`.
-fn is_colocated_db_parent_table_id(id: &[u8]) -> bool {
+pub(crate) fn is_colocated_db_parent_table_id(id: &[u8]) -> bool {
     id.len() == 32 + COLOCATED_DB_PARENT_SUFFIX.len() && id.ends_with(COLOCATED_DB_PARENT_SUFFIX)
 }
 
@@ -1893,6 +2090,18 @@ pub(crate) fn is_tablegroup_parent_table_id(id: &[u8]) -> bool {
 }
 
 /// The tablegroup's parent table, if the tablegroup exists: a parent row not being dropped.
+/// The table with this id, unless it is being or has been dropped.
+fn live_table<'a>(
+    snapshot: &'a CatalogSnapshot,
+    table_id: &[u8],
+) -> Option<&'a std::sync::Arc<master_catalog_entity::Entity>> {
+    snapshot.get(SysRowEntryType::TABLE, table_id).filter(|t| {
+        t.table().is_some_and(|h| {
+            h.state != TableState::DELETING as i32 && h.state != TableState::DELETED as i32
+        })
+    })
+}
+
 pub(crate) fn tablegroup_parent_of<'a>(
     snapshot: &'a CatalogSnapshot,
     tablegroup_id: &[u8],
@@ -1912,52 +2121,18 @@ pub(crate) fn tablegroup_parent_of<'a>(
 /// a colocation id unique in the group (`ObtainColocationId`): the requested one, or a random one.
 fn join_colocation_group(
     snapshot: &CatalogSnapshot,
+    options: &LifecycleOptions,
     req: &CreateTableRequestPB,
     parent: &master_catalog_entity::Entity,
     table: &mut SysTablesEntryPB,
 ) -> Result<(), MasterErrorPB> {
-    use rand::Rng;
-    if snapshot
-        .active_tablets_of(&parent.key.id)
-        .iter()
-        .any(|t| t.tablet().is_some_and(|h| !h.mapped_by_parent_id))
-    {
-        return Err(not_yet(
-            "Joining a colocation tablet whose row lists its tables (before use_parent_table_id_field)",
-        ));
-    }
     let used: std::collections::HashSet<u32> = snapshot
         .children_of(&parent.key.id)
         .iter()
         .filter_map(|child| child.parse::<SysTablesEntryPB>().ok())
         .map(|pb| pb.schema.colocated_table_id.colocation_id())
         .collect();
-    let colocation_id = if req.has_colocation_id() {
-        let id = req.colocation_id();
-        if id < FIRST_NORMAL_COLOCATION_ID {
-            return Err(error(
-                Code::INTERNAL_ERROR,
-                StatusCode::InvalidArgument,
-                format!("Colocation ID cannot be less than {FIRST_NORMAL_COLOCATION_ID}"),
-            ));
-        }
-        if used.contains(&id) {
-            return Err(error(
-                Code::INTERNAL_ERROR,
-                StatusCode::InvalidArgument,
-                format!("Colocation group already contains a table with colocation ID {id}"),
-            ));
-        }
-        id
-    } else {
-        let mut rng = rand::rng();
-        loop {
-            let id = rng.random_range(FIRST_NORMAL_COLOCATION_ID..=u32::MAX);
-            if !used.contains(&id) {
-                break id;
-            }
-        }
-    };
+    let colocation_id = conceive_colocation_id(req, options, |id| used.contains(&id))?;
     table.set_parent_table_id(parent.key.id.to_vec());
     table
         .schema
@@ -1966,4 +2141,58 @@ fn join_colocation_group(
         .mut_or_insert_default()
         .set_colocation_id(colocation_id);
     Ok(())
+}
+
+/// `ConceiveColocationId`: the requested colocation id, else the first free one of
+/// `TEST_colocation_ids`, else a free one from 20001 up (`TEST_sequential_colocation_ids`) or a
+/// random one.
+pub(crate) fn conceive_colocation_id(
+    req: &CreateTableRequestPB,
+    options: &LifecycleOptions,
+    used: impl Fn(u32) -> bool,
+) -> Result<u32, MasterErrorPB> {
+    use rand::Rng;
+    if req.has_colocation_id() {
+        let id = req.colocation_id();
+        if id < FIRST_NORMAL_COLOCATION_ID {
+            return Err(coded_error(
+                Code::INVALID_SCHEMA,
+                StatusCode::InvalidArgument,
+                format!("Colocation ID cannot be less than {FIRST_NORMAL_COLOCATION_ID}"),
+            ));
+        }
+        if used(id) {
+            return Err(coded_error(
+                Code::INVALID_SCHEMA,
+                StatusCode::InvalidArgument,
+                format!("Colocation group already contains a table with colocation ID {id}"),
+            ));
+        }
+        return Ok(id);
+    }
+    let listed = (options.colocation_ids)();
+    if !listed.is_empty() {
+        for id in listed.split(',') {
+            let id: u32 = id.trim().parse().map_err(|_| {
+                error(
+                    Code::UNKNOWN_ERROR,
+                    StatusCode::InvalidArgument,
+                    format!("Invalid TEST_colocation_ids: {listed}"),
+                )
+            })?;
+            if !used(id) {
+                return Ok(id);
+            }
+        }
+    }
+    if (options.sequential_colocation_ids)() {
+        return Ok((20001..=u32::MAX).find(|id| !used(*id)).unwrap_or(u32::MAX));
+    }
+    let mut rng = rand::rng();
+    loop {
+        let id = rng.random_range(FIRST_NORMAL_COLOCATION_ID..=u32::MAX);
+        if !used(id) {
+            break Ok(id);
+        }
+    }
 }

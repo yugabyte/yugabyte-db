@@ -19,9 +19,11 @@ use master_catalog_state::CatalogSnapshot;
 use protobuf::{EnumOrUnknown, MessageField};
 use yb_host_api::StatusCode;
 use yb_proto::pb::catalog_entity_info::{
-    sys_namespace_entry_pb, sys_tables_entry_pb, SysTablesEntryPB,
+    sys_namespace_entry_pb, sys_tables_entry_pb, SysTablesEntryPB, SysTabletsEntryPB,
 };
+use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::common_types::TableType;
+use yb_proto::pb::master_client::{GetTabletsMetadataRequestPB, GetTabletsMetadataResponsePB};
 use yb_proto::pb::master_ddl::{
     list_tables_response_pb, GetTableSchemaRequestPB, GetTableSchemaResponsePB,
     ListTablesRequestPB, ListTablesResponsePB,
@@ -29,13 +31,14 @@ use yb_proto::pb::master_ddl::{
 use yb_proto::pb::master_types::{
     master_error_pb::Code, MasterErrorPB, RelationType, SysRowEntryType, TableIdentifierPB,
 };
+use yb_proto::pb::tablet::TabletStatusPB;
 
 use crate::lookup::{
     check_visible, find_namespace, find_table, is_colocation_parent_table_id, is_hidden,
     is_system_table, is_visible_to_client,
 };
 use crate::namespaces::identifier;
-use crate::{error, TableLifecycle};
+use crate::{coded_error, error, tagged_error, TableLifecycle};
 
 /// `kYbSystemDbName`: the YSQL database of YugabyteDB's own system tables.
 const YB_SYSTEM_DB_NAME: &str = "system_platform";
@@ -48,17 +51,32 @@ fn parse_table(entity: &Entity) -> Result<SysTablesEntryPB, MasterErrorPB> {
         .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))
 }
 
-/// `TableInfo::IsUserCreated`: a YCQL or YSQL table a user made, not a system or colocation
-/// parent table. The YSQL sequences table counts as a system table but is not served yet (W9).
-fn is_user_created(snapshot: &CatalogSnapshot, entity: &Entity, pb: &SysTablesEntryPB) -> bool {
+/// `TableInfo::IsUserCreated`: a YCQL or YSQL table a user made, not a system, sequences or
+/// colocation parent table.
+pub(crate) fn is_user_created(
+    snapshot: &CatalogSnapshot,
+    entity: &Entity,
+    pb: &SysTablesEntryPB,
+) -> bool {
     let table_type = pb.table_type();
     if table_type != TableType::PGSQL_TABLE_TYPE && table_type != TableType::YQL_TABLE_TYPE {
         return false;
     }
     !is_system_table(snapshot, entity)
+        && !is_sequences_system_table(&entity.key.id, pb)
         && pb.namespace_id() != SYSTEM_NAMESPACE_ID
         && !is_colocation_parent_table_id(&entity.key.id)
         && pb.namespace_name() != YB_SYSTEM_DB_NAME.as_bytes()
+}
+
+/// `TableInfo::IsSequencesSystemTable`: the YSQL sequences data table (database and table oid
+/// 0xFFFF).
+fn is_sequences_system_table(table_id: &[u8], pb: &SysTablesEntryPB) -> bool {
+    const SEQUENCES_OID: u32 = 0xFFFF;
+    pb.table_type() == TableType::PGSQL_TABLE_TYPE
+        && !is_colocation_parent_table_id(table_id)
+        && crate::ysql::pg_database_oid(pb.namespace_id()) == Some(SEQUENCES_OID)
+        && crate::ysql::pg_table_oid(table_id) == Some(SEQUENCES_OID)
 }
 
 impl TableLifecycle {
@@ -216,8 +234,8 @@ impl TableLifecycle {
         if pb.has_indexed_table_id() {
             resp.set_OBSOLETE_indexed_table_id(pb.indexed_table_id().to_vec());
         }
-        // Index backfill is not served yet, so nothing is backfilling.
-        resp.set_is_backfilling(false);
+        // C++'s in-memory flag is set while the table's (persisted) backfill job runs.
+        resp.set_is_backfilling(!pb.backfill_jobs.is_empty());
         resp.set_is_compatible_with_previous_version(pb.updates_only_index_permissions());
         resp.partition_schema = pb.partition_schema.clone();
         if pb
@@ -245,7 +263,7 @@ impl TableLifecycle {
         let namespace = snapshot
             .get(SysRowEntryType::NAMESPACE, pb.namespace_id())
             .ok_or_else(|| {
-                error(
+                coded_error(
                     Code::NAMESPACE_NOT_FOUND,
                     StatusCode::NotFound,
                     format!(
@@ -633,4 +651,154 @@ impl TableLifecycle {
         );
         Ok(())
     }
+}
+
+impl TableLifecycle {
+    /// `GetTabletsMetadata`: a row per tablet with its table, replicas and sizes, or with a table
+    /// and partition key only the ids of the tablet holding that key (`GetTabletForKey`).
+    pub fn get_tablets_metadata(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &GetTabletsMetadataRequestPB,
+        resp: &mut GetTabletsMetadataResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        if req.has_table_id() {
+            let not_found = || {
+                error(
+                    Code::UNKNOWN_ERROR,
+                    StatusCode::NotFound,
+                    "No tablet found for partition key",
+                )
+            };
+            let table = snapshot
+                .get(SysRowEntryType::TABLE, req.table_id())
+                .ok_or_else(|| {
+                    tagged_error(
+                        Code::OBJECT_NOT_FOUND,
+                        StatusCode::NotFound,
+                        format!(
+                            "Table with identifier {} not found",
+                            String::from_utf8_lossy(req.table_id())
+                        ),
+                    )
+                })?;
+            let key = req.partition_key();
+            let tablets = snapshot.hosting_tablets_of(&table.key.id);
+            // upper_bound(key) - 1: the tablet whose partition starts at or before the key.
+            let tablet = tablets
+                .iter()
+                .rev()
+                .find(|t| {
+                    t.tablet()
+                        .is_some_and(|h| h.partition_start.as_slice() <= key)
+                })
+                .or(tablets.first())
+                .ok_or_else(not_found)?;
+            let pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
+            let end = pb.partition.partition_key_end();
+            if !end.is_empty() && key >= end {
+                return Err(not_found());
+            }
+            let pb_table = parse_table(table)?;
+            let mut out = TabletStatusPB::new();
+            out.set_tablet_id(String::from_utf8_lossy(&tablet.key.id).into_owned());
+            out.set_table_name(String::from_utf8_lossy(pb_table.name()).into_owned());
+            out.set_table_id(String::from_utf8_lossy(&table.key.id).into_owned());
+            out.set_last_status(String::new());
+            resp.tablet_metadatas.push(out);
+            return Ok(());
+        }
+        for tablet in snapshot.iter(SysRowEntryType::TABLET) {
+            let Some(hot) = tablet.tablet() else { continue };
+            let Some(table) = snapshot.get(SysRowEntryType::TABLE, &hot.table_id) else {
+                continue;
+            };
+            resp.tablet_metadatas
+                .push(self.tablet_metadata(snapshot, table, tablet)?);
+        }
+        Ok(())
+    }
+
+    /// `PopulateTabletMetadata`.
+    fn tablet_metadata(
+        &self,
+        snapshot: &CatalogSnapshot,
+        table: &Entity,
+        tablet: &Entity,
+    ) -> Result<TabletStatusPB, MasterErrorPB> {
+        let table_pb = parse_table(table)?;
+        let tablet_pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
+        let mut out = TabletStatusPB::new();
+        out.set_tablet_id(String::from_utf8_lossy(&tablet.key.id).into_owned());
+        out.set_table_name(String::from_utf8_lossy(table_pb.name()).into_owned());
+        out.set_table_id(String::from_utf8_lossy(&table.key.id).into_owned());
+        out.set_last_status(String::new());
+        if let Some(ns) = snapshot
+            .get(SysRowEntryType::NAMESPACE, table_pb.namespace_id())
+            .and_then(|n| n.namespace())
+        {
+            out.set_namespace_name(ns.name.clone());
+        }
+        out.table_type = Some(EnumOrUnknown::new(table_pb.table_type()));
+        out.set_is_hash_partitioned(table_pb.partition_schema.hash_schema.is_some());
+        let pg_table_id = if table_pb.pg_table_id().is_empty() {
+            &table.key.id[..]
+        } else {
+            table_pb.pg_table_id()
+        };
+        if let Some(oid) = crate::ysql::pg_table_oid(pg_table_id) {
+            out.set_pg_table_oid(oid);
+        }
+        let observed = self
+            .ts_manager
+            .locations
+            .get(&tablet.key.id)
+            .unwrap_or_default();
+        let mut leader = None;
+        for replica in &observed.replicas {
+            let Some(ts) = self.ts_manager.get(&replica.ts_uuid) else {
+                continue;
+            };
+            let common = &ts.pb.registration;
+            // As `yb_servers()`: the private RPC host, else the broadcast one.
+            let host = common
+                .private_rpc_addresses
+                .first()
+                .or(common.broadcast_addresses.first())
+                .map(|h| h.host().to_string())
+                .unwrap_or_default();
+            if host.is_empty() {
+                continue;
+            }
+            let address = format!("{host}:{}", common.pg_port());
+            if replica.role == PeerRole::LEADER {
+                leader = Some(address);
+            } else {
+                out.replicas.push(address);
+            }
+        }
+        // The leader is the last replica.
+        out.replicas.extend(leader);
+        out.set_tablet_state(format!("{:?}", tablet_pb.state()));
+        if let Some(partition) = tablet_pb.partition.as_ref() {
+            let p = out.partition.mut_or_insert_default();
+            p.set_partition_key_start(partition.partition_key_start().to_vec());
+            p.set_partition_key_end(partition.partition_key_end().to_vec());
+        }
+        // The leader's sizes from its heartbeats; unset without a leader's report.
+        if let Some(drive) = observed.leader().map(|l| &l.drive) {
+            out.set_sst_files_disk_size(drive.sst_files_size as i64);
+            out.set_wal_files_disk_size(drive.wal_files_size as i64);
+            out.set_uncompressed_sst_files_disk_size(drive.uncompressed_sst_file_size as i64);
+            out.set_total_on_disk_size(drive.total_size as i64);
+            if drive.vector_index_size > 0 {
+                out.set_vector_index_disk_size(drive.vector_index_size as i64);
+            }
+        }
+        Ok(out)
+    }
+}
+
+fn corrupt(e: impl std::fmt::Display) -> MasterErrorPB {
+    error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
 }

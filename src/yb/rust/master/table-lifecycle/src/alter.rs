@@ -46,7 +46,7 @@ use yb_proto::pb::tserver_types::tablet_server_error_pb;
 use crate::lookup::{check_visible, find_table};
 use crate::placement::{cluster_config, encode, validate_table_replication_info};
 use crate::time::local_time_string;
-use crate::{error, TableLifecycle};
+use crate::{coded_error, error, tagged_error, TableLifecycle};
 
 use sys_tables_entry_pb::State as TableState;
 
@@ -88,7 +88,7 @@ impl TableLifecycle {
                 let namespace = snapshot
                     .get(SysRowEntryType::NAMESPACE, pb.namespace_id())
                     .ok_or_else(|| {
-                        error(
+                        coded_error(
                             Code::NAMESPACE_NOT_FOUND,
                             StatusCode::NotFound,
                             format!(
@@ -133,7 +133,7 @@ impl TableLifecycle {
                 }
                 check_visible(&table, false)?;
                 if pb.state() == TableState::PREPARING {
-                    return Err(error(
+                    return Err(tagged_error(
                         Code::TABLE_NOT_RUNNING,
                         StatusCode::TryAgain,
                         format!(
@@ -154,14 +154,14 @@ impl TableLifecycle {
                 }
                 let mut new = pb.clone();
                 let mut changed = false;
-                if let Some((schema, next_column_id)) =
-                    self.alter_schema(&table.key.id, &pb, req)?
-                {
+                let mut ddl_log = Vec::new();
+                if let Some(altered) = self.alter_schema(&table.key.id, &pb, req)? {
                     if new.fully_applied_schema.is_none() {
                         copy_to_fully_applied(&mut new);
                     }
-                    new.schema = MessageField::some(schema);
-                    new.set_next_column_id(next_column_id);
+                    new.schema = MessageField::some(altered.schema);
+                    new.set_next_column_id(altered.next_column_id);
+                    ddl_log = altered.ddl_log;
                     changed = true;
                 }
                 if req.has_new_table_name() {
@@ -190,7 +190,7 @@ impl TableLifecycle {
                     changed = true;
                 }
                 if !changed {
-                    return Ok((Mutation::new(), pb.version()));
+                    return Ok((Mutation::new(), (pb.version(), None)));
                 }
                 if !req.has_wal_retention_secs() {
                     new.set_version(pb.version() + 1);
@@ -206,14 +206,30 @@ impl TableLifecycle {
                     )
                     .into_bytes(),
                 );
-                let mutation = Mutation::new().read(&table).upsert(
+                let mut mutation = Mutation::new().read(&table).upsert(
                     SysRowEntryType::TABLE,
                     &table.key.id,
                     encode(&new)?,
                 );
-                Ok((mutation, new.version()))
+                for row in &ddl_log {
+                    mutation = crate::ddl_log::add(mutation, row)?;
+                }
+                let txn = (is_pg && !req.transaction.transaction_id().is_empty()).then(|| {
+                    (
+                        table.key.id.to_vec(),
+                        req.transaction.transaction_id().to_vec(),
+                    )
+                });
+                Ok((mutation, (new.version(), txn)))
             })
             .await?;
+        let (version, txn) = version;
+        if let Some((table_id, txn)) = txn {
+            self.alter_txns
+                .lock()
+                .unwrap()
+                .insert(table_id, (version, txn));
+        }
         resp.set_schema_version(version);
         Ok(())
     }
@@ -240,7 +256,7 @@ impl TableLifecycle {
         table_id: &[u8],
         table: &SysTablesEntryPB,
         req: &AlterTableRequestPB,
-    ) -> Result<Option<(yb_proto::pb::common::SchemaPB, i32)>, MasterErrorPB> {
+    ) -> Result<Option<AlteredSchema>, MasterErrorPB> {
         if req.alter_schema_steps.is_empty()
             && req.alter_properties.is_none()
             && !req.has_pgschema_name()
@@ -259,11 +275,24 @@ impl TableLifecycle {
         if let Some(e) = resp.error.into_option() {
             return Err(e);
         }
-        Ok(resp
-            .schema
-            .into_option()
-            .map(|schema| (schema, resp.next_column_id.unwrap_or(0))))
+        let ddl_log = resp
+            .ddl_log_entry_ids
+            .into_iter()
+            .zip(resp.ddl_log_entries)
+            .collect();
+        Ok(resp.schema.into_option().map(|schema| AlteredSchema {
+            schema,
+            next_column_id: resp.next_column_id.unwrap_or(0),
+            ddl_log,
+        }))
     }
+}
+
+/// The host's `ApplyAlterSteps`: the new schema, next column id and DDL log entry.
+struct AlteredSchema {
+    schema: yb_proto::pb::common::SchemaPB,
+    next_column_id: i32,
+    ddl_log: Vec<crate::ddl_log::DdlLogRow>,
 }
 
 /// `MultiStageAlterTable::CopySchemaDetailsToFullyApplied`: clients of non-YCQL tables keep seeing
@@ -340,9 +369,6 @@ impl Alterer {
             let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
                 continue;
             };
-            if !single_stage_alter(&pb) {
-                continue;
-            }
             let row_version = table.version;
             let tablets = snapshot.hosting_tablets_of(&table.key.id);
             let mut all_done = !tablets.is_empty();
@@ -366,7 +392,19 @@ impl Alterer {
                 }
             }
             if all_done && awaits_backfill(&pb) {
-                self.start_backfill(scope, &token, &table.key.id);
+                self.start_backfill(scope, &token, &table.key.id, None);
+                continue;
+            }
+            if all_done && !single_stage_alter(&pb) {
+                if let Err(status) = self
+                    .advance_ycql_indexes(scope, &token, &table.key.id, row_version, &pb)
+                    .await
+                {
+                    tracing::warn!(
+                        "Advancing the indexes of table {} failed, will retry: {status}",
+                        String::from_utf8_lossy(&table.key.id)
+                    );
+                }
                 continue;
             }
             if all_done {
@@ -380,22 +418,35 @@ impl Alterer {
         }
     }
 
-    /// Runs the table's backfill (`LaunchYsqlBackfill`) unless it already runs in this term.
-    fn start_backfill(self: &Arc<Self>, scope: &TermScope, token: &LeaderToken, table_id: &[u8]) {
+    /// Runs the table's backfill (`StartBackfillingData`) unless it already runs in this term:
+    /// of `indexes`, or of the first YSQL index at DO_BACKFILL; a recorded job is resumed as is.
+    fn start_backfill(
+        self: &Arc<Self>,
+        scope: &TermScope,
+        token: &LeaderToken,
+        table_id: &[u8],
+        indexes: Option<Vec<Vec<u8>>>,
+    ) {
         if !self.backfills.lock().unwrap().insert(table_id.to_vec()) {
             return;
         }
         let this = self.clone();
         let token = *token;
         let table_id = table_id.to_vec();
+        let options = &self.lifecycle.options;
+        let rpc_timeout = if indexes.is_some() {
+            (options.index_backfill_rpc_timeout)()
+        } else {
+            (options.ysql_index_backfill_rpc_timeout)()
+        };
         scope.entity().spawn("index-backfill", async move {
             let ctx = crate::backfill::BackfillContext {
                 lifecycle: this.lifecycle.clone(),
                 rpc: this.rpc.clone(),
                 executor: this.executor.clone(),
-                rpc_timeout: (this.lifecycle.options.ysql_index_backfill_rpc_timeout)(),
+                rpc_timeout,
             };
-            if let Err(status) = crate::backfill::run(&ctx, token, &table_id).await {
+            if let Err(status) = crate::backfill::run(&ctx, token, &table_id, indexes).await {
                 tracing::warn!(
                     "Backfill of table {} failed, will retry: {status}",
                     String::from_utf8_lossy(&table_id)
@@ -403,6 +454,64 @@ impl Alterer {
             }
             this.backfills.lock().unwrap().remove(&table_id);
         });
+    }
+
+    /// `HandleSchemaVersionReported` of a YCQL table once every tablet has the version: the next
+    /// index permission (`ClassifyIndexes`, `ApplyYcqlActions`), the delete of an INDEX_UNUSED
+    /// index, or the backfill of the indexes at DO_BACKFILL; else the alter is done.
+    async fn advance_ycql_indexes(
+        self: &Arc<Self>,
+        scope: &TermScope,
+        token: &LeaderToken,
+        table_id: &[u8],
+        row_version: u64,
+        pb: &SysTablesEntryPB,
+    ) -> Result<(), Status> {
+        let plan = classify_ycql_indexes(
+            pb,
+            self.backfills.lock().unwrap().contains(table_id),
+            &self.lifecycle.options,
+            false,
+        );
+        match plan {
+            YcqlStep::Done => self.finish(token, table_id, row_version).await,
+            YcqlStep::Permissions(perms) => self
+                .lifecycle
+                .writer
+                .mutate(token, |snapshot| {
+                    let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+                        return Ok((Mutation::new(), ()));
+                    };
+                    if table.version != row_version {
+                        return Ok((Mutation::new(), ()));
+                    }
+                    let mut pb: SysTablesEntryPB = table
+                        .parse()
+                        .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
+                    crate::backfill::set_index_permissions(&mut pb, &perms);
+                    let bytes = pb
+                        .write_to_bytes()
+                        .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+                    Ok((
+                        Mutation::new()
+                            .read(table)
+                            .upsert(SysRowEntryType::TABLE, table_id, bytes),
+                        (),
+                    ))
+                })
+                .await
+                .map(|_| ()),
+            // `DeleteTableInternal`: the index goes, and leaves its table's `indexes`.
+            YcqlStep::Delete(index_id) => self
+                .lifecycle
+                .mark_deleting(token, Instant::now() + (self.rpc_timeout)(), &index_id)
+                .await
+                .map_err(|e| crate::backfill::ts_status(&e.status)),
+            YcqlStep::Backfill(indexes) => {
+                self.start_backfill(scope, token, table_id, Some(indexes));
+                Ok(())
+            }
+        }
     }
 
     fn send(
@@ -425,7 +534,30 @@ impl Alterer {
         if table.has_wal_retention_secs() {
             req.set_wal_retention_secs(table.wal_retention_secs());
         }
-        req.set_first_provisional_column_id(table.next_column_id());
+        // A rollback moves next_column_id back to the first DDL state's.
+        req.set_first_provisional_column_id(
+            table
+                .ysql_ddl_txn_verifier_state
+                .iter()
+                .find(|s| s.has_previous_next_column_id())
+                .map_or(table.next_column_id(), |s| s.previous_next_column_id()),
+        );
+        if table.transaction.using_table_locks() {
+            req.set_only_abort_txns_not_using_table_locks(true);
+        }
+        // The alter a YSQL `AlterTable` made in a DDL transaction: the tablet aborts the other
+        // transactions on it, or with table locks only those not using them.
+        let txn = self
+            .lifecycle
+            .alter_txns
+            .lock()
+            .unwrap()
+            .get(table_id)
+            .cloned();
+        if let Some((_, txn)) = txn.filter(|(v, _)| *v == version) {
+            req.set_should_abort_active_txns(true);
+            req.set_transaction_id(crate::ysql::uuid(&txn).into_bytes());
+        }
         let key = (table_id.to_vec(), tablet_id.to_vec());
         self.tablets
             .lock()
@@ -467,20 +599,61 @@ impl Alterer {
                     }
                 })
                 .await;
-            let mut tablets = this.tablets.lock().unwrap();
-            match result {
-                Ok(()) => {
-                    tablets.insert(key, (row_version, true));
+            let acked = {
+                let mut tablets = this.tablets.lock().unwrap();
+                match result {
+                    Ok(()) => {
+                        tablets.insert(key.clone(), (row_version, true));
+                        true
+                    }
+                    Err(status) => {
+                        tracing::warn!(
+                            "AlterSchema of tablet {} failed: {status}",
+                            String::from_utf8_lossy(&tablet_id)
+                        );
+                        tablets.remove(&key);
+                        false
+                    }
                 }
-                Err(status) => {
-                    tracing::warn!(
-                        "AlterSchema of tablet {} failed: {status}",
-                        String::from_utf8_lossy(&tablet_id)
-                    );
-                    tablets.remove(&key);
-                }
+            };
+            if acked {
+                this.finish_if_acked(&token, &key.0, row_version).await;
             }
         });
+    }
+
+    /// Finishes the alter once the last tablet acknowledges it, as C++ does from the response to
+    /// its last `AlterSchema`: until then `GetTableSchema` serves the previous schema, which the
+    /// tablets no longer accept for reads. An alter waiting for a backfill is left to the pass.
+    async fn finish_if_acked(&self, token: &LeaderToken, table_id: &[u8], row_version: u64) {
+        let snapshot = self.lifecycle.catalog.snapshot();
+        let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+            return;
+        };
+        if table.version != row_version {
+            return;
+        }
+        let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
+            return;
+        };
+        if pb.state() != TableState::ALTERING || !single_stage_alter(&pb) || awaits_backfill(&pb) {
+            return;
+        }
+        let tablets = snapshot.hosting_tablets_of(table_id);
+        let all_acked = !tablets.is_empty() && {
+            let acks = self.tablets.lock().unwrap();
+            tablets.iter().all(|t| {
+                acks.get(&(table_id.to_vec(), t.key.id.to_vec())) == Some(&(row_version, true))
+            })
+        };
+        if all_acked {
+            if let Err(status) = self.finish(token, table_id, row_version).await {
+                tracing::warn!(
+                    "Finishing the alter of table {} failed, will retry: {status}",
+                    String::from_utf8_lossy(table_id)
+                );
+            }
+        }
     }
 
     /// `ClearFullyAppliedAndUpdateState`: RUNNING again, if the row is still the one every tablet
@@ -491,17 +664,18 @@ impl Alterer {
         table_id: &[u8],
         row_version: u64,
     ) -> Result<(), Status> {
-        self.lifecycle
+        let (finished, _) = self
+            .lifecycle
             .writer
             .mutate(token, |snapshot| {
                 let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
-                    return Ok((Mutation::new(), ()));
+                    return Ok((Mutation::new(), None));
                 };
                 let mut pb: SysTablesEntryPB = table
                     .parse()
                     .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
                 if table.version != row_version || pb.state() != TableState::ALTERING {
-                    return Ok((Mutation::new(), ()));
+                    return Ok((Mutation::new(), None));
                 }
                 let version = pb.version();
                 pb.fully_applied_schema.clear();
@@ -517,11 +691,17 @@ impl Alterer {
                     Mutation::new()
                         .read(table)
                         .upsert(SysRowEntryType::TABLE, table_id, bytes),
-                    (),
+                    Some(version),
                 ))
             })
-            .await
-            .map(|_| ())
+            .await?;
+        if let Some(version) = finished {
+            let mut txns = self.lifecycle.alter_txns.lock().unwrap();
+            if txns.get(table_id).is_some_and(|(v, _)| *v <= version) {
+                txns.remove(table_id);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -539,10 +719,10 @@ impl Controller for TableAlterer {
     }
 }
 
-/// An alter this controller completes: of a YCQL table with no index permission change in
-/// flight. YSQL alters (DDL verification) and the multi-stage index permission alters of a
-/// backfill (`MultiStageAlterTable`), which a C++ leader may have started, are not served yet and
-/// stay ALTERING.
+/// An alter this controller completes: of a YSQL table, or of a YCQL table with no index
+/// permission change in flight. The multi-stage index permission alters of a YCQL backfill
+/// (`MultiStageAlterTable`), which a C++ leader may have started, are not served yet and stay
+/// ALTERING.
 fn single_stage_alter(pb: &SysTablesEntryPB) -> bool {
     let settled = |p: IndexPermissions| p == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
     // A YSQL index's permissions move only on PG's request or at the end of its backfill, so
@@ -563,6 +743,92 @@ fn awaits_backfill(pb: &SysTablesEntryPB) -> bool {
             .indexes
             .iter()
             .any(|i| i.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL)
+}
+
+/// What a YCQL table's indexes need next.
+pub(crate) enum YcqlStep {
+    /// Nothing: the alter is done.
+    Done,
+    /// The next permission of each transient index.
+    Permissions(std::collections::BTreeMap<Vec<u8>, IndexPermissions>),
+    /// An index at INDEX_UNUSED is deleted.
+    Delete(Vec<u8>),
+    /// These indexes are backfilled.
+    Backfill(Vec<Vec<u8>>),
+}
+
+/// `NextPermission`.
+fn next_permission(perm: IndexPermissions) -> Option<IndexPermissions> {
+    use IndexPermissions::*;
+    Some(match perm {
+        INDEX_PERM_DELETE_ONLY => INDEX_PERM_WRITE_AND_DELETE,
+        INDEX_PERM_WRITE_AND_DELETE => INDEX_PERM_DO_BACKFILL,
+        INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING => INDEX_PERM_DELETE_ONLY_WHILE_REMOVING,
+        INDEX_PERM_DELETE_ONLY_WHILE_REMOVING => INDEX_PERM_INDEX_UNUSED,
+        _ => return None,
+    })
+}
+
+/// `ClassifyIndexes` and `ApplyIndexStateMachineActions` of a YCQL table. `launch_deferred` is
+/// `LaunchBackfillIndexForTable`, which backfills deferred indexes too.
+pub(crate) fn classify_ycql_indexes(
+    pb: &SysTablesEntryPB,
+    is_backfilling: bool,
+    options: &crate::LifecycleOptions,
+    launch_deferred: bool,
+) -> YcqlStep {
+    let defer = (options.defer_index_backfill)();
+    let mut ready = Vec::new();
+    let mut deferred = Vec::new();
+    let mut to_delete = Vec::new();
+    let mut perms = std::collections::BTreeMap::new();
+    for index in &pb.indexes {
+        if !index.has_index_permissions() {
+            continue;
+        }
+        let id = index.table_id().to_vec();
+        match index.index_permissions() {
+            IndexPermissions::INDEX_PERM_DO_BACKFILL => {
+                if !launch_deferred && (defer || index.is_backfill_deferred()) {
+                    deferred.push(id);
+                } else {
+                    ready.push(id);
+                }
+            }
+            IndexPermissions::INDEX_PERM_INDEX_UNUSED => to_delete.push(id),
+            perm => {
+                if let Some(next) = next_permission(perm) {
+                    perms.insert(id, next);
+                }
+            }
+        }
+    }
+    let mut to_backfill = ready;
+    // A job a former leader started is resumed with its indexes only: the read time it chose
+    // may not suit an index added since.
+    if !is_backfilling {
+        if let Some(job) = pb.backfill_jobs.first() {
+            to_backfill = job.indexes.iter().map(|i| i.table_id().to_vec()).collect();
+            deferred.clear();
+        }
+    }
+    if to_backfill.len() > 1 && !(options.allow_batching_non_deferred_indexes)() {
+        to_backfill.truncate(1);
+    }
+    if perms.is_empty() && to_delete.is_empty() && (is_backfilling || to_backfill.is_empty()) {
+        return YcqlStep::Done;
+    }
+    if !perms.is_empty() {
+        return YcqlStep::Permissions(perms);
+    }
+    if let Some(id) = to_delete.into_iter().next() {
+        return YcqlStep::Delete(id);
+    }
+    if to_backfill.is_empty() || is_backfilling {
+        return YcqlStep::Done;
+    }
+    to_backfill.extend(deferred);
+    YcqlStep::Backfill(to_backfill)
 }
 
 /// One `AlterSchema` call. A tablet that already has this or a newer schema counts as done. A
@@ -608,5 +874,98 @@ async fn send_alter(
             Err(Attempt::Fail(status()))
         }
         _ => Err(Attempt::Retry(status())),
+    }
+}
+
+#[cfg(test)]
+mod ycql_index_tests {
+    use super::*;
+    use yb_proto::pb::catalog_entity_info::BackfillJobPB;
+    use yb_proto::pb::common::IndexInfoPB;
+    use IndexPermissions::*;
+
+    fn table(indexes: &[(&str, IndexPermissions, bool)]) -> SysTablesEntryPB {
+        let mut pb = SysTablesEntryPB::new();
+        pb.table_type = Some(EnumOrUnknown::new(TableType::YQL_TABLE_TYPE));
+        for (id, perm, deferred) in indexes {
+            let mut info = IndexInfoPB::new();
+            info.set_table_id(id.as_bytes().to_vec());
+            info.set_index_permissions(*perm);
+            info.set_is_backfill_deferred(*deferred);
+            pb.indexes.push(info);
+        }
+        pb
+    }
+
+    fn step(pb: &SysTablesEntryPB, backfilling: bool, launch_deferred: bool) -> YcqlStep {
+        classify_ycql_indexes(
+            pb,
+            backfilling,
+            &crate::LifecycleOptions::default(),
+            launch_deferred,
+        )
+    }
+
+    #[test]
+    fn walks_permissions_then_backfills_then_deletes() {
+        let pb = table(&[
+            ("a", INDEX_PERM_DELETE_ONLY, false),
+            ("b", INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING, false),
+        ]);
+        let YcqlStep::Permissions(perms) = step(&pb, false, false) else {
+            panic!()
+        };
+        assert_eq!(perms[&b"a".to_vec()], INDEX_PERM_WRITE_AND_DELETE);
+        assert_eq!(perms[&b"b".to_vec()], INDEX_PERM_DELETE_ONLY_WHILE_REMOVING);
+
+        let pb = table(&[
+            ("a", INDEX_PERM_DO_BACKFILL, false),
+            ("b", INDEX_PERM_DO_BACKFILL, false),
+        ]);
+        let YcqlStep::Backfill(ids) = step(&pb, false, false) else {
+            panic!()
+        };
+        assert_eq!(ids, vec![b"a".to_vec(), b"b".to_vec()]);
+        assert!(matches!(step(&pb, true, false), YcqlStep::Done));
+
+        let pb = table(&[("a", INDEX_PERM_INDEX_UNUSED, false)]);
+        assert!(matches!(step(&pb, false, false), YcqlStep::Delete(id) if id == b"a"));
+
+        let pb = table(&[("a", INDEX_PERM_READ_WRITE_AND_DELETE, false)]);
+        assert!(matches!(step(&pb, false, false), YcqlStep::Done));
+    }
+
+    #[test]
+    fn deferred_indexes_wait_for_launch_or_a_batch() {
+        let pb = table(&[("a", INDEX_PERM_DO_BACKFILL, true)]);
+        assert!(matches!(step(&pb, false, false), YcqlStep::Done));
+        let YcqlStep::Backfill(ids) = step(&pb, false, true) else {
+            panic!()
+        };
+        assert_eq!(ids, vec![b"a".to_vec()]);
+        // A deferred index joins a backfill that runs anyway.
+        let pb = table(&[
+            ("a", INDEX_PERM_DO_BACKFILL, true),
+            ("b", INDEX_PERM_DO_BACKFILL, false),
+        ]);
+        let YcqlStep::Backfill(ids) = step(&pb, false, false) else {
+            panic!()
+        };
+        assert_eq!(ids, vec![b"b".to_vec(), b"a".to_vec()]);
+    }
+
+    #[test]
+    fn a_job_from_a_former_leader_is_resumed_alone() {
+        let mut pb = table(&[
+            ("a", INDEX_PERM_DO_BACKFILL, false),
+            ("b", INDEX_PERM_DO_BACKFILL, false),
+        ]);
+        let mut job = BackfillJobPB::new();
+        job.indexes.push(pb.indexes[1].clone());
+        pb.backfill_jobs.push(job);
+        let YcqlStep::Backfill(ids) = step(&pb, false, false) else {
+            panic!()
+        };
+        assert_eq!(ids, vec![b"b".to_vec()]);
     }
 }

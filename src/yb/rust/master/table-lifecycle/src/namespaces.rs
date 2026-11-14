@@ -39,7 +39,7 @@ use yb_proto::pb::master_types::{
 
 use crate::lookup::{find_namespace, find_namespace_by_name, find_table};
 use crate::schedules::{covering_schedules, schedule_list};
-use crate::{error, generate_object_id, TableLifecycle};
+use crate::{coded_error, error, generate_object_id, tagged_error, TableLifecycle};
 
 use sys_namespace_entry_pb::State;
 
@@ -51,17 +51,13 @@ fn state_name(state: i32) -> String {
     State::from_i32(state).map_or_else(|| state.to_string(), |s| format!("{s:?}"))
 }
 
-/// A YSQL or YEDIS request the Rust leader does not serve.
-fn unsupported_database(db_type: YQLDatabase) -> MasterErrorPB {
+/// A YEDIS request: YEDIS is not supported by the Rust master (D16). YCQL and YSQL are handled
+/// before this.
+fn unsupported_database(_db_type: YQLDatabase) -> MasterErrorPB {
     error(
         Code::INVALID_REQUEST,
         StatusCode::NotSupported,
-        match db_type {
-            YQLDatabase::YQL_DATABASE_PGSQL => {
-                "YSQL databases are not served by a Rust master leader yet (YSQL DDL, W7)"
-            }
-            _ => "YEDIS is not supported by the Rust master (D16)",
-        },
+        "YEDIS is not supported by the Rust master (D16)",
     )
 }
 
@@ -144,7 +140,50 @@ impl TableLifecycle {
                 return Err(e);
             }
         };
-        resp.set_id(id);
+        resp.set_id(id.clone());
+        drop(_names);
+        if req.has_creator_role_name() {
+            let canonical = crate::roles::canonical_keyspace(req.name());
+            let resource = crate::roles::Resource {
+                canonical: &canonical,
+                name: req.name(),
+                keyspace: req.name(),
+                resource_type: yb_proto::pb::common_types::ResourceType::KEYSPACE,
+            };
+            self.grant_creator_permissions(token, deadline, req.creator_role_name(), resource)
+                .await?;
+        }
+        if (self.options.legacy_colocated_database_creation)() && req.colocated() {
+            // C++ gives a colocated keyspace of any type a parent table when legacy colocated
+            // creation is on.
+            let ns = String::from_utf8_lossy(&id).into_owned();
+            let mut parent = yb_proto::pb::master_ddl::CreateTableRequestPB::new();
+            parent.set_name(format!("{ns}.colocated.parent.tablename"));
+            parent.set_table_id([&id[..], crate::ysql::COLOCATED_DB_PARENT_SUFFIX].concat());
+            let ident = parent.namespace.mut_or_insert_default();
+            ident.set_id(id.clone());
+            ident.set_name(req.name().to_string());
+            parent.table_type = Some(EnumOrUnknown::new(
+                yb_proto::pb::common_types::TableType::YQL_TABLE_TYPE,
+            ));
+            parent.set_is_colocated_via_database(true);
+            // As C++ builds it, so the transaction status table is created for it.
+            parent
+                .schema
+                .mut_or_insert_default()
+                .table_properties
+                .mut_or_insert_default()
+                .set_is_transactional(true);
+            let mut created = yb_proto::pb::master_ddl::CreateTableResponsePB::new();
+            match Box::pin(self.create_table(token, deadline, &parent, &mut created)).await {
+                Ok(()) => {}
+                Err(e) if e.code() == Code::OBJECT_ALREADY_PRESENT => {}
+                Err(e) => {
+                    tracing::warn!("Keyspace creation failed: {}", e.status.message());
+                    return Err(e);
+                }
+            }
+        }
         Ok(())
     }
 
@@ -158,6 +197,22 @@ impl TableLifecycle {
         let namespace = find_namespace(snapshot, &req.namespace)?;
         let state = namespace_state(&namespace);
         match State::from_i32(state) {
+            Some(State::RUNNING)
+                if (self.options.legacy_colocated_database_creation)()
+                    && namespace
+                        .parse::<SysNamespaceEntryPB>()
+                        .is_ok_and(|pb| pb.colocated()) =>
+            {
+                // A legacy colocated database is done once its parent table is.
+                let mut table_req = yb_proto::pb::master_ddl::IsCreateTableDoneRequestPB::new();
+                let mut parent = namespace.key.id.to_vec();
+                parent.extend_from_slice(b".colocated.parent.uuid");
+                table_req.table.mut_or_insert_default().set_table_id(parent);
+                let mut table_resp = yb_proto::pb::master_ddl::IsCreateTableDoneResponsePB::new();
+                let result = self.is_create_table_done(snapshot, &table_req, &mut table_resp);
+                resp.set_done(table_resp.done());
+                result?;
+            }
             Some(State::RUNNING) | Some(State::DELETING) | Some(State::DELETED) => {
                 resp.set_done(true)
             }
@@ -209,7 +264,7 @@ impl TableLifecycle {
             let namespace = find_namespace(snapshot, &req.namespace)?;
             let ns = namespace.namespace().expect("namespace row");
             if req.has_database_type() && req.database_type() as i32 != ns.database_type {
-                return Err(error(
+                return Err(coded_error(
                     Code::NAMESPACE_NOT_FOUND,
                     StatusCode::NotFound,
                     format!("Keyspace not found: {}", ns.name),
@@ -221,14 +276,14 @@ impl TableLifecycle {
             match State::from_i32(ns.state) {
                 Some(State::RUNNING) | Some(State::FAILED) => {}
                 Some(State::DELETED) => {
-                    return Err(error(
+                    return Err(coded_error(
                         Code::NAMESPACE_NOT_FOUND,
                         StatusCode::NotFound,
                         format!("Keyspace already deleted: {}", ns.name),
                     ))
                 }
                 _ => {
-                    return Err(error(
+                    return Err(tagged_error(
                         Code::IN_TRANSITION_CAN_RETRY,
                         StatusCode::TryAgain,
                         format!(
@@ -259,7 +314,7 @@ impl TableLifecycle {
                 let indexed = table
                     .parse::<yb_proto::pb::catalog_entity_info::SysTablesEntryPB>()
                     .is_ok_and(|pb| !pb.indexed_table_id().is_empty() || pb.index_info.is_some());
-                return Err(error(
+                return Err(tagged_error(
                     Code::NAMESPACE_IS_NOT_EMPTY,
                     StatusCode::InvalidArgument,
                     format!(
@@ -276,7 +331,7 @@ impl TableLifecycle {
                     continue;
                 };
                 if pb.namespace_id().as_bytes() == &*namespace.key.id {
-                    return Err(error(
+                    return Err(tagged_error(
                         Code::NAMESPACE_IS_NOT_EMPTY,
                         StatusCode::InvalidArgument,
                         format!(
@@ -291,7 +346,7 @@ impl TableLifecycle {
             let schedules =
                 covering_schedules(snapshot, SysRowEntryType::NAMESPACE, &namespace.key.id);
             if !schedules.is_empty() {
-                return Err(error(
+                return Err(tagged_error(
                     Code::NAMESPACE_IS_NOT_EMPTY,
                     StatusCode::InvalidArgument,
                     format!(
@@ -302,6 +357,12 @@ impl TableLifecycle {
                 ));
             }
             mutation = mutation.delete(SysRowEntryType::NAMESPACE, &namespace.key.id);
+            // Permissions on the keyspace would carry over to a new one of the same name.
+            mutation = crate::roles::remove_all_permissions_for_resource(
+                snapshot,
+                mutation,
+                &crate::roles::canonical_keyspace(req.namespace.name()),
+            )?;
             Ok((mutation, ()))
         })
         .await

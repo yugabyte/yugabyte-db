@@ -44,6 +44,9 @@ pub struct DeleteReplica {
     /// Abort the tablet's active transactions: set for a dropped table, as `AsyncDeleteReplica`
     /// sets it once the table started deleting.
     pub abort_active_txns: bool,
+    /// The transaction those aborts spare: the DDL transaction a rollback to a sub-transaction
+    /// dropped the table in (`SetExcludeAbortingTransactionId`), as a UUID string.
+    pub exclude_txn: Option<Vec<u8>>,
     /// For the tserver's log.
     pub reason: String,
 }
@@ -61,6 +64,9 @@ impl DeleteReplica {
         }
         if self.abort_active_txns {
             req.set_should_abort_active_txns(true);
+            if let Some(txn) = &self.exclude_txn {
+                req.set_transaction_id(txn.clone());
+            }
         }
         if self.hide_only {
             req.set_hide_only(true);

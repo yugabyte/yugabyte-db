@@ -269,7 +269,7 @@ impl LeaderServices {
                 Ok(())
             }
             Err((status, true)) => {
-                resp.error = Some(master_error_from(
+                resp.error = Some(crate::tagged_error_from(
                     master_error_pb::Code::TABLET_SERVER_NOT_FOUND,
                     &status,
                 ))
@@ -617,15 +617,17 @@ impl LeaderServices {
         if hot.state == sys_tables_entry_pb::State::DELETING.value()
             || hot.state == sys_tables_entry_pb::State::DELETED.value()
         {
-            let status = Status::new(
-                StatusCode::NotFound,
-                format!("The object '{}' does not exist", hot.name),
-            );
-            resp.error = Some(master_error_from(
+            let error = master_ts_manager::master_error_tagged(
                 master_error_pb::Code::OBJECT_NOT_FOUND,
-                &status,
-            ))
-            .into();
+                StatusCode::NotFound,
+                &format!(
+                    "The object '{}.{}' does not exist",
+                    String::from_utf8_lossy(&hot.namespace_id),
+                    hot.name
+                ),
+            );
+            let status = Status::new(StatusCode::NotFound, error.status.message().to_string());
+            resp.error = Some(error).into();
             return Err(status);
         }
         resp.table_type = Some(EnumOrUnknown::from_i32(hot.table_type));
@@ -996,6 +998,7 @@ impl LeaderServices {
                 let mut r = tablet_locations_pb::ReplicaPB::new();
                 r.role = Some(EnumOrUnknown::new(replica.role));
                 r.member_type = Some(EnumOrUnknown::new(replica.member_type));
+                r.state = Some(EnumOrUnknown::new(replica.state));
                 let mut ts_info = TSInfoPB::new();
                 ts_info.set_permanent_uuid(replica.ts_uuid.to_vec());
                 if let Some(d) = self.ts_manager.get(&replica.ts_uuid) {

@@ -45,7 +45,7 @@ use crate::backfill::{call_tablet_leader, corrupt, hybrid_time_now, ts_status, B
 use crate::drop::xcluster_replicated;
 use crate::lookup::{check_visible, find_table, is_colocation_parent_table_id};
 use crate::schedules::{covering_schedules, schedule_list};
-use crate::{error, TableLifecycle};
+use crate::{coded_error, error, tagged_error, TableLifecycle};
 
 const TS_SERVICE: &str = "yb.tserver.TabletServerService";
 
@@ -133,7 +133,7 @@ impl Truncates {
             ));
         }
         if (self.options.disable_truncate_table)() {
-            return Err(error(
+            return Err(coded_error(
                 Code::INVALID_REQUEST,
                 StatusCode::NotSupported,
                 format!(
@@ -145,7 +145,7 @@ impl Truncates {
         if !(self.options.enable_truncate_on_pitr_table)() {
             let schedules = covering_schedules(snapshot, SysRowEntryType::TABLE, table_id);
             if !schedules.is_empty() {
-                return Err(error(
+                return Err(tagged_error(
                     Code::INVALID_REQUEST,
                     StatusCode::NotSupported,
                     format!(
@@ -162,7 +162,7 @@ impl Truncates {
             .enable_delete_truncate_xcluster_replicated_table)()
             && xcluster_replicated(snapshot, table_id)
         {
-            return Err(error(
+            return Err(tagged_error(
                 Code::INVALID_REQUEST,
                 StatusCode::NotSupported,
                 format!(

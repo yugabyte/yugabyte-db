@@ -726,6 +726,7 @@ dependencies = [
  "master-catalog-state",
  "master-leadership",
  "master-sys-catalog",
+ "master-tablet-locations",
  "master-task-runtime",
  "master-ts-manager",
  "protobuf",

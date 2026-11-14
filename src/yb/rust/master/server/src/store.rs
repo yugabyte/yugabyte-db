@@ -282,6 +282,25 @@ impl master_ysql_manager::locks::LocalLockManager for HostLocalLocks {
             .map_err(host_error)
     }
 
+    fn populate_catalog_info(&self, req: &mut ReleaseObjectLockRequestPB) {
+        let Some(_open) = self.1.enter() else {
+            return;
+        };
+        let Ok(bytes) = req.write_to_bytes() else {
+            return;
+        };
+        match self.0.handle_on_host("PopulateReleaseCatalogInfo", &bytes) {
+            Ok(filled) => match ReleaseObjectLockRequestPB::parse_from_bytes(&filled) {
+                Ok(filled) => *req = filled,
+                Err(e) => tracing::warn!("Unparsable lock release from the host: {e}"),
+            },
+            Err(e) => tracing::warn!(
+                "Couldn't populate catalog version on exclusive lock release: {}",
+                host_error(e)
+            ),
+        }
+    }
+
     fn reset(&self, entries: &DdlLockEntriesPB) -> Result<(), Status> {
         let Some(_open) = self.1.enter() else {
             return Err(shut_down());

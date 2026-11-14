@@ -590,6 +590,25 @@ Result<bool> YsqlCatalogEntryExists(
   return PgEntryExists(sys_catalog, pg_table_id, entry_oid, std::nullopt);
 }
 
+Result<bool> YsqlTableExists(
+    SysCatalogTable& sys_catalog, const TableId& table_id, const SysTablesEntryPB& table) {
+  if (!IsColocationParentTableId(table_id)) {
+    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_id));
+    const auto pg_class_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+    const PgOid pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(
+        table.pg_table_id().empty() ? table_id : table.pg_table_id()));
+    const PgOid relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    return PgEntryExists(
+        sys_catalog, pg_class_table_id, pg_table_oid,
+        relfilenode_oid == pg_table_oid ? std::nullopt : std::make_optional(relfilenode_oid));
+  }
+  const auto tablegroup_id = GetTablegroupIdFromParentTableId(table_id);
+  const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
+  const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+  const PgOid tablegroup_oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
+  return PgEntryExists(sys_catalog, pg_yb_tablegroup_table_id, tablegroup_oid, std::nullopt);
+}
+
 PollTransactionStatusBase::PollTransactionStatusBase(
     const TransactionMetadata& transaction, std::shared_future<client::YBClient*> client_future,
     const std::string& description)

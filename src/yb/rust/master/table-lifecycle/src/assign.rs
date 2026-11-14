@@ -222,13 +222,10 @@ impl TabletAssigner {
                 .map(|d| raft_peer(d, PeerMemberType::VOTER))
                 .collect();
             for (placement, tservers) in &read_replicas {
-                // A read replica placement without live tservers gets no observers yet; the
-                // balancer adds them later.
-                if tservers.is_empty() {
-                    continue;
-                }
-                let observers =
-                    select_replicas(placement, tservers, replication_factor, &mut load)?;
+                // A read replica placement without live tservers in its blocks gets no observers
+                // yet, as in C++; the balancer adds them later.
+                let observers = select_replicas(placement, tservers, replication_factor, &mut load)
+                    .unwrap_or_default();
                 raft_config.peers.extend(
                     observers
                         .iter()

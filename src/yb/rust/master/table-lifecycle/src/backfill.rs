@@ -36,18 +36,24 @@ use yb_proto::pb::catalog_entity_info::{
     backfill_job_pb, sys_tables_entry_pb, BackfillJobPB, SysTablesEntryPB, SysTabletsEntryPB,
 };
 use yb_proto::pb::common::IndexInfoPB;
+use yb_proto::pb::common::TransactionMetadataPB;
 use yb_proto::pb::common_types::{IndexPermissions, TableType};
 use yb_proto::pb::master_ddl::{
-    BackfillIndexRequestPB, BackfillIndexResponsePB, GetBackfillStatusRequestPB,
-    GetBackfillStatusResponsePB, IndexStatusPB,
+    BackfillIndexRequestPB, BackfillIndexResponsePB, GetBackfillJobsRequestPB,
+    GetBackfillJobsResponsePB, GetBackfillStatusRequestPB, GetBackfillStatusResponsePB,
+    IndexStatusPB, LaunchBackfillIndexForTableRequestPB,
 };
 use yb_proto::pb::master_rust_peer::{HybridTimeNowRequestPB, HybridTimeNowResponsePB};
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
 use yb_proto::pb::operations::ChangeMetadataRequestPB;
+use yb_proto::pb::transaction::TransactionStatus;
 use yb_proto::pb::tserver_admin::{
     BackfillIndexRequestPB as TsBackfillIndexRequestPB,
     BackfillIndexResponsePB as TsBackfillIndexResponsePB, ChangeMetadataResponsePB,
     GetSafeTimeRequestPB, GetSafeTimeResponsePB,
+};
+use yb_proto::pb::tserver_service::{
+    GetTransactionStatusRequestPB, GetTransactionStatusResponsePB,
 };
 use yb_proto::pb::tserver_types::tablet_server_error_pb;
 use yb_proto::pb::wire_protocol::AppStatusPB;
@@ -82,7 +88,10 @@ pub(crate) fn permanent(code: tablet_server_error_pb::Code) -> bool {
 
 /// `UpdateIndexPermission`'s change of the row: the given indexes move to their permission, as
 /// an alter that only changes index permissions.
-fn set_index_permissions(pb: &mut SysTablesEntryPB, perms: &BTreeMap<Vec<u8>, IndexPermissions>) {
+pub(crate) fn set_index_permissions(
+    pb: &mut SysTablesEntryPB,
+    perms: &BTreeMap<Vec<u8>, IndexPermissions>,
+) {
     crate::alter::copy_to_fully_applied(pb);
     let mut changed = false;
     for index in &mut pb.indexes {
@@ -139,70 +148,199 @@ impl TableLifecycle {
             .mut_or_insert_default()
             .set_table_id(indexed_id.clone());
         let index_id = index.key.id.to_vec();
-        self.write(token, deadline, |snapshot| {
-            let indexed = snapshot
-                .get(SysRowEntryType::TABLE, &indexed_id)
-                .ok_or_else(|| {
-                    error(
-                        Code::UNKNOWN_ERROR,
-                        StatusCode::InvalidArgument,
-                        "Empty indexed table",
-                    )
+        let moved = self
+            .write(token, deadline, |snapshot| {
+                let indexed = snapshot
+                    .get(SysRowEntryType::TABLE, &indexed_id)
+                    .ok_or_else(|| {
+                        error(
+                            Code::UNKNOWN_ERROR,
+                            StatusCode::InvalidArgument,
+                            "Empty indexed table",
+                        )
+                    })?;
+                let mut pb: SysTablesEntryPB = indexed.parse().map_err(|e| {
+                    error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
                 })?;
-            let mut pb: SysTablesEntryPB = indexed
-                .parse()
-                .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
-            let Some(perm) = pb
-                .indexes
-                .iter()
-                .find(|i| i.table_id() == index_id.as_slice())
-                .map(|i| i.index_permissions())
-            else {
-                return Err(error(
-                    Code::INVALID_SCHEMA,
-                    StatusCode::InvalidArgument,
-                    format!(
-                        "Index {} is not an index of {}",
-                        String::from_utf8_lossy(&index_id),
-                        String::from_utf8_lossy(&indexed_id)
-                    ),
-                ));
-            };
-            // A resent request after the move succeeded.
-            if perm.value() >= IndexPermissions::INDEX_PERM_DO_BACKFILL.value() {
-                return Ok((Mutation::new(), ()));
-            }
-            if perm != IndexPermissions::INDEX_PERM_WRITE_AND_DELETE {
-                return Err(error(
-                    Code::INVALID_SCHEMA,
-                    StatusCode::InvalidArgument,
-                    format!("Expected WRITE_AND_DELETE perm, got {perm:?}"),
-                ));
-            }
-            if !matches!(pb.state(), TableState::RUNNING | TableState::ALTERING) {
-                return Err(error(
-                    Code::UNKNOWN_ERROR,
-                    StatusCode::IllegalState,
-                    format!(
-                        "Table is not in ALTERING or RUNNING state: {:?}",
-                        pb.state()
-                    ),
-                ));
-            }
-            let mut perms = BTreeMap::new();
-            perms.insert(index_id.clone(), IndexPermissions::INDEX_PERM_DO_BACKFILL);
-            set_index_permissions(&mut pb, &perms);
-            let mutation = Mutation::new()
-                .read(indexed)
-                .upsert_message(SysRowEntryType::TABLE, &indexed_id, &pb)
-                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
-            Ok((mutation, ()))
-        })
-        .await
+                let Some(perm) = pb
+                    .indexes
+                    .iter()
+                    .find(|i| i.table_id() == index_id.as_slice())
+                    .map(|i| i.index_permissions())
+                else {
+                    return Err(error(
+                        Code::INVALID_SCHEMA,
+                        StatusCode::InvalidArgument,
+                        format!(
+                            "Index {} is not an index of {}",
+                            String::from_utf8_lossy(&index_id),
+                            String::from_utf8_lossy(&indexed_id)
+                        ),
+                    ));
+                };
+                // A resent request after the move succeeded.
+                if perm.value() >= IndexPermissions::INDEX_PERM_DO_BACKFILL.value() {
+                    return Ok((Mutation::new(), None));
+                }
+                if perm != IndexPermissions::INDEX_PERM_WRITE_AND_DELETE {
+                    return Err(error(
+                        Code::INVALID_SCHEMA,
+                        StatusCode::InvalidArgument,
+                        format!("Expected WRITE_AND_DELETE perm, got {perm:?}"),
+                    ));
+                }
+                if !matches!(pb.state(), TableState::RUNNING | TableState::ALTERING) {
+                    return Err(error(
+                        Code::UNKNOWN_ERROR,
+                        StatusCode::IllegalState,
+                        format!(
+                            "Table is not in ALTERING or RUNNING state: {:?}",
+                            pb.state()
+                        ),
+                    ));
+                }
+                let mut perms = BTreeMap::new();
+                perms.insert(index_id.clone(), IndexPermissions::INDEX_PERM_DO_BACKFILL);
+                set_index_permissions(&mut pb, &perms);
+                let mutation = Mutation::new()
+                    .read(indexed)
+                    .upsert_message(SysRowEntryType::TABLE, &indexed_id, &pb)
+                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                Ok((mutation, Some(pb.version())))
+            })
+            .await?;
+        // The backfill this version starts watches the requester (`SetPendingBackfillRequester
+        // Transaction`): if PG's backend dies, its transaction aborts and the backfill stops.
+        if let (Some(version), Some(txn)) = (moved, req.requester_transaction.as_ref()) {
+            self.backfill_requesters
+                .lock()
+                .unwrap()
+                .insert(indexed_id, (version, txn.clone()));
+        }
+        Ok(())
     }
 }
 
 impl TableLifecycle {
+    /// `LaunchBackfillIndexForTable` (yb-admin): the next step of a RUNNING YCQL table's indexes,
+    /// deferred backfills included (`AdvanceYcqlIndexPermissions`). A backfill is recorded as the
+    /// table's job, with the table ALTERING; the alterer runs it as it resumes a job after a
+    /// leader change.
+    pub async fn launch_backfill_index_for_table(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &LaunchBackfillIndexForTableRequestPB,
+    ) -> Result<(), MasterErrorPB> {
+        let snapshot = self.catalog.snapshot();
+        let table = find_table(&snapshot, &req.table_identifier, false).map_err(|_| {
+            error(
+                Code::OBJECT_NOT_FOUND,
+                StatusCode::NotFound,
+                format!(
+                    "Requested table {} does not exist",
+                    crate::namespaces::short_debug(&*req.table_identifier)
+                ),
+            )
+        })?;
+        if table.table().map(|t| t.table_type) != Some(TableType::YQL_TABLE_TYPE.value()) {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InvalidArgument,
+                format!(
+                    "Unexpected non-YCQL table {}",
+                    crate::namespaces::short_debug(&*req.table_identifier)
+                ),
+            ));
+        }
+        let table_id = table.key.id.to_vec();
+        let step = self
+            .write(token, deadline, |snapshot| {
+                let Some(table) = snapshot.get(SysRowEntryType::TABLE, &table_id) else {
+                    return Ok((Mutation::new(), None));
+                };
+                let mut pb: SysTablesEntryPB = table.parse().map_err(|e| {
+                    error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
+                })?;
+                if pb.state() != TableState::RUNNING {
+                    return Err(error(
+                        Code::INTERNAL_ERROR,
+                        StatusCode::TryAgain,
+                        format!(
+                            "The table is in state {:?}. An alter may already be in progress.",
+                            pb.state()
+                        ),
+                    ));
+                }
+                let step = crate::alter::classify_ycql_indexes(
+                    &pb,
+                    !pb.backfill_jobs.is_empty(),
+                    &self.options,
+                    true,
+                );
+                match step {
+                    crate::alter::YcqlStep::Permissions(perms) => {
+                        set_index_permissions(&mut pb, &perms);
+                    }
+                    crate::alter::YcqlStep::Backfill(ids) => {
+                        let mut job = BackfillJobPB::new();
+                        for index in pb
+                            .indexes
+                            .iter()
+                            .filter(|i| ids.contains(&i.table_id().to_vec()))
+                        {
+                            job.indexes.push(index.clone());
+                            job.backfill_state.insert(
+                                String::from_utf8_lossy(index.table_id()).into_owned(),
+                                EnumOrUnknown::new(backfill_job_pb::State::IN_PROGRESS),
+                            );
+                        }
+                        pb.backfill_jobs.push(job);
+                        pb.state = Some(EnumOrUnknown::new(TableState::ALTERING));
+                        pb.set_state_msg(
+                            format!("Current schema version={}", pb.version()).into_bytes(),
+                        );
+                    }
+                    crate::alter::YcqlStep::Delete(id) => return Ok((Mutation::new(), Some(id))),
+                    crate::alter::YcqlStep::Done => return Ok((Mutation::new(), None)),
+                }
+                let mutation = Mutation::new()
+                    .read(table)
+                    .upsert_message(SysRowEntryType::TABLE, &table_id, &pb)
+                    .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                Ok((mutation, None))
+            })
+            .await?;
+        if let Some(index_id) = step {
+            self.mark_deleting(token, deadline, &index_id).await?;
+        }
+        Ok(())
+    }
+
+    /// `GetBackfillJobs`: the indexed table's backfill jobs.
+    pub fn get_backfill_jobs(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &GetBackfillJobsRequestPB,
+        resp: &mut GetBackfillJobsResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let table = find_table(snapshot, &req.table_identifier, false).map_err(|_| {
+            error(
+                Code::OBJECT_NOT_FOUND,
+                StatusCode::NotFound,
+                format!(
+                    "Requested table {} does not exist",
+                    crate::namespaces::short_debug(&*req.table_identifier)
+                ),
+            )
+        })?;
+        let pb: SysTablesEntryPB = table
+            .parse()
+            .map_err(|e| error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string()))?;
+        resp.backfill_jobs = pb.backfill_jobs;
+        Ok(())
+    }
+
     /// `GetBackfillStatus`: BACKFILL_SUCCESS for an index at READ_WRITE_AND_DELETE, with its
     /// birth time; an error for one that is gone or is not an index.
     pub fn get_backfill_status(
@@ -214,6 +352,7 @@ impl TableLifecycle {
         use yb_proto::pb::master_ddl::index_status_pb::BackfillStatus;
         let status_pb = |status: Status| {
             let mut app = AppStatusPB::new();
+            app.set_errors(vec![0]);
             app.set_code(
                 yb_proto::pb::wire_protocol::app_status_pb::ErrorCode::from_i32(status.code as i32)
                     .unwrap_or(
@@ -301,8 +440,9 @@ pub(crate) async fn run(
     ctx: &BackfillContext,
     token: LeaderToken,
     table_id: &[u8],
+    indexes: Option<Vec<Vec<u8>>>,
 ) -> Result<(), Status> {
-    let Some(job) = start(ctx, &token, table_id).await? else {
+    let Some(job) = start(ctx, &token, table_id, indexes.as_deref()).await? else {
         return Ok(());
     };
     let index_ids: HashSet<Vec<u8>> = job.indexes.iter().map(|i| i.table_id().to_vec()).collect();
@@ -388,10 +528,44 @@ pub(crate) async fn run(
             .await
         });
     }
+    // `TakePendingBackfillRequesterTransaction`: the requester of this version's backfill.
+    let requester = ctx
+        .lifecycle
+        .backfill_requesters
+        .lock()
+        .unwrap()
+        .remove(table_id)
+        .filter(|(version, _)| *version == job.schema_version)
+        .map(|(_, txn)| txn)
+        .filter(|_| !(ctx.lifecycle.options.skip_ddl_requester_liveness_check)());
+    let liveness = async {
+        match requester {
+            Some(txn) => requester_aborted(ctx, &token, &txn).await,
+            None => std::future::pending().await,
+        }
+    };
+    tokio::pin!(liveness);
     let mut failure = None;
-    while let Some(result) = tablets.join_next().await {
-        if let Err(status) = result.unwrap_or_else(|e| Err(corrupt(e))) {
-            failure.get_or_insert(status);
+    loop {
+        tokio::select! {
+            result = tablets.join_next() => match result {
+                Some(result) => {
+                    if let Err(status) = result.unwrap_or_else(|e| Err(corrupt(e))) {
+                        failure.get_or_insert(status);
+                    }
+                }
+                None => break,
+            },
+            () = &mut liveness => {
+                tracing::info!(
+                    "The requester of the backfill of table {} aborted, aborting the backfill",
+                    String::from_utf8_lossy(table_id)
+                );
+                tablets.abort_all();
+                // `MarkAllIndexesAsFailed`.
+                failure = Some(Status::new(StatusCode::Aborted, "failed"));
+                break;
+            }
         }
     }
     ctx.lifecycle
@@ -404,12 +578,59 @@ pub(crate) async fn run(
     }
 }
 
+/// `DdlRequesterLivenessTask`: returns once the requester's transaction is ABORTED, polling its
+/// status tablet every `ddl_requester_liveness_check_interval_secs`. A failed poll, or any other
+/// status, polls again; COMMITTED is still pending until applied, as C++ counts it.
+async fn requester_aborted(
+    ctx: &BackfillContext,
+    token: &LeaderToken,
+    txn: &TransactionMetadataPB,
+) {
+    loop {
+        tokio::time::sleep((ctx
+            .lifecycle
+            .options
+            .ddl_requester_liveness_check_interval)())
+        .await;
+        let status_tablet = txn.status_tablet().as_bytes().to_vec();
+        let txn_id = txn.transaction_id().to_vec();
+        let status = call_tablet_leader(
+            ctx,
+            token,
+            &status_tablet,
+            "yb.tserver.TabletServerService",
+            "GetTransactionStatus",
+            |_leader| {
+                let mut req = GetTransactionStatusRequestPB::new();
+                req.set_tablet_id(status_tablet.clone());
+                req.transaction_id.push(txn_id.clone());
+                req.write_to_bytes().map_err(corrupt)
+            },
+            |bytes| {
+                let resp =
+                    GetTransactionStatusResponsePB::parse_from_bytes(bytes).map_err(corrupt)?;
+                Ok(match resp.error.as_ref() {
+                    Some(e) => Err((ts_status(&e.status), permanent(e.code()))),
+                    None => Ok(resp.status.first().and_then(|s| s.enum_value().ok())),
+                })
+            },
+            RetryPolicy::default(),
+        )
+        .await;
+        if matches!(status, Ok(Some(TransactionStatus::ABORTED))) {
+            return;
+        }
+    }
+}
+
 /// Records the job (once) and stays ALTERING with the fully applied schema cleared
-/// (`StartBackfillingData`); `None` when nothing is at DO_BACKFILL.
+/// (`StartBackfillingData`); `None` when nothing is at DO_BACKFILL. The job is of `chosen`, else
+/// of the first index at DO_BACKFILL (one at a time, as C++ does for YSQL).
 async fn start(
     ctx: &BackfillContext,
     token: &LeaderToken,
     table_id: &[u8],
+    chosen: Option<&[Vec<u8>]>,
 ) -> Result<Option<Job>, Status> {
     let (job, _) = ctx
         .lifecycle
@@ -429,13 +650,24 @@ async fn start(
                 return Ok((Mutation::new(), None));
             }
             if pb.backfill_jobs.is_empty() {
-                // One index at a time, as C++ does for YSQL.
+                let indexes: Vec<&IndexInfoPB> = match chosen {
+                    Some(ids) => ready
+                        .iter()
+                        .filter(|i| ids.iter().any(|id| id.as_slice() == i.table_id()))
+                        .collect(),
+                    None => vec![&ready[0]],
+                };
+                if indexes.is_empty() {
+                    return Ok((Mutation::new(), None));
+                }
                 let mut job = BackfillJobPB::new();
-                job.indexes.push(ready[0].clone());
-                job.backfill_state.insert(
-                    String::from_utf8_lossy(ready[0].table_id()).into_owned(),
-                    EnumOrUnknown::new(backfill_job_pb::State::IN_PROGRESS),
-                );
+                for index in indexes {
+                    job.indexes.push(index.clone());
+                    job.backfill_state.insert(
+                        String::from_utf8_lossy(index.table_id()).into_owned(),
+                        EnumOrUnknown::new(backfill_job_pb::State::IN_PROGRESS),
+                    );
+                }
                 pb.backfill_jobs.push(job);
             }
             pb.fully_applied_schema.clear();
@@ -447,8 +679,10 @@ async fn start(
                 .transaction
                 .as_ref()
                 .is_some_and(|t| t.using_table_locks());
+            // Only a YSQL chunk names its database.
             let namespace_name = snapshot
                 .get(SysRowEntryType::NAMESPACE, pb.namespace_id())
+                .filter(|_| pb.table_type() == TableType::PGSQL_TABLE_TYPE)
                 .and_then(|n| n.namespace().map(|n| n.name.clone()))
                 .unwrap_or_default();
             let found = Job {
@@ -660,7 +894,7 @@ async fn backfill_tablet(
 ) -> Result<(), Status> {
     loop {
         let key = start_key.clone();
-        let backfilled_until = call_leader(
+        let (backfilled_until, rows_read, rows_backfilled) = call_leader(
             ctx,
             token,
             tablet_id,
@@ -673,7 +907,9 @@ async fn backfill_tablet(
                 req.set_schema_version(schema_version);
                 req.set_start_key(key.clone());
                 req.set_indexed_table_id(table_id.to_vec());
-                req.set_namespace_name(namespace_name.to_string());
+                if !namespace_name.is_empty() {
+                    req.set_namespace_name(namespace_name.to_string());
+                }
                 req.indexes = indexes.to_vec();
                 req.write_to_bytes().map_err(corrupt)
             },
@@ -681,7 +917,11 @@ async fn backfill_tablet(
                 let resp = TsBackfillIndexResponsePB::parse_from_bytes(bytes).map_err(corrupt)?;
                 Ok(match resp.error.as_ref() {
                     Some(e) => Err((ts_status(&e.status), permanent(e.code()))),
-                    None => Ok(resp.backfilled_until().to_vec()),
+                    None => Ok((
+                        resp.backfilled_until().to_vec(),
+                        resp.num_rows_read_from_table_for_backfill(),
+                        resp.num_rows_backfilled_in_index.clone(),
+                    )),
                 })
             },
             RetryPolicy {
@@ -692,7 +932,8 @@ async fn backfill_tablet(
             },
         )
         .await?;
-        // Persist how far the tablet got, so a new leader resumes there.
+        // Persist how far the tablet got, so a new leader resumes there, and the job's row counts
+        // (`UpdateRowsProcessedForIndexTable`), which become the indexes' reltuples.
         ctx.lifecycle
             .writer
             .mutate(token, |snapshot| {
@@ -706,14 +947,30 @@ async fn backfill_tablet(
                         backfilled_until.clone(),
                     );
                 }
-                Ok((
-                    Mutation::new().read(tablet).upsert(
-                        SysRowEntryType::TABLET,
-                        tablet_id,
-                        pb.write_to_bytes().map_err(corrupt)?,
-                    ),
-                    (),
-                ))
+                let mut mutation = Mutation::new().read(tablet).upsert(
+                    SysRowEntryType::TABLET,
+                    tablet_id,
+                    pb.write_to_bytes().map_err(corrupt)?,
+                );
+                if let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) {
+                    let mut table_pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+                    if let Some(job) = table_pb.backfill_jobs.first_mut() {
+                        job.set_num_rows_read_from_table_for_backfill(
+                            job.num_rows_read_from_table_for_backfill() + rows_read,
+                        );
+                        for (index, rows) in &rows_backfilled {
+                            *job.num_rows_backfilled_in_index
+                                .entry(index.clone())
+                                .or_default() += rows;
+                        }
+                        mutation = mutation.read(table).upsert(
+                            SysRowEntryType::TABLE,
+                            table_id,
+                            table_pb.write_to_bytes().map_err(corrupt)?,
+                        );
+                    }
+                }
+                Ok((mutation, ()))
             })
             .await?;
         if backfilled_until.is_empty() {
@@ -778,6 +1035,12 @@ async fn finish(
                 return Ok((Mutation::new(), ()));
             };
             let mut pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+            // A table dropped meanwhile stays dropped (`UpdateIndexPermission` refuses a table
+            // that is not RUNNING or ALTERING).
+            if !matches!(pb.state(), TableState::RUNNING | TableState::ALTERING) {
+                return Ok((Mutation::new(), ()));
+            }
+            let job = pb.backfill_jobs.first().cloned();
             for index in &mut pb.indexes {
                 if !index_ids.contains(index.table_id()) {
                     continue;
@@ -786,6 +1049,7 @@ async fn finish(
                     Some(status) => {
                         index.set_backfill_error_message(status.message.clone());
                         let mut app = AppStatusPB::new();
+                        app.set_errors(vec![0]);
                         app.set_code(
                             yb_proto::pb::wire_protocol::app_status_pb::ErrorCode::from_i32(
                                 status.code as i32,
@@ -803,6 +1067,18 @@ async fn finish(
                     }
                 }
                 index.clear_is_backfill_deferred();
+                // The job is cleared below; its row counts stay on the index info.
+                if let Some(job) = &job {
+                    index.set_num_rows_backfilled_in_index(
+                        job.num_rows_backfilled_in_index
+                            .get(&String::from_utf8_lossy(index.table_id()).into_owned())
+                            .copied()
+                            .unwrap_or(0.0),
+                    );
+                    index.set_num_rows_read_from_table_for_backfill(
+                        job.num_rows_read_from_table_for_backfill(),
+                    );
+                }
             }
             let perms = index_ids.iter().map(|id| (id.clone(), perm)).collect();
             set_index_permissions(&mut pb, &perms);

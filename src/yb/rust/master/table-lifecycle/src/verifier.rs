@@ -57,6 +57,8 @@ use crate::{TableLifecycle, TabletRpc};
 struct Pending {
     status_tablet: Vec<u8>,
     tables: Vec<Vec<u8>>,
+    /// Tables created in the transaction without DDL atomicity (`ScheduleVerifyTablePgLayer`).
+    legacy_tables: Vec<Vec<u8>>,
     databases: Vec<Vec<u8>>,
 }
 
@@ -134,6 +136,12 @@ impl Controller for DdlVerifier {
     }
 }
 
+/// `TableInfo::is_running`: RUNNING or ALTERING.
+fn is_running(pb: &SysTablesEntryPB) -> bool {
+    use yb_proto::pb::catalog_entity_info::sys_tables_entry_pb::State;
+    matches!(pb.state(), State::RUNNING | State::ALTERING)
+}
+
 fn hex(id: &[u8]) -> String {
     id.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -152,11 +160,17 @@ impl Inner {
             Some(txn.transaction_id().to_vec())
         };
         let mut tables = Vec::new();
+        let mut legacy_tables = Vec::new();
         for table in snapshot.iter(SysRowEntryType::TABLE) {
             let Ok(pb) = table.parse::<SysTablesEntryPB>() else {
                 continue;
             };
             if pb.ysql_ddl_txn_verifier_state.is_empty() {
+                if is_running(&pb) {
+                    if let Some(txn) = pb.transaction.as_ref().and_then(&mut add) {
+                        legacy_tables.push((txn, table.key.id.to_vec()));
+                    }
+                }
                 continue;
             }
             if let Some(txn) = pb.transaction.as_ref().and_then(&mut add) {
@@ -179,6 +193,9 @@ impl Inner {
         }
         for (txn, id) in tables {
             pending.entry(txn).or_default().tables.push(id);
+        }
+        for (txn, id) in legacy_tables {
+            pending.entry(txn).or_default().legacy_tables.push(id);
         }
         for (txn, id) in databases {
             pending.entry(txn).or_default().databases.push(id);
@@ -256,10 +273,80 @@ impl Inner {
         if !pending.tables.is_empty() {
             self.verify_tables(token, txn_id).await?;
         }
+        for table_id in pending.legacy_tables {
+            self.verify_table_pg_layer(token, txn_id, &table_id).await?;
+        }
         for namespace_id in pending.databases {
             self.verify_database(token, txn_id, &namespace_id).await?;
         }
         Ok(())
+    }
+
+    /// `VerifyTablePgLayer`: a table created in a transaction without DDL atomicity is kept, with
+    /// the transaction cleared, if PG still has it once the transaction is over, else dropped.
+    async fn verify_table_pg_layer(
+        &self,
+        token: &LeaderToken,
+        txn_id: &[u8],
+        table_id: &[u8],
+    ) -> Result<(), Status> {
+        use yb_proto::pb::master_rust_peer::{YsqlTableExistsRequestPB, YsqlTableExistsResponsePB};
+        let snapshot = self.lifecycle.catalog.snapshot();
+        let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+            return Ok(());
+        };
+        let pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+        if pb.transaction.transaction_id() != txn_id || !is_running(&pb) {
+            return Ok(());
+        }
+        let mut req = YsqlTableExistsRequestPB::new();
+        req.set_table_id(table_id.to_vec());
+        req.table = Some(pb).into();
+        let bytes = req.write_to_bytes().map_err(corrupt)?;
+        let host = self.lifecycle.host.clone();
+        let response = tokio::task::spawn_blocking(move || host.call("YsqlTableExists", &bytes))
+            .await
+            .map_err(corrupt)??;
+        let resp = YsqlTableExistsResponsePB::parse_from_bytes(&response).map_err(corrupt)?;
+        if let Some(e) = resp.error.as_ref() {
+            return Err(ts_status(&e.status));
+        }
+        let deadline = Instant::now() + Duration::from_secs(60);
+        if resp.exists() {
+            tracing::info!(
+                "Table transaction succeeded: {}",
+                String::from_utf8_lossy(table_id)
+            );
+            self.lifecycle
+                .write(token, deadline, |snapshot| {
+                    let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+                        return Ok((Mutation::new(), ()));
+                    };
+                    let mut pb: SysTablesEntryPB = table.parse().map_err(|e| {
+                        crate::error(Code::UNKNOWN_ERROR, StatusCode::Corruption, e.to_string())
+                    })?;
+                    if pb.transaction.transaction_id() != txn_id {
+                        return Ok((Mutation::new(), ()));
+                    }
+                    pb.transaction = Default::default();
+                    let mutation = Mutation::new()
+                        .read(table)
+                        .upsert_message(SysRowEntryType::TABLE, table_id, &pb)
+                        .map_err(|s| crate::error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                    Ok((mutation, ()))
+                })
+                .await
+                .map_err(|e| ts_status(&e.status))
+        } else {
+            tracing::info!(
+                "Table transaction failed, deleting: {}",
+                String::from_utf8_lossy(table_id)
+            );
+            self.lifecycle
+                .mark_deleting(token, deadline, table_id)
+                .await
+                .map_err(|e| ts_status(&e.status))
+        }
     }
 
     /// `YsqlTableSchemaChecker`: the first table whose schema tells decides; a transaction that

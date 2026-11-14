@@ -27,7 +27,7 @@ use yb_proto::pb::master_types::{
     master_error_pb::Code, MasterErrorPB, NamespaceIdentifierPB, SysRowEntryType, TableIdentifierPB,
 };
 
-use crate::error;
+use crate::{coded_error, error, tagged_error};
 
 /// The sys-catalog tablet's id; the tables it hosts are YSQL system tables.
 pub const SYS_CATALOG_TABLET_ID: &[u8] = b"00000000000000000000000000000000";
@@ -73,7 +73,7 @@ pub fn find_namespace(
             .filter(|e| !is_deleted_namespace(e))
             .cloned()
             .ok_or_else(|| {
-                error(
+                coded_error(
                     Code::NAMESPACE_NOT_FOUND,
                     StatusCode::NotFound,
                     format!(
@@ -86,7 +86,7 @@ pub fn find_namespace(
     if ident.has_name() {
         let db_type = database_type(ident) as i32;
         return find_namespace_by_name(snapshot, ident.name(), db_type).ok_or_else(|| {
-            error(
+            coded_error(
                 Code::NAMESPACE_NOT_FOUND,
                 StatusCode::NotFound,
                 format!(
@@ -97,7 +97,7 @@ pub fn find_namespace(
             )
         });
     }
-    Err(error(
+    Err(coded_error(
         Code::NAMESPACE_NOT_FOUND,
         StatusCode::NotFound,
         "Neither keyspace id nor keyspace name is specified",
@@ -141,7 +141,7 @@ pub fn find_table(
             .filter(|e| !deleted(e))
             .cloned()
             .ok_or_else(|| {
-                error(
+                tagged_error(
                     Code::OBJECT_NOT_FOUND,
                     StatusCode::NotFound,
                     format!(
@@ -166,7 +166,7 @@ pub fn find_table(
             .filter(|e| !deleted(e))
             .cloned()
             .ok_or_else(|| {
-                error(
+                tagged_error(
                     Code::OBJECT_NOT_FOUND,
                     StatusCode::NotFound,
                     format!("Table {}.{} not found", ns.name, ident.table_name()),
@@ -251,7 +251,7 @@ pub fn check_visible(entity: &Entity, include_hidden: bool) -> Result<(), Master
         .any(|s| *s as i32 == hot.state);
     if include_hidden {
         if !running {
-            return Err(error(
+            return Err(tagged_error(
                 Code::OBJECT_NOT_FOUND,
                 StatusCode::NotFound,
                 format!("The object '{}' is not running", name()),
@@ -260,14 +260,14 @@ pub fn check_visible(entity: &Entity, include_hidden: bool) -> Result<(), Master
         return Ok(());
     }
     if hot.state == State::DELETING as i32 || hot.state == State::DELETED as i32 {
-        return Err(error(
+        return Err(tagged_error(
             Code::OBJECT_NOT_FOUND,
             StatusCode::NotFound,
             format!("The object '{}' does not exist", name()),
         ));
     }
     if !running || is_hidden(entity) {
-        return Err(error(
+        return Err(tagged_error(
             Code::OBJECT_NOT_FOUND,
             StatusCode::ServiceUnavailable,
             format!("The object '{}' is not running", name()),

@@ -21,11 +21,9 @@
 //! `MasterServiceHandler::leader_call` are served from the catalog; other leader methods answer
 //! `NotSupported` naming the workstream that serves them. Elsewhere every leader method gets
 //! `NOT_THE_LEADER`, which makes clients rerun leader discovery.
-//!
-//! Not served yet, though C++ serves them on every master: `DumpState` (yb-admin
-//! dump_masters_state), and the test-only `TestRetry` and `AccessYsqlBackendsManagerTestRegister`.
 
 mod balancer;
+mod dump_state;
 pub mod leader;
 mod list_masters;
 mod vtables;
@@ -43,6 +41,7 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_types::PeerRole;
 use yb_proto::pb::consensus_metadata::ConsensusStatePB;
 use yb_proto::pb::master_admin::{
+    AddTransactionStatusTabletRequestPB, AddTransactionStatusTabletResponsePB,
     ClientUpgradeYsqlRequestPB, ClientUpgradeYsqlResponsePB, CreateTransactionStatusTableRequestPB,
     CreateTransactionStatusTableResponsePB, DeleteNotServingTabletRequestPB,
     DeleteNotServingTabletResponsePB, DisableTabletSplittingRequestPB,
@@ -56,6 +55,10 @@ use yb_proto::pb::master_admin::{
     StartYsqlMajorCatalogUpgradeResponsePB,
 };
 use yb_proto::pb::master_admin::{
+    AreNodesSafeToTakeDownRequestPB, AreNodesSafeToTakeDownResponsePB, DdlLogRequestPB,
+    DdlLogResponsePB, GetCompactionStatusRequestPB, GetCompactionStatusResponsePB,
+};
+use yb_proto::pb::master_admin::{
     FlushTablesRequestPB, FlushTablesResponsePB, IsFlushTablesDoneRequestPB,
     IsFlushTablesDoneResponsePB, WaitForYsqlBackendsCatalogVersionRequestPB,
     WaitForYsqlBackendsCatalogVersionResponsePB,
@@ -63,41 +66,52 @@ use yb_proto::pb::master_admin::{
 use yb_proto::pb::master_client::{
     GetStatefulServiceLocationRequestPB, GetStatefulServiceLocationResponsePB,
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
-    GetTabletLocationsResponsePB, GetTransactionStatusTabletsRequestPB,
-    GetTransactionStatusTabletsResponsePB, GetYsqlCatalogConfigRequestPB,
-    GetYsqlCatalogConfigResponsePB, ReservePgsqlOidsRequestPB, ReservePgsqlOidsResponsePB,
+    GetTabletLocationsResponsePB, GetTabletsMetadataRequestPB, GetTabletsMetadataResponsePB,
+    GetTransactionStatusTabletsRequestPB, GetTransactionStatusTabletsResponsePB,
+    GetYsqlCatalogConfigRequestPB, GetYsqlCatalogConfigResponsePB, ReservePgsqlOidsRequestPB,
+    ReservePgsqlOidsResponsePB,
 };
 use yb_proto::pb::master_cluster::{
     AreLeadersOnPreferredOnlyRequestPB, AreLeadersOnPreferredOnlyResponsePB,
     ChangeLoadBalancerStateRequestPB, ChangeLoadBalancerStateResponsePB,
     ChangeMasterClusterConfigRequestPB, ChangeMasterClusterConfigResponsePB,
-    GetLoadBalancerStateResponsePB, GetLoadMovePercentRequestPB, GetLoadMovePercentResponsePB,
-    GetMasterClusterConfigRequestPB, GetMasterClusterConfigResponsePB,
-    GetMasterRegistrationResponsePB, GetMasterXClusterConfigRequestPB,
-    GetMasterXClusterConfigResponsePB, IsLoadBalancedRequestPB, IsLoadBalancedResponsePB,
-    IsLoadBalancerIdleRequestPB, IsLoadBalancerIdleResponsePB, IsMasterLeaderReadyRequestPB,
-    IsMasterLeaderReadyResponsePB, ListLiveTabletServersRequestPB, ListLiveTabletServersResponsePB,
-    ListMasterRaftPeersResponsePB, ListTabletServersRequestPB, ListTabletServersResponsePB,
-    RemoveTabletServerRequestPB, RemoveTabletServerResponsePB, SetPreferredZonesRequestPB,
-    SetPreferredZonesResponsePB,
+    DumpMasterStateRequestPB, DumpMasterStateResponsePB, GetLoadBalancerStateResponsePB,
+    GetLoadMovePercentRequestPB, GetLoadMovePercentResponsePB, GetMasterClusterConfigRequestPB,
+    GetMasterClusterConfigResponsePB, GetMasterRegistrationResponsePB,
+    GetMasterXClusterConfigRequestPB, GetMasterXClusterConfigResponsePB, IsLoadBalancedRequestPB,
+    IsLoadBalancedResponsePB, IsLoadBalancerIdleRequestPB, IsLoadBalancerIdleResponsePB,
+    IsMasterLeaderReadyRequestPB, IsMasterLeaderReadyResponsePB, ListLiveTabletServersRequestPB,
+    ListLiveTabletServersResponsePB, ListMasterRaftPeersResponsePB, ListTabletServersRequestPB,
+    ListTabletServersResponsePB, RemoveTabletServerRequestPB, RemoveTabletServerResponsePB,
+    SetPreferredZonesRequestPB, SetPreferredZonesResponsePB,
+};
+use yb_proto::pb::master_dcl::{
+    AlterRoleRequestPB, AlterRoleResponsePB, CreateRoleRequestPB, CreateRoleResponsePB,
+    DeleteRoleRequestPB, DeleteRoleResponsePB, GetPermissionsRequestPB, GetPermissionsResponsePB,
+    GrantRevokePermissionRequestPB, GrantRevokePermissionResponsePB, GrantRevokeRoleRequestPB,
+    GrantRevokeRoleResponsePB,
 };
 use yb_proto::pb::master_ddl::{
     AcquireObjectLocksGlobalRequestPB, AcquireObjectLocksGlobalResponsePB, AlterNamespaceRequestPB,
     AlterNamespaceResponsePB, AlterTableRequestPB, AlterTableResponsePB, BackfillIndexRequestPB,
     BackfillIndexResponsePB, CreateNamespaceRequestPB, CreateNamespaceResponsePB,
     CreateTableRequestPB, CreateTableResponsePB, CreateTablegroupRequestPB,
-    CreateTablegroupResponsePB, DeleteNamespaceRequestPB, DeleteNamespaceResponsePB,
-    DeleteTableRequestPB, DeleteTableResponsePB, DeleteTablegroupRequestPB,
-    DeleteTablegroupResponsePB, GetBackfillStatusRequestPB, GetBackfillStatusResponsePB,
+    CreateTablegroupResponsePB, CreateUDTypeRequestPB, CreateUDTypeResponsePB,
+    DeleteNamespaceRequestPB, DeleteNamespaceResponsePB, DeleteTableRequestPB,
+    DeleteTableResponsePB, DeleteTablegroupRequestPB, DeleteTablegroupResponsePB,
+    DeleteUDTypeRequestPB, DeleteUDTypeResponsePB, GetBackfillJobsRequestPB,
+    GetBackfillJobsResponsePB, GetBackfillStatusRequestPB, GetBackfillStatusResponsePB,
     GetNamespaceInfoRequestPB, GetNamespaceInfoResponsePB, GetTableSchemaRequestPB,
-    GetTableSchemaResponsePB, IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB,
-    IsCreateNamespaceDoneRequestPB, IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB,
-    IsCreateTableDoneResponsePB, IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
-    IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB, IsTruncateTableDoneRequestPB,
-    IsTruncateTableDoneResponsePB, IsYsqlDdlVerificationDoneRequestPB,
-    IsYsqlDdlVerificationDoneResponsePB, ListNamespacesRequestPB, ListNamespacesResponsePB,
-    ListTablegroupsRequestPB, ListTablegroupsResponsePB, ListTablesRequestPB, ListTablesResponsePB,
-    ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
+    GetTableSchemaResponsePB, GetUDTypeInfoRequestPB, GetUDTypeInfoResponsePB,
+    IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB, IsCreateNamespaceDoneRequestPB,
+    IsCreateNamespaceDoneResponsePB, IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB,
+    IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB, IsDeleteTableDoneRequestPB,
+    IsDeleteTableDoneResponsePB, IsTruncateTableDoneRequestPB, IsTruncateTableDoneResponsePB,
+    IsYsqlDdlVerificationDoneRequestPB, IsYsqlDdlVerificationDoneResponsePB,
+    LaunchBackfillIndexForTableRequestPB, LaunchBackfillIndexForTableResponsePB,
+    ListNamespacesRequestPB, ListNamespacesResponsePB, ListTablegroupsRequestPB,
+    ListTablegroupsResponsePB, ListTablesRequestPB, ListTablesResponsePB, ListUDTypesRequestPB,
+    ListUDTypesResponsePB, ReleaseObjectLocksGlobalRequestPB, ReleaseObjectLocksGlobalResponsePB,
     ReportYsqlDdlTxnStatusRequestPB, ReportYsqlDdlTxnStatusResponsePB, TruncateTableRequestPB,
     TruncateTableResponsePB, WaitForLockersMultipleGlobalRequestPB,
     WaitForLockersMultipleGlobalResponsePB,
@@ -254,6 +268,36 @@ impl RpcHandler for MasterServiceHandler {
             }
             "PushLocations" if shared.leader.is_some() => shared.push_locations(call),
             "DumpCatalog" if shared.leader.is_some() => shared.dump_catalog(call),
+            "DumpState" if shared.leader.is_some() => {
+                let runtime = shared.runtime.clone();
+                runtime.spawn(async move {
+                    if let Some(error) = shared.initialization_error() {
+                        return respond_with_error(call, method.error_field, error);
+                    }
+                    let req = match DumpMasterStateRequestPB::parse_from_bytes(call.request()) {
+                        Ok(req) => req,
+                        Err(e) => {
+                            return call.respond_error(Status::new(
+                                StatusCode::InvalidArgument,
+                                e.to_string(),
+                            ))
+                        }
+                    };
+                    let response = match dump_state::dump_state(&shared, &req).await {
+                        Ok(response) => response,
+                        Err(status) => {
+                            let mut response = DumpMasterStateResponsePB::new();
+                            response.error = Some(master_error_from(
+                                master_error_pb::Code::UNKNOWN_ERROR,
+                                &status,
+                            ))
+                            .into();
+                            response
+                        }
+                    };
+                    respond(call, &response);
+                });
+            }
             _ if shared.leader.is_some() => {
                 let runtime = shared.runtime.clone();
                 runtime.spawn(async move { shared.leader_call(call, method).await });
@@ -283,6 +327,8 @@ pub const HOST_METHODS: &[(&str, bool)] = &[
     ("GetUniverseKeyRegistry", false),
     ("AddUniverseKeys", false),
     ("HasUniverseKeyInMemory", false),
+    ("TestRetry", false),
+    ("AccessYsqlBackendsManagerTestRegister", false),
 ];
 
 /// The answer to a call whose deadline passed before it was handled: the caller has given up, so
@@ -890,12 +936,35 @@ impl Shared {
                     Ok(())
                 }
             ),
+            "GetTabletsMetadata" => serve!(
+                GetTabletsMetadataRequestPB,
+                GetTabletsMetadataResponsePB,
+                |req, resp| {
+                    if let Err(error) = leader
+                        .tables
+                        .get_tablets_metadata(&snapshot, &req, &mut resp)
+                    {
+                        resp.error = Some(error).into();
+                    }
+                    Ok(())
+                }
+            ),
             "GetTableLocations" => serve!(
                 GetTableLocationsRequestPB,
                 GetTableLocationsResponsePB,
                 |req, resp| {
                     let masters = self.info.committed_consensus_state().ok();
                     leader.get_table_locations(&snapshot, masters.as_ref(), &req, &mut resp)
+                }
+            ),
+            "AddTransactionStatusTablet" => serve_ddl!(
+                AddTransactionStatusTabletRequestPB,
+                AddTransactionStatusTabletResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    tables
+                        .add_transaction_status_tablet(&token, deadline, req.table_id())
+                        .await
                 }
             ),
             "CreateTransactionStatusTable" => serve_ddl!(
@@ -1210,6 +1279,88 @@ impl Shared {
                     lagging.map(|n| resp.set_num_lagging_backends(n))
                 }
             ),
+            "CreateRole" => serve_ddl!(CreateRoleRequestPB, CreateRoleResponsePB, |req, resp| {
+                tables.create_role(&token, deadline, &req).await
+            }),
+            "AlterRole" => serve_ddl!(AlterRoleRequestPB, AlterRoleResponsePB, |req, resp| {
+                tables.alter_role(&token, deadline, &req).await
+            }),
+            "DeleteRole" => serve_ddl!(DeleteRoleRequestPB, DeleteRoleResponsePB, |req, resp| {
+                tables.delete_role(&token, deadline, &req).await
+            }),
+            "GrantRevokeRole" => serve_ddl!(
+                GrantRevokeRoleRequestPB,
+                GrantRevokeRoleResponsePB,
+                |req, resp| tables.grant_revoke_role(&token, deadline, &req).await
+            ),
+            "GrantRevokePermission" => serve_ddl!(
+                GrantRevokePermissionRequestPB,
+                GrantRevokePermissionResponsePB,
+                |req, resp| tables.grant_revoke_permission(&token, deadline, &req).await
+            ),
+            "GetPermissions" => serve_ddl!(
+                GetPermissionsRequestPB,
+                GetPermissionsResponsePB,
+                |req, resp| tables.get_permissions(&snapshot, &req, &mut resp)
+            ),
+            "CreateUDType" => serve_ddl!(
+                CreateUDTypeRequestPB,
+                CreateUDTypeResponsePB,
+                |req, resp| tables
+                    .create_udtype(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "DeleteUDType" => serve_ddl!(
+                DeleteUDTypeRequestPB,
+                DeleteUDTypeResponsePB,
+                |req, resp| tables.delete_udtype(&token, deadline, &req).await
+            ),
+            "GetUDTypeInfo" => serve_ddl!(
+                GetUDTypeInfoRequestPB,
+                GetUDTypeInfoResponsePB,
+                |req, resp| tables.get_udtype_info(&snapshot, &req, &mut resp)
+            ),
+            "ListUDTypes" => {
+                serve_ddl!(ListUDTypesRequestPB, ListUDTypesResponsePB, |req, resp| {
+                    tables.list_udtypes(&snapshot, &req, &mut resp)
+                })
+            }
+            "AreNodesSafeToTakeDown" => serve_ddl!(
+                AreNodesSafeToTakeDownRequestPB,
+                AreNodesSafeToTakeDownResponsePB,
+                |req, resp| {
+                    let masters = self
+                        .info
+                        .committed_consensus_state()
+                        .map(|c| c.config.peers.clone())
+                        .unwrap_or_default();
+                    tables
+                        .are_nodes_safe_to_take_down(&snapshot, &masters, &req, deadline)
+                        .await
+                }
+            ),
+            "DdlLog" => serve_ddl!(DdlLogRequestPB, DdlLogResponsePB, |req, resp| {
+                tables.ddl_log(&snapshot, &req, &mut resp)
+            }),
+            "GetCompactionStatus" => serve_ddl!(
+                GetCompactionStatusRequestPB,
+                GetCompactionStatusResponsePB,
+                |req, resp| tables.get_compaction_status(&snapshot, &req, &mut resp)
+            ),
+            "LaunchBackfillIndexForTable" => serve_ddl!(
+                LaunchBackfillIndexForTableRequestPB,
+                LaunchBackfillIndexForTableResponsePB,
+                |req, resp| {
+                    tables
+                        .launch_backfill_index_for_table(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "GetBackfillJobs" => serve_ddl!(
+                GetBackfillJobsRequestPB,
+                GetBackfillJobsResponsePB,
+                |req, resp| tables.get_backfill_jobs(&snapshot, &req, &mut resp)
+            ),
             "BackfillIndex" => serve_ddl!(
                 BackfillIndexRequestPB,
                 BackfillIndexResponsePB,
@@ -1318,6 +1469,8 @@ impl Shared {
                 }
             }
             "GetAutoFlagsConfig"
+            | "GetMasterHeartbeatDelays"
+            | "GetObjectLockStatus"
             | "ValidateAutoFlagsConfig"
             | "GetYsqlYbSystemTableInfo"
             | "CheckIfPitrActive" => {
@@ -1429,6 +1582,11 @@ pub(crate) use master_ts_manager::master_error;
 
 pub(crate) fn master_error_from(code: master_error_pb::Code, status: &Status) -> MasterErrorPB {
     master_error(code, status.code, &status.message)
+}
+
+/// [`master_error_from`] for a C++ status made with `MasterError(code)`: "<message>: <CODE>".
+pub(crate) fn tagged_error_from(code: master_error_pb::Code, status: &Status) -> MasterErrorPB {
+    master_ts_manager::master_error_tagged(code, status.code, &status.message)
 }
 
 pub(crate) fn status_of(error: &MasterErrorPB) -> Status {

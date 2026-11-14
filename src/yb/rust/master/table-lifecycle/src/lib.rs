@@ -32,17 +32,22 @@ mod assign;
 mod backfill;
 mod colocation;
 mod create;
+mod ddl_log;
 mod drop;
 mod flush;
+mod health;
 pub mod lookup;
 pub mod major_upgrade;
 mod namespaces;
 mod placement;
 mod read;
+mod roles;
 mod schedules;
+mod status_tablets;
 mod tablespaces;
 mod time;
 mod truncate;
+mod udtypes;
 mod verifier;
 mod ysql;
 
@@ -98,11 +103,47 @@ pub struct LifecycleOptions {
     pub enable_ysql: fn() -> bool,
     /// `txn_table_wait_min_ts_count`.
     pub txn_table_wait_min_ts_count: fn() -> i32,
+    /// `ysql_legacy_colocated_database_creation`: a colocated database gets a parent table of its
+    /// own instead of a default tablegroup.
+    pub legacy_colocated_database_creation: fn() -> bool,
+    /// `autoscale_transaction_tables`.
+    pub autoscale_transaction_tables: fn() -> bool,
+    /// `ysql_enable_colocated_tables_with_tablespaces`.
+    pub colocated_tables_with_tablespaces: fn() -> bool,
+    /// `vector_index_store_payload`: new vector indexes store a payload instead of a reverse
+    /// mapping.
+    pub vector_index_store_payload: fn() -> bool,
+    /// `vector_index_backend`.
+    pub vector_index_backend: fn() -> String,
+    /// `TEST_sequential_colocation_ids`: colocation ids from 20001 up instead of random ones.
+    pub sequential_colocation_ids: fn() -> bool,
+    /// `TEST_colocation_ids`: comma-separated colocation ids tried before any other.
+    pub colocation_ids: fn() -> String,
+    /// `transaction_table_check_interval_sec`.
+    pub transaction_table_check_interval: fn() -> std::time::Duration,
     /// `use_create_table_leader_hint`: start each new tablet's first election at a chosen
     /// replica, so new tables' leaders are balanced.
     pub use_create_table_leader_hint: fn() -> bool,
     /// `ysql_disable_index_backfill`.
     pub ysql_disable_index_backfill: fn() -> bool,
+    /// `disable_index_backfill`: YCQL indexes are built without a backfill.
+    pub disable_index_backfill: fn() -> bool,
+    /// `disable_index_backfill_for_non_txn_tables`.
+    pub disable_index_backfill_for_non_txn_tables: fn() -> bool,
+    /// `defer_index_backfill`: a YCQL index waits at DO_BACKFILL for
+    /// `LaunchBackfillIndexForTable`.
+    pub defer_index_backfill: fn() -> bool,
+    /// `allow_batching_non_deferred_indexes`: YCQL indexes of a table ready together are
+    /// backfilled together.
+    pub allow_batching_non_deferred_indexes: fn() -> bool,
+    /// `index_backfill_rpc_timeout_ms`: a YCQL backfill chunk's timeout.
+    pub index_backfill_rpc_timeout: fn() -> std::time::Duration,
+    /// `ddl_requester_liveness_check_interval_secs`.
+    pub ddl_requester_liveness_check_interval: fn() -> std::time::Duration,
+    /// `TEST_skip_ddl_requester_liveness_check`.
+    pub skip_ddl_requester_liveness_check: fn() -> bool,
+    /// `are_nodes_safe_to_take_down_timeout_buffer_ms`.
+    pub nodes_safe_to_take_down_buffer: fn() -> std::time::Duration,
     /// `ysql_index_backfill_rpc_timeout_ms`.
     pub ysql_index_backfill_rpc_timeout: fn() -> std::time::Duration,
     /// Tablespace placement.
@@ -134,8 +175,24 @@ impl Default for LifecycleOptions {
             enable_delete_truncate_xcluster_replicated_table: || false,
             enable_ysql: || false,
             txn_table_wait_min_ts_count: || 1,
+            legacy_colocated_database_creation: || false,
+            autoscale_transaction_tables: || false,
+            colocated_tables_with_tablespaces: || false,
+            vector_index_store_payload: || false,
+            vector_index_backend: || "yb_hnsw_hnswlib".to_string(),
+            sequential_colocation_ids: || false,
+            colocation_ids: String::new,
+            transaction_table_check_interval: || std::time::Duration::from_secs(900),
             use_create_table_leader_hint: || true,
             ysql_disable_index_backfill: || false,
+            disable_index_backfill: || false,
+            disable_index_backfill_for_non_txn_tables: || true,
+            defer_index_backfill: || false,
+            allow_batching_non_deferred_indexes: || true,
+            index_backfill_rpc_timeout: || std::time::Duration::from_secs(30),
+            nodes_safe_to_take_down_buffer: || std::time::Duration::from_secs(2),
+            ddl_requester_liveness_check_interval: || std::time::Duration::from_secs(10),
+            skip_ddl_requester_liveness_check: || false,
             ysql_index_backfill_rpc_timeout: || std::time::Duration::from_secs(300),
             tablespaces: TablespaceOptions {
                 enabled: || true,
@@ -150,6 +207,9 @@ impl Default for LifecycleOptions {
         }
     }
 }
+
+/// A schema version and the DDL transaction whose `AlterTable` made it.
+pub(crate) type AlterTxn = (u32, Vec<u8>);
 
 /// Namespace and table DDL on the leader.
 pub struct TableLifecycle {
@@ -180,6 +240,16 @@ pub struct TableLifecycle {
     /// Held while a tablespace's transaction status table is created
     /// (`tablespace_transaction_table_creation_mutex_`).
     pub(crate) local_transaction_tables: tokio::sync::Mutex<()>,
+    /// The DDL transaction of each YSQL `AlterTable` request, by table, with the schema version it
+    /// made. Only the `AlterSchema` of that version aborts other transactions on the tablets, as
+    /// only `AsyncAlterTable`s that `SendAlterTableRequest` gets the request for do; alters an
+    /// index, the DDL verifier or a new leader send do not.
+    pub(crate) alter_txns: std::sync::Mutex<std::collections::HashMap<Vec<u8>, AlterTxn>>,
+    /// By indexed table: the schema version whose backfill PG asked for and the asking DDL
+    /// transaction, until that backfill starts (`SetPendingBackfillRequesterTransaction`).
+    pub(crate) backfill_requesters: std::sync::Mutex<
+        std::collections::HashMap<Vec<u8>, (u32, yb_proto::pb::common::TransactionMetadataPB)>,
+    >,
 }
 
 impl TableLifecycle {
@@ -284,6 +354,8 @@ impl TableLifecycle {
             tablespaces: Tablespaces::new(options.tablespaces),
             subtxn_rollbacks: Default::default(),
             local_transaction_tables: tokio::sync::Mutex::new(()),
+            alter_txns: Default::default(),
+            backfill_requesters: Default::default(),
             tablet_rpc: std::sync::OnceLock::new(),
         })
     }
@@ -325,10 +397,6 @@ pub(crate) fn error(code: Code, status: StatusCode, message: impl Into<String>) 
     master_error(code, status, &message.into())
 }
 
-/// `STATUS_EC_FORMAT(.., MasterError(code), ..)`: the status constructor appends the code's name
-/// to the message ("<message>: <CODE>", which PG shows and tests match), and `StatusToPB` encodes
-/// the code (`MasterErrorTag` category 9, the code as a little-endian `int32`, then the
-/// terminating 0).
 impl TableLifecycle {
     /// Waits while `TEST_pause_before_upsert_ysql_sys_table` is set, as C++'s
     /// `CompleteCreateYsqlSysTable` does before its write.
@@ -343,32 +411,38 @@ impl TableLifecycle {
     }
 }
 
+/// `STATUS_EC_FORMAT(.., MasterError(code), ..)`: "<message>: <CODE>", with the code encoded.
 pub(crate) fn tagged_error(
     code: Code,
     status: StatusCode,
     message: impl Into<String>,
 ) -> MasterErrorPB {
-    const MASTER_ERROR_CATEGORY: u8 = 9;
-    let mut pb = error(code, status, format!("{}: {code:?}", message.into()));
-    let mut errors = vec![MASTER_ERROR_CATEGORY];
-    errors.extend_from_slice(&protobuf::Enum::value(&code).to_le_bytes());
-    errors.push(0);
-    pb.status.mut_or_insert_default().set_errors(errors);
-    pb
+    master_ts_manager::master_error_tagged(code, status, &message.into())
+}
+
+/// `STATUS(Kind, msg, msg2, MasterError(code))`: the code encoded, the message as given.
+pub(crate) fn coded_error(
+    code: Code,
+    status: StatusCode,
+    message: impl Into<String>,
+) -> MasterErrorPB {
+    master_ts_manager::master_error_coded(code, status, &message.into())
 }
 
 /// The error for a failed catalog write.
 pub(crate) fn write_error(status: &Status) -> MasterErrorPB {
     match status.code {
-        StatusCode::IllegalState | StatusCode::Aborted | StatusCode::ServiceUnavailable => error(
-            Code::NOT_THE_LEADER,
-            StatusCode::ServiceUnavailable,
-            format!(
-                "Operation requested can only be executed on a leader master, but this master \
+        StatusCode::IllegalState | StatusCode::Aborted | StatusCode::ServiceUnavailable => {
+            coded_error(
+                Code::NOT_THE_LEADER,
+                StatusCode::ServiceUnavailable,
+                format!(
+                    "Operation requested can only be executed on a leader master, but this master \
                  is no longer the leader: {}",
-                status.message
-            ),
-        ),
+                    status.message
+                ),
+            )
+        }
         _ => error(Code::UNKNOWN_ERROR, status.code, status.message.clone()),
     }
 }

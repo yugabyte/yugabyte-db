@@ -179,6 +179,7 @@ impl TsManager {
                 > (self.options.metadata_min_time_left)()
         {
             self.record_leader_leases(req);
+            self.record_full_compactions(req);
         }
 
         let (version, list) = self.live_list(ctx.token.term());
@@ -246,6 +247,21 @@ impl TsManager {
         Ok(info)
     }
 
+    /// `ProcessTabletReplicaFullCompactionStatus` for each status the tserver reports.
+    fn record_full_compactions(&self, req: &TSHeartbeatRequestPB) {
+        let uuid = req.common.ts_instance.permanent_uuid();
+        for status in &req.full_compaction_statuses {
+            self.locations.record_full_compaction(
+                status.tablet_id(),
+                uuid,
+                master_tablet_locations::FullCompaction {
+                    state: status.full_compaction_state() as i32,
+                    last_time: status.last_full_compaction_time(),
+                },
+            );
+        }
+    }
+
     /// `ProcessTabletMetadata`: drive info for every tablet in `storage_metadata`, and leader leases
     /// for those whose leader is the reporting tserver.
     fn record_leader_leases(&self, req: &TSHeartbeatRequestPB) {
@@ -269,6 +285,7 @@ impl TsManager {
                     may_have_orphaned_post_split_data: metadata.may_have_orphaned_post_split_data(),
                     total_size: metadata.total_size(),
                     has_active_vector_index_backfill: metadata.has_active_vector_index_backfill(),
+                    vector_index_size: metadata.vector_index_size(),
                 },
             );
         }
@@ -561,6 +578,38 @@ pub fn master_error(
             .unwrap_or(app_status_pb::ErrorCode::UNKNOWN_ERROR),
     );
     app_status.set_message(message.to_string());
+    // As `StatusToPB`: the error codes always end with a 0, so `errors` is set even without one.
+    // A client decodes a status without `errors` the old way, which turns a QLError without
+    // `ql_error_code` into "Query error code missing".
+    app_status.set_errors(vec![0]);
     error.status = Some(app_status).into();
     error
+}
+
+/// [`master_error`] whose status carries `MasterError(code)`, as C++'s
+/// `STATUS(Kind, msg, msg2, MasterError(code))` makes it: `StatusToPB` encodes the code
+/// (`MasterErrorTag` category 9, the code as a little-endian `int32`, then the terminating 0).
+pub fn master_error_coded(
+    code: master_error_pb::Code,
+    status: StatusCode,
+    message: &str,
+) -> MasterErrorPB {
+    const MASTER_ERROR_CATEGORY: u8 = 9;
+    let mut error = master_error(code, status, message);
+    let mut errors = vec![MASTER_ERROR_CATEGORY];
+    errors.extend_from_slice(&protobuf::Enum::value(&code).to_le_bytes());
+    errors.push(0);
+    error.status.mut_or_insert_default().set_errors(errors);
+    error
+}
+
+/// [`master_error_coded`] as `STATUS_EC_FORMAT(Kind, MasterError(code), ..)` and
+/// `STATUS(Kind, msg, MasterError(code))` make it: the status constructor appends the code's name
+/// to the message ("<message>: <CODE>", which PG shows and tests match).
+pub fn master_error_tagged(
+    code: master_error_pb::Code,
+    status: StatusCode,
+    message: &str,
+) -> MasterErrorPB {
+    master_error_coded(code, status, &format!("{message}: {code:?}"))
 }

@@ -39,6 +39,10 @@ use crate::hex;
 pub struct AutoSplitOptions {
     /// `enable_automatic_tablet_splitting`.
     pub enabled: fn() -> bool,
+    /// `enable_tablet_split_of_uncommitted_ysql_tables`.
+    pub split_uncommitted_ysql_tables: fn() -> bool,
+    /// `enable_tablet_split_of_tables_with_vector_index`.
+    pub split_tables_with_vector_index: fn() -> bool,
     /// `process_split_tablet_candidates_interval_msec`.
     pub interval: fn() -> Duration,
     /// `outstanding_tablet_split_limit`; 0 for no limit.
@@ -76,6 +80,8 @@ impl Default for AutoSplitOptions {
     fn default() -> AutoSplitOptions {
         AutoSplitOptions {
             enabled: || false,
+            split_uncommitted_ysql_tables: || false,
+            split_tables_with_vector_index: || true,
             interval: || Duration::ZERO,
             outstanding_limit: || 0,
             outstanding_limit_per_tserver: || -1,
@@ -191,6 +197,28 @@ pub(crate) struct Cluster {
     pub ttl_split_disabled: HashSet<Vec<u8>>,
     /// The cluster config.
     pub config: SysClusterConfigEntryPB,
+    /// Tablespace placement; None places every table by its own or the cluster's.
+    pub tablespaces: Option<std::sync::Arc<master_table_lifecycle::Tablespaces>>,
+}
+
+impl Cluster {
+    /// `CatalogManagerUtil::GetTableReplicationInfo`: the table's own, else its tablespace's,
+    /// else the cluster's; an error for a tablespace the last refresh did not see.
+    pub(crate) fn replication_info(
+        &self,
+        table_id: &[u8],
+        table_pb: &SysTablesEntryPB,
+    ) -> Result<ReplicationInfoPB, String> {
+        match &self.tablespaces {
+            Some(tablespaces) => tablespaces
+                .table_replication_info(table_id, table_pb, &self.config)
+                .map_err(|s| s.message),
+            None => Ok(table_replication_info(
+                table_pb.replication_info.as_ref(),
+                &self.config,
+            )),
+        }
+    }
 }
 
 /// What a pass decided.
@@ -227,15 +255,12 @@ pub(crate) fn check_partition_limits(
     snapshot: &CatalogSnapshot,
     table: &Entity,
     table_pb: &SysTablesEntryPB,
-    num_live: usize,
+    cluster: &Cluster,
     options: &AutoSplitOptions,
 ) -> Result<(), String> {
     let partitions = snapshot.active_tablets_of(&table.key.id).len();
-    let info = table_replication_info(
-        table_pb.replication_info.as_ref(),
-        &cluster_config(snapshot),
-    );
-    let max_tablets = (options.max_create_tablets_per_ts)().max(0) as usize * num_live;
+    let info = cluster.replication_info(&table.key.id, table_pb)?;
+    let max_tablets = (options.max_create_tablets_per_ts)().max(0) as usize * cluster.num_live;
     let replicas_per_tablet = num_replicas(
         info.live_replicas.as_ref().unwrap_or_default(),
         (options.replication_factor)(),
@@ -256,13 +281,6 @@ pub(crate) fn check_partition_limits(
         ));
     }
     Ok(())
-}
-
-fn cluster_config(snapshot: &CatalogSnapshot) -> SysClusterConfigEntryPB {
-    snapshot
-        .cluster_config()
-        .and_then(|c| c.parse().ok())
-        .unwrap_or_default()
 }
 
 /// `GetTableSplitPhase`: by the table's partitions per tserver the table may use. A placement
@@ -387,7 +405,7 @@ pub(crate) fn should_split(
             "Tablet {id} SST size ({size}) < low phase size threshold ({low})."
         ));
     }
-    let info = table_replication_info(table_pb.replication_info.as_ref(), &cluster.config);
+    let info = cluster.replication_info(table_id, table_pb)?;
     check_live_replicas(tablet_id, replicas, replication_factor(&info, options))?;
     let partitions = snapshot.active_tablets_of(table_id).len();
     let phase = split_phase(table_id, partitions, &info, cluster, options)?;
@@ -504,10 +522,11 @@ fn validate_table(
     options: &AutoSplitOptions,
     now: Instant,
 ) -> Result<SysTablesEntryPB, String> {
-    crate::validate_table(snapshot, table).map_err(|e| e.status.message().to_string())?;
+    crate::validate_table(snapshot, table, options, false)
+        .map_err(|e| e.status.message().to_string())?;
     check_disabled(&mut disabled.ttl_tables, &table.key.id, now)?;
     let table_pb: SysTablesEntryPB = table.parse().map_err(|e| e.to_string())?;
-    check_partition_limits(snapshot, table, &table_pb, cluster.num_live, options)?;
+    check_partition_limits(snapshot, table, &table_pb, cluster, options)?;
     Ok(table_pb)
 }
 
@@ -713,7 +732,7 @@ fn candidate(
         cluster,
         options,
     )?;
-    // Colocated tablets are not served by a Rust leader; checked last, as the row must be parsed.
+    // Colocated tablets are not split; checked last, as the row must be parsed.
     let pb: SysTabletsEntryPB = tablet.parse().map_err(|e| e.to_string())?;
     if pb.colocated() {
         return Err(format!(

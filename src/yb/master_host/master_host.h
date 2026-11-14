@@ -74,6 +74,7 @@ class TotalMemWatcher;
 }  // namespace server
 
 namespace tserver {
+class ReleaseObjectLockRequestPB;
 class TSLocalLockManager;
 }  // namespace tserver
 
@@ -269,6 +270,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
       bool has_fingerprint, uint64_t fingerprint, master::TSHeartbeatResponsePB* resp) const;
   // CatalogManager::RefreshPgCatalogVersionCache and ResetCachedCatalogVersions.
   bool RefreshPgCatalogVersionCache();
+  // ObjectLockInfoManager::PopulateDbCatalogVersionCache.
+  void PopulateReleaseCatalogInfo(tserver::ReleaseObjectLockRequestPB* req);
   void ResetPgCatalogVersionCache();
   // The cached version of one database (GetYsqlDBCatalogVersion with use_cache); false when the
   // cache is off, empty or lacks it.
@@ -323,6 +326,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::vector<Endpoint> public_web_endpoints_;
   std::optional<rust::Box<WebMasterList>> web_master_list_;
   std::atomic<bool> sys_catalog_initialized_{false};
+  // TestAsyncRpcManager's and YsqlBackendsManager's test state.
+  std::atomic<int32_t> num_test_retry_calls_{0};
+  std::atomic<int32_t> ysql_backends_test_register_{0};
   bool sys_catalog_started_ = false;
   // Serializes remote bootstrap requests, as CatalogManager does.
   std::mutex remote_bootstrap_mutex_;
@@ -352,6 +358,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   scoped_refptr<AtomicGauge<uint32_t>> blacklisted_leaders_metric_;
   scoped_refptr<AtomicGauge<uint32_t>> total_table_load_difference_metric_;
   scoped_refptr<AtomicGauge<uint64_t>> estimated_data_to_balance_bytes_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> num_tablet_servers_live_metric_;
+  scoped_refptr<AtomicGauge<uint32_t>> num_tablet_servers_dead_metric_;
+  scoped_refptr<AtomicGauge<uint64_t>> max_follower_heartbeat_delay_metric_;
   // The YCQL virtual tables: their input from Rust, and their tablets by id, created on the
   // first read of each.
   std::optional<rust::Box<VirtualTables>> virtual_tables_;

@@ -41,7 +41,7 @@ use master_table_lifecycle::{
 };
 use master_task_runtime::{Attempt, BoxFuture, Controller, RetryPolicy, TermScope, TsRpcExecutor};
 use master_ts_manager::placement::{blacklist_addresses, is_blacklisted};
-use master_ts_manager::{master_error, DeleteReplica, TsManager};
+use master_ts_manager::{master_error, master_error_tagged, DeleteReplica, TsManager};
 use protobuf::{Enum, EnumOrUnknown, Message, MessageField};
 use tokio::time::Instant;
 use yb_host_api::rpc::RpcClient;
@@ -101,6 +101,8 @@ pub struct TabletSplitManager {
     host: Arc<dyn SchemaHost>,
     /// Set once the master's RPC client exists ([`TabletSplitManager::set_rpc`]).
     rpc: OnceLock<Arc<dyn RpcClient>>,
+    /// The leader's tablespace placement, set once the table lifecycle exists.
+    tablespaces: OnceLock<Arc<master_table_lifecycle::Tablespaces>>,
     executor: Arc<TsRpcExecutor>,
     retry: RetryPolicy,
     options: SplitOptions,
@@ -143,6 +145,11 @@ impl Drop for Starting {
 
 fn error(code: Code, status: StatusCode, message: impl Into<String>) -> MasterErrorPB {
     master_error(code, status, &message.into())
+}
+
+/// `STATUS_EC_FORMAT(.., MasterError(code), ..)`: "<message>: <CODE>", with the code encoded.
+fn tagged_error(code: Code, status: StatusCode, message: impl Into<String>) -> MasterErrorPB {
+    master_error_tagged(code, status, &message.into())
 }
 
 fn internal(e: impl std::fmt::Display) -> Status {
@@ -188,6 +195,7 @@ impl TabletSplitManager {
             ts_manager,
             host,
             rpc: OnceLock::new(),
+            tablespaces: OnceLock::new(),
             executor,
             retry,
             options,
@@ -219,7 +227,7 @@ impl TabletSplitManager {
                     format!("Tablet {} not found", String::from_utf8_lossy(&tablet_id)),
                 )
             })?;
-        validate_split_candidate(&snapshot, tablet, true)?;
+        validate_split_candidate(&snapshot, tablet, true, &self.options.auto)?;
         // `ValidateSplitCandidateTablet` needs the leader; the split key is asked of it.
         if self.leader_of(&tablet_id).is_none() {
             return Err(error(
@@ -313,10 +321,18 @@ impl TabletSplitManager {
             snapshot,
             table,
             &table_pb,
-            self.ts_manager.live().len(),
+            &self.cluster(snapshot),
             &self.options.auto,
         )
-        .map_err(|m| error(Code::REACHED_SPLIT_LIMIT, StatusCode::IllegalState, m))
+        .map_err(|m| {
+            // `CanAddPartitionsToTable`'s error carries no master error code;
+            // `tablet_split_limit_per_table`'s does.
+            if m.starts_with("Too many tablets") {
+                tagged_error(Code::REACHED_SPLIT_LIMIT, StatusCode::IllegalState, m)
+            } else {
+                error(Code::UNKNOWN_ERROR, StatusCode::InvalidArgument, m)
+            }
+        })
     }
 
     /// The tservers automatic splitting looks at, now.
@@ -344,7 +360,13 @@ impl TabletSplitManager {
                 .map(|d| d.uuid.to_vec())
                 .collect(),
             config,
+            tablespaces: self.tablespaces.get().cloned(),
         }
+    }
+
+    /// Splits size a table by its tablespace's placement once this is set.
+    pub fn set_tablespaces(&self, tablespaces: Arc<master_table_lifecycle::Tablespaces>) {
+        let _ = self.tablespaces.set(tablespaces);
     }
 
     /// `MaybeDoSplitting`: one automatic splitting pass, starting the splits it picks.
@@ -629,8 +651,8 @@ impl TabletSplitManager {
         }
         let use_parent_table_id = (self.options.use_parent_table_id_field)();
         let snapshot = self.catalog.snapshot();
+        let limits_cluster = self.cluster(&snapshot);
         let cluster = (!manual).then(|| self.cluster(&snapshot));
-        let num_live = self.ts_manager.live().len();
         let locations = &self.ts_manager.locations;
         let (children, _) = self
             .writer
@@ -643,12 +665,14 @@ impl TabletSplitManager {
                             format!("Tablet {} not found", String::from_utf8_lossy(tablet_id)),
                         )
                     })?;
-                validate_split_candidate(snapshot, tablet, manual).map_err(|e| {
-                    Status::new(
-                        StatusCode::from_i32(e.status.code().value()),
-                        e.status.message().to_string(),
-                    )
-                })?;
+                validate_split_candidate(snapshot, tablet, manual, &self.options.auto).map_err(
+                    |e| {
+                        Status::new(
+                            StatusCode::from_i32(e.status.code().value()),
+                            e.status.message().to_string(),
+                        )
+                    },
+                )?;
                 let mut parent: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
                 if !parent.split_tablet_ids.is_empty() {
                     tracing::info!(
@@ -667,7 +691,7 @@ impl TabletSplitManager {
                     snapshot,
                     table,
                     &table_pb,
-                    num_live,
+                    &limits_cluster,
                     &self.options.auto,
                 )
                 .map_err(|m| Status::new(StatusCode::IllegalState, m))?;
@@ -754,6 +778,20 @@ impl TabletSplitManager {
                         &table.key.id,
                         table_pb.write_to_bytes().map_err(internal)?,
                     );
+                // The table's vector indexes share its tablets, so they share its partition list
+                // version (`PropagateNextPartitionListVersion`).
+                for index in snapshot.children_of(&table.key.id) {
+                    let mut index_pb: SysTablesEntryPB = index.parse().map_err(internal)?;
+                    if index_pb.index_info.vector_idx_options.is_none() {
+                        continue;
+                    }
+                    index_pb.set_partition_list_version(version);
+                    mutation = mutation.read(index).upsert(
+                        SysRowEntryType::TABLE,
+                        &index.key.id,
+                        index_pb.write_to_bytes().map_err(internal)?,
+                    );
+                }
                 Ok((mutation, ids))
             })
             .await?;
@@ -839,6 +877,7 @@ impl TabletSplitManager {
                 cas_config_index: None,
                 hide_only: false,
                 abort_active_txns: false,
+                exclude_txn: None,
                 reason: reason.clone(),
             });
         }
@@ -912,12 +951,13 @@ fn child_partitions(
     Ok(partitions)
 }
 
-/// `ValidateSplitCandidateTable` and `ValidateSplitCandidateTablet`, for what a Rust leader
-/// serves: YCQL tables that are not colocated.
+/// `ValidateSplitCandidateTable` and `ValidateSplitCandidateTablet`. A manual split skips the
+/// vector index flag (`IgnoreVectorIndexesValidation`).
 pub fn validate_split_candidate(
     snapshot: &CatalogSnapshot,
     tablet: &Entity,
     manual: bool,
+    options: &AutoSplitOptions,
 ) -> Result<(), MasterErrorPB> {
     let not_supported = |m: String| error(Code::UNKNOWN_ERROR, StatusCode::NotSupported, m);
     let hot = tablet
@@ -932,7 +972,7 @@ pub fn validate_split_candidate(
                 "The tablet's table does not exist",
             )
         })?;
-    validate_table(snapshot, table)?;
+    validate_table(snapshot, table, options, manual)?;
     validate_tablet(snapshot, tablet, manual)
 }
 
@@ -940,6 +980,8 @@ pub fn validate_split_candidate(
 pub(crate) fn validate_table(
     snapshot: &CatalogSnapshot,
     table: &Entity,
+    options: &AutoSplitOptions,
+    manual: bool,
 ) -> Result<(), MasterErrorPB> {
     let not_supported = |m: String| error(Code::UNKNOWN_ERROR, StatusCode::NotSupported, m);
     let table_hot = table.table().expect("table row");
@@ -968,6 +1010,38 @@ pub(crate) fn validate_table(
             name()
         )));
     }
+    // Its rows reach the regular DB at once with the YSQL new-relation fastpath, so it would be
+    // split repeatedly while it loads.
+    if !(options.split_uncommitted_ysql_tables)()
+        && table_pb
+            .ysql_ddl_txn_verifier_state
+            .first()
+            .is_some_and(|s| s.contains_create_table_op())
+    {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for a table whose creating transaction has not \
+             committed, table: {}",
+            name()
+        )));
+    }
+    if table_pb.index_info.vector_idx_options.is_some() {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for vector index tables, table: {}",
+            name()
+        )));
+    }
+    if !manual
+        && !(options.split_tables_with_vector_index)()
+        && table_pb
+            .indexes
+            .iter()
+            .any(|i| i.vector_idx_options.is_some())
+    {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for tables indexed with vector index: {}",
+            name()
+        )));
+    }
     if table_pb.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
         return Err(not_supported(format!(
             "Tablet splitting is not supported for transaction status tables, table: {}",
@@ -986,14 +1060,23 @@ pub(crate) fn validate_table(
             name()
         )));
     }
-    if table_pb.table_type() == TableType::PGSQL_TABLE_TYPE {
+    if table.key.id.as_ref() == PG_SEQUENCES_DATA_TABLE_ID {
         return Err(not_supported(format!(
-            "Splitting a YSQL table on a Rust leader is not supported yet (W9): {}",
+            "Tablet splitting is not supported for Sequences table: {}",
+            name()
+        )));
+    }
+    if table_pb.table_type() == TableType::PGSQL_TABLE_TYPE
+        && table_pb.schema.DEPRECATED_pgschema_name() == "yb_xcluster_ddl_replication"
+        && matches!(table_pb.name(), b"ddl_queue" | b"replicated_ddls")
+    {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for xCluster DDL Replication tables, table: {}",
             name()
         )));
     }
     if !table_pb.hosted_stateful_services.is_empty() {
-        return Err(error(
+        return Err(tagged_error(
             Code::INVALID_REQUEST,
             StatusCode::NotSupported,
             format!(
@@ -1021,19 +1104,38 @@ pub(crate) fn validate_table(
         )));
     }
     // `IsBackfilling`: the index backfill writes to the indexed table's tablets.
-    if table_pb
-        .indexes
-        .iter()
-        .any(|i| i.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL)
+    if !table_pb.backfill_jobs.is_empty()
+        || table_pb
+            .indexes
+            .iter()
+            .any(|i| i.index_permissions() == IndexPermissions::INDEX_PERM_DO_BACKFILL)
     {
-        return Err(error(
+        return Err(tagged_error(
             Code::SPLIT_OR_BACKFILL_IN_PROGRESS,
             StatusCode::IllegalState,
             format!("Backfill operation in progress, table: {}", name()),
         ));
     }
+    // `ValidatePartitioningVersion`: a range-partitioned index built before partitioning version
+    // 1 has keys a split cannot cut.
+    if (!table_pb.indexed_table_id().is_empty() || table_pb.index_info.is_some())
+        && table_pb.schema.table_properties.is_some()
+        && table_pb.partition_schema.is_some()
+        && table_pb.partition_schema.hash_schema.is_none()
+        && table_pb.schema.table_properties.partitioning_version() == 0
+    {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for the index table \"{}\" with table_id \"{}\". \
+             Please, rebuild the index!",
+            table_hot.name,
+            String::from_utf8_lossy(&table.key.id)
+        )));
+    }
     Ok(())
 }
+
+/// `kPgSequencesDataTableId`.
+const PG_SEQUENCES_DATA_TABLE_ID: &[u8] = b"0000ffff00003000800000000000ffff";
 
 /// A CDC stream on the table that is not being deleted, or an xCluster stream into it.
 fn streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
@@ -1103,7 +1205,7 @@ fn validate_tablet(
         )));
     }
     if hot.state != TabletState::RUNNING as i32 {
-        return Err(error(
+        return Err(tagged_error(
             Code::TABLET_NOT_RUNNING,
             StatusCode::IllegalState,
             format!(

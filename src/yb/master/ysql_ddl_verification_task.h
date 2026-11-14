@@ -83,6 +83,10 @@ Result<std::optional<bool>> CheckYsqlDdlTableSchema(
 // Whether the PG catalog table `pg_table_id` has a row with oid `entry_oid`.
 Result<bool> YsqlCatalogEntryExists(
     SysCatalogTable& sys_catalog, const TableId& pg_table_id, PgOid entry_oid);
+// TableSchemaVerificationTask::CheckTableExists of the table `table_id` with row `table`: whether
+// pg_class still has it (with its relfilenode, if rewritten), or pg_yb_tablegroup its tablegroup.
+Result<bool> YsqlTableExists(
+    SysCatalogTable& sys_catalog, const TableId& table_id, const SysTablesEntryPB& table);
 
 class PollTransactionStatusBase {
  public:

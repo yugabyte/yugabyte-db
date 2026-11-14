@@ -153,6 +153,7 @@ async fn peer_entry(rpc: Arc<dyn RpcClient>, peer: RaftPeerPB, timeout: Duration
         .join(", ");
     let mut entry = ServerEntryPB::new();
     let mut error = AppStatusPB::new();
+    error.set_errors(vec![0]);
     error.set_code(
         app_status_pb::ErrorCode::from_i32(last_error.code as i32)
             .unwrap_or(app_status_pb::ErrorCode::UNKNOWN_ERROR),
