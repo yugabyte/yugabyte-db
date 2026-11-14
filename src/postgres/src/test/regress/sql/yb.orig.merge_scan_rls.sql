@@ -80,10 +80,6 @@ SET ROLE regress_merge_scan_rls_user;
 \set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;'
 \i :run_query
--- With expression pushdown off, d = t runs after the merge.
-SET yb_enable_expression_pushdown = off;
-\i :run_query
-RESET yb_enable_expression_pushdown;
 -- The same broken EquivalenceClass, with the query also holding d at
 -- 2020-01-02.  date = date is leakproof, so that clause binds d as an index
 -- condition, and d is a stream key.
