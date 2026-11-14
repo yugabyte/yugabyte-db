@@ -703,6 +703,14 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	if (!IsYBRelationById(index->indexoid))
 		return false;
 
+	/*
+	 * A batched clause becomes "col = ANY (ARRAY[...])" at plan creation,
+	 * which an index scan can execute only if the access method supports
+	 * ScalarArrayOpExpr natively.  ybgin does not.
+	 */
+	if (!index->amsearcharray)
+		return false;
+
 	for (size_t i = 0; i < INDEX_MAX_KEYS && batched_clauseset->nonempty; i++)
 	{
 		List	   *colclauses = batched_clauseset->indexclauses[i];
