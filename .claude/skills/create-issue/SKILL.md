@@ -6,7 +6,7 @@ description: >-
   before opening a PR/diff, or to file a standalone bug/feature request — and
   whenever the user asks to file a JIRA ticket for DB code, which must go to
   GitHub unless it is sensitive.
-allowed-tools: Bash(gh issue create *), Bash(gh issue view *), Bash(gh auth status), Read
+allowed-tools: Bash(gh issue create *), Bash(gh issue view *), Bash(gh issue comment *), Bash(gh search issues *), Bash(gh auth status), Read
 model: sonnet
 ---
 
@@ -113,6 +113,7 @@ issue from being created at all.
 
 3. **Description** — the "what / why": what the issue is, repro steps for a bug,
    or the motivation for a feature. Draft it and confirm with the user.
+   **YSQL:** read [ysql.md](ysql.md) and build the description from it.
 
 ### Step 3a: Create a GitHub issue
 
