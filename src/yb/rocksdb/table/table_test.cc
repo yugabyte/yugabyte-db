@@ -1052,7 +1052,8 @@ class BlockBasedTableTest : public TableTest {
  public:
   void TestMiddleKey(
       uint64_t num_records, uint64_t index_step, size_t data_block_size,
-      int expected_num_index_levels, int expected_num_data_blocks = 0);
+      int expected_num_index_levels, int expected_num_data_blocks = 0,
+      uint64_t bounded_lower = 0, uint64_t bounded_upper = 0);
 };
 class PlainTableTest : public TableTest {};
 class TablePropertyTest : public RocksDBTest {};
@@ -3866,7 +3867,8 @@ TEST_F(TableTest, YB_LINUX_ONLY_TEST(BlockCacheWithHardlink)) {
 
 void BlockBasedTableTest::TestMiddleKey(
     uint64_t num_records, uint64_t index_step, size_t data_block_size,
-    int expected_num_index_levels, int expected_num_data_blocks) {
+    int expected_num_index_levels, int expected_num_data_blocks,
+    uint64_t bounded_lower, uint64_t bounded_upper) {
   // Magic numbers to produce test index structures.
   constexpr auto kIndexBlockSize = 1_KB;
   constexpr auto kRecordValSize = 48;
@@ -3907,6 +3909,24 @@ void BlockBasedTableTest::TestMiddleKey(
   if (expected_num_data_blocks > 0)  {
     auto props = reader->GetTableProperties();
     ASSERT_EQ(expected_num_data_blocks, props->num_data_blocks);
+  }
+
+  if (bounded_upper > 0) {
+    std::string lower_str, upper_str;
+    PutFixed64(&lower_str, bounded_lower);
+    PutFixed64(&upper_str, bounded_upper);
+    auto middle_key_str = ASSERT_RESULT(reader->GetMiddleKeyWithinBounds(lower_str, upper_str));
+    Slice middle_key_buf(middle_key_str);
+    uint64_t middle_key;
+    ASSERT_TRUE(GetFixed64(&middle_key_buf, &middle_key));
+    // A key near the lower bound means the index midpoint was missed and the result came from the
+    // lower bound's data block.
+    ASSERT_GT(middle_key, bounded_lower);
+    ASSERT_LT(middle_key, bounded_upper);
+    auto split_percent = 100 * (middle_key - bounded_lower) / (bounded_upper - bounded_lower);
+    ASSERT_GE(split_percent, 25U);
+    ASSERT_LE(split_percent, 75U);
+    return;
   }
 
   auto lower_bound = num_records - index_step;
@@ -3983,6 +4003,13 @@ TEST_F(BlockBasedTableTest, SplitKeyTwoLevelIndex) {
   // 66% when 3 out of 8 entries qualify in the top-level block.
   // 50% when 4 out of 8 entries qualify in the top-level block.
   // 60% when 5 out of 8 entries qualify in the top-level block.
+}
+
+// Both bounds lie under one top-level entry, several data blocks apart, so the midpoint must come
+// from the leaf index block.
+TEST_F(BlockBasedTableTest, SplitKeyWithinBoundsTwoLevelIndex) {
+  // Records 100..200 span about six 1 KB data blocks.
+  TestMiddleKey(8568, /* index_step = */ 0, 1_KB, 2, 0, /* bounded_lower = */ 100, 200);
 }
 
 }  // namespace rocksdb
