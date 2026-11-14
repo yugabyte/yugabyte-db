@@ -129,7 +129,10 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "catalog/pg_subscription.h"
+#include "catalog/pg_subscription_rel.h"
 #include "pg_yb_utils.h"
+#include "replication/logicalworker.h"
 #include "replication/walsender.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include <assert.h>
@@ -294,6 +297,9 @@ static struct RELCACHECALLBACK
 static int	relcache_callback_count = 0;
 
 bool yb_refresh_cache_in_progress = false;
+
+/* YB declarations */
+static void YbInvalidateAllCachesToVersion(uint64_t version);
 
 /* ----------------------------------------------------------------
  *				Invalidation subgroup support functions
@@ -691,10 +697,11 @@ void
 LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 {
 	/*
-	 * In YB mode all messages originated by other processes are silently
-	 * ignored
+	 * YB: cross-process sinval is ignored (catalog versions invalidate
+	 * instead), except for YbIsCrossProcessInvalMessage.
 	 */
-	if (IsYugaByteEnabled() && msg->yb_header.yb_sender_pid != getpid())
+	if (IsYugaByteEnabled() && msg->yb_header.yb_sender_pid != getpid() &&
+		!YbIsCrossProcessInvalMessage(msg))
 		return;
 
 	if (msg->id >= 0)
@@ -827,6 +834,22 @@ InvalidateSystemCaches(void)
 {
 	if (IsYugaByteEnabled())
 	{
+		/*
+		 * YB: a logical replication worker never reaches the PostgresMain
+		 * refresh that the reset below relies on, so do what PG does.
+		 */
+		if (IsLogicalWorker() && !YBCIsSysTablePrefetchingStarted() &&
+			!yb_refresh_cache_in_progress)
+		{
+			elog(LOG,
+				 "InvalidateSystemCaches: full invalidation in logical replication worker, version %" PRIu64,
+				 YbGetCatalogCacheVersion());
+			if (YBCIsLegacyModeForCatalogOps())
+				YBCPgResetCatalogReadTime();
+			YbInvalidateAllCachesToVersion(YbGetSharedCatalogVersion());
+			return;
+		}
+
 		/*
 		 * In case of YugaByte it is necessary to refresh YB caches by calling
 		 * 'YBRefreshCache'. But it can't be done here as 'YBRefreshCache'
@@ -970,10 +993,7 @@ YbMaybeRefreshCache(void)
 				 "version %" PRIu64 " -> %" PRIu64
 				 ", subsequent execution may be slow until caches are re-warmed",
 				 local_catalog_version, shared_catalog_version);
-			InvalidateSystemCachesExtended(false, false);
-			YbUpdateCatalogCacheVersionNoPgStat(shared_catalog_version);
-			/* invalidate all docdb table caches */
-			HandleYBStatus(YBCPgInvalidateCache(shared_catalog_version));
+			YbInvalidateAllCachesToVersion(shared_catalog_version);
 		}
 	}
 	PG_FINALLY();
@@ -2219,4 +2239,69 @@ YbCheckSharedInvalMessages()
 	static_assert(offsetof(SharedInvalidationMessage, rc) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, sm) == 0, "offset mismatch");
 	static_assert(offsetof(SharedInvalidationMessage, sn) == 0, "offset mismatch");
+}
+
+/*
+ * YB: Whether a backend applies msg even when another process sent it.
+ * Catalog versions do cross-process invalidation in YB, but
+ * pg_subscription_rel writes are DML that bump no version.  A same-node apply
+ * worker learns of them (the tablesync -> apply worker handoff), and promptly
+ * of a same-node ALTER or DISABLE, only through sinval.  SICleanupQueue must
+ * agree with this.
+ */
+bool
+YbIsCrossProcessInvalMessage(const SharedInvalidationMessage *msg)
+{
+	return msg->id == SUBSCRIPTIONRELMAP ||
+		msg->id == SUBSCRIPTIONOID ||
+		msg->id == SUBSCRIPTIONNAME;
+}
+
+#ifdef USE_ASSERT_CHECKING
+/*
+ * YB: Callback for YbAssertSubscriptionInvalsOnly: fail on any invalidation
+ * message that does not concern pg_subscription or pg_subscription_rel.
+ */
+static void
+YbAssertSubscriptionInvalMessage(SharedInvalidationMessage *msg)
+{
+	if (msg->id >= 0)
+		Assert(msg->cc.id == SUBSCRIPTIONOID ||
+			   msg->cc.id == SUBSCRIPTIONNAME ||
+			   msg->cc.id == SUBSCRIPTIONRELMAP);
+	else if (msg->id == SHAREDINVALCATALOG_ID)
+		Assert(msg->cat.catId == SubscriptionRelationId ||
+			   msg->cat.catId == SubscriptionRelRelationId);
+	else
+		Assert(false);
+}
+
+/*
+ * YB: Worker-only assert that the current command queued no invalidation
+ * outside pg_subscription / pg_subscription_rel (see
+ * YB_BEGIN_NON_DDL_SYS_TABLE_WRITE).
+ */
+void
+YbAssertSubscriptionInvalsOnly(void)
+{
+	if (!IsYugaByteEnabled() || transInvalInfo == NULL || !IsLogicalWorker())
+		return;
+	ProcessInvalidationMessages(&transInvalInfo->CurrentCmdInvalidMsgs,
+								YbAssertSubscriptionInvalMessage);
+}
+#endif
+
+/*
+ * YB: PG's handling of lost invalidation messages (flush every catcache and
+ * relcache entry and run every callback), then move this backend to catalog
+ * version, since everything it caches from now on is read fresh.  Safe
+ * mid-statement for the reasons given in YbMaybeRefreshCache.
+ */
+static void
+YbInvalidateAllCachesToVersion(uint64_t version)
+{
+	InvalidateSystemCachesExtended(false, false);
+	YbUpdateCatalogCacheVersionNoPgStat(version);
+	/* invalidate all docdb table caches */
+	HandleYBStatus(YBCPgInvalidateCache(version));
 }
