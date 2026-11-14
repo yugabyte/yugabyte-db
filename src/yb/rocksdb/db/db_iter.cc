@@ -520,11 +520,12 @@ const KeyValueEntry& DBIter::FastNext() {
   }
 
   // A FilteringIterator stopped at the upper bound presents a filtered out entry as a deletion.
-  // The full search handles it, and the bound.
+  // The full search handles it, and the bound. It must not skip by the current user key: fast next
+  // does not copy it, so it may point to memory the iterator has already moved past.
   if (PREDICT_FALSE(ExtractValueType(entry.key) != kTypeValue) ||
       (iterate_upper_bound_ != nullptr &&
        user_comparator_->Compare(ExtractUserKey(entry.key), *iterate_upper_bound_) >= 0)) {
-    FindNextUserEntry(true /* skipping the current user key */);
+    FindNextUserEntry(/* skipping= */ false);
     return entry_;
   }
 

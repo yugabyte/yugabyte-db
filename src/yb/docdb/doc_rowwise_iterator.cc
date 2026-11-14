@@ -326,6 +326,9 @@ void DocRowwiseIterator::SeekSingleTuple(Slice tuple_id) {
 }
 
 void DocRowwiseIterator::SetRegularDbUpperBound(Slice key_prefix) {
+  if (!read_operation_data_.bound_single_tuple_fetches) {
+    return;
+  }
   regular_db_upper_bound_buffer_.assign(key_prefix.cdata(), key_prefix.size());
   regular_db_upper_bound_buffer_.push_back(dockv::KeyEntryTypeAsChar::kMaxByte);
   regular_db_upper_bound_ = regular_db_upper_bound_buffer_;
