@@ -1,0 +1,190 @@
+name: "sync-operator-crds"
+
+# Keeps crds/concatenated_crd.yaml in yugabyte/charts in step with the operator CRDs here.
+# When a push to master or a release branch changes a CRD, this regenerates the file with
+# merge_crd.py from yugabyte-k8s-operator and opens (or updates) a PR in yugabyte/charts
+# against the branch of the same name. A branch that does not exist in charts is skipped.
+#
+# Writing to yugabyte/charts uses a GitHub App installed on that repo with Contents and
+# Pull requests read/write:
+#   vars.CHARTS_SYNC_APP_CLIENT_ID - the App's client ID
+#   secrets.CHARTS_SYNC_APP_KEY    - the App's private key
+# A manual dry run needs neither.
+
+on:
+  push:
+    branches:
+      - master
+      - '[0-9][0-9][0-9][0-9].[0-9]*'
+    paths:
+      - 'managed/src/main/java/com/yugabyte/yw/common/operator/resources/**'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Generate the file and show the diff, but do not push or open a PR'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One run per branch at a time. A newer push replaces a run that is still queued, and each
+# run regenerates the whole file from its own commit, so nothing is lost.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CHARTS_REPO: yugabyte/charts
+  CRD_DIR: managed/src/main/java/com/yugabyte/yw/common/operator/resources
+  CRD_FILE: crds/concatenated_crd.yaml
+  # Pinned to a commit: the script runs while the job holds a token that can write to charts.
+  MERGE_CRD_REPO: yugabyte/yugabyte-k8s-operator
+  MERGE_CRD_SHA: bf23005ff7e612b319ae1752f68fd85105a831ee
+  BRANCH: ${{ github.ref_name }}
+  PR_BRANCH: ci/update-crds-${{ github.ref_name }}
+  DRY_RUN: ${{ inputs.dry_run || false }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sync-operator-crds:
+    if: github.repository == 'yugabyte/yugabyte-db'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check charts branch
+        id: branch
+        run: |
+          # The push filter covers this already; a manual run can pick any branch.
+          if [[ ! "${BRANCH}" =~ ^(master|[0-9]{4}\.[0-9]+(\.[0-9]+)*)$ ]]; then
+            echo "::error ::Only master and release branches are synced, not '${BRANCH}'."
+            exit 1
+          fi
+          # --exit-code returns 2 when no ref matches. Any other failure (network, auth) is
+          # real and must not be mistaken for a missing branch.
+          rc=0
+          git ls-remote --exit-code --heads "https://github.com/${CHARTS_REPO}.git" \
+            "refs/heads/${BRANCH}" || rc=$?
+          if (( rc == 2 )); then
+            echo "::notice ::${CHARTS_REPO} has no branch '${BRANCH}'. Nothing to do."
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          elif (( rc != 0 )); then
+            echo "::error ::git ls-remote failed for ${CHARTS_REPO} (exit ${rc})."
+            exit 1
+          else
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Create charts token
+        id: app-token
+        if: steps.branch.outputs.exists == 'true' && !inputs.dry_run
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.CHARTS_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CHARTS_SYNC_APP_KEY }}
+          owner: yugabyte
+          repositories: charts
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout CRDs
+        if: steps.branch.outputs.exists == 'true'
+        uses: actions/checkout@v6
+        with:
+          path: yugabyte-db
+          sparse-checkout: ${{ env.CRD_DIR }}
+          persist-credentials: false
+
+      - name: Checkout charts
+        if: steps.branch.outputs.exists == 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.CHARTS_REPO }}
+          ref: ${{ env.BRANCH }}
+          path: charts
+          # charts is public, so a dry run reads it without the App token.
+          token: ${{ steps.app-token.outputs.token || github.token }}
+
+      - name: Generate CRD file
+        id: generate
+        if: steps.branch.outputs.exists == 'true'
+        run: |
+          # merge_crd.py exits 0 without writing anything when it finds no files, which
+          # would look like "already up to date".
+          if ! compgen -G "yugabyte-db/${CRD_DIR}/*.yaml" > /dev/null; then
+            echo "::error ::No CRD files found in ${CRD_DIR}."
+            exit 1
+          fi
+          script="${RUNNER_TEMP}/merge_crd.py"
+          script_root="https://raw.githubusercontent.com/${MERGE_CRD_REPO}/${MERGE_CRD_SHA}"
+          curl -fsSL --retry 3 -o "${script}" "${script_root}/scripts/merge_crd.py"
+          mkdir -p "charts/$(dirname "${CRD_FILE}")"
+          python3 "${script}" "yugabyte-db/${CRD_DIR}" -o "charts/${CRD_FILE}"
+
+          if [[ -z "$(git -C charts status --porcelain -- "${CRD_FILE}")" ]]; then
+            echo "::notice ::${CRD_FILE} on ${BRANCH} already matches yugabyte-db."
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Intent-to-add, so the diff also covers a file that is not on the branch yet.
+          git -C charts add -N -- "${CRD_FILE}"
+          git -C charts --no-pager diff --stat -- "${CRD_FILE}"
+          if [[ "${DRY_RUN}" == true ]]; then
+            git -C charts --no-pager diff -- "${CRD_FILE}"
+          fi
+          echo "changed=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Close stale charts PR
+        if: steps.generate.outputs.changed == 'false' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # A PR left open by an earlier run would now bring back CRDs yugabyte-db no longer has.
+          existing=$(gh pr list --repo "${CHARTS_REPO}" --head "${PR_BRANCH}" --base "${BRANCH}" \
+            --state open --json number --jq '.[0].number // empty')
+          if [[ -n "${existing}" ]]; then
+            gh pr close "${existing}" --repo "${CHARTS_REPO}" --delete-branch --comment \
+              "\`${CRD_FILE}\` on \`${BRANCH}\` already matches yugabyte-db, closing. ${RUN_URL}"
+          fi
+
+      - name: Open or update charts PR
+        if: steps.generate.outputs.changed == 'true' && !inputs.dry_run
+        working-directory: charts
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          YB_DB_SHA: ${{ github.sha }}
+        run: |
+          git config user.name "YugaByte CI"
+          git config user.email "yugabyte-ci@users.noreply.github.com"
+          git checkout -B "${PR_BRANCH}"
+          git add -- "${CRD_FILE}"
+          git commit -m "Update operator CRDs from yugabyte-db ${BRANCH}@${YB_DB_SHA:0:12}"
+          # One PR branch per target branch, so later runs update the open PR.
+          git push --force origin "${PR_BRANCH}"
+
+          existing=$(gh pr list --repo "${CHARTS_REPO}" --head "${PR_BRANCH}" --base "${BRANCH}" \
+            --state open --json url --jq '.[0].url // empty')
+          if [[ -n "${existing}" ]]; then
+            echo "::notice ::Updated ${existing}"
+            exit 0
+          fi
+
+          script_root="https://github.com/${MERGE_CRD_REPO}/blob/${MERGE_CRD_SHA}"
+          cat > "${RUNNER_TEMP}/pr-body.md" <<EOF
+          Regenerated \`${CRD_FILE}\` with [merge_crd.py](${script_root}/scripts/merge_crd.py)
+          from yugabyte-db \`${BRANCH}\` @ yugabyte/yugabyte-db@${YB_DB_SHA}.
+
+          Generated by ${RUN_URL}
+          EOF
+          url=$(gh pr create --repo "${CHARTS_REPO}" --base "${BRANCH}" --head "${PR_BRANCH}" \
+            --title "[${BRANCH}] Update operator CRDs" --body-file "${RUNNER_TEMP}/pr-body.md")
+          echo "::notice ::Opened ${url}"
+          # Requested separately so that a reviewer problem does not fail a run whose PR exists.
+          if ! gh api --method POST "repos/${CHARTS_REPO}/pulls/${url##*/}/requested_reviewers" \
+              -f 'team_reviewers[]=k8s-dev' > /dev/null; then
+            echo "::warning ::Could not request review from yugabyte/k8s-dev on ${url}."
+          fi
