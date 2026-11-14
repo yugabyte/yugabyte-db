@@ -251,8 +251,8 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, 
 // mode and legacy mode transactions that both come from new binaries. This assumes the pre-upgrade
 // cluster has the features off. If they are on, upgraded tservers drop back to legacy mode until
 // finalize, while the not-yet-upgraded ones keep using the features.
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_enable_global_object_locking_infra, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_global_object_locking_infra, kLocalPersisted, false,
+    true,
     "Auto flag that gates global object locking during upgrade. With this flag and "
     "enable_object_locking_for_table_locks both true, a transaction runs with global object "
     "locking: DDL-strength object locks, transactional DDL and concurrent DDL. Otherwise it runs "
