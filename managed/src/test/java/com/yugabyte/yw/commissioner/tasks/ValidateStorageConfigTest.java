@@ -18,7 +18,9 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TaskExecutionException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.customer.config.StorageCheckRunner;
 import com.yugabyte.yw.common.customer.config.UnsavedStorageConfigs;
+import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -53,7 +55,10 @@ public class ValidateStorageConfigTest extends FakeDBApplication {
       CustomerConfigValidator validator, ValidateStorageConfig.Params params) {
     ValidateStorageConfig task =
         new ValidateStorageConfig(
-            app.injector().instanceOf(BaseTaskDependencies.class), validator, unsavedConfigs);
+            app.injector().instanceOf(BaseTaskDependencies.class),
+            validator,
+            unsavedConfigs,
+            app.injector().instanceOf(StorageCheckRunner.class));
     task.initialize(params);
     return task;
   }
@@ -174,8 +179,11 @@ public class ValidateStorageConfigTest extends FakeDBApplication {
 
     TaskExecutionException e = assertThrows(TaskExecutionException.class, task::run);
     assertTrue(e.getMessage(), e.getMessage().startsWith("STORAGE_CONFIG_INVALID: "));
-    assertTrue(e.getMessage(), e.getMessage().contains("storage.backup_location: bad location"));
-    assertTrue(e.getMessage(), e.getMessage().contains("bad region location"));
+    // The first error leads the message, and isn't repeated among the others.
+    assertEquals(
+        "STORAGE_CONFIG_INVALID: storage.backup_location: bad location. Other errors:"
+            + " storage: bad region location",
+        e.getMessage());
   }
 
   @Test
@@ -228,6 +236,49 @@ public class ValidateStorageConfigTest extends FakeDBApplication {
   }
 
   @Test
+  public void failedDeleteKeepsTheCheckError() {
+    CustomerConfig config = validatingNfs("referenced", "relative/path");
+    // Its foreign key keeps the config from being deleted.
+    ContinuousBackupConfig.create(
+        config.getConfigUUID(), 1, com.yugabyte.yw.models.helpers.TimeUnit.HOURS, 1, "dir");
+
+    TaskExecutionException e =
+        assertThrows(
+            TaskExecutionException.class,
+            () -> task(params(customer.getUuid(), config.getConfigUUID())).run());
+    assertTrue(e.getMessage(), e.getMessage().startsWith("STORAGE_CONFIG_INVALID: "));
+    // Left Validating, for the startup cleanup.
+    config.refresh();
+    assertEquals(ConfigState.Validating, config.getState());
+  }
+
+  @Test
+  public void slowCheckTimesOut() {
+    RuntimeConfigEntry.upsertGlobal(
+        GlobalConfKeys.storageConfigValidationTimeout.getKey(), "200 milliseconds");
+    CustomerConfig config = validatingNfs("slow", "/mnt/nfs");
+    CustomerConfigValidator validator = mock(CustomerConfigValidator.class);
+    doAnswer(
+            invocation -> {
+              Thread.sleep(10_000);
+              return null;
+            })
+        .when(validator)
+        .validateConfigDataWithValidator(any());
+
+    TaskExecutionException e =
+        assertThrows(
+            TaskExecutionException.class,
+            () -> task(validator, params(customer.getUuid(), config.getConfigUUID())).run());
+    assertEquals(Code.TIMED_OUT, e.getCode());
+    assertTrue(
+        e.getMessage(),
+        e.getMessage()
+            .startsWith("STORAGE_PROVIDER_UNAVAILABLE: YBA could not check the storage within"));
+    assertNull(CustomerConfig.get(customer.getUuid(), config.getConfigUUID()));
+  }
+
+  @Test
   public void skipValidationIsHonored() {
     RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.skipStorageConfigValidation.getKey(), "true");
     CustomerConfig config = validatingNfs("nfs", "relative/path");
@@ -263,11 +314,11 @@ public class ValidateStorageConfigTest extends FakeDBApplication {
 
   @Test
   public void dryRunWithoutTheConfigFails() {
-    // As after a YBA restart: the config was only in memory.
+    // The config isn't in memory (a restart doesn't get here: the task is failed instead).
     ValidateStorageConfig.Params params = params(customer.getUuid(), UUID.randomUUID());
     params.dryRun = true;
     TaskExecutionException e = assertThrows(TaskExecutionException.class, () -> task(params).run());
     assertEquals(Code.INTERNAL_ERROR, e.getCode());
-    assertTrue(e.getMessage(), e.getMessage().contains("YBA restarted"));
+    assertTrue(e.getMessage(), e.getMessage().contains("no longer available. Validate it again"));
   }
 }

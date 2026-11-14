@@ -470,18 +470,25 @@ public class CustomerTaskManager {
    */
   @VisibleForTesting
   void deleteValidatingStorageConfigs() {
+    List<CustomerConfig> configs;
     try {
-      for (CustomerConfig config :
-          CustomerConfig.getAllStorageConfigsInState(CustomerConfig.ConfigState.Validating)) {
+      configs = CustomerConfig.getAllStorageConfigsInState(CustomerConfig.ConfigState.Validating);
+    } catch (Exception e) {
+      log.error("Encountered error listing storage configs being validated", e);
+      return;
+    }
+    // One by one, so that a config that fails to delete doesn't keep the others.
+    for (CustomerConfig config : configs) {
+      try {
         log.info(
             "Deleting storage config {} ({}) of customer {}, whose storage check was interrupted",
             config.getConfigUUID(),
             config.getConfigName(),
             config.getCustomerUUID());
         config.delete();
+      } catch (Exception e) {
+        log.error("Encountered error deleting storage config {}", config.getConfigUUID(), e);
       }
-    } catch (Exception e) {
-      log.error("Encountered error deleting storage configs being validated", e);
     }
   }
 

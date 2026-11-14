@@ -16,18 +16,19 @@
       Creates a backup storage configuration and returns the task that checks it. The request runs
       only the checks that need no storage: the spec, including the secrets its credentials need,
       and that the name is free. The configuration is saved in state VALIDATING, and the task
-      (resource_uuid is the configuration's UUID) checks the locations and, unless
-      yb.storage_config.skip_validation is set, that YBA can write, read, list and delete a test
-      object at each location with the given credentials. When the check passes, the task succeeds
-      and the configuration becomes ACTIVE. When it fails, YBA deletes the configuration and the
-      task fails with an error message that starts with the error code:
-      STORAGE_CONFIG_INVALID for a malformed location or host found without reaching the storage,
-      STORAGE_VALIDATION_FAILED when YBA reached the storage, or tried to, and it refused the
-      configuration, e.g. with access denied or no such bucket, and STORAGE_PROVIDER_UNAVAILABLE
-      when the provider throttled or failed the check (HTTP 429 or 5xx) or a request to it timed
-      out, which is worth retrying. The message goes on with the provider's HTTP status and error
-      code when it answered, and the failures by field. Retry with the same Idempotency-Key to get
-      the task of a request whose response was lost.
+      (resource_uuid is the configuration's UUID) checks, unless yb.storage_config.skip_validation
+      is set, the locations and that YBA can write, read, list and delete a test object at each
+      location with the given credentials, within yb.storage_config.validation_timeout. When the
+      check passes, the task succeeds and the configuration becomes ACTIVE. When it fails, YBA
+      deletes the configuration and the task fails with an error message that starts with the error
+      code: STORAGE_CONFIG_INVALID for a malformed location or host found without reaching the
+      storage, STORAGE_VALIDATION_FAILED when YBA reached the storage, or tried to, and it refused
+      the configuration, e.g. with access denied or no such bucket, and STORAGE_PROVIDER_UNAVAILABLE
+      when the provider throttled or failed the check (HTTP 429 or 5xx), a request to it timed out
+      or the check didn't finish in time, which is worth retrying. STORAGE_VALIDATION_BUSY means YBA
+      was already running as many storage checks as it allows; retry later. The message goes on with
+      the provider's HTTP status and error code when it answered, and the other failures. Retry with
+      the same Idempotency-Key to get the task of a request whose response was lost.
     tags:
       - Storage Config
     requestBody:
@@ -78,7 +79,7 @@
     description: |
       Checks a storage configuration without creating it, and returns the task that checks the
       storage. The request runs the same checks as createStorageConfig, including that the name is
-      free. The task then checks the locations and, unless yb.storage_config.skip_validation is set,
+      free. The task then checks, unless yb.storage_config.skip_validation is set, the locations and
       that YBA can write, read, list and delete a test object at each location with the given
       credentials. The task succeeds if and only if the storage check of a create would pass; when
       it fails, its error message starts with the same error codes as the createStorageConfig task.

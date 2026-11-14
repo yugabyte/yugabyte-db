@@ -7,20 +7,26 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.TaskExecutionException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.customer.config.StorageCheckRunner;
 import com.yugabyte.yw.common.customer.config.UnsavedStorageConfigs;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import com.yugabyte.yw.models.helpers.YBAError.Code;
+import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
  * Checks a storage config created or validated through the v2 API: runs the storage validators,
  * which check the locations and reach out to the storage with the config's credentials (unless
  * yb.storage_config.skip_validation is set). They block on cloud SDK calls, which is why they run
- * in a task rather than on the request.
+ * in a task rather than on the request, and on {@link StorageCheckRunner} with a deadline
+ * (yb.storage_config.validation_timeout).
  *
  * <p>For a create, the config is saved in state Validating: the task makes it Active when the check
  * passes, and deletes it, which frees its name, when the check fails. For a dry run, the unsaved
@@ -33,15 +39,18 @@ public class ValidateStorageConfig extends AbstractTaskBase {
 
   private final CustomerConfigValidator configValidator;
   private final UnsavedStorageConfigs unsavedConfigs;
+  private final StorageCheckRunner checkRunner;
 
   @Inject
   public ValidateStorageConfig(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigValidator configValidator,
-      UnsavedStorageConfigs unsavedConfigs) {
+      UnsavedStorageConfigs unsavedConfigs,
+      StorageCheckRunner checkRunner) {
     super(baseTaskDependencies);
     this.configValidator = configValidator;
     this.unsavedConfigs = unsavedConfigs;
+    this.checkRunner = checkRunner;
   }
 
   public static class Params extends AbstractTaskParams {
@@ -73,8 +82,7 @@ public class ValidateStorageConfig extends AbstractTaskBase {
       if (config == null) {
         throw new TaskExecutionException(
             Code.INTERNAL_ERROR,
-            "The storage config to validate is no longer available, as YBA restarted after the"
-                + " request. Validate it again.");
+            "The storage config to validate is no longer available. Validate it again.");
       }
       check(config);
     } finally {
@@ -91,13 +99,7 @@ public class ValidateStorageConfig extends AbstractTaskBase {
     try {
       check(config);
     } catch (RuntimeException e) {
-      // Kept if it left the Validating state meanwhile, e.g. queued for deletion through v1.
-      if (CustomerConfig.deleteIfValidating(config.getConfigUUID())) {
-        log.info(
-            "Deleted storage config {} ({}), which failed its storage check",
-            config.getConfigUUID(),
-            config.getConfigName());
-      }
+      deleteIfValidating(config);
       throw e;
     }
     // Not through the bean loaded above: its state is from before the check, so saving it would
@@ -112,10 +114,48 @@ public class ValidateStorageConfig extends AbstractTaskBase {
     }
   }
 
-  private void check(CustomerConfig config) {
+  // Kept if it left the Validating state meanwhile, e.g. queued for deletion through v1. A failure
+  // to delete it is logged, so that the task still fails with the check's error; the config is then
+  // deleted at the next startup.
+  private void deleteIfValidating(CustomerConfig config) {
     try {
-      configValidator.validateConfigDataWithValidator(config);
-    } catch (Exception e) {
+      if (CustomerConfig.deleteIfValidating(config.getConfigUUID())) {
+        log.info(
+            "Deleted storage config {} ({}), which failed its storage check",
+            config.getConfigUUID(),
+            config.getConfigName());
+      }
+    } catch (RuntimeException e) {
+      log.error(
+          "Failed to delete storage config {} ({}), which failed its storage check",
+          config.getConfigUUID(),
+          config.getConfigName(),
+          e);
+    }
+  }
+
+  private void check(CustomerConfig config) {
+    Duration timeout = confGetter.getGlobalConf(GlobalConfKeys.storageConfigValidationTimeout);
+    try {
+      checkRunner.run(() -> configValidator.validateConfigDataWithValidator(config), timeout);
+    } catch (RejectedExecutionException e) {
+      throw new TaskExecutionException(
+          Code.INTERNAL_ERROR,
+          String.format(
+              "%s: All storage checks are busy (yb.%s.max_threads), try again later",
+              StorageValidationErrors.VALIDATION_BUSY, StorageCheckRunner.POOL_NAME));
+    } catch (TimeoutException e) {
+      throw new TaskExecutionException(
+          Code.TIMED_OUT,
+          String.format(
+              "%s: YBA could not check the storage within %s (%s)",
+              StorageValidationErrors.PROVIDER_UNAVAILABLE,
+              timeout,
+              GlobalConfKeys.storageConfigValidationTimeout.getKey()));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new TaskExecutionException(Code.INTERNAL_ERROR, "Interrupted checking the storage");
+    } catch (RuntimeException e) {
       throw StorageValidationErrors.toTaskError(e);
     }
   }

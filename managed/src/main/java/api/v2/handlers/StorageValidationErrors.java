@@ -62,6 +62,8 @@ public final class StorageValidationErrors {
   public static final String CONFIG_INVALID = "STORAGE_CONFIG_INVALID";
   public static final String VALIDATION_FAILED = "STORAGE_VALIDATION_FAILED";
   public static final String PROVIDER_UNAVAILABLE = "STORAGE_PROVIDER_UNAVAILABLE";
+  // Every thread checking storage is busy, see StorageCheckRunner.
+  public static final String VALIDATION_BUSY = "STORAGE_VALIDATION_BUSY";
 
   // Field names in the v1 validators' errors (keys of the v1 data, prefixed by "data.") and the
   // v2 property they come from.
@@ -137,7 +139,7 @@ public final class StorageValidationErrors {
    * provider error code AccessDenied)
    * </pre>
    *
-   * followed by every failure by field when there is more than one. A provider that is unavailable
+   * followed by the other errors when there is more than one. A provider that is unavailable
    * gives {@link Code#CONNECTION_ERROR}, any other failure {@link Code#INTERNAL_ERROR}.
    */
   public static TaskExecutionException toTaskError(Throwable failure) {
@@ -160,21 +162,21 @@ public final class StorageValidationErrors {
     if (!provider.isEmpty()) {
       message.append(" (").append(String.join(", ", provider)).append(")");
     }
-    JsonNode errors = error.path("errors");
-    int count = 0;
-    List<String> fields = new ArrayList<>();
-    Iterator<Map.Entry<String, JsonNode>> it = errors.fields();
+    // error.message is the first of the errors: list the others after it.
+    List<String> errors = new ArrayList<>();
+    Iterator<Map.Entry<String, JsonNode>> it = error.path("errors").fields();
     while (it.hasNext()) {
       Map.Entry<String, JsonNode> field = it.next();
-      List<String> messages = new ArrayList<>();
-      field.getValue().forEach(m -> messages.add(m.asText()));
-      count += messages.size();
-      String joined = String.join("; ", messages);
-      fields.add(field.getKey().isEmpty() ? joined : field.getKey() + ": " + joined);
+      for (JsonNode m : field.getValue()) {
+        errors.add(field.getKey().isEmpty() ? m.asText() : field.getKey() + ": " + m.asText());
+      }
     }
-    if (count > 1) {
-      message.append(". Errors: ").append(String.join(", ", fields));
+    if (errors.size() > 1) {
+      message.append(". Other errors: ").append(String.join(", ", errors.subList(1, errors.size())));
     }
+    // The task error can't carry the exception behind the failure, such as the SDK's with its
+    // request ID, so it goes to the log.
+    log.warn("Storage check failed: {}", message, failure);
     return new TaskExecutionException(
         PROVIDER_UNAVAILABLE.equals(code) ? Code.CONNECTION_ERROR : Code.INTERNAL_ERROR,
         message.toString());
