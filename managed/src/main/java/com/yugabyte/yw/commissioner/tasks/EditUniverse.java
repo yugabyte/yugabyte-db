@@ -20,7 +20,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
@@ -28,7 +27,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
-import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -183,7 +181,15 @@ public class EditUniverse extends EditUniverseTaskBase {
                       c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
               .collect(Collectors.toList());
       UniverseDefinitionTaskParams beforeEdit = getBeforeEditDetails(universe);
-      Set<String> lbCertNodes = getLoadBalancerCertNodes(universe, beforeEdit);
+      Set<String> lbCertNodes =
+          getLoadBalancerCertNodes(
+              taskParams(),
+              cluster -> {
+                Cluster old = beforeEdit.getClusterByUuid(cluster.uuid);
+                return old != null
+                    && (ManagedLoadBalancerUtil.isEnabled(old)
+                        || ManagedLoadBalancerUtil.isEnabled(cluster));
+              });
       // Before VM creation and tserver restarts, so that a cloud permission error fails the edit
       // first. This creates the load balancers of new regions and reconciles the existing ones.
       for (Cluster cluster : clusters) {
@@ -192,6 +198,11 @@ public class EditUniverse extends EditUniverseTaskBase {
       Predicate<String> isLbCertStale = isLoadBalancerCertStale(beforeEdit);
       // After ensure: it saves the addresses the certs carry.
       if (!lbCertNodes.isEmpty()) {
+        // Rollback would restore the old names but not the certs on the nodes. Not the Once
+        // variant: this one may be skipped, and a later step must still add its own.
+        createMarkRollbackUnsafeTask()
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse)
+            .setShouldRunPredicate(t -> lbCertNodes.stream().anyMatch(isLbCertStale));
         createLoadBalancerCertCopyTasks(lbCertNodes, isLbCertStale);
       }
       // GCP proxies need 0.0.0.0 once the LB is on. A retry rechecks every node: the last attempt
@@ -339,33 +350,6 @@ public class EditUniverse extends EditUniverseTaskBase {
   private UniverseDefinitionTaskParams getBeforeEditDetails(Universe universe) {
     StateTransitionDetails transition = universe.getStateTransitionDetails();
     return transition != null ? transition.getBeforeUniverseDetails() : prevState;
-  }
-
-  /**
-   * Live tservers whose client cert names a managed load balancer before or after the edit. Which
-   * of them get a new cert is decided at run time, after ensure saves the addresses.
-   */
-  private Set<String> getLoadBalancerCertNodes(
-      Universe universe, UniverseDefinitionTaskParams before) {
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    CertificateInfo clientCa =
-        details.getClientRootCA() == null ? null : CertificateInfo.get(details.getClientRootCA());
-    if (clientCa == null || clientCa.getCertType() != CertConfigType.SelfSigned) {
-      return Set.of();
-    }
-    return taskParams().clusters.stream()
-        .filter(cluster -> cluster.userIntent.enableClientToNodeEncrypt)
-        .filter(
-            cluster -> {
-              Cluster old = before.getClusterByUuid(cluster.uuid);
-              return old != null
-                  && (ManagedLoadBalancerUtil.isEnabled(old)
-                      || ManagedLoadBalancerUtil.isEnabled(cluster));
-            })
-        .flatMap(cluster -> taskParams().getNodesInCluster(cluster.uuid).stream())
-        .filter(n -> n.isTserver && n.state == NodeDetails.NodeState.Live)
-        .map(n -> n.nodeName)
-        .collect(Collectors.toSet());
   }
 
   /**

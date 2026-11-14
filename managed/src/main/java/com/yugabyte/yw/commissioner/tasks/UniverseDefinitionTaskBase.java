@@ -4788,16 +4788,33 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Live tservers of target's clusters that hasLoadBalancer accepts, whose client cert YBA signs:
+   * client TLS on, self-signed client root CA. Which of them get a new cert is decided at run time,
+   * after ensure saves the addresses.
+   */
+  protected Set<String> getLoadBalancerCertNodes(
+      UniverseDefinitionTaskParams target, Predicate<Cluster> hasLoadBalancer) {
+    UniverseDefinitionTaskParams details = getUniverse().getUniverseDetails();
+    CertificateInfo clientCa =
+        details.getClientRootCA() == null ? null : CertificateInfo.get(details.getClientRootCA());
+    if (clientCa == null || clientCa.getCertType() != CertConfigType.SelfSigned) {
+      return Set.of();
+    }
+    return target.clusters.stream()
+        .filter(cluster -> cluster.userIntent.enableClientToNodeEncrypt)
+        .filter(hasLoadBalancer)
+        .flatMap(cluster -> target.getNodesInCluster(cluster.uuid).stream())
+        .filter(n -> n.isTserver && n.state == NodeState.Live)
+        .map(n -> n.nodeName)
+        .collect(Collectors.toSet());
+  }
+
+  /**
    * Copies a reissued client-facing cert to each of nodeNames whose cert is stale when the copy
    * starts. A tserver loads it when createRebindProxiesTasks restarts it.
    */
   protected void createLoadBalancerCertCopyTasks(
       Set<String> nodeNames, Predicate<String> isCertStale) {
-    // Rollback would restore the old names but not the certs on the nodes. Not the Once variant:
-    // this one may be skipped, and a later step must still add its own.
-    createMarkRollbackUnsafeTask()
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse)
-        .setShouldRunPredicate(t -> nodeNames.stream().anyMatch(isCertStale));
     // Processes keep the old cert until they restart; same CA, so TLS works in between.
     planToRunOnlyIf(
         t -> isCertStale.test(t.getTaskParams().path("nodeName").asText()),
