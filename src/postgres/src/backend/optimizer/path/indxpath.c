@@ -229,7 +229,8 @@ static List *yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 										 int yb_distinct_prefixlen,
 										 int *yb_distinct_nkeys,
 										 List *useful_pathkeys,
-										 List **yb_merge_scan_stream_cols);
+										 List *yb_merge_scan_stream_cols,
+										 YbMergeScanInfo **yb_merge_scan_info);
 static List *yb_useful_pathkeys_without_merge_scan(PlannerInfo *root,
 												  RelOptInfo *rel,
 												  IndexOptInfo *index,
@@ -1427,6 +1428,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	int			yb_distinct_prefixlen;
 	int			yb_distinct_nkeys;
 	List	   *yb_merge_scan_stream_cols = NIL;
+	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
 	/*
 	 * Check that index supports the desired scan type(s)
@@ -1641,7 +1643,8 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 										ForwardScanDirection, index_clauses,
 										yb_distinct_prefixlen,
 										&yb_distinct_nkeys, useful_pathkeys,
-										&yb_merge_scan_stream_cols);
+										yb_merge_scan_stream_cols,
+										&yb_merge_scan_info);
 		orderbyclauses = NIL;
 		orderbyclausecols = NIL;
 	}
@@ -1699,7 +1702,7 @@ yb_step_4:
 								  outer_relids,
 								  loop_count,
 								  false,
-								  yb_merge_scan_stream_cols);
+								  yb_merge_scan_info);
 
 		/*
 		 * YB: Generate a distinct index path.
@@ -1731,7 +1734,7 @@ yb_step_4:
 		 */
 		if (index->amcanparallel &&
 			rel->consider_parallel && outer_relids == NULL &&
-			yb_merge_scan_stream_cols == NIL &&
+			yb_merge_scan_info == NULL &&
 			scantype != ST_BITMAPSCAN)
 		{
 			ipath = create_index_path(root, index,
@@ -1747,7 +1750,7 @@ yb_step_4:
 									  outer_relids,
 									  loop_count,
 									  true,
-									  yb_merge_scan_stream_cols);
+									  yb_merge_scan_info);
 
 			/*
 			 * if, after costing the path, we find that it's not worth using
@@ -1763,14 +1766,14 @@ yb_step_4:
 		 * 4.5. YB: In case merge index paths were created, try creating them
 		 * without.
 		 */
-		if (yb_merge_scan_stream_cols != NIL)
+		if (yb_merge_scan_info)
 		{
 			useful_pathkeys =
 				yb_useful_pathkeys_without_merge_scan(root, rel, index,
 													  ForwardScanDirection,
 													  yb_distinct_prefixlen,
 													  &yb_distinct_nkeys);
-			yb_merge_scan_stream_cols = NIL;
+			yb_merge_scan_info = NULL;
 
 			goto yb_step_4;
 		}
@@ -1784,6 +1787,7 @@ yb_step_4:
 	 * after the query.
 	 */
 	yb_merge_scan_stream_cols = NIL;
+	yb_merge_scan_info = NULL;
 
 	/*
 	 * 5. If the index is ordered, a backwards scan might be interesting.
@@ -1807,7 +1811,8 @@ yb_step_4:
 										BackwardScanDirection, index_clauses,
 										yb_distinct_prefixlen,
 										&yb_distinct_nkeys, useful_pathkeys,
-										&yb_merge_scan_stream_cols);
+										yb_merge_scan_stream_cols,
+										&yb_merge_scan_info);
 yb_step_5:
 		if (useful_pathkeys != NIL)
 		{
@@ -1822,7 +1827,7 @@ yb_step_5:
 									  outer_relids,
 									  loop_count,
 									  false,
-									  yb_merge_scan_stream_cols);
+									  yb_merge_scan_info);
 
 			/*
 			 * YB: Generate a backwards scanning distinct index path.
@@ -1845,7 +1850,7 @@ yb_step_5:
 			/* If appropriate, consider parallel index scan */
 			if (index->amcanparallel &&
 				rel->consider_parallel && outer_relids == NULL &&
-				yb_merge_scan_stream_cols == NIL &&
+				yb_merge_scan_info == NULL &&
 				scantype != ST_BITMAPSCAN)
 			{
 				ipath = create_index_path(root, index,
@@ -1859,7 +1864,7 @@ yb_step_5:
 										  outer_relids,
 										  loop_count,
 										  true,
-										  yb_merge_scan_stream_cols);
+										  yb_merge_scan_info);
 
 				/*
 				 * if, after costing the path, we find that it's not worth
@@ -1876,14 +1881,14 @@ yb_step_5:
 		 * 5.5. YB: In case merge scan index paths were created, try creating
 		 * them without.
 		 */
-		if (yb_merge_scan_stream_cols != NIL)
+		if (yb_merge_scan_info)
 		{
 			useful_pathkeys =
 				yb_useful_pathkeys_without_merge_scan(root, rel, index,
 													  BackwardScanDirection,
 													  yb_distinct_prefixlen,
 													  &yb_distinct_nkeys);
-			yb_merge_scan_stream_cols = NIL;
+			yb_merge_scan_info = NULL;
 
 			goto yb_step_5;
 		}
@@ -5639,7 +5644,7 @@ yb_useful_pathkeys_without_merge_scan(PlannerInfo *root, RelOptInfo *rel,
 /*
  * YB: Settle a merge scan path once truncate_useless_pathkeys has trimmed its
  * pathkeys.  Returns the path's useful pathkeys and sets
- * *yb_merge_scan_stream_cols to its stream key columns.  With no stream key
+ * *yb_merge_scan_info to its merge scan info.  With no stream key
  * columns left, the path is not a merge scan and takes the pathkeys the index
  * gives without merge scan.
  */
@@ -5648,21 +5653,23 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 							IndexOptInfo *index, ScanDirection scandir,
 							List *index_clauses, int yb_distinct_prefixlen,
 							int *yb_distinct_nkeys, List *useful_pathkeys,
-							List **yb_merge_scan_stream_cols)
+							List *yb_merge_scan_stream_cols,
+							YbMergeScanInfo **yb_merge_scan_info)
 {
 	bool		embedded;
 
-	if (*yb_merge_scan_stream_cols == NIL)
+	*yb_merge_scan_info = NULL;
+	if (yb_merge_scan_stream_cols == NIL)
 		return useful_pathkeys;
 
 	/* TODO(#36017): an index only scan needs no embedded truncation. */
 	embedded = yb_is_embedded_index(root, rel, index);
-	*yb_merge_scan_stream_cols =
-		yb_finalize_merge_scan_stream_cols(index, rel->relids,
-										   *yb_merge_scan_stream_cols,
-										   index_clauses, &useful_pathkeys,
-										   yb_distinct_nkeys, embedded);
-	if (*yb_merge_scan_stream_cols == NIL)
+	*yb_merge_scan_info =
+		yb_finalize_merge_scan_info(index, rel->relids,
+									yb_merge_scan_stream_cols, index_clauses,
+									&useful_pathkeys, yb_distinct_nkeys,
+									embedded);
+	if (*yb_merge_scan_info == NULL)
 		useful_pathkeys =
 			yb_useful_pathkeys_without_merge_scan(root, rel, index, scandir,
 												  yb_distinct_prefixlen,
