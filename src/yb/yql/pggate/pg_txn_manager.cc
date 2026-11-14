@@ -14,6 +14,7 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_priority.h"
 
@@ -263,8 +264,10 @@ bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
   // UsingObjectLocksLocally(), never fires here, since a transaction that latched the flag on runs
   // its DDLs inside itself.
   VLOG_WITH_FUNC(1) << "object locks: " << UsingObjectLocksLocally()
+                    << " can be global: " << ObjectLocksCanBeGlobal()
                     << " latched: " << YBCIsObjectLockingLatchedForCurrTxn();
-  return UsingObjectLocksLocally() && YBCIsObjectLockingLatchedForCurrTxn();
+  return UsingObjectLocksLocally() && ObjectLocksCanBeGlobal() &&
+         YBCIsObjectLockingLatchedForCurrTxn();
 }
 
 // An autonomous DDL, which a transaction without global object locks runs in a separate DDL

@@ -236,7 +236,14 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     kEnableObjectLockingForTableLocks,
     "This flag enables the object lock APIs provided by tservers and masters - "
     "AcquireObject(Global)Lock, ReleaseObject(Global)Lock. These APIs are used to "
-    "implement pg table locks.");
+    "implement pg table locks. Before turning this off on a running cluster, turn "
+    "disable_global_object_locks on with a rolling restart: once no node takes global object "
+    "locks, every CREATE INDEX waits for all backends to reach its catalog version instead of "
+    "waiting for lock holders.");
+DEFINE_NON_RUNTIME_bool(disable_global_object_locks, false,
+    "When true, transactions on this node take no global object locks: each DDL runs in a "
+    "separate transaction and takes no object locks. DMLs still take local object locks, so a "
+    "DDL on another node that takes global object locks still waits for them.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
     "DEPRECATED: no-op. Use ysql_yb_enable_global_object_locking_infra.");
 // Gates global object locking and what depends on it: DDL-strength and session object locks,
@@ -467,6 +474,10 @@ void InitCommonFlags() {
 
 bool IsPersistenceGateEnforced() {
   return FLAGS_enable_persistence_gate && FLAGS_enforce_xcluster_guarded_lease;
+}
+
+bool ObjectLocksCanBeGlobal() {
+  return FLAGS_enable_object_locking_for_table_locks && !FLAGS_disable_global_object_locks;
 }
 
 } // namespace yb
