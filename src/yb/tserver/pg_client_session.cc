@@ -747,6 +747,8 @@ concept QueryTraitsType = requires {
   typename T::RespPB;
   { T::kMethodName } -> std::convertible_to<const char*>;
   { T::kReqType } -> std::convertible_to<PgSharedExchangeReqType>;
+  { T::kTrackWaitStateUntilResponse } -> std::convertible_to<bool>;
+  { T::AshTracker() } -> std::same_as<ash::WaitStateTracker&>;
 };
 
 struct PerformQueryTraits {
@@ -754,6 +756,10 @@ struct PerformQueryTraits {
   using RespPB = PgPerformResponseMsg;
   static constexpr const char* kMethodName = "Perform";
   static constexpr auto kReqType = PgSharedExchangeReqType::PERFORM;
+  // Work done after the handler returns is sampled via the downstream tablet RPCs, so the Perform
+  // itself is only sampled while the handler runs.
+  static constexpr bool kTrackWaitStateUntilResponse = false;
+  static ash::WaitStateTracker& AshTracker() { return ash::SharedMemoryPgPerformTracker(); }
 };
 
 struct ObjectLockQueryTraits {
@@ -761,6 +767,32 @@ struct ObjectLockQueryTraits {
   using RespPB = PgAcquireObjectLockResponseMsg;
   static constexpr const char* kMethodName = "AcquireObjectLock";
   static constexpr auto kReqType = PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK;
+  // The lock may be granted asynchronously after the handler returns (wait queue, global lock via
+  // master), and that wait is only visible through this request's wait state.
+  static constexpr bool kTrackWaitStateUntilResponse = true;
+  static ash::WaitStateTracker& AshTracker() {
+    return ash::SharedMemoryPgAcquireObjectLockTracker();
+  }
+};
+
+// Registers a wait state with an ASH tracker for the lifetime of the object, so that the ASH
+// collector samples it.
+class ScopedWaitStateTracking {
+ public:
+  ScopedWaitStateTracking(ash::WaitStateTracker& tracker, ash::WaitStateInfoPtr wait_state)
+      : tracker_(tracker), wait_state_(std::move(wait_state)) {
+    tracker_.Track(wait_state_);
+  }
+
+  ~ScopedWaitStateTracking() {
+    tracker_.Untrack(wait_state_);
+  }
+
+ private:
+  ash::WaitStateTracker& tracker_;
+  const ash::WaitStateInfoPtr wait_state_;
+
+  DISALLOW_COPY_AND_ASSIGN(ScopedWaitStateTracking);
 };
 
 using ResponseSender = std::function<void()>;
@@ -1104,6 +1136,14 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   }
 
   const AshMetadataPB& ash_metadata() const { return ash_metadata_; }
+
+  // Keeps the wait state sampled by ASH until the response is sent. Must be called before the
+  // request is handed off for processing.
+  void TrackWaitStateUntilResponse(const ash::WaitStateInfoPtr& wait_state) {
+    DCHECK(!ash_tracking_);
+    ash_tracking_.emplace(T::AshTracker(), wait_state);
+  }
+
   const opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>& trace_span() const {
     return trace_span_;
   }
@@ -1112,6 +1152,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   void SendResponse() {
     EndSharedMemSpan(
         &trace_span_, resp_.has_status() ? StatusFromPB(resp_.status()) : Status::OK());
+    ash_tracking_.reset();
     responded_ = true;
   }
 
@@ -1185,6 +1226,8 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   AshMetadataPB ash_metadata_;
   // Started only when the request carried a valid trace context; ended by SendResponse.
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> trace_span_;
+  // Set by TrackWaitStateUntilResponse; reset by SendResponse.
+  std::optional<ScopedWaitStateTracking> ash_tracking_;
   rpc::Sidecars sidecars_;
   std::weak_ptr<PgClientSession> session_;
   SharedExchange& exchange_;
@@ -1737,24 +1780,13 @@ bool IsReadPointResetRequested(const ReadTimeOptionsPB& read_time_options) {
   return read_time_options.has_read_time() && !read_time_options.read_time().has_read_ht();
 }
 
-[[nodiscard]] auto DoTrackSharedMemoryPgMethodExecution(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata,
-    const char* method_name) {
+void InitSharedMemoryPgWaitState(
+    ash::WaitStateInfo& wait_state, const AshMetadataPB& metadata, const char* method_name) {
   static std::atomic<int64_t> next_rpc_id{0};
-  DCHECK(wait_state);
-  wait_state->UpdateMetadataFromPB(metadata);
-  wait_state->UpdateMetadata(
+  wait_state.UpdateMetadataFromPB(metadata);
+  wait_state.UpdateMetadata(
     {.rpc_request_id = next_rpc_id.fetch_add(1, std::memory_order_relaxed)});
-  wait_state->UpdateAuxInfo({.method = method_name});
-  ash::SharedMemoryPgPerformTracker().Track(wait_state);
-  return MakeOptionalScopeExit(
-      [wait_state] { ash::SharedMemoryPgPerformTracker().Untrack(wait_state); });
-}
-
-template <QueryTraitsType T>
-[[nodiscard]] auto TrackSharedMemoryPgMethodExecution(
-    const std::shared_ptr<yb::ash::WaitStateInfo>& wait_state, const AshMetadataPB& metadata) {
-  return DoTrackSharedMemoryPgMethodExecution(wait_state, metadata, T::kMethodName);
+  wait_state.UpdateAuxInfo({.method = method_name});
 }
 
 struct GetOpTablespaceOid {
@@ -2889,9 +2921,15 @@ class PgClientSession::Impl {
     auto wait_state = yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>();
     ADOPT_WAIT_STATE(wait_state);
     SCOPED_WAIT_STATUS(OnCpu_Active);
-    auto track_guard = wait_state
-        ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
-        : std::nullopt;
+    std::optional<ScopedWaitStateTracking> track_guard;
+    if (wait_state) {
+      InitSharedMemoryPgWaitState(*wait_state, query.ash_metadata(), T::kMethodName);
+      if constexpr (T::kTrackWaitStateUntilResponse) {
+        query.TrackWaitStateUntilResponse(wait_state);
+      } else {
+        track_guard.emplace(T::AshTracker(), wait_state);
+      }
+    }
     if (PREDICT_FALSE(context_.TEST_mock_service != nullptr) &&
         VERIFY_RESULT(TEST_HandleSharedQueryMocks(
             context_.TEST_mock_service, *data, deadline))) {

@@ -200,12 +200,14 @@ struct WaiterEntry {
       size_t resume_it_offset_)
       : transaction_entry(std::move(transaction_entry_)),
         lock_data(std::move(lock_data_)),
-        resume_it_offset(resume_it_offset_) {}
+        resume_it_offset(resume_it_offset_),
+        wait_state(ash::WaitStateInfo::CurrentWaitState()) {}
 
   WaiterEntry(WaiterEntry&& other)
     : transaction_entry(std::move(other.transaction_entry)),
       lock_data(std::move(other.lock_data)),
       resume_it_offset(other.resume_it_offset),
+      wait_state(std::move(other.wait_state)),
       waiter_registration(std::move(other.waiter_registration)),
       blockers(std::move(other.blockers)),
       blocking_txn_ids(std::move(other.blocking_txn_ids)) {}
@@ -239,6 +241,9 @@ struct WaiterEntry {
   TrackedTxnLockEntryPtr transaction_entry;
   LockData lock_data;
   size_t resume_it_offset;
+  // Wait state of the request that is waiting for the lock. Resumption happens on a different
+  // thread, which adopts it so that ASH attributes the waiter's activity to the right request.
+  ash::WaitStateInfoPtr wait_state;
   // Below fields are operated under corresponding ObjectLockedBatchEntry::mutex.
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
   std::shared_ptr<ConflictDataManager> blockers;
@@ -574,6 +579,10 @@ class ObjectLockManagerImpl {
 };
 
 void WaiterEntry::Resume(ObjectLockManagerImpl* lock_manager, Status resume_with_status) {
+  // Not a scoped status: DoLock moves the request on to its next state, either by invoking the
+  // callback or by re-entering the wait queue.
+  ADOPT_WAIT_STATE(wait_state);
+  SET_WAIT_STATUS(OnCpu_Active);
   {
     std::lock_guard txn_lock(transaction_entry->mutex);
     transaction_entry->was_a_blocker =
@@ -1002,7 +1011,10 @@ bool ObjectLockManagerImpl::DoLockSingleEntry(
     old_value = entry->num_holding.load();
     if (should_check_wq || ((old_value ^ existing_state) & conflicting_lock_state) != 0) {
       DEBUG_ONLY_TEST_SYNC_POINT("ObjectLockManagerImpl::DoLockSingleEntry");
-      SCOPED_WAIT_STATUS(LockedBatchEntry_Lock);
+      // The request waits in the queue after this thread returns, and is resumed on another thread
+      // (see WaiterEntry::Resume).
+      ASH_ENABLE_CONCURRENT_UPDATES();
+      SET_WAIT_STATUS(ObjectLock_WaitInQueue);
       VLOG(1) << AsString(object_lock_owner) << " added to wait-queue on " << AsString(lock_entry);
       transaction_entry->AddAcquiredLockUnlocked(
           lock_entry, object_lock_owner, LocksMapType::kWaiting);

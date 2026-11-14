@@ -244,6 +244,12 @@ std::string GetWaitStateDescription(WaitStateCode code) {
     case WaitStateCode::kXCluster_RateLimiter:
       return "xCluster on source / target universe is slowing down due to rate limiter "
           "throttling the replication rate.";
+    case WaitStateCode::kObjectLock_WaitInQueue:
+      return "An object (table) lock request is waiting in the TServer's object lock wait queue "
+          "for conflicting object locks to be released.";
+    case WaitStateCode::kObjectLock_WaitOnMaster:
+      return "A global object (table) lock request is waiting on the YB-Master, which acquires "
+          "the lock on all TServers.";
     case WaitStateCode::kYCQL_Parse:
       return "YCQL is parsing a query.";
     case WaitStateCode::kYCQL_Read:
@@ -677,6 +683,8 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kLockedBatchEntry_Lock:
     case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
+    case WaitStateCode::kObjectLock_WaitInQueue:
+    case WaitStateCode::kObjectLock_WaitOnMaster:
       return WaitStateType::kLock;
 
     case WaitStateCode::kRaft_WaitingForReplication:
@@ -756,6 +764,8 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kRetryableRequests_SaveToDisk:
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kLockedBatchEntry_Lock:
+    case WaitStateCode::kObjectLock_WaitInQueue:
+    case WaitStateCode::kObjectLock_WaitOnMaster:
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
     case WaitStateCode::kCreatingNewTablet:
     case WaitStateCode::kSaveRaftGroupMetadataToDisk:

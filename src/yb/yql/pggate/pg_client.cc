@@ -1248,6 +1248,10 @@ class PgClient::Impl : public BigDataFetcher {
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
     };
+    // The backend stays blocked until the lock is granted. Report it as waiting on the TServer,
+    // which breaks the wait down further (ObjectLock_WaitInQueue / ObjectLock_WaitOnMaster).
+    auto watcher = wait_event_watcher_(
+        ash::WaitStateCode::kWaitingOnTServer, PggateRPC::kAcquireObjectLock, 0 /* aux */);
     return VERIFY_RESULT(
         PrepareAndSend<AcquireObjectLockData>(method, req, &object_locks_arena_).Get()).status;
   }
