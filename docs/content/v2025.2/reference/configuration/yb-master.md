@@ -697,6 +697,15 @@ Default: `50`
 
 Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
+##### --load_balancer_min_free_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Minimum percentage of a YB-TServer's total disk capacity that must remain free after hosting a new tablet replica. The cluster balancer rejects a YB-TServer as the destination for a replica if hosting it would leave less than this percentage of disk free. Disk usage is estimated from the usage the YB-TServer reported in its last heartbeat, plus the full size of every replica it is already starting. YB-TServers that have not reported their disk capacity are never rejected. The default matches the [--reject_writes_min_disk_space_pct](../yb-tserver/#reject-writes-min-disk-space-pct) threshold past which a YB-TServer rejects writes. Set to `0` to disable the check. This flag can be changed at runtime without restarting the server. Available in v2025.2.9.0 and later.
+
 ##### --load_balancer_num_idle_runs
 
 {{% tags/wrap %}}
