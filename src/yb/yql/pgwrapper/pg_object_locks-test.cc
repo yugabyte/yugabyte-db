@@ -1747,11 +1747,58 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollb
   ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
 }
 
-// A legacy fast path write holds a local object lock while it waits on a row lock. A new mode
-// transaction that holds that row lock then runs an ALTER TABLE, which waits on the object lock.
-// The deadlock detector sees the cycle only if the fast path write waits as its object lock owner,
-// as in TestDeadlockFastPath; otherwise both sides wait until the ALTER's statement timeout.
-// Exactly one of the two writers commits.
+namespace {
+
+// A fast path write from a transaction without global object locks holds a local object lock while
+// it waits on a row lock. The transaction on `ddl_conn`, which takes global object locks, holds
+// that row lock and then runs an ALTER TABLE, which waits on the object lock. The deadlock detector
+// sees the cycle only if the fast path write waits as its object lock owner, as in
+// TestDeadlockFastPath; otherwise both sides wait until the ALTER's statement timeout. Exactly one
+// of the two writers commits. `while_writer_waits` runs once the fast path write is queued on the
+// row lock. Expects table test(k, v) with v = 0 for k = 1.
+void CheckFastPathWriteDeadlockIsDetected(
+    ExternalMiniCluster& cluster, PGConn ddl_conn, PGConn writer_conn,
+    const std::function<void()>& while_writer_waits = {}) {
+  ASSERT_OK(ddl_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(ddl_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1"));
+
+  std::vector<ExternalDaemon*> tservers;
+  for (size_t i = 0; i < cluster.num_tablet_servers(); ++i) {
+    tservers.push_back(cluster.tablet_server(i));
+  }
+  ASSERT_OK(cluster.SetFlagOnTServers("vmodule", "wait_queue=4"));
+  LogWaiter waiter_log(tservers, "WaitOn: waiter_txn_id=");
+  auto writer_future = std::async(std::launch::async, [&writer_conn]() -> Status {
+    RETURN_NOT_OK(writer_conn.Execute("SET statement_timeout = '60s'"));
+    return writer_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
+  });
+  ASSERT_OK(waiter_log.WaitFor(30s * kTimeMultiplier));
+  if (while_writer_waits) {
+    ASSERT_NO_FATALS(while_writer_waits());
+  }
+
+  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '30s'"));
+  auto alter_status = ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  // A missed cycle leaves the ALTER waiting until its statement timeout.
+  ASSERT_STR_NOT_CONTAINS(alter_status.ToString(), "statement timeout");
+  // The detector aborts one side. The ALTER's transaction's abort can surface at the ALTER or only
+  // at COMMIT; a failed transaction's COMMIT rolls back.
+  auto commit_status = ddl_conn.Execute("COMMIT");
+  auto writer_status = writer_future.get();
+  LOG(INFO) << "ALTER: " << alter_status << ", COMMIT: " << commit_status
+            << ", fast path UPDATE: " << writer_status;
+  const auto ddl_txn_committed = alter_status.ok() && commit_status.ok();
+  ASSERT_NE(ddl_txn_committed, writer_status.ok());
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int32_t>("SELECT v FROM test WHERE k = 1")), 1);
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'test' AND "
+      "column_name = 'v1'")), ddl_txn_committed ? 1 : 0);
+}
+
+}  // namespace
+
+// The fast path writer's transaction latched ysql_yb_enable_global_object_locking_infra off. With
+// the parameter true, its node promotes the flag while the write waits.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1762,43 +1809,13 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected
   }
 
   ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
-  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(new_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1"));
-
-  std::vector<ExternalDaemon*> tservers;
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    tservers.push_back(cluster_->tablet_server(i));
-  }
-  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "wait_queue=4"));
-  LogWaiter waiter_log(tservers, "WaitOn: waiter_txn_id=");
-  auto legacy_future = std::async(std::launch::async, [&]() -> Status {
-    auto legacy_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    RETURN_NOT_OK(legacy_conn.Execute("SET statement_timeout = '60s'"));
-    return legacy_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
-  });
-  ASSERT_OK(waiter_log.WaitFor(30s * kTimeMultiplier));
-  if (GetParam()) {
-    ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
-  }
-
-  ASSERT_OK(new_conn.Execute("SET statement_timeout = '30s'"));
-  auto alter_status = new_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
-  // A missed cycle leaves the ALTER waiting until its statement timeout.
-  ASSERT_STR_NOT_CONTAINS(alter_status.ToString(), "statement timeout");
-  // The detector aborts one side. The new mode transaction's abort can surface at the ALTER or
-  // only at COMMIT; a failed transaction's COMMIT rolls back.
-  auto commit_status = new_conn.Execute("COMMIT");
-  auto legacy_status = legacy_future.get();
-  LOG(INFO) << "ALTER: " << alter_status << ", COMMIT: " << commit_status
-            << ", legacy UPDATE: " << legacy_status;
-  const auto new_txn_committed = alter_status.ok() && commit_status.ok();
-  ASSERT_NE(new_txn_committed, legacy_status.ok());
-  auto check_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int32_t>("SELECT v FROM test WHERE k = 1")), 1);
-  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int64_t>(
-      "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'test' AND "
-      "column_name = 'v1'")), new_txn_committed ? 1 : 0);
+  ASSERT_NO_FATALS(CheckFastPathWriteDeadlockIsDetected(
+      *cluster_, ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2)),
+      ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1)), [this, ts1] {
+        if (GetParam()) {
+          ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
+        }
+      }));
 }
 
 // A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
@@ -4405,52 +4422,16 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
       20s * kTimeMultiplier));
 }
 
-// A fast path write on a node with global object locks off still holds a local object lock while it
-// waits on a row lock. A transaction on a node with global object locks that holds that row lock
-// then runs an ALTER TABLE, which waits on the object lock. The deadlock detector sees the cycle
-// only if the fast path write waits as its object lock owner; otherwise both sides wait until the
-// ALTER's statement timeout. Exactly one of the two writers commits.
+// The fast path writer runs on a node with global object locks off, which still takes local ones.
 TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, FastPathWriteDeadlockIsDetected) {
   ASSERT_NO_FATALS(PromoteAll());
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   ASSERT_NO_FATALS(CreateTestTable(ts1));
   ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
-
-  auto global_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(global_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(global_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1"));
-
-  std::vector<ExternalDaemon*> tservers;
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    tservers.push_back(cluster_->tablet_server(i));
-  }
-  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "wait_queue=4"));
-  LogWaiter waiter_log(tservers, "WaitOn: waiter_txn_id=");
-  auto writer_future = std::async(std::launch::async, [&]() -> Status {
-    auto writer_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-    RETURN_NOT_OK(writer_conn.Execute("SET statement_timeout = '60s'"));
-    return writer_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
-  });
-  ASSERT_OK(waiter_log.WaitFor(30s * kTimeMultiplier));
-
-  ASSERT_OK(global_conn.Execute("SET statement_timeout = '30s'"));
-  auto alter_status = global_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
-  // A missed cycle leaves the ALTER waiting until its statement timeout.
-  ASSERT_STR_NOT_CONTAINS(alter_status.ToString(), "statement timeout");
-  // The detector aborts one side. The ALTER's transaction's abort can surface at the ALTER or only
-  // at COMMIT; a failed transaction's COMMIT rolls back.
-  auto commit_status = global_conn.Execute("COMMIT");
-  auto writer_status = writer_future.get();
-  LOG(INFO) << "ALTER: " << alter_status << ", COMMIT: " << commit_status
-            << ", fast path UPDATE: " << writer_status;
-  const auto global_txn_committed = alter_status.ok() && commit_status.ok();
-  ASSERT_NE(global_txn_committed, writer_status.ok());
-  auto check_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int32_t>("SELECT v FROM test WHERE k = 1")), 1);
-  ASSERT_EQ(ASSERT_RESULT(check_conn.FetchRow<int64_t>(
-      "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'test' AND "
-      "column_name = 'v1'")), global_txn_committed ? 1 : 0);
+  ASSERT_NO_FATALS(CheckFastPathWriteDeadlockIsDetected(
+      *cluster_, ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1)),
+      ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2))));
 }
 
 }  // namespace yb::pgwrapper
