@@ -12,6 +12,14 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
+#include "yb/master/master.h"
+#include "yb/master/mini_master.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/server/skewed_clock.h"
+
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_string(time_source);
+
 namespace yb {
 namespace cdc {
 
@@ -596,6 +604,82 @@ TEST_F(
   // Verify we got 3 inserts and 3 deletes
   ASSERT_EQ(count[1], 3);  // 3 INSERTs
   ASSERT_EQ(count[3], 3);  // 3 DELETEs
+}
+
+
+// Same-row updates in one transaction must stay separate UPDATE records even when the hybrid
+// clock is ahead of the physical clock and their hybrid times share a physical microsecond.
+TEST_F(
+    CDCIntraTxBeforeImageTest,
+    YB_DISABLE_TEST_IN_TSAN(TestSameRowUpdatesWithSamePhysicalTimeBeforeImage)) {
+  constexpr int kNumUpdates = 9;
+  constexpr auto kClockJump = std::chrono::seconds(5);
+  // Without this, the backward jump below trips the clock skew check and crashes the server.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 2 * ToMicroseconds(kClockJump);
+  server::SkewedClock::Register();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT)", kTableName, kKeyColumnName,
+      kValueColumnName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
+  ASSERT_FALSE(ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets)).has_error());
+
+  // Push every hybrid clock ahead and back, as when a clock-ahead node dies: until real time
+  // catches up, the clocks keep that physical time and only advance the logical part.
+  {
+    auto delta_changers = JumpClocks(test_cluster(), kClockJump);
+    for (size_t i = 0; i != test_cluster()->num_tablet_servers(); ++i) {
+      test_cluster()->mini_tablet_server(i)->server()->clock()->Now();
+    }
+    for (size_t i = 0; i != test_cluster()->num_masters(); ++i) {
+      test_cluster()->mini_master(i)->master()->clock()->Now();
+    }
+  }
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 0)", kTableName));
+  for (int i = 0; i < kNumUpdates; ++i) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE $0 SET $1 = $1 + 1 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
+  }
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t count[6] = {0, 0, 0, 0, 0, 0};
+  int update_step = 0;
+  std::unordered_set<MicrosTime> update_physical_times;
+  for (const auto& rec : change_resp.cdc_sdk_proto_records()) {
+    LOG(INFO) << "Record: " << rec.ShortDebugString();
+    switch (rec.row_message().op()) {
+      case RowMessage::INSERT:
+        CheckRecord(rec, ExpectedRecord{1, 0}, count);
+        break;
+      case RowMessage::UPDATE:
+        CheckRecord(
+            rec, ExpectedRecord{1, update_step + 1}, count, /*validate_old_tuple=*/true,
+            ExpectedRecord{1, update_step});
+        update_physical_times.insert(
+            HybridTime(rec.row_message().record_time()).GetPhysicalValueMicros());
+        ++update_step;
+        break;
+      default:
+        break;
+    }
+  }
+  ASSERT_EQ(count[1], 1);
+  ASSERT_EQ(count[2], kNumUpdates);
+  // Guards against the test passing without hitting the case it covers.
+  ASSERT_LT(update_physical_times.size(), kNumUpdates);
 }
 
 }  // namespace cdc
