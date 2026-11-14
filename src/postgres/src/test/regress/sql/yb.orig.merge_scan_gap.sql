@@ -106,29 +106,31 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
--- Gap column with NULLs first
+-- Gap column with NULLs, forward and backward scans
 --
--- The index sorts gap with NULLs first, so a backward scan returns gap with
--- NULLs last.  The rows are as in the descending gap column section, with a
--- forward decoy whose gap is NULL, which comes first under NULLS FIRST.  The
--- NULL row comes last in its stream on the backward scan, so the rows there
--- cannot check the NULLs order of the merge, and the Merge Sort Key of the
--- backward plan does.
-CREATE TABLE gap_null_tbl (k int, bkt int, ord1 int, gap int, ord2 int,
-    PRIMARY KEY (k ASC));
-CREATE INDEX NONCONCURRENTLY gap_null_tbl_idx ON gap_null_tbl (bkt ASC, ord1 ASC, gap ASC NULLS FIRST, ord2 ASC);
+-- The forward scan reads an index that sorts gap with NULLs first, and the
+-- backward scan reads one that sorts gap in descending order with NULLs last,
+-- so both scans return gap with NULLs first.  The rows are as in the descending
+-- gap column section, but both decoys have a NULL gap, so both come first in
+-- stream bkt = 1 in both scans.  Only a merge that compares gap with NULLs
+-- first lets the decoys out first.
+CREATE TABLE gap_null_tbl (bkt int, ord1 int, gap int, ord2 int);
+CREATE INDEX NONCONCURRENTLY gap_null_tbl_fwd_idx ON gap_null_tbl (bkt ASC, ord1 ASC, gap ASC NULLS FIRST, ord2 ASC);
+CREATE INDEX NONCONCURRENTLY gap_null_tbl_bwd_idx ON gap_null_tbl (bkt ASC, ord1 ASC, gap DESC NULLS LAST, ord2 ASC);
 INSERT INTO gap_null_tbl VALUES
-    (1, 1, 1, 1, 10), (2, 1, 1, 1, 30),  -- stream bkt = 1
-    (3, 2, 1, 1, 20),                    -- stream bkt = 2
-    (4, 1, 1, NULL, 99),                 -- forward decoy, NULL is first
-    (5, 1, 1, 2, 0);                     -- backward decoy, first backward
+    (1, 1, 1, 10), (1, 1, 1, 30),  -- stream bkt = 1
+    (2, 1, 1, 20),                 -- stream bkt = 2
+    (1, 1, NULL, 99),              -- forward decoy
+    (1, 1, NULL, 0);               -- backward decoy
 ANALYZE gap_null_tbl;
 
 SET yb_enable_expression_pushdown = off;
-\set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
+\set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
 \i :run_query
 RESET yb_enable_expression_pushdown;
