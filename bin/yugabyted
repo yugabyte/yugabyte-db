@@ -763,6 +763,17 @@ def get_url_from_ip(ip):
         return "[" + str(ip) + "]"
     return str(ip)
 
+# YSQL and YCQL both read a doubled quote inside a quoted identifier or string constant as the
+# quote itself, and take a string constant's backslashes literally (YSQL under its default
+# standard_conforming_strings, YCQL always).
+# https://www.postgresql.org/docs/current/sql-syntax-lexical.html,
+# src/yb/yql/cql/ql/parser/scanner_lex.l
+def sql_escape_identifier(name):
+    return '"' + name.replace('"', '""') + '"'
+
+def sql_escape_literal(value):
+    return "'" + value.replace("'", "''") + "'"
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -11899,17 +11910,20 @@ class YsqlProxy(object):
     # Note that this will return false if ysqlsh can't connect, even if db exists.
     def db_exists(self, db):
         cmd = self.cmd_with_password + ["-q", "-c", "\\t", "-c",
-            "select datname from pg_catalog.pg_database where datname='{}'".format(db)]
+            "select datname from pg_catalog.pg_database where datname={}".format(
+            sql_escape_literal(db))]
         return db in run_process_checked(cmd=cmd, env_vars=self.env).strip()
 
     # Creates specified db.
     def create_db(self, db):
-        cmd = self.cmd_with_password + ["-c", "create database \"{}\"".format(db)]
+        cmd = self.cmd_with_password + ["-c", "create database {}".format(
+            sql_escape_identifier(db))]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Deletes specified db.
     def drop_db(self, db):
-        cmd = self.cmd_with_password + ["-c", "drop database {}".format(db)]
+        cmd = self.cmd_with_password + ["-c", "drop database {}".format(
+            sql_escape_identifier(db))]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Runs ysqlsh with specified files.
@@ -11927,21 +11941,22 @@ class YsqlProxy(object):
     # Check user exists
     # Note that this will return false if ysqlsh can't connect, even if user exists.
     def user_exists(self, ysql_username):
-        cmd = self.cmd_with_password + \
-                ["-c", "select rolname from pg_catalog.pg_roles where rolname='{}'".
-                format(ysql_username)]
-        run_process_checked(cmd=cmd, env_vars=self.env).strip() == ysql_username
+        cmd = self.cmd_with_password + ["-q", "-c", "\\t", "-c",
+            "select rolname from pg_catalog.pg_roles where rolname={}".format(
+            sql_escape_literal(ysql_username))]
+        return run_process_checked(cmd=cmd, env_vars=self.env).strip() == ysql_username
 
     # Create specified superuser
     def create_user(self, ysql_username, ysql_password):
         cmd = self.cmd_with_password + \
-                ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
-                format(ysql_username, ysql_password)]
+                ["-c", "create role {} with LOGIN SUPERUSER password {};".
+                format(sql_escape_identifier(ysql_username), sql_escape_literal(ysql_password))]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
     # Delete specified user
     def delete_user(self, username, password, user_to_delete=DEFAULT_YSQL_USER):
-        cmd = self.cmd_with_password + ["-c", "drop role {};".format(user_to_delete)]
+        cmd = self.cmd_with_password + ["-c", "drop role {};".format(
+            sql_escape_identifier(user_to_delete))]
         env = self.env
         env['PGUSER'] = username
         env['PGPASSWORD'] = password
@@ -11949,18 +11964,18 @@ class YsqlProxy(object):
 
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
-        cmd = self.cmd_with_password + \
-            ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
+        cmd = self.cmd_with_password + ["-c", "alter role {} password {};".format(
+            sql_escape_identifier(user_to_update), sql_escape_literal(new_password))]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
     # Try to update specified user's password otherwise throw Retryable Error
     def try_update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
-        cmd = self.cmd_with_password + \
-            ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
+        cmd = self.cmd_with_password + ["-c", "alter role {} password {};".format(
+            sql_escape_identifier(user_to_update), sql_escape_literal(new_password))]
 
         encrypted_password = "*" * len(new_password)
-        encrypted_cmd = self.cmd_with_password + \
-            ["-c", "alter role {} password '{}';".format(user_to_update, encrypted_password)]
+        encrypted_cmd = self.cmd_with_password + ["-c", "alter role {} password {};".format(
+            sql_escape_identifier(user_to_update), sql_escape_literal(encrypted_password))]
 
         out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, log_cmd=True,
                 env_vars=self.env)
@@ -11969,8 +11984,8 @@ class YsqlProxy(object):
 
     # Change specified DB's owner
     def db_owner(self, db, new_owner):
-        cmd = self.cmd_with_password + \
-            ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
+        cmd = self.cmd_with_password + ["-c", "alter database {} owner to {};".format(
+            sql_escape_identifier(db), sql_escape_identifier(new_owner))]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Check YSQL is UP
@@ -12032,36 +12047,40 @@ class YcqlProxy(object):
     # Note that this will return false if ycqlsh can't connect, even if user exists.
     def user_exists(self, ycql_username):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-            "SELECT role FROM system_auth.roles WHERE role='{}';".format(ycql_username)]
+            "SELECT role FROM system_auth.roles WHERE role={};".format(
+            sql_escape_literal(ycql_username))]
         return run_process_checked(cmd).strip() == ycql_username
 
     # Create specified superuser
     def create_user(self, ycql_username, ycql_password):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE ROLE \"{}\" WITH PASSWORD = '{}' AND LOGIN = true AND SUPERUSER = true;".
-                format(ycql_username, ycql_password)]
+                "CREATE ROLE {} WITH PASSWORD = {} AND LOGIN = true AND SUPERUSER = true;".
+                format(sql_escape_identifier(ycql_username), sql_escape_literal(ycql_password))]
         run_process_checked(cmd, log_cmd=False)
 
     # Delete specified user
     def delete_user(self, username, password, user_to_delete=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", username, "-p", password, "-e",
-                "DROP ROLE IF EXISTS {};".format(user_to_delete)]
+                "DROP ROLE IF EXISTS {};".format(sql_escape_identifier(user_to_delete))]
         run_process_checked(cmd)
 
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
+                "ALTER ROLE {} WITH PASSWORD = {};".format(
+                sql_escape_identifier(user_to_update), sql_escape_literal(new_password))]
         run_process_checked(cmd, log_cmd=False)
 
     # Try to update specified user's password otherwise throw Retryable Error
     def try_update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
+                "ALTER ROLE {} WITH PASSWORD = {};".format(
+                sql_escape_identifier(user_to_update), sql_escape_literal(new_password))]
 
         encrypted_password = "*" * len(new_password)
         encrypted_cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, encrypted_password)]
+                "ALTER ROLE {} WITH PASSWORD = {};".format(
+                sql_escape_identifier(user_to_update), sql_escape_literal(encrypted_password))]
 
         out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, log_cmd=True,
                 env_vars=os.environ.copy())
@@ -12072,8 +12091,8 @@ class YcqlProxy(object):
     # Note that this will return false if ycqlsh can't connect, even if keyspace exists.
     def keyspace_exists(self, keyspace):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-            "SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name='{}';".
-            format(keyspace)]
+            "SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name={};".
+            format(sql_escape_literal(keyspace))]
         output = run_process_checked(cmd=cmd)
         if keyspace in output:
             return True
@@ -12083,7 +12102,7 @@ class YcqlProxy(object):
     # Create specified keyspace
     def create_keyspace(self, keyspace):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-                "CREATE KEYSPACE \"{}\";".format(keyspace)]
+                "CREATE KEYSPACE {};".format(sql_escape_identifier(keyspace))]
         run_process_checked(cmd)
 
     # Runs ycqlsh with specified files.
@@ -12825,9 +12844,12 @@ class EnvBasedCredentials(object):
         if self.get_ysql_user() == DEFAULT_YSQL_USER and self.get_ysql_password() != DEFAULT_YSQL_PASSWORD:
             proxy_class.update_password(self.get_ysql_password())
 
-        # Create User
-        if self.get_ysql_user() != DEFAULT_YSQL_USER and not proxy_class.user_exists(self.get_ysql_user()):
-            proxy_class.create_user(self.get_ysql_user(), self.get_ysql_password())
+        # Create user, or set the password of a role that exists
+        if self.get_ysql_user() != DEFAULT_YSQL_USER:
+            if proxy_class.user_exists(self.get_ysql_user()):
+                proxy_class.update_password(self.get_ysql_password(), self.get_ysql_user())
+            else:
+                proxy_class.create_user(self.get_ysql_user(), self.get_ysql_password())
 
             if self.get_ysql_db() != DEFAULT_YSQL_DB:
                 proxy_class.db_owner(self.get_ysql_db(), self.get_ysql_user())
