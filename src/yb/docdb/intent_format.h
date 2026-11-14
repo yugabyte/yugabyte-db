@@ -15,6 +15,7 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/intent_aware_iterator.h"
@@ -113,5 +114,10 @@ void CombineExternalIntents(
     const TransactionId& txn_id,
     SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider);
+
+// Returns true for strong write intents that must never become regular records: empty top-level
+// conflict locks, row locks, and writes from aborted subtransactions.
+bool IsNonRecordStrongWriteIntent(
+    Slice doc_path, const dockv::DecodedIntentValue& decoded_value, const SubtxnSet& aborted);
 
 }  // namespace yb::docdb
