@@ -2816,7 +2816,9 @@ class PgClientSession::Impl {
     }
 
     auto arena = ObtainArena(&context, *resp);
-    auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline(), arena);
+    // Use a dedicated session: the plain session may hold a stale read point from a previous
+    // statement, which can predate the table (e.g. an index birth time) being scanned.
+    auto session = CreateSession(&client_, context.GetClientDeadline(), clock(), arena);
 
     // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
     // instead of passing through YBSession.
@@ -2851,7 +2853,7 @@ class PgClientSession::Impl {
     embedded_req->set_max_key_length(req.max_key_length());
 
     session->Apply(psql_read);
-    session->FlushAsync([callback = MakeRpcOperationCompletionCallback(
+    session->FlushAsync([session, callback = MakeRpcOperationCompletionCallback(
                              std::move(context), resp, /* clock = */ nullptr)](
                             client::FlushStatus* flush_status) {
       callback(CombineErrorsToStatus(flush_status->errors, flush_status->status));
