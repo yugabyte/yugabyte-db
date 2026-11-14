@@ -14,6 +14,7 @@
 /* for hba tests */
 #include <arpa/inet.h>
 
+#ifndef YB_SUPPORT_FOUND
 #define odyssey_test(function)                                                \
 	do {                                                                  \
 		struct timeval tv_start, tv_stop;                             \
@@ -26,6 +27,14 @@
 			(tv_stop.tv_sec - tv_start.tv_sec) * 1000 +           \
 				(tv_stop.tv_usec - tv_start.tv_usec) / 1000); \
 	} while (0);
+#else // YB_SUPPORT_FOUND
+/* YB: OdUnit runner, runs each test in a forked child */
+extern void yb_od_unit_init(int argc, char *argv[]);
+extern void yb_od_unit_suite(const char *suite);
+extern void yb_od_unit_run(const char *function, void (*test_function)(void));
+extern int yb_od_unit_finish(void);
+#define odyssey_test(function) yb_od_unit_run(#function, function);
+#endif // YB_SUPPORT_FOUND
 
 #define test(expression)                                                    \
 	do {                                                                \
