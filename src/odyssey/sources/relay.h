@@ -84,6 +84,22 @@ static inline bool od_relay_data_pending(od_relay_t *relay)
 	return current < end;
 }
 
+static inline int od_relay_is_client_termination(od_relay_t *relay)
+{
+	/*
+	 * YB: Upstream returns 0 here unless relay->mode is
+	 * OD_RELAY_MODE_CLIENT_TO_SERVER. There is no relay mode here, and only
+	 * the client relay is stepped with no destination. Instead, return 0 in
+	 * the middle of a packet, where the next byte is not a packet type.
+	 */
+	if (relay->packet != 0) {
+		return 0;
+	}
+
+	return od_readahead_next_byte_is(&relay->src->readahead,
+					 (uint8_t)KIWI_FE_TERMINATE);
+}
+
 static inline od_frontend_status_t
 yb_od_relay_start_init(od_relay_t *relay, machine_cond_t *base,
 	       od_frontend_status_t error_read,
@@ -456,15 +472,31 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 	/* on read event */
 	int rc;
 	if (machine_cond_try(relay->src->on_read)) {
-		if (relay->dst == NULL) {
-			/* signal to retry on read logic */
-			machine_cond_signal(relay->src->on_read);
-			return OD_ATTACH;
-		}
-
+		/*
+		 * YB: Upstream reads here with od_relay_read_pending_aware()
+		 * (odyssey 535a27e), which also signals on_read when the
+		 * readahead is full but the io still has pending bytes (e.g. TLS
+		 * data buffered by OpenSSL), so that they are not left unread.
+		 * That is not ported here yet, so plain od_relay_read() is used.
+		 */
 		rc = od_relay_read(relay);
 		if (rc != OD_OK)
 			return rc;
+
+		if (relay->dst == NULL) {
+			/* signal to retry on read logic */
+			machine_cond_signal(relay->src->on_read);
+
+			/*
+			 * if this is client termination msg,
+			 * then do no attach - just stop the client
+			 */
+			if (od_relay_is_client_termination(relay)) {
+				return OD_STOP;
+			}
+
+			return OD_ATTACH;
+		}
 
 		rc = od_relay_pipeline(relay);
 
