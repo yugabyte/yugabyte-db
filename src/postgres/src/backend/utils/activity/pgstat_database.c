@@ -21,6 +21,9 @@
 #include "utils/timestamp.h"
 #include "storage/procsignal.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 static bool pgstat_should_report_connstat(void);
 
@@ -254,7 +257,7 @@ AtEOXact_PgStat_Database(bool isCommit, bool parallel)
 		 */
 		if (isCommit)
 			pgStatXactCommit++;
-		else
+		else if (!yb_replay_in_progress)	/* YB: a replay retry's abort is part of the retry */
 			pgStatXactRollback++;
 	}
 }

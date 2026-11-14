@@ -2033,6 +2033,14 @@ YbcStatus YBCPgRecreateTransaction() {
   return ToYBCStatus(pgapi->RecreateTransaction());
 }
 
+void YBCPgCarryReadRestart(bool carry) {
+  pgapi->CarryReadRestart(CarryToNextTxn(carry));
+}
+
+void YBCPgCarryTransactionPriority(bool carry) {
+  pgapi->CarryTransactionPriority(CarryToNextTxn(carry));
+}
+
 YbcStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }

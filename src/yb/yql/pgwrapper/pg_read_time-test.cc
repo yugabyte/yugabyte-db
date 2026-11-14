@@ -2272,8 +2272,7 @@ TEST_P(PgCrossTxnSnapshotTest, ConflictsWithRestartRead) {
   const auto status = importer.Fetch("SELECT count(*) FROM t");
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.status().ToString(), "Restart read required");
-  ASSERT_STR_CONTAINS(
-      status.status().ToString(), "not the first command in the transaction");
+  ASSERT_STR_CONTAINS(status.status().ToString(), "query layer retry isn't possible");
 
   ASSERT_OK(importer.Execute("ROLLBACK"));
   ASSERT_OK(exporter.Execute("COMMIT"));

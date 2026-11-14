@@ -6899,6 +6899,24 @@ class PgLibPqTestDropTableIfExistsCascadeRetry : public PgLibPqTest {
     options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
+
+  // These tests pin fixes in the in-place restart (#29871, #31248), so they keep
+  // yb_enable_replay_retry off; the replay subclass below turns it on.
+  void SetUp() override {
+    PgLibPqTest::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = off"));
+  }
+
+  Status ExecuteWithCatalogWritesAborted(
+      PGConn& conn, const std::string& query) {
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_respond_write_with_abort_probability", "1"));
+    auto status = conn.Execute(query);
+    RETURN_NOT_OK(cluster_->SetFlagOnMasters(
+        "TEST_respond_write_with_abort_probability", "0"));
+    return status;
+  }
 };
 
 // Test for #29871: SMgrRelation hashtable corrupted during DDL retry.
@@ -6954,6 +6972,48 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   // The fact that this SELECT succeeds proves that the table exists in BOTH
   // the PostgreSQL catalog and DocDB (no split-brain corruption).
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
+}
+
+// The #34751 tests from the clean-inval clone (PR 35526), run with
+// yb_enable_replay_retry on.
+class PgLibPqTestDropTableIfExistsCascadeReplayRetry
+    : public PgLibPqTestDropTableIfExistsCascadeRetry {
+ protected:
+  void SetUp() override {
+    PgLibPqTestDropTableIfExistsCascadeRetry::SetUp();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_enable_replay_retry = on"));
+  }
+};
+
+// #34751: a retried CREATE TABLE IF NOT EXISTS reused catalog cache entries
+// written by the failed attempt, so it skipped or failed on a table that was
+// never created.
+TEST_F_EX(PgLibPqTestDropTableIfExistsCascadeRetry, CreateTableRetryAfterAbort,
+          PgLibPqTestDropTableIfExistsCascadeReplayRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteWithCatalogWritesAborted(
+          conn, "CREATE TABLE IF NOT EXISTS t (k INT PRIMARY KEY)"),
+      "yb_max_query_layer_retries set to 1");
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
+}
+
+// #34751, through an index.
+TEST_F_EX(PgLibPqTestDropTableIfExistsCascadeRetry, CreateIndexRetryAfterAbort,
+          PgLibPqTestDropTableIfExistsCascadeReplayRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET yb_max_query_layer_retries = 1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT)"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteWithCatalogWritesAborted(
+          conn, "CREATE INDEX IF NOT EXISTS i ON t (k)"),
+      "yb_max_query_layer_retries set to 1");
+  ASSERT_OK(conn.Execute("CREATE INDEX i ON t (k)"));
 }
 
 class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {

@@ -911,10 +911,12 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
-  Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
+  Status FinishTransaction(
+      Commit commit, const std::optional<DdlMode>& ddl_mode, KeepReadRestart keep_read_restart) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
+    req.set_keep_read_restart(keep_read_restart.get());
     bool has_docdb_schema_changes = false;
     if (ddl_mode) {
       ddl_mode->ToPB(req.mutable_ddl_mode());
@@ -2278,8 +2280,9 @@ Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
   return impl_->GetTablePartitionList(table_id);
 }
 
-Status PgClient::FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
-  return impl_->FinishTransaction(commit, ddl_mode);
+Status PgClient::FinishTransaction(
+    Commit commit, const std::optional<DdlMode>& ddl_mode, KeepReadRestart keep_read_restart) {
+  return impl_->FinishTransaction(commit, ddl_mode, keep_read_restart);
 }
 
 Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {

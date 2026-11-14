@@ -56,6 +56,8 @@ using PgsqlWriteOpPtr = std::shared_ptr<PgsqlWriteOp>;
 using PgsqlOps = std::vector<PgsqlOpPtr>;
 
 YB_STRONGLY_TYPED_BOOL(Commit);
+YB_STRONGLY_TYPED_BOOL(KeepReadRestart);
+YB_STRONGLY_TYPED_BOOL(CarryToNextTxn);
 
 }  // namespace pggate
 }  // namespace yb

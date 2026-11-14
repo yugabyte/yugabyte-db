@@ -608,6 +608,10 @@ message PgFinishTransactionRequestPB {
   DdlModePB ddl_mode = 3;
 
   reserved 4; // ASH metadata is now passed in RequestHeader PB
+
+  // Replay retry: keep the aborted transaction's read-restart point for the next transaction.
+  // Node-local and co-versioned like ReadTimeOptionsPB.apply_carried_read_restart; see there.
+  bool keep_read_restart = 5;
 }
 
 message PgFinishTransactionResponsePB {
@@ -927,6 +931,12 @@ message PgPerformOptionsPB {
     // See the commit desc for more info.
     bool clamp_uncertainty_window = 7;
     OptionalUint32PB follower_read_staleness_ms = 8;
+    // Replay retry: start this read from the read-restart point the previous, aborted
+    // transaction left, as the in-place restart would, instead of a new read point.
+    // pggate relies on the tserver honoring it. That is safe without an AutoFlag only because
+    // PgClientService is node-local: postgres is always spawned by the same tserver binary, so
+    // an old pggate never talks to a new tserver or the reverse.
+    bool apply_carried_read_restart = 9;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
