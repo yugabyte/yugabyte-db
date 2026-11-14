@@ -20,6 +20,7 @@ ADD_YB_TEST_LIBRARY(ql_test
 
 set(YB_TEST_LINK_LIBS ql_test ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ql-parser-test)
+ADD_YB_TEST(ql-list-roles-permissions-test)
 ADD_YB_TEST(ql-create-table-test)
 ADD_YB_TEST(ql-create-index-test)
 ADD_YB_TEST(ql-drop-stmt-test)

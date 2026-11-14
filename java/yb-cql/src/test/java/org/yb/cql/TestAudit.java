@@ -634,6 +634,68 @@ public class TestAudit extends BaseCQLTest {
     }
   }
 
+  /**
+   * LIST ROLES / LIST PERMISSIONS are authorized during execution, after their system_auth reads.
+   * Their denials and errors must still be audited, like any other execution error.
+   */
+  @Test
+  public void listRolesAndPermissionsErrors() throws Exception {
+    session.execute("CREATE ROLE other_role");
+    try (Cluster cluster = getCluster("user1", "123");
+         Session user1Session = cluster.connect()) {
+      auditRecords.discard();
+
+      // Allowed: a role may list its own roles. Only the statement itself is logged.
+      user1Session.execute("LIST ROLES OF user1");
+      assertAuditIgnoringPeersV2(
+          new AuditLogEntry('E', "user1", "LIST_ROLES", "DCL",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              "LIST ROLES OF user1"));
+
+      // Denied: logged as an unauthorized attempt.
+      {
+        String cql = "LIST ALL PERMISSIONS";
+        String expectedError =
+            "Unauthorized. You are not authorized to view everyone's permissions";
+        runInvalidStmt(new SimpleStatement(cql), user1Session, expectedError);
+        assertAuditIgnoringPeersV2(
+            new AuditLogEntry('E', "user1", "LIST_PERMISSIONS", "DCL",
+                null /* batchId */, null /* keyspace */, null /* scope */,
+                cql),
+            new AuditLogEntry('E', "user1", "UNAUTHORIZED_ATTEMPT", "AUTH",
+                null /* batchId */, null /* keyspace */, null /* scope */,
+                cql + "; " + expectedError));
+      }
+      {
+        String cql = "LIST ROLES OF other_role";
+        String expectedError =
+            "Unauthorized. You are not authorized to view roles granted to other_role";
+        runInvalidStmt(new SimpleStatement(cql), user1Session, expectedError);
+        assertAuditIgnoringPeersV2(
+            new AuditLogEntry('E', "user1", "LIST_ROLES", "DCL",
+                null /* batchId */, null /* keyspace */, null /* scope */,
+                cql),
+            new AuditLogEntry('E', "user1", "UNAUTHORIZED_ATTEMPT", "AUTH",
+                null /* batchId */, null /* keyspace */, null /* scope */,
+                cql + "; " + expectedError));
+      }
+    }
+
+    // Other execution errors are logged as request failures.
+    {
+      String cql = "LIST ROLES OF ghost_role";
+      String expectedError = "Role Not Found. <role ghost_role> doesn't exist";
+      assertQueryError(cql, expectedError);
+      assertAuditIgnoringPeersV2(
+          new AuditLogEntry('E', "cassandra", "LIST_ROLES", "DCL",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              cql),
+          new AuditLogEntry('E', "cassandra", "REQUEST_FAILURE", "ERROR",
+              null /* batchId */, null /* keyspace */, null /* scope */,
+              cql + "; " + expectedError));
+    }
+  }
+
   //
   // Helpers
   //
@@ -710,6 +772,18 @@ public class TestAudit extends BaseCQLTest {
     session.execute(cql);
     assertAuditRecords("Audit mismatch for " + cql + ";\n", generateLog.apply(cql),
         auditRecords.popAll(), excludeUseKeyspace);
+  }
+
+  /**
+   * Like {@link #assertAudit(AuditLogEntry...)}, but ignores the failing
+   * {@code SELECT * FROM system.peers_v2} that a new driver control connection may issue.
+   */
+  private void assertAuditIgnoringPeersV2(AuditLogEntry... expected) throws Exception {
+    List<AuditLogEntry> actual = auditRecords.popAll().stream()
+        .filter(e -> e.operationAndErrorMessage == null
+            || !e.operationAndErrorMessage.contains("peers_v2"))
+        .collect(Collectors.toList());
+    assertAuditRecords(Arrays.asList(expected), actual);
   }
 
   private void assertAuditRecords(List<AuditLogEntry> expected, List<AuditLogEntry> actual) {

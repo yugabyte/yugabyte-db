@@ -90,7 +90,26 @@ cassandra@ycqlsh> GRANT engineering TO developer;
 
 ## List roles
 
-You can list all the roles by running the following command:
+You can list all the roles with [LIST ROLES](../../../api/ycql/ddl_list_roles/):
+
+```cql
+cassandra@ycqlsh> LIST ROLES;
+```
+
+You should see the following output:
+
+```output
+ role        | super | login | options
+-------------+-------+-------+---------
+   cassandra |  True |  True |        {}
+   developer | False | False |        {}
+ engineering | False | False |        {}
+        john | False |  True |        {}
+
+(4 rows)
+```
+
+`LIST ROLES OF john` lists `john` and the roles granted to it. To also see which roles each role is a member of, query the `system_auth.roles` table:
 
 ```cql
 cassandra@ycqlsh> SELECT role, can_login, is_superuser, member_of FROM system_auth.roles;
