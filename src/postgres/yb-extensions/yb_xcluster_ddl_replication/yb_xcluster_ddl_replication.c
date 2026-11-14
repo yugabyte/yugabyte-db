@@ -127,9 +127,11 @@ InsideProcessedDdlSubtree()
 }
 
 /*
- * End-of-statement handlers rely on state that handle_ddl_start sets up (role,
- * captured query), so they must skip statements it did not process, e.g. the
- * CREATE EXTENSION that creates our triggers.
+ * End-of-statement handlers rely on handle_ddl_start having run for the
+ * statement: it fetches the replication role, and the processed_ddl_depth it
+ * sets keeps nested statements from clearing the captured query.  They must
+ * skip statements it did not process, e.g. the CREATE EXTENSION that creates
+ * our triggers.
  */
 static bool
 IsProcessedDdl()
