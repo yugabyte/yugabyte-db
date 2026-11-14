@@ -75,6 +75,9 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::vector<YsqlMetric>& metrics,
       const std::string& metric_name);
   static void WaitForCatalogVersionToPropagate();
+  // Return the shared memory catalog version of 'db_oid' at the tserver at 'tablet_index'.
+  Result<uint64_t> GetShmDBCatalogVersion(size_t tablet_index, PgOid db_oid);
+  Status WaitForShmDBCatalogVersion(size_t tablet_index, PgOid db_oid, uint64_t min_version);
   Result<int64_t> GetCatCacheTableMissMetric(const std::string& table_name);
   Result<int64_t> GetCatCacheListMissMetric(const std::string& table_name);
   Result<int64_t> GetCatCacheNegMissMetric(const std::string& table_name);
