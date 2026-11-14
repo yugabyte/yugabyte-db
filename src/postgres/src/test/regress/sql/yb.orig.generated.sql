@@ -190,3 +190,26 @@ ALTER TABLE part DROP COLUMN b CASCADE;
 ALTER TABLE part ADD COLUMN c INT;
 ALTER TABLE part ADD COLUMN b INT;
 DROP TABLE part;
+
+-- UPDATE of a table with both stored and virtual generated columns.  Only
+-- stored generated columns that need recomputing make the YB UPDATE path add
+-- generated columns to the set of columns it writes; a virtual generated
+-- column is never indexed, and UPDATE OF triggers on it are decided by
+-- upstream's ExecGetAllUpdatedCols(), so both must behave as in upstream.
+CREATE TABLE t_virt (k INT PRIMARY KEY, a INT, b INT, c INT,
+                     a_stored INT GENERATED ALWAYS AS (a * 10) STORED,
+                     a_virt INT GENERATED ALWAYS AS (a * 100) VIRTUAL,
+                     b_virt INT GENERATED ALWAYS AS (b * 100) VIRTUAL);
+CREATE INDEX NONCONCURRENTLY t_virt_a_stored_idx ON t_virt (a_stored);
+CREATE TRIGGER t_virt_after_a_virt AFTER UPDATE OF a_virt ON t_virt FOR EACH ROW EXECUTE FUNCTION zz_gen_col_notice('AFTER a_virt');
+CREATE TRIGGER t_virt_after_b_virt AFTER UPDATE OF b_virt ON t_virt FOR EACH ROW EXECUTE FUNCTION zz_gen_col_notice('AFTER b_virt');
+INSERT INTO t_virt (k, a, b) VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+-- Affects a stored and a virtual generated column.
+UPDATE t_virt SET a = a + 1 WHERE k = 1;
+-- Affects only a virtual generated column.
+UPDATE t_virt SET b = b + 1 WHERE k = 2;
+-- Affects no generated column.
+UPDATE t_virt SET c = 1 WHERE k = 3;
+SELECT * FROM t_virt ORDER BY k;
+/*+ IndexOnlyScan(t_virt t_virt_a_stored_idx) */ SELECT a_stored FROM t_virt WHERE a_stored > 0 ORDER BY a_stored;
+DROP TABLE t_virt;
