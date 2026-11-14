@@ -1372,15 +1372,15 @@ The following are combinations of environment variables and their uses:
 
 - `YCQL_PASSWORD, YCQL_USER`
 
-  Create `YCQL_USER` named user and DB with password `YCQL_PASSWORD`.
+  Create `YCQL_USER` named user and keyspace with password `YCQL_PASSWORD`.
 
 - `YCQL_USER`
 
-  Create `YCQL_USER` named user and DB with password `YCQL_USER`.
+  Create `YCQL_USER` named user and keyspace with password `YCQL_USER`.
 
 - `YCQL_USER, YCQL_KEYSPACE`
 
-  Create `YCQL_USER` named user with password `YCQL_USER` and `YCQL_USER` named keyspace.
+  Create `YCQL_USER` named user with password `YCQL_USER` and `YCQL_KEYSPACE` named keyspace.
 
 - `YCQL_KEYSPACE`
 
