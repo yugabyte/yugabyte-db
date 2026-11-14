@@ -93,10 +93,6 @@ For some xCluster setups, before upgrading, you should run a verification script
 
 - If your database uses the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) `vector` extension, follow the steps in [Upgrade vector indexes](../../additional-features/pg-extensions/extension-pgvector/#upgrade-vector-indexes) before you upgrade.
 
-    - Upgrading from v2024.2: first save the DDL of every table that uses the `vector` type and export its data. Then drop those tables, drop the `vector` extension, upgrade and finalize, and recreate the extension, tables, and data. The `vector` type OID in v2024.2 is assigned when the extension is created and does not match the fixed OID in v2025.1 and later, and the PostgreSQL 11 to 15 upgrade fails while the extension is installed. For the full steps, see [Upgrade from v2024.2](../../additional-features/pg-extensions/extension-pgvector/#upgrade-from-v2024-2).
-    - Upgrading from the v2025.1 series fails if a vector index exists. Drop the indexes and the tables before the upgrade, and recreate the tables only after the upgrade to v2026.1.2.0 or later is finalized. Recreating them on v2026.1.0 leaves the old reverse-mapping format. See [Option 1](../../additional-features/pg-extensions/extension-pgvector/#option-1-rebuild-across-the-upgrade).
-    - If `vector_index_use_yb_hnsw` or `vector_index_use_hnswlib` is set, set [vector_index_backend](../../additional-features/pg-extensions/extension-pgvector/#vector-index-backend-flag) and remove those flags as part of the upgrade to v2025.2.3.0 or later, or to v2026.1. Valid values are `yb_hnsw_hnswlib` and `yb_hnsw_usearch`. Earlier releases do not define `vector_index_backend`. On the release that defines it, the old flags no longer select the backend.
-
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:

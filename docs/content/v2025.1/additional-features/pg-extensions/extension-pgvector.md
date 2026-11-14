@@ -264,7 +264,6 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported. {{<issue 20829>}}
 - Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 20500>}}
-- Backup restore across major versions is not supported for a database that contains vector indexes.
 
 ## Upgrading
 
@@ -287,12 +286,6 @@ A database with the `vector` extension installed cannot be upgraded in place fro
 1. Run `CREATE EXTENSION vector;`, recreate the tables, and load the exported data.
 
 v2024.2 has no vector indexes. v2025.1 stores a per-row identifier that vector indexes require, and rows written in v2024.2 do not have it. Loading the exported data into the recreated tables writes the rows in the new format.
-
-### Vector index backend flag
-
-`vector_index_backend` replaces `vector_index_use_yb_hnsw` and `vector_index_use_hnswlib` in v2025.2.3.0 and in v2026.1. Valid values are `yb_hnsw_hnswlib` (the default) and `yb_hnsw_usearch`. v2025.1 does not define this flag, and neither does v2025.2.0 through v2025.2.2.
-
-If either old flag is set, remove it and set `vector_index_backend` as part of the upgrade, in the same rolling restart that moves to v2025.2.3.0 or later. The old flags are deprecated: they no longer select the backend, and the process logs a deprecation warning when they are set.
 
 ## Learn more
 
