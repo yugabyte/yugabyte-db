@@ -5689,28 +5689,36 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	}
 
 	/*
-	 * With transactional DDL, a statement outside a transaction block whose
-	 * transaction changed the catalog can't be retried, in any isolation
-	 * level. That is a statement whose transaction has DDL transaction state:
-	 * an autocommit DDL, a statement that runs one (such as a DO block or a
-	 * function call), or one that registers a catalog change through
-	 * YBAddDdlTxnState without a DDL statement (such as the statistics restore
-	 * functions, or a write to the hint table, whose trigger bumps the catalog
-	 * version). The retry (yb_restart_transaction) starts a new DocDB
-	 * transaction but does not abort the PG-side one, so the re-run starts from
-	 * the failed attempt's PG-side state: the backend's caches still reflect
-	 * the failed attempt's catalog changes, which DocDB has discarded, so the
-	 * re-run can write inconsistent catalog entries (#37717) or fail on other
-	 * state the failed attempt left behind.
+	 * With transactional DDL, a statement whose transaction changed the catalog
+	 * can't be retried, except in READ COMMITTED within a transaction block.
+	 * That is a statement whose transaction has DDL transaction state: a DDL,
+	 * a statement that runs one (such as a DO block or a function call), or
+	 * one that registers a catalog change through YBAddDdlTxnState without a
+	 * DDL statement (such as the statistics restore functions, or a write to
+	 * the hint table, whose trigger bumps the catalog version).
+	 *
+	 * Outside a transaction block in any isolation level, and in a REPEATABLE
+	 * READ or SERIALIZABLE block, the retry (yb_restart_transaction) starts a
+	 * new DocDB transaction but rolls back nothing on the PG side, so the
+	 * re-run starts from the failed attempt's PG-side state: the backend's
+	 * caches still reflect the failed attempt's catalog changes, which DocDB
+	 * has discarded, so the re-run can write inconsistent catalog entries
+	 * (#37717) or fail on other state the failed attempt left behind. In a
+	 * READ COMMITTED block, each statement runs in an internal subtransaction,
+	 * and both retry paths roll it back first (yb_restart_current_stmt, and
+	 * YBCRestartWriteTransaction in yb_restart_transaction), which also
+	 * discards the failed attempt's PG-side state. A commit-time error there
+	 * comes from a COMMIT statement, which is never retried.
 	 *
 	 * YBIsCurrentStmtDdl() is not enough: it is cleared once the DDL statement
-	 * finishes, before the commit, and the error may come from the commit.
-	 * Nor is YBGetDdlUseRegularTransactionBlock() alone: the DDL transaction
-	 * state is cleared before the commit RPC, so it misses an error from that
-	 * RPC; YBIsDdlTxnBlockCommitInProgress() covers that window.
+	 * finishes, before the rest of the statement and before the commit, and
+	 * the error may come from either. Nor is
+	 * YBGetDdlUseRegularTransactionBlock() alone: the DDL transaction state is
+	 * cleared before the commit RPC, so it misses an error from that RPC;
+	 * YBIsDdlTxnBlockCommitInProgress() covers that window.
 	 */
 	if (YBIsDdlTransactionBlockEnabled() &&
-		!IsTransactionBlock() &&
+		!(IsYBReadCommitted() && IsTransactionBlock()) &&
 		(YBGetDdlUseRegularTransactionBlock() ||
 		 YBIsDdlTxnBlockCommitInProgress()))
 	{

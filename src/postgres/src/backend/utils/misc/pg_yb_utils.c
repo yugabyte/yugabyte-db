@@ -213,9 +213,10 @@ static bool YBIsCurrentStmtCreateFunction();
 static uint64_t function_cache_generation = 0;
 
 /*
- * Set while YBCommitTransactionContainingDDL commits a transaction block that
- * ran DDL. The DDL transaction state is cleared before the commit RPC, so this
- * is what tells YBCAbortTransaction that a failed commit rolled back DDL.
+ * Set while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block), whether or not it ran a DDL
+ * statement. The DDL transaction state is cleared before the commit RPC, so
+ * this is what tells YBCAbortTransaction that a failed commit rolled back DDL.
  */
 static bool ddl_txn_block_commit_in_progress = false;
 
