@@ -20,14 +20,39 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
-class PgLocksV76UpgradeTest : public UpgradeTestBase {
+// false turns enable_object_locking_for_table_locks off on every version; true keeps the build
+// default, which is on in release builds. Without false, release builds would cover only the
+// upgraded transaction that refreshes its catalog cache on a new lock, not the one that keeps its
+// stale catalog cache. Debug builds default to off, so true would repeat false there and is
+// skipped.
+class PgLocksV76UpgradeTest : public UpgradeTestBase, public ::testing::WithParamInterface<bool> {
  public:
   PgLocksV76UpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+
+ protected:
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    if (!GetParam()) {
+      for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
+        for (const auto* flag :
+             {"enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled",
+              "ysql_enable_concurrent_ddl", "ysql_yb_enable_ddl_savepoint_support",
+              "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks"}) {
+          AddUnDefOkAndSetFlag(*flags, flag, "false");
+        }
+      }
+    }
+    UpgradeTestBase::SetUpOptions(opts);
+  }
 };
 
 // Verify that the pg_locks view correctly displays advisory locks and other types of locks
 // during and after the upgrade.
-TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
+TEST_P(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
+#ifndef NDEBUG
+  if (GetParam()) {
+    GTEST_SKIP() << "Object locking for table locks is off by default in debug builds";
+  }
+#endif
   constexpr int kMinTxnAgeMs = 0;
   const std::string kPgLocksQuery = "SELECT classid, objid, objsubid, mode FROM pg_locks";
   ASSERT_OK(StartClusterInOldVersion());
@@ -104,13 +129,20 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
-  // conn's transaction was opened before FinalizeUpgrade(), and the yb_enable_object_locking_infra
-  // auto flag is latched once per transaction in StartTransaction (c60f1cba1cd), so this
-  // transaction keeps the pre-finalize value no matter how enable_object_locking_for_table_locks
-  // is set. AcceptInvalidationMessages() therefore skips the full cache invalidation and the
-  // catcache stays stale (21 vs 24 columns).
+  // conn's transaction was opened before FinalizeUpgrade(), so it keeps the pre-finalize value of
+  // the yb_enable_global_object_locking_infra auto flag, latched in StartTransaction. Its first
+  // pg_locks read after finalize is a new lock for the transaction. With object locking on, a
+  // transaction that started before the promotion takes local object locks and refreshes its
+  // catalog cache on a new lock, as PG does (#36572), so it sees the new yb_lock_status row type.
+  // With object locking off, it does not refresh mid-transaction, and the catcache stays stale (21
+  // vs 24 columns).
   auto result = conn.FetchAllAsString(Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery));
-  ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+  if (ASSERT_RESULT(cluster_->GetFlag(
+          cluster_->tablet_server(0), "enable_object_locking_for_table_locks")) == "true") {
+    ASSERT_EQ(ASSERT_RESULT(std::move(result)), "2, 2, 2, ShareLock; 0, 1, 1, ExclusiveLock");
+  } else {
+    ASSERT_NOK_STR_CONTAINS(result, "Returned row contains 24 attributes, but query expects 21");
+  }
 
   // Once the transaction block ends, YBCheckSharedCatalogCacheVersion() stops bailing out on
   // IsTransactionOrTransactionBlock() and refreshes the catalog cache, so the same connection
@@ -126,5 +158,8 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   ASSERT_EQ(pg_locks_result, "0, 1, 1, ExclusiveLock");
 }
 
+
+INSTANTIATE_TEST_SUITE_P(
+    TableLocks, PgLocksV76UpgradeTest, ::testing::Bool(), ::testing::PrintToStringParamName());
 
 } // namespace yb

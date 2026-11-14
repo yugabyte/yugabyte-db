@@ -53,7 +53,6 @@
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
-DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
 
@@ -961,24 +960,28 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 }
 
 // False until PG makes the first YBCSetObjectLockingForCurrTxn() call of the backend from
-// StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
-// to the tserver never comes from the unset value: PgTxnManager reads it through
-// IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
-// only issued while a statement runs. The PG side does read it earlier, at least from
-// YBCIsLegacyModeForCatalogOps during sys table prefetching, where
-// YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
+// StartTransaction. pggate only reads it inside a transaction, so the using_table_locks_globally
+// it sends to the tserver never comes from the unset value: PgTxnManager reads it through
+// UsingObjectLocksGloballyForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs
+// are only issued while a statement runs. A PG caller that reads it earlier sees false, that is,
+// no global object locks.
 static bool object_locking_for_curr_txn = false;
+static bool historical_catalog_read_for_curr_txn = false;
 
 void YBCSetObjectLockingForCurrTxn(bool enabled) {
   object_locking_for_curr_txn = enabled;
+}
+
+void YBCSetHistoricalCatalogReadForCurrTxn(bool historical_catalog_read) {
+  historical_catalog_read_for_curr_txn = historical_catalog_read;
 }
 
 bool YBCIsObjectLockingLatchedForCurrTxn() {
   return object_locking_for_curr_txn;
 }
 
-bool YBCIsObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingLatchedForCurrTxn();
+bool YBCIsHistoricalCatalogReadForCurrTxn() {
+  return historical_catalog_read_for_curr_txn;
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

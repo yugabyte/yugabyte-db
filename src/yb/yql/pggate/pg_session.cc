@@ -1449,13 +1449,25 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 
 Status PgSession::AcquireObjectLock(
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->UsingObjectLocksLocally()) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
     // non-concurrent setup with no running tservers and transaction status tablets.
     // During a ysql-major-upgrade initdb/pg_upgrade may run when the cluster is still serving
     // traffic. However, YB guarantees that there will be no DDLs running at that time.
+    return Status::OK();
+  }
+  // While yb_enable_global_object_locking_infra is being promoted, a CREATE INDEX with global
+  // object locks waits for writers only through object locks. If a transaction without global
+  // object locks (one that latched the flag as off) sent no locks, the CREATE INDEX would backfill
+  // under its uncommitted UPDATE, and the index would miss the update once it commits (#36572). So
+  // a transaction without global object locks sends the locks a writer takes. It sends nothing
+  // stronger, so its LOCK TABLE and DDLs keep their pre-promotion behavior: LOCK TABLE t IN ACCESS
+  // EXCLUSIVE MODE still takes no object lock. PG records every lock in its own lock table either
+  // way.
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn() &&
+      (is_session_lock || mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)) {
     return Status::OK();
   }
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
@@ -1471,7 +1483,9 @@ Status PgSession::AcquireObjectLock(
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  // A transaction without global object locks sends no session locks, so PG sends no releases for
+  // them.
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgReleaseSessionObjectLockRequestPB req;
@@ -1489,7 +1503,7 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
 
 Status PgSession::WaitForLockersMultiple(
     const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
-  if (!pg_txn_manager_->IsTableLockingEnabledForCurrentTxn()) {
+  if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn()) {
     return Status::OK();
   }
   tserver::PgWaitForLockersMultipleRequestPB req;

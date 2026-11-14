@@ -13056,7 +13056,8 @@ validateForeignKeyConstraint(char *conname,
 	 * of a child row that the check passed and leave that child orphaned.
 	 */
 	if ((!IsYBRelation(rel) ||
-		 (!YBCIsLegacyModeForCatalogOps() && yb_enable_batchednl)) &&
+		 (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		  yb_enable_batchednl)) &&
 		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
