@@ -48,10 +48,6 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     this.storageUtilFactory = storageUtilFactory;
   }
 
-  /**
-   * Validates that a backup directory name is safe for cloud storage. Checks for: - Path traversal
-   * attempts (..) - Directory separators (/) - Special characters - Empty or null values
-   */
   // A config still being checked (Validating) may be deleted when its check fails, and one queued
   // for deletion is going away.
   private static void checkActive(CustomerConfig customerConfig) {
@@ -65,6 +61,10 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     }
   }
 
+  /**
+   * Validates that a backup directory name is safe for cloud storage. Checks for: - Path traversal
+   * attempts (..) - Directory separators (/) - Special characters - Empty or null values
+   */
   private void validateBackupDir(String backupDir) {
     if (backupDir == null || backupDir.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Backup directory cannot be empty");
