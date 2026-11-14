@@ -268,8 +268,6 @@ public class ResizeNode extends UpgradeTaskBase {
 
           Universe universe = getUniverse();
 
-          UserIntent userIntentForFlags = getUserIntent();
-
           boolean flagsProvided = taskParams().flagsProvided(universe);
 
           Map<UUID, UniverseDefinitionTaskParams.Cluster> newVersionsOfClusters =
@@ -288,9 +286,11 @@ public class ResizeNode extends UpgradeTaskBase {
                   });
 
           AtomicBoolean applyGFlagsToAllNodes = new AtomicBoolean();
+          Map<UUID, UserIntent> userIntentMap = new HashMap<>();
           // Create task sequence to resize allNodes.
           for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
             final UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+            userIntentMap.put(cluster.uuid, userIntent);
 
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
@@ -316,7 +316,7 @@ public class ResizeNode extends UpgradeTaskBase {
                   createResizeNodeTasks(nodes, userIntent, currentIntent);
                   if (flagsProvided) {
                     createGFlagsUpgradeTasks(
-                        userIntentForFlags,
+                        userIntentMap,
                         processTypes,
                         nodes,
                         universe,
@@ -371,7 +371,7 @@ public class ResizeNode extends UpgradeTaskBase {
             createRollingUpgradeTaskFlow(
                 (nodes, processTypes) ->
                     createGFlagsUpgradeTasks(
-                        userIntentForFlags,
+                        userIntentMap,
                         processTypes,
                         nodes,
                         universe,
@@ -396,7 +396,7 @@ public class ResizeNode extends UpgradeTaskBase {
   }
 
   private void createGFlagsUpgradeTasks(
-      UserIntent userIntentForFlags,
+      Map<UUID, UserIntent> userIntentMap,
       Set<ServerType> processTypes,
       List<NodeDetails> nodes,
       Universe universe,
@@ -410,6 +410,7 @@ public class ResizeNode extends UpgradeTaskBase {
       UUID clusterUUID = node.placementUuid;
       UniverseDefinitionTaskParams.Cluster oldCluster = gflagsBaseline.get(clusterUUID);
       UniverseDefinitionTaskParams.Cluster newCluster = newVersionsOfClusters.get(clusterUUID);
+      UserIntent userIntent = userIntentMap.get(clusterUUID);
 
       for (ServerType processType : processTypes) {
         if (applyToAll
@@ -421,8 +422,8 @@ public class ResizeNode extends UpgradeTaskBase {
                 newCluster,
                 newVersionsOfClusters.values())) {
           createServerConfFileUpdateTasks(
-              userIntentForFlags,
-              nodes,
+              userIntent,
+              Collections.singletonList(node),
               Collections.singleton(processType),
               oldCluster,
               gflagsBaseline.values(),
