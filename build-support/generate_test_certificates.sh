@@ -286,6 +286,33 @@ EOT
   generate_cert "$dir" "$prefix" "$use_intermediate_ca"
 }
 
+# A node certificate whose only subject alternative name is the DNS name
+# 127.0.0.<octet>.ip.yugabyte, which test builds resolve to 127.0.0.<octet>. A server loads it
+# when started with --server_broadcast_addresses=127.0.0.<octet>.ip.yugabyte:<port>, so a client
+# that connects to such a server by IP address fails endpoint verification.
+generate_node_dns_cert() {
+  local dir="$1"
+  local ip_end_octet="$2"
+
+  local host="127.0.0.$ip_end_octet.ip.yugabyte"
+  local prefix="node.$host"
+
+  cat > "$dir/$prefix.conf" <<-EOT
+[ req ]
+prompt=no
+distinguished_name = node_distinguished_name
+req_extensions = req_ext
+
+[ node_distinguished_name ]
+commonName = node.$ip_end_octet
+
+[ req_ext ]
+subjectAltName = DNS:$host
+EOT
+
+  generate_cert "$dir" "$prefix"
+}
+
 generate_ysql_cert() {
   local dir="$1"
   local prefix="$2"
@@ -341,6 +368,9 @@ generate_test_certificates() {
   generate_ca "$temp_dir/CA1" 'YugabyteDB CA 1'
   for i in $(seq 2 2 254); do
     generate_node_cert "$temp_dir/CA1" "$i"
+  done
+  for i in 3 5 7 ; do
+    generate_node_dns_cert "$temp_dir/CA1" "$i"
   done
   generate_ysql_cert "$temp_dir/CA1" ysql
   # A second client certificate, identical to ysql apart from being listed in ca.crl, so that tests
