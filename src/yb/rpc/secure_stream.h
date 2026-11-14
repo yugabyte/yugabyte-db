@@ -44,6 +44,10 @@ class SecureContext {
 
   std::string GetCertificateDetails();
 
+  // Whether connections this context opens as a client present the loaded certificate. Applies to
+  // connections opened afterwards.
+  void SetUseClientCertificate(UseClientCertificate value);
+
   // Generates and uses temporary keys, should be used only during testing.
   Status TEST_GenerateKeys(int bits, const std::string& common_name,
                            MatchingCertKeyPair matching_cert_key_pair);

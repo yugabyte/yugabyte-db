@@ -23,6 +23,10 @@ bool IsAlterReplicationGroupId(const ReplicationGroupId& replication_group_id);
 
 ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& replication_group_id);
 
+// <certs_for_cdc_dir>/<original replication group id>, where the other universe's certificates
+// for this replication group are placed. Empty when --certs_for_cdc_dir is not set.
+std::string GetRemoteUniverseCertsDir(const ReplicationGroupId& replication_group_id);
+
 std::string ShortReplicationType(XClusterReplicationType type);
 
 
