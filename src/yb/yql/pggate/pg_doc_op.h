@@ -527,9 +527,7 @@ class PgDocReadOp : public PgDocOp {
   //   * The higher the number of partition_count, the higher the parallelism level.
   //   * If (partition_count == 1), only one operator is needed for the entire partition range.
   //   * If (partition_count > 1), each operator is used for a specific partition range.
-  //   * This optimization is used by
-  //       PopulateByYbctidOps()
-  //       PopulateParallelSelectOps()
+  //   * This optimization is used by PopulateParallelSelectOps().
   // - When parallelism by arguments is applied, each operator has only one argument.
   //   When tablet server will run the requests in parallel as it assigned one thread per request.
   //       PopulateNextHashPermutationOps()
@@ -567,7 +565,6 @@ class PgDocReadOp : public PgDocOp {
   // Create protobuf requests using template_op_.
   Result<bool> DoCreateRequests() override;
 
-  // Create operators by partition.
   // - Optimization for statement
   //     SELECT xxx FROM <table> WHERE ybctid IN (SELECT ybctid FROM INDEX)
   // - After being queried from inner select, ybctids are used for populate request for outer query.
