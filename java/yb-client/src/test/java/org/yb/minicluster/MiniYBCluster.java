@@ -86,6 +86,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   public static final int CATALOG_MANAGER_BG_TASK_WAIT_MS = 500;
 
+  // How long a just-started daemon must stay alive for us to consider it started.
+  private static final long PROCESS_STARTUP_CHECK_DELAY_MS = 300;
+
   private static final String TSERVER_MASTER_ADDRESSES_FLAG = "--tserver_master_addrs";
 
   private static final String TSERVER_MASTER_ADDRESSES_FLAG_REGEX =
@@ -104,6 +107,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   // Map of host/port pairs to master servers.
   private final Map<HostAndPort, MiniYBDaemon> masterProcesses = new ConcurrentHashMap<>();
+
+  // While non-null, newly started daemons are collected here instead of being checked one by one.
+  private List<MiniYBDaemon> daemonsPendingStartupCheck = null;
 
   // Map of host/port pairs to tablet servers.
   private final Map<HostAndPort, MiniYBDaemon> tserverProcesses = new ConcurrentHashMap<>();
@@ -613,13 +619,15 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("startTabletServers: numTServers={}, commonTserverFlags={}, perTserverFlags={}",
         numTservers, commonTserverFlags, perTserverFlags);
 
-    for (int i = 0; i < numTservers; i++) {
-      Map<String, String> currTserverFlags = new TreeMap<>(commonTserverFlags);
-      if (!perTserverFlags.isEmpty() && perTserverFlags.get(i) != null) {
-        currTserverFlags.putAll(perTserverFlags.get(i));
+    startDaemonsWithBatchedStartupCheck(() -> {
+      for (int i = 0; i < numTservers; i++) {
+        Map<String, String> currTserverFlags = new TreeMap<>(commonTserverFlags);
+        if (!perTserverFlags.isEmpty() && perTserverFlags.get(i) != null) {
+          currTserverFlags.putAll(perTserverFlags.get(i));
+        }
+        startTServer(currTserverFlags, tserverEnvVars);
       }
-      startTServer(currTserverFlags, tserverEnvVars);
-    }
+    });
 
     long tserverStartupDeadlineMs = System.currentTimeMillis() + 60000;
     for (MiniYBDaemon tserverProcess : tserverProcesses.values()) {
@@ -886,45 +894,48 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     updateMasterAddresses();
-    for (MasterHostPortAllocation masterAlloc : masterHostPortAlloc) {
-      final String masterBindAddress = masterAlloc.bindAddress;
-      final int masterRpcPort = masterAlloc.rpcPort;
-      final long now = System.currentTimeMillis();
-      String dataDirPath =
-          baseDirPath + "/master-" + masterBindAddress + "-" + masterRpcPort + "-" + now;
-      String flagsPath = TestUtils.getFlagsPath();
-      final int masterWebPort = masterAlloc.webPort;
-      List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
-        masterBindAddress, masterRpcPort, masterWebPort);
-      masterCmdLine.add("--master_addresses=" + masterAddresses);
-      if (extraMasterFlags != null) {
-        masterCmdLine.addAll(CommandUtil.flagsToArgs(extraMasterFlags));
-      }
-      if (clusterParameters.startYsqlProxy) {
-        masterCmdLine.add("--master_auto_run_initdb");
-        // Avoid GitHub #31029 startup race: initdb's postgres bootstrap calls CreateTable on the
-        // master (to create the global transaction status table) and fails with "Not enough live
-        // tablet servers ..." if no tservers have registered yet. Have the master wait for our
-        // tservers to register before launching initdb. numTservers is the right ceiling because
-        // (a) we are about to start exactly that many tservers immediately after, and (b) the
-        // master's own RF requirement is min(numTservers, FLAGS_replication_factor), so any test
-        // that survives the bootstrap eventually needs all numTservers to come up anyway.
-        masterCmdLine.add(
-            "--TEST_master_min_live_tservers_before_initdb=" + clusterParameters.numTservers);
-      }
-      final HostAndPort masterHostAndPort = HostAndPort.fromParts(masterBindAddress, masterRpcPort);
-      masterProcesses.put(masterHostAndPort,
-          configureAndStartProcess(
-              MiniYBDaemonType.MASTER,
-              masterCmdLine.toArray(new String[masterCmdLine.size()]),
-              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, -1, dataDirPath, null));
+    startDaemonsWithBatchedStartupCheck(() -> {
+      for (MasterHostPortAllocation masterAlloc : masterHostPortAlloc) {
+        final String masterBindAddress = masterAlloc.bindAddress;
+        final int masterRpcPort = masterAlloc.rpcPort;
+        final long now = System.currentTimeMillis();
+        String dataDirPath =
+            baseDirPath + "/master-" + masterBindAddress + "-" + masterRpcPort + "-" + now;
+        String flagsPath = TestUtils.getFlagsPath();
+        final int masterWebPort = masterAlloc.webPort;
+        List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
+          masterBindAddress, masterRpcPort, masterWebPort);
+        masterCmdLine.add("--master_addresses=" + masterAddresses);
+        if (extraMasterFlags != null) {
+          masterCmdLine.addAll(CommandUtil.flagsToArgs(extraMasterFlags));
+        }
+        if (clusterParameters.startYsqlProxy) {
+          masterCmdLine.add("--master_auto_run_initdb");
+          // Avoid GitHub #31029 startup race: initdb's postgres bootstrap calls CreateTable on the
+          // master (to create the global transaction status table) and fails with "Not enough live
+          // tablet servers ..." if no tservers have registered yet. Have the master wait for our
+          // tservers to register before launching initdb. numTservers is the right ceiling because
+          // (a) we are about to start exactly that many tservers immediately after, and (b) the
+          // master's own RF requirement is min(numTservers, FLAGS_replication_factor), so any test
+          // that survives the bootstrap eventually needs all numTservers to come up anyway.
+          masterCmdLine.add(
+              "--TEST_master_min_live_tservers_before_initdb=" + clusterParameters.numTservers);
+        }
+        final HostAndPort masterHostAndPort =
+            HostAndPort.fromParts(masterBindAddress, masterRpcPort);
+        masterProcesses.put(masterHostAndPort,
+            configureAndStartProcess(
+                MiniYBDaemonType.MASTER,
+                masterCmdLine.toArray(new String[masterCmdLine.size()]),
+                masterBindAddress, masterRpcPort, masterWebPort, -1, -1, -1, dataDirPath, null));
 
-      if (flagsPath.startsWith(baseDirPath)) {
-        // We made a temporary copy of the flags; delete them later.
-        pathsToDelete.add(flagsPath);
+        if (flagsPath.startsWith(baseDirPath)) {
+          // We made a temporary copy of the flags; delete them later.
+          pathsToDelete.add(flagsPath);
+        }
+        pathsToDelete.add(dataDirPath);
       }
-      pathsToDelete.add(dataDirPath);
-    }
+    });
 
     long startupDeadlineMs = System.currentTimeMillis() + 120000;
     for (MiniYBDaemon masterProcess : masterProcesses.values()) {
@@ -993,19 +1004,49 @@ public class MiniYBCluster implements AutoCloseable {
                          pgsqlWebPort, cqlWebPort, redisWebPort, dataDirPath);
     logPrinters.add(daemon.getLogPrinter());
 
-    Thread.sleep(300);
-    try {
-      int ev = proc.exitValue();
-      throw new Exception("We tried starting a process (" + command[0] + ") but it exited with " +
-          "value=" + ev + (daemon.getLogPrinter().getError() == null ?
-                           "" : ", error: " + daemon.getLogPrinter().getError()));
-    } catch (IllegalThreadStateException ex) {
-      // This means the process is still alive, it's like reverse psychology.
+    if (daemonsPendingStartupCheck != null) {
+      daemonsPendingStartupCheck.add(daemon);
+    } else {
+      checkDaemonsStarted(Collections.singletonList(daemon));
     }
 
-    LOG.info("Started " + command[0] + " as pid " + ProcessUtil.pidOfProcess(proc));
-
     return daemon;
+  }
+
+  /**
+   * Gives the given just-started daemons a moment to fail, and throws if any of them has exited.
+   */
+  private static void checkDaemonsStarted(List<MiniYBDaemon> daemons) throws Exception {
+    Thread.sleep(PROCESS_STARTUP_CHECK_DELAY_MS);
+    for (MiniYBDaemon daemon : daemons) {
+      final Process proc = daemon.getProcess();
+      final String binary = daemon.getCommandLine()[0];
+      try {
+        int ev = proc.exitValue();
+        throw new Exception("We tried starting a process (" + binary + ") but it exited with " +
+            "value=" + ev + (daemon.getLogPrinter().getError() == null ?
+                             "" : ", error: " + daemon.getLogPrinter().getError()));
+      } catch (IllegalThreadStateException ex) {
+        // This means the process is still alive, it's like reverse psychology.
+      }
+
+      LOG.info("Started " + binary + " as pid " + ProcessUtil.pidOfProcess(proc));
+    }
+  }
+
+  /**
+   * Starts daemons via the given action, waiting once for all of them to survive startup rather
+   * than once per daemon.
+   */
+  private void startDaemonsWithBatchedStartupCheck(ThrowingRunnable startDaemons)
+      throws Exception {
+    daemonsPendingStartupCheck = new ArrayList<>();
+    try {
+      startDaemons.run();
+      checkDaemonsStarted(daemonsPendingStartupCheck);
+    } finally {
+      daemonsPendingStartupCheck = null;
+    }
   }
 
   private MiniYBDaemon restart(MiniYBDaemon daemon) throws Exception {
