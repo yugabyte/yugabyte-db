@@ -251,6 +251,17 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     RETURN_NOT_OK(CheckHashRangeConstraints(*slot_entry_opt));
   }
   auto stream = VERIFY_RESULT(cdc_service_->GetStream(stream_id_));
+  const auto slot_name = stream->GetReplicationSlotName();
+  RSTATUS_DCHECK(
+      slot_name, IllegalState, Format("Stream $0 has no replication slot name", stream_id_));
+  SCHECK_FORMAT(
+      !stream->IsPausedForUpgrade(), IllegalState,
+      "Replication slot $0 is paused for conversion to an implicit slot", *slot_name);
+  SCHECK_FORMAT(
+      !stream->IsUnusableWithTransactionalDdl(), IllegalState,
+      "Replication slot $0 is unusable with transactional DDL replication, as it wasn't paused "
+      "for conversion to an implicit slot. Create a new replication slot",
+      *slot_name);
 
   detect_publication_changes_implicitly_ =
       stream->GetDetectPublicationChangesImplicitly().value_or(false);
@@ -273,7 +284,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
           IllegalState,
           "Replication slot $0 lacks the catalog tables used to decode transactional DDL. Stop "
           "its consumer and run 'yb-admin prepare_replication_slots_for_transactional_ddl $0'",
-          stream->GetReplicationSlotName().value_or(stream_id_.ToString()));
+          *slot_name);
     }
   }
 

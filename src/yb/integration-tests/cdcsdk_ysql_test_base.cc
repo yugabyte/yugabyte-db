@@ -1530,7 +1530,7 @@ Status CDCSDKYsqlTest::InitVirtualWAL(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
     const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range,
     bool include_oid_to_relfilenode, int timeout,
-    const std::vector<uint32_t>& publication_oids, bool pub_all_tables) {
+    const std::vector<uint32_t>& publication_oids, bool pub_all_tables, bool retry) {
   InitVirtualWALForCDCRequestPB init_req;
   init_req.set_stream_id(stream_id.ToString());
   init_req.set_session_id(session_id);
@@ -1567,6 +1567,9 @@ Status CDCSDKYsqlTest::InitVirtualWAL(
           if (status.IsAlreadyPresent() || status.IsInvalidArgument()|| status.IsNotFound()) {
             RETURN_NOT_OK(status);
           }
+        }
+        if (!retry) {
+          RETURN_NOT_OK(status);
         }
 
         return false;
