@@ -5,11 +5,15 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anEmptyMap;
+import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
@@ -30,11 +34,15 @@ import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneNodeSpec;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsResp;
 import com.yugabyte.yba.v2.client.models.CheckResizeOptionsSpec;
+import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterProviderSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageBase;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
+import com.yugabyte.yba.v2.client.models.ExposingServiceState;
+import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
 import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
 import com.yugabyte.yba.v2.client.models.ResizeUpdateOption;
@@ -467,6 +475,42 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     validateUniverseCreateSpec(universeCreateSpec, v1CreateParams);
     assertThat(v1CreateParams.getPrimaryCluster().userIntent.isMulticloudSupport(), is(true));
     assertThat(v1CreateParams.getPrimaryCluster().userIntent.providerSpecifications, hasSize(1));
+  }
+
+  @Test
+  public void testCreateUniverseV2MultiproviderSkipsSingleProviderSettings()
+      throws ApiException, IOException {
+    setNewUIEnabled();
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2Geo(true);
+    ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
+    clusterSpec.setNodeSpec(
+        new ClusterNodeSpec()
+            .instanceType("single-provider-type")
+            .storageSpec(new ClusterStorageSpec().volumeSize(111).numVolumes(1)));
+    clusterSpec.setInstanceTags(Map.of("single", "provider"));
+    clusterSpec.setProviderSpec(
+        new ClusterProviderSpec().provider(providerUuid).accessKeyCode("single-provider-key"));
+    clusterSpec.setNetworkingSpec(
+        new ClusterNetworkingSpec()
+            .enableLb(true)
+            .enableExposingService(ExposingServiceState.EXPOSED)
+            .proxyConfig(new NodeProxyConfig().httpProxy("http://proxy:1234")));
+
+    AtomicReference<UniverseDefinitionTaskParams> paramsRef = new AtomicReference<>();
+    setupUniverse(universeCreateSpec, paramsRef::set);
+
+    UserIntent userIntent = paramsRef.get().getPrimaryCluster().userIntent;
+    assertThat(userIntent.isMulticloudSupport(), is(true));
+    assertThat(userIntent.instanceType, is(nullValue()));
+    assertThat(userIntent.deviceInfo, is(nullValue()));
+    assertThat(userIntent.accessKeyCode, is(nullValue()));
+    assertThat(userIntent.instanceTags, is(anyOf(nullValue(), anEmptyMap())));
+    assertThat(userIntent.getProxyConfig(), is(nullValue()));
+    assertThat(
+        userIntent.enableExposingService,
+        is(not(UniverseDefinitionTaskParams.ExposingServiceState.EXPOSED)));
+    // These are read from the flat UserIntent on every cluster.
+    assertThat(userIntent.enableLB, is(true));
   }
 
   @Test
