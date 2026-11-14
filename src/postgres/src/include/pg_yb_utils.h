@@ -1367,9 +1367,10 @@ bool		IsYbFdwUser(Oid member);
 extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
- * These functions are unsafe to run in a multi-threaded environment. There is
- * no specific attribute that identifies them as such, so we have to manually
- * identify them.
+ * These functions are unsafe to evaluate in DocDB: they are not thread-safe,
+ * need a resource owner, or depend on session state DocDB doesn't have. There
+ * is no specific attribute that identifies them as such, so we have to
+ * manually identify them.
  */
 extern const uint32 yb_funcs_unsafe_for_pushdown[];
 
