@@ -367,7 +367,16 @@ yb_has_ancestor_partition_attrs(Relation partition_rel, Relation ancestor_rel,
 			while ((bms_idx = bms_first_member(expr_attrs)) >= 0)
 			{
 				AttrNumber	anc_attno = (AttrNumber) bms_idx + attr_offset;
-				AttrNumber	partattno = attrmap->attnums[anc_attno - 1];
+				AttrNumber	partattno;
+
+				/* A whole-row reference depends on every column. */
+				if (anc_attno == InvalidAttrNumber)
+				{
+					result = !bms_is_empty(partition_attnums);
+					break;
+				}
+
+				partattno = attrmap->attnums[anc_attno - 1];
 				Assert(AttributeNumberIsValid(partattno));
 
 				if (bms_is_member(partattno - attr_offset, partition_attnums))
