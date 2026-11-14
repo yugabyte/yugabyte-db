@@ -40,6 +40,11 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   // Returns history cutoff without updating committed_history_cutoff_.
   HybridTime ProposedHistoryCutoff() override;
 
+  // Refreshes the allowed history cutoff that ProposedHistoryCutoff is clamped to. The provider
+  // can take locks and even issue RPCs, so ProposedHistoryCutoff, which is called on the read
+  // path, uses the value cached here and by SanitizeHistoryCutoff instead of calling it.
+  void RefreshAllowedHistoryCutoff();
+
   // Tries to update history cutoff to proposed value, not allowing it to decrease.
   // Returns new committed history cutoff value.
   docdb::HistoryCutoff UpdateCommittedHistoryCutoff(
@@ -96,6 +101,8 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   // open. Unlike committed_history_cutoff_information_, UpdateCommittedHistoryCutoff does not
   // advance it, because a propagated cutoff can be above an active local reader.
   HybridTime used_history_cutoff_floor_ GUARDED_BY(mutex_);
+  // Primary cutoff most recently returned by allowed_history_cutoff_provider_.
+  HybridTime allowed_primary_cutoff_ GUARDED_BY(mutex_) = HybridTime::kMax;
   CoarseTimePoint next_history_cutoff_propagation_ GUARDED_BY(mutex_) = CoarseTimePoint::min();
   int disable_counter_ GUARDED_BY(mutex_) = 0;
 };
