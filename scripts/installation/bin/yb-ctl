@@ -1840,7 +1840,7 @@ class ClusterControl:
                     log_kv_list["yb-master Logs"] = os.path.join(data_path, DAEMON_TYPE_MASTER,
                                                                  "logs")
             info_kv_list["data-dir[{}]".format(idx)] = data_path
-        info_kv_list |= log_kv_list
+        info_kv_list.update(log_kv_list)
 
         master_pid = self.get_pid(master_daemon_id) if master_daemon_id else None
         process_list = []
