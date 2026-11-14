@@ -57,7 +57,7 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 | MySQL<br>[Deprecated]<sup>*</sup> | Offline | MySQL 8.x <br> MariaDB <br> [Amazon Aurora MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMySQL.html) <br> [Amazon RDS for MySQL](https://aws.amazon.com/rds/mysql/) <br> [Cloud SQL for MySQL](https://cloud.google.com/sql/docs/mysql) | [Migrating from MySQL to YugabyteDB](https://www.youtube.com/watch?v=tLs0043_z5E) |
 | Oracle<br>[Deprecated]<sup>*</sup> | Offline | Oracle 11g - 19c <br> [Amazon RDS for Oracle](https://aws.amazon.com/rds/oracle/) | [Migrating from Oracle to YugabyteDB](https://www.youtube.com/watch?v=Bh2Wz537TGM) |
 
-<sup>*</sup>MySQL and Oracle offline migration is deprecated; support ends October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+<sup>*</sup>MySQL and Oracle offline migration is no longer supported as of October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
 
 ## Target database
 
