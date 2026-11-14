@@ -597,7 +597,7 @@ ybShouldPenalizeMergeOption(IndexPath *path)
 		int mergeOptionValue = ybGetValueForMergeOption(path->indexinfo->yb_options);
 		if (mergeOptionValue >= 0)
 		{
-			if (path->yb_index_path_info.merge_scan_stream_cols == NIL)
+			if (path->yb_index_path_info.merge_scan_info == NULL)
 			{
 				if (mergeOptionValue == 1)
 					penalize = true;
@@ -10638,7 +10638,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (!enable_indexscan || ybShouldPenalizeMergeOption(path))
 		startup_cost += disable_cost;
 
-	if (path->yb_index_path_info.merge_scan_stream_cols)
+	if (path->yb_index_path_info.merge_scan_info)
 	{
 		/*
 		 * The merge's own work: per row passed up, a constant overhead plus
@@ -10653,7 +10653,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * add_path then falls back to startup_cost before pathkeys.
 		 */
 		int			num_streams =
-			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_stream_cols);
+			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_info->stream_cols);
 		Cardinality merge_rows;
 		Cost		merge_cost;
 		Cost		plain_startup_cost = startup_cost;

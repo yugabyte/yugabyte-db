@@ -2,13 +2,10 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
-import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
@@ -342,16 +339,20 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
       }
     }
     editFormData.bootstrapParams = null;
-    IllegalArgumentException exception =
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> editXClusterConfig(editFormData, xClusterConfigUuid));
+    // The set-tables computation and its bootstrapping prechecks run in the EditXClusterConfig
+    // task, so the request is accepted and the task fails instead.
+    result = editXClusterConfig(editFormData, xClusterConfigUuid);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     String errMsg =
         String.format(
             "Table ids [%s] do not have corresponding tables on the target universe and they must"
                 + " be bootstrapped but bootstrapParams is null",
             table4Id);
-    assertEquals(errMsg, exception.getMessage());
+    assertTrue(taskInfo.getErrorMessage(), taskInfo.getErrorMessage().contains(errMsg));
   }
 
   @Test
@@ -491,12 +492,32 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
     // Set status to Paused so that we can make the controller believe that an
     // edit operation is performed.
     editFormData.status = "Paused";
-    result = assertPlatformException(() -> editXClusterConfig(editFormData, xClusterConfigUuid));
-    assertBadRequest(
-        result,
-        "The operation to remove tables from replication config will remove all the "
-            + "tables in replication which is not allowed; if you want to delete "
-            + "replication for all of them, please delete the replication config");
+    // The set-tables computation and its validation run in the EditXClusterConfig task, so the
+    // request is accepted and the task fails instead.
+    result = editXClusterConfig(editFormData, xClusterConfigUuid);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getErrorMessage(),
+        taskInfo
+            .getErrorMessage()
+            .contains(
+                "The operation to remove tables from replication config will remove all the "
+                    + "tables in replication which is not allowed; if you want to delete "
+                    + "replication for all of them, please delete the replication config"));
+
+    // The failed edit must leave the replicated tables untouched.
+    getXClusterConfigResult = getXClusterConfig(xClusterConfigUuid);
+    assertOk(getXClusterConfigResult);
+    xClusterConfig =
+        Json.fromJson(Json.parse(contentAsString(getXClusterConfigResult)), XClusterConfig.class);
+    assertEquals(2, xClusterConfig.getTableIds().size());
+    for (XClusterTableConfig table : xClusterConfig.getTableDetails()) {
+      assertEquals(XClusterTableConfig.Status.Running, table.getStatus());
+    }
   }
 
   @Test
