@@ -24,4 +24,7 @@ ALTER USER regress_user1 PASSWORD 'md51a44d829a20a23eac686d9f0d258af13';
 -- error: password is user name
 ALTER USER regress_user1 PASSWORD 'md5e589150ae7d28f93333afae92b36ef48';
 
+-- YB: SCRAM secrets too, as a pg_dumpall script replays them
+ALTER USER regress_user1 PASSWORD 'SCRAM-SHA-256$4096:eWItcmVncmVzcy1zYWx0IQ==$1u+NSwBmQ2sI2tROw57JW0jT2oTy8xoL81985X/Vg5Y=:2ZkNYmIzpykurJaUthlcQtl0hC1AsG+DMig4z4p3glA='; -- YB: ok (password is "secret")
+ALTER USER regress_user1 PASSWORD 'SCRAM-SHA-256$4096:eWItcmVncmVzcy1zYWx0IQ==$1Tnlet73stV3gHFDoXaTQWwmH7EatQLKeN1tVEW1QVs=:1Cw4KCJILJ66ej5C/ZHjn6LLFFlOAevbPawDllwYrmU='; -- YB: error, password is user name
 DROP USER regress_user1;
