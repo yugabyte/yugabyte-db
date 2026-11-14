@@ -254,6 +254,27 @@ When creating the universe, you also choose CPU architecture (x86 or ARM) and, f
 
 For Kubernetes, set cores, memory, and volume size for TServer and Master separately rather than selecting a cloud instance type.
 
+### User-level OOM killer
+
+{{<tags/feature/ga idea="1804">}} Available in YugabyteDB Anywhere v2026.2 and later.
+
+earlyoom is a process on database nodes that reacts to memory pressure before the Linux OOM killer. It prefers PostgreSQL backend processes, so one query is interrupted before YB-Master or YB-TServer.
+
+earlyoom is disabled by default. YugabyteDB Anywhere can install it on universes it provisions on AWS, GCP, Azure, OCI, and on-premises. Kubernetes universes and manually provisioned on-premises providers are unsupported. YugabyteDB Anywhere installs the [node agent](../../../faq/yugabyte-platform/#what-is-a-node-agent) as part of provisioning. On an existing universe, earlyoom is installed only on nodes that already have a node agent.
+
+If the universe uses more than one provider, every provider must resolve these settings to the same value. Set the keys at Global scope so every provider inherits them, or set the same value on each provider. earlyoom is installed only when every provider resolves **Enable earlyoom by default** to true. Only a Super Admin can change a global runtime configuration. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+To install earlyoom on universes you create after you change these settings:
+
+1. Set **Enables Earlyoom Installation on Nodes** (config key `yb.ui.feature_flags.enable_earlyoom`) to true. Set this key at Global or Customer scope.
+1. Set **Enable earlyoom by default** (config key `yb.node_agent.enable_earlyoom_by_default`) to true. Set this key at Global, Customer, or Provider scope.
+
+YugabyteDB Anywhere installs and starts earlyoom while it provisions the nodes. With the default settings, earlyoom acts when available memory falls to 5% of the node and prefers PostgreSQL processes.
+
+To install earlyoom on an existing universe on AWS, GCP, Azure, or OCI, also set **Whether to install and enable earlyoom during OS upgrade** (config key `yb.node_agent.enable_earlyoom_on_os_upgrade`) to true, then [upgrade the Linux version](../../manage-deployments/upgrade-nodes-csp/#upgrade-linux-version). The upgrade installs earlyoom when **Enable earlyoom by default** is true and the universe does not already run it.
+
+Universes that already run earlyoom keep running it after you set **Enable earlyoom by default** to false. That change applies to universes you create afterward. A Linux version upgrade leaves an existing earlyoom service running.
+
 ### YugabyteDB version
 
 Universes are created using a YugabyteDB release that is available in your YugabyteDB Anywhere instance. You choose the version when you create the universe.

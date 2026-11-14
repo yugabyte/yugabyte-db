@@ -71,3 +71,5 @@ To apply operating system patch or upgrade, do the following:
 1. Click **Upgrade**.
 
 When finished, you can confirm all nodes in the universe are running correctly in YugabyteDB Anywhere by navigating to the universe **Nodes** tab.
+
+When **Enable earlyoom by default** and **Whether to install and enable earlyoom during OS upgrade** are both true, this upgrade also installs [earlyoom](../../create-deployments/create-universes-overview/#user-level-oom-killer) on universes that do not already run it. Available in YugabyteDB Anywhere v2026.2 and later.
