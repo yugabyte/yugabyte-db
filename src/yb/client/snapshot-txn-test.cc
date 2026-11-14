@@ -75,6 +75,7 @@ DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
@@ -976,6 +977,8 @@ TEST_F_EX(SnapshotTxnTest, TruncateDuringShutdown, RemoteBootstrapOnStartBase) {
 TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   // Disable load balancing to avoid leader change after getting the leader peer.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // Widen the gap between setting local commit time and writing intents to regular DB.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_sleep_before_applying_intents_ms) = 500;
 
   SetIgnoreApplyingProbability(0.5);
 
@@ -1000,7 +1003,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
     auto peer = peers[0];
     auto tablet = ASSERT_RESULT(peer->shared_tablet());
     ASSERT_OK(tablet->transaction_participant()->ResolveIntents(
-        peer->clock().Now(), CoarseTimePoint::max()));
+        peer->clock().Now(), CoarseTimePoint::max(), tablet::WaitForApply::kTrue));
     auto current_ht = clock_->Now();
     ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
     bool found = false;

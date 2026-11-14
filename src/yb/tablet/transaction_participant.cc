@@ -232,6 +232,11 @@ ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState(TabletIdView tablet_id) 
   return bg_wait_state;
 }
 
+bool MustWaitForPendingApply(
+    const RunningTransaction& txn, HybridTime resolve_at, WaitForApply wait_for_apply) {
+  return wait_for_apply && txn.ProcessingApply() && txn.local_commit_time() <= resolve_at;
+}
+
 } // namespace
 
 using DeadlockInfo = std::pair<Status, CoarseTimePoint>;
@@ -1000,6 +1005,7 @@ class TransactionParticipant::Impl
     }
 
     bool was_previously_committed = false;
+    RunningTransactionPtr applying_txn;
 
     {
       // It is our last chance to load transaction metadata, if missing.
@@ -1031,8 +1037,13 @@ class TransactionParticipant::Impl
         UpdateHistoricalMaxOpId(&historical_max_op_id, data.op_id);
         VLOG_WITH_PREFIX(3) << "Committed a transaction with txn_id: " << data.transaction_id
                             << " with commit_time: " << data.commit_ht.ToUint64();
-        CHECK(transactions_.modify(lock_and_iterator.iterator, [&data](auto& txn) {
+        CHECK(transactions_.modify(lock_and_iterator.iterator, [&data, &applying_txn](auto& txn) {
           txn->SetLocalCommitData(data.commit_ht, data.aborted);
+          // Keeps ResolveIntents waiting until intents are written to regular DB.
+          if (data.apply_to_storages.Any()) {
+            txn->SetProcessingApply(true);
+            applying_txn = txn;
+          }
         }));
         LOG_IF_WITH_PREFIX(DFATAL, data.log_ht < last_safe_time_)
             << "Apply transaction before last safe time " << data.transaction_id << ": "
@@ -1057,7 +1068,7 @@ class TransactionParticipant::Impl
         VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                             << apply_state.ToString();
 
-        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
+        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, applying_txn.get(), &operation));
       } else if (!data.sealed) {
         return ProcessCleanup(data, CleanupType::kImmediate);
       }
@@ -1070,6 +1081,7 @@ class TransactionParticipant::Impl
   Status UpdateAppliedTransaction(
        const TransactionApplyData& data,
        const docdb::ApplyTransactionState& apply_state,
+       RunningTransaction* applying_txn,
        ScopedRWOperation* operation) NO_THREAD_SAFETY_ANALYSIS {
     MinRunningNotifier min_running_notifier(&applier_);
     // We are not trying to cleanup intents here because we don't know whether this transaction
@@ -1079,6 +1091,7 @@ class TransactionParticipant::Impl
     if (lock_and_iterator.found()) {
       lock_and_iterator.transaction().SetApplyOpId(data.op_id);
       if (!apply_state.active()) {
+        lock_and_iterator.transaction().SetProcessingApply(false);
         RemoveUnlocked(
             lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else if (started_) {
@@ -1095,6 +1108,9 @@ class TransactionParticipant::Impl
           .apply_state = apply_state,
         });
       }
+    } else if (applying_txn) {
+      // E.g. ignored after restore, so its apply does not continue.
+      applying_txn->SetProcessingApply(false);
     }
     return Status::OK();
   }
@@ -1344,7 +1360,8 @@ class TransactionParticipant::Impl
     CheckMinRunningHybridTimeSatisfiedUnlocked(&min_running_notifier);
   }
 
-  Status ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
+  Status ResolveIntents(
+      HybridTime resolve_at, CoarseTimePoint deadline, WaitForApply wait_for_apply) {
     RETURN_NOT_OK(WaitUntil(participant_context_.clock_ptr().get(), resolve_at, deadline));
 
     if (FLAGS_max_transactions_in_status_request == 0) {
@@ -1416,19 +1433,27 @@ class TransactionParticipant::Impl
           for (const auto& transaction : transactions_) {
             if (!transaction->local_commit_time().is_valid()) {
               resolver.Add(transaction->metadata().status_tablet, transaction->id());
+            } else if (MustWaitForPendingApply(*transaction, resolve_at, wait_for_apply)) {
+              committed_ids.push_back(transaction->id());
             }
           }
         } else {
           for (const auto& id : recheck_ids) {
             auto it = transactions_.find(id);
-            if (it == transactions_.end() || (**it).local_commit_time().is_valid()) {
+            if (it == transactions_.end()) {
               continue;
             }
-            resolver.Add((**it).metadata().status_tablet, id);
+            if (!(**it).local_commit_time().is_valid()) {
+              resolver.Add((**it).metadata().status_tablet, id);
+            } else if (MustWaitForPendingApply(**it, resolve_at, wait_for_apply)) {
+              committed_ids.push_back(id);
+            }
           }
-          auto filter = [this](const TransactionId& id) {
+          auto filter = [this, resolve_at, wait_for_apply](const TransactionId& id) {
             auto it = transactions_.find(id);
-            return it == transactions_.end() || (**it).local_commit_time().is_valid();
+            return it == transactions_.end() ||
+                   ((**it).local_commit_time().is_valid() &&
+                    !MustWaitForPendingApply(**it, resolve_at, wait_for_apply));
           };
           committed_ids.erase(std::remove_if(committed_ids.begin(), committed_ids.end(), filter),
                               committed_ids.end());
@@ -3204,8 +3229,9 @@ void TransactionParticipant::WaitMinRunningHybridTime(HybridTime ht) {
   impl_->WaitMinRunningHybridTime(ht);
 }
 
-Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimePoint deadline) {
-  return impl_->ResolveIntents(resolve_at, deadline);
+Status TransactionParticipant::ResolveIntents(
+    HybridTime resolve_at, CoarseTimePoint deadline, WaitForApply wait_for_apply) {
+  return impl_->ResolveIntents(resolve_at, deadline, wait_for_apply);
 }
 
 size_t TransactionParticipant::GetNumRunningTransactions() const {
