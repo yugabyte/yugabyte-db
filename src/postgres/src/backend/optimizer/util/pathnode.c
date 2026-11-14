@@ -1548,7 +1548,7 @@ create_index_path(PlannerInfo *root,
 				  Relids required_outer,
 				  double loop_count,
 				  bool partial_path,
-				  List *yb_merge_scan_stream_cols)
+				  YbMergeScanInfo *yb_merge_scan_info)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
 	RelOptInfo *rel = index->rel;
@@ -1572,8 +1572,7 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexscandir = rel->is_yb_relation && pathkeys == NIL ?
 		NoMovementScanDirection : indexscandir;
 
-	pathnode->yb_index_path_info.merge_scan_stream_cols =
-		yb_merge_scan_stream_cols;
+	pathnode->yb_index_path_info.merge_scan_info = yb_merge_scan_info;
 
 	if (IsYugaByteEnabled() &&
 		yb_enable_base_scans_cost_model &&

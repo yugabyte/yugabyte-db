@@ -9201,7 +9201,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		startup_cost += disable_cost;
 
 	/* TODO(#29078): cost this better. */
-	if (path->yb_index_path_info.merge_scan_stream_cols)
+	if (path->yb_index_path_info.merge_scan_info)
 	{
 		/*
 		 * We need merge index scans to cost higher than plain index scans to
