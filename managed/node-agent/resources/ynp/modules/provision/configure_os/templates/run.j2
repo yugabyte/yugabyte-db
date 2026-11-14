@@ -5,13 +5,25 @@ bin_path="/usr/local/bin"
 # systemd) must be able to read /etc/systemd/{system,user}.conf and similar.
 umask 022
 
-# Remove every entry for a sysctl key from the given file. Matches both the
-# dotted and slash spellings (kernel.core_pattern, kernel/core_pattern), an
-# optional leading "-" (ignore-errors prefix), and spaces around "=".
-remove_sysctl_key() {
+# Print a basic regex matching a sysctl.conf entry for a key, up to and
+# including "=". Matches both the dotted and slash spellings (kernel.core_pattern,
+# kernel/core_pattern), an optional leading "-" (ignore-errors prefix), and
+# spaces around "=". The regex contains "/" but no "#".
+sysctl_key_pattern() {
   local key_re="${1//./[./]}"
-  # "#" as the address delimiter, since key_re contains "/".
-  sed -i "\#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*=#d" "$2"
+  printf '%s\n' "^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*="
+}
+
+# Remove every entry for a sysctl key from the given file, printing each removed
+# line so the old value is kept in the provisioning log.
+remove_sysctl_key() {
+  local pattern entries line
+  pattern=$(sysctl_key_pattern "$1")
+  entries=$(grep -e "$pattern" "$2") || return 0
+  while IFS= read -r line; do
+    echo "Removing from ${2}: ${line}"
+  done <<< "$entries"
+  sed -i "\#${pattern}#d" "$2"
 }
 
 # Warn when a sysctl.d file would replace a sysctl key's value at the next boot.
@@ -20,10 +32,11 @@ remove_sysctl_key() {
 # after it wins. Neither `sysctl --system`, which applies /etc/sysctl.conf last,
 # nor the preflight, which reads the live value, shows this.
 warn_sysctl_boot_override() {
-  local key="$1" value="$2" key_re="${1//./[./]}"
+  local key="$1" value="$2" pattern
   local -x LC_ALL=C
   local dir file name entry boot_name="" boot_file="" boot_value=""
   local -A files=()
+  pattern=$(sysctl_key_pattern "$key")
   # A file hides any file of the same name in a later directory; one masked by
   # a link to /dev/null has no entries.
   for dir in /etc/sysctl.d /run/sysctl.d /usr/local/lib/sysctl.d \
@@ -38,8 +51,7 @@ warn_sysctl_boot_override() {
   # The last entry for the key, in file-name order, is the one applied at boot.
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    entry=$(sed -n "s#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*=[[:space:]]*##p" \
-      "${files[$name]}" | tail -n 1)
+    entry=$(sed -n "s#${pattern}[[:space:]]*##p" "${files[$name]}" | tail -n 1)
     if [[ -n "$entry" ]]; then
       boot_name="$name"
       boot_file="${files[$name]}"
