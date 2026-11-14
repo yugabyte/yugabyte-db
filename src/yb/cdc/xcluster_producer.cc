@@ -335,7 +335,7 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
   // In order to provide a transactionally consistent WAL, we need to perform the below steps:
   // If last_apply_safe_time is kInvalid
   //  1. last_apply_safe_time = Tablet Safe time
-  //  2. Resolve all intents and apply all the committed intents
+  //  2. Resolve all intents, so the APPLY records of committed transactions are in the WAL
   //  3. Set apply_safe_time_checkpoint_op_id = max raft-replicated opId
   //  4. If we send all records including apply_safe_time_checkpoint_op_id in the
   //     GetChangesResponsePB
@@ -351,7 +351,8 @@ Status GetChangesForXCluster(const XClusterGetChangesContext& context) {
                 (FLAGS_xcluster_consistent_wal_safe_time_frequency_ms * 1ms) <
             now) {
       update_apply_safe_time = true;
-      // Resolve and apply intents to make the leader_safe_time a valid apply_safe_time candidate.
+      // Resolve intents, so the APPLY records of transactions committed at or before
+      // leader_safe_time are in the WAL, making it a valid apply_safe_time candidate.
       RETURN_NOT_OK(txn_participant->ResolveIntents(
           leader_safe_time, context.deadline, tablet::WaitForApply::kFalse));
     }

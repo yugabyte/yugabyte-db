@@ -232,9 +232,7 @@ ash::WaitStateInfoPtr InitMinRunningHybridTimeWaitState(TabletIdView tablet_id) 
   return bg_wait_state;
 }
 
-// With wait_for_apply, whether the transaction is committed at or before resolve_at, but its
-// intents are not yet fully written to regular DB.
-bool IsApplyPending(
+bool MustWaitForPendingApply(
     const RunningTransaction& txn, HybridTime resolve_at, WaitForApply wait_for_apply) {
   return wait_for_apply && txn.ProcessingApply() && txn.local_commit_time() <= resolve_at;
 }
@@ -1435,7 +1433,7 @@ class TransactionParticipant::Impl
           for (const auto& transaction : transactions_) {
             if (!transaction->local_commit_time().is_valid()) {
               resolver.Add(transaction->metadata().status_tablet, transaction->id());
-            } else if (IsApplyPending(*transaction, resolve_at, wait_for_apply)) {
+            } else if (MustWaitForPendingApply(*transaction, resolve_at, wait_for_apply)) {
               committed_ids.push_back(transaction->id());
             }
           }
@@ -1447,7 +1445,7 @@ class TransactionParticipant::Impl
             }
             if (!(**it).local_commit_time().is_valid()) {
               resolver.Add((**it).metadata().status_tablet, id);
-            } else if (IsApplyPending(**it, resolve_at, wait_for_apply)) {
+            } else if (MustWaitForPendingApply(**it, resolve_at, wait_for_apply)) {
               committed_ids.push_back(id);
             }
           }
@@ -1455,7 +1453,7 @@ class TransactionParticipant::Impl
             auto it = transactions_.find(id);
             return it == transactions_.end() ||
                    ((**it).local_commit_time().is_valid() &&
-                    !IsApplyPending(**it, resolve_at, wait_for_apply));
+                    !MustWaitForPendingApply(**it, resolve_at, wait_for_apply));
           };
           committed_ids.erase(std::remove_if(committed_ids.begin(), committed_ids.end(), filter),
                               committed_ids.end());
