@@ -2411,6 +2411,8 @@ setlocales(void)
 	 * This is because as of 06/15/2019 we don't support collation-aware string
 	 * comparisons, but we still want to support storing UTF-8 strings.
 	 * This should be kept in line with TabletServerMain.
+	 * Connection Manager's deploy (src/odyssey/sources/deploy.c) assumes every
+	 * database is UTF8 and must change if this is changed.
 	 */
 	if (!locale &&
 		(IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb()))
