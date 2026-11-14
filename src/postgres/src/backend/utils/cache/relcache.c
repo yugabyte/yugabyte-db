@@ -4179,7 +4179,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 	 * exist misses even in a filled cache.
 	 */
 	Assert(!YbCatalogPreloadCacheListIsSet() ||
-		   !yb_enable_negative_catcache_entries ||
+		   !YbNegativeCatcacheEntriesEnabled() ||
 		   YbNumCatalogCacheMisses == misses_before);
 
 	YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
