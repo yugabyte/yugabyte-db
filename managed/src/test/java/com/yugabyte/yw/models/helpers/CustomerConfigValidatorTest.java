@@ -20,6 +20,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIO
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -662,17 +663,65 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     }
   }
 
+  private CustomerConfig createGcsIamConfig(boolean crossCloudFederation) {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup");
+    data.put("USE_GCP_IAM", true);
+    if (crossCloudFederation) {
+      data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    }
+    return createConfig(ConfigType.STORAGE, NAME_GCS, data);
+  }
+
   @Test
-  public void testValidateDataContent_Storage_GCS_FederationConfigSkipsCredentialValidation() {
-    // A useGcpIam GCS config (GKE workload identity or cross-cloud federation) must skip the
-    // credential/bucket check even when creds are refused; only the URL format is validated.
+  public void testValidateDataContent_Storage_GCS_CrossCloudFederationSkipsProbe() {
     ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(true);
+    // refuseKeys fails any probe, so returning proves the skip.
+    customerConfigValidator.validateConfig(createGcsIamConfig(true));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_IamProbesBucket() throws IOException {
+    UUID myUUID = UUID.randomUUID();
+    when(mockGCPUtil.getRandomUUID()).thenReturn(myUUID);
+    String fileName = myUUID + ".txt";
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+    setupGCPReadValidation(storage, false, null, "itest-backup", fileName);
+    setupGCPListAndDeleteValidation(storage, "itest-backup", fileName, false, false);
+
+    customerConfigValidator.validateConfig(createGcsIamConfig(false));
+    // The probe reached the delete step; returning normally proves it passed.
+    verify(storage).delete(BlobId.of("itest-backup", fileName));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_IamMissingGrantFails() {
+    when(mockGCPUtil.getRandomUUID()).thenReturn(UUID.randomUUID());
+    doCallRealMethod().when(mockGCPUtil).validateOnBucket(any(), any(), any(), any(), anyBoolean());
+    String message =
+        "yba@proj.iam.gserviceaccount.com does not have storage.objects.create access to the"
+            + " Google Cloud Storage object.";
+    Storage storage = ((StubbedCustomerConfigValidator) customerConfigValidator).gcpStorage;
+    doThrow(new StorageException(403, message)).when(storage).create(any(), any(byte[].class));
+
+    assertThat(
+        () -> customerConfigValidator.validateConfig(createGcsIamConfig(false)),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\""
+                + fieldFullName(BACKUP_LOCATION_FIELDNAME)
+                + "\":[\""
+                + message
+                + "\"]}"));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_IamWithCredentialsJsonAccepted() {
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
     data.put("USE_GCP_IAM", true);
-    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
-    // Does not throw despite refuseKeys=true.
-    customerConfigValidator.validateConfig(config);
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    customerConfigValidator.validateConfig(createConfig(ConfigType.STORAGE, NAME_GCS, data));
   }
 
   @Test
