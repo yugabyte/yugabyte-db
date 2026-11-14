@@ -788,6 +788,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
           } else if (pub_refresh_trigger != PubRefreshTrigger::kTableCreated) {
             resp->set_publication_refresh_record_time(record->row_message().record_time());
             resp->set_publication_refresh_txn_id(record->row_message().transaction_id());
+            MaybeAddTrackedAbortedSubtxns(record->mutable_row_message(), resp);
           }
         }
         resp->set_needs_publication_table_list_refresh(needs_table_list_refresh);
@@ -905,6 +906,7 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
                           << last_seen_unique_record_id_->ToString()
                           << ", Rejected record received from tablet_id: " << tablet_id
                           << ", Last_shipped_record's tablet_id: " << last_shipped_record_tablet_id;
+      TrackAbortedSubtxnsOfMergedTxnIfRequired(*row_message);
     }
 
     if (lsn_result.ok() && txn_id_result.ok()) {
@@ -942,6 +944,11 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         }
         case RowMessage_Op_BEGIN: {
           RETURN_NOT_OK(AddEntryForBeginRecord({unique_id, record}));
+          tracked_aborted_subtxns_.clear();
+          sent_aborted_subtxns_txn_ids_.clear();
+          if (row_message->has_transaction_id()) {
+            sent_aborted_subtxns_txn_ids_.insert(row_message->transaction_id());
+          }
           is_txn_in_progress = true;
           metadata.begin_records++;
           metadata.is_last_txn_fully_sent = false;
@@ -971,6 +978,8 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
         case RowMessage_Op_UNKNOWN:
           break;
       }
+
+      MaybeAddTrackedAbortedSubtxns(row_message);
 
       if (is_dml_on_pg_catalog_table) {
         RETURN_NOT_OK(AddSyntheticDDLRecordFromCatalogDML(
@@ -1460,6 +1469,41 @@ Result<uint32_t> CDCSDKVirtualWAL::GetRecordTxnID(
   }
 
   return STATUS_FORMAT(InternalError, "Record's commit_time is lesser than last seen record.");
+}
+
+void CDCSDKVirtualWAL::TrackAbortedSubtxnsOfMergedTxnIfRequired(const RowMessage& row_message) {
+  if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+      row_message.op() != RowMessage_Op_BEGIN || !row_message.has_aborted_subtxns() ||
+      !is_txn_in_progress ||
+      row_message.commit_time() != last_seen_unique_record_id_->GetCommitTime() ||
+      sent_aborted_subtxns_txn_ids_.contains(row_message.transaction_id())) {
+    return;
+  }
+
+  VLOG_WITH_PREFIX(2) << "Tracking aborted subtxns of transaction " << row_message.transaction_id()
+                      << " merged at commit_time " << row_message.commit_time();
+  tracked_aborted_subtxns_[row_message.transaction_id()] = row_message.aborted_subtxns();
+}
+
+void CDCSDKVirtualWAL::MaybeAddTrackedAbortedSubtxns(
+    RowMessage* row_message, GetConsistentChangesResponsePB* pub_refresh_resp) {
+  if (tracked_aborted_subtxns_.empty() ||
+      (row_message->op() != RowMessage_Op_INSERT && row_message->op() != RowMessage_Op_UPDATE &&
+       row_message->op() != RowMessage_Op_DELETE)) {
+    return;
+  }
+
+  auto it = tracked_aborted_subtxns_.find(row_message->transaction_id());
+  if (it == tracked_aborted_subtxns_.end()) {
+    return;
+  }
+
+  auto* aborted_subtxns = pub_refresh_resp
+                              ? pub_refresh_resp->mutable_publication_refresh_aborted_subtxns()
+                              : row_message->mutable_aborted_subtxns();
+  *aborted_subtxns = std::move(it->second);
+  tracked_aborted_subtxns_.erase(it);
+  sent_aborted_subtxns_txn_ids_.insert(row_message->transaction_id());
 }
 
 Status CDCSDKVirtualWAL::AddEntryForBeginRecord(const RecordInfo& record_info) {
@@ -2126,6 +2170,9 @@ Status CDCSDKVirtualWAL::AddSyntheticDDLRecordFromCatalogDML(
   }
   if (row_message.has_transaction_id()) {
     ddl_row_message->set_transaction_id(row_message.transaction_id());
+  }
+  if (row_message.has_aborted_subtxns()) {
+    *ddl_row_message->mutable_aborted_subtxns() = row_message.aborted_subtxns();
   }
   ddl_row_message->set_pg_lsn(row_message.pg_lsn());
   ddl_row_message->set_pg_transaction_id(row_message.pg_transaction_id());

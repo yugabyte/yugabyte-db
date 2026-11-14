@@ -175,6 +175,10 @@ class CDCSDKVirtualWAL {
 
   Status AddEntryForBeginRecord(const RecordInfo& record_id_to_record);
 
+  void TrackAbortedSubtxnsOfMergedTxnIfRequired(const RowMessage& row_message);
+  void MaybeAddTrackedAbortedSubtxns(
+      RowMessage* row_message, GetConsistentChangesResponsePB* pub_refresh_resp = nullptr);
+
   Status TruncateMetaMap(const uint64_t restart_lsn);
 
   Status UpdateSlotEntryInCDCState(
@@ -319,6 +323,15 @@ class CDCSDKVirtualWAL {
 
   // Holds the 1st commit record of a pg_txn. Reset to false after shipping the held commit record.
   std::shared_ptr<TabletRecordInfoPair> curr_active_txn_commit_record = nullptr;
+
+  // With transactional DDL, the aborted subtransaction sets of the DocDB transactions merged into
+  // the pg_txn being shipped because they share its commit time, keyed by DocDB transaction id.
+  // Their BEGIN records, which carry the set, are dropped, so the set is tracked until the first
+  // record of the transaction is shipped, or the publication refresh it triggers.
+  std::unordered_map<std::string, SubtxnSetPB> tracked_aborted_subtxns_;
+  // DocDB transactions of the pg_txn being shipped whose aborted sub-transactions set has been
+  // shipped in the response.
+  std::unordered_set<std::string> sent_aborted_subtxns_txn_ids_;
 
   // This will hold the latest publication refresh time that was acknowledged, i.e
   // last_pub_refresh_time is the maximum value of pub refresh time that is less than restart commit

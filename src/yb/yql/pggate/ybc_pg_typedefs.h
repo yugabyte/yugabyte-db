@@ -778,7 +778,7 @@ typedef struct {
   bool has_docdb_txn_id;
   char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
   // Subtransactions of the DocDB transaction rolled back to a savepoint, run length encoded as in
-  // SubtxnSetPB. Only set on BEGIN records.
+  // SubtxnSetPB. See RowMessage.aborted_subtxns for the records it is set on.
   uint32_t* aborted_subtxn_set;
   int aborted_subtxn_set_size;
 } YbcPgRowMessage;
@@ -793,6 +793,8 @@ typedef struct {
   bool explicit_alter_publication_detected;
   uint64_t publication_refresh_record_time;
   char publication_refresh_txn_id[37]; /* UUID string length (36) + null terminator */
+  uint32_t* publication_refresh_aborted_subtxn_set;
+  int publication_refresh_aborted_subtxn_set_size;
 } YbcPgChangeRecordBatch;
 
 typedef struct {

@@ -3097,6 +3097,8 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
   uint64_t publication_refresh_record_time = resp.publication_refresh_record_time();
   const auto& publication_refresh_txn_id = resp.publication_refresh_txn_id();
+  const auto& publication_refresh_aborted_subtxns_pb =
+      resp.publication_refresh_aborted_subtxns().set();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
@@ -3263,7 +3265,17 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .explicit_alter_publication_detected = explicit_alter_publication_detected,
       .publication_refresh_record_time = publication_refresh_record_time,
       .publication_refresh_txn_id = {},
+      .publication_refresh_aborted_subtxn_set = nullptr,
+      .publication_refresh_aborted_subtxn_set_size = publication_refresh_aborted_subtxns_pb.size(),
   };
+  if (!publication_refresh_aborted_subtxns_pb.empty()) {
+    auto* aborted_subtxn_set = static_cast<uint32_t*>(
+        YBCPAlloc(sizeof(uint32_t) * publication_refresh_aborted_subtxns_pb.size()));
+    std::copy(
+        publication_refresh_aborted_subtxns_pb.begin(),
+        publication_refresh_aborted_subtxns_pb.end(), aborted_subtxn_set);
+    (*record_batch)->publication_refresh_aborted_subtxn_set = aborted_subtxn_set;
+  }
   if (!publication_refresh_txn_id.empty()) {
     snprintf(
         (*record_batch)->publication_refresh_txn_id,

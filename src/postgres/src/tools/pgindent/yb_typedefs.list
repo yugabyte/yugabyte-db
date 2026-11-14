@@ -28,6 +28,7 @@ YBTableSpaceOpts
 YBTaggedQueryString
 YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
+YbAbortedSubtxnSet
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
 YbAnalyzeRelEnd_hook_type
