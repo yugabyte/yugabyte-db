@@ -698,6 +698,9 @@ TEST_F(SnapshotTest, UnavailablePreflushReplicaDoesNotBlockQuorumWrites) {
       ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
   ASSERT_EQ(peers.size(), 3);
   const auto tablet_id = peers.front()->tablet_id();
+  // Workload setup does not wait for the tablet leader election to finish.
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 10s, RequireLeaderIsReady::kTrue));
   auto* leader = GetLeaderForTablet(cluster_.get(), tablet_id);
   ASSERT_NE(leader, nullptr);
   auto* follower = cluster_->mini_tablet_server(leader == cluster_->mini_tablet_server(0) ? 1 : 0);
