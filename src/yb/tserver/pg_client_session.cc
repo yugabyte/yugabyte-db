@@ -1471,6 +1471,7 @@ class TransactionProvider {
 };
 
 YB_STRONGLY_TYPED_BOOL(IsTxnUsingTableLocks);
+YB_STRONGLY_TYPED_BOOL(IsTxnUsingLocalTableLocks);
 YB_STRONGLY_TYPED_BOOL(DeferReadPoint);
 
 // Whether the autonomous DDL transaction, if created by this request, should pick a deferred read
@@ -1487,6 +1488,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
     VectorIndexQueryPtr& vector_index_query, bool has_distributed_txn,
     const LWFunction<Result<TransactionMetadata>()>& object_locking_txn_meta_provider,
     IsTxnUsingTableLocks is_txn_using_table_locks,
+    IsTxnUsingLocalTableLocks is_txn_using_local_table_locks,
     const PgClientSessionMetrics& metrics,
     const OriginationInfo& origination_info) {
   auto write_time = HybridTime::FromPB(req->write_time());
@@ -1583,7 +1585,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
   for (const auto& pg_client_session_operation : ops) {
     session->Apply(pg_client_session_operation.op);
   }
-  if (has_write_ops && !has_distributed_txn && is_txn_using_table_locks) {
+  if (has_write_ops && !has_distributed_txn && is_txn_using_local_table_locks) {
     session->SetObjectLockingTxnMeta(VERIFY_RESULT(object_locking_txn_meta_provider()));
   }
 
@@ -3097,6 +3099,9 @@ class PgClientSession::Impl {
         << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
+        options.using_table_locks_locally(), IllegalState,
+        "Object lock request from a transaction that does not use object locks locally");
+    RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
         IllegalState, "Object lock RPCs must not carry a read time serial no");
 
@@ -3832,6 +3837,7 @@ class PgClientSession::Impl {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
         IsTxnUsingTableLocks(options.using_table_locks_globally()),
+        IsTxnUsingLocalTableLocks(options.using_table_locks_locally()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
     // PrepareOperations has already applied the ops to the session. Failing out before the flush

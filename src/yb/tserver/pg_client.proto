@@ -999,6 +999,14 @@ message PgPerformOptionsPB {
   // Subtransactions of historical_read_transaction_id rolled back to a savepoint.
   // Only applicable when historical_read_transaction_id is set.
   SubtxnSetPB historical_read_aborted_subtxns = 41;
+
+  // The transaction takes object locks, at least local ones. pggate sets it from the same predicate
+  // that decides whether the transaction sends its locks, so every object lock request has it set.
+  // A transaction without global object locks (using_table_locks_globally false) still takes local
+  // DML locks, so that DDLs with object locks wait for it (#36572), and its fast path writes must
+  // then carry the lock owner, or the deadlock detector misses a cycle between a row lock wait and
+  // an object lock wait (#37328).
+  bool using_table_locks_locally = 42;
 }
 
 message PgRequestSequenceNumPB {
