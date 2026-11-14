@@ -2011,12 +2011,14 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
 }
 
-// Tests for turning global object locks off on a running cluster (#37326).
+// Tests for turning global object locks, then table locks, off on a running cluster (#37326).
 //
-// disable_global_object_locks is not a runtime flag, so a rolling restart turns it on one node at
-// a time. Nodes not yet restarted take global object locks; on restarted nodes each DDL runs in a
-// separate transaction and takes no object locks. A DDL on either kind of node must not miss a
-// write from a transaction on the other kind.
+// Neither flag is a runtime flag, so each takes a rolling restart. In the first,
+// disable_global_object_locks is turned on one node at a time: nodes not yet restarted take
+// global object locks; on restarted nodes each DDL runs in a separate transaction and takes no
+// object locks. In the second, enable_object_locking_for_table_locks is turned off: restarted
+// nodes take no object locks at all. A DDL on any node must not miss a write from a transaction on
+// another.
 class PgObjectLocksTestGlobalLocksRollingRestart : public PgObjectLocksTestMixModeDuringPromotion {
  protected:
   void PromoteAll() {
@@ -2026,12 +2028,11 @@ class PgObjectLocksTestGlobalLocksRollingRestart : public PgObjectLocksTestMixMo
     }
   }
 
-  // Restarts ts in the state a node is in after a rolling restart turns global object locks off,
-  // with the infra AutoFlag still promoted. The flags replace the fixture's stored ones because
-  // flags passed to Restart come first on the command line, so the fixture's values would win.
-  void RestartWithGlobalLocksOff(ExternalTabletServer* ts) {
-    const std::vector<std::string> flags = {
-        "--disable_global_object_locks=true", "--ysql_yb_enable_global_object_locking_infra=true"};
+  // Restarts ts with flags, keeping the infra AutoFlag promoted. The flags replace the fixture's
+  // stored ones because flags passed to Restart come first on the command line, so the fixture's
+  // values would win.
+  void RestartWithFlags(ExternalTabletServer* ts, std::vector<std::string> flags) {
+    flags.push_back("--ysql_yb_enable_global_object_locking_infra=true");
     for (const auto& flag : flags) {
       const auto eq = flag.find('=');
       const auto name = flag.substr(2, eq - 2);
@@ -2043,9 +2044,23 @@ class PgObjectLocksTestGlobalLocksRollingRestart : public PgObjectLocksTestMixMo
     ASSERT_OK(LoggedWaitFor(
         [this, ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
         MonoDelta::FromSeconds(kTimeMultiplier * 60), "restarted tserver to accept connections"));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_yb_enable_global_object_locking_infra")), "true");
+  }
+
+  // The state a node is in after the first rolling restart.
+  void RestartWithGlobalLocksOff(ExternalTabletServer* ts) {
+    ASSERT_NO_FATALS(RestartWithFlags(ts, {"--disable_global_object_locks=true"}));
     ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("disable_global_object_locks")), "true");
     ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "true");
-    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_yb_enable_global_object_locking_infra")), "true");
+  }
+
+  // The state a node is in after the second rolling restart. Table locks off needs concurrent and
+  // transactional DDL off too.
+  void RestartWithTableLocksOff(ExternalTabletServer* ts) {
+    std::vector<std::string> flags;
+    ToggleDDLMode(flags, /* use_legacy = */ true);
+    ASSERT_NO_FATALS(RestartWithFlags(ts, std::move(flags)));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
   }
 
   void CreateTestTable(ExternalTabletServer* ts) {
@@ -2137,8 +2152,8 @@ TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, AddForeignKeyWithWriterOnGlob
   }
 }
 
-// A strong lock on a node with global object locks off goes only to that node's local lock
-// manager, so a reader on another node does not wait for it.
+// A lock stronger than ROW EXCLUSIVE on a node with global object locks off takes no object lock
+// at all; only that node's PG lock table records it. So a reader on another node does not wait.
 TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, StrongLockIsNotGlobal) {
   ASSERT_NO_FATALS(PromoteAll());
   auto* ts1 = cluster_->tablet_server(0);
@@ -2220,6 +2235,54 @@ TEST_P(PgObjectLocksTestGlobalLocksOffCreateIndex, CreateIndexWaitsForWriter) {
 INSTANTIATE_TEST_SUITE_P(
     DdlOnGlobalLocksOffNode, PgObjectLocksTestGlobalLocksOffCreateIndex, ::testing::Bool(),
     ::testing::PrintToStringParamName());
+
+// With global object locks off, a DDL runs in a separate transaction even inside a transaction
+// block, although ysql_yb_ddl_transaction_block_enabled is on: a ROLLBACK leaves the table behind.
+TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, DdlIsNotTransactional) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
+  ASSERT_EQ(ASSERT_RESULT(ts2->GetFlag("ysql_yb_ddl_transaction_block_enabled")), "true");
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM pg_class WHERE relname = 't'")), 1);
+}
+
+// The second rolling restart, after every node has global object locks off: ts3 restarts with
+// table locks off, so a writer there takes no object locks. A CREATE INDEX on ts1, which still has
+// table locks on, takes no global object locks, so it waits for all backends to reach its catalog
+// version, including the writer's, instead of waiting for lock holders it cannot see (#37355).
+TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, CreateIndexWaitsForWriterOnTableLocksOffNode) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts3 = cluster_->tablet_server(2);
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_NO_FATALS(RestartWithGlobalLocksOff(cluster_->tablet_server(i)));
+  }
+  ASSERT_NO_FATALS(CreateTestTable(ts1));
+  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts3));
+
+  auto writer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts3));
+  ASSERT_OK(writer_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(writer_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+
+  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
+    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+  });
+  const auto create_index_waited =
+      create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
+  ASSERT_OK(writer_conn.Execute("COMMIT"));
+  ASSERT_TRUE(create_index_waited);
+  ASSERT_OK(create_index_future.get());
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_NO_FATALS(CheckIndex(conn, 1));
+}
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
