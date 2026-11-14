@@ -2063,6 +2063,22 @@ class PgObjectLocksTestGlobalLocksRollingRestart : public PgObjectLocksTestMixMo
     ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
   }
 
+  // Starts CREATE INDEX test_v_idx on ts and returns once it has committed the index with
+  // indislive=true, just before it waits for writers. A fixed wait could end before the CREATE
+  // INDEX even starts.
+  Result<std::future<Status>> StartCreateIndexUpToWait(ExternalTabletServer* ts) {
+    RETURN_NOT_OK(cluster_->SetFlag(ts, "ysql_yb_test_block_index_phase", "indisready"));
+    LogWaiter blocked(ts, "blocking index state change indisready=true");
+    auto create_index_future = std::async(std::launch::async, [this, ts]() -> Status {
+      auto conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts));
+      return conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+    });
+    const auto blocked_status = blocked.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 60));
+    RETURN_NOT_OK(cluster_->SetFlag(ts, "ysql_yb_test_block_index_phase", "none"));
+    RETURN_NOT_OK(blocked_status);
+    return create_index_future;
+  }
+
   void CreateTestTable(ExternalTabletServer* ts) {
     auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
     ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
@@ -2091,16 +2107,21 @@ TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, WriteDuringCreateIndexOnGloba
   ASSERT_EQ(ASSERT_RESULT(writer_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
 
   ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
-  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
-    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
-  });
-  // Let the CREATE INDEX commit its first catalog change and reach the backends wait.
-  const auto create_index_waited =
-      create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
-  ASSERT_TRUE(create_index_waited);
-  // The INSERT refreshes its catalog cache when it takes its lock, sees the index, and writes the
-  // index entry.
+  auto create_index_future = ASSERT_RESULT(StartCreateIndexUpToWait(ts2));
+  // The INSERT refreshes its catalog cache when it takes its lock, but only up to the catalog
+  // version ts1 has heard of. Until ts1 hears of the version the CREATE INDEX committed, the INSERT
+  // writes with the old schema and fails with a schema version mismatch.
+  {
+    auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    const auto committed_version =
+        ASSERT_RESULT(observer.FetchRow<int64_t>("SELECT yb_catalog_version()"));
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(observer.FetchRow<int64_t>(
+          "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()")) >=
+          committed_version;
+    }, 30s * kTimeMultiplier, "ts1 to hear of the CREATE INDEX's catalog version"));
+  }
+  // The INSERT now sees the index and writes the index entry.
   ASSERT_OK(writer_conn.Execute("INSERT INTO test VALUES (100, 42)"));
   ASSERT_OK(writer_conn.Execute("COMMIT"));
   ASSERT_OK(create_index_future.get());
@@ -2218,10 +2239,7 @@ TEST_P(PgObjectLocksTestGlobalLocksOffCreateIndex, CreateIndexWaitsForWriter) {
     }, 30s * kTimeMultiplier, "pg_locks on the writer's node to show the writer's lock"));
   }
 
-  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
-    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ddl_ts));
-    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
-  });
+  auto create_index_future = ASSERT_RESULT(StartCreateIndexUpToWait(ddl_ts));
   const auto create_index_waited =
       create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
   ASSERT_OK(writer_conn.Execute("COMMIT"));
@@ -2270,10 +2288,7 @@ TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, CreateIndexWaitsForWriterOnTa
   ASSERT_OK(writer_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(writer_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
 
-  auto create_index_future = std::async(std::launch::async, [&]() -> Status {
-    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
-  });
+  auto create_index_future = ASSERT_RESULT(StartCreateIndexUpToWait(ts1));
   const auto create_index_waited =
       create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
   ASSERT_OK(writer_conn.Execute("COMMIT"));
