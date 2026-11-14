@@ -125,7 +125,7 @@ DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl;
 -- expression pushdown on, each is a storage table filter, since the index does
 -- not hold gap itself, and with it off, a local filter.  The merge sorts on
 -- every gap column.
--- TODO(#37784): the predicate gap merge should leave out (gap % 2), whose
+-- TODO(#37784): the predicate gap merge should leave out (gap::text), whose
 -- comparisons always tie.
 \set gap_cells :abs_srcdir '/yb_commands/merge_scan_gap_cells.sql'
 SET enable_sort = off;
@@ -141,7 +141,7 @@ SET yb_enable_base_scans_cost_model = on;
 -- within each stream, before the merge, since the scan reads the index and
 -- table rows of a stream in one request, but the filter on the decoded k1 still
 -- runs after the merge.
--- TODO(#37784): the predicate gap merge should leave out (gap % 2), which the
+-- TODO(#37784): the predicate gap merge should leave out (gap::text), which the
 -- predicate implies, and merge on ord2.
 -- TODO(#37785): with expression pushdown on, the filter gap and relabeled
 -- filter gap filters run within each stream, before the merge, so those merges
