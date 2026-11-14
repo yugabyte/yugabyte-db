@@ -241,9 +241,10 @@ DEFINE_NON_RUNTIME_bool(enable_object_locking_for_table_locks,
     "locks, every CREATE INDEX waits for all backends to reach its catalog version instead of "
     "waiting for lock holders.");
 DEFINE_NON_RUNTIME_bool(disable_global_object_locks, false,
-    "When true, transactions on this node take no global object locks: each DDL runs in a "
-    "separate transaction and takes no object locks. DMLs still take local object locks, so a "
-    "DDL on another node that takes global object locks still waits for them.");
+    "When true, transactions on this node take no global object locks, and each DDL runs in a "
+    "separate transaction. Locks up to ROW EXCLUSIVE, which DMLs take, still go to the local "
+    "object lock manager, so a DDL on another node that takes global object locks waits for "
+    "them. Stronger locks and session locks take no object lock.");
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, false, true,
     "DEPRECATED: no-op. Use ysql_yb_enable_global_object_locking_infra.");
 // Gates global object locking and what depends on it: DDL-strength and session object locks,
