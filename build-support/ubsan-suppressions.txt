@@ -129,3 +129,19 @@ pointer-overflow:CommandLineFlagParser::ProcessOptionsFromStringLocked
 
 # https://gist.githubusercontent.com/hari90/9e85bbb08a6201970713b7a9ae982210/raw
 shift-base:elf_uncompress_lzma
+
+# -------------------------------------------------------------------------------------------------
+# Undefined behavior in upstream PG code, unchanged by YugabyteDB, found in the asan lane.
+# -------------------------------------------------------------------------------------------------
+
+# A signed shift into the sign bit: DTK_M(UNKNOWN_FIELD), whose value is overwritten afterwards.
+shift-base:DecodeDateTime
+# Overflow detection by letting a signed multiplication wrap; upstream PG 9e9a2b7031f6 fixed it.
+signed-integer-overflow:tm2timestamp
+shift-base:hashagg_spill_init
+signed-integer-overflow:bms_first_member
+signed-integer-overflow:cash_out
+shift-base:inetmi
+shift-base:macaddr8_cmp_internal
+# pgvector
+shift-base:HalfToFloat4
