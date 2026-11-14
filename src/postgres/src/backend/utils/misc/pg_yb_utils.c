@@ -2822,9 +2822,10 @@ YBGetDdlUseRegularTransactionBlock()
 }
 
 /*
- * True from just before the commit RPC of a transaction block that ran DDL
- * until that RPC succeeds or the transaction is aborted.  The DDL transaction
- * state, including use_regular_txn_block, is already cleared by then.
+ * True while YBCommitTransactionContainingDDL commits a transaction block that
+ * ran DDL: from just before it clears the DDL transaction state (including
+ * use_regular_txn_block) and sends the commit RPC, until that RPC succeeds or
+ * the transaction is aborted.
  */
 bool
 YBIsDdlTxnBlockCommitInProgress()
@@ -10757,10 +10758,10 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
  * Check yb_test_fail_next_ddl and trigger the appropriate error if set.
  * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash, 5 = conflict,
  * 6 = deadlock, all raised at the start of YBCommitTransactionContainingDDL.
- * 7 = conflict and 8 = deadlock are raised later, in place of an error from
- * the commit RPC of a DDL transaction block (before_commit_rpc).  They fire
- * only when a DDL commits through a regular transaction block (transactional
- * DDL), and stay set until one does.
+ * 7 = conflict and 8 = deadlock are raised just before the commit RPC
+ * (before_commit_rpc), standing in for an error from that RPC.  That point is
+ * reached only when a DDL commits through a regular transaction block
+ * (transactional DDL); until then they stay set.
  * Resets to 0 after triggering.
  */
 static void

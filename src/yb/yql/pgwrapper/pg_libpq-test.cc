@@ -6970,55 +6970,85 @@ class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
   }
 };
 
-// Test for #37717: a retryable error raised while committing an autocommit DDL
-// must reach the client, and must not leave pg_class.relchecks out of step with
-// the table's CHECK constraints.  yb_test_fail_next_ddl = 5 (kConflict) and 6
-// (kDeadlock) raise the error at the start of YBCommitTransactionContainingDDL;
-// 7 (kConflict) and 8 (kDeadlock) raise it in place of an error from the commit
-// RPC, after the DDL transaction state has been cleared.  Each mode runs the
-// ALTER both on its own and inside a DO block: a retry would re-run the whole
-// DO block, DDL included, with the same stale caches.
+// Test for #37717: a retryable error raised while committing a statement that
+// ran DDL outside a transaction block must reach the client, and must not leave
+// pg_class.relchecks out of step with the table's CHECK constraints.
+// yb_test_fail_next_ddl = 5 (kConflict) and 6 (kDeadlock) raise the error at
+// the start of YBCommitTransactionContainingDDL; 7 (kConflict) and 8 (kDeadlock)
+// raise it in place of an error from the commit RPC, after the DDL transaction
+// state has been cleared.  Each mode runs the ALTER on its own, inside a DO
+// block, and inside a function called by a SELECT, under both READ COMMITTED
+// and REPEATABLE READ: a retry would re-run the whole statement, DDL included,
+// with the same stale caches.  (Under REPEATABLE READ, only the SELECT is
+// retried by default.)
 TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
+  struct Isolation {
+    std::string name;
+    std::string suffix;
+  };
   struct FailMode {
     int mode;
     std::string error;
   };
+  struct StmtForm {
+    std::string name;
+    std::string format;  // $0 is the table.
+    bool returns_rows;
+  };
   auto conn = ASSERT_RESULT(Connect());
-  for (const auto& [mode, error] : std::vector<FailMode>{
-           {5, "failed DDL operation with conflict as requested"},
-           {6, "failed DDL operation with deadlock as requested"},
-           {7, "failed DDL commit with conflict as requested"},
-           {8, "failed DDL commit with deadlock as requested"}}) {
-    for (const bool in_do_block : {false, true}) {
-      SCOPED_TRACE(Format("yb_test_fail_next_ddl = $0, in DO block: $1", mode, in_do_block));
-      const auto table = Format("t$0$1", mode, in_do_block ? "_do" : "");
-      const auto alter =
-          Format("ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", table);
-      const auto stmt = in_do_block ? "DO $$ BEGIN " + alter + "; END $$" : alter;
-      const auto check_query = Format(
-          "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
-          "WHERE conrelid = '$0'::regclass AND contype = 'c') "
-          "FROM pg_class WHERE oid = '$0'::regclass", table);
-      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
+  // Runs the statements under test, all through the simple query protocol so
+  // that every form goes through the same retry path.
+  auto stmt_conn = ASSERT_RESULT(Connect(/* simple_query_protocol = */ true));
+  const auto run = [&stmt_conn](const std::string& stmt, bool returns_rows) {
+    return returns_rows ? ResultToStatus(stmt_conn.Fetch(stmt)) : stmt_conn.Execute(stmt);
+  };
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION add_check(tbl text) RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
+      "EXECUTE format('ALTER TABLE %I ADD CONSTRAINT c CHECK (a > 0) NOT VALID', tbl); "
+      "END $$"));
+  const std::vector<StmtForm> kForms = {
+      {"alter", "ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", false},
+      {"do", "DO $$$$ BEGIN ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID; END $$$$",
+       false},
+      {"func", "SELECT add_check('$0')", true}};
+  for (const auto& [isolation, suffix] : std::vector<Isolation>{
+           {"read committed", "rc"}, {"repeatable read", "rr"}}) {
+    ASSERT_OK(stmt_conn.ExecuteFormat("SET default_transaction_isolation = '$0'", isolation));
+    for (const auto& [mode, error] : std::vector<FailMode>{
+             {5, "failed DDL operation with conflict as requested"},
+             {6, "failed DDL operation with deadlock as requested"},
+             {7, "failed DDL commit with conflict as requested"},
+             {8, "failed DDL commit with deadlock as requested"}}) {
+      for (const auto& form : kForms) {
+        SCOPED_TRACE(Format(
+            "$0, yb_test_fail_next_ddl = $1, statement: $2", isolation, mode, form.name));
+        const auto table = Format("t$0_$1_$2", mode, form.name, suffix);
+        const auto stmt = Format(form.format, table);
+        const auto check_query = Format(
+            "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
+            "WHERE conrelid = '$0'::regclass AND contype = 'c') "
+            "FROM pg_class WHERE oid = '$0'::regclass", table);
+        ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
 
-      // The failed commit must not be retried internally: the PG-side
-      // transaction is not aborted before such a retry, and the re-run used to
-      // see the failed attempt's constraint in the backend's caches and set
-      // relchecks to 2.
-      ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
-      ASSERT_NOK_STR_CONTAINS(conn.Execute(stmt), error);
-      auto [relchecks, check_rows] =
-          ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
-      ASSERT_EQ(relchecks, 0);
-      ASSERT_EQ(check_rows, 0);
+        // The failed commit must not be retried internally: the PG-side
+        // transaction is not aborted before such a retry, and the re-run used
+        // to see the failed attempt's constraint in the backend's caches and
+        // set relchecks to 2.
+        ASSERT_OK(stmt_conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
+        ASSERT_NOK_STR_CONTAINS(run(stmt, form.returns_rows), error);
+        auto [relchecks, check_rows] =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 0);
+        ASSERT_EQ(check_rows, 0);
 
-      // Running the statement again works and leaves the catalog consistent.
-      ASSERT_OK(conn.Execute(stmt));
-      std::tie(relchecks, check_rows) =
-          ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
-      ASSERT_EQ(relchecks, 1);
-      ASSERT_EQ(check_rows, 1);
-      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+        // Running the statement again works and leaves the catalog consistent.
+        ASSERT_OK(run(stmt, form.returns_rows));
+        std::tie(relchecks, check_rows) =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 1);
+        ASSERT_EQ(check_rows, 1);
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+      }
     }
   }
 }

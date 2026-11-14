@@ -5670,34 +5670,49 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	 * don't support retrying it, if transactional DDL is enabled. This is
 	 * because we don't support savepoint rollback for DDLs, so we can't rely
 	 * on that mechanism to perform statement level retries.
-	 *
-	 * YBIsCurrentStmtDdl() is cleared once the DDL statement finishes, so it
-	 * misses an error raised while committing an autocommit DDL (one not in
-	 * a transaction block), for example while incrementing the catalog
-	 * version or from the commit RPC. The PG-side transaction is not aborted
-	 * before such a retry, so the backend's caches still reflect the failed
-	 * attempt and the re-run can write inconsistent catalog entries (#37717).
-	 * Check whether the transaction contains a DDL, or is committing one, as
-	 * well: the DDL transaction state is cleared before the commit RPC, so
-	 * YBGetDdlUseRegularTransactionBlock() alone misses an error from it.
-	 * This also refuses the retry of a statement that is not itself a DDL but
-	 * ran one, such as a DO block or a function call: its retry would re-run
-	 * the whole statement, DDL included, with the same stale caches.
 	 */
 	if (IsYBReadCommitted() &&
 		YBIsDdlTransactionBlockEnabled() &&
-		(YBIsCurrentStmtDdl() ||
-		 (!IsTransactionBlock() &&
-		  (YBGetDdlUseRegularTransactionBlock() ||
-		   YBIsDdlTxnBlockCommitInProgress()))))
+		YBIsCurrentStmtDdl())
 	{
 		const char *retry_err = ("query layer retry isn't possible because "
-								 "retrying a DDL statement, or a statement "
-								 "that ran DDL, is not supported in "
+								 "retrying DDL statements are not supported in "
 								 "READ COMMITTED isolation level when "
 								 "transactional DDL is enabled. If object "
 								 "locking is enabled, kConflict and "
 								 "kReadRestart errors won't occur.");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	/*
+	 * With transactional DDL, a statement outside a transaction block whose
+	 * transaction ran DDL -- an autocommit DDL, or a statement that runs one,
+	 * such as a DO block or a function call -- can't be retried, in any
+	 * isolation level. The retry (yb_restart_transaction) starts a new DocDB
+	 * transaction but does not abort the PG-side one, so the re-run starts from
+	 * the failed attempt's PG-side state: the backend's caches still reflect
+	 * the failed attempt's catalog changes, which DocDB has discarded, and the
+	 * re-run can write inconsistent catalog entries (#37717).
+	 *
+	 * YBIsCurrentStmtDdl() is not enough: it is cleared once the DDL statement
+	 * finishes, before the commit, and the error may come from the commit.
+	 * Nor is YBGetDdlUseRegularTransactionBlock() alone: the DDL transaction
+	 * state is cleared before the commit RPC, so it misses an error from that
+	 * RPC; YBIsDdlTxnBlockCommitInProgress() covers that window.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() &&
+		!IsTransactionBlock() &&
+		(YBGetDdlUseRegularTransactionBlock() ||
+		 YBIsDdlTxnBlockCommitInProgress()))
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the statement ran DDL, and retrying it would "
+								 "re-run that DDL without aborting the "
+								 "failed attempt");
 
 		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
