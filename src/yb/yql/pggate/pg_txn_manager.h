@@ -83,12 +83,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status CalculateIsolation(
       bool read_only_op, YbcTxnPriorityRequirement txn_priority_requirement,
       IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
-  Status RecreateTransaction();
-  Status RestartTransaction();
+  // Used by query layer retries. Both apply the change on the tserver before returning.
+  Status RecreateTransaction(SetupPerformOptionsAccessorTag tag);
+  Status RestartTransaction(SetupPerformOptionsAccessorTag tag);
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
-  Status RestartReadPoint();
-  bool IsRestartReadPointRequested();
+  Status RestartReadPoint(SetupPerformOptionsAccessorTag tag);
+  void ResetRetryReadTimeConstraints();
   void SetActiveSubTransactionId(SubTransactionId id);
   Status SetDdlStateInPlainTransaction();
   Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
@@ -170,7 +171,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   [[nodiscard]] bool has_exported_snapshots() const { return has_exported_snapshots_; }
   void ClearExportedTxnSnapshots();
   Status RollbackToSubTransaction(SetupPerformOptionsAccessorTag tag, SubTransactionId id);
-  [[nodiscard]] bool TryAcquireObjectLock(
+  Result<bool> TryAcquireObjectLock(
       const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
 
   Status AcquireObjectLock(
@@ -244,6 +245,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void ResetTxnAndSession();
   void StartNewSession();
+  Result<PgClient::RetryReadTimes> RestartTransactionForRetry(
+      SetupPerformOptionsAccessorTag tag, bool read_point_only);
+  void ConstrainRetryReadTimes(const PgClient::RetryReadTimes& times);
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
@@ -292,6 +296,11 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
+  // While a statement is retried after read restarts: the lowest global limit and the highest
+  // restart read time among the read points that faced them. Read points picked for the retry
+  // read no earlier than the floor and have a global limit no later than the cap.
+  HybridTime retry_global_limit_cap_;
+  HybridTime retry_read_time_floor_;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;

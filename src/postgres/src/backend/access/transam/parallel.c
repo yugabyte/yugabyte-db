@@ -604,12 +604,6 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 
 	if (IsYugaByteEnabled())
 	{
-		/*
-		 * Semantics of the "EnsureReadPoint" contradicts "RestartReadPoint".
-		 * Hence, if we are restarting, proceed without parallel workers.
-		 */
-		if (YBCIsRestartReadPointRequested())
-			return;
 		YBFlushBufferedOperations(YBCMakeFlushDebugContextParallelWorkers());
 		HandleYBStatus(YBCPgEnsureReadPoint());
 	}

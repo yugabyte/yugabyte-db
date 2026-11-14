@@ -92,6 +92,7 @@ class TserverXClusterContextIf;
     (ReserveOids) \
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
+    (RestartTransactionForRetry) \
     (ServersMetrics) \
     (TabletsMetadata) \
     (GetTabletForKey) \
