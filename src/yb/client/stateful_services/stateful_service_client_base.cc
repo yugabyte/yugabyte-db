@@ -16,6 +16,7 @@
 #include <chrono>
 
 #include "yb/client/client-internal.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -45,15 +46,6 @@ bool IsRetryableStatus(const Status& status) {
   return status.IsTryAgain() || status.IsNetworkError() || status.IsServiceUnavailable();
 }
 
-const HostPortPB* GetHostPort(master::StatefulServiceInfoPB* info) {
-  if (!info->private_rpc_addresses().empty()) {
-    return info->mutable_private_rpc_addresses(0);
-  }
-  if (!info->broadcast_addresses().empty()) {
-    return info->mutable_broadcast_addresses(0);
-  }
-  return nullptr;
-}
 }  // namespace
 
 Status StatefulServiceClientBase::InvokeRpcSync(
@@ -133,11 +125,13 @@ Result<std::shared_ptr<rpc::ProxyBase>> StatefulServiceClientBase::GetProxy(
   }
 
     auto location = VERIFY_RESULT(yb_client_.GetStatefulServiceLocation(service_kind_));
-    auto* host_port = GetHostPort(&location);
+    const auto& host_port = DesiredHostPort(
+        location.broadcast_addresses(), location.private_rpc_addresses(), location.cloud_info(),
+        yb_client_.cloud_info());
     SCHECK(
-        host_port && host_port->has_host(), IllegalState, "Service host is invalid: $0",
+        host_port.has_host(), IllegalState, "Service host is invalid: $0",
         location.DebugString());
-    auto service_hp = HostPort::FromPB(*host_port);
+    auto service_hp = HostPortFromPB(host_port);
 
     VLOG(3) << "Connecting to " << service_name_ << " at " << service_hp;
 
