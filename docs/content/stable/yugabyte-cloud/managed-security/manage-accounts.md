@@ -55,7 +55,7 @@ To change your organization name, select the **Settings** page and enter a new n
 
 #### Serverless account
 
-Your organization has a single account for [serverless clusters](../../serverless/), created when you create your first Serverless Postgres cluster. YugabyteDB Aeon prepares the environment and the shared pool for you.
+Your organization has a single account for [serverless clusters](../../serverless/), created when you create your first Serverless Postgres cluster.
 
 #### Add accounts
 
