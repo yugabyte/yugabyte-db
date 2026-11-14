@@ -306,6 +306,56 @@ Result<Slice> GetValueAtRestartIndex(BlockIter* block_iter, uint32_t restart_idx
   return block_iter->value();
 }
 
+// Returns the BlockHandle::cumulative_entry_count stored in the upper-level index entry `iter` is
+// positioned on.
+Result<uint64_t> GetCumulativeEntryCount(const BlockIterWrapper& iter) {
+  RETURN_NOT_OK(iter.status());
+  RSTATUS_DCHECK(iter.Valid(), Corruption, "Expected a valid index entry");
+  BlockHandle handle;
+  Slice value = iter.value();
+  RETURN_NOT_OK(handle.DecodeIndexValueFrom(&value));
+  if (!handle.cumulative_entry_count()) {
+    return STATUS(NotSupported, "Index entry has no cumulative entry count");
+  }
+  return *handle.cumulative_entry_count();
+}
+
+// Positions `iter`, which is over an upper-level index block, on the first entry whose cumulative
+// entry count is greater than `position`, and returns that count. `entries_before` must hold the
+// count before the block; it is updated to the count before the chosen entry. Leaves `iter`
+// invalid if no entry qualifies.
+Result<uint64_t> SeekToCumulativeEntryCount(
+    BlockIterWrapper* iter, uint64_t position, uint64_t* entries_before) {
+  // Binary search over restart points, which hold full entries, then scan within the interval.
+  uint32_t lo = 0;
+  uint32_t hi = iter->iter()->GetNumRestarts();
+  while (lo < hi) {
+    const auto mid = lo + (hi - lo) / 2;
+    iter->SeekToRestart(mid);
+    if (VERIFY_RESULT(GetCumulativeEntryCount(*iter)) > position) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  if (lo == 0) {
+    iter->SeekToFirst();
+  } else {
+    iter->SeekToRestart(lo - 1);
+    *entries_before = VERIFY_RESULT(GetCumulativeEntryCount(*iter));
+    iter->Next();
+  }
+  for (; iter->Valid(); iter->Next()) {
+    const auto count = VERIFY_RESULT(GetCumulativeEntryCount(*iter));
+    if (count > position) {
+      return count;
+    }
+    *entries_before = count;
+  }
+  RETURN_NOT_OK(iter->status());
+  return *entries_before;
+}
+
 }  // namespace
 
 class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase {
@@ -398,6 +448,132 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
         std::bind(&BlockIterWrapper::Prev, std::placeholders::_1),
         std::bind(&BlockIterWrapper::SeekToLast, std::placeholders::_1)
     );
+  }
+
+  // Descends to the bottom-level entry at `position` using the counts in upper-level entries,
+  // reading one index block per level. Each upper level is left on the entry whose child block is
+  // loaded below it, so Next/Prev and the Seek fast path work afterwards. A single-level index
+  // needs no counts: `position` is a restart index of its only block. Returns NotSupported for an
+  // upper-level entry without BlockHandle::cumulative_entry_count, or a bottom-level block whose
+  // entries share restart points (index_block_restart_interval > 1), and Corruption when an index
+  // block doesn't match its parent's count.
+  Result<const KeyValueEntry&> SeekToPosition(uint64_t position) override {
+    if (num_levels_ == 1) {
+      const auto num_entries = VERIFY_RESULT(SingleLevelNumEntries());
+      auto* iter = bottom_level_iter_;
+      bottommost_positioned_iter_ = iter;
+      if (position < num_entries) {
+        iter->SeekToRestart(static_cast<uint32_t>(position));
+      } else {
+        // Past the end: step off the last entry, if there is one, so the iterator is invalid.
+        iter->SeekToLast();
+        if (iter->Valid()) {
+          iter->Next();
+        }
+      }
+      RETURN_NOT_OK(iter->status());
+      return Entry();
+    }
+    // Past the end is only expected at the top level; below it, a block that doesn't match its
+    // parent's count is corrupt.
+    const auto fail_count_mismatch = [this, position]() -> Result<const KeyValueEntry&> {
+      const auto status = STATUS_FORMAT(
+          Corruption, "Index block doesn't match its parent's entry count, position: $0", position);
+      SaveError(status);
+      return status;
+    };
+    // Bottom-level entries before `iter`'s block, and the number in that block (known below the top
+    // level).
+    uint64_t entries_before = 0;
+    uint64_t num_entries = 0;
+    auto* iter = iter_.data();
+    bottommost_positioned_iter_ = iter;
+    while (iter < bottom_level_iter_) {
+      const auto entries_through_result =
+          SeekToCumulativeEntryCount(iter, position, &entries_before);
+      if (!entries_through_result.ok()) {
+        // status_ is sticky, so NotSupported (a file without counts) is only returned: the caller
+        // can still reposition this iterator with Seek and walk from there.
+        if (!entries_through_result.status().IsNotSupported()) {
+          SaveError(entries_through_result.status());
+        }
+        return entries_through_result.status();
+      }
+      const auto entries_through = *entries_through_result;
+      if (!iter->Valid()) {
+        return iter == iter_.data() ? Entry() : fail_count_mismatch();
+      }
+      // Holds by construction, even for corrupt counts: SeekToCumulativeEntryCount only returns a
+      // count above `position`, and only sets entries_before to counts at or below it.
+      RSTATUS_DCHECK_GT(
+          entries_through, entries_before, Corruption,
+          "Cumulative entry count isn't above the count before the block");
+      num_entries = entries_through - entries_before;
+      InitSubIterator(iter);
+      ++iter;
+      bottommost_positioned_iter_ = iter;
+    }
+    RETURN_NOT_OK(iter->status());
+    const uint64_t num_restarts = iter->iter()->GetNumRestarts();
+    if (num_entries != num_restarts) {
+      // The bottom block is loaded but not positioned, so leave the iterator invalid.
+      bottommost_positioned_iter_ = iter - 1;
+      // Any restart interval above 1 gives fewer restart points than entries; more, or none, means
+      // the block doesn't match its parent's count.
+      if (num_restarts == 0 || num_restarts > num_entries) {
+        return fail_count_mismatch();
+      }
+      // Entries share restart points (index_block_restart_interval > 1), so the entry can't be
+      // reached directly. The iterator can still be repositioned with Seek.
+      return STATUS(NotSupported, "SeekToPosition() requires index_block_restart_interval = 1");
+    }
+    iter->SeekToRestart(static_cast<uint32_t>(position - entries_before));
+    RETURN_NOT_OK(iter->status());
+    return iter->Valid() ? Entry() : fail_count_mismatch();
+  }
+
+  // For a single-level index, the position is the restart index Seek lands on. Otherwise, the
+  // parent of the bottom-level block stores the count through the end of that block. The count
+  // before the block is stored on the entry just before the parent's, so this steps back one entry
+  // at the lowest upper level that isn't on its block's first entry, reads it, and steps forward
+  // again, leaving the iterator where Seek put it.
+  Result<uint64_t> PositionOf(Slice target) override {
+    Seek(target);
+    // On a prefix miss Seek stops without reaching the entry the position would count up to.
+    if (index_iterator_state_->check_prefix_may_match) {
+      return STATUS(NotSupported, "PositionOf() requires an index without prefix checks");
+    }
+    RETURN_NOT_OK(status());
+    if (num_levels_ == 1) {
+      const auto num_entries = VERIFY_RESULT(SingleLevelNumEntries());
+      return Valid() ? bottom_level_iter_->iter()->GetCurrentRestart() : num_entries;
+    }
+    if (!Valid()) {
+      // Moving the top level doesn't make the iterator valid: only a positioned bottom level is,
+      // and the next Seek starts from the top again.
+      iter_[0].SeekToLast();
+      return GetCumulativeEntryCount(iter_[0]);
+    }
+
+    uint64_t entries_before = 0;
+    for (auto level = num_levels_ - 1; level > 0; --level) {
+      auto& iter = iter_[level - 1];
+      iter.Prev();
+      if (iter.Valid()) {
+        auto count = GetCumulativeEntryCount(iter);
+        iter.Next();
+        entries_before = VERIFY_RESULT(std::move(count));
+        break;
+      }
+      iter.SeekToFirst();
+    }
+    const auto entries_through = VERIFY_RESULT(GetCumulativeEntryCount(*(bottom_level_iter_ - 1)));
+    // Entries that share restart points (index_block_restart_interval > 1) make the restart index
+    // differ from the entry's index within the block.
+    if (entries_through - entries_before != bottom_level_iter_->iter()->GetNumRestarts()) {
+      return STATUS(NotSupported, "PositionOf() requires index_block_restart_interval = 1");
+    }
+    return entries_before + bottom_level_iter_->iter()->GetCurrentRestart();
   }
 
   const KeyValueEntry& Entry() const override {
@@ -572,6 +748,35 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
  private:
   void SaveError(const Status& s) {
     if (status_.ok() && !s.ok()) status_ = s;
+  }
+
+  // For a single-level index: the number of entries. NotSupported if entries share restart points
+  // (index_block_restart_interval > 1), so that a restart index isn't an entry's position. Uses its
+  // own iterator over the block, so the shared one stays where it is.
+  Result<uint64_t> SingleLevelNumEntries() {
+    DCHECK_EQ(num_levels_, 1);
+    BlockIter iter;
+    top_level_index_block_->NewIndexBlockIterator(comparator_, &iter);
+    iter.SeekToFirst();
+    const bool empty = !iter.Valid();
+    if (!empty) {
+      // The block builder uses one interval for the whole block, so it is enough to check that the
+      // second entry starts the second restart interval.
+      iter.Next();
+    }
+    if (!iter.status().ok()) {
+      // Like SeekToPosition's other errors, status() keeps reporting it.
+      SaveError(iter.status());
+      return iter.status();
+    }
+    if (empty) {
+      // An empty block still has one restart point.
+      return 0;
+    }
+    if (iter.Valid() && iter.GetCurrentRestart() != 1) {
+      return STATUS(NotSupported, "Positions require index_block_restart_interval = 1");
+    }
+    return iter.GetNumRestarts();
   }
 
   void SetSubIterator(BlockIterWrapper* iter_wrapper, BlockIter* iter) {

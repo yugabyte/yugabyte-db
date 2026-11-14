@@ -73,6 +73,33 @@ Status BlockHandle::DecodeFrom(Slice* input) {
   }
 }
 
+// In upper-level index entry values, BlockHandle::cumulative_entry_count follows the encoded
+// handle as this tag and then a varint.
+constexpr uint8_t kCumulativeEntryCountTag = 1;
+
+Status BlockHandle::DecodeIndexValueFrom(Slice* input) {
+  cumulative_entry_count_.reset();
+  RETURN_NOT_OK(DecodeFrom(input));
+  if (input->empty() || (*input)[0] != kCumulativeEntryCountTag) {
+    return Status::OK();
+  }
+  input->remove_prefix(1);
+  uint64_t count;
+  if (!GetVarint64(input, &count)) {
+    return STATUS(Corruption, "bad cumulative entry count");
+  }
+  cumulative_entry_count_ = count;
+  return Status::OK();
+}
+
+void BlockHandle::AppendIndexValueTo(std::string* dst) const {
+  AppendEncodedTo(dst);
+  if (cumulative_entry_count_) {
+    dst->push_back(kCumulativeEntryCountTag);
+    PutVarint64(dst, *cumulative_entry_count_);
+  }
+}
+
 // Return a string that contains the copy of handle.
 std::string BlockHandle::ToString(bool hex) const {
   std::string handle_str;
