@@ -209,6 +209,10 @@ cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:52.317 SESSION,8,
 cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:54.374 SESSION,9,1,MISC,COMMIT,,,commit;,<none>
 ```
 
+## YSQL Connection Manager
+
+With [YSQL Connection Manager](../../../additional-features/connection-manager-ysql/) enabled, `ALTER ROLE ... SET` and `ALTER DATABASE ... SET` changes to pgaudit parameters can take effect in existing sessions, and STATEMENT_ID is numbered per backend process rather than per session, so don't use it to correlate audit lines. See [Audit logging with pgaudit](../../../additional-features/connection-manager-ysql/ycm-setup/#audit-logging-with-pgaudit).
+
 ## Learn more
 
 - [Audit logging in YugabyteDB](https://www.youtube.com/watch?v=ecYN9Z5_Hzc)
