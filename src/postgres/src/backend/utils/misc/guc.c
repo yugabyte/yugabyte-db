@@ -10337,6 +10337,62 @@ YbResetYsqlConnMgrGucDefaults(void)
 }
 
 /*
+ * YB: Remove the custom placeholder variables that are back in their initial,
+ * never-set state, i.e. the ones a freshly started backend would not have.
+ *
+ * Called after connection manager's reset between logical clients ('g'). Once
+ * a SET, RESET or set_config() of a custom name (or a 'G' for a logical
+ * client's startup option) creates a placeholder, it lives as long as the
+ * backend. The reset only clears its value, so the next logical client would
+ * see an existing, empty parameter where a fresh backend raises "unrecognized
+ * configuration parameter". Placeholders with a reset value of their own
+ * (postgresql.conf, ALTER ROLE/DATABASE ... SET) are kept: a fresh backend has
+ * them too.
+ *
+ * The reset's transaction must be committed first, so that no stacked values
+ * remain. Its ParameterStatus reports must be sent first too: connection
+ * manager drops reset variables from its record of the backend's settings
+ * based on them, and a removed variable is never reported.
+ */
+void
+YbRemoveUnsetGucPlaceholders(void)
+{
+	int			num_kept = 0;
+
+	ReportChangedGUCOptions();
+
+	for (int i = 0; i < num_guc_variables; i++)
+	{
+		struct config_generic *gconf = guc_variables[i];
+		struct config_string *conf;
+
+		if (!(gconf->flags & GUC_CUSTOM_PLACEHOLDER) ||
+			gconf->source != PGC_S_DEFAULT ||
+			gconf->reset_source != PGC_S_DEFAULT ||
+			gconf->stack != NULL ||
+			gconf->ysql_conn_mgr_saved_default != NULL ||
+			(gconf->status & GUC_NEEDS_REPORT))
+		{
+			guc_variables[num_kept++] = gconf;
+			continue;
+		}
+
+		conf = (struct config_string *) gconf;
+		set_string_field(conf, conf->variable, NULL);
+		set_string_field(conf, &conf->reset_val, NULL);
+		if (gconf->last_reported)
+			free(gconf->last_reported);
+		if (gconf->sourcefile)
+			free(gconf->sourcefile);
+		free(unconstify(char *, gconf->name));
+		free(conf);
+	}
+
+	/* Order is kept, so guc_variables stays sorted for find_option() */
+	num_guc_variables = num_kept;
+}
+
+/*
  * push_old_value
  *		Push previous state during transactional assignment to a GUC variable.
  */
@@ -11740,6 +11796,40 @@ yb_conn_mgr_save_default_value(struct config_generic *gconf)
 	}
 
 	gconf->ysql_conn_mgr_saved_default = stack;
+}
+
+/*
+ * YB: Move the default saved by connection manager's 'G' from a placeholder to
+ * the real variable that is replacing it, converted to the variable's type.
+ * Must run before the placeholder's own reset value is applied to the variable.
+ *
+ * Otherwise, when a logical client sets an extension's variable as a startup
+ * option before the extension is loaded, the saved default is lost with the
+ * placeholder: the variable takes the client's value as its reset value, and
+ * connection manager's reset ('g') leaves it in place for every later logical
+ * client on the backend.
+ */
+static void
+yb_conn_mgr_move_saved_default(struct config_generic *variable,
+							   struct config_string *pHolder)
+{
+	GucStack   *saved = pHolder->gen.ysql_conn_mgr_saved_default;
+
+	if (!saved)
+		return;
+
+	/* NULL means the placeholder had no reset value, i.e. keep boot_val */
+	if (saved->prior.val.stringval)
+		(void) set_config_option_ext(variable->name,
+									 saved->prior.val.stringval,
+									 saved->scontext, saved->source,
+									 saved->srole, GUC_ACTION_SET, true,
+									 WARNING, false);
+	yb_conn_mgr_save_default_value(variable);
+
+	discard_stack_value(&pHolder->gen, &saved->prior);
+	pfree(saved);
+	pHolder->gen.ysql_conn_mgr_saved_default = NULL;
 }
 
 /*
@@ -13952,6 +14042,9 @@ define_custom_variable(struct config_generic *variable)
 	 * is necessary
 	 */
 	*res = variable;
+
+	/* YB: Keep connection manager's saved default across the replacement */
+	yb_conn_mgr_move_saved_default(variable, pHolder);
 
 	/*
 	 * Assign the string value(s) stored in the placeholder to the real
