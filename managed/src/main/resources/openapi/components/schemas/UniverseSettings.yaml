@@ -3,7 +3,6 @@ description: Universe-level settings stored on UniverseDefinitionTaskParams. Par
 type: object
 properties:
   expert_mode:
-    description: Whether expert mode was used when configuring this Universe.
+    description: 'Whether expert mode was used when configuring this Universe. Defaults to false on create. On edit, omit to leave unchanged.'
     type: boolean
     example: false
-    default: false

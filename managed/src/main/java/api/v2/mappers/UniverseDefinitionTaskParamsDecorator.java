@@ -208,9 +208,25 @@ public abstract class UniverseDefinitionTaskParamsDecorator
   public UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParamsFromEditSpec(
       UniverseEditSpec universeEditSpec,
       UniverseDefinitionTaskParams v1UniverseDefinitionTaskParams) {
+    UniverseDefinitionTaskParams.UniverseSettings previousSettings =
+        v1UniverseDefinitionTaskParams.universeSettings;
     UniverseDefinitionTaskParams params =
         delegate.toV1UniverseDefinitionTaskParamsFromEditSpec(
             universeEditSpec, v1UniverseDefinitionTaskParams);
+
+    // expert_mode used to deserialize as false when omitted (schema default) and replace the
+    // stored setting. Null means the edit did not set it.
+    if (universeEditSpec != null && universeEditSpec.getUniverseSettings() != null) {
+      Boolean expertMode = universeEditSpec.getUniverseSettings().getExpertMode();
+      if (expertMode == null) {
+        params.universeSettings = previousSettings;
+      } else {
+        if (params.universeSettings == null) {
+          params.universeSettings = new UniverseDefinitionTaskParams.UniverseSettings();
+        }
+        params.universeSettings.setExpertMode(expertMode);
+      }
+    }
 
     if (universeEditSpec != null && universeEditSpec.getNetworkingSpec() != null) {
       UniverseNetworkingSpec networkingSpec = universeEditSpec.getNetworkingSpec();
@@ -239,8 +255,14 @@ public abstract class UniverseDefinitionTaskParamsDecorator
     if (source == null || userIntent == null) {
       return;
     }
-    userIntent.assignPublicIP = source.getAssignPublicIp();
-    userIntent.assignStaticPublicIP = source.getAssignStaticPublicIp();
+    // Omitted flags stay null. Copying the create-time default (assignPublicIP=true) onto an edit
+    // changes the setting and forces a full move.
+    if (source.getAssignPublicIp() != null) {
+      userIntent.assignPublicIP = source.getAssignPublicIp();
+    }
+    if (source.getAssignStaticPublicIp() != null) {
+      userIntent.assignStaticPublicIP = source.getAssignStaticPublicIp();
+    }
     if (source.getEnableIpv6() != null) {
       userIntent.enableIPV6 = source.getEnableIpv6();
     }
