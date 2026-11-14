@@ -892,8 +892,9 @@ Status XClusterSourceManager::ValidateEndOfWalBootstrapTablets(
 
 Status XClusterSourceManager::WriteXClusterStreamBootstrapInfo(
     const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch) {
-  // Like CatalogManager::UpdateCDCStreams, look up all the streams before taking any stream lock,
-  // and lock them in StreamId order (stream_tablets is ordered) to avoid deadlocks.
+  // Look up all the streams before taking any stream lock. Hold one stream lock at a time: new
+  // streams are locked in creation order, not StreamId order (e.g. a table's stream and its WAL
+  // anchor stream), so holding several here could invert that order.
   std::vector<std::pair<CDCStreamInfoPtr, const std::vector<TabletId>*>> streams;
   for (const auto& [stream_id, tablet_ids] : stream_tablets) {
     auto stream_result = catalog_manager_.GetXReplStreamInfo(stream_id);
@@ -904,8 +905,6 @@ Status XClusterSourceManager::WriteXClusterStreamBootstrapInfo(
     streams.emplace_back(VERIFY_RESULT(std::move(stream_result)), &tablet_ids);
   }
 
-  std::vector<CDCStreamInfoPtr> streams_to_update;
-  std::vector<CDCStreamInfo::WriteLock> stream_locks;
   for (auto& [stream, tablet_ids_ptr] : streams) {
     const auto& stream_id = stream->StreamId();
     const auto& tablet_ids = *tablet_ids_ptr;
@@ -928,18 +927,9 @@ Status XClusterSourceManager::WriteXClusterStreamBootstrapInfo(
     tablet_ids_pb.Add(tablet_ids.begin(), tablet_ids.end());
     LOG(INFO) << "Recording xCluster bootstrap tablets of stream " << stream_id << " for table "
               << AsString(pb.table_id()) << ": " << yb::ToString(tablet_ids);
-    stream_locks.push_back(std::move(stream_lock));
-    streams_to_update.push_back(stream);
-  }
-
-  if (streams_to_update.empty()) {
-    return Status::OK();
-  }
-
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_.Upsert(epoch, streams_to_update),
-      "Failed to record xCluster stream bootstrap tablets in sys-catalog");
-  for (auto& stream_lock : stream_locks) {
+    RETURN_NOT_OK_PREPEND(
+        sys_catalog_.Upsert(epoch, stream),
+        "Failed to record xCluster stream bootstrap tablets in sys-catalog");
     stream_lock.Commit();
   }
 
