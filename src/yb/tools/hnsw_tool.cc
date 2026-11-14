@@ -38,6 +38,7 @@
 
 #include "yb/rocksdb/cache.h"
 
+#include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
@@ -61,6 +62,7 @@
 #include "yb/vector_index/hnsw_options.h"
 #include "yb/vector_index/hnsw_util.h"
 #include "yb/vector_index/sharded_index.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
@@ -796,14 +798,27 @@ class BenchmarkTool {
   Status PrepareGroundTruth() {
     query_vectors_ = VERIFY_RESULT(query_vector_source_->LoadVectors(num_queries()));
 
-    auto distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
-        args_.hnsw_options.distance_kind);
-
-    auto vertex_id_to_query_distance_fn =
-      [this, distance_fn](VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
-        // Avoid vector_cast on the critical path of the brute force search here.
-        return distance_fn(input_vectors_[VertexIdToInputVectorIndex(vertex_id)], v);
-      };
+    VertexIdToVectorDistanceFunction<InputVector, InputDistanceResult>
+        vertex_id_to_query_distance_fn;
+    if constexpr (std::is_same_v<InputVector, FloatVector>) {
+      // Unlike the reference functions, usearch's metrics use SIMD; metric_punned_t has no u8_k.
+      vertex_id_to_query_distance_fn =
+          [this, metric = hnsw_options().template CreateMetric<FloatVector>()](
+              VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
+            return metric(
+                pointer_cast<const unum::usearch::byte_t*>(
+                    input_vectors_[VertexIdToInputVectorIndex(vertex_id)].data()),
+                pointer_cast<const unum::usearch::byte_t*>(v.data()));
+          };
+    } else {
+      vertex_id_to_query_distance_fn =
+          [this, distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
+              args_.hnsw_options.distance_kind)](
+              VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
+            // Avoid vector_cast on the critical path of the brute force search here.
+            return distance_fn(input_vectors_[VertexIdToInputVectorIndex(vertex_id)], v);
+          };
+    }
 
     // The ground truth evaluation is always done in the input coordinate type.
     ground_truth_.emplace(
