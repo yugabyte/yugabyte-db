@@ -446,7 +446,7 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 													   docdb_txn_id,
 													   aborted_subtxn_set,
 													   aborted_subtxn_set_size);
-		CatalogCacheFlushCatalog(PublicationRelationId);
+		YbCatalogCacheFlushCatalogWithoutCallbacks(PublicationRelationId);
 	}
 	else
 	{
