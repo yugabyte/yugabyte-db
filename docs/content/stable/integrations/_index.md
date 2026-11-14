@@ -75,6 +75,7 @@ Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. 
 | Arctype         |         | Full    | [Arctype](tools/arctype/) |
 | DataGrip        | 2023.2.2 | Full   |  |
 | DBeaver         | 23.2.2  | Full    | [DBeaver](tools/dbeaver-ysql/) |
+| DBine           |         | Full    | [DBine](tools/dbine/) |
 | DbSchema        |         | Full    | [DbSchema](tools/dbschema/) |
 | LibreDB Studio  |         | Full    | [LibreDB Studio](tools/libredb-studio/) |
 | Metabase        |         | Full    | [Metabase](tools/metabase/) |
