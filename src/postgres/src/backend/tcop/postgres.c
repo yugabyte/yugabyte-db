@@ -5900,6 +5900,59 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
+	/*
+	 * With transactional DDL, a statement whose transaction changed the catalog
+	 * can't be retried, except in READ COMMITTED within a transaction block.
+	 * That is a statement whose transaction has DDL transaction state: a DDL,
+	 * a statement that runs one (such as a DO block or a function call), or
+	 * one that registers a catalog change through YBAddDdlTxnState without a
+	 * DDL statement (such as the statistics restore functions, or a write to
+	 * the hint table, whose trigger bumps the catalog version).
+	 *
+	 * Outside a transaction block in any isolation level, and in a REPEATABLE
+	 * READ or SERIALIZABLE block, the retry (yb_restart_transaction) starts a
+	 * new DocDB transaction without aborting the PG-side transaction, and no
+	 * internal subtransaction is open for it to roll back. So nothing discards
+	 * the relcache and catcache entries built from the failed attempt's catalog
+	 * changes, which DocDB has discarded, and the re-run can write inconsistent
+	 * catalog entries (#37717) or fail on other state the failed attempt left
+	 * behind. In a READ COMMITTED block, the statement runs in an internal
+	 * subtransaction, and both retry paths roll it back first
+	 * (yb_restart_current_stmt, and YBCRestartWriteTransaction in
+	 * yb_restart_transaction), which discards the statement's own PG-side
+	 * state; a commit-time error there comes from a COMMIT statement, which is
+	 * never retried. Catalog changes from an earlier statement of a READ
+	 * COMMITTED block are not covered when kDeadlock or kAborted restarts the
+	 * whole transaction, a case refused above only once output has been sent
+	 * (#37930).
+	 *
+	 * YBIsCurrentStmtDdl() is not enough: it is cleared once the DDL statement
+	 * finishes, before the rest of the statement and before the commit, and
+	 * the error may come from either. Nor is
+	 * YBGetDdlUseRegularTransactionBlock() alone: the DDL transaction state is
+	 * cleared before the commit RPC, so it misses an error from that RPC;
+	 * YBIsDdlTxnBlockCommitInProgress() covers that window.
+	 *
+	 * Like the skipped-intents check above, this is a property of the
+	 * transaction, so it comes after the statement's own reasons.
+	 */
+	if (YBIsDdlTransactionBlockEnabled() &&
+		!(IsYBReadCommitted() && IsTransactionBlock()) &&
+		(YBGetDdlUseRegularTransactionBlock() ||
+		 YBIsDdlTxnBlockCommitInProgress()))
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the statement changed the catalog (for "
+								 "example, it ran DDL), and retrying it would "
+								 "redo that without aborting the failed "
+								 "attempt");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
 	return true;
 }
 

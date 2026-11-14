@@ -6956,6 +6956,177 @@ TEST_F(PgLibPqTestDropTableIfExistsCascadeRetry, DropTableIfExistsCascadeRetryCr
   ASSERT_OK(conn.FetchMatrix("SELECT * FROM drop_retry_test_crash", 0, 1));
 }
 
+class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    // Table locks and transactional DDL on, as on the cluster where #37717 was seen.
+    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
+    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+  }
+};
+
+// Test for #37717: a retryable error raised while committing a statement that
+// ran DDL outside a transaction block must reach the client, and must not leave
+// pg_class.relchecks out of step with the table's CHECK constraints.
+// yb_test_fail_next_ddl = 5 (kConflict) and 6 (kDeadlock) raise the error at
+// the start of YBCommitTransactionContainingDDL; 7 (kConflict) and 8 (kDeadlock)
+// raise it in place of an error from the commit RPC, after the DDL transaction
+// state has been cleared.  Each mode runs the ALTER on its own, inside a DO
+// block, and inside a function called by a SELECT, under both READ COMMITTED
+// and REPEATABLE READ: a retry would re-run the whole statement, DDL included,
+// with the same stale caches.  (Under REPEATABLE READ, only the SELECT is
+// retried by default.)
+TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintCommitRetry) {
+  struct Isolation {
+    std::string name;
+    std::string suffix;
+  };
+  struct FailMode {
+    int mode;
+    std::string error;
+  };
+  struct StmtForm {
+    std::string name;
+    std::string format;  // $0 is the table.
+    bool returns_rows;
+  };
+  auto conn = ASSERT_RESULT(Connect());
+  // Runs the statements under test, all through the simple query protocol so
+  // that every form goes through the same retry path.
+  auto stmt_conn = ASSERT_RESULT(Connect(/* simple_query_protocol = */ true));
+  const auto run = [&stmt_conn](const std::string& stmt, bool returns_rows) {
+    return returns_rows ? ResultToStatus(stmt_conn.Fetch(stmt)) : stmt_conn.Execute(stmt);
+  };
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION add_check(tbl text) RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
+      "EXECUTE format('ALTER TABLE %I ADD CONSTRAINT c CHECK (a > 0) NOT VALID', tbl); "
+      "END $$"));
+  const std::vector<StmtForm> kForms = {
+      {"alter", "ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", false},
+      {"do", "DO $$$$ BEGIN ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID; END $$$$",
+       false},
+      {"func", "SELECT add_check('$0')", true}};
+  for (const auto& [isolation, suffix] : std::vector<Isolation>{
+           {"read committed", "rc"}, {"repeatable read", "rr"}}) {
+    ASSERT_OK(stmt_conn.ExecuteFormat("SET default_transaction_isolation = '$0'", isolation));
+    for (const auto& [mode, error] : std::vector<FailMode>{
+             {5, "failed DDL operation with conflict as requested"},
+             {6, "failed DDL operation with deadlock as requested"},
+             {7, "failed DDL commit with conflict as requested"},
+             {8, "failed DDL commit with deadlock as requested"}}) {
+      for (const auto& form : kForms) {
+        SCOPED_TRACE(Format(
+            "$0, yb_test_fail_next_ddl = $1, statement: $2", isolation, mode, form.name));
+        const auto table = Format("t$0_$1_$2", mode, form.name, suffix);
+        const auto stmt = Format(form.format, table);
+        const auto check_query = Format(
+            "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
+            "WHERE conrelid = '$0'::regclass AND contype = 'c') "
+            "FROM pg_class WHERE oid = '$0'::regclass", table);
+        ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
+
+        // The failed commit must not be retried internally: the PG-side
+        // transaction is not aborted before such a retry, and the re-run used
+        // to see the failed attempt's constraint in the backend's caches and
+        // set relchecks to 2.
+        ASSERT_OK(stmt_conn.ExecuteFormat("SET yb_test_fail_next_ddl = $0", mode));
+        ASSERT_NOK_STR_CONTAINS(run(stmt, form.returns_rows), error);
+        auto [relchecks, check_rows] =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 0);
+        ASSERT_EQ(check_rows, 0);
+
+        // Running the statement again works and leaves the catalog consistent.
+        ASSERT_OK(run(stmt, form.returns_rows));
+        std::tie(relchecks, check_rows) =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 1);
+        ASSERT_EQ(check_rows, 1);
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+      }
+    }
+  }
+}
+
+// Test for #37717 in an explicit transaction block: the first statement after
+// BEGIN calls a function that runs an ALTER and then, once, raises a retryable
+// error (read restart, kConflict or kDeadlock).  In READ COMMITTED the retry
+// rolls back the statement's internal subtransaction first, so it is allowed
+// and must commit a consistent catalog.  In REPEATABLE READ the retry would
+// restart the transaction without aborting the PG-side transaction, with no
+// internal subtransaction to roll back, so it must be refused, and the session
+// must stay usable.
+TEST_F(PgLibPqTestTxnDdlCommitRetry, AddCheckConstraintRetryInBlock) {
+  struct Isolation {
+    std::string name;
+    std::string suffix;
+    bool retry_allowed;
+  };
+  struct ErrorCode {
+    std::string sqlstate;
+    std::string name;
+  };
+  auto conn = ASSERT_RESULT(Connect());
+  // Runs the statements under test through the simple query protocol.
+  auto stmt_conn = ASSERT_RESULT(Connect(/* simple_query_protocol = */ true));
+  // nextval is not rolled back, so the error is raised by the first attempt
+  // only, however the retry treats the PG-side state.
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE fail_once CACHE 1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION add_check_then_fail(tbl text, code text) RETURNS void "
+      "LANGUAGE plpgsql AS $$ BEGIN "
+      "EXECUTE format('ALTER TABLE %I ADD CONSTRAINT c CHECK (a > 0) NOT VALID', tbl); "
+      "IF nextval('fail_once') = 1 THEN "
+      "RAISE EXCEPTION 'injected retryable error' USING ERRCODE = code; "
+      "END IF; "
+      "END $$"));
+  for (const auto& [isolation, suffix, retry_allowed] : std::vector<Isolation>{
+           {"read committed", "rc", true}, {"repeatable read", "rr", false}}) {
+    for (const auto& [sqlstate, error_name] : std::vector<ErrorCode>{
+             {"YB002", "read_restart"}, {"YB003", "conflict"}, {"YB004", "deadlock"}}) {
+      SCOPED_TRACE(Format("$0, $1", isolation, error_name));
+      const auto table = Format("tb_$0_$1", suffix, error_name);
+      const auto check_query = Format(
+          "SELECT relchecks, (SELECT count(*) FROM pg_constraint "
+          "WHERE conrelid = '$0'::regclass AND contype = 'c') "
+          "FROM pg_class WHERE oid = '$0'::regclass", table);
+      ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT)", table));
+      ASSERT_OK(ResultToStatus(stmt_conn.Fetch("SELECT setval('fail_once', 1, false)")));
+
+      ASSERT_OK(stmt_conn.ExecuteFormat("BEGIN ISOLATION LEVEL $0", isolation));
+      const auto select_status = ResultToStatus(stmt_conn.FetchFormat(
+          "SELECT add_check_then_fail('$0', '$1')", table, sqlstate));
+      if (retry_allowed) {
+        ASSERT_OK(select_status);
+        ASSERT_OK(stmt_conn.Execute("COMMIT"));
+      } else {
+        ASSERT_NOK_STR_CONTAINS(select_status, "injected retryable error");
+        ASSERT_OK(stmt_conn.Execute("ROLLBACK"));
+      }
+      auto [relchecks, check_rows] =
+          ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+      ASSERT_EQ(relchecks, check_rows);
+      ASSERT_EQ(check_rows, retry_allowed ? 1 : 0);
+
+      // The session stays usable, and the table ends up with the constraint.
+      if (!retry_allowed) {
+        ASSERT_OK(stmt_conn.ExecuteFormat(
+            "ALTER TABLE $0 ADD CONSTRAINT c CHECK (a > 0) NOT VALID", table));
+        std::tie(relchecks, check_rows) =
+            ASSERT_RESULT((conn.FetchRow<int16_t, int64_t>(check_query)));
+        ASSERT_EQ(relchecks, 1);
+        ASSERT_EQ(check_rows, 1);
+      }
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1)", table));
+    }
+  }
+}
+
 class PgMinimalPrefetchStaleRelcacheTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
