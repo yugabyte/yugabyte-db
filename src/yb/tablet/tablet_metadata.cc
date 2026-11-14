@@ -1087,9 +1087,9 @@ Status MakeTableNotFound(TableIdView table_id, const RaftGroupId& raft_group_id,
       << raft_group_id;
   std::string msg = string_stream.str();
 #ifndef NDEBUG
-  // This very large message should be logged instead of being appended to STATUS.
-  std::string suffix = Format(". Tables: $0.", tables);
-  VLOG(1) << msg << suffix;
+  // This very large message should be logged instead of being appended to STATUS. Format it inside
+  // VLOG so it is only built when logged: a replayed write to a dropped cotable misses here.
+  VLOG(1) << msg << Format(". Tables: $0.", tables);
 #endif
   return Status(Status::kNotFound, file_name, line_number, msg);
 }
