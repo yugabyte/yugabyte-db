@@ -1010,6 +1010,13 @@ activate_virtualenv
 set_pythonpath
 verify_thirdparty_not_stale
 find_or_download_thirdparty
+# Records the use of a downloaded thirdparty version for build-support/clean_old_thirdparty.sh on
+# macOS, where APFS updates access times only on the first read after a change. CI does not run it.
+if is_mac && ! is_jenkins && [[ $YB_THIRDPARTY_DIR == "$LOCAL_THIRDPARTY_DIR_PARENT"/* &&
+      ! -L $YB_THIRDPARTY_DIR ]]; then
+  # umask 0 lets other users update the file once it exists.
+  ( umask 0; touch "$YB_THIRDPARTY_DIR/.last_used" ) 2>/dev/null || true
+fi
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
 find_compiler_by_type
