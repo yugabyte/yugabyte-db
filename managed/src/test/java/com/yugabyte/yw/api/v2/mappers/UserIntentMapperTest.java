@@ -10,12 +10,14 @@ import static org.junit.Assert.assertTrue;
 
 import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AvailabilityZoneNodeSpec;
+import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterGFlags;
 import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterPerProcessNodeSpec;
 import api.v2.models.ClusterResizeNodeSpec;
 import api.v2.models.ClusterSpec;
+import api.v2.models.K8SNodeResourceSpec;
 import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
@@ -272,6 +274,88 @@ public class UserIntentMapperTest {
     assertEquals("c5.2xlarge", result.get(az1).getInstanceType());
     assertEquals("c5.4xlarge", result.get(az2).getInstanceType());
     assertEquals("c5.large", userIntent.instanceType);
+  }
+
+  @Test
+  public void testEditOmittingK8sResourceSpecsClearsThemForReinitialization() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "large";
+    userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
+    userIntent.tserverK8SNodeResourceSpec = resourceSpec(8.0, 32.0);
+
+    ClusterNodeSpec nodeSpec = new ClusterNodeSpec().instanceType("xlarge");
+    UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(
+        new ClusterEditSpec().uuid(UUID.randomUUID()).nodeSpec(nodeSpec), userIntent);
+
+    // Left null so the handler derives them from the new instance type; keeping the old ones
+    // would hide the instance type change from EditKubernetesUniverse.
+    assertEquals("xlarge", userIntent.instanceType);
+    assertNull(userIntent.masterK8SNodeResourceSpec);
+    assertNull(userIntent.tserverK8SNodeResourceSpec);
+  }
+
+  @Test
+  public void testEditK8sResourceSpecsReplaceExisting() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
+    userIntent.tserverK8SNodeResourceSpec = resourceSpec(8.0, 32.0);
+
+    K8SNodeResourceSpec master = new K8SNodeResourceSpec().cpuCoreCount(3.0).memoryGib(6.0);
+    K8SNodeResourceSpec tserver = new K8SNodeResourceSpec().cpuCoreCount(1.0).memoryGib(2.0);
+    ClusterNodeSpec nodeSpec =
+        new ClusterNodeSpec()
+            .instanceType("xlarge")
+            .k8sMasterResourceSpec(master)
+            .k8sTserverResourceSpec(tserver);
+    UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(
+        new ClusterEditSpec().uuid(UUID.randomUUID()).nodeSpec(nodeSpec), userIntent);
+
+    assertEquals(3.0, userIntent.masterK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(6.0, userIntent.masterK8SNodeResourceSpec.memoryGib, 0.001);
+    assertEquals(1.0, userIntent.tserverK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(2.0, userIntent.tserverK8SNodeResourceSpec.memoryGib, 0.001);
+  }
+
+  @Test
+  public void testAddReadReplicaOmittingK8sResourceSpecsClearsPrimaryOnes() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "large";
+    userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
+    userIntent.tserverK8SNodeResourceSpec = resourceSpec(8.0, 32.0);
+
+    ClusterAddSpec addSpec =
+        new ClusterAddSpec().nodeSpec(new ClusterNodeSpec().instanceType("xlarge"));
+    UserIntentMapper.INSTANCE.overwriteUserIntentFromClusterAddSpec(addSpec, userIntent);
+
+    // The read replica must not inherit the primary's specs; the handler derives the tserver one
+    // from the replica's instance type.
+    assertEquals("xlarge", userIntent.instanceType);
+    assertNull(userIntent.masterK8SNodeResourceSpec);
+    assertNull(userIntent.tserverK8SNodeResourceSpec);
+  }
+
+  @Test
+  public void testAddReadReplicaK8sResourceSpecsReplacePrimary() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.masterK8SNodeResourceSpec = resourceSpec(2.5, 8.0);
+    userIntent.tserverK8SNodeResourceSpec = resourceSpec(8.0, 32.0);
+
+    K8SNodeResourceSpec tserver = new K8SNodeResourceSpec().cpuCoreCount(1.0).memoryGib(2.0);
+    ClusterAddSpec addSpec =
+        new ClusterAddSpec()
+            .nodeSpec(new ClusterNodeSpec().instanceType("xlarge").k8sTserverResourceSpec(tserver));
+    UserIntentMapper.INSTANCE.overwriteUserIntentFromClusterAddSpec(addSpec, userIntent);
+
+    assertNull(userIntent.masterK8SNodeResourceSpec);
+    assertEquals(1.0, userIntent.tserverK8SNodeResourceSpec.cpuCoreCount, 0.001);
+    assertEquals(2.0, userIntent.tserverK8SNodeResourceSpec.memoryGib, 0.001);
+  }
+
+  private static UserIntent.K8SNodeResourceSpec resourceSpec(double cpu, double memoryGib) {
+    UserIntent.K8SNodeResourceSpec spec = new UserIntent.K8SNodeResourceSpec();
+    spec.cpuCoreCount = cpu;
+    spec.memoryGib = memoryGib;
+    return spec;
   }
 
   private static UserIntent userIntentWithAzOverrides(

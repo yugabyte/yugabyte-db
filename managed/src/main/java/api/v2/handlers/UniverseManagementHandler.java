@@ -58,6 +58,7 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FileCollectionDownloader;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
 import com.yugabyte.yw.common.NodeFileCollector;
 import com.yugabyte.yw.common.NodeScriptRunner;
@@ -277,6 +278,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseDefinitionTaskParams v1DefnParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing missing resource specs from instanceType.
+    // Explicitly requested resource specs are kept as is.
+    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1DefnParams);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
@@ -365,6 +370,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       // Keeping these fields will lead to error in validation.
       clearNonDedicatedFields(cluster.userIntent);
     }
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing missing resource specs from instanceType.
+    // Explicitly requested specs and specs of clusters not changed by the request are kept as is
+    // (the mapper clears them when the node spec is passed without them).
+    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1Params);
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
@@ -590,6 +600,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+    // Before we completely replace instance type with resourceSpec for k8s,
+    // initializing missing resource specs from instanceType.
+    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
+        newReadReplica.clusterType, newReadReplica.userIntent);
     v1Params.newUI =
         (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
     if (v1Params.newUI) {
