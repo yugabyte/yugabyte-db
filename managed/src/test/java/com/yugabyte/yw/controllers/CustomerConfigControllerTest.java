@@ -13,6 +13,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.configs.CustomerConfig.ConfigType.CALLHOME;
 import static com.yugabyte.yw.models.configs.CustomerConfig.ConfigType.STORAGE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
@@ -33,12 +34,14 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
@@ -895,5 +898,103 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             () ->
                 doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertBadRequest(result, "Cannot edit config as it is queued for deletion.");
+  }
+
+  @Test
+  public void testEditWithoutData() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16").getConfigUUID();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID;
+    assertEditWithoutDataRejected(url);
+  }
+
+  @Test
+  public void testEditWithoutDataYb() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16").getConfigUUID();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID + "/edit";
+    assertEditWithoutDataRejected(url);
+  }
+
+  private void assertEditWithoutDataRejected(String url) {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("name", NAME_S3);
+    bodyJson.put("type", STORAGE.toString());
+    bodyJson.put("configName", "TEST16");
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "data", "must not be null");
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testEditAzureRegionsWithMaskedTokens_TokensPersist() {
+    CustomerConfig config = createAzureRegionalConfig();
+
+    Result result = editAzureRegionalConfig(config, config.getMaskedData());
+    assertOk(result);
+    assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
+  }
+
+  @Test
+  public void testEditAzureRegionsDuplicateRegion() {
+    CustomerConfig config = createAzureRegionalConfig();
+    ObjectNode data = config.getMaskedData();
+    ((ObjectNode) data.get("REGION_LOCATIONS").get(1)).put("REGION", "eastus");
+
+    Result result = assertPlatformException(() -> editAzureRegionalConfig(config, data));
+    assertBadRequest(result, "Duplicate REGION 'eastus' in REGION_LOCATIONS.");
+    assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
+  }
+
+  @Test
+  public void testEditAzureRegionsRenamedRegionWithMaskedToken() {
+    CustomerConfig config = createAzureRegionalConfig();
+    ObjectNode data = config.getMaskedData();
+    ((ObjectNode) data.get("REGION_LOCATIONS").get(1)).put("REGION", "WestUS2");
+
+    Result result = assertPlatformException(() -> editAzureRegionalConfig(config, data));
+    assertBadRequest(
+        result,
+        "REGION_LOCATIONS[1].AZURE_STORAGE_SAS_TOKEN is masked, but no existing element has"
+            + " REGION 'WestUS2'. Send the actual value.");
+    assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
+  }
+
+  private CustomerConfig createAzureRegionalConfig() {
+    // Lenient: edits rejected before storage validation never reach the Azure util.
+    lenient().when(mockStorageUtilFactory.getCloudUtil(Util.AZ)).thenReturn(mockAZUtil);
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "https://foo.blob.core.windows.net/east");
+    data.put("AZURE_STORAGE_SAS_TOKEN", "east-sas-token");
+    ArrayNode regions = data.putArray("REGION_LOCATIONS");
+    regions
+        .addObject()
+        .put("REGION", "eastus")
+        .put("LOCATION", "https://foo.blob.core.windows.net/east")
+        .put("AZURE_STORAGE_SAS_TOKEN", "east-sas-token");
+    regions
+        .addObject()
+        .put("REGION", "westus2")
+        .put("LOCATION", "https://foo.blob.core.windows.net/west")
+        .put("AZURE_STORAGE_SAS_TOKEN", "west-sas-token");
+    ObjectNode formData = Json.newObject();
+    formData.put("configName", "azure-regional");
+    formData.put("name", NAME_AZURE);
+    formData.put("type", STORAGE.toString());
+    formData.set("data", data);
+    return CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
+  }
+
+  private Result editAzureRegionalConfig(CustomerConfig config, ObjectNode data) {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("name", NAME_AZURE);
+    bodyJson.put("type", STORAGE.toString());
+    bodyJson.put("configName", config.getConfigName());
+    bodyJson.set("data", data);
+    String url =
+        "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + config.getConfigUUID();
+    return doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
   }
 }
