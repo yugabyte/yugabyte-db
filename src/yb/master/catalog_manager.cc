@@ -2556,26 +2556,29 @@ Result<std::optional<TablespaceId>> CatalogManager::GetTablespaceForTable(
 
 Result<std::optional<ReplicationInfoPB>> CatalogManager::GetTablespaceReplicationInfoWithRetry(
     const TablespaceId& tablespace_id) {
-  auto tablespace_manager = GetTablespaceManager();
-  auto replication_info_result = tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
+  auto replication_info_result =
+      GetTablespaceManager()->GetTablespaceReplicationInfo(tablespace_id);
 
   if (replication_info_result) {
     return replication_info_result;
   }
 
   // We failed to find the tablespace placement policy. Refresh the tablespace info and try again.
+  return VERIFY_RESULT(ReloadTablespaceMap())->GetTablespaceReplicationInfo(tablespace_id);
+}
+
+Result<std::shared_ptr<YsqlTablespaceManager>> CatalogManager::ReloadTablespaceMap() {
   auto tablespace_map = VERIFY_RESULT(GetYsqlTablespaceInfo());
 
   // We clone the tablespace_manager and update the clone with the new tablespace_map that we
   // fetched above. We do this instead of updating the tablespace_manager object in-place because
   // other clients may have a shared_ptr to it through 'GetTablespaceManager()'.
-  tablespace_manager = tablespace_manager->CreateCloneWithTablespaceMap(tablespace_map);
+  auto tablespace_manager = GetTablespaceManager()->CreateCloneWithTablespaceMap(tablespace_map);
   {
     LockGuard lock(tablespace_mutex_);
     tablespace_manager_ = tablespace_manager;
   }
-
-  return tablespace_manager->GetTablespaceReplicationInfo(tablespace_id);
+  return tablespace_manager;
 }
 
 namespace {
@@ -4957,6 +4960,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     const Status s = STATUS(InvalidArgument, "Cannot set placement policy for YSQL tables "
         "use Tablespaces instead");
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  // ALTER TABLESPACE does not notify the master, so the cached placement can predate it.
+  if (FLAGS_enable_ysql_tablespaces_for_placement && !req.tablespace_id().empty()) {
+    RETURN_NOT_OK(ReloadTablespaceMap());
   }
 
   // Get placement info.
