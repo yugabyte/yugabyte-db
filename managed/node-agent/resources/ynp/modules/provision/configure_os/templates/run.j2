@@ -14,11 +14,50 @@ remove_sysctl_key() {
   sed -i "\#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*=#d" "$2"
 }
 
+# Warn when a sysctl.d file would replace a sysctl key's value at the next boot.
+# systemd-sysctl applies the *.conf files of the sysctl.d directories in
+# file-name order and reads /etc/sysctl.conf as 99-sysctl.conf, so a file named
+# after it wins. Neither `sysctl --system`, which applies /etc/sysctl.conf last,
+# nor the preflight, which reads the live value, shows this.
+warn_sysctl_boot_override() {
+  local key="$1" value="$2" key_re="${1//./[./]}"
+  local -x LC_ALL=C
+  local dir file name entry boot_name="" boot_file="" boot_value=""
+  local -A files=()
+  # A file hides any file of the same name in a later directory; one masked by
+  # a link to /dev/null has no entries.
+  for dir in /etc/sysctl.d /run/sysctl.d /usr/local/lib/sysctl.d \
+    /usr/lib/sysctl.d /lib/sysctl.d; do
+    for file in "$dir"/*.conf; do
+      name="${file##*/}"
+      if [[ -e "$file" && -z "${files[$name]}" ]]; then
+        files[$name]="$file"
+      fi
+    done
+  done
+  # The last entry for the key, in file-name order, is the one applied at boot.
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    entry=$(sed -n "s#^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*=[[:space:]]*##p" \
+      "${files[$name]}" | tail -n 1)
+    if [[ -n "$entry" ]]; then
+      boot_name="$name"
+      boot_file="${files[$name]}"
+      boot_value="${entry%"${entry##*[![:space:]]}"}"
+    fi
+  done < <(printf '%s\n' "${!files[@]}" | sort)
+  if [[ "$boot_name" > "99-sysctl.conf" && "$boot_value" != "$value" ]]; then
+    echo "WARNING: ${boot_file} sets ${key} = ${boot_value}, which will replace" \
+      "${value} at the next boot. Remove that entry to keep the YugabyteDB value."
+  fi
+}
+
 # Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
 # or `sysctl --system`. The value is always appended, so it is the last entry
 # for the key and wins when the file is loaded; earlier entries for the key
 # (with or without spaces around "=") are removed first so the file stays free
-# of duplicates and repeated runs leave it unchanged.
+# of duplicates and repeated runs leave it unchanged. A sysctl.d file that would
+# still replace the value at boot is reported.
 persist_sysctl() {
   local key="$1" value="$2" conf=/etc/sysctl.conf
   touch "$conf"
@@ -29,6 +68,7 @@ persist_sysctl() {
   fi
   echo "${key}=${value}" >> "$conf"
   sysctl -w "${key}=${value}"
+  warn_sysctl_boot_override "$key" "$value"
 }
 
 {% if os_distribution == "ubuntu" %}
@@ -139,13 +179,13 @@ EOF
 
   persist_sysctl kernel.core_pattern "$CORE_PATTERN"
 
-  persist_sysctl vm.max_map_count "{{ vm_max_map_count }}"
   # Earlier YNP versions saved vm.max_map_count in this drop-in instead. At boot
   # systemd-sysctl reads it after /etc/sysctl.conf (99-sysctl.conf), so a stale
-  # value left there would win; remove the key from it.
+  # value left there would win; remove the key from it before saving the value.
   if [[ -f /etc/sysctl.d/99-vm-max-map-count.conf ]]; then
     remove_sysctl_key vm.max_map_count /etc/sysctl.d/99-vm-max-map-count.conf
   fi
+  persist_sysctl vm.max_map_count "{{ vm_max_map_count }}"
 
   # Apply the changes system-wide
   sysctl --system
