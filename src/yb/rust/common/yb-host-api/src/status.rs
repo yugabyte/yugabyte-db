@@ -73,6 +73,8 @@ pub enum StatusCode {
     Busy = 26,
     /// `Status::kShutdownInProgress`.
     ShutdownInProgress = 27,
+    /// `Status::kReplicationSlotLimitReached`.
+    ReplicationSlotLimitReached = 34,
     /// `Status::kDeleted`.
     Deleted = 35,
 }
@@ -81,7 +83,7 @@ impl StatusCode {
     /// Converts a C++ status code; unknown values become `InternalError`.
     pub fn from_i32(code: i32) -> StatusCode {
         use StatusCode::*;
-        const ALL: [StatusCode; 28] = [
+        const ALL: [StatusCode; 29] = [
             NotFound,
             Corruption,
             NotSupported,
@@ -109,6 +111,7 @@ impl StatusCode {
             TryAgain,
             Busy,
             ShutdownInProgress,
+            ReplicationSlotLimitReached,
             Deleted,
         ];
         ALL.into_iter()

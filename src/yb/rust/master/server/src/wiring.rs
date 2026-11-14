@@ -150,6 +150,41 @@ static IMPORT_MAX_CONCURRENT_CREATE_TABLES: FlagRef<u64> =
     FlagRef::new("import_snapshot_max_concurrent_create_table_requests");
 static IMPORT_USING_TABLE_NAME: FlagRef<bool> = FlagRef::new("import_snapshot_using_table_name");
 static ENABLE_DB_CLONE: FlagRef<bool> = FlagRef::new("enable_db_clone");
+static DYNAMIC_TABLES_DISABLE_OPTION: FlagRef<bool> =
+    FlagRef::new("cdcsdk_enable_dynamic_tables_disable_option");
+static ALLOW_REPLICATION_SLOT_LSN_TYPES: FlagRef<bool> =
+    FlagRef::new("ysql_yb_allow_replication_slot_lsn_types");
+static ALLOW_REPLICATION_SLOT_ORDERING_MODES: FlagRef<bool> =
+    FlagRef::new("ysql_yb_allow_replication_slot_ordering_modes");
+static FAIL_SETUP_STREAM_UPDATE: FlagRef<bool> =
+    FlagRef::new("TEST_xcluster_fail_setup_stream_update");
+static DISABLE_DELETED_STREAM_CLEANUP: FlagRef<bool> =
+    FlagRef::new("TEST_cdcsdk_disable_deleted_stream_cleanup");
+static DISABLE_DROP_TABLE_CLEANUP: FlagRef<bool> =
+    FlagRef::new("TEST_cdcsdk_disable_drop_table_cleanup");
+static YSQL_REPLICATION_COMMANDS: FlagRef<bool> =
+    FlagRef::new("ysql_yb_enable_replication_commands");
+static CDCSDK_TABLES_WITHOUT_PK: FlagRef<bool> =
+    FlagRef::new("ysql_yb_cdcsdk_stream_tables_without_primary_key");
+static IMPLICIT_DYNAMIC_TABLES: FlagRef<bool> =
+    FlagRef::new("ysql_yb_enable_implicit_dynamic_tables_logical_replication");
+static CDC_DYNAMIC_SCHEMA_CHANGES: FlagRef<bool> =
+    FlagRef::new("cdc_enable_dynamic_schema_changes");
+static SLOT_TRANSACTIONAL_DDL: FlagRef<bool> =
+    FlagRef::new("TEST_ysql_yb_enable_replication_slot_transactional_ddl");
+static MAX_REPLICATION_SLOTS: FlagRef<u32> = FlagRef::new("max_replication_slots");
+static CONSISTENT_SNAPSHOT_STREAMS: FlagRef<bool> =
+    FlagRef::new("yb_enable_cdc_consistent_snapshot_streams");
+static PG_CREATE_GRPC_STREAM: FlagRef<bool> = FlagRef::new("cdc_pg_create_grpc_stream");
+static YSQL_REPLICA_IDENTITY: FlagRef<bool> = FlagRef::new("ysql_yb_enable_replica_identity");
+static POSTGRES_REPLICA_IDENTITY: FlagRef<bool> =
+    FlagRef::new("cdc_enable_postgres_replica_identity");
+static CDC_WAL_RETENTION_SECS: FlagRef<u32> = FlagRef::new("cdc_wal_retention_time_secs");
+static SLOT_CONSUMPTION: FlagRef<bool> =
+    FlagRef::new("ysql_yb_enable_replication_slot_consumption");
+static DISABLE_CDC_STATE_INSERT: FlagRef<bool> =
+    FlagRef::new("TEST_disable_cdc_state_insert_on_setup");
+static CDCSDK_ADD_INDEXES: FlagRef<bool> = FlagRef::new("TEST_cdcsdk_add_indexes_to_stream");
 static CLONE_PG_SCHEMA_RPC_TIMEOUT_MS: FlagRef<i32> =
     FlagRef::new("ysql_clone_pg_schema_rpc_timeout_ms");
 static FAIL_CLONE_PG_SCHEMA: FlagRef<bool> = FlagRef::new("TEST_fail_clone_pg_schema");
@@ -885,6 +920,39 @@ impl Core {
             transaction_tables_use_preferred_zones: || TXN_TABLES_USE_PREFERRED_ZONES.get(),
             splits,
             snapshots,
+            xrepl: master_xrepl::Xrepl::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                schema.clone(),
+                ts_rpc.clone(),
+                retry_policy(true),
+                master_xrepl::XreplOptions {
+                    dynamic_tables_disable_option: || DYNAMIC_TABLES_DISABLE_OPTION.get(),
+                    allow_lsn_types: || ALLOW_REPLICATION_SLOT_LSN_TYPES.get(),
+                    allow_ordering_modes: || ALLOW_REPLICATION_SLOT_ORDERING_MODES.get(),
+                    fail_setup_stream_update: || FAIL_SETUP_STREAM_UPDATE.get(),
+                    bg_task_interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+                    disable_deleted_stream_cleanup: || DISABLE_DELETED_STREAM_CLEANUP.get(),
+                    disable_drop_table_cleanup: || DISABLE_DROP_TABLE_CLEANUP.get(),
+                    replication_commands: || YSQL_REPLICATION_COMMANDS.get(),
+                    tables_without_primary_key: || CDCSDK_TABLES_WITHOUT_PK.get(),
+                    implicit_dynamic_tables: || IMPLICIT_DYNAMIC_TABLES.get(),
+                    dynamic_schema_changes: || CDC_DYNAMIC_SCHEMA_CHANGES.get(),
+                    replication_slot_transactional_ddl: || SLOT_TRANSACTIONAL_DDL.get(),
+                    max_replication_slots: || MAX_REPLICATION_SLOTS.get(),
+                    consistent_snapshot_streams: || CONSISTENT_SNAPSHOT_STREAMS.get(),
+                    pg_create_grpc_stream: || PG_CREATE_GRPC_STREAM.get(),
+                    replica_identity: || YSQL_REPLICA_IDENTITY.get(),
+                    postgres_replica_identity: || POSTGRES_REPLICA_IDENTITY.get(),
+                    wal_retention_secs: || CDC_WAL_RETENTION_SECS.get(),
+                    replication_slot_consumption: || SLOT_CONSUMPTION.get(),
+                    disable_cdc_state_insert_on_setup: || DISABLE_CDC_STATE_INSERT.get(),
+                    add_indexes_to_stream: || CDCSDK_ADD_INDEXES.get(),
+                    rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                },
+            ),
             leases,
             locks: locks.clone(),
             backends,
@@ -1029,6 +1097,7 @@ impl Core {
         let leader = self.leader.clone();
         leader.splits.set_rpc(rpc.clone());
         leader.snapshots.set_rpc(rpc.clone());
+        leader.xrepl.set_rpc(rpc.clone());
         leader.locks.set_rpc(rpc.clone());
         leader.backends.set_rpc(rpc.clone());
         leader.truncates.set_rpc(rpc.clone());
@@ -1091,6 +1160,11 @@ fn start_term(
         scope,
         SnapshotController::new(leader.snapshots.clone()),
         leader.snapshots.subscribe(),
+    );
+    run_controller(
+        scope,
+        master_xrepl::XreplController::new(leader.xrepl.clone()),
+        leader.catalog.subscribe(),
     );
     run_controller(
         scope,

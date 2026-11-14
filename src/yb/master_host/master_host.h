@@ -53,6 +53,10 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/net/net_util.h"
 
+namespace yb::cdc {
+class CDCStateTable;
+}  // namespace yb::cdc
+
 namespace yb {
 
 class MaintenanceManager;
@@ -309,6 +313,10 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::unique_ptr<TabletPeerLookupImpl> tablet_peer_lookup_;
   std::unique_ptr<master::SysCatalogTable> sys_catalog_;
   std::unique_ptr<master::MasterSnapshotCoordinator> snapshot_coordinator_;
+  // The cdc_state table, for the Rust leader's CDC stream steps; made on first use.
+  cdc::CDCStateTable& CdcStateTable();
+  std::mutex cdc_state_table_mutex_;
+  std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
   // Wraps snapshot_coordinator_ for the tablet.
   std::unique_ptr<SysCatalogTap> tap_;
   std::unique_ptr<master::MasterAutoFlagsManager> auto_flags_manager_;

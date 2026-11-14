@@ -24,6 +24,7 @@ import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
+import "yb/common/opid.proto";
 import "yb/common/version_info.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
@@ -574,6 +575,88 @@ message GetBackupPgTableInfoResponsePB {
 message HybridTimeNowResponsePB {
   optional MasterErrorPB error = 1;
   optional fixed64 hybrid_time = 2;
+}
+
+// A cdc_state row (cdc::CDCStateTableEntry): unset fields are not written; on a read, those not
+// asked for are unset.
+message CdcStateEntryPB {
+  optional bytes tablet_id = 1;
+  optional bytes stream_id = 2;
+  optional bytes colocated_table_id = 3;
+  optional OpIdPB checkpoint = 4;
+  optional uint64 last_replication_time = 5;
+  optional uint64 active_time = 6;
+  optional uint64 cdc_sdk_safe_time = 7;
+  optional bytes snapshot_key = 8;
+  optional uint64 confirmed_flush_lsn = 9;
+  optional uint64 restart_lsn = 10;
+  optional uint32 xmin = 11;
+  optional uint64 record_id_commit_time = 12;
+  optional uint64 last_pub_refresh_time = 13;
+  optional bytes pub_refresh_times = 14;
+  optional bytes last_decided_pub_refresh_time = 15;
+}
+
+// CDCStateTable::UpsertEntries.
+message CdcStateUpsertRequestPB {
+  repeated CdcStateEntryPB entries = 1;
+}
+
+message CdcStateUpsertResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// The cdc_state rows of a stream with their checkpoints.
+message CdcStateReadRequestPB {
+  optional bytes stream_id = 1;
+}
+
+message CdcStateReadResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated CdcStateEntryPB entries = 2;
+}
+
+// CDCStateTable::GenerateCreateCdcStateTableRequest: the request that creates system.cdc_state.
+message CdcStateCreateTableRequestRequestPB {
+}
+
+message CdcStateCreateTableRequestResponsePB {
+  optional MasterErrorPB error = 1;
+  optional CreateTableRequestPB request = 2;
+}
+
+// SetAllInitialCDCSDKRetentionBarriersOnCatalogTable: a CHANGE_METADATA_OP on the sys catalog
+// tablet sets a CDCSDK stream's retention barriers for a PG catalog table; once it applies, the
+// tablet's cdc_state row gets the safe op id it was submitted at. Returns once submitted.
+message SetCatalogRetentionBarrierRequestPB {
+  optional bytes table_id = 1;
+  optional bytes stream_id = 2;
+  optional uint32 schema_version = 3;
+  optional SchemaPB schema = 4;
+  optional uint32 wal_retention_secs = 5;
+}
+
+message SetCatalogRetentionBarrierResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// CDCStateTable::DeleteEntries of the given keys (tablet, stream, colocated table).
+message CdcStateDeleteRequestPB {
+  repeated CdcStateEntryPB keys = 1;
+}
+
+message CdcStateDeleteResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// The cdc_state rows of the given streams are deleted (CleanUpDeletedXReplStreams).
+message CdcStateDeleteStreamsRequestPB {
+  repeated bytes stream_ids = 1;
+}
+
+message CdcStateDeleteStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 deleted = 2;
 }
 
 // CatalogManager::GetClosestLiveTserver among the given live tservers.

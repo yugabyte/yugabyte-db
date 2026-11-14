@@ -904,11 +904,11 @@ impl SnapshotCoordinator {
                             );
                             continue;
                         }
-                        tpb.committed_consensus_state
-                            .mut_or_insert_default()
-                            .config
-                            .mut_or_insert_default()
-                            .peers = peers;
+                        let cstate = tpb.committed_consensus_state.mut_or_insert_default();
+                        if !cstate.has_current_term() {
+                            cstate.set_current_term(0);
+                        }
+                        cstate.config.mut_or_insert_default().peers = peers;
                         mutation = mutation.read(t).upsert_message(
                             SysRowEntryType::TABLET,
                             target,

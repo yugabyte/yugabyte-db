@@ -20,7 +20,7 @@ use yb_proto::pb::common_net::HostPortPB;
 use yb_proto::pb::consensus_metadata::{RaftConfigPB, RaftPeerPB};
 use yb_proto::pb::master_cluster::{ListMastersResponsePB, RemovedMasterUpdateResponsePB};
 use yb_proto::pb::master_heartbeat::TSToMasterCommonPB;
-use yb_proto::pb::master_replication::ListCDCStreamsResponsePB;
+use yb_proto::pb::master_replication::GetUniverseReplicationResponsePB;
 use yb_proto::{find_method, SERVICES};
 
 use super::*;
@@ -670,6 +670,16 @@ mod leader_tests {
                 Default::default(),
                 Default::default(),
             );
+            let xrepl = master_xrepl::Xrepl::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Arc::new(NoSchemaHost),
+                master_task_runtime::TsRpcExecutor::new(|_| 1),
+                Default::default(),
+                Default::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -685,6 +695,7 @@ mod leader_tests {
                 transaction_tables_use_preferred_zones: || false,
                 splits,
                 snapshots,
+                xrepl,
                 leases,
                 locks,
                 backends,
@@ -899,8 +910,8 @@ mod leader_tests {
         assert_eq!(config.cluster_config.version(), 2);
 
         // A leader method of a later commit.
-        let resp = ListCDCStreamsResponsePB::parse_from_bytes(&success(
-            harness.call("ListCDCStreams", vec![]),
+        let resp = GetUniverseReplicationResponsePB::parse_from_bytes(&success(
+            harness.call("GetUniverseReplication", vec![]),
         ))
         .unwrap();
         assert_eq!(

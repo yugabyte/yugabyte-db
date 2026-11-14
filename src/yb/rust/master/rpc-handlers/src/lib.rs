@@ -133,7 +133,12 @@ use yb_proto::pb::master_encryption::{
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_replication::{
-    IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB,
+    CreateCDCStreamRequestPB, CreateCDCStreamResponsePB, DeleteCDCStreamRequestPB,
+    DeleteCDCStreamResponsePB, DisableDynamicTableAdditionOnCDCSDKStreamRequestPB,
+    DisableDynamicTableAdditionOnCDCSDKStreamResponsePB, GetCDCDBStreamInfoRequestPB,
+    GetCDCDBStreamInfoResponsePB, GetCDCStreamRequestPB, GetCDCStreamResponsePB,
+    IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB, ListCDCStreamsRequestPB,
+    ListCDCStreamsResponsePB, UpdateCDCStreamRequestPB, UpdateCDCStreamResponsePB,
 };
 use yb_proto::pb::master_rust_peer::{
     auto_flags_change_request_pb, dump_catalog_response_pb, AutoFlagsChangeRequestPB,
@@ -1423,6 +1428,56 @@ impl Shared {
                         );
                         Ok(())
                     }
+                }
+            ),
+            "GetCDCStream" => serve_ddl!(
+                GetCDCStreamRequestPB,
+                GetCDCStreamResponsePB,
+                |req, resp| { leader.xrepl.get_cdc_stream(&req, &mut resp) }
+            ),
+            "GetCDCDBStreamInfo" => serve_ddl!(
+                GetCDCDBStreamInfoRequestPB,
+                GetCDCDBStreamInfoResponsePB,
+                |req, resp| leader.xrepl.get_cdc_db_stream_info(&req, &mut resp)
+            ),
+            "ListCDCStreams" => serve_ddl!(
+                ListCDCStreamsRequestPB,
+                ListCDCStreamsResponsePB,
+                |req, resp| leader.xrepl.list_cdc_streams(&req, &mut resp)
+            ),
+            "DisableDynamicTableAdditionOnCDCSDKStream" => serve_ddl!(
+                DisableDynamicTableAdditionOnCDCSDKStreamRequestPB,
+                DisableDynamicTableAdditionOnCDCSDKStreamResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xrepl
+                        .disable_dynamic_table_addition(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "CreateCDCStream" => serve_ddl!(
+                CreateCDCStreamRequestPB,
+                CreateCDCStreamResponsePB,
+                |req, resp| leader
+                    .xrepl
+                    .create_cdc_stream(&*tables, &token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "DeleteCDCStream" => serve_ddl!(
+                DeleteCDCStreamRequestPB,
+                DeleteCDCStreamResponsePB,
+                |req, resp| leader
+                    .xrepl
+                    .delete_cdc_stream(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "UpdateCDCStream" => serve_ddl!(
+                UpdateCDCStreamRequestPB,
+                UpdateCDCStreamResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.xrepl.update_cdc_stream(&token, deadline, &req).await
                 }
             ),
             "CreateTablegroup" => serve_ddl!(

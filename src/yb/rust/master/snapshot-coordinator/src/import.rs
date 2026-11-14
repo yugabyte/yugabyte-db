@@ -1369,6 +1369,13 @@ impl Import<'_> {
                             tpb.set_created_by_clone(true);
                         }
                         tpb.set_colocated(pb.colocated());
+                        // `SetupTabletInfo`'s initial consensus state.
+                        let cstate = tpb.committed_consensus_state.mut_or_insert_default();
+                        cstate.set_current_term(0);
+                        cstate
+                            .config
+                            .mut_or_insert_default()
+                            .set_committed_op_index(-1);
                         mutation = mutation.read_absent(SysRowEntryType::TABLET, id).upsert(
                             SysRowEntryType::TABLET,
                             id,

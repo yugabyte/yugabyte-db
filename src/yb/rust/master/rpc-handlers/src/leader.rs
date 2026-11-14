@@ -85,6 +85,8 @@ pub struct LeaderServices {
     pub splits: Arc<master_tablet_split_manager::TabletSplitManager>,
     /// Snapshots, schedules and restores (W10).
     pub snapshots: Arc<master_snapshot_coordinator::SnapshotCoordinator>,
+    /// CDC streams (W11).
+    pub xrepl: Arc<master_xrepl::Xrepl>,
     /// YSQL operation leases.
     pub leases: Arc<master_ysql_manager::lease::YsqlLeases>,
     /// Global DDL object locks.

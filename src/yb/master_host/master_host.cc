@@ -21,6 +21,8 @@
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 
+#include "yb/cdc/cdc_state_table.h"
+
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_catversions.h"
@@ -39,6 +41,7 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
+#include "yb/gutil/walltime.h"
 
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
@@ -102,6 +105,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -184,6 +188,31 @@ using consensus::RaftConfigPB;
 using consensus::StartRemoteBootstrapRequestPB;
 
 namespace {
+
+// A cdc_state row from the Rust leader's CdcStateEntryPB.
+Result<cdc::CDCStateTableEntry> CdcStateEntryFromPB(const master::CdcStateEntryPB& pb) {
+  auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(pb.stream_id()));
+  cdc::CDCStateTableEntry entry =
+      pb.has_colocated_table_id()
+          ? cdc::CDCStateTableEntry(pb.tablet_id(), stream_id, pb.colocated_table_id())
+          : cdc::CDCStateTableEntry(pb.tablet_id(), stream_id);
+  if (pb.has_checkpoint()) entry.checkpoint = OpId::FromPB(pb.checkpoint());
+  if (pb.has_last_replication_time()) entry.last_replication_time = pb.last_replication_time();
+  if (pb.has_active_time()) entry.active_time = pb.active_time();
+  if (pb.has_cdc_sdk_safe_time()) entry.cdc_sdk_safe_time = pb.cdc_sdk_safe_time();
+  if (pb.has_snapshot_key()) entry.snapshot_key = pb.snapshot_key();
+  if (pb.has_confirmed_flush_lsn()) entry.confirmed_flush_lsn = pb.confirmed_flush_lsn();
+  if (pb.has_restart_lsn()) entry.restart_lsn = pb.restart_lsn();
+  if (pb.has_xmin()) entry.xmin = pb.xmin();
+  if (pb.has_record_id_commit_time()) entry.record_id_commit_time = pb.record_id_commit_time();
+  if (pb.has_last_pub_refresh_time()) entry.last_pub_refresh_time = pb.last_pub_refresh_time();
+  if (pb.has_pub_refresh_times()) entry.pub_refresh_times = pb.pub_refresh_times();
+  if (pb.has_last_decided_pub_refresh_time()) {
+    entry.last_decided_pub_refresh_time = pb.last_decided_pub_refresh_time();
+  }
+  return entry;
+}
+
 
 void ThrowIfNotOk(const Status& status) {
   if (!status.ok()) {
@@ -1427,6 +1456,12 @@ void MasterHost::ShutdownHost() {
   if (lock_manager_thread_pool_) {
     lock_manager_thread_pool_->Shutdown();
   }
+  {
+    std::lock_guard lock(cdc_state_table_mutex_);
+    if (cdc_state_table_) {
+      cdc_state_table_->Shutdown();
+    }
+  }
   if (async_client_init_) {
     async_client_init_->Shutdown();
   }
@@ -2171,6 +2206,138 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return Status::OK();
         });
   }
+  if (name == "CdcStateUpsert") {
+    return HandleRequest<master::CdcStateUpsertRequestPB, master::CdcStateUpsertResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          std::vector<cdc::CDCStateTableEntry> entries;
+          for (const auto& pb : req.entries()) {
+            entries.push_back(VERIFY_RESULT(CdcStateEntryFromPB(pb)));
+          }
+          return CdcStateTable().UpsertEntries(entries);
+        });
+  }
+  if (name == "CdcStateDelete") {
+    return HandleRequest<master::CdcStateDeleteRequestPB, master::CdcStateDeleteResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          std::vector<cdc::CDCStateTableKey> keys;
+          for (const auto& pb : req.keys()) {
+            keys.push_back(VERIFY_RESULT(CdcStateEntryFromPB(pb)).key);
+          }
+          return CdcStateTable().DeleteEntries(keys);
+        });
+  }
+  if (name == "CdcStateRead") {
+    return HandleRequest<master::CdcStateReadRequestPB, master::CdcStateReadResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req.stream_id()));
+          Status iteration_status;
+          auto rows = VERIFY_RESULT(CdcStateTable().GetTableRange(
+              cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &iteration_status));
+          for (const auto& row : rows) {
+            RETURN_NOT_OK(row);
+            if (row->key.stream_id != stream_id) {
+              continue;
+            }
+            auto* out = resp->add_entries();
+            out->set_tablet_id(row->key.tablet_id);
+            out->set_stream_id(row->key.stream_id.ToString());
+            if (!row->key.colocated_table_id.empty()) {
+              out->set_colocated_table_id(row->key.colocated_table_id);
+            }
+            if (row->checkpoint) {
+              row->checkpoint->ToPB(out->mutable_checkpoint());
+            }
+          }
+          return iteration_status;
+        });
+  }
+  if (name == "CdcStateCreateTableRequest") {
+    return HandleRequest<
+        master::CdcStateCreateTableRequestRequestPB,
+        master::CdcStateCreateTableRequestResponsePB>(
+        request, [](const auto&, auto* resp) -> Status {
+          *resp->mutable_request() =
+              VERIFY_RESULT(cdc::CDCStateTable::GenerateCreateCdcStateTableRequest());
+          return Status::OK();
+        });
+  }
+  if (name == "SetCatalogRetentionBarrier") {
+    // CatalogManager::SetAllInitialCDCSDKRetentionBarriersOnCatalogTable.
+    return HandleRequest<
+        master::SetCatalogRetentionBarrierRequestPB, master::SetCatalogRetentionBarrierResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req.stream_id()));
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          tablet::RemoveIntentsData data;
+          RETURN_NOT_OK(peer->GetLastReplicatedData(&data));
+          const auto safe_op_id = data.op_id;
+          tablet::ChangeMetadataRequestPB cm_req;
+          cm_req.set_schema_version(req.schema_version());
+          cm_req.set_dest_uuid(permanent_uuid());
+          cm_req.set_tablet_id(sys_catalog_->tablet_id());
+          cm_req.set_alter_table_id(req.table_id());
+          *cm_req.mutable_schema() = req.schema();
+          if (req.has_wal_retention_secs()) {
+            cm_req.set_wal_retention_secs(req.wal_retention_secs());
+          }
+          cm_req.set_retention_requester_id(stream_id.ToString());
+          // Kept by timestamp_syscatalog_history_retention_interval_sec, not by the stream.
+          cm_req.set_cdc_sdk_require_history_cutoff(true);
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          auto operation = std::make_unique<tablet::ChangeMetadataOperation>(tablet, peer->log());
+          operation->AllocateRequest()->CopyFrom(cm_req);
+          operation->set_completion_callback([this, stream_id, safe_op_id](Status s) {
+            if (!s.ok()) {
+              LOG(WARNING) << "Failed to set retention barriers on the sys catalog tablet. Will "
+                              "not populate its state table entry for stream: " << stream_id;
+              return;
+            }
+            const auto now = clock()->Now();
+            cdc::CDCStateTableEntry entry(sys_catalog_->tablet_id(), stream_id);
+            entry.checkpoint = safe_op_id;
+            entry.cdc_sdk_safe_time = now.ToUint64();
+            entry.snapshot_key = "";
+            entry.active_time = GetCurrentTimeMicros();
+            entry.last_replication_time = now.GetPhysicalValueMicros();
+            WARN_NOT_OK(
+                CdcStateTable().UpsertEntries({entry}),
+                "Failed to populate the CDC state table entry for the sys catalog tablet of "
+                "stream " + stream_id.ToString());
+          });
+          peer->Submit(std::move(operation), peer->LeaderTerm());
+          return Status::OK();
+        });
+  }
+  if (name == "CdcStateDeleteStreams") {
+    // CatalogManager::CleanUpDeletedXReplStreams's cdc_state part: every row of the streams.
+    return HandleRequest<
+        master::CdcStateDeleteStreamsRequestPB, master::CdcStateDeleteStreamsResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          std::unordered_set<xrepl::StreamId> streams;
+          for (const auto& id : req.stream_ids()) {
+            streams.insert(VERIFY_RESULT(xrepl::StreamId::FromString(id)));
+          }
+          auto& table = CdcStateTable();
+          Status iteration_status;
+          // The table may still be being created by the first CDC stream: then this fails, and
+          // the Rust leader tries again on its next pass.
+          auto rows = VERIFY_RESULT(table.GetTableRangeAsync({}, &iteration_status));
+          std::vector<cdc::CDCStateTableKey> keys;
+          for (const auto& row : rows) {
+            RETURN_NOT_OK(row);
+            if (streams.contains(row->key.stream_id)) {
+              LOG(INFO) << "Deleting stream " << row->key.ToString();
+              keys.push_back(row->key);
+            }
+          }
+          RETURN_NOT_OK(iteration_status);
+          RETURN_NOT_OK_PREPEND(
+              table.DeleteEntries(keys), "Error deleting XRepl stream rows from cdc_state table");
+          resp->set_deleted(narrow_cast<uint32_t>(keys.size()));
+          return Status::OK();
+        });
+  }
   if (name == "ClosestLiveTserver") {
     // CatalogManager::GetClosestLiveTserver.
     return HandleRequest<
@@ -2252,11 +2419,14 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
   }
   if (name == "GetBackupPgTableInfo") {
     // CatalogManager::RepackSnapshotsForBackup's YsqlManager::GetPgSchemaName and
-    // GetPgIndexStatus, as of the snapshot's time.
+    // GetPgIndexStatus, as of the snapshot's time; without a read time (ImportSnapshotMeta's
+    // CheckTableForImport), the latest.
     return HandleRequest<
         master::GetBackupPgTableInfoRequestPB, master::GetBackupPgTableInfoResponsePB>(
         request, [this](const auto& req, auto* resp) -> Status {
-          const auto read_time = ReadHybridTime::FromUint64(req.read_time());
+          const auto read_time = req.has_read_time()
+              ? ReadHybridTime::FromUint64(req.read_time())
+              : ReadHybridTime();
           for (const auto& table : req.tables()) {
             auto* out = resp->add_tables();
             auto info = [&]() -> Status {
@@ -2792,6 +2962,14 @@ RaftLeaderStateFfi MasterHost::SysCatalogLeaderState() const {
       : (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_ACTIVE).current_term();
   result.role = (*consensus)->role();
   return result;
+}
+
+cdc::CDCStateTable& MasterHost::CdcStateTable() {
+  std::lock_guard lock(cdc_state_table_mutex_);
+  if (!cdc_state_table_) {
+    cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(client_future());
+  }
+  return *cdc_state_table_;
 }
 
 rust::Vec<uint8_t> MasterHost::HeartbeatHostParts(
