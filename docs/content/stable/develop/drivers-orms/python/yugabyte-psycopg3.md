@@ -75,13 +75,17 @@ To start building your application, make sure you have met the [prerequisites](.
 
 ### Step 1: Add the YugabyteDB driver dependency
 
-Install `psycopg-yugabytedb` from PyPI with pip, or pin the exact version:
+Install `psycopg-yugabytedb` from PyPI with pip. The `[binary]` extra installs a pre-built C extension that bundles libpq, and is available for Linux x86_64 and macOS on Apple Silicon (arm64). On other platforms, install the pure-Python distribution, which requires system libpq (see [Prerequisites](#prerequisites)).
 
 ```sh
+pip install "psycopg-yugabytedb[binary]"
+# or, using system libpq
 pip install psycopg-yugabytedb
-# or
-pip install "psycopg-yugabytedb==3.3.4.1"
+# or pin the exact version
+pip install "psycopg-yugabytedb[binary]==3.3.4.2"
 ```
+
+To build the C extension from source against the system libpq instead, use the `[c]` extra, which also requires a C compiler and the libpq headers.
 
 To use the upstream connection pool alongside the smart driver, install the `[pool]` extra. This pulls in an unmodified upstream `psycopg-pool`; the pool's connections still go through the smart-driver dispatcher.
 
@@ -92,7 +96,7 @@ pip install "psycopg-yugabytedb[pool]"
 #### Prerequisites
 
 - Python 3.10 or later
-- `libpq` installed on the system (the C library underneath every PostgreSQL client). This is the same runtime prerequisite as upstream psycopg 3's pure-Python distribution.
+- `libpq` installed on the system (the C library underneath every PostgreSQL client), unless you install the `[binary]` extra, which bundles it. This is the same runtime prerequisite as upstream psycopg 3's pure-Python distribution.
   - macOS: `brew install libpq && brew link --force libpq`
   - Ubuntu / Debian: `sudo apt install libpq5`
   - RHEL / Fedora: `sudo dnf install libpq`
@@ -117,7 +121,7 @@ Verify the install:
 
 ```sh
 python -c "import psycopg; print(psycopg.__version__)"
-# Expected: 3.3.4.1
+# Expected: 3.3.4.2
 
 python -c "from psycopg.yb.registry import ClusterRegistry; print('smart driver ok')"
 # Expected: smart driver ok
@@ -280,13 +284,11 @@ If the connection fails, verify:
 - YugabyteDB is running and reachable on the host/port in your DSN.
 - The yugabyte user (or whichever user you used) exists and has the necessary permissions.
 - For multi-host DSNs, at least one contact host responds.
-- System libpq is installed (see [Prerequisites](#prerequisites)).
+- If you didn't install the `[binary]` extra, system libpq is installed (see [Prerequisites](#prerequisites)).
 
 ## Limitations
 
 - Currently, [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg) and [YugabyteDB Psycopg 3 smart driver](https://github.com/yugabyte/psycopg) _cannot_ be used in the same environment. Both write to `site-packages/psycopg/`. If a previous environment has upstream psycopg (or psycopg-binary, psycopg-c) installed, uninstall it before installing the fork, or use a fresh virtual environment.
-
-- Pure Python distribution only. The C-accelerated (psycopg-yugabytedb-c) and pre-built binary (psycopg-yugabytedb-binary) distributions are not published yet. The pure-Python distribution requires system libpq.
 
 - Strict topology filter in this release. If `topology_keys` matches no live nodes, connect raises `OperationalError` (no cluster-wide fallback in this release).
 
