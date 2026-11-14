@@ -689,6 +689,55 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     customerConfigValidator.validateConfig(config);
   }
 
+  @Test
+  public void testValidateDataContent_Storage_S3_FederationWithKeysIsRejected() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\""
+                + fieldFullName(AWS_ACCESS_KEY_ID_FIELDNAME)
+                + "\":[\"AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY cannot be used together with"
+                + " USE_CROSS_CLOUD_FEDERATION.\"]}"));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_JsonWithGcpIamIsRejected() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_GCP_IAM", true);
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(PlatformServiceException.class));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_FederationWithoutGcpIamIsRejected() {
+    // With a JSON key instead of USE_GCP_IAM, the federation flag would be silently ignored.
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\""
+                + fieldFullName("USE_GCP_IAM")
+                + "\":[\"USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of"
+                + " GCS_CREDENTIALS_JSON.\"]}"));
+  }
+
   private void setupGCPReadValidation(
       Storage storage,
       boolean validationShouldFail,
