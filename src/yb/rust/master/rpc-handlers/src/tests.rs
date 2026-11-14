@@ -18,9 +18,9 @@ use protobuf::{Enum, Message};
 use yb_host_api::rpc::{FakeInboundCall, FakeResponse, FakeRpcClient};
 use yb_proto::pb::common_net::HostPortPB;
 use yb_proto::pb::consensus_metadata::{RaftConfigPB, RaftPeerPB};
-use yb_proto::pb::master_backup::ListSnapshotsResponsePB;
 use yb_proto::pb::master_cluster::{ListMastersResponsePB, RemovedMasterUpdateResponsePB};
 use yb_proto::pb::master_heartbeat::TSToMasterCommonPB;
+use yb_proto::pb::master_replication::ListCDCStreamsResponsePB;
 use yb_proto::{find_method, SERVICES};
 
 use super::*;
@@ -110,6 +110,35 @@ impl MasterInfo for FakeInfo {
 }
 
 /// The handler tests send no table DDL that reaches the host.
+struct NoSnapshotHost;
+
+impl master_snapshot_coordinator::SnapshotHost for NoSnapshotHost {
+    fn submit(
+        &self,
+        _: i64,
+        _: yb_proto::pb::backup::TabletSnapshotOpRequestPB,
+    ) -> master_task_runtime::BoxFuture<'static, Result<(), Status>> {
+        Box::pin(async { Err(Status::new(StatusCode::NotSupported, "submit")) })
+    }
+    fn max_global_now(&self) -> Result<u64, Status> {
+        Ok(1 << 12)
+    }
+    fn now(&self) -> Result<u64, Status> {
+        Ok(1 << 12)
+    }
+    fn scan_at(
+        &self,
+        _: yb_proto::pb::master_types::SysRowEntryType,
+        _: u64,
+        _: std::time::Duration,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Status> {
+        Ok(Vec::new())
+    }
+    fn call(&self, method: &'static str, _: &[u8]) -> Result<Vec<u8>, Status> {
+        Err(Status::new(StatusCode::NotSupported, method))
+    }
+}
+
 struct NoSchemaHost;
 
 impl SchemaHost for NoSchemaHost {
@@ -631,6 +660,16 @@ mod leader_tests {
                     skip_tserver_version_checks: || false,
                 },
             );
+            let snapshots = master_snapshot_coordinator::SnapshotCoordinator::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                Arc::new(NoSnapshotHost),
+                master_task_runtime::TsRpcExecutor::new(|_| 1),
+                Default::default(),
+                Default::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -645,6 +684,7 @@ mod leader_tests {
                 load_balancing_flag: || true,
                 transaction_tables_use_preferred_zones: || false,
                 splits,
+                snapshots,
                 leases,
                 locks,
                 backends,
@@ -858,9 +898,9 @@ mod leader_tests {
         .unwrap();
         assert_eq!(config.cluster_config.version(), 2);
 
-        // A leader method of a later workstream (snapshots, W10).
-        let resp = ListSnapshotsResponsePB::parse_from_bytes(&success(
-            harness.call("ListSnapshots", vec![]),
+        // A leader method of a later commit.
+        let resp = ListCDCStreamsResponsePB::parse_from_bytes(&success(
+            harness.call("ListCDCStreams", vec![]),
         ))
         .unwrap();
         assert_eq!(

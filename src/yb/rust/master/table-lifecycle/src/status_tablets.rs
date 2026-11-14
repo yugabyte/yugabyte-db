@@ -95,6 +95,7 @@ impl TableLifecycle {
                     &[right],
                     (self.options.use_parent_table_id_field)(),
                     false,
+                    false,
                 )?;
                 return Ok((mutation, ()));
             }

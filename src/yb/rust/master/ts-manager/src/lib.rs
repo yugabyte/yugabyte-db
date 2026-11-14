@@ -401,6 +401,35 @@ impl TsManager {
         first || registering
     }
 
+    /// The universe keys changed: every tserver gets the registry with its next heartbeat
+    /// (`ChangeEncryptionInfo` sets `should_send_universe_key_registry_`).
+    pub fn resend_key_registry(&self) {
+        self.sent_key_registry.lock().unwrap().clear();
+    }
+
+    /// The catalog was reloaded while leading: every tserver sends a full report next, so replicas
+    /// of tablets the new catalog deleted are found and deleted (`set_has_tablet_report(false)`).
+    pub fn request_full_reports(&self) {
+        let mut descriptors = self.descriptors.write().unwrap();
+        for descriptor in descriptors.values_mut() {
+            descriptor.has_tablet_report = false;
+            descriptor.receiving_full_report_seq_no = None;
+        }
+    }
+
+    /// Whether every live tserver sent a full tablet report since [`Self::request_full_reports`]
+    /// and the replica deletes they led to were sent.
+    pub fn reports_reconciled(&self) -> bool {
+        self.deletes.is_empty()
+            && self
+                .descriptors
+                .read()
+                .unwrap()
+                .values()
+                .filter(|d| d.is_live())
+                .all(|d| d.has_tablet_report)
+    }
+
     /// A new term: forget report state so every tserver sends a full report, give every
     /// registered tserver a heartbeat grace period, load persisted registrations, drop locations of
     /// tablets no longer active and deletes decided in an earlier term.

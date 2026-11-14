@@ -46,6 +46,8 @@ pub struct ContributorContext<'a> {
     pub cluster_config: &'a SysClusterConfigEntryPB,
     /// Whether to send the universe key registry (`ShouldResendRegistry`).
     pub send_universe_key_registry: bool,
+    /// The leader's term.
+    pub term: i64,
 }
 
 /// Fills the response fields one component owns (L7). Contributors run before the tserver is
@@ -108,6 +110,7 @@ impl TsManager {
             snapshot: &ctx.snapshot,
             cluster_config: &cluster_config,
             send_universe_key_registry,
+            term: ctx.token.term(),
         };
         for contributor in ctx.contributors {
             contributor.contribute(req, &contributor_ctx, &mut resp)?;
@@ -262,8 +265,8 @@ impl TsManager {
         }
     }
 
-    /// `ProcessTabletMetadata`: drive info for every tablet in `storage_metadata`, and leader leases
-    /// for those whose leader is the reporting tserver.
+    /// `ProcessTabletMetadata`: drive info for every tablet in `storage_metadata`, and leader
+    /// leases for those whose leader is the reporting tserver.
     fn record_leader_leases(&self, req: &TSHeartbeatRequestPB) {
         if req.storage_metadata.is_empty() {
             return;

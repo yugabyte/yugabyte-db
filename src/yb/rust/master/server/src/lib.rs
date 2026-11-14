@@ -172,12 +172,17 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
             contributors: vec![Arc::new(store::HostHeartbeatParts(
                 host.pin_mut().info_handle(),
                 gate.clone(),
+                std::sync::Mutex::default(),
             ))],
             schema: Arc::new(store::HostSchema(
                 host.pin_mut().info_handle(),
                 gate.clone(),
             )),
             local_locks: Arc::new(store::HostLocalLocks(
+                host.pin_mut().info_handle(),
+                gate.clone(),
+            )),
+            snapshots: Arc::new(store::HostSnapshots(
                 host.pin_mut().info_handle(),
                 gate.clone(),
             )),

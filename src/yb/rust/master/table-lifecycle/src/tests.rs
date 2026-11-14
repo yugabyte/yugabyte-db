@@ -889,7 +889,7 @@ async fn a_transactional_table_creates_the_transaction_table_first() {
 }
 
 #[tokio::test]
-async fn a_keyspace_schedule_refuses_drops_until_it_is_deleted() {
+async fn a_keyspace_schedule_hides_dropped_tables_and_keeps_the_keyspace() {
     use yb_proto::pb::master_backup::SnapshotScheduleOptionsPB;
     let h = Harness::new(3).await;
     h.create_namespace("ks").await.unwrap();
@@ -931,16 +931,19 @@ async fn a_keyspace_schedule_refuses_drops_until_it_is_deleted() {
         .mut_or_insert_default()
         .set_table_id(table_id.clone());
     let mut resp = DeleteTableResponsePB::new();
-    let e = h
-        .lifecycle
+    // The schedule retains the table: it is hidden, not deleted.
+    h.lifecycle
         .delete_table(&h.token, Harness::deadline(), &req, &mut resp)
         .await
-        .unwrap_err();
-    assert_eq!(
-        e.status.code(),
-        yb_proto::pb::wire_protocol::app_status_pb::ErrorCode::NOT_SUPPORTED,
-        "{e:?}"
-    );
+        .unwrap();
+    let pb: SysTablesEntryPB = h
+        .snapshot()
+        .get(SysRowEntryType::TABLE, &table_id)
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(pb.hide_state(), sys_tables_entry_pb::HideState::HIDING);
+    assert_ne!(pb.state(), sys_tables_entry_pb::State::DELETING);
 
     let mut drop_req = DeleteNamespaceRequestPB::new();
     drop_req

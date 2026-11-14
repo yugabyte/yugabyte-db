@@ -30,6 +30,7 @@ without it the Rust master never leads ([leadership.md](leadership.md)).
 | [cluster-balancer.md](cluster-balancer.md) | The cluster balancer: planner, controller, RPCs |
 | [tablet-splits.md](tablet-splits.md) | Tablet splits |
 | [ysql-manager.md](ysql-manager.md) | YSQL on the leader: initdb, leases, the sys catalog tablet |
+| [snapshot-coordinator.md](snapshot-coordinator.md) | Snapshots, schedules, restores, PITR, import, hidden objects |
 | [task-runtime.md](task-runtime.md) | Scopes, controllers, retries, blocking pools |
 | [web.md](web.md) | The web port and pages |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
@@ -48,6 +49,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-catalog-state` | The in-memory catalog: snapshots, materializer, writer, self-check |
 | `master-cluster-balancer` | The cluster balancer: a pure planner (a view of the cluster in, replica and leader moves out) and the controller that sends its moves |
 | `master-tablet-split-manager` | Tablet splits: the split RPCs, the children's registration, the controller that sends splits |
+| `master-snapshot-coordinator` | The leader half of the snapshot coordinator: snapshots, schedules, restores, PITR, `ImportSnapshotMeta`, hidden objects |
 | `master-ysql-manager` | YSQL on the leader: the initial sys catalog snapshot, `IsInitDbDone`, YSQL operation leases, the YSQL major upgrade |
 | `master-leadership` | Leader phases and `LeaderToken` |
 | `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools |
@@ -72,9 +74,10 @@ Dependencies point down: `rpc-handlers` -> `ts-manager` -> `tablet-locations`, `
 | MasterDdl | Namespaces, tables, YCQL, YSQL and vector indexes, tablegroups, truncate, backfill, DDL verification and rollback to a savepoint, schema and size reads, UDTs ([table-lifecycle.md](table-lifecycle.md)); GetObjectLockStatus (the host's lock manager) | |
 | MasterDcl | YCQL roles and permissions ([table-lifecycle.md](table-lifecycle.md#ycql-roles-and-types-rolesrs-udtypesrs)) | |
 | MasterAdmin | SplitTablet, DeleteNotServingTablet, DisableTabletSplitting, IsTabletSplittingComplete ([tablet-splits.md](tablet-splits.md)); IsInitDbDone, WaitForYsqlBackendsCatalogVersion, the YSQL major upgrade methods and ClientUpgradeYsql ([ysql-manager.md](ysql-manager.md)); FlushTables, IsFlushTablesDone, GetCompactionStatus, CreateTransactionStatusTable, AddTransactionStatusTablet, DdlLog, AreNodesSafeToTakeDown ([table-lifecycle.md](table-lifecycle.md)); CheckIfPitrActive, GetMasterHeartbeatDelays (the host); AccessYsqlBackendsManagerTestRegister on every master | |
+| MasterBackup | CreateSnapshot, ListSnapshots, DeleteSnapshot, RestoreSnapshot, ListSnapshotRestorations, AbortSnapshotRestore, ImportSnapshotMeta, CreateSnapshotSchedule, ListSnapshotSchedules, DeleteSnapshotSchedule, EditSnapshotSchedule, RestoreSnapshotSchedule, CloneNamespace, ListClones ([snapshot-coordinator.md](snapshot-coordinator.md)) | |
 | MasterReplication | ValidateReplicationInfo ([table-lifecycle.md](table-lifecycle.md#tablespaces-tablespacesrs)) | The rest (W11) |
 | MasterYsqlLease | RefreshYsqlLease, RelinquishYsqlLease ([ysql-manager.md](ysql-manager.md)) | |
-| MasterEncryption | GetFullUniverseKeyRegistry, IsEncryptionEnabled; GetUniverseKeyRegistry, AddUniverseKeys and HasUniverseKeyInMemory on every master | ChangeEncryptionInfo |
+| MasterEncryption | GetFullUniverseKeyRegistry, IsEncryptionEnabled, ChangeEncryptionInfo (the host's encryption manager edits the cluster config's encryption info; every tserver is sent the key registry again); GetUniverseKeyRegistry, AddUniverseKeys and HasUniverseKeyInMemory on every master | |
 | MasterTest | TestRetry on every master (the host) | |
 | MasterRustPeer | PushLocations, DumpCatalog (tests), on every Rust master | |
 

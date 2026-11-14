@@ -77,6 +77,8 @@ pub struct TabletAssigner {
     proteges: Mutex<HashMap<Vec<u8>, Vec<u8>>>,
     /// Tablets whose hinted election was started this term (`TabletInfo::InitiateElection`).
     elections: Mutex<HashSet<Vec<u8>>>,
+    /// Tablets created this term, and since when, for their first hinted election.
+    fresh: Mutex<std::collections::HashMap<Vec<u8>, tokio::time::Instant>>,
 }
 
 impl TabletAssigner {
@@ -100,6 +102,7 @@ impl TabletAssigner {
             sent: Arc::default(),
             proteges: Mutex::default(),
             elections: Mutex::default(),
+            fresh: Mutex::default(),
         })
     }
 
@@ -252,9 +255,10 @@ impl TabletAssigner {
         Ok(())
     }
 
-    /// `StartElectionIfReady` for a tablet's first election: once a majority of its voters run,
-    /// the protege (else the first replica that may lead) is asked to run for leader, once a
-    /// term. Elections after the first are left to Raft.
+    /// `StartElectionIfReady` for a new tablet that reports no leader: once a majority of its
+    /// voters run, the protege (else the first replica that may lead) is asked to run for leader,
+    /// once a term. A new table's tablets start at term 0; a split's children inherit a term, so
+    /// for them only running voters may be asked. Later elections are left to Raft.
     fn start_election_if_ready(
         &self,
         scope: &TermScope,
@@ -277,9 +281,7 @@ impl TabletAssigner {
             return;
         };
         let cstate = &pb.committed_consensus_state;
-        if cstate.has_leader_uuid() || cstate.current_term() != 0 {
-            return;
-        }
+        let initial = cstate.current_term() == 0;
         let voters = cstate
             .config
             .peers
@@ -302,6 +304,11 @@ impl TabletAssigner {
         let possible: Vec<Vec<u8>> = observed
             .replicas
             .iter()
+            .filter(|r| {
+                initial
+                    || (r.member_type == PeerMemberType::VOTER
+                        && r.state == RaftGroupStatePB::RUNNING)
+            })
             .filter_map(|r| ts_manager.get(&r.ts_uuid))
             .filter(|d| d.is_live() && !is_blacklisted(d, &blacklist))
             .filter(|d| is_accepting_leader_load(d, &replication))
@@ -327,7 +334,7 @@ impl TabletAssigner {
         let mut request = RunLeaderElectionRequestPB::new();
         request.set_dest_uuid(protege.clone());
         request.set_tablet_id(tablet_id.clone());
-        request.set_initial_election(true);
+        request.set_initial_election(initial);
         let (rpc, executor, lifecycle) = (
             self.rpc.clone(),
             self.executor.clone(),
@@ -574,7 +581,15 @@ impl TabletAssigner {
                         return Ok((Mutation::new(), ()));
                     }
                     let mut pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
-                    pb.state = Some(EnumOrUnknown::new(sys_tables_entry_pb::State::RUNNING));
+                    // A schema change made while the tablets were created is pushed to them now
+                    // (`defer_schema_push`).
+                    let pending_push = pb.has_fully_applied_schema_version()
+                        && pb.fully_applied_schema_version() < pb.version();
+                    pb.state = Some(EnumOrUnknown::new(if pending_push {
+                        sys_tables_entry_pb::State::ALTERING
+                    } else {
+                        sys_tables_entry_pb::State::RUNNING
+                    }));
                     let mut mutation = Mutation::new().read(table);
                     for tablet in snapshot.active_tablets_of(&table_id) {
                         mutation = mutation.read(tablet);
@@ -596,6 +611,9 @@ impl TabletAssigner {
         }
     }
 }
+
+/// How long a new tablet is a candidate for a hinted election.
+const FRESH_TABLET_ELECTION_WINDOW: Duration = Duration::from_secs(300);
 
 impl TabletAssigner {
     /// The `initial-elections` controller of this term's assigner: hinted first elections, run as
@@ -627,11 +645,34 @@ impl Controller for InitialElections {
                 return;
             };
             let snapshot = assigner.lifecycle.catalog.snapshot();
+            // Tablets seen CREATING this term stay candidates for a while once RUNNING: a split's
+            // children report themselves leader at creation, then come up as followers after
+            // bootstrap. C++ hints an election on any report without a leader, once a tablet.
+            let mut fresh = assigner.fresh.lock().unwrap().clone();
+            let now = tokio::time::Instant::now();
             for tablet in snapshot.iter(SysRowEntryType::TABLET) {
                 if tablet.tablet().map(|t| t.state) == Some(TabletState::CREATING as i32) {
+                    fresh.entry(tablet.key.id.to_vec()).or_insert(now);
+                }
+            }
+            let elected = assigner.elections.lock().unwrap().clone();
+            fresh.retain(|id, since| {
+                !elected.contains(id)
+                    && now.duration_since(*since) < FRESH_TABLET_ELECTION_WINDOW
+                    && snapshot
+                        .get(SysRowEntryType::TABLET, id)
+                        .and_then(|t| t.tablet())
+                        .is_some_and(|t| {
+                            t.state == TabletState::CREATING as i32
+                                || t.state == TabletState::RUNNING as i32
+                        })
+            });
+            for id in fresh.keys() {
+                if let Some(tablet) = snapshot.get(SysRowEntryType::TABLET, id) {
                     assigner.start_election_if_ready(scope, &token, &snapshot, tablet);
                 }
             }
+            *assigner.fresh.lock().unwrap() = fresh;
         })
     }
 }

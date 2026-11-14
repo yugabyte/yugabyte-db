@@ -54,7 +54,7 @@ mod ysql;
 #[cfg(test)]
 mod tests;
 
-pub use alter::TableAlterer;
+pub use alter::{defer_schema_push, start_schema_push, TableAlterer};
 pub use assign::TabletAssigner;
 pub use colocation::{ColocatedTableAdder, TabletRpc};
 pub use create::{
@@ -64,7 +64,7 @@ pub use create::{
 pub use drop::TableDeleter;
 pub use flush::{FlushOptions, Flushes};
 pub use placement::{replication_info_set, table_replication_info};
-pub use schedules::covering_schedules;
+pub use schedules::{covering_schedules, Retainer, Retention};
 pub use tablespaces::{
     uses_tablespaces, TablespaceController, TablespaceOptions, Tablespaces,
     TRANSACTION_TABLE_PREFIX,
@@ -72,6 +72,7 @@ pub use tablespaces::{
 pub use time::local_time_string;
 pub use truncate::{TruncateOptions, Truncates};
 pub use verifier::{DdlVerifier, VerifierOptions};
+pub use ysql::{pg_database_oid, pg_table_oid};
 
 /// The C++ steps the host runs: schema normalization, partitioning and alter steps, which are
 /// engine formats Rust does not reimplement (K4). `method` is a `MasterHost::HandleOnHost` name.
@@ -151,6 +152,8 @@ pub struct LifecycleOptions {
     /// `TEST_pause_ddl_rollback`: a DDL transaction's tables keep their DDL state while it is
     /// set, and `IsYsqlDdlVerificationDone` fails.
     pub pause_ddl_rollback: fn() -> bool,
+    /// `TEST_simulate_crash_after_table_marked_deleting`: DeleteTable fails after its write.
+    pub simulate_crash_after_table_marked_deleting: fn() -> bool,
     /// `TEST_fail_table_creation_at_preparing_state`: a YSQL `CreateTable` fails after
     /// persisting the table, so the DDL transaction has to roll it back.
     pub fail_table_creation_at_preparing_state: fn() -> bool,
@@ -201,6 +204,7 @@ impl Default for LifecycleOptions {
                 name_transaction_tables_with_tablespace_id: || false,
             },
             pause_ddl_rollback: || false,
+            simulate_crash_after_table_marked_deleting: || false,
             fail_table_creation_at_preparing_state: || false,
             pause_before_upsert_ysql_sys_table: || false,
             ysql_major_version: None,
@@ -237,6 +241,8 @@ pub struct TableLifecycle {
     /// Tserver RPCs for the DDL paths that call tservers directly; set once the master's RPC
     /// client exists.
     pub(crate) tablet_rpc: std::sync::OnceLock<TabletRpc>,
+    /// Whether a dropped table must be hidden; set once the snapshot coordinator exists.
+    pub(crate) retention: std::sync::OnceLock<Arc<dyn Retention>>,
     /// Held while a tablespace's transaction status table is created
     /// (`tablespace_transaction_table_creation_mutex_`).
     pub(crate) local_transaction_tables: tokio::sync::Mutex<()>,
@@ -253,6 +259,19 @@ pub struct TableLifecycle {
 }
 
 impl TableLifecycle {
+    /// Gives drops the snapshot coordinator's retention rules.
+    pub fn set_retention(&self, retention: Arc<dyn Retention>) {
+        let _ = self.retention.set(retention);
+    }
+
+    /// The retention rules: the coordinator's, or schedules alone before it is set.
+    pub fn retention(&self) -> Arc<dyn Retention> {
+        self.retention
+            .get()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(schedules::SchedulesOnly))
+    }
+
     /// Gives the DDL paths that call tservers directly the master's RPC client.
     pub fn set_tablet_rpc(&self, rpc: TabletRpc) {
         let _ = self.tablet_rpc.set(rpc);
@@ -357,6 +376,7 @@ impl TableLifecycle {
             alter_txns: Default::default(),
             backfill_requesters: Default::default(),
             tablet_rpc: std::sync::OnceLock::new(),
+            retention: std::sync::OnceLock::new(),
         })
     }
 

@@ -35,6 +35,7 @@ const ROOT_DIRS: &[&str] = &["yb/master"];
 const ROOT_FILES: &[&str] = &[
     "yb/tserver/tserver_admin.proto",
     "yb/tserver/tserver_service.proto",
+    "yb/tserver/backup.proto",
     "yb/consensus/consensus.proto",
 ];
 

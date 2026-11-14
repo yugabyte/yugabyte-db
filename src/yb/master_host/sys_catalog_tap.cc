@@ -54,19 +54,23 @@ void SysCatalogTap::PostLeadershipChange() {
   }
 }
 
+// The C++ coordinator applies snapshot operations as a follower on every Rust master, even the
+// one that leads them: the Rust leader sends the tablet operations and writes the rows' later
+// versions (master-snapshot-coordinator). With the real term it would try to act as leader
+// through a context that has no CatalogManager.
 Status SysCatalogTap::CreateReplicated(
     int64_t leader_term, const tablet::SnapshotOperation& operation) {
-  return inner_.CreateReplicated(leader_term, operation);
+  return inner_.CreateReplicated(/* leader_term= */ -1, operation);
 }
 
 Status SysCatalogTap::DeleteReplicated(
     int64_t leader_term, const tablet::SnapshotOperation& operation) {
-  return inner_.DeleteReplicated(leader_term, operation);
+  return inner_.DeleteReplicated(/* leader_term= */ -1, operation);
 }
 
 Status SysCatalogTap::RestoreSysCatalogReplicated(
     int64_t leader_term, const tablet::SnapshotOperation& operation, Status* complete_status) {
-  return inner_.RestoreSysCatalogReplicated(leader_term, operation, complete_status);
+  return inner_.RestoreSysCatalogReplicated(/* leader_term= */ -1, operation, complete_status);
 }
 
 Status SysCatalogTap::Load(tablet::Tablet* tablet) {

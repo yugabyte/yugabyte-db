@@ -295,6 +295,25 @@ struct AlteredSchema {
     ddl_log: Vec<crate::ddl_log::DdlLogRow>,
 }
 
+/// `SendAlterTableRequest` after a direct change of a RUNNING table's row: ALTERING, with the
+/// schema the tablets have as fully applied, so the alterer sends them the row's schema.
+pub fn start_schema_push(current: &SysTablesEntryPB, updated: &mut SysTablesEntryPB) {
+    defer_schema_push(current, updated);
+    updated.state = Some(EnumOrUnknown::new(TableState::ALTERING));
+}
+
+/// [`start_schema_push`] for a table whose tablets are still being created: the push starts when
+/// the table would become RUNNING (`SendAlterTableRequest` to a clone's tablets, which C++ retries
+/// until they exist).
+pub fn defer_schema_push(current: &SysTablesEntryPB, updated: &mut SysTablesEntryPB) {
+    let mut applied = current.clone();
+    copy_to_fully_applied(&mut applied);
+    updated.set_fully_applied_schema_version(applied.fully_applied_schema_version());
+    updated.fully_applied_schema = applied.fully_applied_schema;
+    updated.fully_applied_indexes = applied.fully_applied_indexes;
+    updated.fully_applied_index_info = applied.fully_applied_index_info;
+}
+
 /// `MultiStageAlterTable::CopySchemaDetailsToFullyApplied`: clients of non-YCQL tables keep seeing
 /// the old schema until every tablet has the new one.
 pub(crate) fn copy_to_fully_applied(pb: &mut SysTablesEntryPB) {

@@ -28,8 +28,9 @@ use yb_proto::pb::master_types::SysRowEntryType;
 
 use crate::lookup::{find_namespace, find_table, is_system_table};
 
-/// The ids (the 16 bytes of the UUID) of the live schedules whose entries include the `entry_type` row
-/// `id`. A schedule whose filter names an object that no longer exists covers nothing through it.
+/// The ids (the 16 bytes of the UUID) of the live schedules whose entries include the `entry_type`
+/// row `id`. A schedule whose filter names an object that no longer exists covers nothing through
+/// it.
 pub fn covering_schedules(
     snapshot: &CatalogSnapshot,
     entry_type: SysRowEntryType,
@@ -120,4 +121,50 @@ fn uuid_string(bytes: &[u8]) -> String {
         &hex[16..20],
         &hex[20..32]
     )
+}
+
+/// What keeps a dropped table's or a retired tablet's data (`TabletDeleteRetainerInfo`): the
+/// snapshot schedules that cover it and snapshots that hold it. Such an object is hidden, not
+/// deleted, until nothing needs it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Retainer {
+    /// The schedules (16-byte ids) that cover it.
+    pub schedules: Vec<Vec<u8>>,
+    /// A snapshot holds it, or one of its namespace is being created.
+    pub active_snapshot: bool,
+}
+
+impl Retainer {
+    /// `IsHideOnly`.
+    pub fn hide_only(&self) -> bool {
+        !self.schedules.is_empty() || self.active_snapshot
+    }
+}
+
+/// The snapshot coordinator's answer to "may this be deleted?".
+pub trait Retention: Send + Sync + 'static {
+    /// `GetDeleteRetainerInfoForTableDrop`.
+    fn table_drop(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> Retainer;
+    /// `GetDeleteRetainerInfoForTabletDrop`.
+    fn tablet_drop(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> Retainer;
+}
+
+/// Retention by schedules alone, until the coordinator is set.
+pub(crate) struct SchedulesOnly;
+
+impl Retention for SchedulesOnly {
+    fn table_drop(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> Retainer {
+        Retainer {
+            schedules: covering_schedules(snapshot, SysRowEntryType::TABLE, table_id),
+            active_snapshot: false,
+        }
+    }
+
+    fn tablet_drop(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> Retainer {
+        let table_id = snapshot
+            .get(SysRowEntryType::TABLET, tablet_id)
+            .and_then(|t| t.tablet().map(|t| t.table_id.clone()))
+            .unwrap_or_default();
+        self.table_drop(snapshot, &table_id)
+    }
 }

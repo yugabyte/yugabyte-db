@@ -25,6 +25,10 @@ use master_cluster_balancer::controller::{BalancerController, BalancerFlags, Bal
 use master_cluster_balancer::Options as BalancerOptions;
 use master_leadership::{Leadership, Phase};
 use master_rpc_handlers::{LeaderServices, MasterInfo};
+use master_snapshot_coordinator::{
+    CloneOptions, ImportOptions, RestoreHooks, SnapshotController, SnapshotCoordinator,
+    SnapshotHost, SnapshotOptions,
+};
 use master_sys_catalog::{ApplyEvents, SysCatalogStore};
 use master_table_lifecycle::{
     ColocatedTableAdder, FlushOptions, Flushes, LifecycleOptions, SchemaHost, TableAlterer,
@@ -56,7 +60,11 @@ use yb_flags::{yb_flag, FlagRef, FlagTag};
 use yb_host_api::metrics::MetricRegistry;
 use yb_host_api::rpc::RpcClient;
 use yb_host_api::StatusCode;
-use yb_proto::pb::master_rust_peer::{SetClusterMetricsRequestPB, SetLeaderReadyTermRequestPB};
+use yb_proto::pb::master_client::ReservePgsqlOidsRequestPB;
+use yb_proto::pb::master_rust_peer::{
+    HighestPreservableOidsRequestPB, HighestPreservableOidsResponsePB, SetClusterMetricsRequestPB,
+    SetLeaderReadyTermRequestPB,
+};
 
 yb_flag!(
     /// Rows per catalog Raft write.
@@ -109,6 +117,47 @@ pub(crate) const FLAGS: &[&dyn yb_flags::AnyFlagDef] = &[
 ];
 
 static ALLOW_LEADERSHIP: FlagRef<bool> = FlagRef::new("TEST_rust_master_allow_leadership");
+static SNAPSHOT_POLL_INTERVAL_MS: FlagRef<u64> =
+    FlagRef::new("snapshot_coordinator_poll_interval_ms");
+static SNAPSHOT_CLEANUP_DELAY_MS: FlagRef<u64> =
+    FlagRef::new("snapshot_coordinator_cleanup_delay_ms");
+static MISSING_CREATING_SNAPSHOT_GRACE_SEC: FlagRef<u32> =
+    FlagRef::new("snapshot_coordinator_missing_creating_snapshot_grace_sec");
+static MAX_SNAPSHOT_RPCS: FlagRef<i64> = FlagRef::new("max_concurrent_snapshot_rpcs");
+static MAX_SNAPSHOT_RPCS_PER_TS: FlagRef<i64> =
+    FlagRef::new("max_concurrent_snapshot_rpcs_per_tserver");
+static MAX_RESTORATION_RPCS: FlagRef<i64> = FlagRef::new("max_concurrent_restoration_rpcs");
+static MAX_RESTORATION_RPCS_PER_TS: FlagRef<i64> =
+    FlagRef::new("max_concurrent_restoration_rpcs_per_tserver");
+static DEFAULT_SNAPSHOT_RETENTION_HOURS: FlagRef<u32> =
+    FlagRef::new("default_snapshot_retention_hours");
+static NAMESPACE_SNAPSHOT_WORKFLOW: FlagRef<bool> =
+    FlagRef::new("enable_namespace_snapshot_workflow");
+static OBJECT_RETENTION_DUE_TO_SNAPSHOTS: FlagRef<bool> =
+    FlagRef::new("enable_object_retention_due_to_snapshots");
+static EXPORT_SNAPSHOT_USING_RELFILENODE: FlagRef<bool> =
+    FlagRef::new("enable_export_snapshot_using_relfilenode");
+static TREAT_HOURS_AS_MS: FlagRef<bool> =
+    FlagRef::new("TEST_treat_hours_as_milliseconds_for_snapshot_expiry");
+static MARK_SNAPSHOT_AS_FAILED: FlagRef<bool> = FlagRef::new("TEST_mark_snapshot_as_failed");
+static SKIP_SENDING_RESTORE_FINISHED: FlagRef<bool> =
+    FlagRef::new("TEST_skip_sending_restore_finished");
+static SKIP_SYS_CATALOG_TABLET_RESTORE: FlagRef<bool> =
+    FlagRef::new("TEST_skip_sys_catalog_tablet_restore");
+static SIMULATE_CRASH_AFTER_TABLE_MARKED_DELETING: FlagRef<bool> =
+    FlagRef::new("TEST_simulate_crash_after_table_marked_deleting");
+static IMPORT_MAX_CONCURRENT_CREATE_TABLES: FlagRef<u64> =
+    FlagRef::new("import_snapshot_max_concurrent_create_table_requests");
+static IMPORT_USING_TABLE_NAME: FlagRef<bool> = FlagRef::new("import_snapshot_using_table_name");
+static ENABLE_DB_CLONE: FlagRef<bool> = FlagRef::new("enable_db_clone");
+static CLONE_PG_SCHEMA_RPC_TIMEOUT_MS: FlagRef<i32> =
+    FlagRef::new("ysql_clone_pg_schema_rpc_timeout_ms");
+static FAIL_CLONE_PG_SCHEMA: FlagRef<bool> = FlagRef::new("TEST_fail_clone_pg_schema");
+static FAIL_CLONE_TABLETS: FlagRef<bool> = FlagRef::new("TEST_fail_clone_tablets");
+static INFLIGHT_SPLITS_COMPLETION_TIMEOUT_SECS: FlagRef<i32> =
+    FlagRef::new("inflight_splits_completion_timeout_secs");
+static PITR_MAX_RESTORE_DURATION_SECS: FlagRef<i32> =
+    FlagRef::new("pitr_max_restore_duration_secs");
 static UNRESPONSIVE_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("tserver_unresponsive_timeout_ms");
 static TABLET_REPORT_LIMIT: FlagRef<i32> = FlagRef::new("tablet_report_limit");
 static HEARTBEAT_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("heartbeat_rpc_timeout_ms");
@@ -421,6 +470,112 @@ async fn report_ready_term(leadership: Arc<Leadership>, host: Arc<dyn SchemaHost
     }
 }
 
+fn leader_tables_retention(snapshots: &Arc<SnapshotCoordinator>, splits: &TabletSplitManager) {
+    splits.set_retention(snapshots.clone());
+}
+
+/// What a finished restore tells the other leader components.
+struct SnapshotHooks {
+    tables: Arc<TableLifecycle>,
+    splits: Arc<TabletSplitManager>,
+    host: Arc<dyn SchemaHost>,
+    leadership: Arc<Leadership>,
+    catalog: Arc<Catalog>,
+}
+
+impl RestoreHooks for SnapshotHooks {
+    fn resume_backfill(&self, table_id: &[u8]) {
+        // The alterer resumes backfills from the restored rows (I16).
+        tracing::info!(
+            "PITR restored table {}; its backfill resumes from its row",
+            String::from_utf8_lossy(table_id)
+        );
+    }
+
+    fn reenable_splitting(&self, feature: &str) {
+        self.splits.reenable_splitting_for(feature);
+    }
+
+    fn disable_splitting(&self, duration: Duration, feature: &str) {
+        // `PrepareForSnapshotRestore`'s disable duration.
+        let configured = Duration::from_secs(
+            (INFLIGHT_SPLITS_COMPLETION_TIMEOUT_SECS.get() + PITR_MAX_RESTORE_DURATION_SECS.get())
+                .max(0) as u64,
+        );
+        self.splits
+            .disable_splitting_for(configured.max(duration), feature);
+    }
+
+    fn advance_oid_counters(
+        &self,
+        namespace_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'static, Result<(), yb_host_api::Status>> {
+        let (tables, host, leadership, catalog) = (
+            self.tables.clone(),
+            self.host.clone(),
+            self.leadership.clone(),
+            self.catalog.clone(),
+        );
+        Box::pin(async move {
+            let database_oid =
+                master_table_lifecycle::pg_database_oid(&namespace_id).ok_or_else(|| {
+                    yb_host_api::Status::new(StatusCode::InvalidArgument, "not a YSQL database")
+                })?;
+            let mut req = HighestPreservableOidsRequestPB::new();
+            req.set_database_oid(database_oid);
+            let snapshot = catalog.snapshot();
+            for table in snapshot.iter(yb_proto::pb::master_types::SysRowEntryType::TABLE) {
+                if table
+                    .table()
+                    .is_some_and(|t| t.namespace_id == namespace_id)
+                {
+                    if let Some(oid) = master_table_lifecycle::pg_table_oid(&table.key.id) {
+                        req.table_oids.push(oid);
+                    }
+                }
+            }
+            let bytes = req
+                .write_to_bytes()
+                .map_err(|e| yb_host_api::Status::new(StatusCode::InternalError, e.to_string()))?;
+            let resp =
+                tokio::task::spawn_blocking(move || host.call("HighestPreservableOids", &bytes))
+                    .await
+                    .map_err(|e| {
+                        yb_host_api::Status::new(StatusCode::InternalError, e.to_string())
+                    })??;
+            let highest = HighestPreservableOidsResponsePB::parse_from_bytes(&resp)
+                .map_err(|e| yb_host_api::Status::new(StatusCode::Corruption, e.to_string()))?;
+            let token = leadership.token()?;
+            for (next, secondary) in [
+                (highest.normal_space(), false),
+                (highest.secondary_space(), true),
+            ] {
+                let mut req = ReservePgsqlOidsRequestPB::new();
+                req.set_namespace_id(namespace_id.clone());
+                req.set_next_oid(next);
+                req.set_count(1);
+                req.set_use_secondary_space(secondary);
+                let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+                tables
+                    .reserve_pgsql_oids(&token, deadline, &req, &mut Default::default())
+                    .await
+                    .map_err(|e| {
+                        yb_host_api::Status::new(
+                            StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
+                            e.status.message().to_string(),
+                        )
+                    })?;
+            }
+            Ok(())
+        })
+    }
+
+    fn is_automatic_xcluster_target(&self, _namespace_id: &[u8]) -> bool {
+        // xCluster comes with W11.
+        false
+    }
+}
+
 /// What the core takes from the C++ host.
 pub(crate) struct HostParts {
     /// The server's metric registry.
@@ -433,6 +588,8 @@ pub(crate) struct HostParts {
     pub(crate) schema: Arc<dyn SchemaHost>,
     /// The master's DDL lock manager.
     pub(crate) local_locks: Arc<dyn master_ysql_manager::locks::LocalLockManager>,
+    /// The host's half of the snapshot coordinator.
+    pub(crate) snapshots: Arc<dyn SnapshotHost>,
 }
 
 /// The core's components, built before the host starts so the apply tap has a sink.
@@ -462,6 +619,7 @@ impl Core {
             contributors,
             schema,
             local_locks,
+            snapshots,
         } = host;
         let _guard = runtime.enter();
         runtime.spawn(run_materializer(catalog.clone(), store.clone(), events));
@@ -531,6 +689,9 @@ impl Core {
                 enable_ysql: || ENABLE_YSQL.get(),
                 txn_table_wait_min_ts_count: || TXN_TABLE_WAIT_MIN_TS_COUNT.get(),
                 pause_ddl_rollback: || PAUSE_DDL_ROLLBACK.get(),
+                simulate_crash_after_table_marked_deleting: || {
+                    SIMULATE_CRASH_AFTER_TABLE_MARKED_DELETING.get()
+                },
                 fail_table_creation_at_preparing_state: || FAIL_TABLE_CREATION_AT_PREPARING.get(),
                 pause_before_upsert_ysql_sys_table: || PAUSE_BEFORE_UPSERT_YSQL_SYS_TABLE.get(),
                 ysql_major_version: ENABLE_YSQL.get().then(|| defaults.ysql_major_version()),
@@ -658,6 +819,57 @@ impl Core {
                 skip_tserver_version_checks: || SKIP_TSERVER_VERSION_CHECKS.get(),
             },
         );
+        let snapshots = SnapshotCoordinator::new(
+            catalog.clone(),
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            snapshots,
+            ts_rpc.clone(),
+            retry_policy(true),
+            SnapshotOptions {
+                poll_interval: || Duration::from_millis(SNAPSHOT_POLL_INTERVAL_MS.get().max(1)),
+                cleanup_delay: || Duration::from_millis(SNAPSHOT_CLEANUP_DELAY_MS.get()),
+                missing_creating_snapshot_grace: || {
+                    Duration::from_secs(MISSING_CREATING_SNAPSHOT_GRACE_SEC.get().into())
+                },
+                max_concurrent_snapshot_rpcs: || MAX_SNAPSHOT_RPCS.get(),
+                max_concurrent_snapshot_rpcs_per_tserver: || MAX_SNAPSHOT_RPCS_PER_TS.get(),
+                max_concurrent_restoration_rpcs: || MAX_RESTORATION_RPCS.get(),
+                max_concurrent_restoration_rpcs_per_tserver: || MAX_RESTORATION_RPCS_PER_TS.get(),
+                default_retention_hours: || DEFAULT_SNAPSHOT_RETENTION_HOURS.get() as i32,
+                namespace_snapshot_workflow: || NAMESPACE_SNAPSHOT_WORKFLOW.get(),
+                object_retention_due_to_snapshots: || OBJECT_RETENTION_DUE_TO_SNAPSHOTS.get(),
+                export_snapshot_using_relfilenode: || EXPORT_SNAPSHOT_USING_RELFILENODE.get(),
+                treat_hours_as_milliseconds: || TREAT_HOURS_AS_MS.get(),
+                mark_snapshot_as_failed: || MARK_SNAPSHOT_AS_FAILED.get(),
+                skip_sending_restore_finished: || SKIP_SENDING_RESTORE_FINISHED.get(),
+                skip_sys_catalog_tablet_restore: || SKIP_SYS_CATALOG_TABLET_RESTORE.get(),
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                import: ImportOptions {
+                    max_concurrent_create_table_requests: || {
+                        IMPORT_MAX_CONCURRENT_CREATE_TABLES.get()
+                    },
+                    using_table_name: || IMPORT_USING_TABLE_NAME.get(),
+                },
+                clone: CloneOptions {
+                    enabled: || ENABLE_DB_CLONE.get(),
+                    pg_schema_rpc_timeout: || millis(CLONE_PG_SCHEMA_RPC_TIMEOUT_MS.get()),
+                    fail_pg_schema: || FAIL_CLONE_PG_SCHEMA.get(),
+                    fail_tablets: || FAIL_CLONE_TABLETS.get(),
+                },
+            },
+        );
+        // Dropped tables and retired split parents a snapshot needs are hidden.
+        leader_tables_retention(&snapshots, &splits);
+        tables.set_retention(snapshots.clone());
+        snapshots.set_hooks(Arc::new(SnapshotHooks {
+            tables: tables.clone(),
+            splits: splits.clone(),
+            host: schema.clone(),
+            leadership: leadership.clone(),
+            catalog: catalog.clone(),
+        }));
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
@@ -672,6 +884,7 @@ impl Core {
             load_balancing_flag: || ENABLE_LOAD_BALANCING.get(),
             transaction_tables_use_preferred_zones: || TXN_TABLES_USE_PREFERRED_ZONES.get(),
             splits,
+            snapshots,
             leases,
             locks: locks.clone(),
             backends,
@@ -781,6 +994,7 @@ impl Core {
         // wakeups is still seen, as a new generation.
         let leadership = self.leadership.clone();
         let catalog = self.catalog.clone();
+        let ts_manager = self.leader.ts_manager.clone();
         let mut changes = self.catalog.subscribe();
         let (mut requested, mut done) = self.catalog.subscribe_reloads();
         runtime.spawn(async move {
@@ -797,6 +1011,9 @@ impl Core {
                 }
                 if !reloading {
                     if matches!(leadership.phase(), Phase::Reloading { .. }) {
+                        // As every C++ catalog load: tablets the reload changed (a PITR deletes
+                        // tablets created after its time) are reconciled with full reports.
+                        ts_manager.request_full_reports();
                         leadership.end_reload();
                     }
                     generation = current;
@@ -811,6 +1028,7 @@ impl Core {
 
         let leader = self.leader.clone();
         leader.splits.set_rpc(rpc.clone());
+        leader.snapshots.set_rpc(rpc.clone());
         leader.locks.set_rpc(rpc.clone());
         leader.backends.set_rpc(rpc.clone());
         leader.truncates.set_rpc(rpc.clone());
@@ -868,6 +1086,11 @@ fn start_term(
         scope,
         SplitController::new(leader.splits.clone()),
         leader.catalog.subscribe(),
+    );
+    run_controller(
+        scope,
+        SnapshotController::new(leader.snapshots.clone()),
+        leader.snapshots.subscribe(),
     );
     run_controller(
         scope,

@@ -26,6 +26,7 @@ members = [
     "master/cluster-balancer",
     "master/leadership",
     "master/server",
+    "master/snapshot-coordinator",
     "master/rpc-handlers",
     "master/sys-catalog",
     "master/table-lifecycle",
@@ -84,6 +85,7 @@ master-catalog-state = { path = "master/catalog-state" }
 master-cluster-balancer = { path = "master/cluster-balancer" }
 master-leadership = { path = "master/leadership" }
 master-rpc-handlers = { path = "master/rpc-handlers" }
+master-snapshot-coordinator = { path = "master/snapshot-coordinator" }
 master-sys-catalog = { path = "master/sys-catalog" }
 master-table-lifecycle = { path = "master/table-lifecycle" }
 master-tablet-split-manager = { path = "master/tablet-split-manager" }

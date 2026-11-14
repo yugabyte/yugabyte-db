@@ -25,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/schema_pbutil.h"
+#include "yb/common/snapshot.h"
 #include "yb/common/version_info.h"
 #include "yb/common/version_info.pb.h"
 #include "yb/common/wire_protocol.h"
@@ -85,14 +86,18 @@
 #include "yb/server/total_mem_watcher.h"
 #include "yb/server/webserver.h"
 
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/local_waiting_txn_registry.h"
+#include "yb/docdb/read_operation_data.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/write_query.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -120,6 +125,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/oid_generator.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
@@ -1205,6 +1211,7 @@ Result<MasterHost::ClosestTserver> MasterHost::ClosestLiveTserver(
       .rpc_address = HostPortFromPB(addr),
       .pg_port = narrow_cast<uint16_t>(common.pg_port()),
       .local = local_ts,
+      .uuid = best->tserver_instance().permanent_uuid(),
   };
 }
 
@@ -1648,7 +1655,8 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
             const auto n = ++attempt;
             LOG(INFO) << "TEST: yugabyte namespace creation attempt #" << n;
             if (n == 2) {
-              return STATUS(InternalError, "TEST: Injected CopyPgsqlSysTables failure for yugabyte");
+              return STATUS(
+                  InternalError, "TEST: Injected CopyPgsqlSysTables failure for yugabyte");
             }
           }
           const auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(req.namespace_id()));
@@ -1886,8 +1894,9 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
   }
   if (name == "HybridTimeNow") {
     return HandleRequest<master::HybridTimeNowRequestPB, master::HybridTimeNowResponsePB>(
-        request, [this](const auto&, auto* resp) {
-          resp->set_hybrid_time(clock()->Now().ToUint64());
+        request, [this](const auto& req, auto* resp) {
+          resp->set_hybrid_time(
+              (req.max_global() ? clock()->MaxGlobalNow() : clock()->Now()).ToUint64());
           return Status::OK();
         });
   }
@@ -2056,8 +2065,8 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
           auto metadata = peer->tablet_metadata();
           SCHECK(
-              metadata->GetTableInfo(VersionSpecificCatalogTableId(kPgTablespaceTableId)).ok(), InternalError,
-              "pg_tablespace table info not found");
+              metadata->GetTableInfo(VersionSpecificCatalogTableId(kPgTablespaceTableId)).ok(),
+              InternalError, "pg_tablespace table info not found");
           auto tablespaces = VERIFY_RESULT(sys_catalog_->ReadPgTablespaceInfo());
           for (const auto& [id, replication_info] : *tablespaces) {
             auto* tablespace = resp->add_tablespaces();
@@ -2119,6 +2128,169 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
               }
             }
             resp->add_names(std::move(name));
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "ChangeEncryptionInfo") {
+    // CatalogManager::ChangeEncryptionInfo's EncryptionManager step; Rust writes the result.
+    return HandleRequest<
+        master::ChangeEncryptionInfoOnHostRequestPB, master::ChangeEncryptionInfoOnHostResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          auto info = req.current();
+          RETURN_NOT_OK(encryption_manager_->ChangeEncryptionInfo(&req.request(), &info));
+          *resp->mutable_updated() = std::move(info);
+          return Status::OK();
+        });
+  }
+  if (name == "CompareImportSchemas") {
+    return HandleRequest<
+        master::CompareImportSchemasRequestPB, master::CompareImportSchemasResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          Schema persisted, expected;
+          RETURN_NOT_OK(SchemaFromPB(req.persisted(), &persisted));
+          RETURN_NOT_OK(SchemaFromPB(req.expected(), &expected));
+          // Nullability is ignored: PgCreateTable and PgAlterTable add columns differently.
+          bool (*table_columns)(const ColumnSchema&, const ColumnSchema&) =
+              [](const ColumnSchema& a, const ColumnSchema& b) {
+                return ColumnSchema::CompKind(a, b) && ColumnSchema::CompTypeInfo(a, b) &&
+                       ColumnSchema::CompName(a, b);
+              };
+          bool (*index_columns)(const ColumnSchema&, const ColumnSchema&) =
+              [](const ColumnSchema& a, const ColumnSchema& b) {
+                return ColumnSchema::CompKind(a, b) && ColumnSchema::CompTypeInfo(a, b);
+              };
+          const bool ids_equal = persisted.column_ids() == expected.column_ids();
+          resp->set_matches(
+              persisted.Equals(expected, req.is_index() ? index_columns : table_columns) &&
+              persisted.column_ids().size() == expected.column_ids().size() &&
+              (!req.is_index() || ids_equal));
+          resp->set_column_ids_equal(ids_equal);
+          resp->set_persisted_string(persisted.ToString());
+          resp->set_expected_string(expected.ToString());
+          return Status::OK();
+        });
+  }
+  if (name == "ClosestLiveTserver") {
+    // CatalogManager::GetClosestLiveTserver.
+    return HandleRequest<
+        master::ClosestLiveTserverRequestPB, master::ClosestLiveTserverResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          resp->set_permanent_uuid(VERIFY_RESULT(ClosestLiveTserver(req.live_tservers())).uuid);
+          return Status::OK();
+        });
+  }
+  if (name == "CountPgYbMigrationRows") {
+    return HandleRequest<
+        master::CountPgYbMigrationRowsRequestPB, master::CountPgYbMigrationRowsResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto read_time = req.has_read_time()
+              ? ReadHybridTime::SingleTime(HybridTime(req.read_time()))
+              : ReadHybridTime();
+          resp->set_count(VERIFY_RESULT(
+              sys_catalog_->CountPgYbMigrationRows(req.database_oid(), read_time)));
+          return Status::OK();
+        });
+  }
+  if (name == "ScanSnapshotSysCatalog") {
+    // CatalogManager::GetBackupEntriesAsOfTime's reads: the sys catalog as of read_time from the
+    // local checkpoint of a snapshot, in a temporary RocksDB.
+    return HandleRequest<
+        master::ScanSnapshotSysCatalogRequestPB, master::ScanSnapshotSysCatalogResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          auto snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req.snapshot_id()));
+          auto peer = sys_catalog_->tablet_peer();
+          SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+          auto tablet = VERIFY_RESULT(peer->shared_tablet());
+          const HybridTime read_time(req.read_time());
+          auto db = VERIFY_RESULT(master::RestoreSysCatalogSnapshotToTmpRocksDb(
+              tablet.get(), snapshot_id, read_time, "Clone: "));
+          auto doc_db = docdb::DocDB::FromRegularUnbounded(db.get());
+          const auto& doc_read_context = sys_catalog_->doc_read_context();
+          dockv::ReaderProjection projection(doc_read_context.schema());
+          // db is not closed concurrently.
+          auto db_pending_op = ScopedRWOperation();
+          for (auto entry_type : req.entry_types()) {
+            docdb::DocRowwiseIterator iter(
+                projection, doc_read_context, TransactionOperationContext(), doc_db,
+                docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
+            RETURN_NOT_OK(master::EnumerateSysCatalog(
+                &iter, doc_read_context.schema(), narrow_cast<int8_t>(entry_type),
+                [resp, entry_type](const Slice& id, const Slice& data) {
+                  auto* row = resp->add_rows();
+                  row->set_type(static_cast<master::SysRowEntryType>(entry_type));
+                  row->set_id(id.ToBuffer());
+                  row->set_data(data.ToBuffer());
+                  return Status::OK();
+                }));
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "PgYbTablegroupOid") {
+    return HandleRequest<master::PgYbTablegroupOidRequestPB, master::PgYbTablegroupOidResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          resp->set_oid(VERIFY_RESULT(
+              sys_catalog_->ReadPgYbTablegroupOid(req.database_oid(), req.name())));
+          return Status::OK();
+        });
+  }
+  if (name == "HighestPreservableOids") {
+    // CatalogManager::AdvanceOidCounters' reads.
+    return HandleRequest<
+        master::HighestPreservableOidsRequestPB, master::HighestPreservableOidsResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          auto highest = VERIFY_RESULT(
+              sys_catalog_->ReadHighestPreservableOids(req.database_oid()));
+          for (auto oid : req.table_oids()) {
+            highest.UpdateWithOid(oid);
+          }
+          resp->set_normal_space(highest.for_normal_space_);
+          resp->set_secondary_space(highest.for_secondary_space_);
+          return Status::OK();
+        });
+  }
+  if (name == "GetBackupPgTableInfo") {
+    // CatalogManager::RepackSnapshotsForBackup's YsqlManager::GetPgSchemaName and
+    // GetPgIndexStatus, as of the snapshot's time.
+    return HandleRequest<
+        master::GetBackupPgTableInfoRequestPB, master::GetBackupPgTableInfoResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto read_time = ReadHybridTime::FromUint64(req.read_time());
+          for (const auto& table : req.tables()) {
+            auto* out = resp->add_tables();
+            auto info = [&]() -> Status {
+              const auto& pb = table.table();
+              const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(pb.namespace_id()));
+              const auto relfilenode_oid = VERIFY_RESULT(GetPgsqlTableOid(table.table_id()));
+              const auto pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(
+                  pb.pg_table_id().empty() ? table.table_id() : pb.pg_table_id()));
+              // GetPgTableOidIfCommitted.
+              const auto committed = VERIFY_RESULT(sys_catalog_->ReadPgClassColumnWithOidValue(
+                  database_oid, pg_table_oid, master::kPgClassRelFileNodeColumnName, read_time));
+              if (committed != relfilenode_oid) {
+                out->set_not_committed(true);
+                return Status::OK();
+              }
+              const auto relnamespace = VERIFY_RESULT(
+                  sys_catalog_->ReadPgClassColumnWithOidValue(
+                      database_oid, pg_table_oid, master::kPgClassRelNamespaceColumnName,
+                      read_time));
+              if (relnamespace == kPgInvalidOid) {
+                out->set_not_committed(true);
+                return Status::OK();
+              }
+              out->set_pg_schema_name(VERIFY_RESULT(
+                  sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace, read_time)));
+              if (!pb.indexed_table_id().empty()) {
+                out->set_index_valid(VERIFY_RESULT(sys_catalog_->ReadPgIndexBoolColumn(
+                    database_oid, pg_table_oid, "indisvalid", read_time)));
+              }
+              return Status::OK();
+            }();
+            if (!info.ok()) {
+              StatusToPB(info, out->mutable_status());
+            }
           }
           return Status::OK();
         });
@@ -2484,6 +2656,39 @@ void MasterHost::WriteSysCatalogRows(
       complete(Status::OK());
     });
     peer->WriteAsync(std::move(query));
+    return Status::OK();
+  }();
+  if (!status.ok()) {
+    complete(status);
+  }
+}
+
+void MasterHost::SubmitSnapshotOperation(
+    int64_t term, rust::Slice<const uint8_t> request,
+    rust::Box<WriteCompletion> completion) const {
+  auto shared_completion =
+      std::make_shared<std::optional<rust::Box<WriteCompletion>>>(std::move(completion));
+  auto complete = [shared_completion](const Status& status) {
+    if (!*shared_completion) {
+      return;
+    }
+    CompleteWrite(
+        std::move(**shared_completion), status.ok() ? 0 : static_cast<int32_t>(status.code()),
+        status.ok() ? rust::String() : rust::String::lossy(status.ToString()));
+    shared_completion->reset();
+  };
+  auto status = [&]() -> Status {
+    auto peer = sys_catalog_->tablet_peer();
+    SCHECK(peer, IllegalState, "The sys catalog tablet is not open");
+    auto tablet = VERIFY_RESULT(peer->shared_tablet());
+    auto operation = std::make_unique<tablet::SnapshotOperation>(tablet);
+    auto* req = operation->AllocateRequest();
+    // The lightweight message keeps slices of its input: parse a copy owned by its arena.
+    auto bytes = req->arena().DupSlice(
+        Slice(reinterpret_cast<const char*>(request.data()), request.size()));
+    RETURN_NOT_OK(req->ParseFromSlice(bytes));
+    operation->set_completion_callback(complete);
+    peer->Submit(std::move(operation), term);
     return Status::OK();
   }();
   if (!status.ok()) {

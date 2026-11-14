@@ -106,10 +106,15 @@ never starts an election; if an explicit leader transfer elects it, the state-ch
 steps it down at once, retrying while the step-down is refused, and `GetMasterRegistration`
 reports FOLLOWER meanwhile, as a C++ leader that is not ready does.
 
-A Rust leader leaves these C++ leader duties undone, so leading stays test-only: snapshot
-schedules do not take snapshots and restores are not served (the coordinator's `LeaderTerm()` is
--1), a removed master is not told (`InformRemovedMaster`), and the YSQL history retention pin is
-not published.
+A Rust leader leaves these C++ leader duties undone, so leading stays test-only: a removed master
+is not told (`InformRemovedMaster`), and the YSQL history retention pin is not published.
+
+**Snapshot operations.** The host's coordinator applies snapshot operations as a follower on every
+Rust master: `SysCatalogTap` passes it leader term -1 even on the master that submitted them, and
+the Rust leader does the leader's part (`master-snapshot-coordinator`,
+[snapshot-coordinator.md](snapshot-coordinator.md)). `SubmitSnapshotOperation` submits an
+operation (a serialized `TabletSnapshotOpRequestPB`) to the sys catalog tablet in the leader's
+term, as `CatalogManager::Submit` does.
 
 ## Embedded in a test process
 

@@ -17,6 +17,7 @@
 use std::collections::HashSet;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use yb_proto::pb::catalog_entity_info::sys_cdcstream_entry_pb;
 
 use master_catalog_entity::Entity;
 use master_catalog_state::is_inactive_state;
@@ -82,6 +83,8 @@ pub struct LeaderServices {
     pub transaction_tables_use_preferred_zones: fn() -> bool,
     /// Tablet splits.
     pub splits: Arc<master_tablet_split_manager::TabletSplitManager>,
+    /// Snapshots, schedules and restores (W10).
+    pub snapshots: Arc<master_snapshot_coordinator::SnapshotCoordinator>,
     /// YSQL operation leases.
     pub leases: Arc<master_ysql_manager::lease::YsqlLeases>,
     /// Global DDL object locks.
@@ -161,8 +164,7 @@ impl LeaderServices {
         snapshot.iter(SysRowEntryType::CDC_STREAM).any(|row| {
             row.parse::<yb_proto::pb::catalog_entity_info::SysCDCStreamEntryPB>()
                 .is_ok_and(|pb| {
-                    pb.state()
-                        != yb_proto::pb::catalog_entity_info::sys_cdcstream_entry_pb::State::DELETING
+                    pb.state() != sys_cdcstream_entry_pb::State::DELETING
                         && !pb.namespace_id().is_empty()
                         && pb.namespace_id().as_bytes() == namespace_id
                 })
@@ -818,7 +820,8 @@ impl LeaderServices {
         placement: &CloudInfoPB,
         resp: &mut GetTransactionStatusTabletsResponsePB,
     ) {
-        use yb_proto::pb::master_client::get_transaction_status_tablets_response_pb::TablespaceInfoPB;
+        use resp_pb::TablespaceInfoPB;
+        use yb_proto::pb::master_client::get_transaction_status_tablets_response_pb as resp_pb;
         let tablespaces = self.tables.tablespaces();
         // By tablespace oid; 0 (kInvalidOid) for tables placed by their own replication info.
         let mut by_tablespace: std::collections::BTreeMap<u32, LocalStatusTables> =

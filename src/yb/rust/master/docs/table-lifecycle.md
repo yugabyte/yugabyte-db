@@ -16,7 +16,7 @@ YCQL keyspaces, tables and indexes:
 | `ListTables`, `GetTableSchema` | From the snapshot, with C++'s visibility rules and relation types. |
 | `CreateTable`, `IsCreateTableDone` | Below. |
 | `AlterTable`, `IsAlterTableDone` | Below. |
-| `DeleteTable`, `IsDeleteTableDone` | Below. A table a snapshot schedule covers (which C++ hides rather than deletes) is not served yet. |
+| `DeleteTable`, `IsDeleteTableDone` | Below. A table a snapshot schedule or snapshot retains is hidden rather than deleted ([snapshot-coordinator.md](snapshot-coordinator.md#hidden-objects)). |
 | `FlushTables`, `IsFlushTablesDone` | `flush.rs`, as C++'s `FlushManager`: one `FlushTablets` per tserver with a replica of the tables' (and with `add_indexes`, their indexes') tablets; a compaction records `last_full_compaction_request_time`. Not persisted, so a new leader answers NotFound for an old leader's request, as C++ does. |
 | `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is refused until W11. |
 

@@ -20,6 +20,7 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use yb_proto::pb::catalog_entity_info::sys_namespace_entry_pb::YsqlNextMajorVersionState;
 
 use master_catalog_entity::Entity;
 use master_catalog_state::{is_inactive_state, CatalogSnapshot, Mutation};
@@ -47,7 +48,6 @@ use yb_proto::pb::tablet_types::TabletDataState;
 use crate::lookup::{find_table, is_hidden};
 use crate::namespaces::short_debug;
 use crate::placement::cluster_config;
-use crate::schedules::covering_schedules;
 use crate::time::local_time_string;
 use crate::{coded_error, error, tagged_error, TableLifecycle};
 
@@ -63,7 +63,8 @@ fn is_index(pb: &SysTablesEntryPB) -> bool {
 }
 
 impl TableLifecycle {
-    /// `DeleteTable`. A table a snapshot schedule covers (which C++ hides) is not served yet.
+    /// `DeleteTable`. A table a snapshot schedule or a snapshot still needs is hidden instead
+    /// (HIDING); the table deleter hides its tablets.
     pub async fn delete_table(
         &self,
         token: &LeaderToken,
@@ -100,11 +101,6 @@ impl TableLifecycle {
                     "Cannot delete a table in replication.: {}",
                     short_debug(req)
                 ),
-            ));
-        }
-        if !covering_schedules(&snapshot, SysRowEntryType::TABLE, &table.key.id).is_empty() {
-            return Err(not_yet(
-                "Dropping a table a snapshot schedule covers (it is hidden, W10)",
             ));
         }
         let index_pb: SysTablesEntryPB = table
@@ -151,8 +147,9 @@ impl TableLifecycle {
                     other => return Err(not_yet(&format!("DROP TABLE of {other:?}"))),
                 }
                 // The table and its indexes; the dying table's index list is left as is, as C++
-                // leaves it.
+                // leaves it. Each is hidden rather than deleted while something retains it.
                 let message = format!("Started deleting at {}", local_time_string());
+                let retention = self.retention();
                 let mut mutation = Mutation::new();
                 for row in &self.drop_ddl_log_entries(snapshot, &table.key.id, &pb)? {
                     mutation = crate::ddl_log::add(mutation, row)?;
@@ -171,8 +168,13 @@ impl TableLifecycle {
                     {
                         continue;
                     }
-                    index_pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
-                    index_pb.set_state_msg(message.clone().into_bytes());
+                    let hide = retention
+                        .table_drop(snapshot, &index_table.key.id)
+                        .hide_only();
+                    if hide && started_hiding(&index_pb) {
+                        continue;
+                    }
+                    retire(&mut index_pb, hide, &message);
                     mutation = mutation
                         .read(index_table)
                         .upsert_message(SysRowEntryType::TABLE, &index_table.key.id, &index_pb)
@@ -180,8 +182,15 @@ impl TableLifecycle {
                     deleted.push(index_table.key.id.to_vec());
                 }
                 let mut pb = pb;
-                pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
-                pb.set_state_msg(message.into_bytes());
+                let hide = retention.table_drop(snapshot, &table.key.id).hide_only();
+                if hide && started_hiding(&pb) {
+                    return Err(tagged_error(
+                        Code::OBJECT_NOT_FOUND,
+                        StatusCode::NotFound,
+                        "The object was deleted",
+                    ));
+                }
+                retire(&mut pb, hide, &message);
                 mutation = mutation
                     .read(&table)
                     .upsert_message(SysRowEntryType::TABLE, &table.key.id, &pb)
@@ -204,6 +213,13 @@ impl TableLifecycle {
                 Ok((mutation, deleted))
             })
             .await?;
+        if (self.options.simulate_crash_after_table_marked_deleting)() {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InternalError,
+                "Simulated crash after the table was marked deleting",
+            ));
+        }
         // `WaitForTransactionTableVersionUpdateToPropagate`: a status table's deletion is answered
         // once every live tserver has the new version, so no new transaction picks it.
         let snapshot = self.catalog.snapshot();
@@ -352,7 +368,8 @@ impl TableLifecycle {
             resp.set_done(true);
             return Ok(());
         }
-        if state != TableState::DELETING as i32 {
+        // A table being hidden counts as being deleted (`started_hiding`).
+        if state != TableState::DELETING as i32 && !table.table().is_some_and(|t| t.hidden) {
             return Err(error(
                 Code::INVALID_REQUEST,
                 StatusCode::IllegalState,
@@ -361,6 +378,26 @@ impl TableLifecycle {
         }
         resp.set_done(false);
         Ok(())
+    }
+}
+
+/// `started_hiding`: HIDING or HIDDEN.
+pub(crate) fn started_hiding(pb: &SysTablesEntryPB) -> bool {
+    pb.hide_state() != sys_tables_entry_pb::HideState::VISIBLE
+}
+
+/// `DeleteTableInMemory`'s state change: HIDING when something retains the table, else DELETING.
+pub(crate) fn retire(pb: &mut SysTablesEntryPB, hide: bool, message: &str) {
+    if hide {
+        pb.set_hide_state(sys_tables_entry_pb::HideState::HIDING);
+    } else {
+        // A table hidden by an earlier drop that nothing retains now is deleted; the deleter
+        // skips hidden tables.
+        if pb.hide_state() != sys_tables_entry_pb::HideState::VISIBLE {
+            pb.set_hide_state(sys_tables_entry_pb::HideState::VISIBLE);
+        }
+        pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
+        pb.set_state_msg(message.as_bytes().to_vec());
     }
 }
 
@@ -428,10 +465,11 @@ impl TableDeleter {
             .filter(|n| {
                 n.namespace().is_some_and(|h| {
                     h.database_type == YQLDatabase::YQL_DATABASE_PGSQL as i32
-                        && ((!upgrading && h.state == sys_namespace_entry_pb::State::DELETING as i32)
+                        && ((!upgrading
+                            && h.state == sys_namespace_entry_pb::State::DELETING as i32)
                             || n.parse::<SysNamespaceEntryPB>().is_ok_and(|pb| {
                                 pb.ysql_next_major_version_state()
-                                    == sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_DELETING
+                                    == YsqlNextMajorVersionState::NEXT_VER_DELETING
                             }))
                 })
             })
@@ -463,6 +501,144 @@ impl TableDeleter {
                 );
             }
         }
+        let hiding: Vec<Vec<u8>> = snapshot
+            .iter(SysRowEntryType::TABLE)
+            .filter(|t| {
+                t.table().is_some_and(|h| {
+                    h.hidden
+                        && h.state != TableState::DELETING as i32
+                        && h.state != TableState::DELETED as i32
+                }) && t
+                    .parse::<SysTablesEntryPB>()
+                    .is_ok_and(|pb| pb.hide_state() == sys_tables_entry_pb::HideState::HIDING)
+            })
+            .map(|t| t.key.id.to_vec())
+            .collect();
+        for table_id in hiding {
+            if let Err(status) = self.hide(&token, &table_id).await {
+                tracing::warn!(
+                    "Hiding table {} failed, will retry: {status}",
+                    String::from_utf8_lossy(&table_id)
+                );
+            }
+        }
+    }
+
+    /// A HIDING table: its tablets hidden in batches (`MarkTabletAsHidden`, `DeleteTablet` with
+    /// `hide_only`), then the table HIDDEN. A colocated table owns no tablet: the schedules that
+    /// retain it are recorded on its hosting tablets instead.
+    async fn hide(&self, token: &LeaderToken, table_id: &[u8]) -> Result<(), Status> {
+        let retention = self.lifecycle.retention();
+        loop {
+            let now = self.hybrid_time_now()?;
+            let (marked, _) = self
+                .lifecycle
+                .writer
+                .mutate(token, |snapshot| {
+                    let retainer = retention.table_drop(snapshot, table_id);
+                    let mut mutation = Mutation::new();
+                    let mut marked = Vec::new();
+                    for tablet in snapshot.tablets_of(table_id) {
+                        if marked.len() >= TABLETS_PER_WRITE {
+                            break;
+                        }
+                        let Some(hot) = tablet.tablet() else { continue };
+                        if hot.table_id != table_id || is_inactive_state(hot.state) || hot.hidden {
+                            continue;
+                        }
+                        let mut pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
+                        pb.set_hide_hybrid_time(now);
+                        if !retainer.schedules.is_empty() {
+                            pb.retained_by_snapshot_schedules = retainer.schedules.clone();
+                        }
+                        mutation = mutation.read(tablet).upsert(
+                            SysRowEntryType::TABLET,
+                            &tablet.key.id,
+                            pb.write_to_bytes().map_err(corrupt)?,
+                        );
+                        marked.push(tablet.clone());
+                    }
+                    Ok((mutation, marked))
+                })
+                .await?;
+            for tablet in &marked {
+                tracing::info!(
+                    "Hid tablet {} of table {}",
+                    String::from_utf8_lossy(&tablet.key.id),
+                    String::from_utf8_lossy(table_id)
+                );
+            }
+            self.queue_replica_deletes(token, &marked, true);
+            if marked.len() < TABLETS_PER_WRITE {
+                break;
+            }
+        }
+        let now = self.hybrid_time_now()?;
+        self.lifecycle
+            .writer
+            .mutate(token, |snapshot| {
+                let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
+                    return Ok((Mutation::new(), ()));
+                };
+                let mut pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+                if pb.hide_state() != sys_tables_entry_pb::HideState::HIDING {
+                    return Ok((Mutation::new(), ()));
+                }
+                let unhidden = snapshot.tablets_of(table_id).into_iter().any(|t| {
+                    t.tablet().is_some_and(|h| {
+                        h.table_id == table_id && !is_inactive_state(h.state) && !h.hidden
+                    })
+                });
+                if unhidden {
+                    return Ok((Mutation::new(), ()));
+                }
+                tracing::info!(
+                    "Marking table as HIDDEN: {}",
+                    String::from_utf8_lossy(table_id)
+                );
+                pb.set_hide_state(sys_tables_entry_pb::HideState::HIDDEN);
+                pb.set_hide_hybrid_time(now);
+                let mut mutation = Mutation::new().read(table).upsert(
+                    SysRowEntryType::TABLE,
+                    table_id,
+                    pb.write_to_bytes().map_err(corrupt)?,
+                );
+                // A colocated table: its hosting tablets name the schedules that retain it.
+                if crate::colocation::is_colocated_child(snapshot, table_id) {
+                    let schedules = retention.table_drop(snapshot, table_id).schedules;
+                    if !schedules.is_empty() {
+                        for tablet in snapshot.hosting_tablets_of(table_id) {
+                            let mut tpb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
+                            if tpb.retained_by_snapshot_schedules == schedules {
+                                continue;
+                            }
+                            tpb.retained_by_snapshot_schedules = schedules.clone();
+                            mutation = mutation.read(tablet).upsert(
+                                SysRowEntryType::TABLET,
+                                &tablet.key.id,
+                                tpb.write_to_bytes().map_err(corrupt)?,
+                            );
+                        }
+                    }
+                }
+                Ok((mutation, ()))
+            })
+            .await
+            .map(|_| ())
+    }
+
+    fn hybrid_time_now(&self) -> Result<u64, Status> {
+        let bytes = self.lifecycle.host.call(
+            "HybridTimeNow",
+            &yb_proto::pb::master_rust_peer::HybridTimeNowRequestPB::new()
+                .write_to_bytes()
+                .map_err(corrupt)?,
+        )?;
+        Ok(
+            yb_proto::pb::master_rust_peer::HybridTimeNowResponsePB::parse_from_bytes(&bytes)
+                .map_err(corrupt)?
+                .hybrid_time(),
+        )
     }
 
     /// Marks the table's remaining tablets DELETED, a batch per write, queueing their replicas'
@@ -555,6 +731,11 @@ impl TableDeleter {
     /// peers and any replica the locations know of. Reports from replicas missed here get the
     /// delete from report processing.
     fn queue_deletes(&self, token: &LeaderToken, tablets: &[Arc<Entity>]) {
+        self.queue_replica_deletes(token, tablets, false);
+    }
+
+    /// [`TableDeleter::queue_deletes`], or with `hide_only` the replicas keep their data.
+    fn queue_replica_deletes(&self, token: &LeaderToken, tablets: &[Arc<Entity>], hide_only: bool) {
         let reason = format!("Table deleted at {}", local_time_string());
         let ts_manager = &self.lifecycle.ts_manager;
         let locations = &ts_manager.locations;
@@ -590,7 +771,7 @@ impl TableDeleter {
                     tablet_id: tablet.key.id.to_vec(),
                     delete_type: TabletDataState::TABLET_DATA_DELETED,
                     cas_config_index: None,
-                    hide_only: false,
+                    hide_only,
                     abort_active_txns: true,
                     exclude_txn: exclude_txn.clone(),
                     reason: reason.clone(),

@@ -25,9 +25,11 @@ import "yb/consensus/metadata.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/version_info.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_client.proto";
 import "yb/master/master_ddl.proto";
+import "yb/master/master_encryption.proto";
 import "yb/master/master_heartbeat.proto";
 import "yb/master/master_types.proto";
 
@@ -487,11 +489,125 @@ message YsqlMajorUpgradeCatalogStepResponsePB {
 
 // The host's hybrid clock (MasterHost::HandleOnHost "HybridTimeNow").
 message HybridTimeNowRequestPB {
+  // Clock::MaxGlobalNow rather than Now: the time the snapshot coordinator takes snapshots at.
+  optional bool max_global = 1;
+}
+
+// ListSnapshots(prepare_for_backup): each YSQL table's PG schema name as of the snapshot, and for
+// an index whether it was valid then (CatalogManager::RepackSnapshotsForBackup).
+message GetBackupPgTableInfoRequestPB {
+  message Table {
+    optional bytes table_id = 1;
+    optional SysTablesEntryPB table = 2;
+  }
+  repeated Table tables = 1;
+  optional fixed64 read_time = 2;
+}
+
+// ChangeEncryptionInfo: the host's EncryptionManager rotates the universe key of `current`, the
+// cluster config's encryption info, and returns the new info for the leader to write.
+message ChangeEncryptionInfoOnHostRequestPB {
+  optional ChangeEncryptionInfoRequestPB request = 1;
+  optional EncryptionInfoPB current = 2;
+}
+
+message ChangeEncryptionInfoOnHostResponsePB {
+  optional MasterErrorPB error = 1;
+  optional EncryptionInfoPB updated = 2;
+}
+
+// ImportSnapshotMeta's schema check of a table found or made for a backup's table: Schema::Equals
+// with names compared for tables, column ids for indexes (CatalogManager::ImportTableEntry).
+message CompareImportSchemasRequestPB {
+  optional SchemaPB persisted = 1;
+  optional SchemaPB expected = 2;
+  optional bool is_index = 3;
+}
+
+message CompareImportSchemasResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool matches = 2;
+  optional bool column_ids_equal = 3;
+  optional string persisted_string = 4;
+  optional string expected_string = 5;
+}
+
+// SysCatalogTable::ReadPgYbTablegroupOid: 0 when the database has no such tablegroup.
+message PgYbTablegroupOidRequestPB {
+  optional uint32 database_oid = 1;
+  optional string name = 2;
+}
+
+message PgYbTablegroupOidResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 oid = 2;
+}
+
+// AdvanceOidCounters after a PITR: the highest OID in each OID space of a YSQL database, from its
+// PG catalog (ReadHighestPreservableOids) and the DocDB tables' OIDs, which include hidden tables.
+message HighestPreservableOidsRequestPB {
+  optional uint32 database_oid = 1;
+  repeated uint32 table_oids = 2;
+}
+
+message HighestPreservableOidsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 normal_space = 2;
+  optional uint32 secondary_space = 3;
+}
+
+message GetBackupPgTableInfoResponsePB {
+  message Table {
+    optional bytes pg_schema_name = 1;
+    // PG had not committed the table at read_time (DOCDB_TABLE_NOT_COMMITTED).
+    optional bool not_committed = 2;
+    // For an index: pg_index.indisvalid at read_time.
+    optional bool index_valid = 3;
+    // Any other failure.
+    optional AppStatusPB status = 4;
+  }
+  optional MasterErrorPB error = 1;
+  // One per requested table, in order.
+  repeated Table tables = 2;
 }
 
 message HybridTimeNowResponsePB {
   optional MasterErrorPB error = 1;
   optional fixed64 hybrid_time = 2;
+}
+
+// CatalogManager::GetClosestLiveTserver among the given live tservers.
+message ClosestLiveTserverRequestPB {
+  repeated TSInformationPB live_tservers = 1;
+}
+
+message ClosestLiveTserverResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bytes permanent_uuid = 2;
+}
+
+// SysCatalogTable::CountPgYbMigrationRows; without read_time, the latest.
+message CountPgYbMigrationRowsRequestPB {
+  optional uint32 database_oid = 1;
+  optional fixed64 read_time = 2;
+}
+
+message CountPgYbMigrationRowsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional int64 count = 2;
+}
+
+// The sys catalog rows of the given types as of read_time, read from the local checkpoint of a
+// snapshot (GetBackupEntriesAsOfTime).
+message ScanSnapshotSysCatalogRequestPB {
+  optional bytes snapshot_id = 1;
+  optional fixed64 read_time = 2;
+  repeated int32 entry_types = 3;
+}
+
+message ScanSnapshotSysCatalogResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated SysRowEntry rows = 2;
 }
 
 service MasterRustPeer {

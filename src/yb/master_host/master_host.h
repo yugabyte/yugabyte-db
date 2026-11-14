@@ -162,6 +162,12 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   void WriteSysCatalogRows(
       int64_t term, rust::Slice<const RowChangeFfi> rows,
       rust::Box<WriteCompletion> completion) const;
+  // Submits a snapshot operation (a serialized TabletSnapshotOpRequestPB: CREATE_ON_MASTER,
+  // DELETE_ON_MASTER, RESTORE_SYS_CATALOG) in `term`, as CatalogManager::Submit does for the C++
+  // coordinator; `completion` gets its result once it is applied locally.
+  void SubmitSnapshotOperation(
+      int64_t term, rust::Slice<const uint8_t> request,
+      rust::Box<WriteCompletion> completion) const;
   // The master's DDL lock manager (ObjectLockInfoManager's local_lock_manager_), for the Rust
   // leader's global object locks. Acquire completes once the locks are held or the timeout
   // passes; Reset replaces the manager with a new one holding a serialized DdlLockEntriesPB.
@@ -287,6 +293,7 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
     uint16_t pg_port;
     // In this master's zone and on one of its hosts.
     bool local;
+    std::string uuid;
   };
   Result<ClosestTserver> ClosestLiveTserver(
       const google::protobuf::RepeatedPtrField<master::TSInformationPB>& live_tservers) const;
@@ -403,6 +410,11 @@ class MasterInfoHandle {
   void WriteSysCatalogRows(
       int64_t term, rust::Slice<const RowChangeFfi> rows,
       rust::Box<WriteCompletion> completion) const;
+  void SubmitSnapshotOperation(
+      int64_t term, rust::Slice<const uint8_t> request,
+      rust::Box<WriteCompletion> completion) const {
+    host_.SubmitSnapshotOperation(term, request, std::move(completion));
+  }
   RaftLeaderStateFfi SysCatalogLeaderState() const;
   void AcquireLocalObjectLocks(
       rust::Slice<const uint8_t> request, uint64_t timeout_ms,

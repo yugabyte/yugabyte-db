@@ -195,6 +195,15 @@ pub(crate) mod bridge {
             rows: &[RowChangeFfi],
             completion: Box<WriteCompletion>,
         );
+        /// Submits a snapshot operation (a serialized `TabletSnapshotOpRequestPB`) in `term`;
+        /// completes once it is applied locally.
+        #[cxx_name = "SubmitSnapshotOperation"]
+        fn submit_snapshot_operation(
+            self: &MasterInfoHandle,
+            term: i64,
+            request: &[u8],
+            completion: Box<WriteCompletion>,
+        );
         /// The master's DDL lock manager (`TSLocalLockManager`): completes once the locks are
         /// held or the timeout passes.
         #[cxx_name = "AcquireLocalObjectLocks"]

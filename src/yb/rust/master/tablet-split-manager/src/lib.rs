@@ -37,7 +37,7 @@ use master_catalog_state::{
 use master_leadership::{LeaderToken, Leadership};
 use master_table_lifecycle::lookup::{is_hidden, is_system_table};
 use master_table_lifecycle::{
-    covering_schedules, generate_object_id, local_time_string, SchemaHost,
+    covering_schedules, generate_object_id, local_time_string, Retainer, Retention, SchemaHost,
 };
 use master_task_runtime::{Attempt, BoxFuture, Controller, RetryPolicy, TermScope, TsRpcExecutor};
 use master_ts_manager::placement::{blacklist_addresses, is_blacklisted};
@@ -103,6 +103,8 @@ pub struct TabletSplitManager {
     rpc: OnceLock<Arc<dyn RpcClient>>,
     /// The leader's tablespace placement, set once the table lifecycle exists.
     tablespaces: OnceLock<Arc<master_table_lifecycle::Tablespaces>>,
+    /// Which retired parents are hidden.
+    retention: OnceLock<Arc<dyn Retention>>,
     executor: Arc<TsRpcExecutor>,
     retry: RetryPolicy,
     options: SplitOptions,
@@ -196,6 +198,7 @@ impl TabletSplitManager {
             host,
             rpc: OnceLock::new(),
             tablespaces: OnceLock::new(),
+            retention: OnceLock::new(),
             executor,
             retry,
             options,
@@ -380,7 +383,8 @@ impl TabletSplitManager {
             let mut state = self.auto.lock().unwrap();
             if let Some((feature, until)) = state.disabled.feature(now) {
                 tracing::trace!(
-                    "Skipping splitting run because automatic tablet splitting is disabled for                      another {:?} by feature {feature}",
+                    "Skipping splitting run because automatic tablet splitting is disabled for \
+                     another {:?} by feature {feature}",
                     until - now
                 );
                 return;
@@ -491,6 +495,46 @@ impl TabletSplitManager {
             }
         }
         true
+    }
+
+    /// Retired split parents a snapshot needs are hidden; set once the coordinator exists.
+    pub fn set_retention(&self, retention: Arc<dyn Retention>) {
+        let _ = self.retention.set(retention);
+    }
+
+    fn retention(&self) -> Arc<dyn Retention> {
+        self.retention.get().cloned().unwrap_or_else(|| {
+            struct Schedules;
+            impl Retention for Schedules {
+                fn table_drop(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> Retainer {
+                    Retainer {
+                        schedules: covering_schedules(snapshot, SysRowEntryType::TABLE, table_id),
+                        active_snapshot: false,
+                    }
+                }
+                fn tablet_drop(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> Retainer {
+                    let table_id = snapshot
+                        .get(SysRowEntryType::TABLET, tablet_id)
+                        .and_then(|t| t.tablet().map(|t| t.table_id.clone()))
+                        .unwrap_or_default();
+                    self.table_drop(snapshot, &table_id)
+                }
+            }
+            Arc::new(Schedules)
+        })
+    }
+
+    /// The host's clock, for hide times.
+    fn hybrid_time_now(&self) -> Result<u64, Status> {
+        let req = yb_proto::pb::master_rust_peer::HybridTimeNowRequestPB::new();
+        let bytes = self
+            .host
+            .call("HybridTimeNow", &req.write_to_bytes().map_err(internal)?)?;
+        Ok(
+            yb_proto::pb::master_rust_peer::HybridTimeNowResponsePB::parse_from_bytes(&bytes)
+                .map_err(corrupt)?
+                .hybrid_time(),
+        )
     }
 
     /// The RPC client tservers are called with; set once, before any leader term.
@@ -799,7 +843,9 @@ impl TabletSplitManager {
     }
 
     /// `MasterAdmin.DeleteNotServingTablet`: the tserver retires a split parent once its children
-    /// serve. The parent becomes DELETED and its replicas are deleted.
+    /// serve. The parent becomes DELETED and its replicas are deleted, or, while a snapshot
+    /// schedule or snapshot needs it, it is hidden (`MarkTabletAsHidden`) and its replicas keep
+    /// their data.
     pub async fn delete_not_serving_tablet(
         &self,
         token: LeaderToken,
@@ -815,6 +861,8 @@ impl TabletSplitManager {
             "Not serving tablet deleted upon request at {}",
             local_time_string()
         );
+        let retention = self.retention();
+        let now = self.hybrid_time_now();
         let result = self
             .writer
             .mutate_with(
@@ -830,8 +878,20 @@ impl TabletSplitManager {
                         Err(e) => return Ok((Mutation::new(), Err(e))),
                     };
                     let mut pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
-                    pb.state = Some(EnumOrUnknown::new(TabletState::DELETED));
-                    pb.set_state_msg(reason.clone().into_bytes());
+                    let retainer = retention.tablet_drop(snapshot, &tablet_id);
+                    let hide = retainer.hide_only();
+                    if hide {
+                        let now = now.clone().map_err(|s| s.clone())?;
+                        if pb.hide_hybrid_time() == 0 {
+                            pb.set_hide_hybrid_time(now);
+                        }
+                        if !retainer.schedules.is_empty() {
+                            pb.retained_by_snapshot_schedules = retainer.schedules.clone();
+                        }
+                    } else {
+                        pb.state = Some(EnumOrUnknown::new(TabletState::DELETED));
+                        pb.set_state_msg(reason.clone().into_bytes());
+                    }
                     let mut mutation = Mutation::new().read(&tablet);
                     // The children must stay running while the parent goes.
                     for child in &pb.split_tablet_ids {
@@ -852,12 +912,12 @@ impl TabletSplitManager {
                             &tablet_id,
                             pb.write_to_bytes().map_err(internal)?,
                         ),
-                        Ok(peers),
+                        Ok((peers, hide)),
                     ))
                 },
             )
             .await;
-        let peers = match result {
+        let (peers, hide_only) = match result {
             Ok((Ok(peers), _)) => peers,
             Ok((Err(e), _)) => return Err(e),
             Err(status) => return Err(error(Code::UNKNOWN_ERROR, status.code, status.message)),
@@ -875,7 +935,7 @@ impl TabletSplitManager {
                 tablet_id: tablet_id.clone(),
                 delete_type: TabletDataState::TABLET_DATA_DELETED,
                 cas_config_index: None,
-                hide_only: false,
+                hide_only,
                 abort_active_txns: false,
                 exclude_txn: None,
                 reason: reason.clone(),
@@ -1086,14 +1146,6 @@ pub(crate) fn validate_table(
             ),
         ));
     }
-    // A covered table's parent would be hidden, not deleted: W10.
-    if !covering_schedules(snapshot, SysRowEntryType::TABLE, &table.key.id).is_empty() {
-        return Err(not_supported(format!(
-            "Splitting a table a snapshot schedule covers is not supported on a Rust leader yet \
-             (W10): {}",
-            name()
-        )));
-    }
     // A split must update the streams' tablet mappings (`ProcessSplitTabletResult`), which a
     // Rust leader does not do yet.
     if streamed(snapshot, &table.key.id) {
@@ -1244,20 +1296,8 @@ fn check_can_delete(
             ),
         ));
     }
-    if snapshot
-        .get(SysRowEntryType::TABLE, &hot.table_id)
-        .is_some_and(|t| {
-            !covering_schedules(snapshot, SysRowEntryType::TABLE, &t.key.id).is_empty()
-        })
-    {
-        return Err(error(
-            Code::UNKNOWN_ERROR,
-            StatusCode::NotSupported,
-            "Hiding a split parent of a table a snapshot schedule covers is not supported on a \
-             Rust leader yet (W10)",
-        ));
-    }
-    // C++ retains such a parent until the streams have read it (`GetDeleteRetainerInfoForTabletDrop`).
+    // C++ retains such a parent until the streams have read it
+    // (`GetDeleteRetainerInfoForTabletDrop`).
     // A Rust leader starts no split of a streamed table, but finishes one a C++ leader registered.
     if outbound_streamed(snapshot, &hot.table_id) {
         return Err(error(

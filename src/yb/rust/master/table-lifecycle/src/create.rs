@@ -327,6 +327,7 @@ impl TableLifecycle {
                     &prepared.partitions,
                     use_parent_table_id,
                     colocated_parent,
+                    req.is_clone(),
                 )?;
                 if req.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
                     // `IncrementTransactionTablesVersion`, in the same write: tservers learn of
@@ -613,6 +614,7 @@ impl TableLifecycle {
 }
 
 /// The PREPARING tablet rows of a new table, one per partition, with ids sorted as C++ sorts them.
+/// A clone's tablets start CREATING: the source tablets' replicas create them (`CloneTablet`).
 pub(crate) fn add_new_tablets(
     snapshot: &CatalogSnapshot,
     mut mutation: Mutation,
@@ -620,6 +622,7 @@ pub(crate) fn add_new_tablets(
     partitions: &[yb_proto::pb::common::PartitionPB],
     use_parent_table_id: bool,
     colocated: bool,
+    clone: bool,
 ) -> Result<Mutation, MasterErrorPB> {
     let mut tablet_ids: Vec<Vec<u8>> = Vec::new();
     while tablet_ids.len() < partitions.len() {
@@ -633,7 +636,14 @@ pub(crate) fn add_new_tablets(
         let mut tablet = SysTabletsEntryPB::new();
         tablet.set_table_id(table_id.to_vec());
         tablet.partition = MessageField::some(partition.clone());
-        tablet.state = Some(EnumOrUnknown::new(sys_tablets_entry_pb::State::PREPARING));
+        tablet.state = Some(EnumOrUnknown::new(if clone {
+            sys_tablets_entry_pb::State::CREATING
+        } else {
+            sys_tablets_entry_pb::State::PREPARING
+        }));
+        if clone {
+            tablet.set_created_by_clone(true);
+        }
         if colocated {
             tablet.set_colocated(true);
         }

@@ -24,6 +24,7 @@ use master_leadership::LeaderToken;
 use protobuf::{Enum, EnumOrUnknown};
 use tokio::time::Instant;
 use yb_host_api::StatusCode;
+use yb_proto::pb::catalog_entity_info::sys_namespace_entry_pb::YsqlNextMajorVersionState;
 use yb_proto::pb::catalog_entity_info::YsqlDdlTxnVerifierStatePB;
 use yb_proto::pb::catalog_entity_info::{
     sys_namespace_entry_pb, sys_tables_entry_pb, SysNamespaceEntryPB, SysTablesEntryPB,
@@ -503,6 +504,7 @@ impl TableLifecycle {
                         &prepared.partitions,
                         use_parent_table_id,
                         is_parent,
+                        false,
                     )?;
                 }
                 Ok((mutation, Ok(())))
@@ -612,9 +614,14 @@ impl TableLifecycle {
             if pb.state() == TableState::DELETING || pb.state() == TableState::DELETED {
                 return Ok((Mutation::new(), ()));
             }
+            let retention = self.retention();
+            let hide = retention.table_drop(snapshot, table_id).hide_only();
+            if hide && crate::drop::started_hiding(&pb) {
+                return Ok((Mutation::new(), ()));
+            }
             let ddl_log = self.drop_ddl_log_entries(snapshot, table_id, &pb)?;
-            pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
-            pb.set_state_msg(format!("Started deleting at {}", local_time_string()).into_bytes());
+            let message = format!("Started deleting at {}", local_time_string());
+            crate::drop::retire(&mut pb, hide, &message);
             pb.ysql_ddl_txn_verifier_state.clear();
             pb.transaction = Default::default();
             let mut mutation = Mutation::new()
@@ -635,8 +642,11 @@ impl TableLifecycle {
                 if matches!(index_pb.state(), TableState::DELETING | TableState::DELETED) {
                     continue;
                 }
-                index_pb.state = Some(EnumOrUnknown::new(TableState::DELETING));
-                index_pb.set_state_msg(pb.state_msg().to_vec());
+                let hide = retention.table_drop(snapshot, index.table_id()).hide_only();
+                if hide && crate::drop::started_hiding(&index_pb) {
+                    continue;
+                }
+                crate::drop::retire(&mut index_pb, hide, &message);
                 index_pb.ysql_ddl_txn_verifier_state.clear();
                 index_pb.transaction = Default::default();
                 mutation = mutation
@@ -1201,12 +1211,12 @@ fn pg_oid(id: &[u8], offset: usize) -> Option<u32> {
 }
 
 /// `GetPgsqlDatabaseOid` of a namespace or table id.
-pub(crate) fn pg_database_oid(id: &[u8]) -> Option<u32> {
+pub fn pg_database_oid(id: &[u8]) -> Option<u32> {
     pg_oid(id, 0)
 }
 
 /// `GetPgsqlTableOid`.
-pub(crate) fn pg_table_oid(id: &[u8]) -> Option<u32> {
+pub fn pg_table_oid(id: &[u8]) -> Option<u32> {
     pg_oid(id, 24)
 }
 
@@ -1955,7 +1965,7 @@ impl TableLifecycle {
                     }
                     DbTables::NextVersionDrop
                         if ns.ysql_next_major_version_state()
-                            != sys_namespace_entry_pb::YsqlNextMajorVersionState::NEXT_VER_DELETING =>
+                            != YsqlNextMajorVersionState::NEXT_VER_DELETING =>
                     {
                         return Ok((Mutation::new(), 0));
                     }

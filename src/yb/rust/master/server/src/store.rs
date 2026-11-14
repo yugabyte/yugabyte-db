@@ -341,7 +341,28 @@ impl LeaderStateSource for HostLeaderState {
 pub(crate) struct HostHeartbeatParts(
     pub(crate) UniquePtr<MasterInfoHandle>,
     pub(crate) Arc<HostGate>,
+    /// The term seen last and the hybrid time it was first seen at (`MasterSnapshotCoordinator::
+    /// Start`'s restorations update time).
+    pub(crate) std::sync::Mutex<(i64, u64)>,
 );
+
+impl HostHeartbeatParts {
+    /// `Clock::Now`; the caller holds the gate.
+    fn hybrid_time_now(&self) -> Result<u64, Status> {
+        let bytes = yb_proto::pb::master_rust_peer::HybridTimeNowRequestPB::new()
+            .write_to_bytes()
+            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+        let resp = self
+            .0
+            .handle_on_host("HybridTimeNow", &bytes)
+            .map_err(host_error)?;
+        Ok(
+            yb_proto::pb::master_rust_peer::HybridTimeNowResponsePB::parse_from_bytes(&resp)
+                .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?
+                .hybrid_time(),
+        )
+    }
+}
 
 impl HeartbeatContributor for HostHeartbeatParts {
     fn contribute(
@@ -378,6 +399,30 @@ impl HeartbeatContributor for HostHeartbeatParts {
             resp.universe_key_registry = parts.universe_key_registry;
         }
         resp.snapshots_info = parts.snapshots_info;
+        // Tservers re-check their tablets' restorations only when this time changes. The C++
+        // coordinator bumps it as leader (`Start`, a restoration's start and completion); the
+        // host's never leads, so the term's start and the latest completion stand in for it. A
+        // restoration that completes reaches the tservers even without `RESTORE_FINISHED`, and
+        // a replica that applied its restore after the last change is checked again by the next
+        // leader.
+        if let Some(info) = resp.snapshots_info.as_mut() {
+            let term_start = {
+                let mut seen = self.2.lock().unwrap();
+                if seen.0 != ctx.term {
+                    *seen = (ctx.term, self.hybrid_time_now()?);
+                }
+                seen.1
+            };
+            let latest = info
+                .restorations
+                .iter()
+                .map(|r| r.complete_time_ht())
+                .max()
+                .unwrap_or_default()
+                .max(term_start);
+            // The host's coordinator never sets it (`HybridTime::kInvalid`).
+            info.set_last_restorations_update_ht(latest);
+        }
         if parts.auto_flags_config.is_some() {
             resp.auto_flags_config = parts.auto_flags_config;
         }
@@ -398,6 +443,94 @@ pub(crate) struct HostSchema(
 );
 
 impl SchemaHost for HostSchema {
+    fn call(&self, method: &'static str, request: &[u8]) -> Result<Vec<u8>, Status> {
+        let _open = self.1.enter().ok_or_else(shut_down)?;
+        self.0.handle_on_host(method, request).map_err(host_error)
+    }
+}
+
+/// The host's half of the snapshot coordinator: snapshot operations, reads at a time, the clock.
+pub(crate) struct HostSnapshots(
+    pub(crate) UniquePtr<MasterInfoHandle>,
+    pub(crate) Arc<HostGate>,
+);
+
+impl HostSnapshots {
+    /// `Clock::Now`, or with `max_global`, `Clock::MaxGlobalNow`.
+    fn hybrid_time_now(&self, max_global: bool) -> Result<u64, Status> {
+        let _open = self.1.enter().ok_or_else(shut_down)?;
+        let mut req = yb_proto::pb::master_rust_peer::HybridTimeNowRequestPB::new();
+        req.set_max_global(max_global);
+        let bytes = req
+            .write_to_bytes()
+            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+        let resp = self
+            .0
+            .handle_on_host("HybridTimeNow", &bytes)
+            .map_err(host_error)?;
+        let resp = yb_proto::pb::master_rust_peer::HybridTimeNowResponsePB::parse_from_bytes(&resp)
+            .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
+        Ok(resp.hybrid_time())
+    }
+}
+
+impl master_snapshot_coordinator::SnapshotHost for HostSnapshots {
+    fn submit(
+        &self,
+        term: i64,
+        request: yb_proto::pb::backup::TabletSnapshotOpRequestPB,
+    ) -> BoxFuture<'static, Result<(), Status>> {
+        let Some(_open) = self.1.enter() else {
+            return Box::pin(async { Err(shut_down()) });
+        };
+        let bytes = match request.write_to_bytes() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                let status = Status::new(StatusCode::InternalError, e.to_string());
+                return Box::pin(async move { Err(status) });
+            }
+        };
+        let (sender, receiver) = oneshot::channel();
+        self.0
+            .submit_snapshot_operation(term, &bytes, Box::new(WriteCompletion(sender)));
+        Box::pin(async move {
+            receiver.await.unwrap_or_else(|_| {
+                Err(Status::new(
+                    StatusCode::Aborted,
+                    "snapshot operation dropped without completing",
+                ))
+            })
+        })
+    }
+
+    fn max_global_now(&self) -> Result<u64, Status> {
+        self.hybrid_time_now(true)
+    }
+
+    fn now(&self) -> Result<u64, Status> {
+        self.hybrid_time_now(false)
+    }
+
+    fn scan_at(
+        &self,
+        entry_type: SysRowEntryType,
+        read_time: u64,
+        timeout: Duration,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Status> {
+        let _open = self.1.enter().ok_or_else(shut_down)?;
+        // `WaitForSafeTime`: the rows at `read_time` are final once the safe time passes it.
+        self.0
+            .sys_catalog_safe_time(read_time, timeout.as_millis() as i64)
+            .map_err(host_error)?;
+        Ok(self
+            .0
+            .scan_sys_catalog(entry_type as i32, read_time)
+            .map_err(host_error)?
+            .into_iter()
+            .map(|row| (row.id, row.data))
+            .collect())
+    }
+
     fn call(&self, method: &'static str, request: &[u8]) -> Result<Vec<u8>, Status> {
         let _open = self.1.enter().ok_or_else(shut_down)?;
         self.0.handle_on_host(method, request).map_err(host_error)

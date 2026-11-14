@@ -63,6 +63,18 @@ use yb_proto::pb::master_admin::{
     IsFlushTablesDoneResponsePB, WaitForYsqlBackendsCatalogVersionRequestPB,
     WaitForYsqlBackendsCatalogVersionResponsePB,
 };
+use yb_proto::pb::master_backup::{
+    AbortSnapshotRestoreRequestPB, AbortSnapshotRestoreResponsePB, CloneNamespaceRequestPB,
+    CloneNamespaceResponsePB, CreateSnapshotRequestPB, CreateSnapshotResponsePB,
+    CreateSnapshotScheduleRequestPB, CreateSnapshotScheduleResponsePB, DeleteSnapshotRequestPB,
+    DeleteSnapshotResponsePB, DeleteSnapshotScheduleRequestPB, DeleteSnapshotScheduleResponsePB,
+    EditSnapshotScheduleRequestPB, EditSnapshotScheduleResponsePB, ImportSnapshotMetaRequestPB,
+    ImportSnapshotMetaResponsePB, ListClonesRequestPB, ListClonesResponsePB,
+    ListSnapshotRestorationsRequestPB, ListSnapshotRestorationsResponsePB,
+    ListSnapshotSchedulesRequestPB, ListSnapshotSchedulesResponsePB, ListSnapshotsRequestPB,
+    ListSnapshotsResponsePB, RestoreSnapshotRequestPB, RestoreSnapshotResponsePB,
+    RestoreSnapshotScheduleRequestPB, RestoreSnapshotScheduleResponsePB,
+};
 use yb_proto::pb::master_client::{
     GetStatefulServiceLocationRequestPB, GetStatefulServiceLocationResponsePB,
     GetTableLocationsRequestPB, GetTableLocationsResponsePB, GetTabletLocationsRequestPB,
@@ -116,12 +128,16 @@ use yb_proto::pb::master_ddl::{
     TruncateTableResponsePB, WaitForLockersMultipleGlobalRequestPB,
     WaitForLockersMultipleGlobalResponsePB,
 };
+use yb_proto::pb::master_encryption::{
+    ChangeEncryptionInfoRequestPB, ChangeEncryptionInfoResponsePB,
+};
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_replication::{
     IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB,
 };
 use yb_proto::pb::master_rust_peer::{
     auto_flags_change_request_pb, dump_catalog_response_pb, AutoFlagsChangeRequestPB,
+    ChangeEncryptionInfoOnHostRequestPB, ChangeEncryptionInfoOnHostResponsePB,
     DumpCatalogResponsePB, PushLocationsRequestPB, RefreshPgCatalogVersionCacheRequestPB,
 };
 use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB, NamespaceIdentifierPB};
@@ -679,6 +695,73 @@ impl Shared {
         }
     }
 
+    /// `ChangeEncryptionInfo`: the host's `EncryptionManager` rotates the key in the cluster
+    /// config's encryption info, which is written back with the next version; every tserver then
+    /// gets the key registry with its next heartbeat.
+    async fn change_encryption_info(
+        &self,
+        leader: &LeaderServices,
+        token: &master_leadership::LeaderToken,
+        deadline: tokio::time::Instant,
+        req: ChangeEncryptionInfoRequestPB,
+    ) -> Result<(), Status> {
+        // The host's EncryptionManager rotates keys, so it runs once, outside the write closure
+        // the writer may run again; the write then requires the encryption info it started from.
+        let current = LeaderServices::cluster_config(&leader.catalog.snapshot())?.encryption_info;
+        let mut host_req = ChangeEncryptionInfoOnHostRequestPB::new();
+        host_req.request = Some(req).into();
+        host_req.current = current.clone();
+        let bytes = host_req
+            .write_to_bytes()
+            .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))?;
+        let info = self.info.clone();
+        let out = tokio::task::spawn_blocking(move || {
+            info.handle_on_host("ChangeEncryptionInfo", &bytes)
+        })
+        .await
+        .map_err(|e| Status::new(StatusCode::InternalError, e.to_string()))??;
+        let host_resp = ChangeEncryptionInfoOnHostResponsePB::parse_from_bytes(&out)
+            .map_err(|e| Status::new(StatusCode::Corruption, e.to_string()))?;
+        if let Some(e) = host_resp.error.as_ref() {
+            return Err(status_of(e));
+        }
+        let updated = host_resp.updated;
+        leader
+            .writer
+            .mutate_with(
+                token,
+                master_catalog_state::WriteOptions {
+                    deadline: Some(deadline),
+                    ..Default::default()
+                },
+                |snapshot| {
+                    let config_row = snapshot.cluster_config().ok_or_else(|| {
+                        Status::new(StatusCode::IllegalState, "No cluster config")
+                    })?;
+                    let mut config = LeaderServices::cluster_config(snapshot)?;
+                    if config.encryption_info != current {
+                        return Err(Status::new(
+                            StatusCode::IllegalState,
+                            "The encryption info changed concurrently",
+                        ));
+                    }
+                    config.encryption_info = updated.clone();
+                    config.set_version(config.version() + 1);
+                    let mutation = master_catalog_state::Mutation::new()
+                        .read(config_row)
+                        .upsert_message(
+                            yb_proto::pb::master_types::SysRowEntryType::CLUSTER_CONFIG,
+                            &config_row.key.id,
+                            &config,
+                        )?;
+                    Ok((mutation, ()))
+                },
+            )
+            .await?;
+        leader.ts_manager.resend_key_registry();
+        Ok(())
+    }
+
     /// A leader method on a master with leader services.
     async fn leader_call(self: Arc<Self>, call: Box<dyn InboundCall>, method: &'static MethodDesc) {
         // It may have waited for a runtime worker.
@@ -1047,6 +1130,126 @@ impl Shared {
                 GetTransactionStatusTabletsResponsePB,
                 |req, resp| leader.get_transaction_status_tablets(&snapshot, &req, &mut resp)
             ),
+            "ChangeEncryptionInfo" => serve!(
+                ChangeEncryptionInfoRequestPB,
+                ChangeEncryptionInfoResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    self.change_encryption_info(&leader, &token, deadline, req)
+                        .await
+                }
+            ),
+            "CreateSnapshot" => serve_ddl!(
+                CreateSnapshotRequestPB,
+                CreateSnapshotResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .create_snapshot(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "ListSnapshots" => serve_ddl!(
+                ListSnapshotsRequestPB,
+                ListSnapshotsResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .list_snapshots(&token, &req, &mut resp)
+                    .await
+            ),
+            "DeleteSnapshot" => serve_ddl!(
+                DeleteSnapshotRequestPB,
+                DeleteSnapshotResponsePB,
+                |req, _resp| leader
+                    .snapshots
+                    .delete_snapshot(&token, deadline, &req)
+                    .await
+            ),
+            "RestoreSnapshot" => serve_ddl!(
+                RestoreSnapshotRequestPB,
+                RestoreSnapshotResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .restore_snapshot(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            // Its response reports failures in `status`, not `error`.
+            "ListSnapshotRestorations" => {
+                match ListSnapshotRestorationsRequestPB::parse_from_bytes(call.request()) {
+                    Err(e) => {
+                        call.respond_error(Status::new(StatusCode::InvalidArgument, e.to_string()))
+                    }
+                    Ok(req) => {
+                        let mut resp = ListSnapshotRestorationsResponsePB::new();
+                        if let Err(error) =
+                            leader.snapshots.list_restorations(&token, &req, &mut resp)
+                        {
+                            resp.status = error.status;
+                        }
+                        respond(call, &resp);
+                    }
+                }
+            }
+            "AbortSnapshotRestore" => serve_ddl!(
+                AbortSnapshotRestoreRequestPB,
+                AbortSnapshotRestoreResponsePB,
+                |req, _resp| leader.snapshots.abort_restore(&token, deadline, &req).await
+            ),
+            "ImportSnapshotMeta" => serve_ddl!(
+                ImportSnapshotMetaRequestPB,
+                ImportSnapshotMetaResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .import_snapshot_meta(tables.clone(), &token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "CloneNamespace" => serve_ddl!(
+                CloneNamespaceRequestPB,
+                CloneNamespaceResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .clone_namespace(tables.clone(), &token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "ListClones" => serve_ddl!(ListClonesRequestPB, ListClonesResponsePB, |req, resp| {
+                leader.snapshots.list_clones(&req, &mut resp);
+                Ok(())
+            }),
+            "CreateSnapshotSchedule" => serve_ddl!(
+                CreateSnapshotScheduleRequestPB,
+                CreateSnapshotScheduleResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .create_schedule(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "ListSnapshotSchedules" => serve_ddl!(
+                ListSnapshotSchedulesRequestPB,
+                ListSnapshotSchedulesResponsePB,
+                |req, resp| leader.snapshots.list_schedules(&token, &req, &mut resp)
+            ),
+            "DeleteSnapshotSchedule" => serve_ddl!(
+                DeleteSnapshotScheduleRequestPB,
+                DeleteSnapshotScheduleResponsePB,
+                |req, _resp| leader
+                    .snapshots
+                    .delete_schedule(&token, deadline, &req)
+                    .await
+            ),
+            "EditSnapshotSchedule" => serve_ddl!(
+                EditSnapshotScheduleRequestPB,
+                EditSnapshotScheduleResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .edit_schedule(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "RestoreSnapshotSchedule" => serve_ddl!(
+                RestoreSnapshotScheduleRequestPB,
+                RestoreSnapshotScheduleResponsePB,
+                |req, resp| leader
+                    .snapshots
+                    .restore_schedule(&token, deadline, &req, &mut resp)
+                    .await
+            ),
             "SplitTablet" => {
                 serve_ddl!(SplitTabletRequestPB, SplitTabletResponsePB, |req, resp| {
                     let _ = &mut resp;
@@ -1379,8 +1582,8 @@ impl Shared {
                         .report_ysql_ddl_txn_status(&token, deadline, &req)
                         .await;
                     if reported.is_ok() {
-                        // Best effort, as C++: the DDL's new catalog version reaches tservers by the
-                        // next heartbeat rather than after the next periodic refresh.
+                        // Best effort, as C++: the DDL's new catalog version reaches tservers by
+                        // the next heartbeat rather than after the next periodic refresh.
                         let mut refresh = RefreshPgCatalogVersionCacheRequestPB::new();
                         refresh.set_term(token.term());
                         if let Ok(bytes) = refresh.write_to_bytes() {

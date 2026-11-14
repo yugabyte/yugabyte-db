@@ -66,13 +66,14 @@ running and, if asked, no split parent is left undeleted. It takes the manager's
 holds while picking splits, so a pass that began before `DisableTabletSplitting` has started its
 splits by the time it answers (`WaitUntilIdle`).
 
+A retired parent of a table a snapshot schedule covers, or that a snapshot holds, is hidden rather
+than deleted ([snapshot-coordinator.md](snapshot-coordinator.md#hidden-objects)).
+
 ## Where it differs from C++
 
 - `CheckIfCanDeleteSingleTablet` accepts a tablet over the whole key space with nothing covering
   it, since its empty start and end compare equal; the Rust check requires a running tablet over
   the range.
-- A table a snapshot schedule covers is not split, since its parent would be hidden rather than
-  deleted (W10).
 - A table in an xCluster or CDC stream is not split: the streams' tablet mappings would need
   updating (`ProcessSplitTabletResult`), which a Rust leader does not do.
 - C++ evaluates a parent with registered children as a fresh candidate, and a later
