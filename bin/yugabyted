@@ -11174,6 +11174,9 @@ class YBTableServerCLIProxy(object):
             if 'node_to_node_encryption_use_client_certificates=true' in flags_list:
                 YBTableServerCLIProxy.cmd_args.append('--client_node_name={}'.format(hostname))
 
+            if 'verify_server_endpoint=false' in flags_list:
+                YBTableServerCLIProxy.cmd_args.append('--verify_server_endpoint=false')
+
     @staticmethod
     def update_gflag_in_tserver(tserver_ip, tserver_port, gflag, gflag_value, byForce=False):
         cmd = YBTableServerCLIProxy.cmd_args + \
@@ -11459,6 +11462,9 @@ class YBAdminProxy(object):
 
             if 'node_to_node_encryption_use_client_certificates=true' in flags_list:
                 YBAdminProxy.cmd_args.append('--client_node_name={}'.format(hostname))
+
+            if 'verify_server_endpoint=false' in flags_list:
+                YBAdminProxy.cmd_args.append('--verify_server_endpoint=false')
 
     @staticmethod
     def add_master(master_addrs, new_master_ip, new_master_rpc_port, timeout=30):
