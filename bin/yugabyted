@@ -12069,16 +12069,17 @@ class YcqlProxy(object):
             raise RetryableError
 
     # Check keyspace exists
-    # Note that this will return false if ycqlsh can't connect, even if keyspace exists.
     def keyspace_exists(self, keyspace):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
-            "SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name='{}';".
-            format(keyspace)]
-        output = run_process_checked(cmd=cmd)
-        if keyspace in output:
-            return True
-
-        return False
+            "USE \"{}\";".format(keyspace)]
+        _, err, retcode = run_process(cmd=cmd, log_cmd=True)
+        # ycqlsh exits 2 when a statement fails, as USE does on a keyspace that does not exist
+        # (https://github.com/yugabyte/cqlsh/blob/master/bin/ycqlsh.py, main()).
+        if retcode == 2:
+            return False
+        if retcode:
+            Output.log_error_and_exit("Error: {}".format(err))
+        return True
 
     # Create specified keyspace
     def create_keyspace(self, keyspace):
