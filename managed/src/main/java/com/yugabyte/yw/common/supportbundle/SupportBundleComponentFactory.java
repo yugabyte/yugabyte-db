@@ -2,6 +2,12 @@ package com.yugabyte.yw.common.supportbundle;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.supportbundlev2.BashComponent;
+import com.yugabyte.yw.common.supportbundlev2.FilesComponent;
+import com.yugabyte.yw.common.supportbundlev2.YBAComponent;
+import com.yugabyte.yw.common.supportbundlev2.YCQLComponent;
+import com.yugabyte.yw.common.supportbundlev2.YSQLComponent;
+import com.yugabyte.yw.common.supportbundlev2.YbAdminComponent;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 
 @Singleton

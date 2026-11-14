@@ -1576,6 +1576,7 @@ typedef struct IndexOptInfo
 	int32		yb_cached_ybctid_size;
 	char	   *ybIndexName pg_node_attr(read_write_ignore);
 	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
+	List	   *yb_options;
 } IndexOptInfo;
 
 /*

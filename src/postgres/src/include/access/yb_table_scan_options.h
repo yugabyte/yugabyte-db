@@ -1,7 +1,8 @@
 /*-------------------------------------------------------------------------
  *
  * yb_table_scan_options.h
- *	  YB-specific scan parameters for table_beginscan_*_yb().
+ *	  YB-specific scan parameters for the table_beginscan_yb()
+ *	  wrappers.
  *
  *	  Defines YbTableScanOptions, the struct that carries YB-
  *	  specific parameters (pushdown expressions, row marks,
@@ -41,8 +42,8 @@ struct YbPushdownExprs;
 struct YbcPgExecParameters;
 
 /*
- * YB-specific scan options for table_beginscan_*_yb().  These
- * bundle the parameters that YugabyteDB needs on top of the
+ * YB-specific scan options for the table_beginscan_yb() wrappers.
+ * These bundle the parameters that YugabyteDB needs on top of the
  * standard scan_begin args (pushdown expressions, aggregate refs,
  * exec parameters, etc.).
  */

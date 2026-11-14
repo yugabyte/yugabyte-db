@@ -28,4 +28,4 @@ gh api -X PATCH /repos/<repo>/pulls/<num> -f title='<new title>'
 ```
 
 Allowed via the same scoped pulls PATCH rule the body update uses.
-The title must still match `[<issue>] <Component>: <Title>`.
+The title must still match `[<issue>,...] <Component>: <Title>`.

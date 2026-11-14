@@ -244,6 +244,38 @@ TYPED_TEST(TestTablet, TestFlushedOpId) {
   ASSERT_EQ(id.index, start_index + 2*kCount);
 }
 
+// Cold-read experiments need the table readers closed as well as the block cache cleared: a reader
+// keeps the file's footer and filter index in memory for as long as it stays open.
+TYPED_TEST(TestTablet, EvictTableReaders) {
+  auto tablet = this->tablet();
+  this->InsertTestRows(0, 100, 0);
+  ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  this->InsertTestRows(100, 100, 0);
+  ASSERT_OK(tablet->Flush(FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+  this->VerifyTestRows(0, 200);
+
+  // Open readers across the DBs EvictTableReaders covers; each table cache charges one unit per
+  // open reader.
+  auto open_readers = [&tablet]() {
+    size_t total = 0;
+    for (auto* db : {tablet->regular_db(), tablet->intents_db()}) {
+      if (db) {
+        total += down_cast<rocksdb::DBImpl*>(db)->TEST_table_cache()->GetUsage();
+      }
+    }
+    return total;
+  };
+  const auto readers_before = open_readers();
+  ASSERT_GT(readers_before, 0);
+
+  ASSERT_EQ(ASSERT_RESULT(tablet->EvictTableReaders()), readers_before);
+  ASSERT_EQ(open_readers(), 0);
+
+  // Files are reopened on demand and the data is intact.
+  this->VerifyTestRows(0, 200);
+  ASSERT_EQ(open_readers(), readers_before);
+}
+
 TYPED_TEST(TestTablet, TestDocKeyMetrics) {
   auto metrics = this->harness()->tablet()->metrics();
 

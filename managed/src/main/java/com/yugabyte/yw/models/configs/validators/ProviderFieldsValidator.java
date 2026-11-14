@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
@@ -121,25 +122,52 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
   }
 
   public boolean validateNTPServers(List<String> ntpServers) {
+    for (int i = 0; i < Math.min(getNtpServerValidateCount(), ntpServers.size()); i++) {
+      validateNTPServer(ntpServers.get(i));
+    }
+    return true;
+  }
+
+  /**
+   * Validates the first {@code yb.provider.validate_ntp_server_count} NTP servers and keys a
+   * failure to that server's entry in {@code processedJson}.
+   */
+  public void validateNtpServers(
+      Provider provider, JsonNode processedJson, SetMultimap<String, String> validationErrorsMap) {
+    if (provider.getDetails() == null
+        || CollectionUtils.isEmpty(provider.getDetails().ntpServers)) {
+      return;
+    }
+    List<String> ntpServers = provider.getDetails().ntpServers;
+    JsonNode ntpArrayJson = processedJson.get("details").get("ntpServers");
+    for (int i = 0; i < Math.min(getNtpServerValidateCount(), ntpServers.size()); i++) {
+      try {
+        validateNTPServer(ntpServers.get(i));
+      } catch (PlatformServiceException e) {
+        validationErrorsMap.put(ntpArrayJson.get(i).get("jsonPath").asText(), e.getMessage());
+      }
+    }
+  }
+
+  private int getNtpServerValidateCount() {
+    return runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
+  }
+
+  private void validateNTPServer(String ntpServer) {
+    if (StringUtils.isEmpty(ntpServer)) {
+      return;
+    }
     try {
-      int maxNTPServerValidateCount =
-          this.runtimeConfGetter.getStaticConf().getInt("yb.provider.validate_ntp_server_count");
-      for (int i = 0; i < Math.min(maxNTPServerValidateCount, ntpServers.size()); i++) {
-        String ntpServer = ntpServers.get(i);
-        if (!StringUtils.isEmpty(ntpServer)) {
-          Process process = Runtime.getRuntime().exec("nc -zvu " + ntpServer + " 123");
-          process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
-          if (process.exitValue() != 0) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);
-          }
-        }
+      Process process = Runtime.getRuntime().exec("nc -zvu " + ntpServer + " 123");
+      process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+      if (process.exitValue() != 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);
       }
     } catch (Exception e) {
       log.error("Error: ", e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    return true;
   }
 
   public void validatePrivateKey(List<AccessKey> allAccessKeys) {
@@ -157,13 +185,14 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
       ArrayNode accessKeysJson = (ArrayNode) processedJson.get("allAccessKeys");
       int keyIndex = 0;
       for (AccessKey accessKey : provider.getAllAccessKeys()) {
+        // KeyInfo omits null fields from JSON, so a key sent without content has no leaf node.
+        JsonNode contentJson =
+            accessKeysJson.get(keyIndex).path("keyInfo").path("sshPrivateKeyContent");
         String keyJsonPath =
-            accessKeysJson
-                .get(keyIndex++)
-                .get("keyInfo")
-                .get("sshPrivateKeyContent")
-                .get("jsonPath")
-                .asText();
+            contentJson.has("jsonPath")
+                ? contentJson.get("jsonPath").asText()
+                : String.format("$.allAccessKeys[%d].keyInfo.sshPrivateKeyContent", keyIndex);
+        keyIndex++;
         String privateKeyContent = accessKey.getKeyInfo().sshPrivateKeyContent;
         if (!CertificateHelper.isValidRsaKey(privateKeyContent)) {
           validationErrorsMap.put(keyJsonPath, "Not a valid RSA key!");

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.controllers;
 
 import static play.mvc.Http.Status.BAD_GATEWAY;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
@@ -30,12 +31,17 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pekko.stream.javadsl.Source;
@@ -107,6 +113,13 @@ public class PAProxyController extends AuthenticatedController {
           "connection",
           "keep-alive");
 
+  // The universe AuthorizationHandler checks for an ENDPOINT resource: the last one in the URI.
+  private static final Pattern AUTHORIZED_UNIVERSE =
+      Pattern.compile(
+          "(.*/|\\?)"
+              + Util.UNIVERSES
+              + "(/|=)([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+
   private final WSClientRefresher wsClientRefresher;
   private final PerfAdvisorService perfAdvisorService;
   private final RuntimeConfGetter confGetter;
@@ -128,12 +141,36 @@ public class PAProxyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
-  public CompletionStage<Result> proxyUniverse(
-      UUID customerUUID, UUID paUUID, UUID universeUUID, String path, Http.Request request) {
-    // Sanity-check that the referenced universe belongs to this customer before forwarding.
+  /** The embedded UI's telemetry events, the only v1 universe call it still makes. */
+  public CompletionStage<Result> proxyUiEvents(
+      UUID customerUUID, UUID paUUID, UUID universeUUID, Http.Request request) {
+    Matcher matcher = AUTHORIZED_UNIVERSE.matcher(request.uri());
+    if (matcher.find() && !UUID.fromString(matcher.group(3)).equals(universeUUID)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The request names a universe other than " + universeUUID);
+    }
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
-    String upstreamPath = "universe/" + universeUUID + (path.isEmpty() ? "" : "/" + path);
+    return doProxy(customerUUID, paUUID, "universe/" + universeUUID + "/ui_events", request);
+  }
+
+  @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public CompletionStage<Result> proxyV2Universe(
+      UUID customerUUID, UUID paUUID, UUID universeUUID, String path, Http.Request request) {
+    Matcher matcher = AUTHORIZED_UNIVERSE.matcher(request.uri());
+    if (!matcher.find() || !UUID.fromString(matcher.group(3)).equals(universeUUID)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "The request names a universe other than " + universeUUID);
+    }
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe.getOrBadRequest(universeUUID, customer);
+    String upstreamPath = "v2/universes/" + universeUUID + (path.isEmpty() ? "" : "/" + path);
     return doProxy(customerUUID, paUUID, upstreamPath, request);
   }
 
@@ -146,7 +183,31 @@ public class PAProxyController extends AuthenticatedController {
   })
   public CompletionStage<Result> proxyGeneric(
       UUID customerUUID, UUID paUUID, String path, Http.Request request) {
+    if (isUniversePath(path)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid universe path: " + path);
+    }
     return doProxy(customerUUID, paUUID, path, request);
+  }
+
+  // A universe-scoped path that misses the universe routes: a v1 one other than the telemetry
+  // events, or a v2 one spelled to dodge them. Either would reach Perf Advisor with
+  // customer-level authorization only.
+  private static boolean isUniversePath(String path) {
+    String decoded;
+    try {
+      decoded = URLDecoder.decode(path.replace("+", "%2B"), StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid path: " + path);
+    }
+    List<String> segments =
+        Arrays.stream(decoded.split("[/\\\\]"))
+            .map(segment -> StringUtils.substringBefore(segment, ";").trim().toLowerCase())
+            .filter(segment -> !segment.isEmpty() && !segment.equals("."))
+            .toList();
+    return (segments.size() > 1 && segments.get(0).equals("universe"))
+        || (segments.size() > 2
+            && segments.get(0).equals("v2")
+            && segments.get(1).equals("universes"));
   }
 
   private CompletionStage<Result> doProxy(

@@ -2,9 +2,13 @@
 
 package com.yugabyte.yw.filters;
 
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.logging.LogUtil;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -13,18 +17,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pekko.stream.Materializer;
+import org.slf4j.MDC;
 import play.mvc.*;
 
 @Slf4j
 public class AccessLogFilter extends Filter {
 
   private final RuntimeConfGetter confGetter;
+  private final String requestIdHeader;
   private List<Pattern> excludePatterns;
 
   @Inject
-  public AccessLogFilter(Materializer mat, RuntimeConfGetter confGetter) {
+  public AccessLogFilter(Materializer mat, RuntimeConfGetter confGetter, Config config) {
     super(mat);
     this.confGetter = confGetter;
+    this.requestIdHeader = config.getString("yb.cloud.requestIdHeader");
     refreshPatterns();
   }
 
@@ -74,16 +81,31 @@ public class AccessLogFilter extends Filter {
                           }
                         });
               }
-              log.info(
-                  "\"{} {}{} {}\" {} {} \"{}\" \"{}\"",
-                  requestHeader.method(),
-                  requestHeader.uri(),
-                  queryString,
-                  requestHeader.version(),
-                  result.status(),
-                  requestTime,
-                  ipAddress,
-                  userAgent);
+              // RequestLoggingFilter runs inside this filter and has already reset the MDC, so
+              // re-add the IDs. The response lacks the header if an earlier filter rejected it.
+              Optional<String> requestId = requestHeader.header(requestIdHeader);
+              Optional<String> correlationId = result.header(requestIdHeader).or(() -> requestId);
+              Map<String, String> mdcContext = MDC.getCopyOfContextMap();
+              try {
+                requestId.ifPresent(id -> MDC.put(LogUtil.REQUEST_ID, id));
+                correlationId.ifPresent(id -> MDC.put(LogUtil.CORRELATION_ID, id));
+                log.info(
+                    "\"{} {}{} {}\" {} {} \"{}\" \"{}\"",
+                    requestHeader.method(),
+                    requestHeader.uri(),
+                    queryString,
+                    requestHeader.version(),
+                    result.status(),
+                    requestTime,
+                    ipAddress,
+                    userAgent);
+              } finally {
+                if (mdcContext == null) {
+                  MDC.clear();
+                } else {
+                  MDC.setContextMap(mdcContext);
+                }
+              }
 
               return result.withHeader("Request-Time", "" + requestTime);
             });

@@ -73,6 +73,8 @@
 #include "yb/tserver/tier_migration_reconciler.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.messages.h"
+#include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 #include "yb/tserver/tserver_types.pb.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -138,6 +140,15 @@ class TsTabletManagerTest : public YBTest {
     return JoinPathSegments(test_data_root_, Format("drive-$0", index + 1));
   }
 
+  // The fixtures run a tserver with no master, so turn off what needs one: AutoFlags management
+  // (AutoFlags are promoted per FLAGS_TEST_promote_all_auto_flags in test_main.cc), encryption at
+  // rest and the xCluster-guarded information lease.
+  static void DisableMasterDependentFeatures() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
+  }
+
   virtual void CreateMiniTabletServer() {
     auto options_result = TabletServerOptions::CreateTabletServerOptions();
     ASSERT_OK(options_result);
@@ -148,15 +159,7 @@ class TsTabletManagerTest : public YBTest {
       paths.push_back(s);
     }
 
-    // Disable AutoFlags management as we dont have a master. AutoFlags will be enabled based on
-    // FLAGS_TEST_promote_all_auto_flags in test_main.cc.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
-
-    // Disallow encryption at rest as there is no master.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
-
-    // There is no master to grant the xCluster-guarded information lease.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
+    DisableMasterDependentFeatures();
 
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
@@ -928,11 +931,7 @@ class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
     auto options_result = TabletServerOptions::CreateTabletServerOptions();
     ASSERT_OK(options_result);
 
-    // Disable AutoFlags management, encryption at rest, and the xCluster-guarded information
-    // lease, same as the base fixture (there's no master here).
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
+    DisableMasterDependentFeatures();
     // Tiered drives only exist with the preview feature on.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
 
@@ -992,10 +991,14 @@ TEST_F(TsTabletManagerTieredDriveTest, SelectPathIdForTierPicksCorrectTier) {
   ASSERT_EQ(tier_by_path_id.at(ssd_pid), "ssd")
       << "path_id " << ssd_pid << " is not an ssd disk";
 
-  // A bogus tier must return NotFound.
+  // A tier with no disks returns NotFound tagged STORAGE_TIER_NOT_AVAILABLE, so a caller can tell
+  // this node cannot host a tier from a transient failure.
   auto bad = tablet_manager_->SelectPathIdForTier(*meta, kTableId, "nvme");
   ASSERT_NOK(bad);
   ASSERT_TRUE(bad.status().IsNotFound()) << bad.status();
+  auto error = TabletServerError::FromStatus(bad.status());
+  ASSERT_TRUE(error) << bad.status();
+  ASSERT_EQ(error->value(), TabletServerErrorPB::STORAGE_TIER_NOT_AVAILABLE);
 }
 
 // Confirm that SelectPathIdForTier balances across disks within a tier: loading
@@ -1085,6 +1088,7 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
   }
   ASSERT_TRUE(found_ssd);
   ASSERT_OK(meta->SetTargetTier("hdd", ssd_pid));
+  ASSERT_FALSE(tablet_manager_->IsTargetTierPathIdValid(*meta));
 
   auto repaired_pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
   std::unordered_map<uint32_t, std::string> tier_by_path_id;
@@ -1097,6 +1101,52 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdRepairsStaleId) {
   // The repair must be persisted, not just returned in-memory.
   ASSERT_EQ(meta->target_storage_tier(), "hdd");
   ASSERT_EQ(meta->target_tier_path_id(), repaired_pid);
+  ASSERT_TRUE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+}
+
+// Tiered storage: a target whose tier has no disks on this node is left alone by
+// ResolveTargetTierPathId (it returns 0 but persists nothing, and OpenTablet uses only the
+// status, so the regular DB still opens with the stale path_id). IsTargetTierPathIdValid is the
+// read-only check for that, which the AlterTabletTier handler runs before reusing the persisted
+// path_id.
+TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdKeepsStaleIdWhenTierHasNoDisks) {
+  std::shared_ptr<tablet::TabletPeer> peer;
+  ASSERT_OK(CreateNewTablet(kTableId, kTabletId, schema_, &peer));
+  auto meta = peer->tablet_metadata();
+
+  auto hdd_pid = ASSERT_RESULT(tablet_manager_->SelectPathIdForTier(*meta, kTableId, "hdd"));
+  ASSERT_OK(meta->SetTargetTier("hdd", hdd_pid));
+  ASSERT_TRUE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+
+  // A tier_paths entry for a tier this node has no drive for, as left behind by a drive that was
+  // dropped from --fs_data_dirs or relabeled: tier_paths is persisted and not re-synced on load.
+  auto tier_paths = meta->tier_paths();
+  uint32_t nvme_pid = 0;
+  for (const auto& tp : tier_paths) {
+    nvme_pid = std::max(nvme_pid, tp.path_id + 1);
+  }
+  tier_paths.push_back(tablet::TierPathInfo{
+      .path_id = nvme_pid,
+      .tier = "nvme",
+      .path = JoinPathSegments(
+          GetTestPath("gone-nvme-drive"),
+          Format("rocksdb/table-$0/tablet-$1", kTableId, kTabletId)),
+  });
+  meta->TEST_SetTierPaths(std::move(tier_paths));
+  ASSERT_OK(meta->SetTargetTier("nvme", nvme_pid));
+  ASSERT_FALSE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+
+  // Resolution returns 0 but keeps the intent, path_id included, for when the drive comes back.
+  auto pid = ASSERT_RESULT(tablet_manager_->ResolveTargetTierPathId(meta));
+  ASSERT_EQ(pid, 0u);
+  ASSERT_EQ(meta->target_storage_tier(), "nvme");
+  ASSERT_EQ(meta->target_tier_path_id(), nvme_pid);
+  ASSERT_FALSE(tablet_manager_->IsTargetTierPathIdValid(*meta));
+
+  // What the handler falls back to for that tablet: a fresh resolution for a tier with nothing.
+  auto fallback = tablet_manager_->SelectPathIdForTier(*meta, kTableId, "nvme");
+  ASSERT_NOK(fallback);
+  ASSERT_TRUE(fallback.status().IsNotFound()) << fallback.status();
 }
 
 // Tiered storage disabled: ResolveTargetTierPathId acts on no tier preference. It drops the
@@ -1131,6 +1181,68 @@ TEST_F(TsTabletManagerTieredDriveTest, ResolveTargetTierPathIdIgnoresTargetWhenD
   ASSERT_EQ(tier_by_path_id.at(resolved_pid), "hdd")
       << "Resolved path_id " << resolved_pid << " is not an hdd disk";
   ASSERT_EQ(meta->target_tier_path_id(), resolved_pid);
+}
+
+// ---------------------------------------------------------------------------
+// WAL-only root fixture: one hdd data drive and a separate drive that only holds WALs. Exercises
+// what the metrics heartbeat reports for a root that is not a data root.
+// ---------------------------------------------------------------------------
+class TsTabletManagerWalOnlyRootTest : public TsTabletManagerTest {
+ protected:
+  static constexpr const char* kDataDriveName = "hdd-drive";
+  static constexpr const char* kWalDriveName = "wal-drive";
+
+  void CreateMiniTabletServer() override {
+    test_data_root_ = GetTestPath("TsTabletManagerWalOnlyRootTest-fsroot");
+
+    auto options_result = TabletServerOptions::CreateTabletServerOptions();
+    ASSERT_OK(options_result);
+
+    DisableMasterDependentFeatures();
+    // An hdd label only exists with the preview feature on.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
+
+    const auto data_drive = JoinPathSegments(test_data_root_, kDataDriveName);
+    const auto wal_drive = JoinPathSegments(test_data_root_, kWalDriveName);
+    ASSERT_OK(env_->CreateDirs(data_drive));
+    ASSERT_OK(env_->CreateDirs(wal_drive));
+
+    // MiniTabletServer ctor takes (wal_paths, data_paths, ...): WAL first, data second.
+    mini_server_ = std::make_unique<MiniTabletServer>(
+        std::vector<std::string>{wal_drive}, std::vector<std::string>{data_drive}, 0,
+        *options_result, 0);
+    // The ctor does not derive tiers from data_paths, so set the tier map before Start().
+    mini_server_->options()->fs_opts.tier_by_path = {{data_drive, "hdd"}};
+  }
+};
+
+// The heartbeat labels the hdd data root with its tier and reports the WAL-only root with its
+// space but no tier, so an all-hdd node with a separate WAL disk never looks like it has an ssd
+// data disk.
+TEST_F(TsTabletManagerWalOnlyRootTest, HeartbeatPathMetricsSkipWalOnlyRoot) {
+  TServerMetricsHeartbeatDataProvider provider(mini_server_->server());
+  const master::TSHeartbeatResponsePB resp;
+  master::TSHeartbeatRequestPB req;
+  provider.AddData(resp, &req);
+  ASSERT_TRUE(req.has_metrics()) << req.ShortDebugString();
+  ASSERT_EQ(req.metrics().path_metrics_size(), 2) << req.ShortDebugString();
+
+  size_t hdd_roots = 0;
+  size_t wal_only_roots = 0;
+  for (const auto& pm : req.metrics().path_metrics()) {
+    ASSERT_GT(pm.total_space(), 0) << pm.ShortDebugString();
+    if (pm.path_id().ends_with(Format("/$0", kDataDriveName))) {
+      ASSERT_EQ(pm.storage_tier(), "hdd") << pm.ShortDebugString();
+      ++hdd_roots;
+    } else if (pm.path_id().ends_with(Format("/$0", kWalDriveName))) {
+      ASSERT_FALSE(pm.has_storage_tier()) << pm.ShortDebugString();
+      ++wal_only_roots;
+    } else {
+      FAIL() << "Unexpected path metric: " << pm.ShortDebugString();
+    }
+  }
+  ASSERT_EQ(hdd_roots, 1);
+  ASSERT_EQ(wal_only_roots, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -1205,7 +1317,7 @@ class TierMigrationReconcilerTest : public TsTabletManagerTieredDriveTest {
 
   Status WaitForPassToFinish(const tablet::TabletPtr& tablet) {
     return WaitFor([&]() -> Result<bool> {
-      return !tablet->tier_migration_status().pass_in_flight;
+      return !tablet->tier_migration_status().migration_pass_in_flight;
     }, MonoDelta::FromSeconds(10), "tier migration pass to finish");
   }
 
@@ -1283,7 +1395,7 @@ TEST_F(TierMigrationReconcilerTest, CleanPassWakesReconcilerForVerdict) {
   // Already converged: the pass schedules nothing and the wake comes at once.
   status = ASSERT_RESULT(tablet->AlterTabletTier("hdd", hdd_pid));
   ASSERT_EQ(status.state, tablet::TierMigrationStatus::State::kInProgress);
-  ASSERT_FALSE(status.pass_in_flight);
+  ASSERT_FALSE(status.migration_pass_in_flight);
   ASSERT_OK(WaitForMigrationState(tablet, tablet::TierMigrationStatus::State::kDone));
 }
 

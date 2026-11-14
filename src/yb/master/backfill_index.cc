@@ -31,6 +31,7 @@
 
 #include "yb/tserver/tserver_admin.proxy.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -141,6 +142,8 @@ DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
 
 DEFINE_test_flag(int32, delay_clearing_fully_applied_ms, 0,
     "Amount of time to delay clearing the fully applied schema.");
+
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 namespace master {
@@ -295,6 +298,22 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
           continue;
         }
         idx_pb->set_index_permissions(new_perm);
+        if (new_perm == INDEX_PERM_DO_BACKFILL) {
+          // See IndexInfoPB.backfill_origination_ht.  DFATAL after finalization so tests catch a
+          // new path that backfills an index without recording an origination time.  An index
+          // created through a TServer not yet upgraded can legitimately lack one, and crash debug
+          // builds here: its CREATE INDEX straddled finalization, or it was left behind by a
+          // killed CREATE INDEX and is picked up by a later one's BackfillIndex request.  Such
+          // backfills run unstamped, which we accept.
+          if (is_pgsql && !idx_pb->has_backfill_origination_ht()) {
+            LOG_COND_SEVERITY(IsPersistenceGateEnforced(), DFATAL, WARNING)
+                << "YSQL index " << idx_table_id << " on " << indexed_table->ToString()
+                << " moves to DO_BACKFILL without an origination time, so its backfill is "
+                << "unstamped";
+          }
+        } else {
+          idx_pb->clear_backfill_origination_ht();
+        }
         permissions_updated = true;
       }
     }
@@ -920,8 +939,12 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   auto min_cutoff = master()->clock()->Now();
   for (const auto& tablet : tablets) {
-    auto get_safetime =
-      std::make_shared<GetSafeTimeForTablet>(shared_from_this(), tablet, min_cutoff, epoch());
+    auto get_safetime = std::make_shared<GetSafeTimeForTablet>(
+        master(), threadpool(), tablet, min_cutoff, epoch(), wait_state(), using_table_locks(),
+        Format("Backfilling index tables $0", requested_index_names()),
+        [self = shared_from_this()](const Status& status, HybridTime safe_time) {
+          WARN_NOT_OK(self->UpdateSafeTime(status, safe_time), "Could not UpdateSafeTime");
+        });
     RETURN_NOT_OK(get_safetime->Launch());
   }
   return Status::OK();
@@ -1021,6 +1044,21 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
     LOG_WITH_PREFIX(INFO) << "Completed fetching SafeTime for the table "
                           << yb::ToString(indexed_table_) << " will be using "
                           << read_timestamp.ToString();
+    // The backfill writes into the past at this read time, carrying the origination time of the
+    // CREATE INDEX that created each index.  Except on an xCluster target, no write may commit
+    // before its origination time; this read time was chosen after that CREATE INDEX began, so
+    // beyond clock skew that holds.  An xCluster target instead reads at a time chosen from outside
+    // (SetSafeTimeAndStartBackfill), which may precede the origination time, and is not checked.
+    // A future path that writes into the past (e.g., online schema change) must obey the same
+    // rule, and should check it the same way.
+    for (const auto& index_info : index_infos_) {
+      const auto origination_ht = HybridTime::FromPB(index_info.backfill_origination_ht());
+      LOG_IF_WITH_PREFIX(
+          DFATAL, origination_ht &&
+                      read_timestamp.AddMicroseconds(FLAGS_max_clock_skew_usec) < origination_ht)
+          << "Backfill of " << index_info.table_id() << " writes at " << read_timestamp
+          << ", before its origination time " << origination_ht;
+    }
     return PersistSafeTimeAndStartBackfill();
   }
   return Status::OK();
@@ -1661,15 +1699,15 @@ Status GetSafeTimeForTablet::Launch() {
 }
 
 bool GetSafeTimeForTablet::SendRequest(int attempt) {
-  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  ADOPT_WAIT_STATE(wait_state_);
   VLOG(1) << __PRETTY_FUNCTION__;
   tserver::GetSafeTimeRequestPB req;
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
-  auto now = backfill_table_->master()->clock()->Now().ToUint64();
+  auto now = master_->clock()->Now().ToUint64();
   req.set_min_hybrid_time_for_backfill(min_cutoff_.ToUint64());
   req.set_propagated_hybrid_time(now);
-  req.set_only_abort_txns_not_using_table_locks(backfill_table_->using_table_locks());
+  req.set_only_abort_txns_not_using_table_locks(only_abort_txns_not_using_table_locks_);
 
   ts_admin_proxy_->GetSafeTimeAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send " << description() << " to " << permanent_uuid()
@@ -1679,7 +1717,7 @@ bool GetSafeTimeForTablet::SendRequest(int attempt) {
 }
 
 void GetSafeTimeForTablet::HandleResponse(int attempt) {
-  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  ADOPT_WAIT_STATE(wait_state_);
   VLOG(1) << __PRETTY_FUNCTION__;
   Status status = Status::OK();
   if (resp_.has_error()) {
@@ -1710,7 +1748,7 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
 }
 
 void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
-  ADOPT_WAIT_STATE(backfill_table_->wait_state());
+  ADOPT_WAIT_STATE(wait_state_);
   if (state() == MonitoredTaskState::kAborted) {
     VLOG(1) << " was aborted";
     return;
@@ -1734,8 +1772,7 @@ void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
       VLOG(3) << "GetSafeTime for " << tablet_->ToString() << " got " << safe_time;
     }
   }
-  WARN_NOT_OK(backfill_table_->UpdateSafeTime(status, safe_time),
-    "Could not UpdateSafeTime");
+  callback_(status, safe_time);
 }
 
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,

@@ -1,0 +1,7 @@
+description: The storage configuration
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/StorageConfig.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

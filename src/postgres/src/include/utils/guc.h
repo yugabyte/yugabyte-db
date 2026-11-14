@@ -247,8 +247,11 @@ typedef enum
 
 #define GUC_UNIT			 (GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
-#define GUC_YB_CUSTOM_STICKY	0x00010000	/* YB: stickiness for custom
-											 * string variables */
+#define GUC_YB_CONN_MGR_STICKY	0x00010000	/* YB: SET or a startup-packet
+												 * value makes the Connection
+												 * Manager connection sticky */
+#define GUC_YB_NO_CONN_MGR_REPORT	0x00020000	/* YB: never report to
+												 * Connection Manager */
 
 
 /* GUC vars that are actually defined in guc_tables.c, rather than elsewhere */
