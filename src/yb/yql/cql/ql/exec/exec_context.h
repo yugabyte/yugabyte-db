@@ -26,6 +26,7 @@
 #include "yb/client/session.h"
 
 #include "yb/common/ql_protocol.messages.h"
+#include "yb/common/read_hybrid_time.h"
 
 #include "yb/util/status_fwd.h"
 
@@ -137,6 +138,14 @@ class QueryPagingState {
 
   void set_next_partition_index(int64_t val) {
     query_pb_.set_next_partition_index(val);
+  }
+
+  bool has_read_time() const {
+    return query_pb_.has_read_time();
+  }
+
+  void set_read_time(const ReadHybridTime& read_time) {
+    read_time.AddToPB(&query_pb_);
   }
 
   // It appears the folliwng fields are not used.
