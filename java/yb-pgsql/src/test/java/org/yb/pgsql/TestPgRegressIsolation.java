@@ -37,14 +37,27 @@ public class TestPgRegressIsolation extends BasePgRegressTest {
   }
 
   private void runIsolationRegressTest() throws Exception {
+    runIsolationRegressTest("yb_isolation_schedule");
+  }
+
+  private void runIsolationRegressTest(String schedule) throws Exception {
     runPgRegressTest(
-        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, "yb_isolation_schedule",
+        PgRegressBuilder.PG_ISOLATION_REGRESS_DIR /* inputDir */, schedule,
         0 /* maxRuntimeMillis */, PgRegressBuilder.PG_ISOLATION_REGRESS_EXECUTABLE);
   }
 
   @Test
   public void testPgRegress() throws Exception {
     runIsolationRegressTest();
+  }
+
+  // TODO(#35719): Connection Manager replays a session's SET yb_read_time on whichever backend
+  // serves the next transaction, inside a transaction block, where yb_read_time can't be set. Move
+  // the spec back into yb_isolation_schedule once that is fixed.
+  @Test
+  @BypassConnMgr(reason = "yb_read_time can't be replayed onto a pooled backend")
+  public void testPgRegressYbReadTime() throws Exception {
+    runIsolationRegressTest("yb_isolation_yb_read_time_schedule");
   }
 
   @Test

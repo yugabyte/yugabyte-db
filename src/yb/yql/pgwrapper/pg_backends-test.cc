@@ -320,6 +320,59 @@ TEST_F(PgBackendsTest, WaitOnlySameDatabase) {
   }
 }
 
+// A backend whose catalog is pinned to yb_read_time never catches up and can't write, so it must
+// not be counted as lagging, even while it is idle in a transaction (as ysql_dump --read-time is).
+TEST_F(PgBackendsTest, IgnoreBackendPinnedToYbReadTime) {
+  const auto read_time = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT (EXTRACT (EPOCH FROM clock_timestamp()) * 1000000)::bigint"));
+
+  auto pinned_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pinned_conn.ExecuteFormat("SET yb_read_time TO $0", read_time));
+  // The first statement after the SET loads the catalog as of yb_read_time and pins it.
+  ASSERT_OK(pinned_conn.Fetch("SELECT 1"));
+  ASSERT_OK(pinned_conn.Execute("BEGIN"));
+
+  auto normal_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(normal_conn.Execute("BEGIN"));
+
+  ASSERT_OK(BumpCatalogVersion(1));
+  const uint64_t cat_ver = ASSERT_RESULT(GetCatalogVersion());
+
+  ASSERT_EQ(1, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
+  ASSERT_OK(normal_conn.Execute("COMMIT"));
+  ASSERT_EQ(0, ASSERT_RESULT(client_->WaitForYsqlBackendsCatalogVersion("yugabyte", cat_ver)));
+  ASSERT_OK(pinned_conn.Execute("COMMIT"));
+}
+
+// A real DDL that waits for backends to catch up doesn't wait on a backend pinned to yb_read_time.
+TEST_F(PgBackendsTest, CreateIndexDoesNotWaitOnPointInTimeSession) {
+  ASSERT_OK(conn_->Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn_->Execute("INSERT INTO t SELECT g, g FROM generate_series(1, 100) g"));
+  const auto read_time = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT (EXTRACT (EPOCH FROM clock_timestamp()) * 1000000)::bigint"));
+
+  auto pit_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(pit_conn.ExecuteFormat("SET yb_read_time TO $0", read_time));
+  ASSERT_OK(pit_conn.Fetch("SELECT 1"));
+  ASSERT_OK(pit_conn.Execute("BEGIN"));
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+
+  const auto start = CoarseMonoClock::Now();
+  ASSERT_OK(conn_->Execute("CREATE INDEX ON t (v)"));
+  ASSERT_LT(CoarseMonoClock::Now() - start, 60s);
+  // The block's next read of t sends t's old DocDB schema version and can't be retried.
+  ASSERT_NOK_STR_CONTAINS(pit_conn.Fetch("SELECT count(*) FROM t"), "schema version mismatch");
+  ASSERT_OK(pit_conn.Execute("ROLLBACK"));
+  // TODO(#37408): the mismatch invalidated pggate's table descriptor for t, so this read sends t's
+  // current DocDB schema version and passes, though the session's catalog is still as of
+  // yb_read_time. It should keep failing until yb_read_time is reset.
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+
+  // TODO(#37408): same outside a transaction block, where the mismatch is retried right away.
+  ASSERT_OK(conn_->Execute("CREATE INDEX ON t (k, v)"));
+  ASSERT_EQ(ASSERT_RESULT(pit_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 100);
+}
+
 // Test that multiple waiters immediately resolve.  This tests the condition variable broadcast in
 // the implementation.
 TEST_F(PgBackendsTest, MultipleWaiters) {
