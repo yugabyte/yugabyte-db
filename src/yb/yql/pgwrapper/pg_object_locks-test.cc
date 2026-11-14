@@ -2016,9 +2016,9 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
 // Neither flag is a runtime flag, so each takes a rolling restart. In the first,
 // disable_global_object_locks is turned on one node at a time: nodes not yet restarted take
 // global object locks; on restarted nodes each DDL runs in a separate transaction and takes no
-// object locks. In the second, enable_object_locking_for_table_locks is turned off: restarted
-// nodes take no object locks at all. A DDL on any node must not miss a write from a transaction on
-// another.
+// lock stronger than ROW EXCLUSIVE. In the second, enable_object_locking_for_table_locks is turned
+// off: restarted nodes take no object locks at all. A DDL on any node must not miss a write from a
+// transaction on another.
 class PgObjectLocksTestGlobalLocksRollingRestart : public PgObjectLocksTestMixModeDuringPromotion {
  protected:
   void PromoteAll() {
