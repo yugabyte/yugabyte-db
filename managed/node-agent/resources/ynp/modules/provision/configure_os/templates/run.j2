@@ -5,6 +5,84 @@ bin_path="/usr/local/bin"
 # systemd) must be able to read /etc/systemd/{system,user}.conf and similar.
 umask 022
 
+# Print a basic regex matching a sysctl.conf entry for a key, up to and
+# including "=". Matches both the dotted and slash spellings (kernel.core_pattern,
+# kernel/core_pattern), an optional leading "-" (ignore-errors prefix), and
+# spaces around "=". The regex contains "/" but no "#".
+sysctl_key_pattern() {
+  local key_re="${1//./[./]}"
+  printf '%s\n' "^[[:space:]]*\(-[[:space:]]*\)\{0,1\}${key_re}[[:space:]]*="
+}
+
+# Remove every entry for a sysctl key from the given file, printing each removed
+# line so the old value is kept in the provisioning log.
+remove_sysctl_key() {
+  local pattern entries line
+  pattern=$(sysctl_key_pattern "$1")
+  entries=$(grep -e "$pattern" "$2") || return 0
+  while IFS= read -r line; do
+    echo "Removing from ${2}: ${line}"
+  done <<< "$entries"
+  sed -i "\#${pattern}#d" "$2"
+}
+
+# Warn when a sysctl.d file would replace a sysctl key's value at the next boot.
+# systemd-sysctl applies the *.conf files of the sysctl.d directories in
+# file-name order and reads /etc/sysctl.conf as 99-sysctl.conf, so a file named
+# after it wins. Neither `sysctl --system`, which applies /etc/sysctl.conf last,
+# nor the preflight, which reads the live value, shows this.
+warn_sysctl_boot_override() {
+  local key="$1" value="$2" pattern
+  local -x LC_ALL=C
+  local dir file name entry boot_name="" boot_file="" boot_value=""
+  local -A files=()
+  pattern=$(sysctl_key_pattern "$key")
+  # A file hides any file of the same name in a later directory; one masked by
+  # a link to /dev/null has no entries.
+  for dir in /etc/sysctl.d /run/sysctl.d /usr/local/lib/sysctl.d \
+    /usr/lib/sysctl.d /lib/sysctl.d; do
+    for file in "$dir"/*.conf; do
+      name="${file##*/}"
+      if [[ -e "$file" && -z "${files[$name]}" ]]; then
+        files[$name]="$file"
+      fi
+    done
+  done
+  # The last entry for the key, in file-name order, is the one applied at boot.
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    entry=$(sed -n "s#${pattern}[[:space:]]*##p" "${files[$name]}" | tail -n 1)
+    if [[ -n "$entry" ]]; then
+      boot_name="$name"
+      boot_file="${files[$name]}"
+      boot_value="${entry%"${entry##*[![:space:]]}"}"
+    fi
+  done < <(printf '%s\n' "${!files[@]}" | sort)
+  if [[ "$boot_name" > "99-sysctl.conf" && "$boot_value" != "$value" ]]; then
+    echo "WARNING: ${boot_file} sets ${key} = ${boot_value}, which will replace" \
+      "${value} at the next boot. Remove that entry to keep the YugabyteDB value."
+  fi
+}
+
+# Set a sysctl key now and save it in /etc/sysctl.conf so it survives a reboot
+# or `sysctl --system`. The value is always appended, so it is the last entry
+# for the key and wins when the file is loaded; earlier entries for the key
+# (with or without spaces around "=") are removed first so the file stays free
+# of duplicates and repeated runs leave it unchanged. A sysctl.d file that would
+# still replace the value at boot is reported.
+persist_sysctl() {
+  local key="$1" value="$2" conf=/etc/sysctl.conf
+  touch "$conf"
+  remove_sysctl_key "$key" "$conf"
+  # Start on a new line if the file does not end with one.
+  if [[ -s "$conf" && -n "$(tail -c 1 "$conf")" ]]; then
+    echo >> "$conf"
+  fi
+  echo "${key}=${value}" >> "$conf"
+  sysctl -w "${key}=${value}"
+  warn_sysctl_boot_override "$key" "$value"
+}
+
 {% if os_distribution == "ubuntu" %}
 # Ubuntu's apport service rewrites kernel.core_pattern when it starts, clobbering
 # the value sysctl loads from /etc/sysctl.conf and breaking YB core dump capture.
@@ -71,26 +149,11 @@ ulimit -u {{ nproc_limit }}
 
 
 # Configure kernel settings
-# Set and persist vm.swappiness
-if ! grep -q "^vm.swappiness" /etc/sysctl.conf; then
-  echo "vm.swappiness={{ vm_swappiness }}" >> /etc/sysctl.conf
-else
-  sed -i "s/^vm.swappiness.*/vm.swappiness={{ vm_swappiness }}/" /etc/sysctl.conf
-fi
-sysctl -w vm.swappiness={{ vm_swappiness }}
+persist_sysctl vm.swappiness "{{ vm_swappiness }}"
 
 if [[ "$is_cloud" == "False" ]]; then
-  # Set and persist kernel.core_pattern
-  if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
-    echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
-  fi
-  sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
-
-  # Set and persist vm.max_map_count
-  if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
-    echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
-  fi
-  sysctl -w vm.max_map_count={{ vm_max_map_count }}
+  persist_sysctl kernel.core_pattern "{{ kernel_core_pattern }}"
+  persist_sysctl vm.max_map_count "{{ vm_max_map_count }}"
 fi
 
 if [[ "$is_cloud" == "True" ]]; then
@@ -126,25 +189,15 @@ EOF
   CORE_DIR="{{ yb_home_dir }}/cores"
   CORE_PATTERN="|$CORE_SCRIPT $CORE_DIR/core_yb.%t.%e.%p"
 
-  # Apply the core pattern temporarily
-  sysctl -w kernel.core_pattern="$CORE_PATTERN"
+  persist_sysctl kernel.core_pattern "$CORE_PATTERN"
 
-  # Update or append kernel.core_pattern in /etc/sysctl.conf
-  if grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
-      sed -i "s#^kernel.core_pattern=.*#kernel.core_pattern=$CORE_PATTERN#" /etc/sysctl.conf
-  else
-      echo "kernel.core_pattern=$CORE_PATTERN" | tee -a /etc/sysctl.conf > /dev/null
+  # Earlier YNP versions saved vm.max_map_count in this drop-in instead. At boot
+  # systemd-sysctl reads it after /etc/sysctl.conf (99-sysctl.conf), so a stale
+  # value left there would win; remove the key from it before saving the value.
+  if [[ -f /etc/sysctl.d/99-vm-max-map-count.conf ]]; then
+    remove_sysctl_key vm.max_map_count /etc/sysctl.d/99-vm-max-map-count.conf
   fi
-
-  # Check if the setting exists with correct value in either location
-  if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf 2>/dev/null && \
-    ! grep -q "^vm.max_map_count=" "/etc/sysctl.d/99-vm-max-map-count.conf" 2>/dev/null; then
-    echo "vm.max_map_count={{ vm_max_map_count }}" | \
-      sudo tee -a /etc/sysctl.d/99-vm-max-map-count.conf > /dev/null
-    chmod 644 /etc/sysctl.d/99-vm-max-map-count.conf
-  fi
-  # Set max map count
-  sysctl -w vm.max_map_count="{{ vm_max_map_count }}"
+  persist_sysctl vm.max_map_count "{{ vm_max_map_count }}"
 
   # Apply the changes system-wide
   sysctl --system
