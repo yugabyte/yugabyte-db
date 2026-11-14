@@ -38,6 +38,7 @@
 /* YB includes */
 #include "access/table.h"
 #include "access/yb_cost.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
@@ -3712,6 +3713,17 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		/*
+		 * YB: refuse an array condition that an LSM index scan does not
+		 * bind, such as indexkey > ANY (array), so that it is a filter,
+		 * which is evaluated in DocDB when it can be pushed down.
+		 * Scan-key setup relies on this refusal, because its range handling
+		 * does not expect an array key: see YbCanBindSearchArray().
+		 */
+		if (index->relam == LSM_AM_OID &&
+			!YbCanBindSearchArray(get_op_opfamily_strategy(expr_op, opfamily)))
+			return NULL;
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			op_in_opfamily(expr_op, opfamily))
 		{

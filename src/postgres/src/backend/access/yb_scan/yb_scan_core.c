@@ -1048,7 +1048,7 @@ YbShouldPushdownScanKey(YbScanPlan scan_plan, AttrNumber attnum,
 		 * NOT IN will generate <> which is not a supported LSM/BTREE
 		 * operator, so it should not get to this point.
 		 */
-		return key->sk_strategy == BTEqualStrategyNumber;
+		return YbCanBindSearchArray(key->sk_strategy);
 	}
 
 	if (key->sk_flags & SK_ROW_MEMBER)

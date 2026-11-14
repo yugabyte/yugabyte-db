@@ -291,3 +291,76 @@ INSERT INTO t_txt SELECT lpad(i::text, 2, '0'), i FROM generate_series(1, 20) i;
 :explain_analyze SELECT * FROM t_f8 WHERE k IN (1,2,3,4,5,6,7,8,9,10) AND k >= 7.0::real;
 
 DROP TABLE t_i2, t_i4, t_i8, t_f4, t_f8, t_num, t_txt;
+
+---
+--- Non-equality array conditions.  DocDB binds an array only as an IN list,
+--- so the planner does not make such a condition an index condition.  It is
+--- a filter, whatever other conditions its column has (#35030).
+---
+
+CREATE TABLE t_nonequality_array(g int, k int, PRIMARY KEY(g ASC, k ASC));
+INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, generate_series(0, 9) k;
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+-- an equality that implies the array condition, which the plan then drops
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k = 5 AND k > ANY ('{2,7}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
+-- an IN list and a non-equality array with the same elements
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
+-- the other two operators
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= ANY ('{8,9}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{1,0}');
+-- a NULL element and an empty array
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{NULL,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{}');
+-- the aggregate is pushed down over the filter
+:explain_analyze SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+-- a parameter array of a wider integer type, with an element that the
+-- column's type cannot hold
+SET plan_cache_mode = force_generic_plan;
+PREPARE nonequality_array_count(bigint[]) AS SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ($1);
+:explain_analyze EXECUTE nonequality_array_count('{5,3000000000}');
+EXECUTE nonequality_array_count('{5,3000000000}');
+EXECUTE nonequality_array_count('{3000000000}');
+RESET plan_cache_mode;
+DEALLOCATE nonequality_array_count;
+-- a YB bitmap scan, which the planner does not choose over the index scan
+-- here unless hinted
+SET yb_enable_bitmapscan = true;
+:explain_analyze /*+ BitmapScan(t_nonequality_array) */ SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+RESET yb_enable_bitmapscan;
+-- a collation that DocDB does not evaluate, so the filter runs in PostgreSQL
+CREATE TABLE t_nonequality_array_icu(k text COLLATE "en-US-x-icu", PRIMARY KEY(k ASC));
+INSERT INTO t_nonequality_array_icu VALUES ('a'), ('b'), ('c'), ('d');
+:explain_analyze SELECT * FROM t_nonequality_array_icu WHERE k >= 'a' AND k > ANY ('{b,c}');
+-- The setting selects the code that binds the scan keys.  As an index
+-- condition, the array would be read as a bound of its column by either.
+SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
+:explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
+RESET yb_enable_advanced_index_cond_fold;
+
+-- A hash column, where the planner refuses a plain inequality too.  As an
+-- index condition, the array would be compared with the equality's value
+-- and lose the rows of at least one of the first two queries, or be bound
+-- as a range on the hash column and crash the backend in the third query,
+-- whose equality is of another type and does not bind (#37237).  Each
+-- equality implies its array condition, so the plans drop the condition.
+CREATE TABLE t_nonequality_array_hash(h int, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_array_hash SELECT i % 10, i FROM generate_series(1, 100) i;
+CREATE TABLE t_nonequality_array_hash_f4(h real, r int, PRIMARY KEY(h HASH, r ASC));
+INSERT INTO t_nonequality_array_hash_f4 VALUES (0.5, 1), (1.5, 2), (2.5, 3);
+:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h > ANY ('{5,2}');
+:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h < ANY ('{7,9}');
+:explain_analyze SELECT * FROM t_nonequality_array_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+-- alone on the hash column
+:explain_analyze SELECT count(*) FROM t_nonequality_array_hash WHERE h > ANY ('{8,9}');
+SET yb_enable_advanced_index_cond_fold = off;
+:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h > ANY ('{5,2}');
+:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h < ANY ('{7,9}');
+:explain_analyze SELECT * FROM t_nonequality_array_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
+RESET yb_enable_advanced_index_cond_fold;
+
+DROP TABLE t_nonequality_array, t_nonequality_array_hash, t_nonequality_array_hash_f4, t_nonequality_array_icu;

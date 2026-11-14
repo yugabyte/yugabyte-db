@@ -40,6 +40,7 @@
 
 #include "postgres.h"
 
+#include "access/stratnum.h"
 #include "access/tupdesc.h"
 #include "nodes/bitmapset.h"
 #include "utils/relcache.h"
@@ -81,3 +82,4 @@ extern bool YbShouldRecheckEquality(Oid column_typid, Oid value_typid);
 extern bool YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val);
 extern bool YbIsScanCompatible(Oid column_typid, Oid value_typid,
 							   bool is_value_scalar, Datum value);
+extern bool YbCanBindSearchArray(StrategyNumber strategy);
