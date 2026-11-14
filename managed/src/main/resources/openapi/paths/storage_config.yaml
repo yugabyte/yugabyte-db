@@ -13,36 +13,45 @@
     operationId: createStorageConfig
     summary: Create a storage configuration
     description: |
-      Creates a backup storage configuration. Unless yb.storage_config.skip_validation is set,
-      YBA first checks the locations and that it can reach the storage with the given
-      credentials, as validateStorageConfig does, and creates nothing if it can't. Retry with the same
-      Idempotency-Key to get the configuration created by a request whose response was lost.
+      Creates a backup storage configuration and returns the task that checks it. The request runs
+      only the checks that need no storage: the spec, including the secrets its credentials need,
+      and that the name is free. The configuration is saved in state VALIDATING, and the task
+      (resource_uuid is the configuration's UUID) checks, unless yb.storage_config.skip_validation
+      is set, the locations and that YBA can write, read, list and delete a test object at each
+      location with the given credentials, within yb.storage_config.validation_timeout. When the
+      check passes, the task succeeds and the configuration becomes ACTIVE. When it fails, YBA
+      deletes the configuration and the task fails with an error message that starts with the error
+      code: STORAGE_CONFIG_INVALID for a malformed location or host found without reaching the
+      storage, STORAGE_VALIDATION_FAILED when YBA reached the storage, or tried to, and it refused
+      the configuration, e.g. with access denied or no such bucket, and STORAGE_PROVIDER_UNAVAILABLE
+      when the provider throttled or failed the check (HTTP 429 or 5xx), a request to it timed out
+      or the check didn't finish in time, which is worth retrying. STORAGE_VALIDATION_BUSY means YBA
+      was already running as many storage checks as it allows; retry later. The message goes on with
+      the provider's HTTP status and error code when it answered, and the other failures. Retry with
+      the same Idempotency-Key to get the task of a request whose response was lost.
     tags:
       - Storage Config
     requestBody:
       $ref: "../components/requestBodies/StorageConfigCreateReq.yaml"
     responses:
       '200':
-        $ref: "../components/responses/StorageConfigResp.yaml"
+        $ref: "../components/responses/YBATaskResp.yaml"
       '400':
-        description: 'Invalid input, such as a missing secret, a blank name or a region listed twice. A malformed location or host found by the storage check has error.code STORAGE_CONFIG_INVALID, with error.errors listing the failures by field.'
+        description: 'Invalid input, such as a missing secret, a blank name, a region listed twice or a location longer than allowed. error.code is STORAGE_CONFIG_INVALID, with error.errors listing the failures by field, for a field constraint of the stored configuration.'
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no create permission on the customer'
       '409':
         description: The customer already has a storage configuration with this name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid names the existing configuration.
-      '422':
-        description: 'The storage check failed: YBA reached the storage, or tried to, and it refused the configuration, e.g. with access denied or no such bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field and, when the provider answered, error.provider_status (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout. An error with no error.code means the Idempotency-Key was already used for a different request.'
       '500':
         description: Server error
-      '503':
-        description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status) or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage check thread (yb.storage_config_validation.max_threads) is busy.'
     security:
       - apiKeyAuth: []
       - authTokenAuth: []
     x-yba-api-audit:
       auditTargetType: CustomerConfig
-      auditTargetId: obj.getInfo().getUuid().toString()
+      auditTargetId: obj.getResourceUuid().toString()
       auditActionType: Create
+      taskUuid: obj.getTaskUuid()
     x-yba-api-authz:
       - requiredPermission:
           resourceType: other
@@ -68,30 +77,29 @@
     operationId: validateStorageConfig
     summary: Validate a storage configuration
     description: |
-      Checks a storage configuration without creating it: the same checks as
-      createStorageConfig, including that the name is free and, unless
-      yb.storage_config.skip_validation is set, that YBA can write, read, list and delete a test
-      object at each location with the given credentials. Returns 200 with no body if the
-      configuration can be created.
+      Checks a storage configuration without creating it, and returns the task that checks the
+      storage. The request runs the same checks as createStorageConfig, including that the name is
+      free. The task then checks, unless yb.storage_config.skip_validation is set, the locations and
+      that YBA can write, read, list and delete a test object at each location with the given
+      credentials. The task succeeds if and only if the storage check of a create would pass; when
+      it fails, its error message starts with the same error codes as the createStorageConfig task.
+      The task has no resource, and YBA keeps the configuration only in memory while the task runs:
+      a task interrupted by a YBA restart fails.
     tags:
       - Storage Config
     requestBody:
       $ref: "../components/requestBodies/StorageConfigValidateReq.yaml"
     responses:
       '200':
-        description: The storage configuration can be created
+        $ref: "../components/responses/YBATaskResp.yaml"
       '400':
-        description: 'Invalid input, such as a missing secret, a blank name or a region listed twice. A malformed location or host found by the storage check has error.code STORAGE_CONFIG_INVALID, with error.errors listing the failures by field.'
+        description: 'Invalid input, such as a missing secret, a blank name, a region listed twice or a location longer than allowed. error.code is STORAGE_CONFIG_INVALID, with error.errors listing the failures by field, for a field constraint of the stored configuration.'
       '401':
         description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no create permission on the customer'
       '409':
         description: The customer already has a storage configuration with this name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid names the existing configuration.
-      '422':
-        description: 'The storage check failed: YBA reached the storage, or tried to, and it refused the configuration, e.g. with access denied or no such bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field and, when the provider answered, error.provider_status (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout.'
       '500':
         description: Server error
-      '503':
-        description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status) or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage check thread (yb.storage_config_validation.max_threads) is busy.'
     security:
       - apiKeyAuth: []
       - authTokenAuth: []
@@ -104,6 +112,7 @@
         resourceLocation:
           path: customers
           sourceType: endpoint
+    x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/storage-configs/{scUUID}':

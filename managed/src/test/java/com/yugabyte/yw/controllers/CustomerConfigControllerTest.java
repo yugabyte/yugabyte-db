@@ -237,6 +237,19 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListLeavesOutConfigsBeingValidated() {
+    ModelFactory.createS3StorageConfig(defaultCustomer, "TEST7");
+    CustomerConfig validating = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST8");
+    validating.setState(ConfigState.Validating);
+    validating.update();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs";
+    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    JsonNode node = Json.parse(contentAsString(result));
+    assertEquals(1, node.size());
+    assertEquals("TEST7", node.get(0).get("configName").asText());
+  }
+
+  @Test
   public void testListCustomerWithoutData() {
     String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs";
     Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());

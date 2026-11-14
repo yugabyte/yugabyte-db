@@ -4,10 +4,7 @@ package api.v2.handlers;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.CONFLICT;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
-import static play.mvc.Http.Status.SERVICE_UNAVAILABLE;
-import static play.mvc.Http.Status.UNPROCESSABLE_ENTITY;
 
 import api.v2.mappers.StorageConfigMapper;
 import api.v2.models.AzureCredentials;
@@ -28,44 +25,44 @@ import api.v2.models.S3StorageSpec;
 import api.v2.models.StorageConfig;
 import api.v2.models.StorageConfigSpec;
 import api.v2.models.StorageSpec;
+import api.v2.models.YBATask;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.customer.config.UnsavedStorageConfigs;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DuplicateKeyException;
-import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.pekko.Done;
-import org.apache.pekko.actor.CoordinatedShutdown;
 import play.libs.Json;
 
 /**
  * v2 storage configs: typed specs over the v1 {@link CustomerConfig} of type STORAGE.
  *
+ * <p>Create and validate run on the request only the checks that need no storage, and return a
+ * {@link ValidateStorageConfig} task that runs the storage validators, which block on cloud SDK
+ * calls. Create saves the config in state Validating, which the task makes Active, or deletes the
+ * config when the check fails. Validate saves nothing: the task gets the config in memory, through
+ * {@link UnsavedStorageConfigs}.
+ *
  * <p>Status codes, unlike v1: 400 for an invalid spec, 409 with a code and the existing config's
- * UUID for a name conflict (also when the DB unique constraint catches a concurrent create), 422
- * with a code when the storage check fails or times out, 503 when the provider is unavailable or
- * every storage check thread is busy, and 404 for a missing config.
+ * UUID for a name conflict (also when the DB unique constraint catches a concurrent create), and
+ * 404 for a missing config. A failed storage check fails the task, with the error code in its
+ * message.
  */
 @Slf4j
 @Singleton
@@ -75,57 +72,79 @@ public class StorageConfigHandler {
   public static final String CONFIG_INVALID = StorageValidationErrors.CONFIG_INVALID;
   public static final String VALIDATION_FAILED = StorageValidationErrors.VALIDATION_FAILED;
   public static final String PROVIDER_UNAVAILABLE = StorageValidationErrors.PROVIDER_UNAVAILABLE;
-  public static final String VALIDATION_TIMEOUT = "STORAGE_VALIDATION_TIMEOUT";
-  public static final String VALIDATION_BUSY = "STORAGE_VALIDATION_BUSY";
-
-  private static final String POOL_NAME = "storage_config_validation";
 
   private final CustomerConfigValidator configValidator;
-  private final RuntimeConfGetter confGetter;
-  private final ExecutorService validationExecutor;
+  private final Commissioner commissioner;
+  private final UnsavedStorageConfigs unsavedConfigs;
 
   @Inject
   public StorageConfigHandler(
       CustomerConfigValidator configValidator,
-      RuntimeConfGetter confGetter,
-      PlatformExecutorFactory executorFactory,
-      CoordinatedShutdown coordinatedShutdown) {
+      Commissioner commissioner,
+      UnsavedStorageConfigs unsavedConfigs) {
     this.configValidator = configValidator;
-    this.confGetter = confGetter;
-    // The storage checks block on cloud SDK calls that have no overall deadline of their own, so
-    // they run here and the request waits for them only up to the validation timeout. The pool has
-    // no queue (yb.storage_config_validation): a check that timed out keeps its thread until the
-    // SDK call returns, and queued checks would time out behind it without reaching their storage.
-    this.validationExecutor =
-        executorFactory.createNonBlockingExecutor(
-            POOL_NAME,
-            new ThreadFactoryBuilder()
-                .setNameFormat("storage-config-validation-%d")
-                .setDaemon(true)
-                .build());
-    coordinatedShutdown.addTask(
-        CoordinatedShutdown.PhaseServiceStop(),
-        "storage-config-validation-shutdown",
-        () -> {
-          validationExecutor.shutdown();
-          return CompletableFuture.completedFuture(Done.done());
-        });
+    this.commissioner = commissioner;
+    this.unsavedConfigs = unsavedConfigs;
   }
 
-  public StorageConfig createStorageConfig(UUID cUUID, StorageConfigSpec spec) {
+  public YBATask createStorageConfig(UUID cUUID, StorageConfigSpec spec) {
+    Customer customer = Customer.getOrNotFound(cUUID);
     CustomerConfig config = validate(cUUID, spec);
     config.generateUUID();
+    config.setState(ConfigState.Validating);
     try {
       config.save();
     } catch (DuplicateKeyException e) {
       // A concurrent request created a config with the same name after the check in validate.
       throw nameConflict(cUUID, config.getConfigName());
     }
-    return StorageConfigMapper.INSTANCE.toStorageConfig(config);
+    ValidateStorageConfig.Params params = new ValidateStorageConfig.Params();
+    params.customerUUID = cUUID;
+    params.configUUID = config.getConfigUUID();
+    UUID taskUUID;
+    try {
+      taskUUID = commissioner.submit(TaskType.ValidateStorageConfig, params);
+    } catch (RuntimeException e) {
+      // No task will make it Active.
+      config.delete();
+      throw e;
+    }
+    log.info(
+        "Submitted task {} to check the storage of config {}", taskUUID, config.getConfigUUID());
+    CustomerTask.create(
+        customer,
+        config.getConfigUUID(),
+        taskUUID,
+        CustomerTask.TargetType.CustomerConfiguration,
+        CustomerTask.TaskType.Create,
+        config.getConfigName());
+    return new YBATask().taskUuid(taskUUID).resourceUuid(config.getConfigUUID());
   }
 
-  public void validateStorageConfig(UUID cUUID, StorageConfigSpec spec) {
-    validate(cUUID, spec);
+  public YBATask validateStorageConfig(UUID cUUID, StorageConfigSpec spec) {
+    Customer customer = Customer.getOrNotFound(cUUID);
+    CustomerConfig config = validate(cUUID, spec);
+    // Kept in memory for the task: the task params are stored unencrypted, the secrets aren't.
+    UUID key = unsavedConfigs.put(config);
+    ValidateStorageConfig.Params params = new ValidateStorageConfig.Params();
+    params.customerUUID = cUUID;
+    params.configUUID = key;
+    params.dryRun = true;
+    UUID taskUUID;
+    try {
+      taskUUID = commissioner.submit(TaskType.ValidateStorageConfig, params);
+    } catch (RuntimeException e) {
+      unsavedConfigs.remove(key);
+      throw e;
+    }
+    CustomerTask.create(
+        customer,
+        key,
+        taskUUID,
+        CustomerTask.TargetType.CustomerConfiguration,
+        CustomerTask.TaskType.Validate,
+        config.getConfigName());
+    return new YBATask().taskUuid(taskUUID);
   }
 
   public StorageConfig getStorageConfig(UUID cUUID, UUID scUUID) {
@@ -136,7 +155,10 @@ public class StorageConfigHandler {
     return StorageConfigMapper.INSTANCE.toStorageConfig(config);
   }
 
-  /** Runs every check of a create and returns the v1 config to save. */
+  /**
+   * Runs the checks of a create that need no storage and returns the v1 config to save. The storage
+   * validators run in the task.
+   */
   private CustomerConfig validate(UUID cUUID, StorageConfigSpec spec) {
     checkSpec(spec.getStorage());
     // Stored trimmed, as v1 does; the schema's minLength applies before trimming.
@@ -155,7 +177,6 @@ public class StorageConfigHandler {
     } catch (PlatformServiceException e) {
       throw StorageValidationErrors.toV2Error(e);
     }
-    checkStorage(config);
     return config;
   }
 
@@ -241,46 +262,6 @@ public class StorageConfigHandler {
         throw badRequest(
             "storage.region_locations has region " + region.apply(location) + " more than once");
       }
-    }
-  }
-
-  /**
-   * Runs the storage validator, which checks the locations and reaches out to the storage, with a
-   * deadline. See {@link StorageValidationErrors} for how its failures are answered.
-   */
-  private void checkStorage(CustomerConfig config) {
-    Duration timeout = confGetter.getGlobalConf(GlobalConfKeys.storageConfigValidationTimeout);
-    Future<?> check;
-    try {
-      check =
-          validationExecutor.submit(() -> configValidator.validateConfigDataWithValidator(config));
-    } catch (RejectedExecutionException e) {
-      ObjectNode error = Json.newObject();
-      error.put("code", VALIDATION_BUSY);
-      error.put(
-          "message",
-          String.format("All storage checks are busy (yb.%s.max_threads), retry later", POOL_NAME));
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, error);
-    }
-    try {
-      check.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
-    } catch (TimeoutException e) {
-      // The SDK call can't be interrupted reliably; the thread finishes it on its own.
-      check.cancel(true);
-      ObjectNode error = Json.newObject();
-      error.put("code", VALIDATION_TIMEOUT);
-      error.put(
-          "message",
-          String.format(
-              "YBA could not check the storage within %s (%s)",
-              timeout, GlobalConfKeys.storageConfigValidationTimeout.getKey()));
-      throw new PlatformServiceException(UNPROCESSABLE_ENTITY, error);
-    } catch (InterruptedException e) {
-      check.cancel(true);
-      Thread.currentThread().interrupt();
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Interrupted checking storage");
-    } catch (ExecutionException e) {
-      throw StorageValidationErrors.toV2Error(e.getCause());
     }
   }
 

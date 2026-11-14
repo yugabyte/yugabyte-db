@@ -110,7 +110,13 @@ public class CustomerConfig extends Model {
     Active,
 
     @EnumValue("QueuedForDeletion")
-    QueuedForDeletion
+    QueuedForDeletion,
+
+    // Created through the v2 API and waiting for its storage check (the ValidateStorageConfig
+    // task), which makes it Active or deletes it. Like a config queued for deletion, it can't be
+    // used for backups.
+    @EnumValue("Validating")
+    Validating
   }
 
   @Id
@@ -156,7 +162,8 @@ public class CustomerConfig extends Model {
   private ObjectNode data;
 
   @ApiModelProperty(
-      value = "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+      value =
+          "state of the customerConfig. Possible values are Active, QueuedForDeletion, Validating.",
       accessMode = READ_ONLY)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
@@ -175,10 +182,18 @@ public class CustomerConfig extends Model {
 
   public static final Finder<UUID, CustomerConfig> find = new Finder<>(CustomerConfig.class) {};
 
+  /**
+   * A page of the customer's configs, without those still being checked (Validating): their state
+   * is unknown to older clients, and the config can't be used until its check passes.
+   */
   public static PagedList<CustomerConfig> getPagedList(
       UUID customerUUID, NormalizedPaginationSpec normalized) {
     ExpressionList<CustomerConfig> expr =
-        CustomerConfig.find.query().where().eq("customer_uuid", customerUUID);
+        CustomerConfig.find
+            .query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .ne("state", ConfigState.Validating);
     String order = normalized.order();
     String orderBy = String.format("coalesce(lower(name), '') %s, config_uuid %s", order, order);
     return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
@@ -232,8 +247,18 @@ public class CustomerConfig extends Model {
     return customerConfig;
   }
 
+  /**
+   * The customer's configs, without those still being checked (Validating): their state is unknown
+   * to older v1 clients, which fail to read a list that has one, and the config can't be used until
+   * its check passes.
+   */
   public static List<CustomerConfig> getAll(UUID customerUUID) {
-    return CustomerConfig.find.query().where().eq("customer_uuid", customerUUID).findList();
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .ne("state", ConfigState.Validating)
+        .findList();
   }
 
   public static CustomerConfig get(UUID customerUUID, UUID configUUID) {
@@ -350,6 +375,46 @@ public class CustomerConfig extends Model {
             .eq("state", ConfigState.QueuedForDeletion)
             .findList();
     return configList;
+  }
+
+  /** Returns the storage configs of all customers in the given state. */
+  public static List<CustomerConfig> getAllStorageConfigsInState(ConfigState state) {
+    return CustomerConfig.find
+        .query()
+        .where()
+        .eq("type", ConfigType.STORAGE)
+        .eq("state", state)
+        .findList();
+  }
+
+  /**
+   * Moves the config from Validating to the given state in one statement, so that a state set
+   * meanwhile by another request (e.g. QueuedForDeletion) is kept. Returns whether it was moved.
+   */
+  public static boolean updateStateIfValidating(UUID configUUID, ConfigState newState) {
+    return CustomerConfig.find
+            .query()
+            .asUpdate()
+            .set("state", newState)
+            .where()
+            .idEq(configUUID)
+            .eq("state", ConfigState.Validating)
+            .update()
+        > 0;
+  }
+
+  /**
+   * Deletes the config if it is still Validating, in one statement, so that a config another
+   * request moved out of that state meanwhile is kept. Returns whether it was deleted.
+   */
+  public static boolean deleteIfValidating(UUID configUUID) {
+    return CustomerConfig.find
+            .query()
+            .where()
+            .idEq(configUUID)
+            .eq("state", ConfigState.Validating)
+            .delete()
+        > 0;
   }
 
   public static CustomerConfig createCallHomeConfig(UUID customerUUID) {

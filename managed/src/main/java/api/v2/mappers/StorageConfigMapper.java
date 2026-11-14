@@ -101,11 +101,18 @@ public interface StorageConfigMapper {
   default StorageConfigInfo toStorageConfigInfo(CustomerConfig config) {
     return new StorageConfigInfo()
         .uuid(config.getConfigUUID())
-        .state(
-            config.getState() == ConfigState.QueuedForDeletion
-                ? StorageConfigState.StorageConfigQueuedForDeletion
-                : StorageConfigState.StorageConfigActive)
+        .state(toStorageConfigState(config.getState()))
         .isKubernetesOperatorControlled(config.isKubernetesOperatorControlled());
+  }
+
+  default StorageConfigState toStorageConfigState(ConfigState state) {
+    if (state == ConfigState.QueuedForDeletion) {
+      return StorageConfigState.StorageConfigQueuedForDeletion;
+    }
+    if (state == ConfigState.Validating) {
+      return StorageConfigState.StorageConfigValidating;
+    }
+    return StorageConfigState.StorageConfigActive;
   }
 
   default StorageSpec toStorageSpec(CustomerConfigData data) {

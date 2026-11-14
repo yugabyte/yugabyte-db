@@ -16,13 +16,17 @@ import com.google.cloud.BaseServiceException;
 import com.google.common.collect.ImmutableMap;
 import com.oracle.bmc.model.BmcException;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TaskExecutionException;
+import com.yugabyte.yw.models.helpers.YBAError.Code;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.net.http.HttpTimeoutException;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import javax.net.ssl.SSLException;
 import lombok.extern.slf4j.Slf4j;
@@ -32,7 +36,8 @@ import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 
 /**
- * Turns a failure of the v1 storage validators into the v2 storage config error.
+ * Turns a failure of the v1 storage validators into the v2 storage config error, which the
+ * ValidateStorageConfig task reports as its error ({@link #toTaskError}).
  *
  * <ul>
  *   <li>The cloud provider answered or couldn't be reached: the validators keep the SDK's exception
@@ -48,14 +53,17 @@ import software.amazon.awssdk.core.exception.SdkClientException;
  *   <li>Anything else is a YBA bug: 500.
  * </ul>
  *
- * Field errors are keyed by v2 property, in error.errors.
+ * Field errors are keyed by v2 property, in error.errors. The HTTP status answers a request (the
+ * field constraints checked by the create and validate requests); the task reports the code.
  */
 @Slf4j
-final class StorageValidationErrors {
+public final class StorageValidationErrors {
 
-  static final String CONFIG_INVALID = "STORAGE_CONFIG_INVALID";
-  static final String VALIDATION_FAILED = "STORAGE_VALIDATION_FAILED";
-  static final String PROVIDER_UNAVAILABLE = "STORAGE_PROVIDER_UNAVAILABLE";
+  public static final String CONFIG_INVALID = "STORAGE_CONFIG_INVALID";
+  public static final String VALIDATION_FAILED = "STORAGE_VALIDATION_FAILED";
+  public static final String PROVIDER_UNAVAILABLE = "STORAGE_PROVIDER_UNAVAILABLE";
+  // Every thread checking storage is busy, see StorageCheckRunner.
+  public static final String VALIDATION_BUSY = "STORAGE_VALIDATION_BUSY";
 
   // Field names in the v1 validators' errors (keys of the v1 data, prefixed by "data.") and the
   // v2 property they come from.
@@ -91,7 +99,7 @@ final class StorageValidationErrors {
   /** The provider's answer to a storage check, or the network failure that prevented one. */
   record ProviderError(int status, String errorCode, boolean unavailable, String message) {}
 
-  static PlatformServiceException toV2Error(Throwable failure) {
+  public static PlatformServiceException toV2Error(Throwable failure) {
     if (failure instanceof PlatformServiceException) {
       PlatformServiceException pse = (PlatformServiceException) failure;
       ProviderError provider = providerError(pse.getCause());
@@ -120,6 +128,60 @@ final class StorageValidationErrors {
     log.error("Unexpected failure of a storage config check", failure);
     return new PlatformServiceException(
         INTERNAL_SERVER_ERROR, "Unexpected error checking the storage: " + failure.getMessage());
+  }
+
+  /**
+   * The failure of the storage check in the ValidateStorageConfig task: the v2 error of {@link
+   * #toV2Error} as a task error, whose message starts with the error code, e.g.
+   *
+   * <pre>
+   * STORAGE_VALIDATION_FAILED: storage.backup_location: Access Denied (provider status 403,
+   * provider error code AccessDenied)
+   * </pre>
+   *
+   * followed by the other errors when there is more than one. A provider that is unavailable gives
+   * {@link Code#CONNECTION_ERROR}, any other failure {@link Code#INTERNAL_ERROR}.
+   */
+  public static TaskExecutionException toTaskError(Throwable failure) {
+    PlatformServiceException v2Error = toV2Error(failure);
+    JsonNode error = v2Error.getContentJson().get("error");
+    if (error == null || !error.isObject() || !error.has("code")) {
+      // An unexpected failure, with a plain message.
+      return new TaskExecutionException(Code.INTERNAL_ERROR, v2Error.getUserVisibleMessage());
+    }
+    String code = error.get("code").asText();
+    StringBuilder message = new StringBuilder(code).append(": ");
+    message.append(error.path("message").asText());
+    List<String> provider = new ArrayList<>();
+    if (error.has("provider_status")) {
+      provider.add("provider status " + error.get("provider_status").asInt());
+    }
+    if (error.has("provider_error_code")) {
+      provider.add("provider error code " + error.get("provider_error_code").asText());
+    }
+    if (!provider.isEmpty()) {
+      message.append(" (").append(String.join(", ", provider)).append(")");
+    }
+    // error.message is the first of the errors: list the others after it.
+    List<String> errors = new ArrayList<>();
+    Iterator<Map.Entry<String, JsonNode>> it = error.path("errors").fields();
+    while (it.hasNext()) {
+      Map.Entry<String, JsonNode> field = it.next();
+      for (JsonNode m : field.getValue()) {
+        errors.add(field.getKey().isEmpty() ? m.asText() : field.getKey() + ": " + m.asText());
+      }
+    }
+    if (errors.size() > 1) {
+      message
+          .append(". Other errors: ")
+          .append(String.join(", ", errors.subList(1, errors.size())));
+    }
+    // The task error can't carry the exception behind the failure, such as the SDK's with its
+    // request ID, so it goes to the log.
+    log.warn("Storage check failed: {}", message, failure);
+    return new TaskExecutionException(
+        PROVIDER_UNAVAILABLE.equals(code) ? Code.CONNECTION_ERROR : Code.INTERNAL_ERROR,
+        message.toString());
   }
 
   /**

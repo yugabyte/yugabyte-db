@@ -48,6 +48,19 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     this.storageUtilFactory = storageUtilFactory;
   }
 
+  // A config still being checked (Validating) may be deleted when its check fails, and one queued
+  // for deletion is going away.
+  private static void checkActive(CustomerConfig customerConfig) {
+    if (customerConfig.getState() != CustomerConfig.ConfigState.Active) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Storage config %s is %s; only an active storage config can be used for continuous"
+                  + " backup.",
+              customerConfig.getConfigUUID(), customerConfig.getState()));
+    }
+  }
+
   /**
    * Validates that a backup directory name is safe for cloud storage. Checks for: - Path traversal
    * attempts (..) - Directory separators (/) - Special characters - Empty or null values
@@ -102,6 +115,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can only use storage config for continuous backup.");
     }
+    checkActive(customerConfig);
 
     // Validate backup directory name
     validateBackupDir(continuousBackupCreateSpec.getBackupDir());
@@ -169,6 +183,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can only set storage config for continuous backup.");
     }
+    checkActive(customerConfig);
 
     // Validate backup directory name
     validateBackupDir(continuousBackupEditSpec.getBackupDir());

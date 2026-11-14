@@ -357,5 +357,11 @@ public class StorageConfigMapperTest {
     assertEquals(v1.getConfigUUID(), info.getUuid());
     assertEquals(StorageConfigState.StorageConfigQueuedForDeletion, info.getState());
     assertFalse(info.getIsKubernetesOperatorControlled());
+
+    v1.setState(ConfigState.Validating);
+    assertEquals(
+        StorageConfigState.StorageConfigValidating, MAPPER.toStorageConfigInfo(v1).getState());
+    v1.setState(ConfigState.Active);
+    assertEquals(StorageConfigState.StorageConfigActive, MAPPER.toStorageConfigInfo(v1).getState());
   }
 }
