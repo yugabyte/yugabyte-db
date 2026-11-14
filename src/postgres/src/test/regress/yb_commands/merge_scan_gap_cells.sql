@@ -6,24 +6,26 @@
 
 -- Decoded primary key column: filter kept local on an index-only scan
 --
--- With yb_enable_primary_key_decode_from_index on, an index-only scan returns
--- k1 by decoding it from the base table row reference, and a filter on it runs
--- locally, after the merge.  This runs on a secondary index that is not
--- embedded, and again in the colocated database, where the index is embedded.
--- There the scan pushes a table filter within each stream, but not a filter on
--- k1.
--- Here gap = k1 and ord1 = k1 make gap redundant, and the first row is the
--- decoy.
-\set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;'
+-- The query ties gap to ord1 through the primary key column k1, with gap = k1
+-- and ord1 = k1.  With yb_enable_primary_key_decode_from_index on, the
+-- index-only scan returns k1 by decoding it from the base table row reference,
+-- so the filters on k1 run locally, after the merge.  That holds on the
+-- secondary non-embedded index in the default database, and on the embedded
+-- index in the colocated database, whose scan pushes other filters into each
+-- stream but cannot push a filter on k1.  So the merge sorts on gap in both
+-- databases.  The rows are as in the descending gap column section of
+-- yb.orig.merge_scan_gap, with a forward decoy only.
 CREATE TABLE gap_pk_tbl (k1 int, k2 int, bkt int, ord1 int, gap int, ord2 int,
     PRIMARY KEY (k1 ASC, k2 ASC));
 CREATE INDEX NONCONCURRENTLY gap_pk_tbl_idx ON gap_pk_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC);
 INSERT INTO gap_pk_tbl VALUES
-    (1, 100, 1, 1, 0, 9), (1, 1, 1, 1, 1, 0), (1, 2, 2, 1, 1, 4), (5, 1, 1, 5, 5, 1),
-    (5, 2, 2, 5, 5, 2);
+    (1, 1, 1, 1, 1, 10), (1, 2, 1, 1, 1, 30),  -- stream bkt = 1
+    (1, 3, 2, 1, 1, 20),                       -- stream bkt = 2
+    (1, 4, 1, 1, 0, 99);                       -- decoy, fails gap = k1
 ANALYZE gap_pk_tbl;
+\set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;'
 \i :run_query
 DROP TABLE gap_pk_tbl;
 
@@ -59,9 +61,6 @@ RESET yb_enable_expression_pushdown;
 
 -- Relabeled filter gap: gap::text, a relabeled varchar column, is still an
 -- expression column of the index.
-\set Q1 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_relabel_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 CREATE TABLE gap_relabel_tbl (k int, bkt int, ord1 text, gap varchar, ord2 int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_relabel_tbl_idx ON gap_relabel_tbl (bkt ASC, ord1 ASC, (gap::text) ASC, ord2 ASC);
@@ -69,6 +68,9 @@ INSERT INTO gap_relabel_tbl VALUES
     (1, 1, 'b', 'a', 9), (2, 1, 'b', 'b', 0), (3, 2, 'b', 'b', 4), (4, 1, 'e', 'e', 1),
     (5, 2, 'e', 'e', 2);
 ANALYZE gap_relabel_tbl;
+\set Q1 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_relabel_tbl gap_relabel_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_relabel_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 SET yb_enable_expression_pushdown = off;
 \i :run_query
