@@ -19,15 +19,15 @@ public class TaskRollbackModule extends AbstractModule {
    * Software upgrade is omitted: VM vs Kubernetes is chosen at compute time.
    */
   public static final ImmutableMap<TaskType, TaskType> PLACEMENT_ROLLBACK_TASK_TYPES =
-      ImmutableMap.of(
-          TaskType.EditUniverse,
-          EditUniverseRollbackComputer.ROLLBACK_TASK_TYPE,
-          TaskType.EditKubernetesUniverse,
-          EditKubernetesUniverseRollbackComputer.ROLLBACK_TASK_TYPE,
-          TaskType.AddNodeToUniverse,
-          AddNodeToUniverseRollbackComputer.ROLLBACK_TASK_TYPE,
-          TaskType.ResizeNode,
-          ResizeNodeRollbackComputer.ROLLBACK_TASK_TYPE);
+      ImmutableMap.<TaskType, TaskType>builder()
+          .put(TaskType.EditUniverse, EditUniverseRollbackComputer.ROLLBACK_TASK_TYPE)
+          .put(
+              TaskType.EditKubernetesUniverse,
+              EditKubernetesUniverseRollbackComputer.ROLLBACK_TASK_TYPE)
+          .put(TaskType.AddNodeToUniverse, AddNodeToUniverseRollbackComputer.ROLLBACK_TASK_TYPE)
+          .put(TaskType.ResizeNode, ResizeNodeRollbackComputer.ROLLBACK_TASK_TYPE)
+          .putAll(ReadOnlyClusterCreateRollbackComputer.ROLLBACK_TASK_TYPES)
+          .build();
 
   @Override
   protected void configure() {
@@ -44,5 +44,8 @@ public class TaskRollbackModule extends AbstractModule {
         .to(EditKubernetesUniverseRollbackComputer.class);
     mapBinder.addBinding(TaskType.AddNodeToUniverse).to(AddNodeToUniverseRollbackComputer.class);
     mapBinder.addBinding(TaskType.ResizeNode).to(ResizeNodeRollbackComputer.class);
+    for (TaskType createType : ReadOnlyClusterCreateRollbackComputer.ROLLBACK_TASK_TYPES.keySet()) {
+      mapBinder.addBinding(createType).to(ReadOnlyClusterCreateRollbackComputer.class);
+    }
   }
 }
