@@ -38,6 +38,7 @@
 
 #include "yb/common/opid.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 
@@ -77,7 +78,7 @@ namespace master {
 //   rpc.RespondSuccess();
 // }
 //
-class ScopedLeaderSharedLock {
+class SCOPED_CAPABILITY ScopedLeaderSharedLock {
  public:
   // Creates a new shared lock, acquiring the catalog manager's leader_mutex_
   // for reading in the process. The lock is released when this object is
@@ -88,7 +89,7 @@ class ScopedLeaderSharedLock {
       CatalogManager* catalog,
       const char* file_name,
       int line_number,
-      const char* function_name) :
+      const char* function_name) ACQUIRE_SHARED(catalog->leader_mutex_) :
       ScopedLeaderSharedLock(catalog, OpId::kUnknownTerm, file_name, line_number, function_name) {}
 
   ScopedLeaderSharedLock(
@@ -96,9 +97,9 @@ class ScopedLeaderSharedLock {
       int64_t expected_term,
       const char* file_name,
       int line_number,
-      const char* function_name);
+      const char* function_name) ACQUIRE_SHARED(catalog->leader_mutex_);
 
-  ~ScopedLeaderSharedLock();
+  ~ScopedLeaderSharedLock() RELEASE();
 
   void Unlock();
 
