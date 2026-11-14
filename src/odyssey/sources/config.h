@@ -80,6 +80,8 @@ struct od_config {
 	int client_max;
 	int client_max_routing;
 	int server_login_retry;
+	/* YB: Use _Atomic type to support config reload */
+	_Atomic int cancel_timeout_ms;
 	int reserve_session_server_connection;
 	/*  */
 	int cache_coroutine;
@@ -96,6 +98,7 @@ struct od_config {
 	int yb_optimized_session_parameters;
 	int yb_max_pools;
 	int TEST_yb_auth_delay_ms;
+	int TEST_yb_cancel_delay_ms;
 	int yb_wait_for_rfq_on_sync;
 	enum yb_od_alter_guc_adoption yb_alter_guc_adoption_strategy;
 	int yb_alter_guc_stale_backend_ttl_ms;

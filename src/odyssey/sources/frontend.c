@@ -2973,8 +2973,27 @@ void od_frontend(void *arg)
 		od_router_cancel_init(&cancel);
 		rc = od_router_cancel(router, &client->startup.key, &cancel);
 		if (rc == 0) {
+			/* YB: test hook to delay the cancel after matching a backend */
+			if (od_unlikely(instance->config.TEST_yb_cancel_delay_ms > 0))
+				machine_sleep(instance->config.TEST_yb_cancel_delay_ms);
 			od_cancel(client->global, cancel.storage, &cancel.key,
 				  &cancel.id);
+
+			/* YB: route captured in od_router_cancel_cb under its lock */
+			od_route_t *srv_route = cancel.yb_route;
+			od_route_lock(srv_route);
+			od_server_cancel_end(cancel.server);
+			od_route_unlock(srv_route);
+			/* signal about possible free connection */
+			/* YB: waiters may be on other routes in the multi-route pool */
+			yb_signal_all_routes(
+				router, srv_route,
+				instance->config.yb_enable_multi_route_pool);
+			/* YB: release the route pinned in od_router_cancel_cb */
+			od_route_lock(srv_route);
+			srv_route->yb_cancels_in_flight--;
+			od_route_unlock(srv_route);
+
 			od_router_cancel_free(&cancel);
 		}
 		od_frontend_close(client);

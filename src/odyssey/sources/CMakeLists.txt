@@ -28,6 +28,7 @@ set(od_src
     reset.c
     frontend.c
     backend.c
+    server.c
     instance.c
     main.c
     odyssey_main.cc
