@@ -3100,7 +3100,7 @@ class PgClientSession::Impl {
 
     RSTATUS_DCHECK(
         options.using_table_locks_locally(), IllegalState,
-        "Table Locking feature not enabled.");
+        "Object lock request from a transaction that does not use object locks locally");
     RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
         IllegalState, "Object lock RPCs must not carry a read time serial no");
