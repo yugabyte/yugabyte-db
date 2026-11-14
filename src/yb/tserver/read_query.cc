@@ -644,8 +644,10 @@ bool ReadQuery::IsPgsqlFollowerReadAtAFollower() const {
 }
 
 Status ReadQuery::Complete() {
+  auto node_limit_ht = server_.Clock()->Now().ToUint64();
   for (;;) {
     resp_->Clear();
+    resp_->set_node_limit_ht(node_limit_ht);
     context_.sidecars().Reset();
     VLOG(1) << "Read time: " << read_time_ << ", safe: " << safe_ht_to_read_;
     auto result = VERIFY_RESULT(DoRead());
@@ -674,8 +676,14 @@ Status ReadQuery::Complete() {
       // If the read time is specified, then we read as part of a transaction. So we should restart
       // whole transaction. In this case we report restart time and abort reading.
       resp_->Clear();
+      resp_->set_node_limit_ht(node_limit_ht);
       auto restart_read_time = resp_->mutable_restart_read_time();
-      restart_read_time->set_read_ht(read_time_.read.ToUint64());
+      // - When the restart time is no less than the node limit,
+      //   no more read restarts on read RPCs to the same node for the query.
+      // - The restart time should not be more than the global limit.
+      auto restart_read_ht = std::min(
+          std::max(read_time_.read.ToUint64(), node_limit_ht), read_time_.global_limit.ToUint64());
+      restart_read_time->set_read_ht(restart_read_ht);
       restart_read_time->set_deprecated_max_of_read_time_and_local_limit_ht(
           read_time_.local_limit.ToUint64());
       restart_read_time->set_local_limit_ht(read_time_.local_limit.ToUint64());

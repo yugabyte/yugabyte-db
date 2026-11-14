@@ -171,6 +171,11 @@ message WriteResponsePB {
   // If this is set, then the client needs to wait for the async write to
   // complete using WaitForAsyncWrite before committing the transaction.
   optional OpIdPB async_write_op_id = 17;
+
+  // Future reads of the snapshot to the same node can ignore intents with a higher timestamp.
+  // Different from local_limit_ht since local limit is based on safe time and safe time varies
+  // by tablet.
+  optional fixed64 node_limit_ht = 18;
 }
 
 message WaitForAsyncWriteRequestPB {
@@ -330,6 +335,11 @@ message ReadResponsePB {
   // If this is set, then the client needs to wait for the async write to
   // complete using WaitForAsyncWrite before committing the transaction.
   optional OpIdPB async_write_op_id = 13;
+
+  // Future reads of the snapshot to the same node can ignore intents with a higher timestamp.
+  // Different from local_limit_ht since local limit is based on safe time and safe time varies
+  // by tablet.
+  optional fixed64 node_limit_ht = 14;
 }
 
 message GetTabletKeyRangesRequestPB {

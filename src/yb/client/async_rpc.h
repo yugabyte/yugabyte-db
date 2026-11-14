@@ -123,6 +123,9 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 
   void SendRpcToTserver(int attempt_num) override;
 
+  // Node limit sent to update local limit when useful.
+  virtual void UpdateLocalLimit(HybridTime node_limit) = 0;
+
   virtual void CallRemoteMethod() = 0;
 
   // This is the last step where errors and responses are collected from the response and
@@ -187,6 +190,8 @@ class AsyncRpcBase : public AsyncRpc {
   // Returns `true` if caller should continue processing response, `false` otherwise.
   bool CommonResponseCheck(const Status& status);
   void SendRpcToTserver(int attempt_num) override;
+
+  void UpdateLocalLimit(HybridTime node_limit) override;
 
   virtual void NotifyBatcher(const Status& status) = 0;
 

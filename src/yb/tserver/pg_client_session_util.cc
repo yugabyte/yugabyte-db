@@ -166,7 +166,11 @@ Status ProcessUsedReadTime(uint64_t session_id,
         !used_read_time->value, IllegalState,
         "Multiple used_read_time are not expected: $0, $1",
         used_read_time->value, op_used_read_time);
-    *used_read_time = {.tablet_id = read_op.used_tablet(), .value = op_used_read_time};
+    *used_read_time = {
+        .tablet_id = read_op.used_tablet(),
+        .value = op_used_read_time,
+        .node_limit = read_op.used_node_limit(),
+        .node_uuid = read_op.used_node_uuid()};
   }
   return Status::OK();
 }
