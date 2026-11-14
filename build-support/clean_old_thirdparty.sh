@@ -13,11 +13,12 @@
 #
 # Removes the thirdparty directories, one per installed thirdparty version, that no build or test
 # has used for --days days, from their parent directory.
-# A version counts as used when any of its files was read or changed within that time.
+# A version counts as used when the access time of any of its files falls within that time.
 # On Linux, access times show the reads, so the script refuses to run on a noatime filesystem.
-# On macOS, which updates access times only on the first read after a change, yb_build.sh touches
-# the version's .last_used file instead. So there, a version used only outside yb_build.sh, e.g.
-# from CLion, or only by branches without that, counts as used only for --days days after install.
+# APFS, unless mounted with strictatime, updates an access time only when it is older than the
+# modification time. So on macOS, yb_build.sh touches the version's .last_used file instead, and a
+# version used only outside yb_build.sh, e.g. from CLion, or only by branches without that, counts
+# as used only for --days days after install.
 #
 # Every yugabyte-db-thirdparty-v* directory counts, including copies renamed by hand. Symbolic
 # links, e.g. those of thirdparty installed from a PR artifact, and the <name>.tmp.* directories of
@@ -77,7 +78,8 @@ if ! [[ "$days" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 
-# BSD find rounds ages up to whole days, so -atime -1 matches nothing there.
+# Use -amin rather than -atime, since BSD find rounds ages up to whole days, so -atime -N would
+# match only files used within N-1 days.
 minutes=$(( days * 24 * 60 ))
 
 if is_linux; then
@@ -90,11 +92,10 @@ if is_linux; then
   minutes=$(( minutes + 24 * 60 ))
 fi
 
-# -cmin catches .last_used and fresh installs, whose files tar may give the archive's access times.
-# A directory that find cannot fully read counts as used.
+# Treat a find error as used, to be safe.
 recently_used() {
   local found
-  found=$(find "$1" -type f \( -amin "-$minutes" -o -cmin "-$minutes" \) -print -quit) || return 0
+  found=$(find "$1" -type f -amin "-$minutes" -print -quit) || return 0
   [[ -n $found ]]
 }
 
