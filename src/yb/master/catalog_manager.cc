@@ -1639,6 +1639,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   // Clear the table and tablet state.
   table_names_map_.clear();
   transaction_table_ids_set_.clear();
+  transaction_tables_pending_delete_.clear();
   auto table_map_checkout = tables_.CheckOut();
   table_map_checkout->Clear();
 
@@ -2769,8 +2770,23 @@ bool CatalogManager::CheckTransactionStatusTablesWithMissingTablespaces(
 
 Status CatalogManager::UpdateTransactionStatusTableTablespaces(
     const TablespaceIdToReplicationInfoMap& tablespace_info, const LeaderEpoch& epoch) {
-  if (CheckTransactionStatusTablesWithMissingTablespaces(tablespace_info)) {
+  std::vector<TableInfoPtr> tables_to_delete;
+  {
     LockGuard lock(mutex_);
+    tables_to_delete.swap(transaction_tables_pending_delete_);
+  }
+  for (auto it = tables_to_delete.begin(); it != tables_to_delete.end(); ++it) {
+    auto status = ScheduleDeleteTable(*it, epoch);
+    if (!status.ok()) {
+      // Requeue the failed table and the rest, they are no longer in transaction_table_ids_set_.
+      LockGuard lock(mutex_);
+      transaction_tables_pending_delete_.insert(
+          transaction_tables_pending_delete_.end(), it, tables_to_delete.end());
+      return status;
+    }
+  }
+  if (CheckTransactionStatusTablesWithMissingTablespaces(tablespace_info)) {
+    UniqueLock lock(mutex_);
     for (const auto& table_id : transaction_table_ids_set_) {
       auto table = tables_->FindTableOrNull(table_id);
       if (table == nullptr) {
@@ -2781,12 +2797,17 @@ Status CatalogManager::UpdateTransactionStatusTableTablespaces(
       auto tablespace_id = GetTransactionStatusTableTablespace(table);
       if (tablespace_id && !tablespace_info.count(*tablespace_id)) {
         LOG(INFO) << "Found transaction status table for tablespace id " << *tablespace_id
-                  << " which doesn't exist, clearing tablespace id and deleting";
-        // todo(GH29185): acquires a COW write lock while holding mutex_ exclusively.
-        ClearTransactionStatusTableTablespace(table);
-        RETURN_NOT_OK(ScheduleDeleteTable(table, epoch));
+                  << " which doesn't exist, scheduling it for deletion";
+        // Stop handing out its tablets now, but delete it only on the next refresh so that
+        // transactions which already picked one of its status tablets can finish.
+        transaction_tables_pending_delete_.push_back(table);
       }
     }
+    for (const auto& table : transaction_tables_pending_delete_) {
+      transaction_table_ids_set_.erase(table->id());
+    }
+    lock.unlock();
+    RETURN_NOT_OK(IncrementTransactionTablesVersion());
   }
   return Status::OK();
 }
@@ -8182,11 +8203,15 @@ Status CatalogManager::DeleteTableInMemory(
   }
 
   if (table->GetTableType() == TRANSACTION_STATUS_TABLE_TYPE) {
+    bool erased;
     {
       LockGuard lock(mutex_);
-      transaction_table_ids_set_.erase(table->id());
+      erased = transaction_table_ids_set_.erase(table->id()) > 0;
     }
-    RETURN_NOT_OK(IncrementTransactionTablesVersion());
+    // Tables of dropped tablespaces were already removed, with a version bump, on refresh.
+    if (erased) {
+      RETURN_NOT_OK(IncrementTransactionTablesVersion());
+    }
     RETURN_NOT_OK(WaitForTransactionTableVersionUpdateToPropagate());
   }
 

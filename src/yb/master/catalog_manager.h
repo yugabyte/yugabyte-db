@@ -2696,6 +2696,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   TableIdSet transaction_table_ids_set_ GUARDED_BY(mutex_);
 
+  // Transaction status tables of dropped tablespaces, removed from transaction_table_ids_set_ and
+  // deleted on the next tablespace refresh.
+  std::vector<TableInfoPtr> transaction_tables_pending_delete_ GUARDED_BY(mutex_);
+
   // Don't have to use VersionTracker for it, since table_ids_map_ already updated at the same time.
   // Tablet maps: tablet-id -> TabletInfo
   VersionTracker<TabletInfoMap> tablet_map_ GUARDED_BY(mutex_);
