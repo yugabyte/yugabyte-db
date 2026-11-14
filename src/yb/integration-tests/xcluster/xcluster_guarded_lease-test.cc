@@ -69,6 +69,7 @@ DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(leader_failure_exp_backoff_max_delta_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_lease_relinquish_leadership);
 
@@ -111,15 +112,18 @@ class XClusterGuardedLeaseTest : public PgMiniTestBase {
     return GetPgsqlNamespaceId(db_oid);
   }
 
-  // Stops heartbeats and waits for every TServer's lease to run out.
+  // Stops heartbeats, makes master withhold the lease from YSQL lease refreshes (which would
+  // otherwise keep extending it), and waits for every TServer's lease to run out.
   Status LoseXClusterLease(const NamespaceId& namespace_id) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
     return WaitForRoleOnAllTServers(namespace_id, XClusterNamespaceInfoPB::UNAVAILABLE);
   }
 
-  // Resumes heartbeats and waits for every TServer to hold a lease again.
+  // Resumes heartbeats and lease grants, and waits for every TServer to hold a lease again.
   Status RegainXClusterLease(const NamespaceId& namespace_id) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = false;
     return WaitForRoleOnAllTServers(namespace_id, XClusterNamespaceInfoPB::NOT_AUTOMATIC_MODE);
   }
 
@@ -213,14 +217,73 @@ TEST_F(XClusterGuardedLeaseTest, OidAllocationBlockedWithoutLease) {
 
   ASSERT_OK(get_new_object_id());
 
-  // Only heartbeats stop, so master stays reachable, and the call above left OIDs in the TServer's
-  // cache, so this call needs nothing from master.  It can therefore fail only because the TServer
-  // no longer holds a lease.
+  // Only heartbeats and lease grants stop, so master stays reachable, and the call above left OIDs
+  // in the TServer's cache, so this call needs nothing from master.  It can therefore fail only
+  // because the TServer no longer holds a lease.
   ASSERT_OK(LoseXClusterLease(namespace_id));
   ASSERT_NOK_STR_CONTAINS(get_new_object_id(), kOidCountUnavailableErrorMsg);
 
   ASSERT_OK(RegainXClusterLease(namespace_id));
   ASSERT_OK(get_new_object_id());
+}
+
+// Heartbeats reach master through its normal-priority service queue and YSQL lease refreshes
+// through a high-priority one, so a busy master can fail heartbeats while it still refreshes YSQL
+// leases.  A TServer that still reaches master that way must keep its xCluster-guarded information
+// lease; otherwise every database, including this one that no xCluster replication involves,
+// refuses writes while the TServer still holds its YSQL lease.
+TEST_F(XClusterGuardedLeaseTest, LeaseOutlivesFailingHeartbeats) {
+  // In a real universe every TServer refreshes its YSQL lease; here only Postgres's TServer does
+  // until told otherwise.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    if (i != kPgTsIndex) {
+      ASSERT_OK(cluster_->mini_tablet_server(i)->server()->StartYSQLLeaseRefresher());
+    }
+  }
+  // So that master also extends the leases of TServers it has marked UNRESPONSIVE, as it must:
+  // every TServer becomes UNRESPONSIVE once its heartbeats have failed for that long.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5000;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE tbl (k INT PRIMARY KEY)"));
+  const auto namespace_id = ASSERT_RESULT(GetCurrentNamespaceId(conn));
+  auto* mini_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto& ts_manager = *mini_master->master()->ts_manager();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  // Three lease durations: well past when any lease a heartbeat granted ran out, and when master
+  // would have marked TServers whose leases only heartbeats extend DEFINITELY_NO_LEASE.
+  const auto deadline = MonoTime::Now() + GetLeaseDuration() * 3;
+  for (int k = 0; MonoTime::Now() < deadline; ++k) {
+    for (const auto& tserver : cluster_->mini_tablet_servers()) {
+      ASSERT_EQ(
+          tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id),
+          XClusterNamespaceInfoPB::NOT_AUTOMATIC_MODE)
+          << "TServer " << tserver->server()->permanent_uuid()
+          << " lost its xCluster-guarded information lease while its YSQL lease refreshes still "
+          << "reached master";
+    }
+    // Otherwise a propagation would skip TServers that hold a lease.
+    for (const auto& descriptor : ts_manager.GetAllDescriptors()) {
+      ASSERT_TRUE(descriptor->MaybeHasXClusterGuardedLease())
+          << "Master marked TServer " << descriptor->permanent_uuid()
+          << " as having no xCluster-guarded information lease while it extended that lease";
+    }
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO tbl VALUES ($0)", k));
+    SleepFor(1s);
+  }
+
+  auto& catalog_manager = mini_master->catalog_manager_impl();
+  auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
+  ASSERT_OK(xcluster_manager->SetXClusterRole(
+      catalog_manager.GetLeaderEpochInternal(), namespace_id,
+      XClusterNamespaceInfoPB::AUTOMATIC_SOURCE));
+  ASSERT_OK(xcluster_manager->PropagateXClusterGuardedInfo(
+      MonoTime::Now() + MonoDelta(10s * kTimeMultiplier)));
+  for (const auto& tserver : cluster_->mini_tablet_servers()) {
+    EXPECT_EQ(
+        tserver->server()->GetXClusterContext().GetXClusterRole(namespace_id),
+        XClusterNamespaceInfoPB::AUTOMATIC_SOURCE);
+  }
 }
 
 class XClusterPropagateGuardedInfoTest : public XClusterGuardedLeaseTest {};
@@ -242,9 +305,11 @@ TEST_F_EX(XClusterPropagateGuardedInfoTest, PropagatesWithoutHeartbeats,
     return tserver->server()->GetXClusterContext().GetOidCacheInvalidationsCount();
   };
 
-  // Stop heartbeats, and let any in flight finish, so that the RPC is the only way new
-  // information can reach the TServers.
+  // Stop heartbeats and the lease extensions YSQL lease refreshes carry with fresh information, and
+  // let any in flight finish, so that the RPC is the only way new information can reach the
+  // TServers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
   SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
   const auto old_oid_invalidations_count =
       ASSERT_RESULT(get_oid_cache_invalidations_count(tservers[0]));
@@ -368,8 +433,9 @@ class XClusterGuardedLeasePgTest : public XClusterGuardedLeaseTest {
         Format("Wait for xCluster lease to be $0", has_lease ? "held" : "lost"));
   }
 
-  // Makes master withhold the xCluster-guarded information lease from heartbeat responses, then
-  // waits for every TServer's lease to run out.  Unlike LoseXClusterLease, heartbeats keep flowing.
+  // Makes master withhold the xCluster-guarded information lease from heartbeat and YSQL lease
+  // refresh responses, then waits for every TServer's lease to run out.  Unlike LoseXClusterLease,
+  // heartbeats keep flowing.
   Status WithholdXClusterLease() {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
     return WaitForXClusterLeaseOnAllTServers(/*has_lease=*/false);

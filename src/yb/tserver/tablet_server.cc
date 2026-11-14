@@ -2724,6 +2724,14 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
   xcluster_context_->UpdatePersistenceBlockMap(info.persistence_block_map());
 }
 
+void TabletServer::ApplyXClusterGuardedInfoWithLease(
+    const XClusterGuardedInfoPB& info, MonoTime lease_expiration_time) {
+  ApplyXClusterGuardedInfoIfNewer(info);
+  xcluster_context_->UpdateXClusterGuardedLease(lease_expiration_time);
+  // Without heartbeats, which also call this, a Postgres left paused for the lease would stay so.
+  MaybeStartPg();
+}
+
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());

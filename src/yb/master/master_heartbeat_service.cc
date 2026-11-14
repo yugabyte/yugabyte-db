@@ -82,9 +82,10 @@ DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
 TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
 
 DEFINE_test_flag(bool, no_grant_xcluster_guarded_lease, false,
-    "When true, master leaves the xCluster-guarded information lease out of heartbeat "
-    "responses.  TServers then cannot acquire or extend the xCluster lease.  The rest of the "
-    "heartbeat, including the xCluster-guarded information itself, is unaffected.");
+    "When true, master leaves the xCluster-guarded information lease out of heartbeat responses, "
+    "and both that lease and the information it guards out of YSQL lease refresh responses.  "
+    "TServers then cannot acquire or extend the xCluster lease.  The rest of the heartbeat, "
+    "including the xCluster-guarded information itself, is unaffected.");
 
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");

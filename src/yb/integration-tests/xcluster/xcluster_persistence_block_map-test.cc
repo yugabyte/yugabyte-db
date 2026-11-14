@@ -49,6 +49,7 @@
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 DECLARE_bool(TEST_hang_on_namespace_transition);
+DECLARE_bool(TEST_no_grant_xcluster_guarded_lease);
 DECLARE_bool(TEST_skip_persistence_block_erase_on_drop);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(enforce_xcluster_guarded_lease);
@@ -230,9 +231,10 @@ TEST_F_EX(
   auto conn = ASSERT_RESULT(Connect());
   const auto namespace_id = ASSERT_RESULT(CreateDatabase(conn, "db1")).namespace_id;
 
-  // Stop heartbeats, and let any in flight finish, so that only the calls' own propagation can
-  // deliver the map.
+  // Stop heartbeats and the lease extensions YSQL lease refreshes carry with fresh information, and
+  // let any in flight finish, so that only the calls' own propagation can deliver the map.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
   SleepFor(FLAGS_heartbeat_interval_ms * 2ms * kTimeMultiplier);
 
   ASSERT_OK(StopPersisting({namespace_id}));
@@ -282,6 +284,7 @@ TEST_F(XClusterPersistenceBlockMapTest, TServerWithoutLeaseCatchesUp) {
   const auto [namespace_id, oid] = ASSERT_RESULT(CreateDatabase(conn, "db1"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = true;
   // Wait until master knows no TServer holds a lease, so propagation skips them all and only
   // heartbeats can deliver the map afterwards.
   auto& ts_manager = *ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->ts_manager();
@@ -306,6 +309,7 @@ TEST_F(XClusterPersistenceBlockMapTest, TServerWithoutLeaseCatchesUp) {
   ASSERT_OK(StopPersisting({namespace_id}));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_no_grant_xcluster_guarded_lease) = false;
   ASSERT_OK(WaitFor(
       [this]() -> Result<bool> { return CheckTServersHaveMasterMap().ok(); }, 30s * kTimeMultiplier,
       "Wait for TServers to catch up"));

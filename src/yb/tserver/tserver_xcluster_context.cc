@@ -143,7 +143,10 @@ void TserverXClusterContext::UpdateSafeTimeMap(
 
 void TserverXClusterContext::UpdateXClusterGuardedLease(MonoTime lease_expiration_time) {
   std::lock_guard lock(mutex_);
-  xcluster_guarded_lease_expiration_ = lease_expiration_time;
+  // Heartbeats and YSQL lease refreshes both extend the lease and their responses can be processed
+  // out of order, so keep the later expiration.  Each caller first applied the information that
+  // came with its lease, or newer, so the information is at least as new as that of the kept lease.
+  xcluster_guarded_lease_expiration_.MakeAtLeast(lease_expiration_time);
 }
 
 void TserverXClusterContext::UpdateXClusterInfoPerNamespace(

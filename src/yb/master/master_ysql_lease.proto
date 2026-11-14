@@ -16,6 +16,7 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
@@ -36,6 +37,10 @@ message RefreshYsqlLeaseInfoPB {
   // into multiple messages.
   optional tserver.DdlLockEntriesPB ddl_lock_entries = 3;
   optional uint64 lease_expiry_time_ms = 4;
+  // An extension of the xCluster-guarded information lease, with a fresh copy of the information it
+  // guards, as a heartbeat response grants it.  See XClusterManager::ExtendXClusterGuardedLease.
+  optional XClusterGuardedInfoPB xcluster_guarded_info = 5;
+  optional uint32 xcluster_guarded_lease_duration_ms = 6;
 }
 
 message RefreshYsqlLeaseResponsePB {

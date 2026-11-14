@@ -191,13 +191,22 @@ Status YsqlLeasePoller::Poll() {
   rpc::RpcController rpc;
   rpc.set_timeout(timeout);
   master::RefreshYsqlLeaseResponsePB resp;
+  // The xCluster-guarded information lease is anchored here, before master can have granted it.
+  const auto send_time = MonoTime::Now();
   RETURN_NOT_OK(proxy_->RefreshYsqlLease(req, &resp, &rpc));
   if (RandomActWithProbability(
           FLAGS_TEST_tserver_ysql_lease_refresh_failure_prob)) {
     return STATUS_FORMAT(NetworkError, "Pretending to fail ysql lease refresh RPC");
   }
   RETURN_NOT_OK(ResponseStatus(resp));
-  return listener_(resp.info());
+  const auto& info = resp.info();
+  // Before the listener, so that a RestartPG for a new YSQL lease epoch already sees this lease.
+  if (info.has_xcluster_guarded_info() && info.has_xcluster_guarded_lease_duration_ms()) {
+    server_.ApplyXClusterGuardedInfoWithLease(
+        info.xcluster_guarded_info(),
+        send_time + MonoDelta::FromMilliseconds(info.xcluster_guarded_lease_duration_ms()));
+  }
+  return listener_(info);
 }
 
 MonoDelta YsqlLeasePoller::IntervalToNextPoll(int32_t consecutive_failures) {

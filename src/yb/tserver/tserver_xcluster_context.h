@@ -108,8 +108,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   // replication.
   std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode_ GUARDED_BY(mutex_);
 
-  // Expiration time of the xCluster-guarded information lease granted by the master.
-  // Updated from heartbeat responses.
+  // Expiration time of the xCluster-guarded information lease granted by the master.  Updated from
+  // heartbeat and YSQL lease refresh responses, keeping the later expiration.
   MonoTime xcluster_guarded_lease_expiration_ GUARDED_BY(mutex_);
 
   UnorderedStringMap<NamespaceId, XClusterNamespaceInfoPB> xcluster_info_per_namespace_

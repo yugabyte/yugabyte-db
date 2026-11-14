@@ -467,6 +467,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& info)
       EXCLUDES(xcluster_guarded_info_version_mutex_);
 
+  // Applies a copy of the xCluster-guarded information and the lease extension master granted with
+  // it in a YSQL lease refresh response; the information first, so that the lease never covers
+  // older information.
+  void ApplyXClusterGuardedInfoWithLease(
+      const XClusterGuardedInfoPB& info, MonoTime lease_expiration_time)
+      EXCLUDES(xcluster_guarded_info_version_mutex_);
+
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
   Status ClearUniverseUuid();
