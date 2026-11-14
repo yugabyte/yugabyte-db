@@ -46,6 +46,7 @@
 #include "yb/common/cdr_metadata.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
+#include "yb/common/consistent_read_point.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
@@ -1785,9 +1786,9 @@ std::ostream& operator<<(std::ostream& str, const FinishTxnLogPrefix& value) {
 }
 
 void ClearTransaction(client::YBSession& session) {
-  const auto momento = session.read_point()->GetMomento();
+  auto read_point = session.ysql_read_point_handle();
   session.SetTransaction(nullptr);
-  session.read_point()->SetMomento(momento);
+  session.SetYsqlReadPointHandle(std::move(read_point));
 }
 
 // Returns the key used to route a GetTableKeyRanges request with the specified exclusive upper
@@ -3440,9 +3441,8 @@ class PgClientSession::Impl {
       return HybridTime::kInvalid;
     }
     // History may already hold the HT saved after FlushAsync (including for the current serial).
-    ConsistentReadPoint from_history(clock());
-    if (read_point_history_.Restore(&from_history, pin_read_time_serial_no)) {
-      return from_history.GetReadTime().read;
+    if (const auto from_history = read_point_history_.Restore(pin_read_time_serial_no)) {
+      return from_history->GetReadTime().read;
     }
     for (const auto kind :
          {PgClientSessionKind::kPlain, PgClientSessionKind::kAutonomousDdl}) {
@@ -4185,14 +4185,11 @@ class PgClientSession::Impl {
         session.SetReadPoint(read_time);
         VLOG_WITH_PREFIX(3) << "Read time: " << read_time;
       } else if (IsReadPointResetRequested(read_time_options) ||
-                options.use_legacy_catalog_session() ||
-                (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
+                options.use_legacy_catalog_session()) {
         VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
             << " read point reset requested: " << IsReadPointResetRequested(read_time_options)
-            << " use legacy catalog session: " << options.use_legacy_catalog_session()
-            << " change in read time serial number "
-            << read_time_serial_no_ << ", " << read_time_serial_no;
-        ResetReadPoint(kind);
+            << " use legacy catalog session: " << options.use_legacy_catalog_session();
+        ResetYsqlReadPointHandle(kind);
       } else {
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
 
@@ -4264,12 +4261,16 @@ class PgClientSession::Impl {
     return Status::OK();
   }
 
-  void ResetReadPoint(PgClientSessionKind kind) {
+  void ResetYsqlReadPointHandle(PgClientSessionKind kind) {
     const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
     DCHECK(is_plain_session || kind == PgClientSessionKind::kLegacyCatalog);
     const auto& data = GetSessionData(kind);
     auto& session = *data.session;
-    session.SetReadPoint({});
+    if (is_plain_session) {
+      session.SetYsqlReadPointHandle(std::make_shared<ConsistentReadPoint>(clock()));
+    } else {
+      session.SetReadPoint({});
+    }
     VLOG_WITH_PREFIX(3) << "Reset read time: " << session.read_point()->GetReadTime();
 
     if (!is_plain_session || data.transaction || !plain_session_used_read_time_.pending_update) {
@@ -4356,12 +4357,12 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(txn->SetPgTxnStart(
         options.pg_txn_start_us(), IsTxnUsingTableLocks(options.is_using_table_locks())));
     StampTransaction(*txn, options.origination_ht());
-    auto* read_point = session->read_point();
+    const auto& read_point = session->ysql_read_point_handle();
     if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
          isolation == IsolationLevel::READ_COMMITTED) &&
         txn_serial_no_ == options.txn_serial_no() &&
-        (read_point && read_point->GetReadTime())) {
-      txn->InitWithReadPoint(isolation, std::move(*read_point));
+        read_point->GetReadTime()) {
+      txn->InitWithReadPoint(isolation, read_point);
       VLOG_WITH_PREFIX(2) << "Start transaction " << IsolationLevel_Name(isolation)
                           << ", id: " << txn->id()
                           << ", kept read time: " << txn->read_point().GetReadTime();
@@ -4534,16 +4535,25 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(CheckPlainSessionPendingUsedReadTime(session_data, options));
     read_point_history_.Cleanup(options.read_time_options().read_time_serial_no_history_min());
     const auto read_time_serial_no = options.read_time_options().read_time_serial_no();
-    if (read_time_serial_no != read_time_serial_no_) {
+    // Requests that need no read time, such as object lock requests, carry no
+    // read_time_serial_no. Switching for them would replace the read point of the snapshot that
+    // the next request continues.
+    if (read_time_serial_no != kInvalidReadTimeSerialNo &&
+        read_time_serial_no != read_time_serial_no_) {
       // Update history because a read point could have been chosen (due to multiple reasons:
       // a used read time was received from DocDB or a read time was chosen while sending previous
       // request).
-      auto& read_point = *session_data.session->read_point();
-      if (read_point.GetReadTime()) {
+      auto& session = *session_data.session;
+      if (const auto& read_point = session.ysql_read_point_handle(); read_point->GetReadTime()) {
         read_point_history_.Save(read_point, read_time_serial_no_);
       }
-      if (read_point_history_.Restore(&read_point, read_time_serial_no)) {
+      if (auto read_point = read_point_history_.Restore(read_time_serial_no)) {
+        session.SetYsqlReadPointHandle(std::move(read_point));
         read_time_serial_no_ = read_time_serial_no;
+      } else if (!options.read_time_options().restart_transaction()) {
+        // Not on a read restart retry: it arrives with a new read_time_serial_no, and
+        // RestartTransaction must find the read point that saw the restart.
+        ResetYsqlReadPointHandle(PgClientSessionKind::kPlain);
       }
     }
     return Status::OK();

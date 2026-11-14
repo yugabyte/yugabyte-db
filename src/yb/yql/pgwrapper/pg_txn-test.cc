@@ -53,8 +53,11 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
 DECLARE_int32(rpc_workers_limit);
+DECLARE_int32(TEST_delay_reads_with_specified_read_time_ms);
+DECLARE_int32(ysql_select_parallelism);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int64(db_filter_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
@@ -1333,6 +1336,137 @@ TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchAllAsString("SELECT key, value FROM test WHERE key = 1")),
       "1, NULL");
+}
+
+// Test for #33011
+class PgTxnReadPointSwitchTest : public PgTxnTest {
+ protected:
+  void SetUp() override {
+    // For easily simulating a multiple snapshot case without using concurrent DDL.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    // Scan one tablet at a time on table t1 to setup the read restart.
+    // Otherwise, a full table scan fans out to both tablets of table t1.
+    // This fan-out sets up local limits for both tablets prematurely.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_select_parallelism) = 1;
+    PgTxnTest::SetUp();
+  }
+
+  Result<PGConn> PrepareTables() {
+    auto conn = VERIFY_RESULT(Connect());
+    // Two tablets used so that the local limit is populated on only one of them before the sleep.
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE t1 (k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100))"));
+    // All of the data falls within the default buffer size of 256kB
+    // and can therefore be retried internally.
+    RETURN_NOT_OK(conn.Execute(
+        "INSERT INTO t1 SELECT i, repeat('x', 1024) FROM generate_series(1, 15) i"));
+    RETURN_NOT_OK(conn.Execute(
+        "INSERT INTO t1 SELECT i, repeat('x', 1024) FROM generate_series(100, 114) i"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE t2 (k INT PRIMARY KEY)"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t2 VALUES (1)"));
+    // This function is used in a scan on table t1.
+    // Sleep when x = 11. 11 is in the second page of the first tablet in table t1
+    // since yb_fetch_row_limit is 10.
+    // This sleep delays the request sent to the second tablet of table t1.
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE FUNCTION f(x INT, val TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$"
+        "DECLARE c INT; BEGIN "
+        "SELECT count(*) INTO c FROM t2; "
+        "IF x = 11 THEN PERFORM pg_sleep(3); END IF; "
+        "RETURN val; END $$"));
+    // The second tablet must be scanned in two pages since
+    // the first page of tablet B is supposed to populate the
+    // local limit of the tablet.
+    RETURN_NOT_OK(conn.Execute("SET yb_fetch_row_limit = 10"));
+    // Warm up catalog caches.
+    RETURN_NOT_OK(conn.FetchRow<std::string>("SELECT f(0, 'warmup')"));
+    return conn;
+  }
+
+  Status WaitForPgSleep(PGConn* conn) {
+    return WaitFor([conn]() -> Result<bool> {
+      return VERIFY_RESULT(conn->FetchRow<PGUint64>(
+          "SELECT count(*) FROM pg_stat_activity WHERE wait_event = 'PgSleep'")) > 0;
+    }, 15s, "wait for the scan to reach pg_sleep");
+  }
+
+  Result<PGConn> PrepareWriterConnection() {
+    auto conn = VERIFY_RESULT(Connect());
+    // Warm up catalog caches.
+    RETURN_NOT_OK(conn.FetchRow<PGUint64>(
+        "SELECT count(*) FROM pg_stat_activity WHERE wait_event = 'PgSleep'"));
+    RETURN_NOT_OK(conn.Execute("INSERT INTO t1 VALUES (250, 'w')"));
+    RETURN_NOT_OK(conn.Execute("DELETE FROM t1 WHERE k = 250"));
+    return conn;
+  }
+};
+
+// the lost tablet-B local limit lets the writes fall into the restart window -> spurious
+// read restart; the restart flag lands on the switched read point object and is wiped by the
+// momento restore, so the session denies the restart PG requests). With the fix the scan
+// completes with exactly 30 rows: the local limit survives on the snapshot's own object and
+// no restart happens at all. A restart would also be caught as a row-count change (the
+// transparent READ COMMITTED retry would return the writer's rows: 70 rows.
+TEST_F_EX(
+    PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(NoSpuriousRestartAfterReadPointSwitch),
+    PgTxnReadPointSwitchTest) {
+  auto conn = ASSERT_RESULT(PrepareTables());
+
+  constexpr auto kReadDelay = 300ms;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 10 * 1000 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_reads_with_specified_read_time_ms) =
+      kReadDelay / 1ms;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 500 * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_reads_with_specified_read_time_ms) = 0;
+  });
+
+  auto write_conn = ASSERT_RESULT(PrepareWriterConnection());
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor(
+      [this, kReadDelay, &write_conn, &stop = thread_holder.stop_flag()] {
+    ASSERT_OK(WaitForPgSleep(&write_conn));
+    SleepFor(2 * kReadDelay + 100ms);
+    for (int i = 200; i < 240 && !stop.load(std::memory_order_acquire); ++i) {
+      ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, 'w')", i));
+    }
+    LOG(INFO) << "Writer done";
+  });
+
+  LOG(INFO) << "Starting main scan";
+  const auto rows = ASSERT_RESULT(conn.FetchRows<std::string>("SELECT f(k, v) FROM t1"));
+  LOG(INFO) << "Main scan done, rows: " << rows.size();
+  ASSERT_EQ(rows.size(), 30);
+  thread_holder.Stop();
+}
+
+TEST_F_EX(
+    PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadRestartOnWritesBeforeFirstTabletResponse),
+    PgTxnReadPointSwitchTest) {
+  auto conn = ASSERT_RESULT(PrepareTables());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 10 * 1000 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_reads_with_specified_read_time_ms) = 300;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 500 * 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_reads_with_specified_read_time_ms) = 0;
+  });
+
+  auto write_conn = ASSERT_RESULT(PrepareWriterConnection());
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&write_conn, &stop = thread_holder.stop_flag()] {
+    for (int i = 200; i < 500 && !stop.load(std::memory_order_acquire); ++i) {
+      ASSERT_OK(write_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, 'w')", i));
+    }
+  });
+
+  const auto result = conn.FetchRows<std::string>("SELECT f(k, v) FROM t1");
+  thread_holder.Stop();
+  LOG(INFO) << "Scan result: "
+            << (result.ok() ? Format("$0 rows", result->size()) : result.status().ToString());
+  ASSERT_TRUE(!result.ok() || result->size() > 30);
 }
 
 } // namespace yb::pgwrapper

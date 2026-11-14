@@ -131,7 +131,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void SetStartTimeIfNecessary();
 
   // Allows starting a transaction that reuses an existing read point.
-  void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);
+  void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPointPtr read_point);
 
   internal::TxnBatcherIf& batcher_if();
 
@@ -157,6 +157,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   const ConsistentReadPoint& read_point() const;
   ConsistentReadPoint& read_point();
+  const ConsistentReadPointPtr& ysql_read_point_handle() const;
 
   bool IsRestartRequired() const;
 
@@ -259,6 +260,10 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   void PromotionCallback(std::function<void(TabletId)> callback);
 
  private:
+  friend class YBSession;
+
+  void SetYsqlReadPointHandle(ConsistentReadPointPtr read_point);
+
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
