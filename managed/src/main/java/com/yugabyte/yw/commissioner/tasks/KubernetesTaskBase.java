@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.KubernetesPartitions;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -31,7 +32,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -100,9 +100,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   protected TelemetryConfig getDesiredTelemetryConfig() {
-    return ExportTelemetryConfig.getForUniverse(taskParams().getUniverseUUID())
-        .map(ExportTelemetryConfig::getTelemetryConfig)
-        .orElse(null);
+    return OtelCollectorUtil.getPersistedTelemetryConfig(taskParams().getUniverseUUID());
   }
 
   /**

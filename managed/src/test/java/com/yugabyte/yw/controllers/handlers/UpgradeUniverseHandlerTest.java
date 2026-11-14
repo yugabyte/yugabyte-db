@@ -68,6 +68,7 @@ import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -77,8 +78,12 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -2800,5 +2805,55 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     verify(mockCommissioner)
         .submit(
             eq(TaskType.ConfigureExportTelemetryConfig), any(ExportTelemetryConfigParams.class));
+  }
+
+  private static QueryLogConfig queryLogConfigWithTags(
+      UUID exporterUuid, Map<String, String> additionalTags) {
+    YSQLQueryLogConfig ysql = new YSQLQueryLogConfig();
+    ysql.setEnabled(true);
+    UniverseQueryLogsExporterConfig exporter = new UniverseQueryLogsExporterConfig();
+    exporter.setExporterUuid(exporterUuid);
+    exporter.setAdditionalTags(additionalTags);
+    QueryLogConfig queryLogConfig = new QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysql);
+    queryLogConfig.setUniverseLogsExporterConfig(List.of(exporter));
+    return queryLogConfig;
+  }
+
+  @Test
+  public void testSubmitExportTelemetryConfigsMetricsOnlyWithoutTagsSkipsRestart() {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureExportTelemetryConfig);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID exporterUuid = UUID.randomUUID();
+    when(mockTelemetryProviderService.getOrBadRequest(exporterUuid))
+        .thenReturn(logsCapableTelemetryProvider());
+    // The saved row reads back with empty tags.
+    ExportTelemetryConfig row = new ExportTelemetryConfig();
+    row.setUniverseUuid(u.getUniverseUUID());
+    row.setTelemetryConfig(
+        TelemetryConfig.of(null, queryLogConfigWithTags(exporterUuid, new HashMap<>()), null));
+    row.save();
+
+    // A v2 request without additional_tags maps to null tags; only metrics changes.
+    UniverseMetricsExporterConfig metricsExporter = new UniverseMetricsExporterConfig();
+    metricsExporter.setExporterUuid(exporterUuid);
+    MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
+    metricsExportConfig.setUniverseMetricsExporterConfig(List.of(metricsExporter));
+    ExportTelemetryConfigParams params =
+        buildExportTelemetryParams(
+            u, null, queryLogConfigWithTags(exporterUuid, null), metricsExportConfig);
+
+    handler.submitExportTelemetryConfigs(params, c, u);
+
+    ArgumentCaptor<ExportTelemetryConfigParams> captor =
+        ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ConfigureExportTelemetryConfig), captor.capture());
+    assertEquals(List.of(ExportType.METRICS), captor.getValue().getModifiedExportTypes());
+    assertEquals(
+        UpgradeTaskParams.UpgradeOption.NON_RESTART_UPGRADE, captor.getValue().upgradeOption);
   }
 }
