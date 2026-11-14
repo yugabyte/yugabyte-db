@@ -33,7 +33,9 @@ DROP TABLE gap_pk_tbl;
 --
 -- Each gap column here is an expression column of the index: the operator
 -- expression (gap || ''), tied by the partial index predicate or by a filter,
--- or the relabel (gap::text), tied by a filter.
+-- or the relabel (gap::text), tied by a filter.  The rows are as in the
+-- descending gap column section of yb.orig.merge_scan_gap, with a forward decoy
+-- only.
 CREATE TABLE gap_expr_tbl (k int, bkt int, ord1 text, gap varchar, ord2 int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (gap || '') ASC, ord2 ASC)
@@ -41,8 +43,9 @@ CREATE INDEX NONCONCURRENTLY gap_expr_tbl_pred_idx ON gap_expr_tbl (bkt ASC, (ga
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_op_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap || '') ASC, ord2 ASC);
 CREATE INDEX NONCONCURRENTLY gap_expr_tbl_relabel_idx ON gap_expr_tbl (bkt ASC, ord1 ASC, (gap::text) ASC, ord2 ASC);
 INSERT INTO gap_expr_tbl VALUES
-    (1, 1, 'b', 'a', 9), (2, 1, 'b', 'b', 0), (3, 2, 'b', 'b', 4), (4, 1, 'e', 'e', 1),
-    (5, 2, 'e', 'e', 2);
+    (1, 1, 'b', 'b', 10), (2, 1, 'b', 'b', 30),  -- stream bkt = 1
+    (3, 2, 'b', 'b', 20),                        -- stream bkt = 2
+    (4, 1, 'b', 'a', 99);                        -- decoy, fails ord1 = gap
 ANALYZE gap_expr_tbl;
 
 -- Predicate gap: the predicate implies (gap || ''), which comes before the only
@@ -71,4 +74,3 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
-
