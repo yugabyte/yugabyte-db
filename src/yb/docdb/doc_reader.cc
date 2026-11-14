@@ -198,7 +198,11 @@ struct GetId<FlatGetHelper<dockv::PgTableRow*, kFastBackward>> {
   static constexpr size_t kValue = 4;
 };
 
-constexpr size_t kNumDecoders = 5;
+// Decoders of FlatGetHelper<dockv::PgTableRow*, false> that apply the row filter.
+constexpr size_t kRowFilterColumnsDecoderId = 5;
+constexpr size_t kNonRowFilterColumnsDecoderId = 6;
+
+constexpr size_t kNumDecoders = 7;
 
 } // namespace
 
@@ -343,6 +347,15 @@ class PackedRowData {
   Status Decode(
       dockv::PackedRowVersion version, Slice value, const LazyDocHybridTime* doc_ht,
       const ValueControlFields& control_fields, PackedRowContext* context) {
+    return Decode(
+        version, value, doc_ht, control_fields, context, context->Id(), /* columns= */ nullptr);
+  }
+
+  // Decodes only the given projection columns, using the decoder with the given id.
+  Status Decode(
+      dockv::PackedRowVersion version, Slice value, const LazyDocHybridTime* doc_ht,
+      const ValueControlFields& control_fields, PackedRowContext* context, size_t decoder_id,
+      const DynamicBitSet* columns) {
     DVLOG_WITH_FUNC(4)
         << "value: " << value.ToDebugHexString() << ", control fields: "
         << control_fields.ToString() << ", doc_ht: " << doc_ht->ToString()
@@ -351,14 +364,13 @@ class PackedRowData {
     doc_ht_ = doc_ht;
     control_fields_ = control_fields;
 
-    size_t id = context->Id();
     if (!schema_packing_version_.empty() &&
         value.starts_with(schema_packing_version_.AsSlice())) {
       value.RemovePrefix(schema_packing_version_.size());
     } else {
       RETURN_NOT_OK(UpdateSchemaPacking(version, &value));
     }
-    auto& decoder = decoders_[id];
+    auto& decoder = decoders_[decoder_id];
 
     if (column_update_tracker_) {
       column_update_tracker_->TrackRow(&doc_ht_->encoded());
@@ -366,7 +378,7 @@ class PackedRowData {
 
     if (!decoder.Valid()) {
       decoder.Init(version_, *data_.projection, *schema_packing_,
-                   *context, data_.schema, column_update_tracker_.get());
+                   *context, data_.schema, column_update_tracker_.get(), columns);
     }
 
     // There may already be some updates for the packed row, let's take them into account.
@@ -383,11 +395,15 @@ class PackedRowData {
     value->consume_byte();
     schema_packing_ = &VERIFY_RESULT(schema_packing_storage_.GetPacking(value)).get();
     schema_packing_version_.Assign(start, value->cdata());
+    ResetDecoders();
+
+    return Status::OK();
+  }
+
+  void ResetDecoders() {
     for (auto& decoder : decoders_) {
       decoder.Reset();
     }
-
-    return Status::OK();
   }
 
  private:
@@ -443,6 +459,25 @@ DocDBTableReader::~DocDBTableReader() = default;
 
 void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
   data_.table_expiration = Expiration(dockv::TableTTL(table_schema));
+}
+
+void DocDBTableReader::SetRowFilter(PgRowFilter* filter, const DynamicBitSet& columns) {
+  data_.row_filter = filter;
+  const auto num_columns = data_.projection->size();
+  data_.row_filter_columns = DynamicBitSet();
+  data_.row_filter_columns.resize(num_columns);
+  data_.non_row_filter_columns = DynamicBitSet();
+  data_.non_row_filter_columns.resize(num_columns);
+  for (size_t idx = 0; idx != num_columns; ++idx) {
+    if (columns.test(idx)) {
+      data_.row_filter_columns.set(idx);
+    } else {
+      data_.non_row_filter_columns.set(idx);
+    }
+  }
+  if (data_.packed_row) {
+    data_.packed_row->ResetDecoders();
+  }
 }
 
 Status DocDBTableReader::UpdateTableTombstoneTime(DocHybridTime doc_ht) {
@@ -1833,9 +1868,15 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType, kFastBackward> {
  public:
   using Base = BaseOfFlatGetHelper<ResultType, kFastBackward>;
 
+  static constexpr bool kSupportsRowFilter =
+      std::is_same_v<ResultType, dockv::PgTableRow*> && !kFastBackward;
+
+  // filter_result - if not null, the row filter is applied and its outcome is stored there.
   FlatGetHelper(
-      DocDBTableReaderData* data, KeyBuffer* root_doc_key, ResultType result)
-      : Base(data, root_doc_key), result_(result) {
+      DocDBTableReaderData* data, KeyBuffer* root_doc_key, ResultType result,
+      PgRowFilterResult* filter_result = nullptr)
+      : Base(data, root_doc_key), result_(result),
+        filter_result_(kSupportsRowFilter ? filter_result : nullptr) {
     root_key_entry_ = &row_key_;
   }
 
@@ -1855,6 +1896,12 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType, kFastBackward> {
     if (row_write_time_.encoded() >= write_time) {
       DVLOG_WITH_PREFIX_AND_FUNC(4) << "Skipped, write_time: " << write_time.ToString();
       return Status::OK();
+    }
+
+    if constexpr (kSupportsRowFilter) {
+      if (filter_result_ && column_index_ != kLivenessColumnIndex) {
+        RowFilterColumnUpdated(data_.projection->num_key_columns + column_index_);
+      }
     }
 
     dockv::PackedValueV1 value(value_slice);
@@ -1905,6 +1952,12 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType, kFastBackward> {
     if constexpr (Base::kCheckExistOnly) {
       return Status::OK();
     }
+    if constexpr (kSupportsRowFilter) {
+      if (filter_result_) {
+        return DecodeWithRowFilter(
+            *packed_row_version, row_value, root_write_time, control_fields);
+      }
+    }
     return data_.packed_row->Decode(
         *packed_row_version, row_value, root_write_time, control_fields, this);
   }
@@ -1923,8 +1976,47 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType, kFastBackward> {
   using Base::data_;
   using Base::root_key_entry_;
 
+  // Decodes the columns read by the row filter, and the other columns only if the row matches.
+  Status DecodeWithRowFilter(
+      dockv::PackedRowVersion version, Slice row_value, const LazyDocHybridTime* root_write_time,
+      const ValueControlFields& control_fields) {
+    auto& packed_row = *data_.packed_row;
+    RETURN_NOT_OK(packed_row.Decode(
+        version, row_value, root_write_time, control_fields, this, kRowFilterColumnsDecoderId,
+        &data_.row_filter_columns));
+    auto match = data_.row_filter->Match(*result_);
+    // The filter could fail on a value that is updated later in the row, so the completed row is
+    // evaluated instead.
+    if (!match.ok() || *match) {
+      *filter_result_ = match.ok() ? PgRowFilterResult::kMatch : PgRowFilterResult::kUnknown;
+      return packed_row.Decode(
+          version, row_value, root_write_time, control_fields, this,
+          kNonRowFilterColumnsDecoderId, &data_.non_row_filter_columns);
+    }
+    *filter_result_ = PgRowFilterResult::kMismatch;
+    const auto& projection = *data_.projection;
+    for (auto idx = projection.num_key_columns; idx != projection.size(); ++idx) {
+      if (data_.non_row_filter_columns.test(idx)) {
+        result_->SetNull(idx);
+      }
+    }
+    return Status::OK();
+  }
+
+  // The filter outcome, obtained from the packed row, is not final after an update of a column
+  // read by the filter.
+  void RowFilterColumnUpdated(size_t projection_index) {
+    if (*filter_result_ == PgRowFilterResult::kUnknown ||
+        !data_.row_filter_columns.test(projection_index)) {
+      return;
+    }
+    *filter_result_ = *filter_result_ == PgRowFilterResult::kMatch
+        ? PgRowFilterResult::kUnknown : PgRowFilterResult::kIncomplete;
+  }
+
   // Owned by the FlatGetHelper user.
   ResultType result_;
+  PgRowFilterResult* const filter_result_;
 
   dockv::KeyBytes row_key_;
   LazyDocHybridTime row_write_time_;
@@ -1948,14 +2040,15 @@ void* FlatGetHelper<ResultType, kFastBackward>::Context() {
 template <typename Res, bool kFastBackward = false>
 Result<DocReaderResult> DoGetFlat(
     DocDBTableReaderData* data, KeyBuffer* root_doc_key,
-    const FetchedEntry& fetched_entry, Res* result) {
+    const FetchedEntry& fetched_entry, Res* result,
+    PgRowFilterResult* filter_result = nullptr) {
   DCHECK_ONLY_NOTNULL(data);
   if (result == nullptr || !data->projection->has_value_columns()) {
     FlatGetHelper<std::nullptr_t, kFastBackward> helper(data, root_doc_key, nullptr);
     return helper.Run(fetched_entry);
   }
 
-  FlatGetHelper<Res*, kFastBackward> helper(data, root_doc_key, result);
+  FlatGetHelper<Res*, kFastBackward> helper(data, root_doc_key, result, filter_result);
   return helper.Run(fetched_entry);
 }
 
@@ -2000,12 +2093,17 @@ Result<DocReaderResult> DocDBTableReader::GetFlat(
 }
 
 Result<DocReaderResult> DocDBTableReader::GetFlat(
-    KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result) {
+    KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result,
+    PgRowFilterResult* filter_result) {
   if (result) {
     DCHECK_EQ(result->projection(), *data_.projection);
   }
+  if (filter_result) {
+    DCHECK_ONLY_NOTNULL(data_.row_filter);
+    *filter_result = PgRowFilterResult::kUnknown;
+  }
   if (!data_.use_fast_backward_scan) {
-    return DoGetFlat(&data_, root_doc_key, fetched_entry, result);
+    return DoGetFlat(&data_, root_doc_key, fetched_entry, result, filter_result);
   }
 
   return DoGetFlat<dockv::PgTableRow, /* kFastBackward = */ true>(
