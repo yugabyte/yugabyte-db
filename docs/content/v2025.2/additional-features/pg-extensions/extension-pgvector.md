@@ -281,6 +281,7 @@ SET hnsw.ef_search = 100;
 - Vector indexes are not supported for [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR).
 - Vector indexes are not supported for [instant database cloning](../../../manage/backup-restore/point-in-time-recovery/clone/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported.
+- Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 20500>}}
 
 ### Notes
 

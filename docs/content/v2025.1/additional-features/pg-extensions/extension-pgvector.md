@@ -203,7 +203,7 @@ To improve query performance, you can use approximate nearest neighbor (ANN) sea
 YugabyteDB currently supports the [HNSW (Hierarchical Navigable Small World)](https://github.com/pgvector/pgvector?tab=readme-ov-file#hnsw) index type.
 
 {{< note title="Vector indexes and upgrades" >}}
-While vector indexes are in Tech Preview, YugabyteDB upgrades do not support upgrading the indexes. Drop vector indexes and then re-add them after the upgrade is finalized.
+An upgrade from v2025.1 fails if a vector index exists. Dropping the indexes and recreating them after the upgrade is not enough. Follow the steps in [Upgrading](#upgrading).
 {{< /note >}}
 
 ### HNSW
@@ -263,7 +263,29 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 - Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported. {{<issue 20829>}}
-- Currently, database upgrades do not support vector indexes. To perform an upgrade, first drop the indexes and then re-add them after the upgrade is finalized.
+- Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 20500>}}
+
+## Upgrading
+
+An upgrade from v2025.1 fails if a vector index exists. Dropping the indexes and recreating them after the upgrade is not enough. Export the data, drop the indexes and the tables, and recreate the tables on v2025.2.6.0 or later, or on v2026.1.2.0 or later.
+
+1. Before upgrading, save the DDL of each vector table and its indexes, and export the table data.
+1. Drop the vector indexes, then drop the tables.
+1. Upgrade to v2025.2.6.0 or later, or to v2026.1.2.0 or later, and finalize the upgrade.
+1. Recreate each table from its DDL, create the vector indexes, and then load the exported data.
+
+The reverse-mapping format is fixed when the table is created. Recreating the tables on v2025.2.0 through v2025.2.5, or on v2026.1.0, leaves them on the old format, and that storage is not reclaimed. If you upgrade to v2025.2.6.0, go next to v2026.1.2.0 or later. Upgrading from v2025.2.6.0 to v2026.1.0.x or v2026.1.1.x is not supported.
+
+### Upgrading from v2024.2
+
+A database with the `vector` extension installed cannot be upgraded in place from v2024.2. The `vector` type OID in v2024.2 is assigned when the extension is created and does not match the fixed OID in v2025.1. pgvector also changes from 0.4.4 to 0.8.0 with no update path, and the PostgreSQL 11 to 15 upgrade fails while the extension is installed. Export the data before dropping anything.
+
+1. Save the DDL of every table that uses the `vector` type (for example, with `ysql_dump --schema-only`) and export the data (for example, with `\copy <table> TO '<table>.csv' WITH (FORMAT csv)`).
+1. Drop those tables, then run `DROP EXTENSION vector;` in each database where the extension is installed.
+1. Upgrade and finalize.
+1. Run `CREATE EXTENSION vector;`, recreate the tables, and load the exported data.
+
+v2024.2 has no vector indexes. v2025.1 stores a per-row identifier that vector indexes require, and rows written in v2024.2 do not have it. Loading the exported data into the recreated tables writes the rows in the new format.
 
 ## Learn more
 
