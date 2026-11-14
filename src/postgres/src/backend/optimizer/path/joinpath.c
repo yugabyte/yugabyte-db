@@ -576,7 +576,7 @@ static Path *
 get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 				 RelOptInfo *outerrel, Path *inner_path,
 				 Path *outer_path, JoinType jointype,
-				 JoinPathExtraData *extra)
+				 JoinPathExtraData *extra, RelOptInfo *yb_joinrel)
 {
 	RelOptInfo *top_outerrel;
 	List	   *param_exprs;
@@ -710,6 +710,21 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 									&hash_operators,
 									&binary_mode))
 	{
+		/*
+		 * YB: a LIMIT that stops this top-level join early leaves fewer
+		 * calls, and so fewer cache hits, than the whole outer side.
+		 */
+		double		yb_calls = outer_path->rows;
+
+		if (yb_enable_base_scans_cost_model &&
+			outer_path->parallel_workers == 0 &&
+			root->limit_tuples > 0 &&
+			yb_joinrel->rows > root->limit_tuples &&
+			bms_equal(yb_joinrel->relids, root->all_baserels) &&
+			pathkeys_contained_in(root->query_pathkeys, outer_path->pathkeys))
+			yb_calls = Min(yb_calls, root->limit_tuples * outerrel->rows /
+						   yb_joinrel->rows);
+
 		return (Path *) create_memoize_path(root,
 											innerrel,
 											inner_path,
@@ -717,7 +732,7 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 											hash_operators,
 											extra->inner_unique,
 											binary_mode,
-											outer_path->rows);
+											yb_calls);
 	}
 
 	return NULL;
@@ -1962,7 +1977,7 @@ match_unsorted_outer(PlannerInfo *root,
 				 */
 				mpath = get_memoize_path(root, innerrel, outerrel,
 										 innerpath, outerpath, jointype,
-										 extra);
+										 extra, joinrel);	/* YB */
 				if (mpath != NULL)
 					try_nestloop_path(root,
 									  joinrel,
@@ -2157,7 +2172,7 @@ consider_parallel_nestloop(PlannerInfo *root,
 			 */
 			mpath = get_memoize_path(root, innerrel, outerrel,
 									 innerpath, outerpath, jointype,
-									 extra);
+									 extra, joinrel);	/* YB */
 			if (mpath != NULL)
 				try_partial_nestloop_path(root, joinrel, outerpath, mpath,
 										  pathkeys, jointype, extra);
