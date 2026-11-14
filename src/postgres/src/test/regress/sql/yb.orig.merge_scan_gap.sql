@@ -26,7 +26,7 @@ INSERT INTO gap_coll_tbl VALUES
     (2, 'e', 'e', 2);
 ANALYZE gap_coll_tbl;
 
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 
 -- Secondary index: filter pushed to the table, read after the index merge
@@ -54,7 +54,7 @@ ANALYZE gap_idx_tbl;
 \set R1 'ord1 = d AND gap = d'
 \set R2 'ord1 = d AND ord1 = gap'
 \set R3 'ord1 = gap AND ord1 = d'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND :R ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND :R ORDER BY ord1, ord2;'
 \i :run_query
 \unset R1
 \unset R2
@@ -80,9 +80,9 @@ ANALYZE gap_desc_tbl;
 SET yb_enable_expression_pushdown = off;
 \set Q1 ':off'
 \set Q2 ':on'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
@@ -107,11 +107,11 @@ ANALYZE gap_null_tbl;
 SET yb_enable_expression_pushdown = off;
 \set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 \set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
@@ -164,6 +164,6 @@ ANALYZE gap_pk_tbl;
 SET yb_enable_primary_key_decode_from_index = on;
 \set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT k1, gap, ord1, ord2, bkt FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;'
 \i :run_query
 DROP TABLE gap_pk_tbl;

@@ -27,13 +27,13 @@ ANALYZE gap_expr_tbl;
 -- merge sort column ord2.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
+\set query ':P :Q SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
 \i :run_query
 
 -- Operator filter gap: ord1 = gap || '' ties (gap || '') to ord1.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
 \i :run_query
 SET yb_enable_expression_pushdown = off;
 \i :run_query
@@ -43,7 +43,7 @@ RESET yb_enable_expression_pushdown;
 -- expression column of the index.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 SET yb_enable_expression_pushdown = off;
 \i :run_query

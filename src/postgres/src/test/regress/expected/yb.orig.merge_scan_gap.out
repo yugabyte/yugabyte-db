@@ -37,19 +37,19 @@ INSERT INTO gap_coll_tbl VALUES
     (1, 'b', 'a', 9), (1, 'b', 'b', 0), (2, 'b', 'b', 4), (1, 'e', 'e', 1),
     (2, 'e', 'e', 2);
 ANALYZE gap_coll_tbl;
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_coll_tbl.ord1 COLLATE "en_US", gap_coll_tbl.ord2
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_coll_tbl.gap COLLATE "en_US", gap_coll_tbl.ord2
    Sort Method: quicksort
    ->  Seq Scan on public.gap_coll_tbl (actual rows=4 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Storage Filter: (gap_coll_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_coll_tbl.ord1 = gap_coll_tbl.gap)
          Rows Removed by Filter: 1
@@ -58,11 +58,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Storage Table Rows Scanned: 5
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Index Scan using gap_coll_tbl_pkey on public.gap_coll_tbl (actual rows=4 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_coll_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_coll_tbl.ord1 COLLATE "en_US", gap_coll_tbl.gap COLLATE "en_US", gap_coll_tbl.ord2
    Merge Stream Key: gap_coll_tbl.bkt
@@ -75,16 +75,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Storage Table Rows Scanned: 5
 (12 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |    0 |   1 | b
- b    |    4 |   2 | b
- e    |    1 |   1 | e
- e    |    2 |   2 | e
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |    0 |   1
+ b   | b    |    4 |   2
+ e   | e    |    1 |   1
+ e   | e    |    2 |   2
 (4 rows)
 
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
 -- Secondary index: filter pushed to the table, read after the index merge
 --
@@ -110,47 +110,47 @@ ANALYZE gap_idx_tbl;
 \set R1 'ord1 = d AND gap = d'
 \set R2 'ord1 = d AND ord1 = gap'
 \set R3 'ord1 = gap AND ord1 = d'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND :R ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND :R ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
                                                                      QUERY PLAN                                                                      
 -----------------------------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
-   Output: ord1, ord2, bkt, gap, d
-   Sort Key: gap_idx_tbl.ord1, gap_idx_tbl.ord2
+   Output: d, gap, ord1, ord2, bkt
+   Sort Key: gap_idx_tbl.d, gap_idx_tbl.ord2
    Sort Method: quicksort
    ->  Seq Scan on public.gap_idx_tbl (actual rows=4 loops=1)
-         Output: ord1, ord2, bkt, gap, d
+         Output: d, gap, ord1, ord2, bkt
          Storage Filter: ((gap_idx_tbl.bkt = ANY ('{1,2}'::integer[])) AND (gap_idx_tbl.ord1 = gap_idx_tbl.d) AND (gap_idx_tbl.d = gap_idx_tbl.gap))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 5
 (10 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
                                                                       QUERY PLAN                                                                       
 -------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
-   Output: ord1, ord2, bkt, gap, d
-   Sort Key: gap_idx_tbl.ord1, gap_idx_tbl.ord2
+   Output: d, gap, ord1, ord2, bkt
+   Sort Key: gap_idx_tbl.d, gap_idx_tbl.ord2
    Sort Method: quicksort
    ->  Seq Scan on public.gap_idx_tbl (actual rows=4 loops=1)
-         Output: ord1, ord2, bkt, gap, d
+         Output: d, gap, ord1, ord2, bkt
          Storage Filter: ((gap_idx_tbl.bkt = ANY ('{1,2}'::integer[])) AND (gap_idx_tbl.ord1 = gap_idx_tbl.gap) AND (gap_idx_tbl.gap = gap_idx_tbl.d))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 5
 (10 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Index Scan using gap_idx_tbl_idx on public.gap_idx_tbl (actual rows=4 loops=1)
-   Output: ord1, ord2, bkt, gap, d
+   Output: d, gap, ord1, ord2, bkt
    Index Cond: (gap_idx_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_idx_tbl.ord1, gap_idx_tbl.gap, gap_idx_tbl.ord2
    Merge Stream Key: gap_idx_tbl.bkt
@@ -165,13 +165,13 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Storage Index Rows Scanned: 5
 (14 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Index Scan using gap_idx_tbl_idx on public.gap_idx_tbl (actual rows=4 loops=1)
-   Output: ord1, ord2, bkt, gap, d
+   Output: d, gap, ord1, ord2, bkt
    Index Cond: (gap_idx_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_idx_tbl.ord1, gap_idx_tbl.gap, gap_idx_tbl.ord2
    Merge Stream Key: gap_idx_tbl.bkt
@@ -187,24 +187,24 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Storage Index Rows Scanned: 5
 (15 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap | d 
-------+------+-----+-----+---
-    1 |    0 |   1 |   1 | 1
-    1 |    4 |   2 |   1 | 1
-    5 |    1 |   1 |   5 | 5
-    5 |    2 |   2 |   5 | 5
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
+ d | gap | ord1 | ord2 | bkt 
+---+-----+------+------+-----
+ 1 |   1 |    1 |    0 |   1
+ 1 |   1 |    1 |    4 |   2
+ 5 |   5 |    5 |    1 |   1
+ 5 |   5 |    5 |    2 |   2
 (4 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
 (output identical to previous)
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
 (output identical to previous)
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, d FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
 (output identical to previous)
 \unset R1
 \unset R2
@@ -228,19 +228,19 @@ ANALYZE gap_desc_tbl;
 SET yb_enable_expression_pushdown = off;
 \set Q1 ':off'
 \set Q2 ':on'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_desc_tbl.ord1, gap_desc_tbl.ord2
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_desc_tbl.gap, gap_desc_tbl.ord2
    Sort Method: quicksort
    ->  Seq Scan on public.gap_desc_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Filter: ((gap_desc_tbl.bkt = ANY ('{1,2}'::integer[])) AND (gap_desc_tbl.ord1 = gap_desc_tbl.gap))
          Rows Removed by Filter: 2
          Storage Table Read Requests: 1
@@ -248,11 +248,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Storage Table Rows Scanned: 5
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Index Scan using gap_desc_tbl_pkey on public.gap_desc_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_desc_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_desc_tbl.ord1, gap_desc_tbl.gap DESC, gap_desc_tbl.ord2
    Merge Stream Key: gap_desc_tbl.bkt
@@ -265,29 +265,29 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Storage Table Rows Scanned: 5
 (12 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
-    1 |   10 |   1 |   1
-    1 |   20 |   2 |   1
-    1 |   30 |   1 |   1
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+   1 |    1 |   10 |   1
+   1 |    1 |   20 |   2
+   1 |    1 |   30 |   1
 (3 rows)
 
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_desc_tbl.ord1 DESC, gap_desc_tbl.ord2 DESC
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_desc_tbl.gap DESC, gap_desc_tbl.ord2 DESC
    Sort Method: quicksort
    ->  Seq Scan on public.gap_desc_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Filter: ((gap_desc_tbl.bkt = ANY ('{1,2}'::integer[])) AND (gap_desc_tbl.ord1 = gap_desc_tbl.gap))
          Rows Removed by Filter: 2
          Storage Table Read Requests: 1
@@ -295,11 +295,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
          Storage Table Rows Scanned: 5
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan Backward using gap_desc_tbl_pkey on public.gap_desc_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_desc_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_desc_tbl.ord1 DESC, gap_desc_tbl.gap, gap_desc_tbl.ord2 DESC
    Merge Stream Key: gap_desc_tbl.bkt
@@ -312,15 +312,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Storage Table Rows Scanned: 5
 (12 rows)
 
-/*+Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
-    1 |   30 |   1 |   1
-    1 |   20 |   2 |   1
-    1 |   10 |   1 |   1
+/*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+   1 |    1 |   30 |   1
+   1 |    1 |   20 |   2
+   1 |    1 |   10 |   1
 (3 rows)
 
-/*+Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+/*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 -- Gap column with NULLs, forward and backward scans
@@ -343,19 +343,19 @@ ANALYZE gap_null_tbl;
 SET yb_enable_expression_pushdown = off;
 \set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_null_tbl.ord1, gap_null_tbl.ord2
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_null_tbl.gap, gap_null_tbl.ord2
    Sort Method: quicksort
    ->  Index Only Scan using gap_null_tbl_fwd_idx on public.gap_null_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_null_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_null_tbl.ord1 = gap_null_tbl.gap)
          Rows Removed by Filter: 2
@@ -365,11 +365,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
          Storage Index Rows Scanned: 5
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Index Only Scan using gap_null_tbl_fwd_idx on public.gap_null_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_null_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_null_tbl.ord1, gap_null_tbl.gap NULLS FIRST, gap_null_tbl.ord2
    Merge Stream Key: gap_null_tbl.bkt
@@ -383,31 +383,31 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
    Storage Index Rows Scanned: 5
 (13 rows)
 
-/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
-    1 |   10 |   1 |   1
-    1 |   20 |   2 |   1
-    1 |   30 |   1 |   1
+/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+   1 |    1 |   10 |   1
+   1 |    1 |   20 |   2
+   1 |    1 |   30 |   1
 (3 rows)
 
-/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
 \set Q1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_null_tbl.ord1 DESC, gap_null_tbl.ord2 DESC
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_null_tbl.gap DESC, gap_null_tbl.ord2 DESC
    Sort Method: quicksort
    ->  Index Only Scan using gap_null_tbl_bwd_idx on public.gap_null_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_null_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_null_tbl.ord1 = gap_null_tbl.gap)
          Rows Removed by Filter: 2
@@ -417,11 +417,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
          Storage Index Rows Scanned: 5
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Index Only Scan Backward using gap_null_tbl_bwd_idx on public.gap_null_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_null_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_null_tbl.ord1 DESC, gap_null_tbl.gap NULLS FIRST, gap_null_tbl.ord2 DESC
    Merge Stream Key: gap_null_tbl.bkt
@@ -435,15 +435,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
    Storage Index Rows Scanned: 5
 (13 rows)
 
-/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
-    1 |   30 |   1 |   1
-    1 |   20 |   2 |   1
-    1 |   10 |   1 |   1
+/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+   1 |    1 |   30 |   1
+   1 |    1 |   20 |   2
+   1 |    1 |   10 |   1
 (3 rows)
 
-/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
+/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl;
@@ -484,19 +484,19 @@ ANALYZE gap_expr_tbl;
 -- merge sort column ord2.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
+\set query ':P :Q SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord2, bkt, gap
+   Output: gap, ord2, bkt
    Sort Key: gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_pred_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord2, bkt, gap
+         Output: gap, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
@@ -506,11 +506,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 3
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using gap_expr_tbl_pred_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-   Output: ord2, bkt, gap
+   Output: gap, ord2, bkt
    Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: ((gap_expr_tbl.gap)::text || ''::text), gap_expr_tbl.ord2
    Merge Stream Key: gap_expr_tbl.bkt
@@ -524,32 +524,32 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
    Storage Index Rows Scanned: 3
 (13 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
- ord2 | bkt | gap 
-------+-----+-----
-   10 |   1 | b
-   20 |   2 | b
-   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+ gap | ord2 | bkt 
+-----+------+-----
+ b   |   10 |   1
+ b   |   20 |   2
+ b   |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
 (output identical to previous)
 -- Operator filter gap: ord1 = gap || '' ties (gap || '') to ord1.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Storage Filter: (gap_expr_tbl.ord1 = ((gap_expr_tbl.gap)::text || ''::text))
          Storage Table Read Requests: 1
@@ -560,11 +560,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (14 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_expr_tbl.ord1, ((gap_expr_tbl.gap)::text || ''::text), gap_expr_tbl.ord2
    Merge Stream Key: gap_expr_tbl.bkt
@@ -579,29 +579,29 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
    Storage Index Rows Scanned: 4
 (14 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
 (output identical to previous)
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_expr_tbl.ord1 = ((gap_expr_tbl.gap)::text || ''::text))
          Rows Removed by Filter: 1
@@ -613,11 +613,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_expr_tbl.ord1, ((gap_expr_tbl.gap)::text || ''::text), gap_expr_tbl.ord2
    Merge Stream Key: gap_expr_tbl.bkt
@@ -633,34 +633,34 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
    Storage Index Rows Scanned: 4
 (15 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 -- Relabeled filter gap: gap::text, a relabeled varchar column, is still an
 -- expression column of the index.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_expr_tbl.gap, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Storage Filter: (gap_expr_tbl.ord1 = (gap_expr_tbl.gap)::text)
          Storage Table Read Requests: 1
@@ -671,11 +671,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (14 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_expr_tbl.ord1, (gap_expr_tbl.gap)::text, gap_expr_tbl.ord2
    Merge Stream Key: gap_expr_tbl.bkt
@@ -690,29 +690,29 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
    Storage Index Rows Scanned: 4
 (14 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_expr_tbl.gap, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_expr_tbl.ord1 = (gap_expr_tbl.gap)::text)
          Rows Removed by Filter: 1
@@ -724,11 +724,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_expr_tbl.ord1, (gap_expr_tbl.gap)::text, gap_expr_tbl.ord2
    Merge Stream Key: gap_expr_tbl.bkt
@@ -744,15 +744,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
    Storage Index Rows Scanned: 4
 (15 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
@@ -797,19 +797,19 @@ ANALYZE gap_expr_tbl;
 -- merge sort column ord2.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
+\set query ':P :Q SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '''' = ''b'' ORDER BY ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord2, bkt, gap
+   Output: gap, ord2, bkt
    Sort Key: gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_pred_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord2, bkt, gap
+         Output: gap, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Storage Table Rows Scanned: 3
          Storage Index Read Requests: 1
@@ -817,34 +817,34 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 3
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
 (output identical to previous)
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
- ord2 | bkt | gap 
-------+-----+-----
-   10 |   1 | b
-   20 |   2 | b
-   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+ gap | ord2 | bkt 
+-----+------+-----
+ b   |   10 |   1
+ b   |   20 |   2
+ b   |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_pred_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND gap || '' = 'b' ORDER BY ord2;
 (output identical to previous)
 -- Operator filter gap: ord1 = gap || '' ties (gap || '') to ord1.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '''' ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Storage Filter: (gap_expr_tbl.ord1 = ((gap_expr_tbl.gap)::text || ''::text))
          Storage Table Rows Scanned: 4
@@ -853,16 +853,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Incremental Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
    Presorted Key: gap_expr_tbl.ord1
    Full-sort Groups: 1  Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Merge Sort Key: gap_expr_tbl.ord1
          Merge Stream Key: gap_expr_tbl.bkt
@@ -875,29 +875,29 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (17 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
 (output identical to previous)
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_expr_tbl.ord1 = ((gap_expr_tbl.gap)::text || ''::text))
          Rows Removed by Filter: 1
@@ -907,16 +907,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Incremental Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
+   Output: gap, ord1, ord2, bkt
    Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
    Presorted Key: gap_expr_tbl.ord1
    Full-sort Groups: 1  Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_op_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Merge Sort Key: gap_expr_tbl.ord1
          Merge Stream Key: gap_expr_tbl.bkt
@@ -930,34 +930,34 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (18 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_op_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap || '' ORDER BY ord1, ord2;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 -- Relabeled filter gap: gap::text, a relabeled varchar column, is still an
 -- expression column of the index.
 \set Q1 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_expr_tbl.gap, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Storage Filter: (gap_expr_tbl.ord1 = (gap_expr_tbl.gap)::text)
          Storage Table Rows Scanned: 4
@@ -966,16 +966,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Incremental Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
-   Presorted Key: gap_expr_tbl.ord1
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_expr_tbl.gap, gap_expr_tbl.ord2
+   Presorted Key: gap_expr_tbl.gap
    Full-sort Groups: 1  Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Merge Sort Key: gap_expr_tbl.ord1
          Merge Stream Key: gap_expr_tbl.bkt
@@ -988,29 +988,29 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (17 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
 SET yb_enable_expression_pushdown = off;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_expr_tbl.gap, gap_expr_tbl.ord2
    Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_expr_tbl.ord1 = (gap_expr_tbl.gap)::text)
          Rows Removed by Filter: 1
@@ -1020,16 +1020,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Incremental Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap
-   Sort Key: gap_expr_tbl.ord1, gap_expr_tbl.ord2
-   Presorted Key: gap_expr_tbl.ord1
+   Output: gap, ord1, ord2, bkt
+   Sort Key: gap_expr_tbl.gap, gap_expr_tbl.ord2
+   Presorted Key: gap_expr_tbl.gap
    Full-sort Groups: 1  Sort Method: quicksort
    ->  Index Scan using gap_expr_tbl_relabel_idx on public.gap_expr_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap
+         Output: gap, ord1, ord2, bkt
          Index Cond: (gap_expr_tbl.bkt = ANY ('{1,2}'::integer[]))
          Merge Sort Key: gap_expr_tbl.ord1
          Merge Stream Key: gap_expr_tbl.bkt
@@ -1043,15 +1043,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Index Rows Scanned: 4
 (18 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap 
-------+------+-----+-----
- b    |   10 |   1 | b
- b    |   20 |   2 | b
- b    |   30 |   1 | b
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+ gap | ord1 | ord2 | bkt 
+-----+------+------+-----
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
 (3 rows)
 
-/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
+/*+IndexScan(gap_expr_tbl gap_expr_tbl_relabel_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_expr_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
@@ -1075,19 +1075,19 @@ ANALYZE gap_pk_tbl;
 SET yb_enable_primary_key_decode_from_index = on;
 \set Q1 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\set query ':P :Q SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;'
+\set query ':P :Q SELECT k1, gap, ord1, ord2, bkt FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT k1, gap, ord1, ord2, bkt FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Sort (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap, k1
-   Sort Key: gap_pk_tbl.ord1, gap_pk_tbl.ord2
+   Output: k1, gap, ord1, ord2, bkt
+   Sort Key: gap_pk_tbl.k1, gap_pk_tbl.ord2
    Sort Method: quicksort
    ->  Index Only Scan using gap_pk_tbl_idx on public.gap_pk_tbl (actual rows=3 loops=1)
-         Output: ord1, ord2, bkt, gap, k1
+         Output: k1, gap, ord1, ord2, bkt
          Index Cond: (gap_pk_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: ((gap_pk_tbl.gap = gap_pk_tbl.k1) AND (gap_pk_tbl.k1 = gap_pk_tbl.ord1))
          Rows Removed by Filter: 1
@@ -1097,11 +1097,11 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
          Storage Index Rows Scanned: 4
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT k1, gap, ord1, ord2, bkt FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Index Only Scan using gap_pk_tbl_idx on public.gap_pk_tbl (actual rows=3 loops=1)
-   Output: ord1, ord2, bkt, gap, k1
+   Output: k1, gap, ord1, ord2, bkt
    Index Cond: (gap_pk_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_pk_tbl.ord1, gap_pk_tbl.gap, gap_pk_tbl.ord2
    Merge Stream Key: gap_pk_tbl.bkt
@@ -1115,14 +1115,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexOnl
    Storage Index Rows Scanned: 4
 (13 rows)
 
-/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
- ord1 | ord2 | bkt | gap | k1 
-------+------+-----+-----+----
-    1 |   10 |   1 |   1 |  1
-    1 |   20 |   2 |   1 |  1
-    1 |   30 |   1 |   1 |  1
+/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 0)*/ SELECT k1, gap, ord1, ord2, bkt FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
+ k1 | gap | ord1 | ord2 | bkt 
+----+-----+------+------+-----
+  1 |   1 |    1 |   10 |   1
+  1 |   1 |    1 |   20 |   2
+  1 |   1 |    1 |   30 |   1
 (3 rows)
 
-/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt, gap, k1 FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
+/*+IndexOnlyScan(gap_pk_tbl gap_pk_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT k1, gap, ord1, ord2, bkt FROM gap_pk_tbl WHERE bkt IN (1, 2) AND gap = k1 AND ord1 = k1 ORDER BY ord1, ord2;
 (output identical to previous)
 DROP TABLE gap_pk_tbl;
