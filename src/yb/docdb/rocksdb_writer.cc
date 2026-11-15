@@ -13,6 +13,7 @@
 
 #include "yb/docdb/rocksdb_writer.h"
 
+#include <boost/container/small_vector.hpp>
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 #include <boost/logic/tribool.hpp>
 
@@ -21,6 +22,7 @@
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/doc_vector_index_covered_columns.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_debug.h"
@@ -1608,7 +1610,9 @@ VectorIndexesUpdater::VectorIndexesUpdater(
       apply_to_storages_(apply_to_storages), chunk_holds_(chunk_holds),
       xcluster_target_(xcluster_target) {
   if (indexes_) {
+    arena_.emplace();
     batches_.resize(indexes_->size());
+    has_covered_columns_ = HasCoveredColumns(*indexes_);
   }
 }
 
@@ -1660,11 +1664,29 @@ Status VectorIndexesUpdater::Feed(
   auto row_value = value;
   RETURN_NOT_OK(dockv::ValueControlFields::Decode(&row_value));
 
-  if (row_value.starts_with(ValueEntryTypeAsChar::kTombstone)) {
+  const auto is_tombstone = row_value.starts_with(ValueEntryTypeAsChar::kTombstone);
+  const auto covered = has_covered_columns_ && HasCoveredColumns(*indexes_, key);
+  if (is_tombstone && !covered) {
     return Status::OK();
   }
 
   auto sizes = VERIFY_RESULT(dockv::DocKey::EncodedPrefixAndDocKeySizes(key));
+  if (covered) {
+    StartCoveredRow(key.Prefix(sizes.doc_key_size));
+    if (is_tombstone) {
+      if (sizes.doc_key_size == key.size()) {
+        covered_row_deleted_at_ = std::max(covered_row_deleted_at_, write_time_);
+      } else if (static_cast<KeyEntryType>(key[sizes.doc_key_size]) == KeyEntryType::kColumnId) {
+        auto column_id_slice = key.WithoutPrefix(sizes.doc_key_size + 1);
+        auto column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
+        if (IsCoveredRowColumn(key, column_id)) {
+          RecordCoveredRowColumn(column_id, std::nullopt, Slice());
+        }
+      }
+      return Status::OK();
+    }
+  }
+
   auto packed_row_version = dockv::GetPackedRowVersion(row_value);
   if (packed_row_version.has_value()) {
     switch (*packed_row_version) {
@@ -1706,6 +1728,18 @@ Status VectorIndexesUpdater::Feed(
         if (column_id == kInvalidColumnId) {
           column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
         }
+        if (has_covered_columns_ && IsCoveredRowColumn(key, column_id)) {
+          if (dockv::PackedValueV1(row_value).IsNull() ||
+              row_value.starts_with(ValueEntryTypeAsChar::kNullLow)) {
+            RecordCoveredRowColumn(column_id, std::nullopt, Slice());
+          } else if (IsVectorColumn(key, column_id)) {
+            // The same vector index entry value as for an index without covered columns.
+            RecordCoveredRowColumn(
+                column_id, dockv::PackedRowVersion::kV1, value.WithoutPrefix(1));
+          } else {
+            RecordCoveredRowColumn(column_id, dockv::PackedRowVersion::kV1, row_value);
+          }
+        }
 
         // We expect small amount of vector indexes, usually 1. So it's faster to iterate over them.
         for (size_t i = 0; i != indexes_->size(); ++i) {
@@ -1719,10 +1753,15 @@ Status VectorIndexesUpdater::Feed(
             if (ApplyToVectorIndex(i)) {
               auto& batch = batches_[i];
               batch.should_apply = true;
-              batch.entries.push_back(DocVectorIndexInsertEntry {
-                .value = ValueBuffer(value.WithoutPrefix(1)),
-                .ybctid = KeyBuffer(ybctid),
-              });
+              // An index with covered columns takes the vector in FlushCoveredRow.
+              if (!vector_index.covered_columns()) {
+                batch.entries.push_back(DocVectorIndexInsertEntry {
+                  .value = arena_->DupSlice(value.WithoutPrefix(1)),
+                  .ybctid = arena_->DupSlice(ybctid),
+                  .covered = Slice(),
+                  .write_time = HybridTime::kInvalid,
+                });
+              }
             }
             if (need_reverse_entry &&
                 VERIFY_RESULT(TableWritesVectorReverseMapping(key.Prefix(sizes.prefix_size)))) {
@@ -1796,6 +1835,12 @@ Status VectorIndexesUpdater::FeedPackedRow(
   }
 
   DCHECK(schema_packing_);
+  if (has_covered_columns_) {
+    // The decoder reads the columns in packing order, so the covered pass uses its own.
+    Decoder covered_decoder(*schema_packing_, value.data());
+    RecordCoveredPackedRow(covered_decoder, key);
+  }
+
   Decoder decoder(*schema_packing_, value.data());
 
   if (schema_packing_owns_vector_reverse_mapping_) {
@@ -1842,10 +1887,12 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
           ApplyToVectorIndex(index_idx)) {
         auto& batch = batches_[index_idx];
         batch.should_apply = true;
-        if (!is_null) {
+        if (!is_null && !vector_index.covered_columns()) {
           batch.entries.push_back(DocVectorIndexInsertEntry {
-            .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
-            .ybctid = KeyBuffer(ybctid),
+            .value = arena_->DupSlice(column_value->WithoutPrefix(kValuePrefixToStrip)),
+            .ybctid = arena_->DupSlice(ybctid),
+            .covered = Slice(),
+            .write_time = HybridTime::kInvalid,
           });
         }
       }
@@ -1886,10 +1933,12 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
       continue;
     }
 
-    if (ApplyToVectorIndex(i)) {
+    if (ApplyToVectorIndex(i) && !vector_index.covered_columns()) {
       batches_[i].entries.push_back(DocVectorIndexInsertEntry {
-        .value = ValueBuffer(column_value->WithoutPrefix(kValuePrefixToStrip)),
-        .ybctid = KeyBuffer(ybctid),
+        .value = arena_->DupSlice(column_value->WithoutPrefix(kValuePrefixToStrip)),
+        .ybctid = arena_->DupSlice(ybctid),
+        .covered = Slice(),
+        .write_time = HybridTime::kInvalid,
       });
     }
 
@@ -1922,9 +1971,170 @@ bool VectorIndexesUpdater::AppliesToRow(Slice key, HybridTime write_ht) const {
   return false;
 }
 
+void VectorIndexesUpdater::StartCoveredRow(Slice doc_key) {
+  if (covered_row_key_.AsSlice() == doc_key) {
+    return;
+  }
+  FlushCoveredRow();
+  covered_row_key_.Assign(doc_key);
+}
+
+bool VectorIndexesUpdater::IsVectorColumn(Slice key, ColumnId column_id) const {
+  return std::ranges::any_of(*indexes_, [key, column_id](const auto& index) {
+    return index->column_id() == column_id && index->IsIndexedTableKey(key);
+  });
+}
+
+bool VectorIndexesUpdater::IsCoveredRowColumn(Slice key, ColumnId column_id) const {
+  for (const auto& index : *indexes_) {
+    const auto* covered_columns = index->CoveredColumnsFor(key);
+    if (covered_columns &&
+        (index->column_id() == column_id || covered_columns->Contains(column_id))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void VectorIndexesUpdater::RecordCoveredRowColumn(
+    ColumnId column_id, std::optional<dockv::PackedRowVersion> version, Slice value) {
+  auto it = std::ranges::find_if(covered_row_columns_, [column_id](const auto& column) {
+    return column.column_id == column_id;
+  });
+  if (it == covered_row_columns_.end()) {
+    it = covered_row_columns_.emplace(covered_row_columns_.end());
+    it->column_id = column_id;
+  } else if (it->write_time > write_time_) {
+    return;
+  }
+  it->write_time = write_time_;
+  it->version = version;
+  it->value.Assign(value);
+}
+
+template <class Decoder>
+void VectorIndexesUpdater::RecordCoveredPackedRow(Decoder& decoder, Slice key) {
+  constexpr size_t kValuePrefixToStrip =
+      std::is_same_v<Decoder, dockv::PackedRowDecoderV2> ? 0 : 1;
+  // Packed indexes of the columns the covered indexes take, read in packing order.
+  boost::container::small_vector<std::pair<int64_t, ColumnId>, 8> columns;
+  auto add_column = [this, &columns](ColumnId column_id) {
+    auto idx = schema_packing_->GetIndex(column_id);
+    // A column added after this packing gets its default, which the row does not hold.
+    if (idx != dockv::SchemaPacking::kSkippedColumnIdx) {
+      columns.emplace_back(idx, column_id);
+    }
+  };
+  for (const auto& index : *indexes_) {
+    const auto* covered_columns = index->CoveredColumnsFor(key);
+    if (!covered_columns) {
+      continue;
+    }
+    add_column(index->column_id());
+    for (auto column_id : covered_columns->column_ids()) {
+      add_column(column_id);
+    }
+  }
+  std::ranges::sort(columns);
+  auto [first, last] = std::ranges::unique(columns);
+  columns.erase(first, last);
+  for (const auto& [idx, column_id] : columns) {
+    auto column_value = decoder.FetchValue(static_cast<size_t>(idx));
+    if (column_value.IsNull()) {
+      RecordCoveredRowColumn(column_id, std::nullopt, Slice());
+    } else if (IsVectorColumn(key, column_id)) {
+      RecordCoveredRowColumn(
+          column_id, Decoder::kVersion, column_value->WithoutPrefix(kValuePrefixToStrip));
+    } else {
+      RecordCoveredRowColumn(column_id, Decoder::kVersion, *column_value);
+    }
+  }
+}
+
+void VectorIndexesUpdater::FlushCoveredRow() {
+  if (covered_row_columns_.empty()) {
+    covered_row_deleted_at_ = DocHybridTime::kMin;
+    return;
+  }
+  auto find_column = [this](ColumnId column_id) -> const CoveredRowColumn* {
+    for (const auto& column : covered_row_columns_) {
+      if (column.column_id == column_id) {
+        return column.write_time > covered_row_deleted_at_ ? &column : nullptr;
+      }
+    }
+    return nullptr;
+  };
+  const auto row_key = covered_row_key_.AsSlice();
+  for (size_t i = 0; i != indexes_->size(); ++i) {
+    const auto& index = *(*indexes_)[i];
+    const auto* covered_columns = index.CoveredColumnsFor(row_key);
+    if (!covered_columns || !ApplyToVectorIndex(i)) {
+      continue;
+    }
+    const auto* vector = find_column(index.column_id());
+    // TODO(#37878): A covered column written without the vector leaves the vector with stale
+    // covered values. It comes from a write evaluated before the index was created, after the
+    // tablet dropped another covered column of the index (see UpdateCoveredVectorIndexes), or
+    // possibly by a new leader that has not applied the index yet.
+    if (!vector || !vector->version ||
+        !IntentApplyShouldUpdateVectorIndex(index, vector->write_time.hybrid_time())) {
+      continue;
+    }
+    // A write evaluated before the index was created could miss covered columns. Such a vector is
+    // stored without them, and search reads its row.
+    Slice covered;
+    auto packer = covered_columns->MakePacker();
+    bool complete = true;
+    for (auto column_id : covered_columns->column_ids()) {
+      const auto* column = find_column(column_id);
+      if (!column) {
+        complete = false;
+        break;
+      }
+      Result<bool> added = false;
+      if (!column->version) {
+        added = packer.AddValue(column_id, dockv::PackedValueV2::Null(), /* tail_size= */ 0);
+      } else if (*column->version == dockv::PackedRowVersion::kV1) {
+        added = packer.AddValue(column_id, dockv::PackedValueV1(column->value.AsSlice()));
+      } else {
+        added = packer.AddValue(
+            column_id, dockv::PackedValueV2(column->value.AsSlice()), /* tail_size= */ 0);
+      }
+      if (!added.ok() || !*added) {
+        LOG(DFATAL) << "Failed to pack covered column " << column_id << ": "
+                    << (added.ok() ? Status::OK() : added.status());
+        complete = false;
+        break;
+      }
+    }
+    if (complete) {
+      auto packed = DocVectorIndexCoveredColumns::Complete(packer);
+      if (packed.ok()) {
+        covered = arena_->DupSlice(*packed);
+      } else {
+        LOG(DFATAL) << "Failed to pack covered columns: " << packed.status();
+      }
+    }
+    auto& batch = batches_[i];
+    batch.should_apply = true;
+    batch.entries.push_back(DocVectorIndexInsertEntry {
+      .value = arena_->DupSlice(vector->value.AsSlice()),
+      .ybctid = arena_->DupSlice(row_key.WithoutPrefix(index.indexed_table_key_prefix().size())),
+      .covered = covered,
+      .write_time = vector->write_time.hybrid_time(),
+    });
+  }
+  covered_row_columns_.clear();
+  covered_row_deleted_at_ = DocHybridTime::kMin;
+}
+
 Status VectorIndexesUpdater::Complete() {
   if (!indexes_) {
     return Status::OK();
+  }
+  if (has_covered_columns_) {
+    FlushCoveredRow();
+    covered_row_key_.Clear();
   }
   for (size_t i = 0; i != batches_.size(); ++i) {
     // Bootstrap replays an op into the index until the index flushes it, and decodes its rows with

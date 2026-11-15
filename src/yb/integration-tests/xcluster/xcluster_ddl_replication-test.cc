@@ -101,6 +101,7 @@ DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
+DECLARE_bool(vector_index_enable_covered_columns);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
 DECLARE_string(ysql_cron_database_name);
@@ -6340,6 +6341,19 @@ TEST_P(XClusterDDLReplicationVectorIndexParamTest, VectorIndex) {
   c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
       "SELECT id FROM vec_test ORDER BY embedding <-> '[50.0, 50.0, 50.0]' LIMIT 11"));
   ASSERT_EQ(p_search, c_search);
+}
+
+// Search checks covered columns without reading rows while the tablet has no vector deletion, but
+// the xCluster apply records a deletion only after it is visible.
+TEST_P(XClusterDDLReplicationVectorIndexParamTest, CoveredColumnsNotSupported) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  ASSERT_OK(SetUpVectorIndexReplication());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec (id serial PRIMARY KEY, embedding vector(3), category int)"));
+  auto status = producer_conn_->Execute(
+      "CREATE INDEX vec_idx ON vec USING ybhnsw (embedding vector_l2_ops) INCLUDE (category)");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "xCluster");
 }
 
 // Renaming a vector index, or moving its table to another schema, must not stall replication.

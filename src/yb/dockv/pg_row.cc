@@ -23,8 +23,10 @@
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
+#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_packing.h"
+#include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/decimal.h"
@@ -1048,6 +1050,35 @@ PackedColumnDecoderEntry PgTableRow::GetPackedColumnSkipperV2(
   auto strategy = skip_projection_column ? ColumnStrategy::kSkipProjectionColumn
                                          : ColumnStrategy::kSkipPackedColumn;
   return GetPackedColumnDecoderEntryV2(last, strategy, data_type, packed_index);
+}
+
+bool PgTableRowPackableValue::IsNull() const {
+  return row_.IsNull(index_);
+}
+
+DataType PgTableRowPackableValue::data_type() const {
+  return row_.projection().columns[index_].data_type;
+}
+
+// V1 is not used for new packed rows, so it goes through QLValuePB.
+size_t PgTableRowPackableValue::PackedSizeV1() const {
+  return EncodedValueSize(row_.GetValueByIndex(index_)->ToQLValuePB(data_type()));
+}
+
+void PgTableRowPackableValue::PackToV1(ValueBuffer* result) const {
+  AppendEncodedValue(row_.GetValueByIndex(index_)->ToQLValuePB(data_type()), result);
+}
+
+size_t PgTableRowPackableValue::PackedSizeV2() const {
+  return PackedQLValueSizeV2(*row_.GetValueByIndex(index_), data_type());
+}
+
+void PgTableRowPackableValue::PackToV2(ValueBuffer* result) const {
+  PackQLValueV2(*row_.GetValueByIndex(index_), data_type(), result);
+}
+
+std::string PgTableRowPackableValue::ToString() const {
+  return YB_CLASS_TO_STRING(index, row);
 }
 
 }  // namespace yb::dockv

@@ -105,6 +105,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
+#include "yb/docdb/doc_vector_index_covered_columns.h"
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 
@@ -670,6 +672,14 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
     "store the payload. Disabled by default, because deleted vectors are not removed from such an "
     "index yet.");
+
+// TODO(#37878): Replace with a kExternal AutoFlag before enabling by default. Besides the payload
+// format, it guarantees that ysql_skip_row_lock_for_update is promoted, which covering indexes rely
+// on, see architecture/design/vector-index-covering.md.
+DEFINE_RUNTIME_bool(vector_index_enable_covered_columns, false,
+    "Whether vector indexes can have INCLUDE columns, whose values are stored in the payload "
+    "attached to every vector, so the search filter is checked against them instead of the rows.");
+TAG_FLAG(vector_index_enable_covered_columns, experimental);
 
 DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "Temporary, until the tenant of a vector index can be specified when the index is created, "
@@ -4768,6 +4778,50 @@ Status CatalogManager::PersistNewTable(
   return Status::OK();
 }
 
+namespace {
+
+YB_STRONGLY_TYPED_BOOL(XClusterReplicated);
+
+// Takes the catalog manager mutex for a colocated table, so call it without the table lock.
+Result<XClusterReplicated> IsXClusterReplicated(
+    const XClusterManager& xcluster_manager, CatalogManager& catalog_manager,
+    const TableInfoPtr& table) {
+  if (xcluster_manager.IsTableReplicated(table->id())) {
+    return XClusterReplicated::kTrue;
+  }
+  // xCluster replicates the parent table of colocated tables.
+  return XClusterReplicated(
+      table->colocated() &&
+      xcluster_manager.IsTableReplicated(
+          VERIFY_RESULT(catalog_manager.GetParentTableIdForColocatedTable(table))));
+}
+
+// See PgVectorIdxOptionsPB::covered_column_ids.
+Status CheckVectorIndexCoveredColumns(
+    const PgVectorIdxOptionsPB& options, const SchemaPB& indexed_schema,
+    const std::string& indexed_table, XClusterReplicated xcluster_replicated) {
+  if (options.covered_column_ids().empty()) {
+    return Status::OK();
+  }
+  SCHECK(
+      FLAGS_vector_index_enable_covered_columns, NotSupported,
+      "INCLUDE columns are not supported for vector indexes");
+  // The xCluster apply records a deletion only after it is visible, so the target reads the rows of
+  // accepted candidates, see Tablet::ApplyKeyValueRowOperations.
+  SCHECK(
+      !xcluster_replicated, NotSupported,
+      "INCLUDE columns are not supported for vector indexes of tables in xCluster replication");
+  // The tablets run the same check after adding the index, where a failure is fatal.
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(indexed_schema, &schema));
+  RETURN_NOT_OK_PREPEND(
+      docdb::DocVectorIndexCoveredColumns::Make(schema, options),
+      Format("Vector index on $0", indexed_table));
+  return Status::OK();
+}
+
+} // namespace
+
 // Create a new table.
 // See README file in this directory for a description of the design.
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
@@ -5003,12 +5057,20 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (is_vector_index) {
       auto& vector_index_options = *index_info.mutable_vector_idx_options();
       vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
-      // An index on a table that does not write the reverse mapping must store the payload, it is
-      // the only way for its search to resolve rows.
+      // Before the table lock, see IsXClusterReplicated.
+      auto xcluster_replicated = vector_index_options.covered_column_ids_size()
+          ? VERIFY_RESULT(IsXClusterReplicated(*xcluster_manager_, *this, indexed_table.info))
+          : XClusterReplicated::kFalse;
       auto indexed_table_lock = indexed_table->LockForRead();
+      const auto& indexed_schema = indexed_table_lock->schema();
+      RETURN_NOT_OK(CheckVectorIndexCoveredColumns(
+          vector_index_options, indexed_schema, indexed_table->ToString(), xcluster_replicated));
+      // An index on a table that does not write the reverse mapping must store the payload, it is
+      // the only way for its search to resolve rows. Covered column values are stored there too.
       vector_index_options.set_store_payload(
           FLAGS_vector_index_store_payload ||
-          indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
+          indexed_schema.table_properties().skip_vector_reverse_mapping() ||
+          vector_index_options.covered_column_ids_size());
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);

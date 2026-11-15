@@ -22,6 +22,7 @@
 #include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/packed_row.h"
 #include "yb/dockv/schema_packing.h"
 
 #include "yb/qlexpr/qlexpr_fwd.h"
@@ -58,6 +59,10 @@ class PgValue {
 
   Slice decimal_value() const {
     return string_value();
+  }
+
+  Slice bson_value() const {
+    return binary_value();
   }
 
   QLValuePB ToQLValuePB(DataType data_type) const;
@@ -176,6 +181,25 @@ class PgTableRow {
   boost::container::small_vector<bool, 0x10> is_null_;
   boost::container::small_vector<PgValueDatum, 0x10> values_;
   ValueBuffer buffer_;
+};
+
+// A column of a PgTableRow to pack, without converting it to QLValuePB.
+class PgTableRowPackableValue final : public PackableValue {
+ public:
+  PgTableRowPackableValue(const PgTableRow& row, size_t index) : row_(row), index_(index) {}
+
+  bool IsNull() const override;
+  size_t PackedSizeV1() const override;
+  void PackToV1(ValueBuffer* result) const override;
+  size_t PackedSizeV2() const override;
+  void PackToV2(ValueBuffer* result) const override;
+  std::string ToString() const override;
+
+ private:
+  DataType data_type() const;
+
+  const PgTableRow& row_;
+  const size_t index_;
 };
 
 template <bool kLast>

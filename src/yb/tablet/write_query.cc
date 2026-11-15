@@ -49,6 +49,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query_context.h"
 
@@ -1118,6 +1119,16 @@ Status WriteQuery::DoCompleteExecute() {
   if (!VERIFY_RESULT(ExecuteSchemaVersionCheck())) {
     DCHECK(schema_version_mismatch_) << "Expected schema_version_mismatch_ to be set";
     return Status::OK();
+  }
+
+  if (execute_mode_ == ExecuteMode::kPgsql) {
+    // After the write permit, see PgsqlWriteOperation::SetVectorIndexes.
+    if (auto vector_indexes = tablet->vector_indexes().List().impl()) {
+      for (auto& doc_op : doc_ops_) {
+        down_cast<docdb::PgsqlWriteOperation&>(*doc_op).SetVectorIndexes(vector_indexes);
+      }
+    }
+    DEBUG_ONLY_TEST_SYNC_POINT("WriteQuery::DoCompleteExecute:VectorIndexesSet");
   }
 
   auto read_op = prepare_result_.need_read_snapshot

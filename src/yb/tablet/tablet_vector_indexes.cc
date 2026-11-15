@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <functional>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 
@@ -24,6 +26,7 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/doc_vector_index_covered_columns.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
@@ -144,12 +147,32 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
   const docdb::KeyBounds* key_bounds_ = &docdb::KeyBounds::kNoBounds;
 };
 
+boost::container::small_vector<ColumnId, 8> IndexedColumns(
+    ColumnId vector_column_id, const docdb::DocVectorIndexCoveredColumns* covered_columns) {
+  boost::container::small_vector<ColumnId, 8> result = { vector_column_id };
+  if (covered_columns) {
+    result.insert(
+        result.end(), covered_columns->column_ids().begin(), covered_columns->column_ids().end());
+  }
+  return result;
+}
+
 class IndexContext : public docdb::DocVectorIndexContext {
  public:
-  IndexContext(Tablet& tablet, const TableInfo& indexed_table, ColumnId vector_column_id)
+  IndexContext(
+      Tablet& tablet, const TableInfo& indexed_table, ColumnId vector_column_id,
+      docdb::DocVectorIndexCoveredColumnsPtr covered_columns)
       : tablet_(tablet),
         indexed_table_id_(indexed_table.table_id),
-        projection_(indexed_table.schema(), { vector_column_id }) {
+        covered_columns_(std::move(covered_columns)),
+        projection_(
+            indexed_table.schema(), IndexedColumns(vector_column_id, covered_columns_.get())),
+        vector_column_idx_(projection_.ColumnIdxById(vector_column_id)) {
+    if (covered_columns_) {
+      for (auto column_id : covered_columns_->column_ids()) {
+        covered_column_idxs_.push_back(projection_.ColumnIdxById(column_id));
+      }
+    }
   }
 
   Result<docdb::DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
@@ -171,7 +194,7 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return tablet_.CreateRequestScope();
   }
 
-  Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(
+  Result<docdb::DocRowwiseIteratorPtr> CreateIterator(
       HybridTime read_ht, std::optional<Slice> start_key) const {
     auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
         projection_, ReadHybridTime::SingleTime(read_ht), indexed_table_id_));
@@ -181,32 +204,52 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return result;
   }
 
-  const dockv::ReaderProjection& vector_column_projection() const {
+  // The vector column and the covered columns.
+  const dockv::ReaderProjection& projection() const {
     return projection_;
+  }
+
+  // Index of the vector column in projection(), kNotFoundIndex when the column is missing from the
+  // indexed table schema, see DoCreateIndex.
+  size_t vector_column_idx() const {
+    return vector_column_idx_;
+  }
+
+  // nullptr when the index has no covered columns.
+  const docdb::DocVectorIndexCoveredColumns* covered_columns() const {
+    return covered_columns_.get();
+  }
+
+  // Indexes of the covered columns in projection(), in DocVectorIndexCoveredColumns::column_ids
+  // order.
+  const boost::container::small_vector<size_t, 8>& covered_column_idxs() const {
+    return covered_column_idxs_;
   }
 
  private:
   Tablet& tablet_;
   TableId indexed_table_id_;
+  const docdb::DocVectorIndexCoveredColumnsPtr covered_columns_;
   dockv::ReaderProjection projection_;
+  const size_t vector_column_idx_;
+  boost::container::small_vector<size_t, 8> covered_column_idxs_;
 };
 
 class IndexedTableReader {
  public:
   explicit IndexedTableReader(std::reference_wrapper<const docdb::DocVectorIndex> vector_index)
       : context_(down_cast<const IndexContext&>(vector_index.get().context())),
-        row_(context_.vector_column_projection()) {
+        row_(context_.projection()) {
   }
 
   // Can be called again after Close.
   Status Init(HybridTime read_ht, Slice start_key) {
     DCHECK(!iter_);
-    // The projection is empty when the vector column is missing from the indexed table schema
-    // (see DoCreateIndex); reading through it would access rows out of bounds.
-    SCHECK_EQ(context_.vector_column_projection().num_value_columns(), 1, IllegalState,
+    // Reading through a projection without the vector column would access rows out of bounds.
+    SCHECK_NE(context_.vector_column_idx(), dockv::ReaderProjection::kNotFoundIndex, IllegalState,
               "Vector column is missing in the projection");
     request_scope_ = VERIFY_RESULT(context_.CreateRequestScope());
-    iter_ = VERIFY_RESULT(context_.CreateVectorColumnIterator(read_ht, start_key));
+    iter_ = VERIFY_RESULT(context_.CreateIterator(read_ht, start_key));
     return Status::OK();
   }
 
@@ -225,7 +268,7 @@ class IndexedTableReader {
       if (!result) {
         return false;
       }
-      auto value = row_.GetValueByIndex(0);
+      auto value = row_.GetValueByIndex(context_.vector_column_idx());
       if (value) {
         return true;
       }
@@ -234,7 +277,27 @@ class IndexedTableReader {
   }
 
   Slice current_vector_slice() const {
-    return row_.GetValueByIndex(0)->binary_value();
+    return row_.GetValueByIndex(context_.vector_column_idx())->binary_value();
+  }
+
+  // Covered column values of the current row, empty when the index has no covered columns. Valid
+  // until the next call.
+  Result<Slice> current_covered() {
+    const auto* covered_columns = context_.covered_columns();
+    if (!covered_columns) {
+      return Slice();
+    }
+    auto packer = covered_columns->MakePacker();
+    const auto& column_ids = covered_columns->column_ids();
+    const auto& column_idxs = context_.covered_column_idxs();
+    for (size_t i = 0; i != column_ids.size(); ++i) {
+      SCHECK(
+          VERIFY_RESULT(packer.AddValue(
+              column_ids[i], dockv::PgTableRowPackableValue(row_, column_idxs[i]))),
+          IllegalState, Format("Failed to pack covered column $0", column_ids[i]));
+    }
+    covered_buffer_.Assign(VERIFY_RESULT(docdb::DocVectorIndexCoveredColumns::Complete(packer)));
+    return covered_buffer_.AsSlice();
   }
 
   Slice current_ybctid() const {
@@ -244,6 +307,7 @@ class IndexedTableReader {
  private:
   const IndexContext& context_;
   dockv::PgTableRow row_;
+  ValueBuffer covered_buffer_;
   // Registered before iter_ takes its snapshot, and released after iter_, by Close and by the
   // member order.
   // Otherwise the participant forgets a transaction applied meanwhile, while the snapshot still has
@@ -369,12 +433,21 @@ Status TabletVectorIndexes::DoCreateIndex(
   // PREPARING index table and re-sends AddTableToTablet before restoring the pre-drop schema
   // (#33276). Rows cannot be read through such a projection, so don't instantiate the index;
   // CreateSkippedIndexes instantiates it once an alter brings the column back.
-  const ColumnId vector_column_id(index_table.index_info->vector_idx_options().column_id());
+  const auto& vector_idx_options = index_table.index_info->vector_idx_options();
+  const ColumnId vector_column_id(vector_idx_options.column_id());
   if (indexed_table->schema().find_column_by_id(vector_column_id) == Schema::kColumnNotFound) {
     LOG_WITH_PREFIX(WARNING)
         << "Skip creating vector index " << index_table.table_id << ": column " << vector_column_id
         << " is missing in the indexed table schema: " << indexed_table->ToString();
     return Status::OK();
+  }
+  for (auto id : vector_idx_options.covered_column_ids()) {
+    if (indexed_table->schema().find_column_by_id(ColumnId(id)) == Schema::kColumnNotFound) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Skip creating vector index " << index_table.table_id << ": covered column " << id
+          << " is missing in the indexed table schema: " << indexed_table->ToString();
+      return Status::OK();
+    }
   }
 
   has_vector_indexes_ = true;
@@ -393,7 +466,10 @@ Status TabletVectorIndexes::DoCreateIndex(
     };
   };
 
-  auto index_context = std::make_unique<IndexContext>(tablet(), *indexed_table, vector_column_id);
+  auto covered_columns = VERIFY_RESULT(docdb::DocVectorIndexCoveredColumns::Make(
+      indexed_table->schema(), vector_idx_options));
+  auto index_context = std::make_unique<IndexContext>(
+      tablet(), *indexed_table, vector_column_id, covered_columns);
 
   MetricEntityPtr vector_index_metric_entity;
   if (metric_registry_) {
@@ -407,7 +483,7 @@ Status TabletVectorIndexes::DoCreateIndex(
       docdb::TableWritesReverseMapping(
           indexed_table->schema().table_properties().writes_vector_reverse_mapping()),
       index_table.hybrid_time, metadata().split_generation(),
-      *index_table.index_info, std::move(index_context),
+      *index_table.index_info, std::move(covered_columns), std::move(index_context),
       // A shut down index of a replaced storage (e.g. truncate) could still be referenced, e.g. by
       // an aborted backfill, so its tracker could still exist.
       block_cache_, MemTracker::FindOrCreateTracker(-1, index_table.table_id, mem_tracker_),
@@ -496,11 +572,14 @@ class VectorIndexBackfillContext {
       : backfill_ht_(backfill_ht), store_payload_(store_payload) {
   }
 
-  void Add(Slice ybctid, Slice value) {
+  // covered is empty when the index has no covered columns, which store the write time too.
+  void Add(Slice ybctid, Slice value, Slice covered) {
     ybctids_.push_back(arena_.DupSlice(ybctid));
     entries_.emplace_back(docdb::DocVectorIndexInsertEntry {
-      .value = ValueBuffer(value),
-      .ybctid = store_payload_ ? KeyBuffer(ybctid) : KeyBuffer(),
+      .value = arena_.DupSlice(value),
+      .ybctid = store_payload_ ? ybctids_.back() : Slice(),
+      .covered = arena_.DupSlice(covered),
+      .write_time = covered.empty() ? HybridTime::kInvalid : backfill_ht_,
     });
   }
 
@@ -632,7 +711,7 @@ Status ReverseMappingBackfiller::Apply(rocksdb::DirectWriteHandler& handler) {
   // Backfiller always uses legacy format, while table-owned vector reverse mapping uses v1 format.
   for (size_t i = 0; i != ybctids.size(); ++i) {
     docdb::DocVectorIndex::ApplyReverseEntry(
-        handler, ybctids[i], entries[i].value.AsSlice(), DocHybridTime(backfill_ht, 0));
+        handler, ybctids[i], entries[i].value, DocHybridTime(backfill_ht, 0));
   }
   return Status::OK();
 }
@@ -764,7 +843,7 @@ Status TabletVectorIndexes::Backfill(
       }
       continue;
     }
-    helper.Add(ybctid, reader.current_vector_slice());
+    helper.Add(ybctid, reader.current_vector_slice(), VERIFY_RESULT(reader.current_covered()));
   }
 
   RETURN_NOT_OK(helper.Flush(tablet(), *vector_index, Slice()));

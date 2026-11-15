@@ -182,6 +182,11 @@ message PgVectorIdxOptionsPB {
   // Set by master at index creation only for hnswlib indexes that store payload. Always less than
   // Schema::NumHashGroupAndRangeComponents, so the tenant never covers the full primary key.
   optional uint32 tenant_hash_group_and_range_components = 11;
+
+  // Non-key columns of the indexed table whose values are stored in the payload (the INCLUDE
+  // columns of the index), so search can evaluate filters without reading the rows.
+  // Set only together with store_payload.
+  repeated uint32 covered_column_ids = 12;
 }
 
 message PgHnswReadOptionsPB {

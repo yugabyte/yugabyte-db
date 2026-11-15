@@ -87,6 +87,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/power_loss_env.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/sync_point.h"
@@ -114,6 +115,7 @@ DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
+DECLARE_bool(vector_index_enable_covered_columns);
 DECLARE_bool(vector_index_enable_pk_routing);
 DECLARE_bool(vector_index_include_into_post_split_compaction);
 DECLARE_bool(vector_index_delete_list_after_rows);
@@ -158,6 +160,7 @@ DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(vector_index_backfill_single_chunk_size_bytes);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
@@ -911,6 +914,7 @@ class PgVectorIndexTest : public PgVectorIndexTestParamsDecorator<PgVectorIndexT
       NullVectorBeforeSchemaChange null_vector, NonTransactionalWrites non_transactional_writes);
   void TestPerformDeadlineWithStuckLocalWrite(UseSharedMemory use_shared_memory);
   void TestSnapshotRestoreNonTransactionalWrites(CrashAfterRestoreReopen crash_after_reopen);
+  void TestCoveredColumns(Backfill backfill);
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexTest);
@@ -1158,6 +1162,513 @@ TEST_P(PgVectorIndexTest, ManyRowsWithBackfillAndRestart) {
 
 TEST_P(PgVectorIndexTest, ManyRowsWithFilter) {
   TestManyRows(AddFilter::kTrue);
+}
+
+// Checks the filter by the INCLUDE columns stored with the vectors, and stays correct after the
+// updates and deletes that make search read the rows again. Backfill packs the covered columns of
+// the rows it reads, while inserts take them from the written records, with the write time.
+void PgVectorIndexTest::TestCoveredColumns(Backfill backfill) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  constexpr int kNumRows = 30;
+  constexpr int kNumCategories = 3;
+  constexpr size_t kLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE test ADD COLUMN category int, ADD COLUMN note text, "
+      "ADD COLUMN score double precision, ADD COLUMN flag boolean, ADD COLUMN amount numeric, "
+      "ADD COLUMN extra int"));
+
+  // Values are kept as Postgres prints them.
+  struct Row {
+    int64_t id;
+    int64_t vector_id;
+    std::optional<int> category;
+    std::string note;
+    int64_t score_base;  // score is score_base + 0.5
+    bool flag;
+    int64_t amount_base;  // amount is amount_base + 0.25
+    int extra;  // Not covered.
+
+    std::string Category() const {
+      return category ? AsString(*category) : "NULL";
+    }
+
+    std::string Values() const {
+      return Format(
+          "$0, '$1', $2.5, $3, $4.25, $5", Category(), note, score_base,
+          flag ? "true" : "false", amount_base, extra);
+    }
+
+    std::string Output() const {
+      return Format(
+          "$0, $1, $2, $3.5, $4, $5.25", id, Category(), note, score_base,
+          flag ? "true" : "false", amount_base);
+    }
+  };
+  std::map<int64_t, Row> rows;
+  auto insert = [this, &conn, &rows](int64_t from, int64_t to) -> Status {
+    for (auto id = from; id <= to; ++id) {
+      Row row {
+        .id = id,
+        .vector_id = id,
+        .category = id % 10 == 9
+            ? std::nullopt : std::optional(static_cast<int>(id % kNumCategories)),
+        .note = Format("note $0", id),
+        .score_base = id,
+        .flag = id % 2 == 0,
+        .amount_base = id,
+        .extra = static_cast<int>(id % 4),
+      };
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO test VALUES ($0, '$1', $2)", id, AsString(Vector(row.vector_id)),
+          row.Values()));
+      rows.emplace(id, std::move(row));
+    }
+    return Status::OK();
+  };
+
+  auto create_index = [this, &conn] {
+    return conn.ExecuteFormat(
+        "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) "
+        "INCLUDE (category, note, score, flag, amount) WITH ($2)",
+        kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions);
+  };
+  if (backfill) {
+    ASSERT_OK(insert(1, kNumRows));
+    ASSERT_OK(create_index());
+  } else {
+    ASSERT_OK(create_index());
+    ASSERT_OK(insert(1, kNumRows));
+  }
+
+  auto covered_checks = [this] {
+    int64_t result = 0;
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      result += index->metrics().covered_checks->value();
+    }
+    return result;
+  };
+
+  // Vector(id) is farther from Vector(0) for a larger id.
+  auto check = [this, &conn, &rows](
+      const std::string& where, const std::function<bool(const Row&)>& matches) -> Status {
+    std::vector<std::pair<int64_t, std::string>> expected;
+    for (const auto& [id, row] : rows) {
+      if (matches(row)) {
+        expected.emplace_back(row.vector_id, row.Output());
+      }
+    }
+    std::ranges::sort(expected);
+    if (expected.size() > kLimit) {
+      expected.resize(kLimit);
+    }
+    auto result = VERIFY_RESULT(conn.FetchAllAsString(Format(
+        "SELECT id, category, note, score, flag::text, amount::text FROM test $0 $1",
+        where.empty() ? "" : "WHERE " + where, IndexQuerySuffix(Vector(0), kLimit))));
+    std::vector<std::string> expected_rows;
+    for (auto& [vector_id, row] : expected) {
+      expected_rows.push_back(std::move(row));
+    }
+    SCHECK_EQ(
+        result, JoinStrings(expected_rows, "; "), IllegalState, Format("Wrong rows: $0", where));
+    return Status::OK();
+  };
+  // Filters on every covered column type.
+  auto check_all = [&check]() -> Status {
+    RETURN_NOT_OK(check("", [](const Row&) { return true; }));
+    for (int category = 0; category != kNumCategories; ++category) {
+      RETURN_NOT_OK(check(Format("category = $0", category), [category](const Row& row) {
+        return row.category == category;
+      }));
+    }
+    RETURN_NOT_OK(check("category IS NULL", [](const Row& row) { return !row.category; }));
+    RETURN_NOT_OK(check("note = 'note 5'", [](const Row& row) { return row.note == "note 5"; }));
+    RETURN_NOT_OK(check("score > 10", [](const Row& row) { return row.score_base >= 10; }));
+    RETURN_NOT_OK(check("flag", [](const Row& row) { return row.flag; }));
+    RETURN_NOT_OK(check("amount < 8", [](const Row& row) { return row.amount_base < 8; }));
+    // Key columns come from the ybctid in the payload.
+    RETURN_NOT_OK(check("id % 2 = 0", [](const Row& row) { return row.id % 2 == 0; }));
+    RETURN_NOT_OK(check("id % 2 = 0 AND category = 1", [](const Row& row) {
+      return row.id % 2 == 0 && row.category == 1;
+    }));
+    return Status::OK();
+  };
+
+  // The filter is checked against the covered columns, not the rows.
+  ASSERT_OK(check_all());
+  ASSERT_GT(covered_checks(), 0);
+  auto key_checks_before = covered_checks();
+  ASSERT_OK(check("id % 3 = 0", [](const Row& row) { return row.id % 3 == 0; }));
+  ASSERT_GT(covered_checks(), key_checks_before);
+  // Without a filter, there is nothing to check against the payload.
+  auto unfiltered_checks_before = covered_checks();
+  ASSERT_OK(check("", [](const Row&) { return true; }));
+  ASSERT_EQ(covered_checks(), unfiltered_checks_before);
+
+  // A filter with a column that is not covered reads the rows.
+  auto checks_before = covered_checks();
+  ASSERT_OK(check("extra = 1", [](const Row& row) { return row.extra == 1; }));
+  ASSERT_OK(check("category = 1 AND extra < 2", [](const Row& row) {
+    return row.category == 1 && row.extra < 2;
+  }));
+  ASSERT_EQ(covered_checks(), checks_before);
+
+  // A covered column update gives the vector a new id, so the old covered values are not used.
+  // Point statements, the test fails on a sequential scan of the indexed table.
+  for (auto& [id, row] : rows) {
+    if (id % 4 == 0) {
+      row.category = row.category ? (*row.category + 1) % kNumCategories : 0;
+      ASSERT_OK(conn.ExecuteFormat(
+          "UPDATE test SET category = $0 WHERE id = $1", row.Category(), id));
+    } else if (id % 8 == 3) {
+      row.category = std::nullopt;
+      ASSERT_OK(conn.ExecuteFormat("UPDATE test SET category = NULL WHERE id = $0", id));
+    }
+    if (id % 5 == 0) {
+      row.score_base = 0;
+      row.flag = !row.flag;
+      ASSERT_OK(conn.ExecuteFormat(
+          "UPDATE test SET score = 0.5, flag = $0 WHERE id = $1", row.flag ? "true" : "false",
+          id));
+    }
+    if (id % 6 == 0) {
+      row.amount_base = 100;
+      ASSERT_OK(conn.ExecuteFormat("UPDATE test SET amount = 100.25 WHERE id = $0", id));
+    }
+  }
+  ASSERT_OK(conn.Execute("UPDATE test SET note = 'note 5' WHERE id = 3"));
+  rows[3].note = "note 5";
+  ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 1", Vector(100)));
+  rows[1].vector_id = 100;
+  ASSERT_OK(check_all());
+
+  for (int64_t id = 7; id <= kNumRows; id += 7) {
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id = $0", id));
+    rows.erase(id);
+  }
+  ASSERT_OK(check_all());
+}
+
+TEST_P(PgVectorIndexTest, CoveredColumnsBackfill) {
+  TestCoveredColumns(Backfill::kTrue);
+}
+
+TEST_P(PgVectorIndexTest, CoveredColumnsInsert) {
+  TestCoveredColumns(Backfill::kFalse);
+}
+
+// A committed vector update whose intents are not applied yet: the index still has the old vector,
+// and the tablet has no deletion mark.
+TEST_P(PgVectorIndexTest, CoveredColumnsUnappliedUpdate) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category) WITH ($2)",
+      kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions));
+  for (int64_t id = 1; id <= 10; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1', 1)", id, AsString(Vector(id))));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = true;
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test SET embedding = '$0' WHERE id = 1", AsString(Vector(100))));
+  ASSERT_OK(conn.CommitTransaction());
+
+  auto query = "SELECT id FROM test WHERE category = 1" + IndexQuerySuffix(Vector(0), 3);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query)), "2; 3; 4");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_apply_committed_transactions) = false;
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query)), "2; 3; 4");
+}
+
+// A transaction's own uncommitted covered column update is not in the index yet, so the search
+// leaves out the entry of the row and adds the row at its current version.
+TEST_P(PgVectorIndexTest, CoveredColumnsIntentRows) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category) WITH ($2)",
+      kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions));
+  for (int64_t id = 1; id <= 10; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1', 1)", id, AsString(Vector(id))));
+  }
+
+  auto search = [this, &conn](int category) {
+    return conn.FetchAllAsString(Format(
+        "SELECT id FROM test WHERE category = $0 $1", category, IndexQuerySuffix(Vector(0), 3)));
+  };
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE test SET category = 2 WHERE id = 1"));
+  ASSERT_EQ(ASSERT_RESULT(search(1)), "2; 3; 4");
+  ASSERT_EQ(ASSERT_RESULT(search(2)), "1");
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_EQ(ASSERT_RESULT(search(1)), "2; 3; 4");
+  ASSERT_EQ(ASSERT_RESULT(search(2)), "1");
+}
+
+// Covered column updates running while the index is created. AddTableToTablet pauses write permits,
+// so each update is either covered by the backfill or evaluated with the index.
+TEST_P(PgVectorIndexTest, CoveredColumnsConcurrentIndexCreation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  constexpr int kNumRows = 50;
+  constexpr int kNumCategories = 3;
+  constexpr int kNumWriters = 4;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int"));
+  for (int64_t id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1', 0)", id, AsString(Vector(id))));
+  }
+
+  TestThreadHolder threads;
+  std::atomic<size_t> num_updates{0};
+  for (int i = 0; i != kNumWriters; ++i) {
+    threads.AddThreadFunctor([this, &num_updates, &stop_flag = threads.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load()) {
+        // The concurrent index creation fails some updates, the row keeps its previous value then.
+        auto status = conn.ExecuteFormat(
+            "UPDATE test SET category = $0 WHERE id = $1",
+            RandomUniformInt(0, kNumCategories - 1), RandomUniformInt<int64_t>(1, kNumRows));
+        if (status.ok()) {
+          ++num_updates;
+        }
+      }
+    });
+  }
+  ASSERT_OK(WaitFor(
+      [&num_updates] { return num_updates.load() >= 100; }, 30s * kTimeMultiplier, "Updates"));
+  {
+    // Keeps writes between taking the vector indexes and reaching Raft while the index is added.
+    // Only writes that reach Raft between the index and the following schema change of the table
+    // depend on the write permit pause, so this widens that window.
+    auto* sync_point = SyncPoint::GetInstance();
+    sync_point->SetCallBack(
+        "WriteQuery::DoCompleteExecute:VectorIndexesSet",
+        [](void*) { std::this_thread::sleep_for(20ms); });
+    sync_point->EnableProcessing();
+    auto sync_point_cleanup = ScopeExit([sync_point] {
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category) WITH ($2)",
+        kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions));
+  }
+  ASSERT_OK(WaitFor(
+      [&num_updates, before = num_updates.load()] { return num_updates.load() >= before + 100; },
+      30s * kTimeMultiplier, "Updates after index creation"));
+  threads.Stop();
+
+  std::vector<std::vector<int64_t>> expected(kNumCategories);
+  for (int64_t id = 1; id <= kNumRows; ++id) {
+    auto category = ASSERT_RESULT(
+        conn.FetchRow<int32_t>(Format("SELECT category FROM test WHERE id = $0", id)));
+    expected[category].push_back(id);
+  }
+  // Vector(id) is farther from Vector(0) for a larger id.
+  for (int category = 0; category != kNumCategories; ++category) {
+    auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(Format(
+        "SELECT id FROM test WHERE category = $0 $1", category,
+        IndexQuerySuffix(Vector(0), kNumRows))));
+    ASSERT_EQ(ids, expected[category]) << "category: " << category;
+  }
+}
+
+// Split children search the vectors inherited from the parent, so they need its covered values and
+// its deletion mark.
+TEST_P(PgVectorIndexTest, CoveredColumnsSplit) {
+  if (IsColocated()) {
+    GTEST_SKIP() << "Tablet split is not supported for colocated tables";
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Keeps the parent vectors in the children, including the replaced one.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_require_parent_data_compacted_before_split) = false;
+  auto skip_compaction_restorer = ScopeExit(
+      [skip_compaction = tablet::TEST_skip_vector_index_post_split_compaction] {
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_skip_vector_index_post_split_compaction) =
+        skip_compaction;
+  });
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_skip_vector_index_post_split_compaction) = true;
+  num_pre_split_tablets_ = 1;
+  constexpr int kNumRows = 40;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category) WITH ($2)",
+      kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions));
+  for (int64_t id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1', $2)", id, AsString(Vector(id)), id % 2));
+  }
+  // The old vector of row 2 stays in the index, closest to Vector(0) among category 0.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE test SET embedding = '$0' WHERE id = 2", AsString(Vector(100))));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  ASSERT_OK(
+      InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), peers.front()->tablet_id()));
+
+  auto covered_checks = [this] {
+    int64_t result = 0;
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      result += index->metrics().covered_checks->value();
+    }
+    return result;
+  };
+  auto checks_before = covered_checks();
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT id FROM test WHERE category = 0" + IndexQuerySuffix(Vector(0), 3))), "4; 6; 8");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT id FROM test WHERE category = 1" + IndexQuerySuffix(Vector(0), 3))), "1; 3; 5");
+  ASSERT_GT(covered_checks(), checks_before);
+}
+
+// Postgres accepts a column listed twice in INCLUDE, so master has to reject it before the tablets
+// add the index.
+TEST_P(PgVectorIndexTest, CoveredColumnsDuplicate) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int"));
+  auto status = conn.ExecuteFormat(
+      "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category, category) WITH ($2)",
+      kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Duplicate covered columns");
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1, '$0', 1)", AsString(Vector(1))));
+  ASSERT_OK(RestartCluster());
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT category FROM test WHERE id = 1")), 1);
+}
+
+// Dropping an INCLUDE column drops the index; updates and a new index on the table work after it.
+TEST_P(PgVectorIndexTest, CoveredColumnsDropColumn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  constexpr int kNumRows = 20;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int, ADD COLUMN note text"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category, note) WITH ($2)",
+      kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions));
+  for (int64_t id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1', $2, 'note $0')", id, AsString(Vector(id)), id % 3));
+  }
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN note"));
+  for (int64_t id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(conn.ExecuteFormat("UPDATE test SET category = 5 WHERE id = $0", id));
+  }
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category) WITH ($2)",
+      kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      "SELECT id FROM test WHERE category = 5" + IndexQuerySuffix(Vector(0), 3)));
+  ASSERT_EQ(result, "1; 2; 3");
+}
+
+// Column ids are per table, so in a colocated tablet a covered column of one table can have the id
+// of another table's vector column, or an id the other table does not have.
+TEST_P(PgVectorIndexTest, CoveredColumnsColocatedColumnIds) {
+  if (!IsColocated()) {
+    GTEST_SKIP() << "Needs tables sharing a tablet";
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  constexpr int kNumRows = 20;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  // Column ids: a.embedding 1, a.extra 3, b.x 1.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE a (id bigint PRIMARY KEY, embedding vector(3), cat int, extra int)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE b (id bigint PRIMARY KEY, x int, embedding vector(3))"));
+  for (const auto& [table, column] : {std::pair("a", "extra"), std::pair("b", "x")}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX $0_vi ON $0 USING ybhnsw (embedding $1) INCLUDE ($2) WITH ($3)",
+        table, pgwrapper::VectorOpsName(distance_kind_), column, kDefaultIndexBuildOptions));
+  }
+  std::map<int64_t, int> b_rows;
+  for (int64_t id = 1; id <= kNumRows; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO a VALUES ($0, '$1', $2, $2)", id, AsString(Vector(id)), id % 3));
+    b_rows[id] = static_cast<int>(id % 3);
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO b VALUES ($0, $1, '$2')", id, b_rows[id], AsString(Vector(id))));
+  }
+
+  auto check = [this, &conn, &b_rows]() -> Status {
+    for (int x = 0; x != 3; ++x) {
+      std::vector<std::string> expected;
+      for (const auto& [id, row_x] : b_rows) {
+        if (row_x == x && expected.size() < 5) {
+          expected.push_back(Format("$0, $1", id, row_x));
+        }
+      }
+      auto result = VERIFY_RESULT(conn.FetchAllAsString(Format(
+          "SELECT id, x FROM b WHERE x = $0 $1", x, IndexQuerySuffix(Vector(0), 5))));
+      SCHECK_EQ(result, JoinStrings(expected, "; "), IllegalState, Format("Wrong rows, x = $0", x));
+    }
+    return Status::OK();
+  };
+  ASSERT_OK(check());
+
+  // The update reads the covered columns of b.
+  for (int64_t id = 1; id <= kNumRows; id += 2) {
+    b_rows[id] = (b_rows[id] + 1) % 3;
+    ASSERT_OK(conn.ExecuteFormat("UPDATE b SET x = $0 WHERE id = $1", b_rows[id], id));
+  }
+  ASSERT_OK(check());
+}
+
+// A vector written after the read time, but in its uncertainty window, restarts the read when its
+// covered columns are checked without reading its row, as reading the row would.
+TEST_P(PgVectorIndexTest, CoveredColumnsReadRestart) {
+  if (IsColocated()) {
+    GTEST_SKIP() << "The read time is picked by a read of another tablet";
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  // The vector search has to start within the uncertainty window of the read time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 10'000'000;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int"));
+  ASSERT_OK(conn.Execute("CREATE TABLE other (k int PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE INDEX $0 ON test USING ybhnsw (embedding $1) INCLUDE (category) WITH ($2)",
+      kVectorIndexName, pgwrapper::VectorOpsName(distance_kind_), kDefaultIndexBuildOptions));
+  for (int64_t id = 1; id <= 10; ++id) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test VALUES ($0, '$1', 1)", id, AsString(Vector(id))));
+  }
+
+  auto writer = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Fetch("SELECT * FROM other"));
+  // Above the read time of the transaction, and the closest vector to the query below.
+  ASSERT_OK(writer.ExecuteFormat("INSERT INTO test VALUES (0, '$0', 1)", AsString(Vector(0))));
+  auto result = conn.FetchAllAsString(
+      "SELECT id FROM test WHERE category = 1" + IndexQuerySuffix(Vector(0), 5));
+  ASSERT_NOK(result) << "Rows: " << AsString(result);
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Restart read required");
 }
 
 TEST_P(PgVectorIndexTest, ManyReads) {
@@ -5631,6 +6142,7 @@ class PgVectorIndexSingleServerTest
     : public PgVectorIndexTestParamsDecorator<PgVectorIndexSingleServerTestBase> {
  protected:
   void TestSearchWithConcurrentUpdates(AddFilter add_filter, StorePayload store_payload);
+  void TestCoveredColumnsPerf(Backfill backfill);
 };
 
 MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexSingleServerTest);
@@ -6067,6 +6579,134 @@ TEST_P(PgVectorIndexSingleServerTest, SearchWithConcurrentUpdatesStorePayload) {
 
 TEST_P(PgVectorIndexSingleServerTest, FilteredSearchWithConcurrentUpdatesStorePayload) {
   TestSearchWithConcurrentUpdates(AddFilter::kTrue, StorePayload::kTrue);
+}
+
+// Measures how long searches take with and without covered columns. Not a regular test, run with
+// YB_VECTOR_INDEX_COVERED_PERF=<number of rows> in a release build.
+void PgVectorIndexSingleServerTest::TestCoveredColumnsPerf(Backfill backfill) {
+  const char* num_rows_str = getenv("YB_VECTOR_INDEX_COVERED_PERF");
+  if (!num_rows_str || IsColocated()) {
+    GTEST_SKIP() << "Set YB_VECTOR_INDEX_COVERED_PERF to the number of rows to run";
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_covered_columns) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  const auto kNumRows = ASSERT_RESULT(CheckedStoll(num_rows_str));
+  constexpr size_t kDimensions = 128;
+  constexpr int64_t kBatchSize = 10000;
+  constexpr int kNumWarmupQueries = 50;
+  constexpr int kNumQueries = 500;
+  const std::string kBuildOptions = "ef_construction = 128, m = 16, m0 = 32";
+
+  auto conn = ASSERT_RESULT(MakeTable(kDimensions));
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN category int, ADD COLUMN doc text"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE plain (id bigint PRIMARY KEY, embedding vector($0), category int, doc text) "
+      "SPLIT INTO 1 TABLETS", kDimensions));
+  auto create_indexes = [&conn, &kBuildOptions]() -> Status {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE INDEX covered_vi ON test USING ybhnsw (embedding vector_l2_ops) "
+        "INCLUDE (category) WITH ($0)", kBuildOptions));
+    return conn.ExecuteFormat(
+        "CREATE INDEX plain_vi ON plain USING ybhnsw (embedding vector_l2_ops) WITH ($0)",
+        kBuildOptions);
+  };
+  if (!backfill) {
+    ASSERT_OK(create_indexes());
+  }
+  auto load_start = MonoTime::Now();
+  for (int64_t start = 1; start <= kNumRows; start += kBatchSize) {
+    auto end = std::min(start + kBatchSize - 1, kNumRows);
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO test SELECT i, "
+        "ARRAY(SELECT random() FROM generate_series(1, $0) WHERE i > 0)::vector, i % 100, "
+        "repeat('x', 500) FROM generate_series($1, $2) i",
+        kDimensions, start, end));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO plain SELECT * FROM test WHERE id BETWEEN $0 AND $1", start, end));
+  }
+  ASSERT_OK(WaitFor([this] {
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      if (index->TEST_HasBackgroundInserts()) {
+        return false;
+      }
+    }
+    return true;
+  }, 10min, "Background inserts done"));
+  LOG(INFO) << "VI_COVERED_PERF load done in " << MonoTime::Now() - load_start;
+  if (backfill) {
+    ASSERT_OK(create_indexes());
+  }
+  auto backfill_start = MonoTime::Now();
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto indexes = ListVectorIndexes(cluster_.get());
+    if (indexes.size() < 2) {
+      return false;
+    }
+    for (const auto& index : indexes) {
+      if (!VERIFY_RESULT(index->BackfillDone())) {
+        return false;
+      }
+    }
+    return true;
+  }, 30min, "Backfills done"));
+  LOG(INFO) << "VI_COVERED_PERF backfills done in " << MonoTime::Now() - backfill_start;
+
+  struct Totals {
+    uint64_t read_data_us = 0;
+    uint64_t searches = 0;
+    uint64_t filter_checked = 0;
+    int64_t covered_checks = 0;
+  };
+  auto totals = [this] {
+    Totals result;
+    for (const auto& index : ListVectorIndexes(cluster_.get())) {
+      const auto& metrics = index->metrics();
+      result.read_data_us += metrics.read_data_us->TotalSum();
+      result.searches += metrics.read_data_us->TotalCount();
+      result.filter_checked += metrics.filter_checked->TotalSum();
+      result.covered_checks += metrics.covered_checks->value();
+    }
+    return result;
+  };
+
+  for (const auto& table : {"test", "plain"}) {
+    for (auto percent : {100, 50, 10, 1}) {
+      auto filter = percent == 100 ? std::string() : Format("WHERE category < $0", percent);
+      auto query = [this, &conn, &table, &filter]() -> Status {
+        return ResultToStatus(conn.FetchAllAsString(Format(
+            "SELECT id, category FROM $0 $1 $2", table, filter,
+            IndexQuerySuffix(RandomVector(), 10))));
+      };
+      for (int i = 0; i != kNumWarmupQueries; ++i) {
+        ASSERT_OK(query());
+      }
+      auto before = totals();
+      auto start = MonoTime::Now();
+      for (int i = 0; i != kNumQueries; ++i) {
+        ASSERT_OK(query());
+      }
+      auto passed = MonoTime::Now() - start;
+      auto after = totals();
+      auto searches = std::max<uint64_t>(after.searches - before.searches, 1);
+      LOG(INFO) << Format(
+          "VI_COVERED_PERF table: $0, selectivity: $1%, query: $2 us, read rows: $3 us, "
+          "checked: $4, covered checks: $5",
+          table, percent, passed.ToMicroseconds() / kNumQueries,
+          (after.read_data_us - before.read_data_us) / searches,
+          (after.filter_checked - before.filter_checked) / searches,
+          (after.covered_checks - before.covered_checks) / static_cast<int64_t>(searches));
+    }
+  }
+}
+
+TEST_P(PgVectorIndexSingleServerTest, CoveredColumnsPerfBackfill) {
+  TestCoveredColumnsPerf(Backfill::kTrue);
+}
+
+TEST_P(PgVectorIndexSingleServerTest, CoveredColumnsPerfInsert) {
+  TestCoveredColumnsPerf(Backfill::kFalse);
 }
 
 TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {

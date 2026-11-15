@@ -23,10 +23,12 @@ namespace yb::dockv {
 
 void PackQLValueV2(const QLValuePB& value, DataType data_type, ValueBuffer* out);
 void PackQLValueV2(const LWQLValuePB& value, DataType data_type, ValueBuffer* out);
+void PackQLValueV2(const PgValue& value, DataType data_type, ValueBuffer* out);
 Result<QLValuePB> UnpackQLValue(PackedValueV2 value, DataType data_type);
 
 ssize_t PackedQLValueSizeV2(const QLValuePB& value, DataType data_type);
 ssize_t PackedQLValueSizeV2(const LWQLValuePB& value, DataType data_type);
+ssize_t PackedQLValueSizeV2(const PgValue& value, DataType data_type);
 
 bool PackedAsVarlen(DataType data_type);
 

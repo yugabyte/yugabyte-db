@@ -2441,6 +2441,22 @@ void TabletServiceAdminImpl::AddTableToTablet(
   }
   DVLOG(3) << "Received AddTableToTablet RPC: " << yb::ToString(*req);
 
+  // A write evaluated without a vector index with covered columns does not maintain them, see
+  // PgsqlWriteOperation::SetVectorIndexes. Pausing write permits makes every write either reach
+  // Raft before the index, so the backfill covers it, or be evaluated with the index. Writes take
+  // no permit with disable_alter_vs_write_mutual_exclusion.
+  ScopedRWOperationPause pause_writes;
+  if (req->add_table().index_info().vector_idx_options().covered_column_ids_size()) {
+    pause_writes = tablet.tablet->PauseWritePermits(context.GetClientDeadline());
+    if (!pause_writes.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS(TryAgain, "Could not lock the tablet against write operations to add the table"),
+          &context);
+      return;
+    }
+  }
+
   tablet::ChangeMetadataRequestPB change_req;
   *change_req.mutable_add_table() = req->add_table();
   change_req.set_tablet_id(tablet_id);

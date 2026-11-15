@@ -50,8 +50,11 @@ constexpr const char kDocVectorMetaValueFormatVersion = 0x01;
 // Flags in the first byte of the vector payload, see DocVectorIndexPayload.
 constexpr uint8_t kDocVectorIndexPayloadYbctid = 0x01;
 constexpr uint8_t kDocVectorIndexPayloadTenantPrefix = 0x02;
+constexpr uint8_t kDocVectorIndexPayloadCovered = 0x04;
+constexpr uint8_t kDocVectorIndexPayloadWriteTime = 0x08;
 constexpr uint8_t kDocVectorIndexPayloadKnownFlags =
-    kDocVectorIndexPayloadYbctid | kDocVectorIndexPayloadTenantPrefix;
+    kDocVectorIndexPayloadYbctid | kDocVectorIndexPayloadTenantPrefix |
+    kDocVectorIndexPayloadCovered | kDocVectorIndexPayloadWriteTime;
 
 // kVectorIndexMetadata (1 byte) + format version (1 byte).
 constexpr const size_t kEncodedDocVectorMetaValueHeaderSize =
@@ -402,17 +405,27 @@ KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId colum
   return key;
 }
 
-ValueBuffer DocVectorIndexPayload(Slice ybctid, size_t tenant_prefix_size) {
+ValueBuffer DocVectorIndexPayload(
+    Slice ybctid, size_t tenant_prefix_size, Slice covered, HybridTime write_time) {
   DCHECK(!ybctid.empty());
   DCHECK_LE(tenant_prefix_size, ybctid.size());
   char header[1 + kMaxVarIntBufferSize];
   header[0] = kDocVectorIndexPayloadYbctid |
-              (tenant_prefix_size ? kDocVectorIndexPayloadTenantPrefix : 0);
+              (tenant_prefix_size ? kDocVectorIndexPayloadTenantPrefix : 0) |
+              (covered.empty() ? 0 : kDocVectorIndexPayloadCovered) |
+              (write_time.is_valid() ? kDocVectorIndexPayloadWriteTime : 0);
   auto header_size = 1 + FastEncodeUnsignedVarInt(ybctid.size(), header + 1);
   ValueBuffer result;
   result.Assign(Slice(header, header_size), ybctid);
   if (tenant_prefix_size) {
     FastAppendUnsignedVarInt(tenant_prefix_size, &result);
+  }
+  if (!covered.empty()) {
+    FastAppendUnsignedVarInt(covered.size(), &result);
+    result.Append(covered);
+  }
+  if (write_time.is_valid()) {
+    FastAppendUnsignedVarInt(write_time.ToUint64(), &result);
   }
   return result;
 }
@@ -423,6 +436,8 @@ Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload) 
   DocVectorIndexPayloadContent result {
     .ybctid = VERIFY_RESULT(ConsumeDocVectorIndexPayloadYbctid(&payload, &flags)),
     .tenant = Slice(),
+    .covered = Slice(),
+    .write_time = HybridTime::kInvalid,
   };
   SCHECK_EQ(
       flags & ~kDocVectorIndexPayloadKnownFlags, 0, Corruption,
@@ -434,6 +449,20 @@ Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload) 
         Format("Broken vector payload tenant: $0", original_payload.ToDebugHexString()));
     result.tenant = result.ybctid.Prefix(tenant_prefix_size);
   }
+  if (flags & kDocVectorIndexPayloadCovered) {
+    auto covered_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&payload));
+    SCHECK_LE(
+        covered_size, payload.size(), Corruption,
+        Format("Broken vector payload covered columns: $0", original_payload.ToDebugHexString()));
+    result.covered = payload.Prefix(covered_size);
+    payload.RemovePrefix(covered_size);
+  }
+  if (flags & kDocVectorIndexPayloadWriteTime) {
+    result.write_time = HybridTime(VERIFY_RESULT(FastDecodeUnsignedVarInt(&payload)));
+  }
+  SCHECK(
+      payload.empty(), Corruption,
+      Format("Extra data in vector payload: $0", original_payload.ToDebugHexString()));
   return result;
 }
 

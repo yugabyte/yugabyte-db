@@ -496,6 +496,9 @@ typedef struct {
   uint32_t attnum;
   uint32_t hnsw_ef;
   uint32_t hnsw_m;
+  // Attribute numbers of the INCLUDE columns.
+  const uint32_t* covered_attnums;
+  uint32_t num_covered_attnums;
 } YbcPgVectorIdxOptions;
 
 typedef struct {

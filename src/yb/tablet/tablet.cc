@@ -2410,11 +2410,18 @@ Status Tablet::ApplyKeyValueRowOperations(
     if (put_batch.has_delete_vector_ids() && !vector_indexes_->has_vector_deletion()) {
       vector_indexes_->SetHasVectorDeletion();
     }
+    auto vector_indexes = vector_indexes_->List();
+    // An xCluster write reveals its deletions only once written, too late for covered checks that
+    // accept candidates without reading their rows.
+    if (xcluster_target_applied && vector_indexes && !vector_indexes_->has_vector_deletion() &&
+        docdb::HasCoveredColumns(*vector_indexes)) {
+      vector_indexes_->SetHasVectorDeletion();
+    }
     // See comments for PrepareExternalWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
+        GetSchemaPackingProvider(), frontiers, vector_indexes.impl(), apply_to_storages,
         table_type(), &can_advance_intents_flush_op_id_, xcluster_target_applied);
 
     rocksdb::WriteBatch regular_write_batch;
@@ -2720,7 +2727,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
       .ql_storage = storage,
       .pending_op = *scoped_read_operation,
       .vector_index = vector_index,
-      .table_has_vector_deletion = vector_indexes().has_vector_deletion(),
+      .table_has_vector_deletion = [this] { return vector_indexes().has_vector_deletion(); },
     };
 
     status = ProcessPgsqlReadRequest(data, result);

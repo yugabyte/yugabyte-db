@@ -106,6 +106,8 @@ makeBaseYbVectorHandler(bool is_copartitioned)
 		amroutine->yb_ambackfill = NULL;
 		amroutine->ambuild = ybvectorcopartitionedbuild;
 		amroutine->yb_amiscopartitioned = true;
+		/* INCLUDE columns are stored with the vectors. */
+		amroutine->amcaninclude = true;
 	}
 
 	return amroutine;

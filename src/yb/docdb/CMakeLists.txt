@@ -71,6 +71,7 @@ set(DOCDB_SRCS
         doc_reader_redis.cc
         doc_rowwise_iterator.cc
         doc_vector_index.cc
+        doc_vector_index_covered_columns.cc
         doc_write_batch.cc
         doc_write_batch_cache.cc
         docdb-internal.cc

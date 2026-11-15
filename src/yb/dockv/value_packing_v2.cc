@@ -14,6 +14,7 @@
 #include "yb/dockv/value_packing_v2.h"
 
 #include "yb/dockv/packed_value.h"
+#include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_packing.h"
 
@@ -205,6 +206,10 @@ void PackQLValueV2(const LWQLValuePB& value, DataType data_type, ValueBuffer* ou
       data_type, PackQLValueVisitor<LWQLValuePB> { .value = value, .out = out });
 }
 
+void PackQLValueV2(const PgValue& value, DataType data_type, ValueBuffer* out) {
+  VisitDataType(data_type, PackQLValueVisitor<PgValue> { .value = value, .out = out });
+}
+
 Result<QLValuePB> UnpackQLValue(PackedValueV2 value, DataType data_type) {
   if (value.IsNull()) {
     return QLValuePB();
@@ -218,6 +223,10 @@ ssize_t PackedQLValueSizeV2(const QLValuePB& value, DataType data_type) {
 
 ssize_t PackedQLValueSizeV2(const LWQLValuePB& value, DataType data_type) {
   return VisitDataType(data_type, PackedQLValueSizeVisitor<LWQLValuePB> { .value = value });
+}
+
+ssize_t PackedQLValueSizeV2(const PgValue& value, DataType data_type) {
+  return VisitDataType(data_type, PackedQLValueSizeVisitor<PgValue> { .value = value });
 }
 
 }  // namespace yb::dockv

@@ -73,6 +73,14 @@ class PgsqlWriteOperation :
     return pk_is_known_;
   }
 
+  // The vector indexes of the tablet. Taken after the write permit, which the leader adding an
+  // index with covered columns waits for, so such an index is known to the writes applied after it.
+  // Except with disable_alter_vs_write_mutual_exclusion, which skips write permits, and possibly on
+  // a new leader that has not applied the index yet, see VectorIndexesUpdater::FlushCoveredRow.
+  void SetVectorIndexes(DocVectorIndexesPtr vector_indexes) {
+    vector_indexes_ = std::move(vector_indexes);
+  }
+
  private:
   void ClearResponse() override;
 
@@ -132,11 +140,21 @@ class PgsqlWriteOperation :
   Status HandleUpdatedVectorIds(
       const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
 
+  bool HasCoveredVectorIndex() const;
+
+  // A vector index with covered columns takes a vector together with the covered values written to
+  // its row, see VectorIndexesUpdater. So when an update writes the vector or a covered column,
+  // this writes the covered columns the update does not, and gives the vector a new id when the
+  // update does not write it, so the old index entry with the old covered values becomes dead.
+  Status UpdateCoveredVectorIndexes(
+      const DocOperationApplyData& data, const dockv::PgTableRow& table_row);
+
   const dockv::ReaderProjection& projection() const;
 
   //------------------------------------------------------------------------------------------------
   // Context.
   DocReadContextPtr doc_read_context_;
+  DocVectorIndexesPtr vector_indexes_;
   mutable std::optional<dockv::ReaderProjection> projection_;
   const TransactionOperationContext txn_op_context_;
 
@@ -170,7 +188,9 @@ struct PgsqlReadOperationData {
   const YQLStorageIf& ql_storage;
   const ScopedRWOperation& pending_op;
   DocVectorIndexPtr vector_index;
-  bool table_has_vector_deletion = false;
+  // Whether the tablet has a vector deletion. A search reads it after the intents, see
+  // PgsqlVectorFilter::Init. Not set means no deletion.
+  std::function<bool()> table_has_vector_deletion;
 };
 
 class PgsqlReadOperation : public DocExprExecutor {

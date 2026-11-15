@@ -42,6 +42,7 @@
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/doc_vector_index_covered_columns.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
@@ -57,6 +58,7 @@
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/partition.h"
+#include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
 #include "yb/dockv/reader_projection.h"
@@ -78,6 +80,7 @@
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -639,6 +642,11 @@ class FilteringIterator {
     return filter_.has_value();
   }
 
+  // Whether a row that was not read by this iterator matches the filter.
+  Result<bool> Match(const dockv::PgTableRow& row) {
+    return MatchFilter(row);
+  }
+
   static bool NeedFilter(const PgsqlReadRequestMsg& request) {
     return !request.where_clauses().empty();
   }
@@ -911,6 +919,46 @@ bool IsIntentRow(const std::vector<std::string>& intent_keys, Slice key) {
       intent_keys.begin(), intent_keys.end(), key, [](Slice lhs, Slice rhs) { return lhs < rhs; });
 }
 
+// Builds a row from the ybctid and the covered columns stored in the vector payload.
+class CoveredRowDecoder {
+ public:
+  CoveredRowDecoder(
+      const DocReadContext& doc_read_context, const dockv::ReaderProjection& projection,
+      const DocVectorIndexCoveredColumns& covered_columns)
+      : key_decoder_(doc_read_context.schema(), projection),
+        covered_columns_(covered_columns),
+        // The ybctid starts after the table key prefix, the key decoder after the hash code too.
+        hash_code_size_(
+            doc_read_context.key_prefix_encoded_len() -
+            doc_read_context.table_key_prefix().size()) {
+  }
+
+  Status Decode(Slice ybctid, Slice covered, dockv::PgTableRow& row) const {
+    row.Reset();
+    for (size_t i = 0; i != row.projection().columns.size(); ++i) {
+      row.SetNull(i);
+    }
+    RETURN_NOT_OK(key_decoder_.Decode(ybctid.WithoutPrefix(hash_code_size_), &row));
+    return covered_columns_.Decode(covered, row);
+  }
+
+ private:
+  dockv::PgKeyDecoder key_decoder_;
+  const DocVectorIndexCoveredColumns& covered_columns_;
+  const size_t hash_code_size_;
+};
+
+// Whether the columns of the pushed down filter are in the payload. Only they carry a type.
+bool IsCoveredFilter(
+    const PgsqlReadRequestMsg& request, const Schema& schema,
+    const DocVectorIndexCoveredColumns& covered_columns) {
+  return std::ranges::all_of(request.col_refs(), [&schema, &covered_columns](const auto& col_ref) {
+    ColumnId column_id(col_ref.column_id());
+    return !col_ref.has_typid() || schema.is_key_column(column_id) ||
+           covered_columns.Contains(column_id);
+  });
+}
+
 class VectorIndexKeyProvider {
  public:
   VectorIndexKeyProvider(
@@ -1055,6 +1103,46 @@ class VectorIndexKeyProvider {
 // Exceeded - a limit was reached and current record did not make it into result (no room)
 YB_DEFINE_ENUM(FetchLimit, (kNotReached)(kReached)(kExceeded));
 
+// Whether accepted entries need no row read, see CoveredEntryChecker::serves_rows.
+YB_STRONGLY_TYPED_BOOL(ServesRows);
+
+// Checks vector index entries by the covered columns in their payload.
+struct CoveredEntryChecker {
+  CoveredEntryChecker(
+      const DocReadContext& doc_read_context, const dockv::ReaderProjection& projection,
+      const DocVectorIndexCoveredColumns& covered_columns, const ReadHybridTime& read_time_,
+      ServesRows serves_rows_)
+      : serves_rows(serves_rows_), read_time(read_time_), row(projection),
+        decoder(doc_read_context, projection, covered_columns) {}
+
+  Status Decode(const dockv::DocVectorIndexPayloadContent& content) {
+    ++num_checks;
+    return decoder.Decode(content.ybctid, content.covered, row);
+  }
+
+  // Whether a vector written at write_time is visible at the read time. Requests a read restart
+  // when write_time is in the uncertainty window, as a row read would.
+  bool Visible(HybridTime write_time, Slice ybctid) {
+    if (write_time <= read_time.read) {
+      return true;
+    }
+    if (write_time <= read_time.local_limit) {
+      read_restart_data.MakeAtLeast(ReadRestartData {
+        .restart_time = write_time,
+        .key = KeyBuffer(ybctid),
+      });
+    }
+    return false;
+  }
+
+  const ServesRows serves_rows;
+  const ReadHybridTime read_time;
+  dockv::PgTableRow row;
+  CoveredRowDecoder decoder;
+  ReadRestartData read_restart_data;
+  size_t num_checks = 0;
+};
+
 class PgsqlVectorFilter {
  public:
   PgsqlVectorFilter(
@@ -1068,6 +1156,7 @@ class PgsqlVectorFilter {
       metrics_.filter_checked->Increment(num_checked_entries_);
       metrics_.filter_accepted->Increment(num_accepted_entries_);
       metrics_.filter_removed->Increment(num_removed_);
+      metrics_.covered_checks->IncrementBy(covered_ ? covered_->num_checks : 0);
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, checked: " << num_checked_entries_ << ", accepted: "
           << num_accepted_entries_ << ", num removed: " << num_removed_
@@ -1076,15 +1165,24 @@ class PgsqlVectorFilter {
     DCHECK_LE(num_checked_entries_, TEST_vector_index_max_checked_entries);
   }
 
-  Result<bool> Init(const PgsqlReadOperationData& data) {
+  // covered_columns is set when the filter columns are covered, see IsCoveredFilter. Called after
+  // the intents are read.
+  Result<bool> Init(
+      const PgsqlReadOperationData& data, const DocVectorIndexCoveredColumns* covered_columns) {
     if (FLAGS_vector_index_skip_filter_check) {
       return false;
     }
+    // A deletion is visible either through the intents of its transaction, or through the mark,
+    // which is set before the intents are removed. So the mark is read after the intents. An
+    // xCluster target sets the mark before its writes, see Tablet::ApplyKeyValueRowOperations.
+    const auto has_vector_deletion =
+        data.table_has_vector_deletion && data.table_has_vector_deletion();
     // Deleted and replaced vectors are detected by fetching the row they point to, which is needed
-    // only once the tablet has vector deletions.
-    auto check_rows = data.table_has_vector_deletion ||
+    // only once the tablet has vector deletions. Covered entries are checked against the read time.
+    auto check_rows = has_vector_deletion ||
                       FilteringIterator::NeedFilter(data.request) ||
-                      !FLAGS_vector_index_no_deletions_skip_filter_check;
+                      !FLAGS_vector_index_no_deletions_skip_filter_check ||
+                      covered_columns;
     if (!check_rows && intent_keys_.empty()) {
       LOG_IF(INFO, FLAGS_vector_index_dump_stats)
           << "VI_STATS: PgsqlVectorFilter, "
@@ -1110,10 +1208,15 @@ class PgsqlVectorFilter {
       index_column_index_ = columns.size();
       columns.push_back(index_column);
     }
-    dockv::ReaderProjection projection;
     projection_.Init(data.doc_read_context.schema(), columns);
     row_.emplace(projection_);
     RETURN_NOT_OK(iter_.InitForYbctid(data, projection_, data.doc_read_context, {}));
+    if (covered_columns) {
+      covered_.emplace(
+          data.doc_read_context, projection_, *covered_columns,
+          data.read_operation_data.read_time,
+          ServesRows(!has_vector_deletion && FLAGS_vector_index_no_deletions_skip_filter_check));
+    }
     return true;
   }
 
@@ -1125,6 +1228,17 @@ class PgsqlVectorFilter {
       return false;
     }
     ++num_checked_entries_;
+
+    if (covered_ && !payload.empty()) {
+      auto covered_result = CheckCovered(payload);
+      if (!covered_result.ok()) {
+        status_ = std::move(covered_result.status());
+        return false;
+      }
+      if (covered_result->has_value()) {
+        return **covered_result;
+      }
+    }
 
     Slice ybctid;
     if (!payload.empty()) {
@@ -1232,6 +1346,9 @@ class PgsqlVectorFilter {
     if (iter_holder_) {
       result = VERIFY_RESULT(iter_holder_->GetReadRestartData());
     }
+    if (covered_) {
+      result.MakeAtLeast(covered_->read_restart_data);
+    }
     if (reverse_mapping_reader_) {
       result.MakeAtLeast(VERIFY_RESULT(reverse_mapping_reader_->GetReadRestartData()));
     }
@@ -1239,6 +1356,39 @@ class PgsqlVectorFilter {
   }
 
  private:
+  // Checks an entry with covered columns without reading its row. Returns nullopt when the row has
+  // to be read: the entry has no covered columns or write time, the tablet has a vector deletion,
+  // or vector_index_no_deletions_skip_filter_check is off.
+  Result<std::optional<bool>> CheckCovered(Slice payload) {
+    auto content = VERIFY_RESULT(dockv::DecodeDocVectorIndexPayload(payload));
+    if (content.covered.empty()) {
+      return std::nullopt;
+    }
+    RETURN_NOT_OK(covered_->Decode(content));
+    // A covered column update gives the vector a new id, so stale covered values belong to a dead
+    // vector, and rejecting by them is right. Except the known gaps, see the TODO in
+    // VectorIndexesUpdater::FlushCoveredRow.
+    if (!VERIFY_RESULT(iter_.Match(covered_->row))) {
+      return false;
+    }
+    if (!covered_->serves_rows) {
+      return std::nullopt;
+    }
+    // Such a row is added at its current version, see VectorIndexKeyProvider::Prefetch.
+    if (IsIntentRow(intent_keys_, content.ybctid)) {
+      return false;
+    }
+    // Without vector deletions, every vector written by the read time is live.
+    if (!content.write_time.is_valid()) {
+      return std::nullopt;
+    }
+    if (!covered_->Visible(content.write_time, content.ybctid)) {
+      return false;
+    }
+    ++num_accepted_entries_;
+    return true;
+  }
+
   const docdb::DocVectorIndexMetrics& metrics_;
   // Not table_iter_ of the read operation: ExecuteBatchKeys replaces that one, discarding its read
   // restart data.
@@ -1251,6 +1401,8 @@ class PgsqlVectorFilter {
   Status status_;
   size_t index_column_index_ = std::numeric_limits<size_t>::max();
   std::optional<dockv::PgTableRow> row_;
+  // Set when the filter columns are covered.
+  std::optional<CoveredEntryChecker> covered_;
   bool need_refresh_ = false;
   size_t num_checked_entries_ = 0;
   size_t num_found_entries_ = 0;
@@ -1704,7 +1856,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
   }
 
   const auto& schema = doc_read_context_->schema();
-  auto pack_row = ShouldYsqlPackRow(schema.is_colocated());
+  // A packed row holds every covered column, see VectorIndexesUpdater.
+  auto pack_row = ShouldYsqlPackRow(schema.is_colocated()) || HasCoveredVectorIndex();
   if (!request_.packed_rows().empty()) {
     RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(
         request_.table_id(), schema, schema.value_column_ids()));
@@ -1970,6 +2123,8 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
             data, table_row, column_value, &returning_table_row,
             expression_helper.NextResult(column_value), /* pack_context=*/ nullptr));
       }
+      // Unlike a full row update, a partial one could miss the vector or covered columns.
+      RETURN_NOT_OK(UpdateCoveredVectorIndexes(data, table_row));
     }
   } else {
     // This UPDATE is calling PGGATE directly without going thru PostgreSQL layer.
@@ -2185,10 +2340,97 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
   return Status::OK();
 }
 
+bool PgsqlWriteOperation::HasCoveredVectorIndex() const {
+  return vector_indexes_ &&
+         HasCoveredColumns(*vector_indexes_, doc_read_context_->table_key_prefix());
+}
+
+Status PgsqlWriteOperation::UpdateCoveredVectorIndexes(
+    const DocOperationApplyData& data, const dockv::PgTableRow& table_row) {
+  if (!HasCoveredVectorIndex()) {
+    return Status::OK();
+  }
+  const auto& schema = doc_read_context_->schema();
+  auto is_updated = [this](ColumnId column_id) {
+    return std::ranges::any_of(request_.column_new_values(), [column_id](const auto& value) {
+      return ColumnId(value.column_id()) == column_id;
+    });
+  };
+  // Columns this function wrote, for a column shared by several indexes.
+  std::vector<ColumnId> written;
+  auto is_written = [&is_updated, &written](ColumnId column_id) {
+    return is_updated(column_id) || std::ranges::find(written, column_id) != written.end();
+  };
+  ThreadSafeArena arena;
+  for (const auto& index : *vector_indexes_) {
+    const auto* covered_columns =
+        index->CoveredColumnsFor(doc_read_context_->table_key_prefix());
+    if (!covered_columns) {
+      continue;
+    }
+    // Dropping a covered column drops the index, but the tablet could apply the new schema first.
+    const auto& projection = table_row.projection();
+    if (std::ranges::any_of(covered_columns->column_ids(), [&projection](ColumnId column_id) {
+          return projection.ColumnIdxById(column_id) == dockv::ReaderProjection::kNotFoundIndex;
+        })) {
+      continue;
+    }
+    const auto vector_column_id = index->column_id();
+    if (!is_written(vector_column_id)) {
+      if (!std::ranges::any_of(covered_columns->column_ids(), is_updated)) {
+        continue;
+      }
+      auto old_vector = table_row.GetValueByColumnId(vector_column_id);
+      if (!old_vector) {
+        // A NULL vector is not indexed.
+        continue;
+      }
+      RETURN_NOT_OK(FillRemovedVectorId(data, table_row, vector_column_id));
+      LWQLValuePB vector(&arena);
+      vector.dup_binary_value(
+          dockv::EncodedDocVectorValue::FromSlice(old_vector->binary_value()).data);
+      dockv::DocVectorValue vector_value(
+          doc_read_context_->vector_value_format(), vector,
+          vector_index::VectorId::GenerateRandom());
+      RETURN_NOT_OK(DoUpdateColumn(
+          data, vector_column_id, VERIFY_RESULT_REF(schema.column_by_id(vector_column_id)),
+          vector_value, /* pack_context= */ nullptr));
+      written.push_back(vector_column_id);
+    }
+    for (auto column_id : covered_columns->column_ids()) {
+      if (is_written(column_id)) {
+        continue;
+      }
+      LWQLValuePB value(&arena, table_row.GetQLValuePB(column_id.rep()));
+      RETURN_NOT_OK(DoUpdateColumn(
+          data, column_id, VERIFY_RESULT_REF(schema.column_by_id(column_id)), value,
+          /* pack_context= */ nullptr));
+      written.push_back(column_id);
+    }
+  }
+  return Status::OK();
+}
+
 const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
   if (!projection_) {
     projection_.emplace();
-    InitProjection(doc_read_context_->schema(), request_, &*projection_);
+    const auto& schema = doc_read_context_->schema();
+    if (HasCoveredVectorIndex()) {
+      // UpdateCoveredVectorIndexes reads the covered columns of the row. Init removes duplicates.
+      auto columns = schema.vector_column_ids();
+      for (const auto& index : *vector_indexes_) {
+        const auto* covered_columns =
+            index->CoveredColumnsFor(doc_read_context_->table_key_prefix());
+        if (covered_columns) {
+          columns.insert(
+              columns.end(), covered_columns->column_ids().begin(),
+              covered_columns->column_ids().end());
+        }
+      }
+      projection_->Init(schema, request_.col_refs(), columns);
+    } else {
+      InitProjection(schema, request_, &*projection_);
+    }
     VLOG_WITH_FUNC(4)
         << "projection: " << projection_->ToString() << ", request: " << AsString(request_);
   }
@@ -2926,8 +3168,17 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
   size_t max_results = options.num_top_vectors_to_remove() + options.prefetch_size();
 
   auto intent_keys = VERIFY_RESULT(ReadIntentRowKeys(data_, vector_search_read_restart_data_));
+  // Without a filter, there is nothing to check against the payload. Backfilled vectors are written
+  // at the index hybrid time, so a read below it would leave out the rows they belong to.
+  const auto* covered_columns = data_.vector_index->covered_columns();
+  if (covered_columns &&
+      (!FilteringIterator::NeedFilter(request_) ||
+       data_.read_operation_data.read_time.read < data_.vector_index->hybrid_time() ||
+       !IsCoveredFilter(request_, data_.doc_read_context.schema(), *covered_columns))) {
+    covered_columns = nullptr;
+  }
   PgsqlVectorFilter filter(data_.vector_index->metrics(), intent_keys);
-  auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_));
+  auto could_have_missing_entries = !VERIFY_RESULT(filter.Init(data_, covered_columns));
   auto backfill_done = VERIFY_RESULT(data_.vector_index->BackfillDone());
   RSTATUS_DCHECK(
       backfill_done, IllegalState, "Vector index query on non ready index: $0",
