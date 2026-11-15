@@ -41,10 +41,10 @@ import org.apache.commons.lang3.StringUtils;
  * already-before nodes are skipped so rollback retry can make progress. Classification and the
  * ChangeInstanceType skip also consult the cloud so a modify that aborted before YBA persist is
  * still reverted. A node a failed batch may have left stopped is taken through the batch even when
- * already at before, so its VM and processes are started again. A resize that changed the cgroup
- * is different: nodes record no cgroup, so an already-before node can't be told apart, and every
- * node in the cluster is re-applied (a rolling restart of each node) on every rollback attempt.
- * See {@link #isCgroupChanging}.
+ * already at before, so its VM and processes are started again. A resize that changed the cgroup is
+ * different: nodes record no cgroup, so an already-before node can't be told apart, and every node
+ * in the cluster is re-applied (a rolling restart of each node) on every rollback attempt. See
+ * {@link #isCgroupChanging}.
  *
  * <p>Freeze must not recapture {@code state_transition_details} - the failed ResizeNode's delta is
  * the source of truth for the before intent. {@link

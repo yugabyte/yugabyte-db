@@ -205,9 +205,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
    * that did keeps it, so refuse the rollback instead.
    */
   private void rejectCgroupRemoval(
-      Universe universe,
-      UniverseDefinitionTaskParams before,
-      UniverseDefinitionTaskParams target) {
+      Universe universe, UniverseDefinitionTaskParams before, UniverseDefinitionTaskParams target) {
     // "before" is the whole pre-resize universe, but "target" is the resize's own params, and a
     // read-replica-only resize carries no primary there. Like the forward task's cgroup lookup,
     // fall back to the primary it did not change.
@@ -236,8 +234,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
                 "Cannot roll back resize node: the failed resize targeted a %d MB cgroup limit for"
                     + " node %s, which had none before. The limit may already be applied, and"
                     + " removing a cgroup limit is not supported",
-                targetSize,
-                node.nodeName));
+                targetSize, node.nodeName));
       }
     }
   }
