@@ -15189,6 +15189,7 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 						if (IsYBRelation(tab->rel))
 							indstmt->yb_old_key_type_oids =
 								YbGetIndexKeyTypeOids(indoid);
+
 						/* keep any comment on the index */
 						indstmt->idxcomment = GetComment(indoid,
 														 RelationRelationId, 0);

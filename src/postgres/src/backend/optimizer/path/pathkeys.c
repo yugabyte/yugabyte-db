@@ -650,17 +650,6 @@ build_index_pathkeys(PlannerInfo *root,
 		if (i >= index->nkeycolumns)
 			break;
 
-		/*
-		 * YB: DocDB orders an int2vector key column by its bytes, so the
-		 * index is not ordered on it or on any later column.
-		 */
-		if (yb_indexcol_is_equality_only(index, i))
-		{
-			if (yb_is_hash_column)
-				return NIL;
-			break;
-		}
-
 		/* We assume we don't need to make a copy of the tlist item */
 		indexkey = indextle->expr;
 
@@ -691,6 +680,20 @@ build_index_pathkeys(PlannerInfo *root,
 											  index->rel->relids,
 											  false,
 											  yb_is_hash_column);
+
+		/*
+		 * YB: DocDB orders an int2vector key column by its bytes, so the
+		 * index is not ordered on it or on any later column, unless the
+		 * column is pinned to one value. An IN list on it is not bound to
+		 * DocDB, so it can't serve a merge scan either.
+		 */
+		if (yb_indexcol_is_equality_only(index, i) &&
+			!(cpathkey && EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass)))
+		{
+			if (yb_is_hash_column)
+				return NIL;
+			break;
+		}
 
 		/*
 		 * YB: Index keys part of scalar array operations may be eligible for

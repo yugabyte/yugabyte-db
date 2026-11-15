@@ -189,6 +189,14 @@ SELECT binary_upgrade_set_next_pg_type_oid('1000031'::oid);
 SELECT binary_upgrade_set_next_array_pg_type_oid('1000032'::oid);
 CREATE TABLE int2vector_rs_ida2 (k int PRIMARY KEY, id int, a int2vector);
 CREATE INDEX int2vector_rs_ida2_id_a ON int2vector_rs_ida2 (id ASC, a ASC);
+SELECT binary_upgrade_set_next_pg_type_oid('1000033'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000034'::oid);
+CREATE TABLE int2vector_rs_hash (id int PRIMARY KEY, a int2vector);
+CREATE INDEX int2vector_rs_hash_a_id ON int2vector_rs_hash (a HASH, id ASC);
+SELECT binary_upgrade_set_next_pg_type_oid('1000035'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000036'::oid);
+CREATE TABLE int2vector_rs_ha (id int PRIMARY KEY, h int, a int2vector);
+CREATE INDEX int2vector_rs_ha_h_a ON int2vector_rs_ha (h HASH, a ASC);
 RESET yb_binary_restore;
 RESET yb_ignore_pg_class_oids;
 RESET yb_ignore_relfilenode_ids;
@@ -211,6 +219,9 @@ INSERT INTO int2vector_rs_ida2 SELECT row_number() OVER (), id, a
   FROM int2vector_rs_ida;
 INSERT INTO int2vector_xc SELECT id, a FROM int2vector_rs_idx;
 INSERT INTO int2vector_xc_pk SELECT a, id FROM int2vector_rs_idx;
+INSERT INTO int2vector_rs_hash SELECT id, a FROM int2vector_rs_idx;
+INSERT INTO int2vector_rs_hash VALUES (9, '1 2'), (10, '1 2');
+INSERT INTO int2vector_rs_ha SELECT id, 5, a FROM int2vector_rs_idx;
 SET enable_seqscan = off;
 -- Range quals on an int2vector key column.
 EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_idx WHERE a < '1 2'::int2vector;
@@ -223,7 +234,7 @@ SELECT array_agg(id ORDER BY id) FROM int2vector_rs_pk WHERE a < '1 2'::int2vect
 SELECT array_agg(id ORDER BY id) FROM int2vector_rs_dom_pk WHERE a > '1 2'::int2vector;
 SELECT array_agg(id ORDER BY id) FROM int2vector_xc WHERE a < '1 2'::int2vector;
 SELECT array_agg(id ORDER BY id) FROM int2vector_rs_idx
-  WHERE a = ANY ('{"1 2", "10"}'::int2vector[]);
+  WHERE a = ANY ('{"1 2", "10", "0", "2 1"}'::int2vector[]);
 SELECT array_agg(id ORDER BY id) FROM int2vector_rs_idx
   WHERE a < ANY ('{"1 2", "0"}'::int2vector[]);
 -- Ordering by an int2vector key column.
@@ -251,6 +262,11 @@ EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida2
   WHERE ROW(id, a) > ROW(1, '1 2'::int2vector);
 SELECT id, a FROM int2vector_rs_ida2
   WHERE ROW(id, a) > ROW(1, '1 2'::int2vector) ORDER BY id, a;
+-- A row led by yb_hash_code also stops before the int2vector column.
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_ha
+  WHERE ROW(yb_hash_code(h), h, a) > ROW(yb_hash_code(5), 5, '1 2'::int2vector);
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_ha
+  WHERE ROW(yb_hash_code(h), h, a) > ROW(yb_hash_code(5), 5, '1 2'::int2vector);
 -- The key columns before the int2vector column keep their order.
 EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida ORDER BY id;
 EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida ORDER BY id, a;
@@ -266,8 +282,19 @@ EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_idx
 EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_pk
   WHERE a = '1 2'::int2vector AND id > 0;
 SELECT id FROM int2vector_rs_pk WHERE a = '1 2'::int2vector AND id > 0;
+-- Pinned to one value, the int2vector column keeps the order of later columns.
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_pk
+  WHERE a = '1 2'::int2vector ORDER BY id;
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_hash
+  WHERE a = '1 2'::int2vector ORDER BY id;
+SELECT id FROM int2vector_rs_hash WHERE a = '1 2'::int2vector ORDER BY id;
+-- An IN list on it is not bound to DocDB, so it can't serve a merge scan.
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_pk
+  WHERE a IN ('1 2', '10', '0') ORDER BY id;
+SELECT id FROM int2vector_rs_pk WHERE a IN ('1 2', '10', '0') ORDER BY id;
 RESET enable_seqscan;
 DROP TABLE int2vector_rs_idx, int2vector_rs_desc, int2vector_rs_pk,
-  int2vector_rs_dom_pk, int2vector_rs_ida, int2vector_rs_ida2;
+  int2vector_rs_dom_pk, int2vector_rs_ida, int2vector_rs_ida2,
+  int2vector_rs_hash, int2vector_rs_ha;
 DROP TABLE IF EXISTS int2vector_xc, int2vector_xc_pk;
 DROP DOMAIN int2vector_rs_dom;

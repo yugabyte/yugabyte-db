@@ -5528,6 +5528,10 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 		if (IsA(varop, RelabelType))
 			varop = (Node *) ((RelabelType *) varop)->arg;
 
+		/* YB: An int2vector key column serves only equality. */
+		if (yb_indexcol_is_equality_only(index, indexcol))
+			break;
+
 		/* Must be a Var referencing the expected index key column. */
 		if (!IsA(varop, Var))
 			break;
