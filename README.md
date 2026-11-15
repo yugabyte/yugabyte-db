@@ -98,7 +98,7 @@ Note that, apart from the exceptions noted, upgrading existing universes does no
 
 For more information on PostgreSQL features developed in YugabyteDB for enhanced compatibility, refer to [Enhanced PostgreSQL Compatibility Mode](https://docs.yugabyte.com/stable/reference/configuration/postgresql-compatibility/).
 
-### [Table-level locking for concurrent DDL and DML](https://docs.yugabyte.com/stable/stable/explore/transactions/explicit-locking/#table-level-locks)
+### Table-level locking for concurrent DDL and DML
 
 Added Table-level locks to support concurrent DDL and DML operations across sessions, improving workload concurrency and reducing conflicts during schema changes.
 
