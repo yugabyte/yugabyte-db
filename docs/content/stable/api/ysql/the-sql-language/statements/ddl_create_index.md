@@ -48,7 +48,7 @@ Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a 
 
 Concurrent index creation allows data to be modified in the main table while the index is being built. It is implemented by an online index backfill process, which is a combination of a distributed index backfill process that works on existing data using parallel workers, and an online component that mirrors newer changes to main table rows into the index. Nonconcurrent index builds are not safe to perform while there are ongoing changes to the main table, unless table-level locks are enabled. When table-level locks are enabled, concurrent writers are blocked until the index creation completes, to ensure safety.
 
-Under [READ COMMITTED](../../../../../architecture/transactions/read-committed/), don't run DDL or [ANALYZE](../cmd_analyze) (including [Auto Analyze](../../../../../additional-features/auto-analyze/)) in the same database during an online index build. A concurrent DDL statement or ANALYZE can fail the build with `relation "<index>" already exists` and leave an invalid index. Drop the invalid index before you retry the build.
+Under [READ COMMITTED](../../../../../architecture/transactions/read-committed/), don't run DDL or [ANALYZE](../cmd_analyze) (including [Auto Analyze](../../../../../additional-features/auto-analyze/)) in the same database during an online index build. A concurrent DDL statement or ANALYZE can fail the build with `relation "<index>" already exists` and leave an invalid index. Drop the invalid index with `DROP INDEX <index_name>;` before you retry the build. To find invalid indexes, query `pg_index` where `indisvalid` is false.
 
 The following table summarizes the differences in these two modes.
 
