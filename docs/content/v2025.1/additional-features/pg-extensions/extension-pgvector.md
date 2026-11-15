@@ -263,7 +263,6 @@ A higher `ef_construction` value provides faster recall at the cost of index bui
 - Partial indexes on vector columns are not supported yet. {{<issue 31441>}}
 - Vector indexes are not supported for [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 - [Inspect at PIT](../../../manage/backup-restore/point-in-time-recovery/inspect/) (time travel queries) is not currently supported. {{<issue 20829>}}
-- Restoring a backup onto a cluster with tablet splitting enabled can omit rows from a vector index. ANN queries on the restored index can then return incomplete results without an error. After the restore, drop and rebuild the vector indexes, or disable tablet splitting before the restore. {{<issue 20500>}}
 
 ## Upgrading
 
