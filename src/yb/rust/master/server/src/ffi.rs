@@ -181,6 +181,7 @@ pub(crate) mod bridge {
             self: &MasterInfoHandle,
             min_time: u64,
             timeout_ms: i64,
+            leader: bool,
         ) -> Result<u64>;
         #[cxx_name = "ScanSysCatalog"]
         fn scan_sys_catalog(

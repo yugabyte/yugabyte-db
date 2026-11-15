@@ -23,9 +23,8 @@ use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::common_net::HostPortPB;
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB};
 
-/// The wire name of MasterReplication: master services share `yb.master.MasterService`
-/// (`custom_service_name`).
-pub const MASTER_REPLICATION: &str = "yb.master.MasterService";
+/// The wire name every master service but MasterBackup shares (`custom_service_name`).
+pub const MASTER_SERVICE: &str = "yb.master.MasterService";
 
 /// The leader master of another universe, reached with a replication group's credentials.
 pub trait RemoteMasters: Send + Sync {
@@ -161,21 +160,6 @@ use yb_proto::pb::master_types::NamespaceIdentifierPB;
 
 use crate::XCluster;
 
-/// An error, unless the method's error is AlreadyPresent.
-fn ok_or_present(e: Option<&MasterErrorPB>) -> Result<(), Status> {
-    match e {
-        Some(e) => {
-            let s = remote_status(e);
-            if s.code == StatusCode::AlreadyPresent {
-                Ok(())
-            } else {
-                Err(s)
-            }
-        }
-        None => Ok(()),
-    }
-}
-
 impl XCluster {
     async fn target_call<Req: Message, Resp: MessageFull>(
         &self,
@@ -189,7 +173,7 @@ impl XCluster {
             &*self.remote,
             id,
             masters,
-            MASTER_REPLICATION,
+            MASTER_SERVICE,
             method,
             req,
             deadline,
@@ -236,7 +220,9 @@ impl XCluster {
                 deadline,
             )
             .await?;
-        ok_or_present(resp.error.as_ref())?;
+        // The C++ client ignores AlreadyPresent here, but its RPC layer has already failed the
+        // call on any response error; the target's duplicate-namespace error must reach the user.
+        let resp = check(resp)?;
         if resp.universe_uuid().is_empty() {
             return Err(Status::new(
                 StatusCode::IllegalState,
@@ -370,6 +356,6 @@ impl XCluster {
                 deadline,
             )
             .await?;
-        ok_or_present(resp.error.as_ref())
+        check(resp).map(|_| ())
     }
 }

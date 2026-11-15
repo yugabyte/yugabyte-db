@@ -597,13 +597,31 @@ impl TabletAssigner {
             .collect();
         let hooks = self.lifecycle.xrepl_hooks.get().cloned();
         for table_id in ready {
+            if self
+                .lifecycle
+                .create_errors
+                .lock()
+                .unwrap()
+                .contains_key(&table_id)
+            {
+                continue;
+            }
             if let Some(hooks) = &hooks {
-                if let Err(status) = hooks.post_tablet_create(table_id.clone()).await {
-                    tracing::warn!(
-                        "Post tablet creation work of table {} failed, will retry: {status}",
-                        String::from_utf8_lossy(&table_id)
-                    );
-                    continue;
+                match hooks.post_tablet_create(table_id.clone()).await {
+                    Ok(true) => {}
+                    Ok(false) => continue,
+                    Err(status) => {
+                        tracing::warn!(
+                            "Post tablet creation work of table {} failed: {status}",
+                            String::from_utf8_lossy(&table_id)
+                        );
+                        self.lifecycle
+                            .create_errors
+                            .lock()
+                            .unwrap()
+                            .insert(table_id, status);
+                        continue;
+                    }
                 }
             }
             let result = self

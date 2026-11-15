@@ -20,7 +20,7 @@ use yb_proto::pb::common_net::HostPortPB;
 use yb_proto::pb::consensus_metadata::{RaftConfigPB, RaftPeerPB};
 use yb_proto::pb::master_cluster::{ListMastersResponsePB, RemovedMasterUpdateResponsePB};
 use yb_proto::pb::master_heartbeat::TSToMasterCommonPB;
-use yb_proto::pb::master_replication::GetUniverseReplicationResponsePB;
+use yb_proto::pb::master_replication::SetupNamespaceReplicationWithBootstrapResponsePB;
 use yb_proto::{find_method, SERVICES};
 
 use super::*;
@@ -921,8 +921,8 @@ mod leader_tests {
         assert_eq!(config.cluster_config.version(), 2);
 
         // A leader method of a later commit.
-        let resp = GetUniverseReplicationResponsePB::parse_from_bytes(&success(
-            harness.call("GetUniverseReplication", vec![]),
+        let resp = SetupNamespaceReplicationWithBootstrapResponsePB::parse_from_bytes(&success(
+            harness.call("SetupNamespaceReplicationWithBootstrap", vec![]),
         ))
         .unwrap();
         assert_eq!(
@@ -981,5 +981,41 @@ impl master_xcluster::RemoteMasters for NoRemoteMasters {
         _refresh: bool,
     ) -> master_task_runtime::BoxFuture<'static, Result<Vec<u8>, Status>> {
         Box::pin(async { Err(Status::new(StatusCode::NetworkError, "no remote universe")) })
+    }
+}
+
+/// The RPC coverage gate: a ready Rust leader serves every master method, in Rust or on the host,
+/// except the ones `leader::NEVER_SERVED` names. A method a dispatcher has no arm for answers
+/// `NotSupported`, so this checks the dispatchers' arms in `lib.rs`.
+#[test]
+fn every_master_method_is_served() {
+    let source = include_str!("lib.rs");
+    let has_arm = |name: &str| {
+        let quoted = format!("\"{name}\"");
+        [" =>", " |", " if ", "\n"]
+            .iter()
+            .any(|tail| source.contains(&format!("{quoted}{tail}")))
+            || source.contains(&format!("| {quoted}"))
+    };
+    let unserved: Vec<String> = yb_proto::SERVICES
+        .iter()
+        .filter(|s| {
+            s.proto_name.starts_with("yb.master.Master")
+                && s.proto_name != "yb.master.MasterRustPeer"
+        })
+        .flat_map(|s| s.methods.iter().map(move |m| (s.proto_name, m.name)))
+        .filter(|(_, m)| {
+            !has_arm(m)
+                && !crate::HOST_METHODS.iter().any(|(h, _)| h == m)
+                && !crate::leader::NEVER_SERVED.iter().any(|(n, _)| n == m)
+        })
+        .map(|(s, m)| format!("{s}.{m}"))
+        .collect();
+    assert!(unserved.is_empty(), "No Rust handler for {unserved:?}");
+    for (name, _) in crate::leader::NEVER_SERVED {
+        assert!(
+            !has_arm(name),
+            "{name} is served, so it is not NEVER_SERVED"
+        );
     }
 }

@@ -7,6 +7,10 @@
 from `cargo test`: their code calls into the C++ host, so it only links inside a CMake-built
 executable and is covered by C++ tests.
 
+`master-rpc-handlers`' `every_master_method_is_served` is the RPC coverage gate: it fails when a
+method of a master service has no handler arm, unless `leader::NEVER_SERVED` lists it with the
+reason.
+
 ## Sys-catalog row conformance
 
 The Rust master must serialize every sys-catalog row exactly as the C++ master does (see

@@ -113,7 +113,7 @@ impl Xrepl {
                 && self.retains_table(snapshot, pb.table_id()))
     }
 
-    /// `UpdateCDCProducerOnTabletSplit` for CDCSDK streams: a row per child and stream, from the
+    /// `UpdateCDCProducerOnTabletSplit`: a row per child and stream; a CDCSDK stream's from the
     /// parent's row.
     pub(crate) async fn update_cdc_producer_on_split(
         &self,
@@ -125,6 +125,33 @@ impl Xrepl {
         let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
             return Ok(());
         };
+        // xCluster streams' children start at 0.0 with no replication time: the parent's SPLIT_OP
+        // moves them, and their first poll sets the time, which tells the parent is done with.
+        let mut xcluster = CdcStateUpsertRequestPB::new();
+        for stream in crate::streams::stream_rows(&snapshot)
+            .into_iter()
+            .filter(|r| {
+                r.pb.namespace_id().is_empty()
+                    && !r.is_deleting()
+                    && r.pb.table_id.first().is_some_and(|t| {
+                        crate::streams::strip_sequences_data_alias(t).as_bytes() == table_id
+                    })
+            })
+        {
+            for child in children {
+                let mut entry = CdcStateEntryPB::new();
+                entry.set_tablet_id(child.clone());
+                entry.set_stream_id(stream.id.as_bytes().to_vec());
+                let mut min = OpIdPB::new();
+                min.set_term(0);
+                min.set_index(0);
+                entry.checkpoint = MessageField::some(min);
+                xcluster.entries.push(entry);
+            }
+        }
+        if !xcluster.entries.is_empty() {
+            let _: CdcStateUpsertResponsePB = self.host_call("CdcStateUpsert", xcluster).await?;
+        }
         // Indexes and materialized views are on their way out of the streams.
         if !self.eligible_table_unchecked(&snapshot, table) {
             tracing::info!(

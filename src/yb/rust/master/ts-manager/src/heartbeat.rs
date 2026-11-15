@@ -159,7 +159,8 @@ impl TsManager {
         // After the row that records MAYBE_HAS_LEASE is written, as C++ fills it after
         // UpdateAndReturnTSDescriptorOrRespond.
         resp.xcluster_guarded_info =
-            Some(self.xcluster_guarded_info(&ctx, &cluster_config)?).into();
+            Some(self.xcluster_guarded_info(&ctx.snapshot, ctx.token.term(), &cluster_config)?)
+                .into();
         resp.set_xcluster_guarded_lease_duration_ms(
             (self.options.guarded_lease_duration)()
                 .as_millis()
@@ -210,9 +211,10 @@ impl TsManager {
 
     /// `XClusterManager::FillXClusterGuardedInfo`: a numbered copy of what tservers may use only
     /// while they hold the lease each heartbeat response grants.
-    fn xcluster_guarded_info(
+    pub fn xcluster_guarded_info(
         &self,
-        ctx: &HeartbeatContext<'_>,
+        snapshot: &CatalogSnapshot,
+        term: i64,
         cluster_config: &SysClusterConfigEntryPB,
     ) -> Result<XClusterGuardedInfoPB, Status> {
         let corrupt = |e: master_catalog_entity::EntityError| {
@@ -220,10 +222,9 @@ impl TsManager {
         };
         let mut info = XClusterGuardedInfoPB::new();
         let version = info.xcluster_guarded_info_version.mut_or_insert_default();
-        version.set_term(ctx.token.term());
+        version.set_term(term);
         version.set_count(self.guarded_info_copies.fetch_add(1, Ordering::Relaxed) + 1);
-        let xcluster_config: SysXClusterConfigEntryPB = ctx
-            .snapshot
+        let xcluster_config: SysXClusterConfigEntryPB = snapshot
             .get(SysRowEntryType::XCLUSTER_CONFIG, b"")
             .ok_or_else(|| {
                 Status::new(
@@ -235,8 +236,7 @@ impl TsManager {
             .map_err(corrupt)?;
         info.xcluster_info_per_namespace = xcluster_config.xcluster_info_per_namespace;
         info.set_oid_cache_invalidations_count(cluster_config.oid_cache_invalidations_count());
-        let map: SysPersistenceBlockMapEntryPB = ctx
-            .snapshot
+        let map: SysPersistenceBlockMapEntryPB = snapshot
             .get(SysRowEntryType::PERSISTENCE_BLOCK_MAP, b"")
             .ok_or_else(|| {
                 Status::new(

@@ -1397,6 +1397,7 @@ mod ysql {
     /// tables and marks it DELETED, after which it is no longer found.
     #[tokio::test]
     async fn a_dropped_database_takes_its_tables_with_it() {
+        use yb_proto::pb::catalog_entity_info::SysPersistenceBlockMapEntryPB;
         use yb_proto::pb::master_ddl::{
             IsDeleteNamespaceDoneRequestPB, IsDeleteNamespaceDoneResponsePB,
         };
@@ -1404,6 +1405,29 @@ mod ysql {
         h.create_ysql(None).await.unwrap();
         h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
             .await;
+        // xCluster blocks persistence for this database (oid 0x33e8) and another one.
+        let mut blocks = SysPersistenceBlockMapEntryPB::new();
+        blocks.set_version(4);
+        let map = &mut blocks
+            .persistence_block_map
+            .mut_or_insert_default()
+            .blocked_through_ht;
+        map.insert(0x33e8, 10);
+        map.insert(7, 20);
+        h.lifecycle
+            .writer
+            .mutate(&h.token, |_| {
+                Ok((
+                    master_catalog_state::Mutation::new().upsert_message(
+                        SysRowEntryType::PERSISTENCE_BLOCK_MAP,
+                        b"",
+                        &blocks,
+                    )?,
+                    (),
+                ))
+            })
+            .await
+            .unwrap();
         let mut req = DeleteNamespaceRequestPB::new();
         req.namespace.mut_or_insert_default().set_id(DB_ID.to_vec());
         req.namespace
@@ -1437,6 +1461,21 @@ mod ysql {
         assert_eq!(
             h.table(TABLE_ID).state(),
             sys_tables_entry_pb::State::DELETED
+        );
+        let blocks: SysPersistenceBlockMapEntryPB = h
+            .snapshot()
+            .get(SysRowEntryType::PERSISTENCE_BLOCK_MAP, b"")
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(blocks.version(), 5);
+        assert_eq!(
+            blocks
+                .persistence_block_map
+                .blocked_through_ht
+                .keys()
+                .collect::<Vec<_>>(),
+            vec![&7]
         );
         h.lifecycle
             .is_delete_namespace_done(&h.snapshot(), &done_req, &mut done)

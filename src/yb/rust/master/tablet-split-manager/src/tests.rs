@@ -274,19 +274,14 @@ async fn the_parent_goes_once_its_children_cover_it() {
 }
 
 #[tokio::test]
-async fn the_parent_of_an_xcluster_streamed_table_is_kept() {
+async fn an_xcluster_streamed_table_splits_unless_its_flags_say_not() {
     let h = Harness::new().await;
-    let children = h
-        .splits
-        .do_split(h.token, b"parent", vec![vec![0x80, 0x00]], true)
-        .await
-        .unwrap();
-    h.set_running(&children[0]).await;
-    h.set_running(&children[1]).await;
-    // A C++ leader split a table with an outbound xCluster stream (no namespace), whose pollers
-    // still read the parent.
+    // An outbound xCluster stream (no namespace) of the table, still bootstrapping.
     let mut stream = yb_proto::pb::catalog_entity_info::SysCDCStreamEntryPB::new();
     stream.table_id.push("t1".to_string());
+    stream.state = Some(EnumOrUnknown::new(
+        yb_proto::pb::catalog_entity_info::sys_cdcstream_entry_pb::State::INITIATED,
+    ));
     h.writer
         .submit(
             &h.token,
@@ -298,20 +293,26 @@ async fn the_parent_of_an_xcluster_streamed_table_is_kept() {
         )
         .await
         .unwrap();
-    let mut req = DeleteNotServingTabletRequestPB::new();
-    req.set_tablet_id(b"parent".to_vec());
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let e = h
-        .splits
-        .delete_not_serving_tablet(h.token, deadline, &req)
-        .await
+    let snapshot = h.snapshot();
+    let tablet = snapshot.get(SysRowEntryType::TABLET, b"parent").unwrap();
+    let e = validate_split_candidate(&snapshot, tablet, true, &AutoSplitOptions::default())
         .unwrap_err();
-    assert!(e.status.message().contains("xCluster stream"), "{e:?}");
-    assert_eq!(
-        h.tablet(b"parent").state(),
-        sys_tablets_entry_pb::State::RUNNING
+    assert!(
+        e.status.message().contains("bootstrapping CDC stream"),
+        "{e:?}"
     );
-    assert!(h.ts_manager.deletes.pending().is_empty());
+    let options = AutoSplitOptions {
+        split_xcluster_bootstrapping_tables: || true,
+        ..AutoSplitOptions::default()
+    };
+    validate_split_candidate(&snapshot, tablet, true, &options).unwrap();
+    let options = AutoSplitOptions {
+        split_xcluster_replicated_tables: || false,
+        split_xcluster_bootstrapping_tables: || true,
+        ..AutoSplitOptions::default()
+    };
+    let e = validate_split_candidate(&snapshot, tablet, true, &options).unwrap_err();
+    assert!(e.status.message().contains("xCluster replication"), "{e:?}");
 }
 
 /// A split the streams heard of: table, parent, children.

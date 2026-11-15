@@ -17,10 +17,10 @@
 //! the C++ host serves with the C++ master's code. `TSHeartbeat` returns the master Raft config
 //! when the tserver's is older.
 //!
-//! On a ready Rust leader (`TEST_rust_master_allow_leadership`), the core methods in
-//! `MasterServiceHandler::leader_call` are served from the catalog; other leader methods answer
-//! `NotSupported` naming the workstream that serves them. Elsewhere every leader method gets
-//! `NOT_THE_LEADER`, which makes clients rerun leader discovery.
+//! On a ready Rust leader (`TEST_rust_master_allow_leadership`),
+//! `MasterServiceHandler::leader_call` serves every leader method except
+//! [`leader::NEVER_SERVED`], which answer `NotSupported` with the reason. Elsewhere every leader
+//! method gets `NOT_THE_LEADER`, which makes clients rerun leader discovery.
 
 mod balancer;
 mod dump_state;
@@ -134,43 +134,71 @@ use yb_proto::pb::master_encryption::{
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_replication::{
     AddNamespaceToXClusterReplicationRequestPB, AddNamespaceToXClusterReplicationResponsePB,
-    CleanupStaleCDCStreamsRequestPB, CleanupStaleCDCStreamsResponsePB, CreateCDCStreamRequestPB,
-    CreateCDCStreamResponsePB, CreateXClusterReplicationRequestPB,
-    CreateXClusterReplicationResponsePB, DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB,
-    DeleteXClusterWalAnchorStreamsRequestPB, DeleteXClusterWalAnchorStreamsResponsePB,
-    DisableDynamicTableAdditionOnCDCSDKStreamRequestPB,
+    AlterUniverseReplicationRequestPB, AlterUniverseReplicationResponsePB,
+    BootstrapProducerRequestPB, BootstrapProducerResponsePB, ChangeXClusterRoleRequestPB,
+    ChangeXClusterRoleResponsePB, CleanupStaleCDCStreamsRequestPB,
+    CleanupStaleCDCStreamsResponsePB, CreateCDCStreamRequestPB, CreateCDCStreamResponsePB,
+    CreateXClusterReplicationRequestPB, CreateXClusterReplicationResponsePB,
+    DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB, DeleteUniverseReplicationRequestPB,
+    DeleteUniverseReplicationResponsePB, DeleteXClusterWalAnchorStreamsRequestPB,
+    DeleteXClusterWalAnchorStreamsResponsePB, DisableDynamicTableAdditionOnCDCSDKStreamRequestPB,
     DisableDynamicTableAdditionOnCDCSDKStreamResponsePB, GetCDCDBStreamInfoRequestPB,
     GetCDCDBStreamInfoResponsePB, GetCDCStreamRequestPB, GetCDCStreamResponsePB,
+    GetReplicationStatusRequestPB, GetReplicationStatusResponsePB,
     GetTableSchemaFromSysCatalogRequestPB, GetTableSchemaFromSysCatalogResponsePB,
-    GetUDTypeMetadataRequestPB, GetUDTypeMetadataResponsePB,
-    GetXClusterOutboundReplicationGroupInfoRequestPB,
+    GetUDTypeMetadataRequestPB, GetUDTypeMetadataResponsePB, GetUniverseReplicationInfoRequestPB,
+    GetUniverseReplicationInfoResponsePB, GetUniverseReplicationRequestPB,
+    GetUniverseReplicationResponsePB, GetUniverseReplicationsRequestPB,
+    GetUniverseReplicationsResponsePB, GetXClusterOutboundReplicationGroupInfoRequestPB,
     GetXClusterOutboundReplicationGroupInfoResponsePB,
     GetXClusterOutboundReplicationGroupsRequestPB, GetXClusterOutboundReplicationGroupsResponsePB,
-    GetXClusterStreamsRequestPB, GetXClusterStreamsResponsePB,
-    IsAlterXClusterReplicationDoneRequestPB, IsAlterXClusterReplicationDoneResponsePB,
-    IsCreateXClusterReplicationDoneRequestPB, IsCreateXClusterReplicationDoneResponsePB,
-    IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB,
-    IsXClusterBootstrapRequiredRequestPB, IsXClusterBootstrapRequiredResponsePB,
-    ListCDCStreamsRequestPB, ListCDCStreamsResponsePB, PauseResumeXClusterProducerStreamsRequestPB,
-    PauseResumeXClusterProducerStreamsResponsePB, RemoveTablesFromCDCSDKStreamRequestPB,
-    RemoveTablesFromCDCSDKStreamResponsePB, RemoveUserTableFromCDCSDKStreamRequestPB,
-    RemoveUserTableFromCDCSDKStreamResponsePB,
+    GetXClusterSafeTimeForNamespaceRequestPB, GetXClusterSafeTimeForNamespaceResponsePB,
+    GetXClusterSafeTimeRequestPB, GetXClusterSafeTimeResponsePB, GetXClusterStreamsRequestPB,
+    GetXClusterStreamsResponsePB, IsAlterXClusterReplicationDoneRequestPB,
+    IsAlterXClusterReplicationDoneResponsePB, IsBootstrapRequiredRequestPB,
+    IsBootstrapRequiredResponsePB, IsCreateXClusterReplicationDoneRequestPB,
+    IsCreateXClusterReplicationDoneResponsePB, IsNamespacePartOfCDCSDKRequestPB,
+    IsNamespacePartOfCDCSDKResponsePB, IsSetupUniverseReplicationDoneRequestPB,
+    IsSetupUniverseReplicationDoneResponsePB, IsXClusterBootstrapRequiredRequestPB,
+    IsXClusterBootstrapRequiredResponsePB, IsXClusterFailoverDoneRequestPB,
+    IsXClusterFailoverDoneResponsePB, ListCDCStreamsRequestPB, ListCDCStreamsResponsePB,
+    PauseResumeXClusterProducerStreamsRequestPB, PauseResumeXClusterProducerStreamsResponsePB,
+    RemoveTablesFromCDCSDKStreamRequestPB, RemoveTablesFromCDCSDKStreamResponsePB,
+    RemoveUserTableFromCDCSDKStreamRequestPB, RemoveUserTableFromCDCSDKStreamResponsePB,
     RepairOutboundXClusterReplicationGroupAddTableRequestPB,
     RepairOutboundXClusterReplicationGroupAddTableResponsePB,
     RepairOutboundXClusterReplicationGroupRemoveTableRequestPB,
-    RepairOutboundXClusterReplicationGroupRemoveTableResponsePB, UpdateCDCStreamRequestPB,
-    UpdateCDCStreamResponsePB, ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB,
-    ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB,
-    XClusterAddNamespaceToOutboundReplicationGroupRequestPB,
+    RepairOutboundXClusterReplicationGroupRemoveTableResponsePB,
+    SetUniverseReplicationEnabledRequestPB, SetUniverseReplicationEnabledResponsePB,
+    SetupUniverseReplicationRequestPB, SetupUniverseReplicationResponsePB,
+    UpdateCDCStreamRequestPB, UpdateCDCStreamResponsePB, UpdateConsumerOnProducerMetadataRequestPB,
+    UpdateConsumerOnProducerMetadataResponsePB, UpdateConsumerOnProducerSplitRequestPB,
+    UpdateConsumerOnProducerSplitResponsePB,
+    ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB,
+    ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB, WaitForReplicationDrainRequestPB,
+    WaitForReplicationDrainResponsePB, XClusterAddNamespaceToOutboundReplicationGroupRequestPB,
     XClusterAddNamespaceToOutboundReplicationGroupResponsePB,
     XClusterCreateOutboundReplicationGroupRequestPB,
     XClusterCreateOutboundReplicationGroupResponsePB,
     XClusterDeleteOutboundReplicationGroupRequestPB,
     XClusterDeleteOutboundReplicationGroupResponsePB,
     XClusterEnsureSequenceUpdatesAreInWalRequestPB,
-    XClusterEnsureSequenceUpdatesAreInWalResponsePB,
+    XClusterEnsureSequenceUpdatesAreInWalResponsePB, XClusterFailoverRequestPB,
+    XClusterFailoverResponsePB, XClusterGetPersistenceBlockMapRequestPB,
+    XClusterGetPersistenceBlockMapResponsePB,
     XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB,
     XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB,
+    XClusterReportNewAutoFlagConfigVersionRequestPB,
+    XClusterReportNewAutoFlagConfigVersionResponsePB, XClusterStartPersistingRequestPB,
+    XClusterStartPersistingResponsePB, XClusterStopPersistingRequestPB,
+    XClusterStopPersistingResponsePB,
+};
+use yb_proto::pb::master_replication::{
+    HandleNewSchemaForAutomaticXClusterTargetRequestPB,
+    HandleNewSchemaForAutomaticXClusterTargetResponsePB,
+    InsertHistoricalColocatedSchemaPackingRequestPB,
+    InsertHistoricalColocatedSchemaPackingResponsePB, InsertPackedSchemaForXClusterTargetRequestPB,
+    InsertPackedSchemaForXClusterTargetResponsePB,
 };
 use yb_proto::pb::master_rust_peer::{
     auto_flags_change_request_pb, dump_catalog_response_pb, AutoFlagsChangeRequestPB,
@@ -1714,6 +1742,226 @@ impl Shared {
                         .await
                 }
             ),
+            "SetupUniverseReplication" => serve_ddl!(
+                SetupUniverseReplicationRequestPB,
+                SetupUniverseReplicationResponsePB,
+                |req, resp| {
+                    let masters = self.master_host_ports();
+                    leader
+                        .xcluster
+                        .setup_universe_replication(&token, &req, &mut resp, masters)
+                        .await
+                }
+            ),
+            "AlterUniverseReplication" => serve_ddl!(
+                AlterUniverseReplicationRequestPB,
+                AlterUniverseReplicationResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .alter_universe_replication(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "HandleNewSchemaForAutomaticXClusterTarget" => serve_ddl!(
+                HandleNewSchemaForAutomaticXClusterTargetRequestPB,
+                HandleNewSchemaForAutomaticXClusterTargetResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.xcluster.handle_new_schema(&token, &req).await
+                }
+            ),
+            "InsertPackedSchemaForXClusterTarget" => serve_ddl!(
+                InsertPackedSchemaForXClusterTargetRequestPB,
+                InsertPackedSchemaForXClusterTargetResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.xcluster.insert_packed_schema_rpc(&token, &req).await
+                }
+            ),
+            "InsertHistoricalColocatedSchemaPacking" => serve_ddl!(
+                InsertHistoricalColocatedSchemaPackingRequestPB,
+                InsertHistoricalColocatedSchemaPackingResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .insert_historical_colocated_schema_packing(&token, &req, &mut resp)
+                    .await
+            ),
+            "BootstrapProducer" => serve_ddl!(
+                BootstrapProducerRequestPB,
+                BootstrapProducerResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .bootstrap_producer_rpc(&req, &mut resp)
+                    .await
+            ),
+            "IsBootstrapRequired" => serve_ddl!(
+                IsBootstrapRequiredRequestPB,
+                IsBootstrapRequiredResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .is_bootstrap_required_rpc(&req, &mut resp)
+                    .await
+            ),
+            "WaitForReplicationDrain" => serve_ddl!(
+                WaitForReplicationDrainRequestPB,
+                WaitForReplicationDrainResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .wait_for_replication_drain(deadline, &req, &mut resp)
+                    .await
+            ),
+            "XClusterReportNewAutoFlagConfigVersion" => serve_ddl!(
+                XClusterReportNewAutoFlagConfigVersionRequestPB,
+                XClusterReportNewAutoFlagConfigVersionResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .report_new_auto_flag_config_version(&token, &req)
+                        .await
+                }
+            ),
+            // C++ accepts it and changes nothing: the role went with the consumer registry's.
+            "ChangeXClusterRole" => serve_ddl!(
+                ChangeXClusterRoleRequestPB,
+                ChangeXClusterRoleResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    tracing::info!("Servicing ChangeXClusterRole request: {:?}", req);
+                    Ok(())
+                }
+            ),
+            "XClusterStopPersisting" => serve_ddl!(
+                XClusterStopPersistingRequestPB,
+                XClusterStopPersistingResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .stop_persisting(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "XClusterStartPersisting" => serve_ddl!(
+                XClusterStartPersistingRequestPB,
+                XClusterStartPersistingResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .start_persisting(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "XClusterGetPersistenceBlockMap" => serve_ddl!(
+                XClusterGetPersistenceBlockMapRequestPB,
+                XClusterGetPersistenceBlockMapResponsePB,
+                |req, resp| {
+                    let _ = &req;
+                    leader.xcluster.get_persistence_block_map(&mut resp)
+                }
+            ),
+            "UpdateConsumerOnProducerSplit" => serve_ddl!(
+                UpdateConsumerOnProducerSplitRequestPB,
+                UpdateConsumerOnProducerSplitResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .update_consumer_on_producer_split(&token, &req)
+                        .await
+                }
+            ),
+            "UpdateConsumerOnProducerMetadata" => serve_ddl!(
+                UpdateConsumerOnProducerMetadataRequestPB,
+                UpdateConsumerOnProducerMetadataResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .update_consumer_on_producer_metadata(&token, &req, &mut resp)
+                    .await
+            ),
+            "IsSetupUniverseReplicationDone" => serve_ddl!(
+                IsSetupUniverseReplicationDoneRequestPB,
+                IsSetupUniverseReplicationDoneResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .is_setup_universe_replication_done(&req, &mut resp)
+                    .await
+            ),
+            "GetUniverseReplication" => serve_ddl!(
+                GetUniverseReplicationRequestPB,
+                GetUniverseReplicationResponsePB,
+                |req, resp| leader.xcluster.get_universe_replication(&req, &mut resp)
+            ),
+            "GetUniverseReplications" => serve_ddl!(
+                GetUniverseReplicationsRequestPB,
+                GetUniverseReplicationsResponsePB,
+                |req, resp| leader.xcluster.get_universe_replications(&req, &mut resp)
+            ),
+            "GetUniverseReplicationInfo" => serve_ddl!(
+                GetUniverseReplicationInfoRequestPB,
+                GetUniverseReplicationInfoResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .get_universe_replication_info(&req, &mut resp)
+            ),
+            "DeleteUniverseReplication" => serve_ddl!(
+                DeleteUniverseReplicationRequestPB,
+                DeleteUniverseReplicationResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .delete_universe_replication(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "XClusterFailover" => serve_ddl!(
+                XClusterFailoverRequestPB,
+                XClusterFailoverResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.xcluster.xcluster_failover(&token, &req).await
+                }
+            ),
+            "IsXClusterFailoverDone" => serve_ddl!(
+                IsXClusterFailoverDoneRequestPB,
+                IsXClusterFailoverDoneResponsePB,
+                |req, resp| leader.xcluster.is_xcluster_failover_done(&req, &mut resp)
+            ),
+            "SetUniverseReplicationEnabled" => serve_ddl!(
+                SetUniverseReplicationEnabledRequestPB,
+                SetUniverseReplicationEnabledResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .set_universe_replication_enabled(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "GetReplicationStatus" => serve_ddl!(
+                GetReplicationStatusRequestPB,
+                GetReplicationStatusResponsePB,
+                |req, resp| leader.xcluster.get_replication_status(&req, &mut resp)
+            ),
+            "GetXClusterSafeTime" => serve_ddl!(
+                GetXClusterSafeTimeRequestPB,
+                GetXClusterSafeTimeResponsePB,
+                |req, resp| {
+                    let _ = &req;
+                    leader
+                        .xcluster
+                        .get_xcluster_safe_time(&token, &mut resp)
+                        .await
+                }
+            ),
+            "GetXClusterSafeTimeForNamespace" => serve_ddl!(
+                GetXClusterSafeTimeForNamespaceRequestPB,
+                GetXClusterSafeTimeForNamespaceResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .get_xcluster_safe_time_for_namespace(&req, &mut resp)
+            ),
             "CreateCDCStream" => serve_ddl!(
                 CreateCDCStreamRequestPB,
                 CreateCDCStreamResponsePB,
@@ -2022,7 +2270,7 @@ impl Shared {
                 let status = Status::new(
                     StatusCode::NotSupported,
                     format!(
-                        "{other} is not served by a layer-2 Rust master leader; it belongs to {}",
+                        "{other} is not served by a Rust master leader: {}",
                         leader::owner(other)
                     ),
                 );

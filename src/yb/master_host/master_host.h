@@ -58,6 +58,7 @@ class CDCStateTable;
 }  // namespace yb::cdc
 
 namespace yb::client {
+class TableHandle;
 class XClusterRemoteClientHolder;
 }  // namespace yb::client
 
@@ -161,8 +162,10 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
 
   // Whether the sys-catalog tablet is open: initialized and not in shell mode.
   bool SysCatalogIsOpen() const;
-  // The tablet's safe time, waiting up to `timeout_ms` for it to reach `min_time`.
-  uint64_t SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms) const;
+  // The tablet's safe time, waiting up to `timeout_ms` for it to reach `min_time`. `leader` waits
+  // on the leader's MVCC safe time (RequireLease::kTrue); otherwise on the safe time Raft
+  // propagates, which on a single master moves only with sys catalog writes.
+  uint64_t SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms, bool leader) const;
   // The rows of one entry type as of `read_time`.
   rust::Vec<ScannedRow> ScanSysCatalog(int32_t entry_type, uint64_t read_time) const;
   // Submits one Raft write in `term`; `completion` gets the result once it is applied locally.
@@ -326,6 +329,10 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   Result<std::shared_ptr<client::XClusterRemoteClientHolder>> XClusterRemoteClient(
       const std::string& replication_group_id, const std::vector<HostPort>& masters);
   std::mutex xcluster_remote_mutex_;
+  // system.xcluster_safe_time, opened on first use.
+  Result<client::TableHandle&> XClusterSafeTimeTable();
+  std::mutex xcluster_safe_time_table_mutex_;
+  std::unique_ptr<client::TableHandle> xcluster_safe_time_table_;
   std::unordered_map<
       std::string, std::pair<std::string, std::shared_ptr<client::XClusterRemoteClientHolder>>>
       xcluster_remote_clients_;
@@ -423,8 +430,8 @@ class MasterInfoHandle {
     return host_.HandleOnHost(method, request);
   }
   bool SysCatalogIsOpen() const { return host_.SysCatalogIsOpen(); }
-  uint64_t SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms) const {
-    return host_.SysCatalogSafeTime(min_time, timeout_ms);
+  uint64_t SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms, bool leader) const {
+    return host_.SysCatalogSafeTime(min_time, timeout_ms, leader);
   }
   rust::Vec<ScannedRow> ScanSysCatalog(int32_t entry_type, uint64_t read_time) const;
   void WriteSysCatalogRows(

@@ -357,11 +357,27 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         Box::pin(async move {
             self.update_cdc_producer_on_split(&table_id, &parent, &children)
                 .await?;
+            if let Some(x) = self.extension.get() {
+                x.split_registered(table_id.clone(), parent.clone(), children.clone())
+                    .await?;
+            }
             // `ProcessSplitTabletResult`'s point after the streams were updated.
             self.sync_point("Tabletsplit::AddedChildrenTabletStateTableEntries")
                 .await;
             Ok(())
         })
+    }
+
+    fn xcluster_create_table(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_ddl::CreateTableRequestPB,
+        table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
+    ) -> Result<(), Status> {
+        match self.extension.get() {
+            Some(x) => x.xcluster_create_table(snapshot, req, table),
+            None => Ok(()),
+        }
     }
 
     fn retains_hidden_tablet(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> bool {
@@ -383,11 +399,11 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
     fn post_tablet_create(
         &self,
         table_id: Vec<u8>,
-    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+    ) -> master_task_runtime::BoxFuture<'_, Result<bool, Status>> {
         Box::pin(async move {
             match self.extension.get() {
                 Some(x) => x.post_tablet_create(table_id).await,
-                None => Ok(()),
+                None => Ok(true),
             }
         })
     }

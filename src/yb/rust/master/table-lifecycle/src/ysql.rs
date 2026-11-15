@@ -314,6 +314,11 @@ impl TableLifecycle {
             .clone()
             .into_option()
             .ok_or_else(|| corrupt("The host did not build the table's row"))?;
+        if let Some(hooks) = self.xrepl_hooks.get() {
+            hooks
+                .xcluster_create_table(&snapshot, req, &mut table)
+                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+        }
         // An index starts at WRITE_AND_DELETE until PG asks for its backfill, and keeps delete
         // markers until the backfill is done; without a backfill it is ready at once.
         let backfill = indexed_table_id.is_some()
@@ -1835,6 +1840,38 @@ pub(crate) fn start_next_version_drop(
         .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))
 }
 
+/// Removes a dropped database's xCluster persistence block entry, if it has one.
+fn erase_persistence_block(
+    snapshot: &CatalogSnapshot,
+    mutation: Mutation,
+    namespace_id: &[u8],
+) -> Result<Mutation, MasterErrorPB> {
+    use yb_proto::pb::catalog_entity_info::SysPersistenceBlockMapEntryPB;
+    let Some(oid) = std::str::from_utf8(namespace_id)
+        .ok()
+        .filter(|id| id.len() == 32)
+        .and_then(|id| u32::from_str_radix(&id[0..8], 16).ok())
+    else {
+        return Ok(mutation);
+    };
+    let Some(entity) = snapshot.get(SysRowEntryType::PERSISTENCE_BLOCK_MAP, b"") else {
+        return Ok(mutation);
+    };
+    let mut pb: SysPersistenceBlockMapEntryPB = entity.parse().map_err(corrupt)?;
+    let map = &mut pb
+        .persistence_block_map
+        .mut_or_insert_default()
+        .blocked_through_ht;
+    if map.remove(&oid).is_none() {
+        return Ok(mutation);
+    }
+    pb.set_version(pb.version() + 1);
+    mutation
+        .read(entity)
+        .upsert_message(SysRowEntryType::PERSISTENCE_BLOCK_MAP, b"", &pb)
+        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))
+}
+
 impl TableLifecycle {
     /// `DeleteYsqlDatabaseAsync` for a database being dropped, which the table-deletes controller
     /// calls each pass, so a new leader finishes a drop the last one started: a DELETING database,
@@ -2026,6 +2063,9 @@ impl TableLifecycle {
                 let next_state = match kind {
                     DbTables::All => {
                         ns.set_state(sys_namespace_entry_pb::State::DELETED);
+                        // `ErasePersistenceBlock`: in the same write, so C++'s backstop for a
+                        // lost erase (on the tombstone's removal) is not needed.
+                        mutation = erase_persistence_block(snapshot, mutation, id)?;
                         true
                     }
                     DbTables::NextVersionDrop => {

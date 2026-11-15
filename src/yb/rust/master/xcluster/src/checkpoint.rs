@@ -161,6 +161,18 @@ impl XCluster {
         }
     }
 
+    /// `CreateCdcStateTableIfNotFound`, which every stream creation does first.
+    async fn ensure_cdc_state_table(&self, token: &LeaderToken) -> Result<(), Status> {
+        self.xrepl
+            .create_cdc_state_table_if_not_found(
+                &*self.tables,
+                token,
+                Instant::now() + (self.options.rpc_timeout)(),
+            )
+            .await
+            .map_err(|e| crate::status_of(&e))
+    }
+
     /// `CreateStreamsForInitialBootstrap`: a stream for each initial table without one, written
     /// with the group in one write.
     async fn create_initial_streams(
@@ -172,14 +184,7 @@ impl XCluster {
         self.xrepl
             .sync_point("XClusterOutboundReplicationGroup::CreateStreamsForInitialBootstrap")
             .await;
-        self.xrepl
-            .create_cdc_state_table_if_not_found(
-                &*self.tables,
-                token,
-                Instant::now() + (self.options.rpc_timeout)(),
-            )
-            .await
-            .map_err(|e| crate::status_of(&e))?;
+        self.ensure_cdc_state_table(token).await?;
         let count = self
             .update_group(token, id, |snapshot, pb, streams| {
                 let automatic = pb.automatic_ddl_mode();
@@ -719,6 +724,7 @@ impl XCluster {
         needs_wal_anchor: bool,
     ) -> Result<(), Status> {
         let wal_anchors = (self.options.wal_anchor_streams)();
+        self.ensure_cdc_state_table(token).await?;
         self.update_group(token, id, |snapshot, pb, streams| {
             let automatic = pb.automatic_ddl_mode();
             let Some(info) = pb.namespace_infos.get_mut(ns) else {
@@ -851,6 +857,7 @@ impl XCluster {
                 .map(|r| r.id)
                 .collect::<std::collections::HashSet<_>>()
         };
+        self.ensure_cdc_state_table(token).await?;
         let to_checkpoint = self
             .update_group(token, id, |snapshot, pb, streams| {
                 let automatic = pb.automatic_ddl_mode();

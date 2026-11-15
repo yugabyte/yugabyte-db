@@ -179,11 +179,19 @@ impl Default for XreplOptions {
 
 /// What master-xcluster adds to the hooks DDL calls through [`Xrepl`].
 pub trait XreplExtension: Send + Sync {
-    /// Work before a new table runs (`GetPostTabletCreateTasks`).
+    /// Work before a new table runs (`GetPostTabletCreateTasks`); false while it runs.
     fn post_tablet_create(
         &self,
         table_id: Vec<u8>,
-    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>>;
+    ) -> master_task_runtime::BoxFuture<'_, Result<bool, Status>>;
+
+    /// The xCluster part of a new YSQL table's row.
+    fn xcluster_create_table(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        req: &yb_proto::pb::master_ddl::CreateTableRequestPB,
+        table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
+    ) -> Result<(), Status>;
 
     /// Whether a dropped table is hidden, not deleted, for xCluster streams.
     fn retains_dropped_table(
@@ -191,6 +199,14 @@ pub trait XreplExtension: Send + Sync {
         snapshot: &master_catalog_state::CatalogSnapshot,
         table_id: &[u8],
     ) -> bool;
+
+    /// A table's tablet split was registered (`HandleTabletSplit` of a consumer table).
+    fn split_registered(
+        &self,
+        table_id: Vec<u8>,
+        parent: Vec<u8>,
+        children: Vec<Vec<u8>>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>>;
 
     /// Whether a hidden tablet is still kept for xCluster streams.
     fn retains_hidden_tablet(

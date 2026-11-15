@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-//! Tests of the outbound replication groups against a fake sys catalog.
+//! Tests of the outbound and inbound replication groups against a fake sys catalog.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -209,6 +209,7 @@ impl CreatesTables for NoTables {
 struct FakeTarget {
     calls: Mutex<Vec<(String, Vec<u8>)>>,
     done: Mutex<bool>,
+    setup_error: Mutex<Option<Status>>,
 }
 
 impl RemoteMasters for FakeTarget {
@@ -232,6 +233,9 @@ impl RemoteMasters for FakeTarget {
             "SetupUniverseReplication" => {
                 let mut resp = SetupUniverseReplicationResponsePB::new();
                 resp.set_universe_uuid("target-uuid".into());
+                if let Some(s) = self.setup_error.lock().unwrap().clone() {
+                    resp.error = protobuf::MessageField::some(crate::unknown(s));
+                }
                 resp.write_to_bytes().unwrap()
             }
             "IsSetupUniverseReplicationDone" => {
@@ -263,6 +267,10 @@ struct Harness {
 
 impl Harness {
     async fn new() -> Harness {
+        Harness::with_options(XClusterOptions::default()).await
+    }
+
+    async fn with_options(options: XClusterOptions) -> Harness {
         let (fake, events) = FakeSysCatalog::new();
         fake.apply(rows());
         fake.set_term(3);
@@ -333,7 +341,7 @@ impl Harness {
             xrepl.clone(),
             Arc::new(NoTables),
             target.clone(),
-            XClusterOptions::default(),
+            options,
         );
         xcluster.set_rpc(rpc);
         xrepl.set_extension(xcluster.clone());
@@ -381,6 +389,23 @@ impl Harness {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         panic!("namespace still checkpointing");
+    }
+
+    /// Asks for the table's post tablet creation work until it is done.
+    async fn post_create(&self, table_id: &str) {
+        use master_xrepl::XreplExtension;
+        for _ in 0..500 {
+            if self
+                .xcluster
+                .post_tablet_create(table_id.as_bytes().to_vec())
+                .await
+                .unwrap()
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("post tablet creation work of {table_id} not done");
     }
 
     fn stream(&self, id: &[u8]) -> Option<SysCDCStreamEntryPB> {
@@ -491,7 +516,6 @@ async fn creation_is_refused_for_duplicates_and_unsupported_namespaces() {
 
 #[tokio::test]
 async fn a_new_table_gets_a_stream_checkpointed_at_op_zero_before_it_runs() {
-    use master_xrepl::XreplExtension;
     let h = Harness::new().await;
     h.create().await.unwrap();
     h.ready().await;
@@ -510,10 +534,7 @@ async fn a_new_table_gets_a_stream_checkpointed_at_op_zero_before_it_runs() {
         },
     ]);
     h.catalog.barrier().await;
-    h.xcluster
-        .post_tablet_create(NEW_TABLE.as_bytes().to_vec())
-        .await
-        .unwrap();
+    h.post_create(NEW_TABLE).await;
     let pb = h.group().unwrap();
     let info = &pb.namespace_infos[DB].table_infos[NEW_TABLE];
     assert!(!info.is_part_of_initial_bootstrap() && !info.is_checkpointing());
@@ -525,10 +546,7 @@ async fn a_new_table_gets_a_stream_checkpointed_at_op_zero_before_it_runs() {
     assert_eq!(row.stream_id(), info.stream_id());
     assert_eq!(row.checkpoint.index(), 0);
     // Again: nothing more.
-    h.xcluster
-        .post_tablet_create(NEW_TABLE.as_bytes().to_vec())
-        .await
-        .unwrap();
+    h.post_create(NEW_TABLE).await;
     assert_eq!(h.host.cdc_state.lock().unwrap().len(), rows.len());
 
     let mut req = GetXClusterStreamsRequestPB::new();
@@ -791,4 +809,320 @@ async fn the_target_sets_up_replication_from_the_ready_streams() {
         TargetState::REPLICATING
     );
     let _ = &h.xrepl;
+}
+
+#[tokio::test]
+async fn the_source_fails_when_the_target_refuses_an_already_replicated_namespace() {
+    let h = Harness::new().await;
+    h.create().await.unwrap();
+    h.ready().await;
+    *h.target.setup_error.lock().unwrap() = Some(crate::status(
+        StatusCode::AlreadyPresent,
+        format!("Namespace {DB} already included in replication group other"),
+    ));
+    let mut target = HostPortPB::new();
+    target.set_host("target".into());
+    target.set_port(7100);
+    let mut req = CreateXClusterReplicationRequestPB::new();
+    req.set_replication_group_id(GROUP.into());
+    req.target_master_addresses.push(target.clone());
+    let err = h
+        .xcluster
+        .create_xcluster_replication(&h.token, h.deadline(), &req, vec![target])
+        .await
+        .unwrap_err();
+    assert!(
+        err.status
+            .message()
+            .contains("already included in replication group"),
+        "{err:?}"
+    );
+    assert!(h.group().unwrap().target_universe_info.is_none());
+}
+
+#[tokio::test]
+async fn new_tables_are_left_alone_while_processing_is_disabled() {
+    let h = Harness::with_options(XClusterOptions {
+        disable_new_table_processing: || true,
+        ..XClusterOptions::default()
+    })
+    .await;
+    h.create().await.unwrap();
+    h.ready().await;
+    let mut t = ysql_table("orders");
+    t.state = Some(EnumOrUnknown::new(sys_tables_entry_pb::State::PREPARING));
+    h.fake.apply(vec![
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLE,
+            id: NEW_TABLE.as_bytes().to_vec(),
+            data: t.write_to_bytes().unwrap(),
+        },
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLET,
+            id: NEW_TABLET.as_bytes().to_vec(),
+            data: tablet(NEW_TABLE).write_to_bytes().unwrap(),
+        },
+    ]);
+    h.catalog.barrier().await;
+    use master_xrepl::XreplExtension;
+    assert!(h
+        .xcluster
+        .post_tablet_create(NEW_TABLE.as_bytes().to_vec())
+        .await
+        .unwrap());
+    let pb = h.group().unwrap();
+    assert!(!pb.namespace_infos[DB].table_infos.contains_key(NEW_TABLE));
+}
+
+/// A DB-scoped inbound group replicating `DB` from source namespace `source-ns`.
+fn inbound_group(id: &str) -> RowChange {
+    use yb_proto::pb::catalog_entity_info::sys_universe_replication_entry_pb::{
+        dbscope_info::NamespaceInfo, State,
+    };
+    use yb_proto::pb::catalog_entity_info::SysUniverseReplicationEntryPB;
+    let mut pb = SysUniverseReplicationEntryPB::new();
+    pb.set_replication_group_id(id.into());
+    pb.state = Some(EnumOrUnknown::new(State::ACTIVE));
+    let mut ns = NamespaceInfo::new();
+    ns.set_consumer_namespace_id(DB.into());
+    ns.set_producer_namespace_id("source-ns".into());
+    pb.db_scoped_info
+        .mut_or_insert_default()
+        .namespace_infos
+        .push(ns);
+    RowChange::Upsert {
+        entry_type: SysRowEntryType::UNIVERSE_REPLICATION,
+        id: id.as_bytes().to_vec(),
+        data: pb.write_to_bytes().unwrap(),
+    }
+}
+
+#[tokio::test]
+async fn a_target_namespace_joins_only_one_inbound_group() {
+    let h = Harness::new().await;
+    h.fake.apply(vec![inbound_group("group1")]);
+    h.catalog.barrier().await;
+    let mut source = HostPortPB::new();
+    source.set_host("source".into());
+    source.set_port(7100);
+    let mut req = SetupUniverseReplicationRequestPB::new();
+    req.set_replication_group_id("group2".into());
+    req.producer_master_addresses.push(source);
+    req.producer_table_ids.push("source-table".into());
+    req.set_transactional(true);
+    let mut ns = yb_proto::pb::master_types::NamespaceIdentifierPB::new();
+    ns.set_id(b"source-ns".to_vec());
+    ns.set_name("db1".into());
+    ns.database_type = Some(EnumOrUnknown::new(YQLDatabase::YQL_DATABASE_PGSQL));
+    req.producer_namespaces.push(ns);
+    let mut resp = SetupUniverseReplicationResponsePB::new();
+    let err = h
+        .xcluster
+        .setup_universe_replication(&h.token, &req, &mut resp, Vec::new())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.status.message(),
+        format!("Namespace {DB} already included in replication group group1")
+    );
+}
+
+#[tokio::test]
+async fn replication_errors_come_from_the_newest_tserver_report() {
+    use yb_proto::pb::cdc_consumer::{ProducerEntryPB, ProducerTabletListPB, StreamEntryPB};
+    use yb_proto::pb::common_types::ReplicationErrorPb;
+    use yb_proto::pb::master_heartbeat::{
+        XClusterConsumerReplicationStatusPB, XClusterConsumerStreamTabletStatusPB,
+        XClusterConsumerTableStatusPB,
+    };
+    let h = Harness::new().await;
+    let mut stream = StreamEntryPB::new();
+    stream.consumer_table_id = TABLE.into();
+    let mut tablets = ProducerTabletListPB::new();
+    tablets.tablets.push("source-tablet".into());
+    stream
+        .consumer_producer_tablet_map
+        .insert(TABLET.into(), tablets);
+    let mut entry = ProducerEntryPB::new();
+    entry.stream_map.insert("stream1".into(), stream);
+    let mut config = SysClusterConfigEntryPB::new();
+    config
+        .consumer_registry
+        .mut_or_insert_default()
+        .producer_map
+        .insert("group1".into(), entry);
+    h.fake.apply(vec![RowChange::Upsert {
+        entry_type: SysRowEntryType::CLUSTER_CONFIG,
+        id: Vec::new(),
+        data: config.write_to_bytes().unwrap(),
+    }]);
+    h.catalog.barrier().await;
+    // Not yet reported: UNINITIALIZED counts as an error.
+    assert!(h
+        .xcluster
+        .has_replication_errors(&h.catalog.snapshot(), "group1")
+        .unwrap());
+    let report = |term: i64, error: ReplicationErrorPb| {
+        let mut r = XClusterConsumerReplicationStatusPB::new();
+        r.set_replication_group_id(b"group1".to_vec());
+        let mut table = XClusterConsumerTableStatusPB::new();
+        table.set_consumer_table_id(TABLE.as_bytes().to_vec());
+        let mut t = XClusterConsumerStreamTabletStatusPB::new();
+        t.set_producer_tablet_id(b"source-tablet".to_vec());
+        t.set_consumer_term(term);
+        t.error = Some(EnumOrUnknown::new(error));
+        table.stream_tablet_status.push(t);
+        r.table_status.push(table);
+        r
+    };
+    h.xcluster
+        .store_replication_status(&[report(2, ReplicationErrorPb::REPLICATION_OK)]);
+    assert!(!h
+        .xcluster
+        .has_replication_errors(&h.catalog.snapshot(), "group1")
+        .unwrap());
+    // A report from an older leader term is stale.
+    h.xcluster
+        .store_replication_status(&[report(1, ReplicationErrorPb::REPLICATION_MISSING_OP_ID)]);
+    assert!(!h
+        .xcluster
+        .has_replication_errors(&h.catalog.snapshot(), "group1")
+        .unwrap());
+    assert!(h
+        .xcluster
+        .has_replication_errors(&h.catalog.snapshot(), "missing")
+        .is_err());
+}
+
+/// No failover step runs in these tests.
+struct NoSnapshots;
+
+impl crate::FailoverSnapshots for NoSnapshots {
+    fn prepare_for_restore(
+        &self,
+        _deadline: Instant,
+        _feature: &'static str,
+    ) -> BoxFuture<'_, Result<(), Status>> {
+        unreachable!()
+    }
+    fn reenable_splitting(&self, _feature: &'static str) {}
+    fn create<'a>(
+        &'a self,
+        _token: &'a LeaderToken,
+        _namespace_id: &'a str,
+        _retention_hours: i32,
+        _deadline: Instant,
+    ) -> BoxFuture<'a, Result<Vec<u8>, Status>> {
+        unreachable!()
+    }
+    fn wait_complete<'a>(
+        &'a self,
+        _token: &'a LeaderToken,
+        _snapshot_id: &'a [u8],
+        _deadline: Instant,
+    ) -> BoxFuture<'a, Result<(), Status>> {
+        unreachable!()
+    }
+    fn restore<'a>(
+        &'a self,
+        _token: &'a LeaderToken,
+        _snapshot_id: &'a [u8],
+        _restore_at: u64,
+        _deadline: Instant,
+    ) -> BoxFuture<'a, Result<Vec<u8>, Status>> {
+        unreachable!()
+    }
+    fn restoration_state(
+        &self,
+        _token: &LeaderToken,
+        _restoration_id: &[u8],
+        _snapshot_id: &[u8],
+    ) -> Result<yb_proto::pb::catalog_entity_info::sys_snapshot_entry_pb::State, Status> {
+        unreachable!()
+    }
+    fn delete<'a>(
+        &'a self,
+        _token: &'a LeaderToken,
+        _snapshot_id: &'a [u8],
+        _deadline: Instant,
+    ) -> BoxFuture<'a, Result<(), Status>> {
+        unreachable!()
+    }
+}
+
+#[tokio::test]
+async fn a_failover_cut_off_by_a_leader_change_is_reported_aborted() {
+    use yb_proto::pb::catalog_entity_info::SysUniverseReplicationEntryPB;
+    let h = Harness::new().await;
+    h.xcluster.set_failover_snapshots(Arc::new(NoSnapshots));
+    let failover = |id: &str| {
+        let mut req = XClusterFailoverRequestPB::new();
+        req.set_replication_group_id(id.into());
+        req
+    };
+    let done = |id: &str| {
+        let mut req = IsXClusterFailoverDoneRequestPB::new();
+        req.set_replication_group_id(id.into());
+        let mut resp = IsXClusterFailoverDoneResponsePB::new();
+        h.xcluster
+            .is_xcluster_failover_done(&req, &mut resp)
+            .map(|()| resp)
+    };
+    // Only an automatic-mode target fails over.
+    h.fake.apply(vec![inbound_group("manual")]);
+    h.catalog.barrier().await;
+    let err = h
+        .xcluster
+        .xcluster_failover(&h.token, &failover("manual"))
+        .await
+        .unwrap_err();
+    assert_eq!(err.status.code() as i32, StatusCode::InvalidArgument as i32);
+    let err = h
+        .xcluster
+        .xcluster_failover(&h.token, &failover("missing"))
+        .await
+        .unwrap_err();
+    assert_eq!(err.status.code() as i32, StatusCode::NotFound as i32);
+    // A deleted group means the failover succeeded; a group never failed over has none.
+    assert!(done("missing").unwrap().done());
+    assert!(done("manual").is_err());
+
+    // A failover an earlier leader started.
+    let RowChange::Upsert { data, .. } = inbound_group("auto") else {
+        unreachable!()
+    };
+    let mut pb = SysUniverseReplicationEntryPB::parse_from_bytes(&data).unwrap();
+    pb.set_replication_group_id("auto".into());
+    pb.db_scoped_info
+        .mut_or_insert_default()
+        .set_automatic_ddl_mode(true);
+    pb.set_failover_in_progress(true);
+    h.fake.apply(vec![RowChange::Upsert {
+        entry_type: SysRowEntryType::UNIVERSE_REPLICATION,
+        id: b"auto".to_vec(),
+        data: pb.write_to_bytes().unwrap(),
+    }]);
+    h.catalog.barrier().await;
+    let err = h
+        .xcluster
+        .xcluster_failover(&h.token, &failover("auto"))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.code(),
+        yb_proto::pb::master_types::master_error_pb::Code::OBJECT_ALREADY_PRESENT
+    );
+    assert!(!done("auto").unwrap().done());
+    h.xcluster.cleanup_stale_failovers(&h.token).await.unwrap();
+    h.catalog.barrier().await;
+    let resp = done("auto").unwrap();
+    assert!(resp.done());
+    assert_eq!(
+        resp.failover_error.code() as i32,
+        StatusCode::Aborted as i32
+    );
+    assert_eq!(
+        resp.failover_error.message(),
+        "Master leader changed during failover operation"
+    );
 }

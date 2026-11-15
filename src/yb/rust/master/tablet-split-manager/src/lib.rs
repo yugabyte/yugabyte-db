@@ -1182,12 +1182,21 @@ pub(crate) fn validate_table(
             ),
         ));
     }
-    // A split must update xCluster's tablet mappings (`ProcessSplitTabletResult`), which a Rust
-    // leader does not do yet; CDCSDK streams are updated.
-    if xcluster_streamed(snapshot, &table.key.id) {
+    // `XClusterManager::ValidateSplitCandidateTable`.
+    if !(options.split_xcluster_replicated_tables)() && xcluster_streamed(snapshot, &table.key.id) {
         return Err(not_supported(format!(
-            "Splitting a table in an xCluster stream is not supported on a Rust leader yet: {}",
-            name()
+            "Tablet splitting is not supported for table {} since it is part of xCluster \
+             replication",
+            String::from_utf8_lossy(&table.key.id)
+        )));
+    }
+    if !(options.split_xcluster_bootstrapping_tables)()
+        && xcluster_bootstrapping(snapshot, &table.key.id)
+    {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for tables that are a part of a bootstrapping CDC \
+             stream, table_id: {}",
+            String::from_utf8_lossy(&table.key.id)
         )));
     }
     // `XReplValidateSplitCandidateTable`'s CDCSDK checks.
@@ -1277,6 +1286,17 @@ fn xcluster_streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
             .values()
             .flat_map(|producer| producer.stream_map.values())
             .any(|stream| stream.consumer_table_id.as_bytes() == table_id)
+}
+
+/// `DoesTableHaveAnyBootstrappingStream`: an INITIATED xCluster stream from the table.
+fn xcluster_bootstrapping(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+    snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
+        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
+            pb.namespace_id().is_empty()
+                && pb.table_id.iter().any(|t| t.as_bytes() == table_id)
+                && pb.state() == sys_cdcstream_entry_pb::State::INITIATED
+        })
+    })
 }
 
 /// The table is the source of a live xCluster stream (one without a namespace), whose pollers
@@ -1369,17 +1389,6 @@ fn check_can_delete(
                 "Tablet {} has been already deleted",
                 String::from_utf8_lossy(tablet_id)
             ),
-        ));
-    }
-    // C++ retains such a parent until the streams have read it
-    // (`GetDeleteRetainerInfoForTabletDrop`). A Rust leader starts no split of an xCluster
-    // streamed table, but finishes one a C++ leader registered.
-    if outbound_xcluster_streamed(snapshot, &hot.table_id) {
-        return Err(error(
-            Code::UNKNOWN_ERROR,
-            StatusCode::NotSupported,
-            "Retaining a split parent of a table in an xCluster stream is not supported on a Rust \
-             leader yet",
         ));
     }
     let gap = |from: &[u8], to: &[u8]| {

@@ -1132,8 +1132,12 @@ Result<master::MasterReplicationProxy> XClusterTestBase::GetProducerMasterProxy(
 }
 
 Status XClusterTestBase::ClearFailedUniverse(Cluster& cluster) {
-  auto& catalog_manager =
-      VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto* leader = VERIFY_RESULT(cluster.mini_cluster_->GetLeaderMiniMaster());
+  if (leader->is_rust()) {
+    // A Rust leader keeps a failed setup's outcome in memory only; nothing is left to delete.
+    return Status::OK();
+  }
+  auto& catalog_manager = leader->catalog_manager_impl();
   return catalog_manager.ClearFailedUniverse(catalog_manager.GetLeaderEpochInternal());
 }
 

@@ -157,6 +157,7 @@ impl HeartbeatContributor for XCluster {
         ctx: &ContributorContext<'_>,
         resp: &mut TSHeartbeatResponsePB,
     ) -> Result<(), Status> {
+        self.store_replication_status(&req.xcluster_consumer_replication_status);
         let pb = config(ctx.snapshot)?;
         if req.has_xcluster_config_version() && req.xcluster_config_version() < pb.version() {
             resp.set_xcluster_config_version(pb.version());

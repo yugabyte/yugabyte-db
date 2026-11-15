@@ -18,15 +18,28 @@
 //! before it runs. The streams themselves are master-xrepl's. The other universe's masters are
 //! called through the host's `XClusterRemoteClientHolder` (K9).
 
+mod alter;
+mod autoflags;
+mod automatic;
 mod checkpoint;
 mod config;
+mod consumer;
 mod controller;
+mod failover;
+mod inbound;
+mod legacy;
 mod outbound;
+mod persistence;
 mod remote;
+mod safe_time;
+mod setup;
+mod splits;
+mod target_tables;
 #[cfg(test)]
 mod tests;
 
 pub use controller::XClusterController;
+pub use failover::FailoverSnapshots;
 pub use remote::RemoteMasters;
 
 use std::collections::HashMap;
@@ -87,6 +100,63 @@ pub struct XClusterOptions {
     pub rpc_timeout: fn() -> Duration,
     /// `catalog_manager_bg_task_wait_ms`.
     pub bg_task_interval: fn() -> Duration,
+    /// The `enable_xcluster_auto_flag_validation` AutoFlag.
+    pub auto_flag_validation: fn() -> bool,
+    /// `xcluster_ensure_sequence_updates_in_wal_timeout_sec`.
+    pub ensure_sequence_updates_timeout: fn() -> Duration,
+    /// `cdc_read_rpc_timeout_ms`: calls to the other universe's masters.
+    pub remote_timeout: fn() -> Duration,
+    /// `check_bootstrap_required`.
+    pub check_bootstrap_required: fn() -> bool,
+    /// `TEST_allow_ycql_transactional_xcluster`.
+    pub allow_ycql_transactional: fn() -> bool,
+    /// `TEST_pause_at_start_of_setup_replication_group_ms`.
+    pub pause_at_start_of_setup: fn() -> Duration,
+    /// `TEST_fail_universe_replication_merge`.
+    pub fail_universe_replication_merge: fn() -> bool,
+    /// `xcluster_failover_task_timeout_secs`: the steps before the restorations.
+    pub failover_task_timeout: fn() -> Duration,
+    /// `xcluster_failover_restoration_wait_secs`, per namespace.
+    pub failover_restoration_wait: fn() -> Duration,
+    /// `xcluster_failover_restoration_poll_interval_ms`.
+    pub failover_restoration_poll_interval: fn() -> Duration,
+    /// `xcluster_failover_snapshot_delete_retry_secs`.
+    pub failover_snapshot_delete_retry: fn() -> Duration,
+    /// `xcluster_failover_snapshot_retention_hours`.
+    pub failover_snapshot_retention_hours: fn() -> i32,
+    /// `TEST_pause_xcluster_failover_before_delete_replication`.
+    pub pause_failover_before_delete: fn() -> bool,
+    /// `TEST_xcluster_failover_fail_restore_namespace_id`.
+    pub failover_fail_restore_namespace: fn() -> String,
+    /// `TEST_xcluster_failover_fail_create_snapshot`.
+    pub failover_fail_create_snapshot: fn() -> bool,
+    /// `TEST_xcluster_failover_fail_delete_replication`.
+    pub failover_fail_delete_replication: fn() -> bool,
+    /// `xcluster_skip_health_check_on_replication_setup`.
+    pub skip_health_check: fn() -> bool,
+    /// `disable_xcluster_db_scoped_new_table_processing`: new tables are neither checkpointed on
+    /// the source nor added to the inbound group on the target.
+    pub disable_new_table_processing: fn() -> bool,
+    /// `TEST_return_legacy_universe_replication_info`.
+    pub return_legacy_universe_replication_info: fn() -> bool,
+    /// `xcluster_safe_time_update_interval_secs`.
+    pub safe_time_interval: fn() -> Duration,
+    /// `xcluster_alter_universe_replication_setup_timeout_ms`.
+    pub alter_setup_timeout: fn() -> Duration,
+    /// `xcluster_skip_schema_compatibility_checks_on_alter`.
+    pub skip_schema_compatibility_checks_on_alter: fn() -> bool,
+    /// The `xcluster_store_older_schema_versions` AutoFlag.
+    pub store_older_schema_versions: fn() -> bool,
+    /// `xcluster_max_old_schema_versions`.
+    pub max_old_schema_versions: fn() -> u32,
+    /// The `enforce_xcluster_guarded_lease` AutoFlag.
+    pub enforce_guarded_lease: fn() -> bool,
+    /// The `persist_tserver_registry` AutoFlag.
+    pub persist_tserver_registry: fn() -> bool,
+    /// `max_clock_skew_usec`.
+    pub max_clock_skew: fn() -> Duration,
+    /// `wait_replication_drain_retry_timeout_ms`.
+    pub drain_retry_timeout: fn() -> Duration,
 }
 
 impl Default for XClusterOptions {
@@ -106,6 +176,34 @@ impl Default for XClusterOptions {
             skip_fields_moved_to_guarded_info: || false,
             rpc_timeout: || Duration::from_secs(30),
             bg_task_interval: || Duration::from_secs(1),
+            auto_flag_validation: || false,
+            ensure_sequence_updates_timeout: || Duration::from_secs(180),
+            remote_timeout: || Duration::from_secs(30),
+            check_bootstrap_required: || false,
+            allow_ycql_transactional: || false,
+            pause_at_start_of_setup: || Duration::ZERO,
+            fail_universe_replication_merge: || false,
+            skip_health_check: || false,
+            failover_task_timeout: || Duration::from_secs(600),
+            failover_restoration_wait: || Duration::from_secs(120),
+            failover_restoration_poll_interval: || Duration::from_millis(1000),
+            failover_snapshot_delete_retry: || Duration::from_secs(30),
+            failover_snapshot_retention_hours: || 1,
+            pause_failover_before_delete: || false,
+            failover_fail_restore_namespace: String::new,
+            failover_fail_create_snapshot: || false,
+            failover_fail_delete_replication: || false,
+            disable_new_table_processing: || false,
+            return_legacy_universe_replication_info: || false,
+            safe_time_interval: || Duration::from_secs(1),
+            alter_setup_timeout: || Duration::from_secs(600),
+            skip_schema_compatibility_checks_on_alter: || false,
+            store_older_schema_versions: || true,
+            max_old_schema_versions: || 50,
+            enforce_guarded_lease: || false,
+            persist_tserver_registry: || true,
+            max_clock_skew: || Duration::from_millis(500),
+            drain_retry_timeout: || Duration::from_millis(2000),
         }
     }
 }
@@ -123,10 +221,21 @@ pub trait XClusterHooks: Send + Sync {
         &self,
         namespace_id: Vec<u8>,
     ) -> master_task_runtime::BoxFuture<'static, Result<u32, Status>>;
+
+    /// The namespace's next normal-space OID is above `oid` (`ReservePgsqlOids` from it).
+    fn reserve_oids_above(
+        &self,
+        namespace_id: Vec<u8>,
+        oid: u32,
+    ) -> master_task_runtime::BoxFuture<'static, Result<(), Status>>;
 }
 
 /// xCluster on the leader.
 pub struct XCluster {
+    /// Itself, for the tasks its hooks start.
+    pub(crate) me: std::sync::Weak<XCluster>,
+    /// The post tablet creation task of each new table: its term and, once done, its outcome.
+    pub(crate) post_create: Mutex<target_tables::PostCreateTasks>,
     pub(crate) catalog: Arc<Catalog>,
     pub(crate) writer: Arc<CatalogWriter>,
     pub(crate) leadership: Arc<Leadership>,
@@ -141,6 +250,22 @@ pub struct XCluster {
     /// The checkpoint task of each (group, namespace) and the term it runs in
     /// (`XClusterCheckpointNamespaceTask`).
     pub(crate) checkpoints: Mutex<HashMap<(String, String), (i64, tokio::task::AbortHandle)>>,
+    /// The inbound groups being set up, until `IsSetupUniverseReplicationDone` reports them.
+    pub(crate) setups: Mutex<HashMap<String, Arc<Mutex<inbound::SetupTask>>>>,
+    /// What tservers reported of each producer tablet (`replication_error_map_`).
+    pub(crate) statuses: Mutex<HashMap<inbound::StatusKey, inbound::TabletStatus>>,
+    /// The safe time computation's state.
+    pub(crate) safe_time: Mutex<safe_time::SafeTimeState>,
+    /// Hidden split parents the target is done with, for the hidden-objects cleanup; a new
+    /// leader finds them again from `cdc_state`.
+    pub(crate) released_split_parents: Mutex<std::collections::HashSet<Vec<u8>>>,
+    /// Tables a `HandleNewSchemaForAutomaticXClusterTargetTask` runs for.
+    pub(crate) new_schema_tasks: Mutex<std::collections::HashSet<String>>,
+    /// The failover running for each group and the term it runs in.
+    pub(crate) failovers: Mutex<HashMap<String, i64>>,
+    pub(crate) failover_snapshots: OnceLock<Arc<dyn failover::FailoverSnapshots>>,
+    /// Serializes `XClusterStopPersisting` and `XClusterStartPersisting`.
+    pub(crate) persisting: tokio::sync::Mutex<()>,
 }
 
 impl XCluster {
@@ -156,7 +281,9 @@ impl XCluster {
         remote: Arc<dyn RemoteMasters>,
         options: XClusterOptions,
     ) -> Arc<XCluster> {
-        Arc::new(XCluster {
+        Arc::new_cyclic(|me| XCluster {
+            me: me.clone(),
+            post_create: Mutex::default(),
             catalog,
             writer,
             leadership,
@@ -168,6 +295,14 @@ impl XCluster {
             options,
             hooks: OnceLock::new(),
             checkpoints: Mutex::default(),
+            setups: Mutex::default(),
+            statuses: Mutex::default(),
+            safe_time: Mutex::default(),
+            released_split_parents: Mutex::default(),
+            persisting: tokio::sync::Mutex::new(()),
+            new_schema_tasks: Mutex::default(),
+            failovers: Mutex::default(),
+            failover_snapshots: OnceLock::new(),
         })
     }
 

@@ -371,6 +371,13 @@ impl TableLifecycle {
         check_visible(&table, false)?;
         let state = table.table().map_or(0, |t| t.state);
         let mut done = state != sys_tables_entry_pb::State::PREPARING as i32;
+        if !done {
+            // Done with the error, so the client stops waiting (`IsOperationDoneResult::Done`).
+            if let Some(s) = self.create_errors.lock().unwrap().get(&*table.key.id) {
+                resp.set_done(true);
+                return Err(error(Code::UNKNOWN_ERROR, s.code, s.message.clone()));
+            }
+        }
         // A user index is done once its indexed table's fully applied indexes have it (YCQL: at
         // DELETE_ONLY; the backfill goes on after). A YSQL system index joins no table's list.
         if done {

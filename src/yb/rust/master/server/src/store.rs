@@ -174,7 +174,7 @@ impl SysCatalogStore for HostStore {
     fn safe_time(&self, min_time: HybridTime, timeout: Duration) -> Result<HybridTime, Status> {
         let _open = self.1.enter().ok_or_else(shut_down)?;
         self.0
-            .sys_catalog_safe_time(min_time.0, timeout.as_millis() as i64)
+            .sys_catalog_safe_time(min_time.0, timeout.as_millis() as i64, false)
             .map(HybridTime)
             .map_err(host_error)
     }
@@ -518,9 +518,12 @@ impl master_snapshot_coordinator::SnapshotHost for HostSnapshots {
         timeout: Duration,
     ) -> Result<Vec<(Vec<u8>, Vec<u8>)>, Status> {
         let _open = self.1.enter().ok_or_else(shut_down)?;
-        // `WaitForSafeTime`: the rows at `read_time` are final once the safe time passes it.
+        // `WaitForSafeTime`: the rows at `read_time` are final once the safe time passes it. Only
+        // the leader collects a snapshot, so this waits on its MVCC safe time, as C++ does: the
+        // follower path waits for a propagated safe time that a single master with no sys catalog
+        // writes never advances.
         self.0
-            .sys_catalog_safe_time(read_time, timeout.as_millis() as i64)
+            .sys_catalog_safe_time(read_time, timeout.as_millis() as i64, true)
             .map_err(host_error)?;
         Ok(self
             .0

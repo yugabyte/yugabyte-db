@@ -212,8 +212,63 @@ static FAIL_ENSURE_SEQUENCE_UPDATES: FlagRef<bool> =
     FlagRef::new("TEST_simulate_EnsureSequenceUpdatesAreInWal_failure");
 static SKIP_FIELDS_MOVED_TO_GUARDED_INFO: FlagRef<bool> =
     FlagRef::new("skip_fields_moved_to_xcluster_guarded_info");
+static XCLUSTER_AUTO_FLAG_VALIDATION: FlagRef<bool> =
+    FlagRef::new("enable_xcluster_auto_flag_validation");
+static ENSURE_SEQUENCE_UPDATES_TIMEOUT_SEC: FlagRef<u32> =
+    FlagRef::new("xcluster_ensure_sequence_updates_in_wal_timeout_sec");
+static CDC_READ_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("cdc_read_rpc_timeout_ms");
+static CHECK_BOOTSTRAP_REQUIRED: FlagRef<bool> = FlagRef::new("check_bootstrap_required");
+static ALLOW_YCQL_TRANSACTIONAL_XCLUSTER: FlagRef<bool> =
+    FlagRef::new("TEST_allow_ycql_transactional_xcluster");
+static PAUSE_AT_START_OF_SETUP_MS: FlagRef<i32> =
+    FlagRef::new("TEST_pause_at_start_of_setup_replication_group_ms");
+static FAIL_UNIVERSE_REPLICATION_MERGE: FlagRef<bool> =
+    FlagRef::new("TEST_fail_universe_replication_merge");
+static XCLUSTER_DISABLE_NEW_TABLE_PROCESSING: FlagRef<bool> =
+    FlagRef::new("disable_xcluster_db_scoped_new_table_processing");
+static FAILOVER_TASK_TIMEOUT_SECS: FlagRef<u32> =
+    FlagRef::new("xcluster_failover_task_timeout_secs");
+static FAILOVER_RESTORATION_WAIT_SECS: FlagRef<u32> =
+    FlagRef::new("xcluster_failover_restoration_wait_secs");
+static FAILOVER_RESTORATION_POLL_MS: FlagRef<u32> =
+    FlagRef::new("xcluster_failover_restoration_poll_interval_ms");
+static FAILOVER_SNAPSHOT_DELETE_RETRY_SECS: FlagRef<u32> =
+    FlagRef::new("xcluster_failover_snapshot_delete_retry_secs");
+static FAILOVER_SNAPSHOT_RETENTION_HOURS: FlagRef<i32> =
+    FlagRef::new("xcluster_failover_snapshot_retention_hours");
+static PAUSE_FAILOVER_BEFORE_DELETE: FlagRef<bool> =
+    FlagRef::new("TEST_pause_xcluster_failover_before_delete_replication");
+static FAILOVER_FAIL_RESTORE_NAMESPACE: FlagRef<String> =
+    FlagRef::new("TEST_xcluster_failover_fail_restore_namespace_id");
+static FAILOVER_FAIL_CREATE_SNAPSHOT: FlagRef<bool> =
+    FlagRef::new("TEST_xcluster_failover_fail_create_snapshot");
+static FAILOVER_FAIL_DELETE_REPLICATION: FlagRef<bool> =
+    FlagRef::new("TEST_xcluster_failover_fail_delete_replication");
+static PITR_SPLIT_DISABLE_CHECK_FREQ_MS: FlagRef<i32> =
+    FlagRef::new("pitr_split_disable_check_freq_ms");
+static XCLUSTER_SKIP_HEALTH_CHECK: FlagRef<bool> =
+    FlagRef::new("xcluster_skip_health_check_on_replication_setup");
+static RETURN_LEGACY_REPLICATION_INFO: FlagRef<bool> =
+    FlagRef::new("TEST_return_legacy_universe_replication_info");
+static SKIP_SCHEMA_CHECKS_ON_ALTER: FlagRef<bool> =
+    FlagRef::new("xcluster_skip_schema_compatibility_checks_on_alter");
+static STORE_OLDER_SCHEMA_VERSIONS: FlagRef<bool> =
+    FlagRef::new("xcluster_store_older_schema_versions");
+static ENFORCE_XCLUSTER_GUARDED_LEASE: FlagRef<bool> =
+    FlagRef::new("enforce_xcluster_guarded_lease");
+static DRAIN_RETRY_TIMEOUT_MS: FlagRef<i32> =
+    FlagRef::new("wait_replication_drain_retry_timeout_ms");
+static MAX_OLD_SCHEMA_VERSIONS: FlagRef<u32> = FlagRef::new("xcluster_max_old_schema_versions");
+static ALTER_SETUP_TIMEOUT_MS: FlagRef<u32> =
+    FlagRef::new("xcluster_alter_universe_replication_setup_timeout_ms");
+static SAFE_TIME_UPDATE_INTERVAL_SECS: FlagRef<i32> =
+    FlagRef::new("xcluster_safe_time_update_interval_secs");
 static CDC_ADD_DYNAMIC_INDEX: FlagRef<bool> =
     FlagRef::new("TEST_cdc_add_dynamic_index_to_state_table");
+static SPLIT_XCLUSTER_REPLICATED_TABLES: FlagRef<bool> =
+    FlagRef::new("enable_tablet_split_of_xcluster_replicated_tables");
+static SPLIT_XCLUSTER_BOOTSTRAPPING_TABLES: FlagRef<bool> =
+    FlagRef::new("enable_tablet_split_of_xcluster_bootstrapping_tables");
 static SPLIT_CDCSDK_STREAMED_TABLES: FlagRef<bool> =
     FlagRef::new("enable_tablet_split_of_cdcsdk_streamed_tables");
 static SPLIT_REPLICATION_SLOT_STREAMED_TABLES: FlagRef<bool> =
@@ -556,6 +611,155 @@ fn leader_tables_retention(snapshots: &Arc<SnapshotCoordinator>, splits: &Tablet
     splits.set_retention(snapshots.clone());
 }
 
+type SnapshotState = yb_proto::pb::catalog_entity_info::sys_snapshot_entry_pb::State;
+
+/// xCluster failover's snapshots and restorations, through the coordinator's own steps.
+struct FailoverSnapshotsImpl {
+    snapshots: Arc<SnapshotCoordinator>,
+    splits: Arc<TabletSplitManager>,
+}
+
+fn status_of(e: &yb_proto::pb::master_types::MasterErrorPB) -> yb_host_api::Status {
+    yb_host_api::Status::new(
+        yb_host_api::StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
+        e.status.message().to_string(),
+    )
+}
+
+impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
+    fn prepare_for_restore(
+        &self,
+        deadline: tokio::time::Instant,
+        feature: &'static str,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), yb_host_api::Status>> {
+        Box::pin(async move {
+            // `PrepareForSnapshotRestore`: in-flight splits get
+            // `inflight_splits_completion_timeout_secs` to finish.
+            let inflight =
+                Duration::from_secs(INFLIGHT_SPLITS_COMPLETION_TIMEOUT_SECS.get().max(0) as u64);
+            let restore = Duration::from_secs(PITR_MAX_RESTORE_DURATION_SECS.get().max(0) as u64);
+            self.splits
+                .disable_splitting_for(inflight + restore, feature);
+            let until = (tokio::time::Instant::now() + inflight).min(deadline);
+            while tokio::time::Instant::now() < until {
+                if self.splits.is_tablet_splitting_complete(true) {
+                    return Ok(());
+                }
+                tokio::time::sleep(millis(PITR_SPLIT_DISABLE_CHECK_FREQ_MS.get().max(1))).await;
+            }
+            self.splits.reenable_splitting_for(feature);
+            Err(yb_host_api::Status::new(
+                yb_host_api::StatusCode::TimedOut,
+                "Timed out waiting for inflight tablet splitting to complete.",
+            ))
+        })
+    }
+
+    fn reenable_splitting(&self, feature: &'static str) {
+        self.splits.reenable_splitting_for(feature);
+    }
+
+    fn create<'a>(
+        &'a self,
+        token: &'a master_leadership::LeaderToken,
+        namespace_id: &'a str,
+        retention_hours: i32,
+        deadline: tokio::time::Instant,
+    ) -> master_task_runtime::BoxFuture<'a, Result<Vec<u8>, yb_host_api::Status>> {
+        use yb_proto::pb::master_backup::{CreateSnapshotRequestPB, CreateSnapshotResponsePB};
+        Box::pin(async move {
+            let mut req = CreateSnapshotRequestPB::new();
+            let mut table = yb_proto::pb::master_types::TableIdentifierPB::new();
+            let ns = table.namespace.mut_or_insert_default();
+            ns.set_id(namespace_id.as_bytes().to_vec());
+            ns.set_database_type(yb_proto::pb::common_types::YQLDatabase::YQL_DATABASE_PGSQL);
+            req.tables.push(table);
+            req.set_add_indexes(true);
+            req.set_retention_duration_hours(retention_hours);
+            let mut resp = CreateSnapshotResponsePB::new();
+            self.snapshots
+                .create_snapshot(token, deadline, &req, &mut resp)
+                .await
+                .map_err(|e| status_of(&e))?;
+            Ok(resp.snapshot_id().to_vec())
+        })
+    }
+
+    fn wait_complete<'a>(
+        &'a self,
+        token: &'a master_leadership::LeaderToken,
+        snapshot_id: &'a [u8],
+        deadline: tokio::time::Instant,
+    ) -> master_task_runtime::BoxFuture<'a, Result<(), yb_host_api::Status>> {
+        Box::pin(async move {
+            self.snapshots
+                .wait_for_snapshot(token, snapshot_id, deadline)
+                .await
+                .map_err(|e| status_of(&e))
+        })
+    }
+
+    fn restore<'a>(
+        &'a self,
+        token: &'a master_leadership::LeaderToken,
+        snapshot_id: &'a [u8],
+        restore_at: u64,
+        deadline: tokio::time::Instant,
+    ) -> master_task_runtime::BoxFuture<'a, Result<Vec<u8>, yb_host_api::Status>> {
+        Box::pin(async move {
+            self.snapshots
+                .restore_at(token, snapshot_id, restore_at, deadline)
+                .await
+                .map_err(|e| status_of(&e))
+        })
+    }
+
+    fn restoration_state(
+        &self,
+        token: &master_leadership::LeaderToken,
+        restoration_id: &[u8],
+        snapshot_id: &[u8],
+    ) -> Result<SnapshotState, yb_host_api::Status> {
+        use yb_proto::pb::master_backup::{
+            ListSnapshotRestorationsRequestPB, ListSnapshotRestorationsResponsePB,
+        };
+        let mut req = ListSnapshotRestorationsRequestPB::new();
+        req.set_restoration_id(restoration_id.to_vec());
+        req.set_snapshot_id(snapshot_id.to_vec());
+        let mut resp = ListSnapshotRestorationsResponsePB::new();
+        self.snapshots
+            .list_restorations(token, &req, &mut resp)
+            .map_err(|e| status_of(&e))?;
+        if resp.restorations.len() != 1 {
+            return Err(yb_host_api::Status::new(
+                yb_host_api::StatusCode::IllegalState,
+                format!(
+                    "Expected 1 restoration entry but got {}",
+                    resp.restorations.len()
+                ),
+            ));
+        }
+        Ok(resp.restorations[0].entry.state())
+    }
+
+    fn delete<'a>(
+        &'a self,
+        token: &'a master_leadership::LeaderToken,
+        snapshot_id: &'a [u8],
+        deadline: tokio::time::Instant,
+    ) -> master_task_runtime::BoxFuture<'a, Result<(), yb_host_api::Status>> {
+        use yb_proto::pb::master_backup::DeleteSnapshotRequestPB;
+        Box::pin(async move {
+            let mut req = DeleteSnapshotRequestPB::new();
+            req.set_snapshot_id(snapshot_id.to_vec());
+            self.snapshots
+                .delete_snapshot(token, deadline, &req)
+                .await
+                .map_err(|e| status_of(&e))
+        })
+    }
+}
+
 /// What a finished restore tells the other leader components.
 struct SnapshotHooks {
     tables: Arc<TableLifecycle>,
@@ -563,6 +767,7 @@ struct SnapshotHooks {
     host: Arc<dyn SchemaHost>,
     leadership: Arc<Leadership>,
     catalog: Arc<Catalog>,
+    xcluster: Arc<master_xcluster::XCluster>,
 }
 
 impl RestoreHooks for SnapshotHooks {
@@ -601,9 +806,8 @@ impl RestoreHooks for SnapshotHooks {
         )
     }
 
-    fn is_automatic_xcluster_target(&self, _namespace_id: &[u8]) -> bool {
-        // xCluster comes with W11.
-        false
+    fn is_automatic_xcluster_target(&self, namespace_id: &[u8]) -> bool {
+        self.xcluster.is_automatic_target(namespace_id)
     }
 }
 
@@ -694,28 +898,48 @@ impl master_xcluster::XClusterHooks for XClusterOidHooks {
         namespace_id: Vec<u8>,
     ) -> master_task_runtime::BoxFuture<'static, Result<u32, yb_host_api::Status>> {
         let (tables, leadership) = (self.tables.clone(), self.leadership.clone());
+        Box::pin(async move { reserve_oids(&tables, &leadership, namespace_id, 0).await })
+    }
+
+    fn reserve_oids_above(
+        &self,
+        namespace_id: Vec<u8>,
+        oid: u32,
+    ) -> master_task_runtime::BoxFuture<'static, Result<(), yb_host_api::Status>> {
+        let (tables, leadership) = (self.tables.clone(), self.leadership.clone());
         Box::pin(async move {
-            let token = leadership.token()?;
-            let mut req = ReservePgsqlOidsRequestPB::new();
-            req.set_namespace_id(namespace_id);
-            req.set_next_oid(0);
-            req.set_count(1);
-            req.set_use_secondary_space(false);
-            let mut resp = Default::default();
-            let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-            tables
-                .reserve_pgsql_oids(&token, deadline, &req, &mut resp)
+            reserve_oids(&tables, &leadership, namespace_id, oid)
                 .await
-                .map_err(|e| {
-                    yb_host_api::Status::new(
-                        StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
-                        e.status.message().to_string(),
-                    )
-                })?;
-            let resp: &yb_proto::pb::master_client::ReservePgsqlOidsResponsePB = &resp;
-            Ok(resp.begin_oid())
+                .map(|_| ())
         })
     }
+}
+
+/// `ReservePgsqlOids` from `next_oid`.
+async fn reserve_oids(
+    tables: &TableLifecycle,
+    leadership: &Leadership,
+    namespace_id: Vec<u8>,
+    next_oid: u32,
+) -> Result<u32, yb_host_api::Status> {
+    let token = leadership.token()?;
+    let mut req = ReservePgsqlOidsRequestPB::new();
+    req.set_namespace_id(namespace_id);
+    req.set_next_oid(next_oid);
+    req.set_count(1);
+    req.set_use_secondary_space(false);
+    let mut resp = yb_proto::pb::master_client::ReservePgsqlOidsResponsePB::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    tables
+        .reserve_pgsql_oids(&token, deadline, &req, &mut resp)
+        .await
+        .map_err(|e| {
+            yb_host_api::Status::new(
+                StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
+                e.status.message().to_string(),
+            )
+        })?;
+    Ok(resp.begin_oid())
 }
 
 /// The masters of another universe, reached through the host's `XClusterRemoteClientHolder`.
@@ -847,6 +1071,10 @@ impl Core {
                     split_uncommitted_ysql_tables: || SPLIT_UNCOMMITTED_YSQL_TABLES.get(),
                     split_tables_with_vector_index: || SPLIT_TABLES_WITH_VECTOR_INDEX.get(),
                     split_cdcsdk_streamed_tables: || SPLIT_CDCSDK_STREAMED_TABLES.get(),
+                    split_xcluster_replicated_tables: || SPLIT_XCLUSTER_REPLICATED_TABLES.get(),
+                    split_xcluster_bootstrapping_tables: || {
+                        SPLIT_XCLUSTER_BOOTSTRAPPING_TABLES.get()
+                    },
                     split_replication_slot_streamed_tables: || {
                         SPLIT_REPLICATION_SLOT_STREAMED_TABLES.get()
                     },
@@ -1066,13 +1294,6 @@ impl Core {
         // Dropped tables and retired split parents a snapshot needs are hidden.
         leader_tables_retention(&snapshots, &splits);
         tables.set_retention(snapshots.clone());
-        snapshots.set_hooks(Arc::new(SnapshotHooks {
-            tables: tables.clone(),
-            splits: splits.clone(),
-            host: schema.clone(),
-            leadership: leadership.clone(),
-            catalog: catalog.clone(),
-        }));
         let xrepl = master_xrepl::Xrepl::new(
             catalog.clone(),
             writer.clone(),
@@ -1146,6 +1367,46 @@ impl Core {
                 skip_fields_moved_to_guarded_info: || SKIP_FIELDS_MOVED_TO_GUARDED_INFO.get(),
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
                 bg_task_interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+                auto_flag_validation: || XCLUSTER_AUTO_FLAG_VALIDATION.get(),
+                ensure_sequence_updates_timeout: || {
+                    Duration::from_secs(ENSURE_SEQUENCE_UPDATES_TIMEOUT_SEC.get().into())
+                },
+                remote_timeout: || millis(CDC_READ_RPC_TIMEOUT_MS.get().max(1)),
+                check_bootstrap_required: || CHECK_BOOTSTRAP_REQUIRED.get(),
+                allow_ycql_transactional: || ALLOW_YCQL_TRANSACTIONAL_XCLUSTER.get(),
+                pause_at_start_of_setup: || millis(PAUSE_AT_START_OF_SETUP_MS.get().max(0)),
+                fail_universe_replication_merge: || FAIL_UNIVERSE_REPLICATION_MERGE.get(),
+                skip_health_check: || XCLUSTER_SKIP_HEALTH_CHECK.get(),
+                failover_task_timeout: || {
+                    Duration::from_secs(FAILOVER_TASK_TIMEOUT_SECS.get().into())
+                },
+                failover_restoration_wait: || {
+                    Duration::from_secs(FAILOVER_RESTORATION_WAIT_SECS.get().into())
+                },
+                failover_restoration_poll_interval: || {
+                    Duration::from_millis(FAILOVER_RESTORATION_POLL_MS.get().into())
+                },
+                failover_snapshot_delete_retry: || {
+                    Duration::from_secs(FAILOVER_SNAPSHOT_DELETE_RETRY_SECS.get().into())
+                },
+                failover_snapshot_retention_hours: || FAILOVER_SNAPSHOT_RETENTION_HOURS.get(),
+                pause_failover_before_delete: || PAUSE_FAILOVER_BEFORE_DELETE.get(),
+                failover_fail_restore_namespace: || FAILOVER_FAIL_RESTORE_NAMESPACE.get(),
+                failover_fail_create_snapshot: || FAILOVER_FAIL_CREATE_SNAPSHOT.get(),
+                failover_fail_delete_replication: || FAILOVER_FAIL_DELETE_REPLICATION.get(),
+                disable_new_table_processing: || XCLUSTER_DISABLE_NEW_TABLE_PROCESSING.get(),
+                return_legacy_universe_replication_info: || RETURN_LEGACY_REPLICATION_INFO.get(),
+                safe_time_interval: || {
+                    Duration::from_secs(SAFE_TIME_UPDATE_INTERVAL_SECS.get().max(1) as u64)
+                },
+                alter_setup_timeout: || Duration::from_millis(ALTER_SETUP_TIMEOUT_MS.get().into()),
+                skip_schema_compatibility_checks_on_alter: || SKIP_SCHEMA_CHECKS_ON_ALTER.get(),
+                store_older_schema_versions: || STORE_OLDER_SCHEMA_VERSIONS.get(),
+                max_old_schema_versions: || MAX_OLD_SCHEMA_VERSIONS.get(),
+                enforce_guarded_lease: || ENFORCE_XCLUSTER_GUARDED_LEASE.get(),
+                persist_tserver_registry: || PERSIST_TSERVER_REGISTRY.get(),
+                max_clock_skew: || Duration::from_micros(MAX_CLOCK_SKEW_USEC.get()),
+                drain_retry_timeout: || millis(DRAIN_RETRY_TIMEOUT_MS.get().max(1)),
             },
         );
         xcluster.set_hooks(Arc::new(XClusterOidHooks {
@@ -1155,6 +1416,18 @@ impl Core {
             catalog: catalog.clone(),
         }));
         xrepl.set_extension(xcluster.clone());
+        xcluster.set_failover_snapshots(Arc::new(FailoverSnapshotsImpl {
+            snapshots: snapshots.clone(),
+            splits: splits.clone(),
+        }));
+        snapshots.set_hooks(Arc::new(SnapshotHooks {
+            tables: tables.clone(),
+            splits: splits.clone(),
+            host: schema.clone(),
+            leadership: leadership.clone(),
+            catalog: catalog.clone(),
+            xcluster: xcluster.clone(),
+        }));
         let mut contributors = contributors;
         contributors.push(xcluster.clone());
         let leader = Arc::new(LeaderServices {
@@ -1394,7 +1667,7 @@ fn start_term(
     run_controller(
         scope,
         master_xcluster::XClusterController::new(leader.xcluster.clone()),
-        watch::channel(0).1,
+        leader.catalog.subscribe(),
     );
     run_controller(
         scope,

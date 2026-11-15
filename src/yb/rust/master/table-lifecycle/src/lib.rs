@@ -271,13 +271,26 @@ pub trait XreplHooks: Send + Sync {
         table_id: &[u8],
     ) -> bool;
 
+    /// The xCluster part of a new YSQL table's row (`ProcessCreateTableReq`,
+    /// `ValidateCreateTableRequest`): on an automatic mode target, its source table and the
+    /// schema packings rows of it replicated before it existed.
+    fn xcluster_create_table(
+        &self,
+        _snapshot: &master_catalog_state::CatalogSnapshot,
+        _req: &yb_proto::pb::master_ddl::CreateTableRequestPB,
+        _table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
+    ) -> Result<(), Status> {
+        Ok(())
+    }
+
     /// Work a new table's tablets wait for before it runs (`GetPostTabletCreateTasks`): its
-    /// xCluster streams. An error leaves the table PREPARING, retried on the next pass.
+    /// xCluster streams and its place in inbound replication groups. False while it runs; an
+    /// error leaves the table PREPARING and fails `IsCreateTableDone`.
     fn post_tablet_create(
         &self,
         _table_id: Vec<u8>,
-    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
-        Box::pin(async { Ok(()) })
+    ) -> master_task_runtime::BoxFuture<'_, Result<bool, Status>> {
+        Box::pin(async { Ok(true) })
     }
 }
 
@@ -314,6 +327,9 @@ pub struct TableLifecycle {
     pub(crate) retention: std::sync::OnceLock<Arc<dyn Retention>>,
     /// What CDC streams need from DDL; set once the CDC streams service exists.
     pub(crate) xrepl_hooks: std::sync::OnceLock<Arc<dyn XreplHooks>>,
+    /// Tables whose post tablet creation work failed, with the error `IsCreateTableDone` reports
+    /// (`SetCreateTableErrorStatus`). Kept in memory, as C++ keeps it on the TableInfo.
+    pub(crate) create_errors: std::sync::Mutex<std::collections::HashMap<Vec<u8>, Status>>,
     /// Held while a tablespace's transaction status table is created
     /// (`tablespace_transaction_table_creation_mutex_`).
     pub(crate) local_transaction_tables: tokio::sync::Mutex<()>,
@@ -479,6 +495,7 @@ impl TableLifecycle {
             tablet_rpc: std::sync::OnceLock::new(),
             retention: std::sync::OnceLock::new(),
             xrepl_hooks: std::sync::OnceLock::new(),
+            create_errors: Default::default(),
         })
     }
 

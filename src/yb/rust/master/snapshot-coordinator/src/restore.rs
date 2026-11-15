@@ -526,6 +526,27 @@ impl SnapshotCoordinator {
         ))
     }
 
+    /// `WaitForSnapshotToComplete`, for a caller outside the coordinator (xCluster failover).
+    pub async fn wait_for_snapshot(
+        &self,
+        token: &LeaderToken,
+        id: &[u8],
+        deadline: Instant,
+    ) -> Result<(), MasterErrorPB> {
+        self.wait_for_complete(token.term(), id, deadline).await
+    }
+
+    /// `Restore` of a snapshot at `restore_at`: the restoration id.
+    pub async fn restore_at(
+        &self,
+        token: &LeaderToken,
+        snapshot_id: &[u8],
+        restore_at: u64,
+        deadline: Instant,
+    ) -> Result<Vec<u8>, MasterErrorPB> {
+        self.restore(token, snapshot_id, restore_at, deadline).await
+    }
+
     /// `WaitForSnapshotToComplete`.
     async fn wait_for_complete(
         &self,

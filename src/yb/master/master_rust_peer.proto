@@ -20,8 +20,10 @@ package yb.master;
 
 option java_package = "org.yb.master";
 
+import "yb/cdc/cdc_consumer.proto";
 import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
+import "yb/dockv/dockv.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/opid.proto";
@@ -32,6 +34,7 @@ import "yb/master/master_client.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_encryption.proto";
 import "yb/master/master_heartbeat.proto";
+import "yb/master/master_replication.proto";
 import "yb/master/master_types.proto";
 
 message ReplicaLocationPB {
@@ -766,4 +769,135 @@ message ScanSnapshotSysCatalogResponsePB {
 service MasterRustPeer {
   rpc PushLocations(PushLocationsRequestPB) returns (PushLocationsResponsePB);
   rpc DumpCatalog(DumpCatalogRequestPB) returns (DumpCatalogResponsePB);
+}
+
+// The target universe's xCluster steps the host keeps in C++ (K9).
+
+// ValidateAutoFlagsConfig of the source universe against this one's config, through the
+// replication group's XClusterRemoteClientHolder.
+message XClusterValidateAutoFlagsRequestPB {
+  optional string replication_group_id = 1;
+  repeated HostPortPB master_addresses = 2;
+}
+
+message XClusterValidateAutoFlagsResponsePB {
+  optional MasterErrorPB error = 1;
+  // Unset when the source does not support the check yet.
+  optional bool valid = 2;
+  optional uint32 source_version = 3;
+  // The version of this universe's config that was checked.
+  optional uint32 local_version = 4;
+}
+
+// This universe's AutoFlags config version, which xCluster groups revalidate on change.
+message LocalAutoFlagsConfigVersionRequestPB {
+}
+
+message LocalAutoFlagsConfigVersionResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 version = 2;
+}
+
+// PopulateXClusterStreamEntryTabletMapping: the consumer tablets each producer tablet maps to.
+message XClusterTabletMappingRequestPB {
+  message ConsumerTabletPB {
+    optional bytes tablet_id = 1;
+    optional PartitionPB partition = 2;
+  }
+  optional string producer_table_id = 1;
+  optional string consumer_table_id = 2;
+  repeated ConsumerTabletPB consumer_tablets = 3;
+  repeated TabletLocationsPB producer_locations = 4;
+  optional cdc.StreamEntryPB stream_entry = 5;
+}
+
+message XClusterTabletMappingResponsePB {
+  optional MasterErrorPB error = 1;
+  optional cdc.StreamEntryPB stream_entry = 2;
+}
+
+// Schema::EquivalentForDataCopy of the source table's schema and the target's.
+message XClusterSchemasEquivalentRequestPB {
+  optional SchemaPB source = 1;
+  optional SchemaPB target = 2;
+}
+
+message XClusterSchemasEquivalentResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool equivalent = 2;
+  // Schema::SchemaName of the source schema.
+  optional string source_schema_name = 3;
+}
+
+// The CreateTable request of system.xcluster_safe_time
+// (XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound).
+message XClusterSafeTimeCreateTableRequestRequestPB {
+}
+
+message XClusterSafeTimeCreateTableRequestResponsePB {
+  optional MasterErrorPB error = 1;
+  optional CreateTableRequestPB request = 2;
+}
+
+// A row of system.xcluster_safe_time, its columns as written.
+message XClusterSafeTimeRowPB {
+  optional string replication_group_id = 1;
+  optional string tablet_id = 2;
+  optional int64 safe_time = 3;
+}
+
+message XClusterSafeTimeReadRequestPB {
+}
+
+message XClusterSafeTimeReadResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated XClusterSafeTimeRowPB rows = 2;
+}
+
+message XClusterSafeTimeDeleteRequestPB {
+  repeated XClusterSafeTimeRowPB rows = 1;
+}
+
+message XClusterSafeTimeDeleteResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// UpdateTabletMappingOnProducerSplit: a source tablet's split applied to a stream's tablet mapping.
+message XClusterProducerSplitRequestPB {
+  repeated XClusterTabletMappingRequestPB.ConsumerTabletPB consumer_tablets = 1;
+  optional ProducerSplitTabletInfoPB split_info = 2;
+  optional cdc.StreamEntryPB stream_entry = 3;
+}
+
+message XClusterProducerSplitResponsePB {
+  optional MasterErrorPB error = 1;
+  optional cdc.StreamEntryPB stream_entry = 2;
+  optional bool found_source = 3;
+  optional bool found_all_split_children = 4;
+}
+
+// UpdateTabletMappingOnConsumerSplit: a target tablet's split applied to a stream's tablet mapping.
+message XClusterConsumerSplitRequestPB {
+  repeated XClusterTabletMappingRequestPB.ConsumerTabletPB consumer_tablets = 1;
+  optional bytes source_tablet_id = 2;
+  repeated bytes child_tablet_ids = 3;
+  optional cdc.StreamEntryPB stream_entry = 4;
+}
+
+message XClusterConsumerSplitResponsePB {
+  optional MasterErrorPB error = 1;
+  optional cdc.StreamEntryPB stream_entry = 2;
+}
+
+// AddHistoricalPackedSchemaForColocatedTable's packing step: the version of an equivalent packing
+// already among `old_schema_packings`, else the schema's packing at the next version.
+message XClusterHistoricalSchemaPackingRequestPB {
+  repeated dockv.SchemaPackingPB old_schema_packings = 1;
+  optional SchemaPB schema = 2;
+}
+
+message XClusterHistoricalSchemaPackingResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint32 existing_version = 2;
+  optional dockv.SchemaPackingPB new_packing = 3;
 }

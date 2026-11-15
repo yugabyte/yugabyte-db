@@ -19,14 +19,19 @@
 #include <unordered_set>
 
 #include "yb/client/client.h"
+#include "yb/client/session.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/xcluster_client.h"
+#include "yb/client/yb_op.h"
 #include "yb/client/schema.h"
 
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_catversions.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/version_info.h"
@@ -53,6 +58,7 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/ysql_sequence_util.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_defaults.h"
@@ -100,6 +106,7 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -189,6 +196,7 @@ DEFINE_test_flag(bool, rust_master_allow_leadership, false,
 DECLARE_string(webserver_password_file);
 DECLARE_bool(webserver_redirect_http_to_https);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+DECLARE_int32(xcluster_safe_time_table_num_tablets);
 
 namespace yb::master_host {
 
@@ -2487,6 +2495,201 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return Status::OK();
         });
   }
+  if (name == "XClusterValidateAutoFlags") {
+    return HandleRequest<
+        master::XClusterValidateAutoFlagsRequestPB, master::XClusterValidateAutoFlagsResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          std::vector<HostPort> masters;
+          HostPortsFromPBs(req.master_addresses(), &masters);
+          auto holder = VERIFY_RESULT(XClusterRemoteClient(req.replication_group_id(), masters));
+          const auto local_config = auto_flags_manager_->GetConfig();
+          resp->set_local_version(local_config.config_version());
+          auto result = VERIFY_RESULT(holder->GetYbClient().ValidateAutoFlagsConfig(
+              local_config, AutoFlagClass::kExternal));
+          if (result) {
+            resp->set_valid(result->first);
+            resp->set_source_version(result->second);
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "LocalAutoFlagsConfigVersion") {
+    return HandleRequest<
+        master::LocalAutoFlagsConfigVersionRequestPB,
+        master::LocalAutoFlagsConfigVersionResponsePB>(
+        request, [this](const auto&, auto* resp) -> Status {
+          resp->set_version(auto_flags_manager_->GetConfig().config_version());
+          return Status::OK();
+        });
+  }
+  if (name == "XClusterTabletMapping") {
+    return HandleRequest<
+        master::XClusterTabletMappingRequestPB, master::XClusterTabletMappingResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          std::map<std::string, master::KeyRange> consumer_tablet_keys;
+          for (const auto& tablet : req.consumer_tablets()) {
+            consumer_tablet_keys[tablet.tablet_id()] = master::KeyRange{
+                .start_key = tablet.partition().partition_key_start(),
+                .end_key = tablet.partition().partition_key_end()};
+          }
+          auto* stream_entry = resp->mutable_stream_entry();
+          *stream_entry = req.stream_entry();
+          return master::PopulateXClusterStreamEntryTabletMapping(
+              req.producer_table_id(), req.consumer_table_id(), consumer_tablet_keys, stream_entry,
+              req.producer_locations());
+        });
+  }
+  if (name == "XClusterProducerSplit") {
+    return HandleRequest<
+        master::XClusterProducerSplitRequestPB, master::XClusterProducerSplitResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          std::map<std::string, master::KeyRange> consumer_tablet_keys;
+          for (const auto& tablet : req.consumer_tablets()) {
+            consumer_tablet_keys[tablet.tablet_id()] = master::KeyRange{
+                .start_key = tablet.partition().partition_key_start(),
+                .end_key = tablet.partition().partition_key_end()};
+          }
+          const auto& split_info = req.split_info();
+          const auto split_children = GetSplitChildTabletIds(split_info);
+          const auto split_keys = GetSplitPartitionKeys(split_info);
+          SCHECK_EQ(
+              split_children.size() - 1, split_keys.size(), IllegalState,
+              "Unexpected number of partition keys");
+          const TabletId source = split_info.tablet_id();
+          master::SplitTabletIds split_tablet_ids{.source = source, .children = split_children};
+          auto* stream_entry = resp->mutable_stream_entry();
+          *stream_entry = req.stream_entry();
+          bool found_source = false;
+          bool found_all_split_children = false;
+          RETURN_NOT_OK(master::UpdateTabletMappingOnProducerSplit(
+              consumer_tablet_keys, split_tablet_ids, split_keys, &found_source,
+              &found_all_split_children, stream_entry));
+          resp->set_found_source(found_source);
+          resp->set_found_all_split_children(found_all_split_children);
+          return Status::OK();
+        });
+  }
+  if (name == "XClusterConsumerSplit") {
+    return HandleRequest<
+        master::XClusterConsumerSplitRequestPB, master::XClusterConsumerSplitResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          std::map<std::string, master::KeyRange> consumer_tablet_keys;
+          for (const auto& tablet : req.consumer_tablets()) {
+            consumer_tablet_keys[tablet.tablet_id()] = master::KeyRange{
+                .start_key = tablet.partition().partition_key_start(),
+                .end_key = tablet.partition().partition_key_end()};
+          }
+          // SplitTabletIds holds references.
+          const TabletId source = req.source_tablet_id();
+          const std::vector<TabletId> children(
+              req.child_tablet_ids().begin(), req.child_tablet_ids().end());
+          master::SplitTabletIds split_tablet_ids{.source = source, .children = children};
+          auto* stream_entry = resp->mutable_stream_entry();
+          *stream_entry = req.stream_entry();
+          return master::UpdateTabletMappingOnConsumerSplit(
+              consumer_tablet_keys, split_tablet_ids, stream_entry);
+        });
+  }
+  if (name == "XClusterHistoricalSchemaPacking") {
+    return HandleRequest<
+        master::XClusterHistoricalSchemaPackingRequestPB,
+        master::XClusterHistoricalSchemaPackingResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          Schema new_schema;
+          RETURN_NOT_OK(SchemaFromPB(req.schema(), &new_schema));
+          dockv::SchemaPackingStorage old_packings(
+              TableType::PGSQL_TABLE_TYPE,
+              std::make_shared<dockv::SchemaPackingRegistry>("XCluster: "));
+          RETURN_NOT_OK(old_packings.LoadFromPB(req.old_schema_packings()));
+          auto existing =
+              old_packings.GetSchemaPackingVersion(TableType::PGSQL_TABLE_TYPE, new_schema);
+          if (existing.ok()) {
+            resp->set_existing_version(*existing);
+            return Status::OK();
+          }
+          dockv::SchemaPacking new_packing(TableType::PGSQL_TABLE_TYPE, new_schema);
+          auto* out = resp->mutable_new_packing();
+          out->set_schema_version(static_cast<uint32_t>(req.old_schema_packings_size()));
+          new_packing.ToPB(out);
+          return Status::OK();
+        });
+  }
+  if (name == "XClusterSchemasEquivalent") {
+    return HandleRequest<
+        master::XClusterSchemasEquivalentRequestPB, master::XClusterSchemasEquivalentResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          Schema source;
+          Schema target;
+          RETURN_NOT_OK(SchemaFromPB(req.source(), &source));
+          RETURN_NOT_OK(SchemaFromPB(req.target(), &target));
+          resp->set_equivalent(target.EquivalentForDataCopy(source));
+          resp->set_source_schema_name(source.SchemaName());
+          return Status::OK();
+        });
+  }
+  if (name == "XClusterSafeTimeCreateTableRequest") {
+    return HandleRequest<
+        master::XClusterSafeTimeCreateTableRequestRequestPB,
+        master::XClusterSafeTimeCreateTableRequestResponsePB>(
+        request, [](const auto&, auto* resp) -> Status {
+          auto* req = resp->mutable_request();
+          req->set_name(master::kXClusterSafeTimeTableName);
+          req->mutable_namespace_()->set_name(master::kSystemNamespaceName);
+          req->set_table_type(TableType::YQL_TABLE_TYPE);
+          client::YBSchemaBuilder schema_builder;
+          schema_builder.AddColumn(master::kXCReplicationGroupId)
+              ->HashPrimaryKey()
+              ->Type(DataType::STRING);
+          schema_builder.AddColumn(master::kXCProducerTabletId)
+              ->HashPrimaryKey()
+              ->Type(DataType::STRING);
+          schema_builder.AddColumn(master::kXCSafeTime)->Type(DataType::INT64);
+          client::YBSchema yb_schema;
+          RETURN_NOT_OK(schema_builder.Build(&yb_schema));
+          SchemaToPB(client::internal::GetSchema(yb_schema), req->mutable_schema());
+          if (FLAGS_xcluster_safe_time_table_num_tablets > 0) {
+            req->mutable_schema()->mutable_table_properties()->set_num_tablets(
+                FLAGS_xcluster_safe_time_table_num_tablets);
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "XClusterSafeTimeRead") {
+    return HandleRequest<
+        master::XClusterSafeTimeReadRequestPB, master::XClusterSafeTimeReadResponsePB>(
+        request, [this](const auto&, auto* resp) -> Status {
+          auto& table = VERIFY_RESULT_REF(XClusterSafeTimeTable());
+          Status scan_status;
+          client::TableIteratorOptions options;
+          options.error_handler = [&scan_status](const Status& status) { scan_status = status; };
+          for (const auto& row : client::TableRange(table, options)) {
+            auto* out = resp->add_rows();
+            out->set_replication_group_id(
+                row.column(master::kXCReplicationGroupIdIdx).string_value());
+            out->set_tablet_id(row.column(master::kXCProducerTabletIdIdx).string_value());
+            out->set_safe_time(row.column(master::kXCSafeTimeIdx).int64_value());
+          }
+          return scan_status;
+        });
+  }
+  if (name == "XClusterSafeTimeDelete") {
+    return HandleRequest<
+        master::XClusterSafeTimeDeleteRequestPB, master::XClusterSafeTimeDeleteResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          auto& table = VERIFY_RESULT_REF(XClusterSafeTimeTable());
+          auto* client = client_future().get();
+          SCHECK(client, IllegalState, "Client not initialized or shutting down");
+          auto session = client->NewSession(client->default_rpc_timeout());
+          for (const auto& row : req.rows()) {
+            const auto op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
+            auto* const write = op->mutable_request();
+            QLAddStringHashValue(write, row.replication_group_id());
+            QLAddStringHashValue(write, row.tablet_id());
+            session->Apply(std::move(op));
+          }
+          return session->TEST_Flush();
+        });
+  }
   if (name == "CreateSequencesDataTable") {
     return HandleRequest<
         master::CreateSequencesDataTableRequestPB, master::CreateSequencesDataTableResponsePB>(
@@ -2955,7 +3158,8 @@ bool MasterHost::SysCatalogIsOpen() const {
   return sys_catalog_initialized_.load() && !opts_.IsShellMode() && sys_catalog_->tablet_peer();
 }
 
-uint64_t MasterHost::SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms) const {
+uint64_t MasterHost::SysCatalogSafeTime(
+    uint64_t min_time, int64_t timeout_ms, bool leader) const {
   auto peer = sys_catalog_->tablet_peer();
   if (!peer) {
     throw std::runtime_error("The sys catalog tablet is not open");
@@ -2963,7 +3167,7 @@ uint64_t MasterHost::SysCatalogSafeTime(uint64_t min_time, int64_t timeout_ms) c
   auto tablet = peer->shared_tablet();
   ThrowIfNotOk(ResultToStatus(tablet));
   auto safe_time = (*tablet)->SafeTime(
-      tablet::RequireLease::kFalse, HybridTime(min_time),
+      leader ? tablet::RequireLease::kTrue : tablet::RequireLease::kFalse, HybridTime(min_time),
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(timeout_ms));
   ThrowIfNotOk(ResultToStatus(safe_time));
   return safe_time->ToUint64();
@@ -3171,6 +3375,21 @@ RaftLeaderStateFfi MasterHost::SysCatalogLeaderState() const {
       : (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_ACTIVE).current_term();
   result.role = (*consensus)->role();
   return result;
+}
+
+Result<client::TableHandle&> MasterHost::XClusterSafeTimeTable() {
+  std::lock_guard lock(xcluster_safe_time_table_mutex_);
+  if (!xcluster_safe_time_table_) {
+    auto* client = client_future().get();
+    SCHECK(client, IllegalState, "Client not initialized or shutting down");
+    auto table = std::make_unique<client::TableHandle>();
+    RETURN_NOT_OK(table->Open(
+        client::YBTableName(
+            YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName),
+        client));
+    xcluster_safe_time_table_ = std::move(table);
+  }
+  return *xcluster_safe_time_table_;
 }
 
 Result<std::shared_ptr<client::XClusterRemoteClientHolder>> MasterHost::XClusterRemoteClient(

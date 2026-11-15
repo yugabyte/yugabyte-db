@@ -132,11 +132,26 @@ fn spans_regions(placement: &yb_proto::pb::common_net::PlacementInfoPB) -> bool 
     })
 }
 
-/// Who serves a leader method a layer-2 Rust leader does not.
+/// Leader methods a Rust leader never serves, and why. The RPC coverage test in `tests.rs` fails
+/// on any other master method without a handler.
+pub const NEVER_SERVED: &[(&str, &str)] = &[
+    ("RedisConfigSet", "YEDIS is not supported (D16)"),
+    ("RedisConfigGet", "YEDIS is not supported (D16)"),
+    (
+        "SetupNamespaceReplicationWithBootstrap",
+        "it needs the C++ SnapshotTransferManager, and every test of it is disabled",
+    ),
+    (
+        "IsSetupNamespaceReplicationWithBootstrapDone",
+        "it needs the C++ SnapshotTransferManager, and every test of it is disabled",
+    ),
+];
+
+/// Who serves a leader method a Rust leader does not.
 pub fn owner(method: &str) -> &'static str {
-    match method {
-        "RedisConfigSet" | "RedisConfigGet" => "nobody: YEDIS is not supported (D16)",
-        _ => "a later layer",
+    match NEVER_SERVED.iter().find(|(m, _)| *m == method) {
+        Some((_, why)) => why,
+        None => "a later layer",
     }
 }
 

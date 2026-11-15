@@ -95,8 +95,17 @@ impl XCluster {
 }
 
 impl XreplExtension for XCluster {
-    fn post_tablet_create(&self, table_id: Vec<u8>) -> BoxFuture<'_, Result<(), Status>> {
-        Box::pin(async move { self.add_new_table(&table_id).await })
+    fn post_tablet_create(&self, table_id: Vec<u8>) -> BoxFuture<'_, Result<bool, Status>> {
+        Box::pin(async move { self.post_tablet_create_task(table_id) })
+    }
+
+    fn xcluster_create_table(
+        &self,
+        snapshot: &CatalogSnapshot,
+        req: &yb_proto::pb::master_ddl::CreateTableRequestPB,
+        table: &mut SysTablesEntryPB,
+    ) -> Result<(), Status> {
+        self.process_create_table(snapshot, req, table)
     }
 
     /// `PopulateTabletDeleteRetainerInfoForTableDrop`: only a colocation parent of colocated
@@ -123,7 +132,23 @@ impl XreplExtension for XCluster {
         !streams.is_empty()
     }
 
+    fn split_registered(
+        &self,
+        table_id: Vec<u8>,
+        parent: Vec<u8>,
+        children: Vec<Vec<u8>>,
+    ) -> BoxFuture<'_, Result<(), Status>> {
+        Box::pin(async move {
+            let token = self.leadership.token()?;
+            self.handle_consumer_split(&token, &table_id, &parent, &children)
+                .await
+        })
+    }
+
     fn retains_hidden_tablet(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> bool {
+        if self.retains_split_parent(snapshot, tablet_id) {
+            return true;
+        }
         let Some(table_id) = snapshot
             .get(SysRowEntryType::TABLET, tablet_id)
             .and_then(|t| t.tablet().map(|t| t.table_id.clone()))
@@ -140,12 +165,18 @@ impl XreplExtension for XCluster {
 /// Runs [`XCluster`]'s background steps each term.
 pub struct XClusterController {
     xcluster: Arc<XCluster>,
+    last_safe_time: std::sync::Mutex<Option<tokio::time::Instant>>,
+    last_auto_flags_check: std::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 impl XClusterController {
     /// A controller for the term that just began.
     pub fn new(xcluster: Arc<XCluster>) -> Arc<XClusterController> {
-        Arc::new(XClusterController { xcluster })
+        Arc::new(XClusterController {
+            xcluster,
+            last_safe_time: Default::default(),
+            last_auto_flags_check: Default::default(),
+        })
     }
 }
 
@@ -165,8 +196,42 @@ impl Controller for XClusterController {
                 return;
             };
             x.start_checkpoint_tasks(&token);
+            if let Err(status) = x.cleanup_stale_failovers(&token).await {
+                tracing::warn!("Failed to clean up stale in-progress failovers: {status}");
+            }
+            if let Err(status) = x.remove_dropped_target_tables(&token).await {
+                tracing::warn!(
+                    "Failed to remove dropped tables from consumer replication groups: {status}"
+                );
+            }
             if let Err(status) = x.drop_streams_of_old_hidden_tables().await {
                 tracing::warn!("Failed to process xCluster hidden tables: {status}");
+            }
+            // Passes run on every catalog change; the host's config is asked at most every 5s.
+            let auto_flags_due = self
+                .last_auto_flags_check
+                .lock()
+                .unwrap()
+                .is_none_or(|t| t.elapsed() >= Duration::from_secs(5));
+            if auto_flags_due && (x.options.auto_flag_validation)() {
+                *self.last_auto_flags_check.lock().unwrap() = Some(tokio::time::Instant::now());
+                if let Err(status) = x.revalidate_local_auto_flags(&token).await {
+                    tracing::warn!("Failed refreshing local AutoFlags config: {status}");
+                }
+            }
+            if let Err(status) = x.process_split_parents().await {
+                tracing::warn!("Failed to process xCluster hidden split parents: {status}");
+            }
+            let due = self
+                .last_safe_time
+                .lock()
+                .unwrap()
+                .is_none_or(|t| t.elapsed() >= (x.options.safe_time_interval)());
+            if due {
+                *self.last_safe_time.lock().unwrap() = Some(tokio::time::Instant::now());
+                if let Err(status) = x.compute_safe_time(&token).await {
+                    tracing::warn!("Failure in XClusterSafeTime task: {status}");
+                }
             }
         })
     }

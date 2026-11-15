@@ -1212,6 +1212,12 @@ impl XCluster {
 
     /// `IsNamespaceInAutomaticModeTarget`: the namespace is the target of an inbound group in
     /// automatic mode.
+    /// Whether the namespace is the target of an automatic-mode inbound group.
+    pub fn is_automatic_target(&self, namespace_id: &[u8]) -> bool {
+        let ns = String::from_utf8_lossy(namespace_id);
+        self.is_automatic_mode_target(&self.catalog.snapshot(), &ns)
+    }
+
     pub(crate) fn is_automatic_mode_target(&self, snapshot: &CatalogSnapshot, ns: &str) -> bool {
         use yb_proto::pb::catalog_entity_info::SysUniverseReplicationEntryPB;
         snapshot
