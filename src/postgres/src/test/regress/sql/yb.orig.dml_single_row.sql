@@ -1364,3 +1364,36 @@ DROP TABLE sr_cross_int4, sr_cross_int2, sr_cross_int8, sr_cross_part, sr_cross_
 	sr_cross_mixed, sr_cross_asc, sr_cross_varchar, sr_cross_domain, sr_cross_double,
 	sr_cross_text, sr_cross_real, sr_cross_date, sr_cross_name;
 DROP DOMAIN sr_cross_dom;
+
+-- A whole-row RETURNING reference reads the stored row, not the Result's
+-- placeholders (#37778).
+CREATE TABLE sr_wholerow (k int PRIMARY KEY, v int, w int);
+CREATE TABLE sr_wholerow_text (k int PRIMARY KEY, v int, s text);
+CREATE TABLE sr_wholerow_drop (k int PRIMARY KEY, v int, x int, w int);
+ALTER TABLE sr_wholerow_drop DROP COLUMN x;
+-- The leaf's attnums differ from the parent's.
+CREATE TABLE sr_wholerow_part (k int PRIMARY KEY, v int, w int) PARTITION BY RANGE (k);
+CREATE TABLE sr_wholerow_leaf (x int, k int PRIMARY KEY, v int, w int);
+ALTER TABLE sr_wholerow_leaf DROP COLUMN x;
+ALTER TABLE sr_wholerow_part ATTACH PARTITION sr_wholerow_leaf FOR VALUES FROM (0) TO (100);
+INSERT INTO sr_wholerow VALUES (1, 0, 10), (2, 0, 20);
+INSERT INTO sr_wholerow_text VALUES (1, 0, 'a');
+INSERT INTO sr_wholerow_drop VALUES (1, 0, 10);
+INSERT INTO sr_wholerow_part VALUES (1, 0, 10);
+EXPLAIN (COSTS OFF) UPDATE sr_wholerow SET v = 1 WHERE k = 1 RETURNING sr_wholerow;
+EXPLAIN (COSTS OFF) DELETE FROM sr_wholerow WHERE k = 1 RETURNING sr_wholerow;
+EXPLAIN (COSTS OFF) UPDATE sr_wholerow_part SET v = 1 WHERE k = 1 RETURNING sr_wholerow_part;
+UPDATE sr_wholerow SET v = 1 WHERE k = 1 RETURNING sr_wholerow;
+SET yb_enable_expression_pushdown TO on;
+UPDATE sr_wholerow SET v = v + 1 WHERE k = 1 RETURNING sr_wholerow, w;
+SET yb_enable_expression_pushdown TO off;
+UPDATE sr_wholerow_text SET v = 1 WHERE k = 1 RETURNING sr_wholerow_text;
+UPDATE sr_wholerow_drop SET v = 1 WHERE k = 1 RETURNING sr_wholerow_drop;
+UPDATE sr_wholerow_part SET v = 1 WHERE k = 1 RETURNING sr_wholerow_part;
+DELETE FROM sr_wholerow WHERE k = 1 RETURNING row_to_json(sr_wholerow);
+-- Control: key and SET supply every column.
+UPDATE sr_wholerow SET v = 3, w = 30 WHERE k = 2 RETURNING sr_wholerow;
+-- Still single-row and fast path; the CALL's UPDATE persists (v = 4).
+CALL check_fast_path_txn('UPDATE sr_wholerow SET v = 4 WHERE k = 2 RETURNING sr_wholerow', true);
+SELECT * FROM sr_wholerow ORDER BY k;
+DROP TABLE sr_wholerow, sr_wholerow_text, sr_wholerow_drop, sr_wholerow_part;
