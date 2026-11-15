@@ -12,7 +12,8 @@ streams by table and by replication slot; here they are read from the catalog sn
 | `GetUDTypeMetadata` | The namespace is resolved here; the host reads pg_enum, or pg_class and pg_attribute for composite types |
 | `GetTableSchemaFromSysCatalog` | The host reads the schema at `read_time` from the sys catalog, and the PG schema name then |
 | `RemoveUserTableFromCDCSDKStream`, `RemoveTablesFromCDCSDKStream`, `ValidateAndSyncCDCStateEntriesForCDCSDKStream`, `CleanupStaleCDCStreams` | See [below](#tables-joining-and-leaving-streams) |
-| `CreateCDCStream` (CDCSDK) | See below. Creating an xCluster stream answers NotSupported until the xCluster part of W11 |
+| `CreateCDCStream` (CDCSDK) | See below |
+| `CreateCDCStream` (xCluster, a table id) | `CreateNewXClusterStreamForTable`: the row with the xCluster options, and for an ACTIVE stream a `cdc_state` row per tablet at op 0.0; a bootstrapping (INITIATED) stream gets its rows from `BootstrapProducer`. The table's PG type oids and schema name are not backfilled (`BackfillMetadataForXRepl`) |
 
 Stream ids are 32 lower-case hex digits (`YB_STRONGLY_TYPED_HEX_UUID_IMPL`), unlike the dashed
 snapshot and restoration ids; a request's id must have exactly 32.

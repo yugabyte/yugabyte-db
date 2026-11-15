@@ -1324,3 +1324,80 @@ async fn a_table_a_stream_may_not_have_leaves_it() {
     h.catalog.barrier().await;
     assert_eq!(stream_row(&h, CDCSDK).table_id, vec!["t2".to_string()]);
 }
+
+#[tokio::test]
+async fn an_xcluster_stream_is_checkpointed_at_op_0_unless_bootstrapping() {
+    use yb_proto::pb::master_replication::{CreateCDCStreamRequestPB, CreateCDCStreamResponsePB};
+    let h = Harness::new().await;
+    let create = |initial: Option<StreamState>| {
+        let mut req = CreateCDCStreamRequestPB::new();
+        req.set_table_id(YSQL_TABLE.to_string());
+        req.set_transactional(true);
+        if let Some(s) = initial {
+            req.initial_state = Some(EnumOrUnknown::new(s));
+        }
+        req
+    };
+    let mut resp = CreateCDCStreamResponsePB::new();
+    h.xrepl
+        .create_cdc_stream(&NoTables, &h.token, h.deadline(), &create(None), &mut resp)
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    let id = String::from_utf8(resp.stream_id().to_vec()).unwrap();
+    let row = stream_row(&h, &id);
+    assert_eq!(row.state(), StreamState::ACTIVE);
+    assert!(row.namespace_id().is_empty());
+    assert!(row.transactional());
+    assert!(row
+        .options
+        .iter()
+        .any(|o| o.key() == "record_format" && o.value() == b"WAL"));
+    {
+        let rows = h.host.cdc_state.lock().unwrap();
+        let tablet = rows
+            .iter()
+            .find(|r| r.stream_id() == id.as_bytes())
+            .unwrap();
+        assert_eq!(tablet.tablet_id(), YSQL_TABLET.as_bytes());
+        assert_eq!(
+            (tablet.checkpoint.term(), tablet.checkpoint.index()),
+            (0, 0)
+        );
+    }
+    // A bootstrapping stream gets its rows from BootstrapProducer.
+    let mut resp = CreateCDCStreamResponsePB::new();
+    h.xrepl
+        .create_cdc_stream(
+            &NoTables,
+            &h.token,
+            h.deadline(),
+            &create(Some(StreamState::INITIATED)),
+            &mut resp,
+        )
+        .await
+        .unwrap();
+    let id = String::from_utf8(resp.stream_id().to_vec()).unwrap();
+    assert!(!h
+        .host
+        .cdc_state
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.stream_id() == id.as_bytes()));
+    // A missing table is refused.
+    let mut req = create(None);
+    req.set_table_id("missing".into());
+    let err = h
+        .xrepl
+        .create_cdc_stream(
+            &NoTables,
+            &h.token,
+            h.deadline(),
+            &req,
+            &mut CreateCDCStreamResponsePB::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), Code::OBJECT_NOT_FOUND);
+}

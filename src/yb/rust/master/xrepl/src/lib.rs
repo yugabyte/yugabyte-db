@@ -25,6 +25,7 @@ mod split;
 mod streams;
 #[cfg(test)]
 mod tests;
+mod xcluster;
 
 pub use controller::XreplController;
 pub use create::CreatesTables;

@@ -418,11 +418,23 @@ impl Xrepl {
         if options.source_type == "XCLUSTER"
             || (req.has_table_id() && options.id_type != NAMESPACE_ID)
         {
-            return Err(master_ts_manager::master_error_tagged(
-                Code::INVALID_REQUEST,
-                StatusCode::NotSupported,
-                "Creating an xCluster stream is not served by a Rust master leader yet",
-            ));
+            let table_id = crate::xcluster::xcluster_table(
+                req.has_table_id().then(|| req.table_id()),
+                &options.id_type,
+            )?;
+            let initial_state = req.has_initial_state().then(|| req.initial_state());
+            let stream_id = self
+                .create_xcluster_stream(
+                    tables,
+                    token,
+                    deadline,
+                    &table_id,
+                    req.transactional(),
+                    initial_state,
+                )
+                .await?;
+            resp.set_stream_id(stream_id.into_bytes());
+            return Ok(());
         }
         self.validate_cdcsdk_request(req, &options)?;
         self.create_namespace_stream(tables, token, deadline, req, resp)
@@ -922,7 +934,7 @@ impl Xrepl {
     }
 
     /// `CreateCdcStateTableIfNotFound`: `system.cdc_state`, created by the first stream.
-    async fn create_cdc_state_table_if_not_found(
+    pub(crate) async fn create_cdc_state_table_if_not_found(
         &self,
         tables: &dyn CreatesTables,
         token: &LeaderToken,
