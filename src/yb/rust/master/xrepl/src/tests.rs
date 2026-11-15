@@ -21,15 +21,17 @@ use master_sys_catalog::{FakeSysCatalog, RowChange};
 use master_table_lifecycle::SchemaHost;
 use protobuf::{EnumOrUnknown, Message};
 use tokio::time::Instant;
-use yb_host_api::Status;
+use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::{
     sys_cdcstream_entry_pb::State as StreamState, CDCStreamOptionsPB, SysCDCStreamEntryPB,
     SysClusterConfigEntryPB, SysTablesEntryPB,
 };
 use yb_proto::pb::master_replication::{
     update_cdcstream_request_pb::StreamUpdateInfo, GetCDCDBStreamInfoRequestPB,
-    GetCDCDBStreamInfoResponsePB, GetCDCStreamRequestPB, GetCDCStreamResponsePB, IdTypePB,
-    ListCDCStreamsRequestPB, ListCDCStreamsResponsePB, UpdateCDCStreamRequestPB,
+    GetCDCDBStreamInfoResponsePB, GetCDCStreamRequestPB, GetCDCStreamResponsePB,
+    GetTableSchemaFromSysCatalogRequestPB, GetTableSchemaFromSysCatalogResponsePB,
+    GetUDTypeMetadataRequestPB, GetUDTypeMetadataResponsePB, IdTypePB, ListCDCStreamsRequestPB,
+    ListCDCStreamsResponsePB, UpdateCDCStreamRequestPB,
 };
 use yb_proto::pb::master_types::{master_error_pb::Code, SysRowEntryType};
 
@@ -44,8 +46,9 @@ use yb_proto::pb::common_types::{CDCSDKSnapshotOption, PeerRole, TableType, YQLD
 use yb_proto::pb::consensus_metadata::PeerMemberType;
 use yb_proto::pb::master_heartbeat::TSInformationPB;
 use yb_proto::pb::master_rust_peer::{
-    CdcStateEntryPB, CdcStateReadRequestPB, CdcStateReadResponsePB, CdcStateUpsertRequestPB,
-    HybridTimeNowResponsePB,
+    CdcStateDeleteRequestPB, CdcStateEntryPB, CdcStateReadRequestPB, CdcStateReadResponsePB,
+    CdcStateUpsertRequestPB, HybridTimeNowResponsePB, ReadTableSchemaRequestPB,
+    TestSyncPointCallbackRequestPB, TestSyncPointCallbackResponsePB,
 };
 use yb_proto::pb::operations::ChangeMetadataRequestPB;
 use yb_proto::pb::tserver_admin::ChangeMetadataResponsePB;
@@ -171,6 +174,8 @@ fn table() -> Vec<u8> {
 struct FakeHost {
     calls: Mutex<Vec<(String, Vec<u8>)>>,
     cdc_state: Mutex<Vec<CdcStateEntryPB>>,
+    /// The sync point whose test callback asks for a failure.
+    failing_sync_point: Mutex<Option<String>>,
 }
 
 impl SchemaHost for FakeHost {
@@ -212,9 +217,39 @@ impl SchemaHost for FakeHost {
                     .lock()
                     .unwrap()
                     .iter()
-                    .filter(|r| r.stream_id() == req.stream_id())
+                    .filter(|r| !req.has_stream_id() || r.stream_id() == req.stream_id())
                     .cloned()
                     .collect();
+                Ok(resp.write_to_bytes().unwrap())
+            }
+            "TestSyncPointCallback" => {
+                let req = TestSyncPointCallbackRequestPB::parse_from_bytes(request).unwrap();
+                let mut resp = TestSyncPointCallbackResponsePB::new();
+                resp.set_fail(
+                    self.failing_sync_point.lock().unwrap().as_deref() == Some(req.name()),
+                );
+                Ok(resp.write_to_bytes().unwrap())
+            }
+            "ReadTableSchema" => {
+                // The schema version is the relation oid it was asked about; an unknown table
+                // fails as GetTableSchema does.
+                let req = ReadTableSchemaRequestPB::parse_from_bytes(request).unwrap();
+                if req.table_id() != YSQL_TABLE.as_bytes() {
+                    return Err(Status::new(StatusCode::NotFound, "no schema"));
+                }
+                let mut resp = GetTableSchemaFromSysCatalogResponsePB::new();
+                resp.set_version(req.pg_table_oid());
+                resp.set_pgschema_name(format!("db{}", req.database_oid()));
+                Ok(resp.write_to_bytes().unwrap())
+            }
+            "ReadUDTypeMetadata" => {
+                // One enum label: the namespace id the host was given.
+                let req = GetUDTypeMetadataRequestPB::parse_from_bytes(request).unwrap();
+                let mut resp = GetUDTypeMetadataResponsePB::new();
+                let mut e = yb_proto::pb::master_replication::PgEnumInfoPB::new();
+                e.set_oid(16384);
+                e.set_label(String::from_utf8(req.namespace.id().to_vec()).unwrap());
+                resp.enums.push(e);
                 Ok(resp.write_to_bytes().unwrap())
             }
             "HybridTimeNow" => {
@@ -237,6 +272,10 @@ struct Harness {
 
 impl Harness {
     async fn new() -> Harness {
+        Self::with_options(XreplOptions::default()).await
+    }
+
+    async fn with_options(options: XreplOptions) -> Harness {
         let (fake, events) = FakeSysCatalog::new();
         let row = |entry_type, id: &str, data| RowChange::Upsert {
             entry_type,
@@ -324,7 +363,7 @@ impl Harness {
             host.clone(),
             master_task_runtime::TsRpcExecutor::new(|_| usize::MAX),
             Default::default(),
-            XreplOptions::default(),
+            options,
         );
         xrepl.set_rpc(rpc);
         Harness {
@@ -393,11 +432,14 @@ async fn list_filters_by_id_type_namespace_and_first_table() {
                 .collect::<Vec<_>>()
         })
     };
-    // TABLE_ID by default: the xCluster stream; the deleting one is left out.
+    // Without an id type, every live stream; the deleting one is left out.
     assert_eq!(
         list(ListCDCStreamsRequestPB::new()).unwrap(),
-        vec![XCLUSTER]
+        vec![XCLUSTER, CDCSDK]
     );
+    let mut req = ListCDCStreamsRequestPB::new();
+    req.set_id_type(IdTypePB::TABLE_ID);
+    assert_eq!(list(req).unwrap(), vec![XCLUSTER]);
     let mut req = ListCDCStreamsRequestPB::new();
     req.set_id_type(IdTypePB::NAMESPACE_ID);
     assert_eq!(list(req.clone()).unwrap(), vec![CDCSDK]);
@@ -692,4 +734,593 @@ async fn dropped_tables_leave_cdcsdk_streams() {
         .parse()
         .unwrap();
     assert_eq!(row.table_id, vec!["t1".to_string()]);
+}
+
+fn with_sync_points() -> XreplOptions {
+    XreplOptions {
+        sync_points: || true,
+        ..Default::default()
+    }
+}
+
+/// The CDCSDK streams of the YSQL database, by state.
+fn ysql_db_streams(h: &Harness) -> Vec<StreamState> {
+    h.catalog
+        .snapshot()
+        .iter(SysRowEntryType::CDC_STREAM)
+        .filter_map(|e| e.parse::<SysCDCStreamEntryPB>().ok())
+        .filter(|pb| pb.namespace_id() == YSQL_DB)
+        .map(|pb| pb.state())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_create_failing_after_the_row_is_written_marks_the_stream_deleting() {
+    use yb_proto::pb::master_replication::CreateCDCStreamResponsePB;
+    let h = Harness::with_options(with_sync_points()).await;
+    *h.host.failing_sync_point.lock().unwrap() =
+        Some("CreateCDCSDKStream::kAfterRetentionBarriers".into());
+    let mut resp = CreateCDCStreamResponsePB::new();
+    let err = h
+        .xrepl
+        .create_cdc_stream(
+            &NoTables,
+            &h.token,
+            h.deadline(),
+            &cdcsdk_request(),
+            &mut resp,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.status.message(),
+        "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers."
+    );
+    h.catalog.barrier().await;
+    // The cleanup removes its cdc_state rows, then the row.
+    assert_eq!(ysql_db_streams(&h), vec![StreamState::DELETING]);
+}
+
+#[tokio::test]
+async fn a_create_failing_before_the_row_is_written_leaves_no_stream() {
+    use yb_proto::pb::master_replication::CreateCDCStreamResponsePB;
+    let h = Harness::with_options(with_sync_points()).await;
+    *h.host.failing_sync_point.lock().unwrap() =
+        Some("CreateCDCSDKStream::kBeforeSysCatalogEntry".into());
+    let mut resp = CreateCDCStreamResponsePB::new();
+    h.xrepl
+        .create_cdc_stream(
+            &NoTables,
+            &h.token,
+            h.deadline(),
+            &cdcsdk_request(),
+            &mut resp,
+        )
+        .await
+        .unwrap_err();
+    h.catalog.barrier().await;
+    assert!(ysql_db_streams(&h).is_empty());
+    assert!(h.host.cdc_state.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_failed_snapshot_safe_op_id_store_fails_the_consistent_snapshot_create() {
+    use yb_proto::pb::master_replication::CreateCDCStreamResponsePB;
+    let h = Harness::with_options(with_sync_points()).await;
+    *h.host.failing_sync_point.lock().unwrap() =
+        Some("CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails".into());
+    let mut req = cdcsdk_request();
+    req.cdcsdk_consistent_snapshot_option =
+        Some(EnumOrUnknown::new(CDCSDKSnapshotOption::USE_SNAPSHOT));
+    let mut resp = CreateCDCStreamResponsePB::new();
+    let err = h
+        .xrepl
+        .create_cdc_stream(&NoTables, &h.token, h.deadline(), &req, &mut resp)
+        .await
+        .unwrap_err();
+    assert!(
+        err.status.message().contains("unexpectedly found Invalid"),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn ud_type_metadata_is_read_for_the_namespace_id() {
+    let h = Harness::new().await;
+    let mut req = GetUDTypeMetadataRequestPB::new();
+    req.namespace.mut_or_insert_default().set_name("db1".into());
+    req.namespace.mut_or_insert_default().database_type =
+        Some(EnumOrUnknown::new(YQLDatabase::YQL_DATABASE_PGSQL));
+    req.set_pg_enum_info(true);
+    let mut resp = GetUDTypeMetadataResponsePB::new();
+    h.xrepl.get_ud_type_metadata(&req, &mut resp).await.unwrap();
+    assert_eq!(resp.enums.len(), 1);
+    assert_eq!(resp.enums[0].label(), YSQL_DB);
+    // An unknown database is NAMESPACE_NOT_FOUND.
+    req.namespace
+        .mut_or_insert_default()
+        .set_name("nope".into());
+    let err = h
+        .xrepl
+        .get_ud_type_metadata(&req, &mut GetUDTypeMetadataResponsePB::new())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), Code::NAMESPACE_NOT_FOUND);
+}
+
+#[tokio::test]
+async fn table_schema_from_sys_catalog_passes_the_pg_oids_and_maps_a_missing_schema() {
+    let h = Harness::new().await;
+    let mut req = GetTableSchemaFromSysCatalogRequestPB::new();
+    req.table
+        .mut_or_insert_default()
+        .set_table_id(YSQL_TABLE.as_bytes().to_vec());
+    req.set_read_time(1234);
+    let mut resp = GetTableSchemaFromSysCatalogResponsePB::new();
+    h.xrepl
+        .get_table_schema_from_sys_catalog(&req, &mut resp)
+        .await
+        .unwrap();
+    assert_eq!(resp.version(), 0x4000);
+    assert_eq!(resp.pgschema_name(), format!("db{}", 0x4000));
+    req.table
+        .mut_or_insert_default()
+        .set_table_id(b"missing".to_vec());
+    let err = h
+        .xrepl
+        .get_table_schema_from_sys_catalog(&req, &mut GetTableSchemaFromSysCatalogResponsePB::new())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), Code::OBJECT_NOT_FOUND);
+}
+
+/// A CDCSDK stream on the YSQL database's one table, with its tablet's `cdc_state` row.
+async fn ysql_stream(h: &Harness) -> String {
+    use yb_proto::pb::master_replication::CreateCDCStreamResponsePB;
+    let mut resp = CreateCDCStreamResponsePB::new();
+    h.xrepl
+        .create_cdc_stream(
+            &NoTables,
+            &h.token,
+            h.deadline(),
+            &cdcsdk_request(),
+            &mut resp,
+        )
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    String::from_utf8(resp.stream_id().to_vec()).unwrap()
+}
+
+fn stream_row(h: &Harness, id: &str) -> SysCDCStreamEntryPB {
+    h.catalog
+        .snapshot()
+        .get(SysRowEntryType::CDC_STREAM, id.as_bytes())
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_removed_table_loses_its_state_rows_then_leaves_the_stream() {
+    use yb_proto::pb::master_replication::RemoveUserTableFromCDCSDKStreamRequestPB;
+    let h = Harness::new().await;
+    let id = ysql_stream(&h).await;
+    let mut req = RemoveUserTableFromCDCSDKStreamRequestPB::new();
+    req.set_stream_id(id.clone());
+    req.set_table_id(YSQL_TABLE.into());
+    h.xrepl
+        .remove_user_table_from_cdcsdk_stream(&h.token, h.deadline(), &req)
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    // Unqualified, and still qualified until the controller's pass.
+    let row = stream_row(&h, &id);
+    assert_eq!(row.table_id, vec![YSQL_TABLE.to_string()]);
+    assert_eq!(
+        row.unqualified_table_id,
+        vec![YSQL_TABLE.as_bytes().to_vec()]
+    );
+    h.xrepl.process_table_removals(&h.token).await.unwrap();
+    h.catalog.barrier().await;
+    let row = stream_row(&h, &id);
+    assert!(row.table_id.is_empty());
+    assert_eq!(
+        row.unqualified_table_id,
+        vec![YSQL_TABLE.as_bytes().to_vec()]
+    );
+    let deletes: Vec<_> = h
+        .host
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(m, _)| m == "CdcStateDelete")
+        .map(|(_, r)| CdcStateDeleteRequestPB::parse_from_bytes(r).unwrap())
+        .collect();
+    assert_eq!(deletes.len(), 1);
+    assert_eq!(deletes[0].keys[0].tablet_id(), YSQL_TABLET.as_bytes());
+    // A table of another namespace is refused.
+    req.set_table_id("t1".into());
+    assert!(h
+        .xrepl
+        .remove_user_table_from_cdcsdk_stream(&h.token, h.deadline(), &req)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn sync_deletes_rows_of_colocated_tables_the_stream_no_longer_has() {
+    use yb_proto::pb::master_replication::{
+        ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB,
+        ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB,
+    };
+    let h = Harness::new().await;
+    let id = ysql_stream(&h).await;
+    {
+        let mut rows = h.host.cdc_state.lock().unwrap();
+        let mut gone = CdcStateEntryPB::new();
+        gone.set_tablet_id(YSQL_TABLET.as_bytes().to_vec());
+        gone.set_stream_id(id.as_bytes().to_vec());
+        gone.set_colocated_table_id(b"dropped-colocated".to_vec());
+        rows.push(gone);
+        let mut unknown = CdcStateEntryPB::new();
+        unknown.set_tablet_id(b"no-such-tablet".to_vec());
+        unknown.set_stream_id(id.as_bytes().to_vec());
+        rows.push(unknown);
+    }
+    let mut req = ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB::new();
+    req.set_stream_id(id.clone());
+    let mut resp = ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB::new();
+    h.xrepl
+        .validate_and_sync_cdc_state_entries(&req, &mut resp)
+        .await
+        .unwrap();
+    // Only the colocated row goes; it is not reported as a tablet entry.
+    assert!(resp.deleted_tablet_entries.is_empty());
+    let deletes: Vec<_> = h
+        .host
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(m, _)| m == "CdcStateDelete")
+        .map(|(_, r)| CdcStateDeleteRequestPB::parse_from_bytes(r).unwrap())
+        .collect();
+    assert_eq!(deletes.len(), 1);
+    assert_eq!(deletes[0].keys.len(), 1);
+    assert_eq!(
+        deletes[0].keys[0].colocated_table_id(),
+        b"dropped-colocated"
+    );
+}
+
+#[tokio::test]
+async fn stale_state_rows_are_reported_and_deleted_unless_a_dry_run() {
+    use yb_proto::pb::master_replication::{
+        CleanupStaleCDCStreamsRequestPB, CleanupStaleCDCStreamsResponsePB,
+    };
+    let h = Harness::new().await;
+    {
+        let mut rows = h.host.cdc_state.lock().unwrap();
+        for (tablet, stream) in [
+            (YSQL_TABLET, "44444444444444448444444444444444"),
+            ("no-such-tablet", CDCSDK),
+            ("dummy_id_for_replication_slot", CDCSDK),
+            (YSQL_TABLET, CDCSDK),
+        ] {
+            let mut row = CdcStateEntryPB::new();
+            row.set_tablet_id(tablet.as_bytes().to_vec());
+            row.set_stream_id(stream.as_bytes().to_vec());
+            rows.push(row);
+        }
+    }
+    let mut req = CleanupStaleCDCStreamsRequestPB::new();
+    req.set_dry_run(true);
+    let mut resp = CleanupStaleCDCStreamsResponsePB::new();
+    h.xrepl
+        .cleanup_stale_cdc_streams(&req, &mut resp)
+        .await
+        .unwrap();
+    let reasons: Vec<_> = resp
+        .stale_entries
+        .iter()
+        .map(|e| (e.tablet_id().to_string(), e.reason().to_string()))
+        .collect();
+    assert_eq!(
+        reasons,
+        vec![
+            (YSQL_TABLET.to_string(), "stream not found".to_string()),
+            ("no-such-tablet".to_string(), "tablet not found".to_string()),
+        ]
+    );
+    // The live tablet's tables are named.
+    assert_eq!(resp.stale_entries[0].tables[0].table_name(), "users");
+    assert!(resp.deleted_entries.is_empty());
+    req.set_dry_run(false);
+    let mut resp = CleanupStaleCDCStreamsResponsePB::new();
+    h.xrepl
+        .cleanup_stale_cdc_streams(&req, &mut resp)
+        .await
+        .unwrap();
+    assert_eq!(resp.deleted_entries.len(), 2);
+}
+
+#[tokio::test]
+async fn an_eligible_table_a_stream_has_not_seen_is_added_to_it() {
+    use master_catalog_state::{Mutation, WriteOptions};
+    let h = Harness::new().await;
+    let id = ysql_stream(&h).await;
+    // The stream as it was before the table was created.
+    let mut row = stream_row(&h, &id);
+    row.table_id.clear();
+    let key = id.clone();
+    h.xrepl
+        .writer
+        .mutate_with(&h.token, WriteOptions::default(), move |snapshot| {
+            let entity = snapshot
+                .get(SysRowEntryType::CDC_STREAM, key.as_bytes())
+                .unwrap();
+            Ok((
+                Mutation::new().read(entity).upsert_message(
+                    SysRowEntryType::CDC_STREAM,
+                    key.as_bytes(),
+                    &row,
+                )?,
+                (),
+            ))
+        })
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    let alters_before = h.alters.lock().unwrap().len();
+    h.xrepl.process_new_tables(&h.token).await.unwrap();
+    h.catalog.barrier().await;
+    assert_eq!(stream_row(&h, &id).table_id, vec![YSQL_TABLE.to_string()]);
+    // Its tablet keeps WAL for the stream; the existing cdc_state row is kept.
+    assert_eq!(h.alters.lock().unwrap().len(), alters_before + 1);
+    assert_eq!(h.host.cdc_state.lock().unwrap().len(), 1);
+    // A table a stream lists as unqualified is not added back.
+    let mut row = stream_row(&h, &id);
+    row.table_id.clear();
+    row.unqualified_table_id = vec![YSQL_TABLE.as_bytes().to_vec()];
+    let key = id.clone();
+    h.xrepl
+        .writer
+        .mutate_with(&h.token, WriteOptions::default(), move |snapshot| {
+            let entity = snapshot
+                .get(SysRowEntryType::CDC_STREAM, key.as_bytes())
+                .unwrap();
+            Ok((
+                Mutation::new().read(entity).upsert_message(
+                    SysRowEntryType::CDC_STREAM,
+                    key.as_bytes(),
+                    &row,
+                )?,
+                (),
+            ))
+        })
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    h.xrepl.process_new_tables(&h.token).await.unwrap();
+    h.catalog.barrier().await;
+    assert!(stream_row(&h, &id).table_id.is_empty());
+}
+
+#[tokio::test]
+async fn a_new_tablet_of_a_streamed_table_gets_state_rows_but_grpc_streams_set_no_barriers() {
+    use master_table_lifecycle::XreplHooks;
+    let h = Harness::new().await;
+    let id = ysql_stream(&h).await;
+    // Only logical replication streams ask for barriers at creation.
+    assert!(!h
+        .xrepl
+        .retention_barriers(&h.catalog.snapshot(), YSQL_TABLE.as_bytes()));
+    let mut safe = yb_proto::pb::opid::OpIdPB::new();
+    safe.set_term(2);
+    safe.set_index(9);
+    h.xrepl
+        .created(YSQL_TABLE.as_bytes().to_vec(), b"new-tablet".to_vec(), safe)
+        .await
+        .unwrap();
+    let rows = h.host.cdc_state.lock().unwrap();
+    let row = rows
+        .iter()
+        .find(|r| r.tablet_id() == b"new-tablet")
+        .unwrap();
+    assert_eq!(row.stream_id(), id.as_bytes());
+    // Not a consistent snapshot stream: an invalid checkpoint.
+    assert_eq!(row.checkpoint.index(), -1);
+}
+
+#[tokio::test]
+async fn a_split_parent_is_retained_until_the_stream_reads_both_children() {
+    use master_catalog_state::{Mutation, WriteOptions};
+    use master_table_lifecycle::XreplHooks;
+    use yb_proto::pb::catalog_entity_info::SysTabletsEntryPB;
+    let h = Harness::new().await;
+    let id = ysql_stream(&h).await;
+    let children = vec![b"child-1".to_vec(), b"child-2".to_vec()];
+    // The stream reads the parent.
+    {
+        let mut rows = h.host.cdc_state.lock().unwrap();
+        let parent = rows
+            .iter_mut()
+            .find(|r| r.tablet_id() == YSQL_TABLET.as_bytes())
+            .unwrap();
+        let cp = parent.checkpoint.mut_or_insert_default();
+        cp.set_term(1);
+        cp.set_index(5);
+        parent.set_last_replication_time(100);
+        parent.set_cdc_sdk_safe_time(42);
+    }
+    h.xrepl
+        .split_registered(
+            YSQL_TABLE.as_bytes().to_vec(),
+            YSQL_TABLET.as_bytes().to_vec(),
+            children.clone(),
+        )
+        .await
+        .unwrap();
+    {
+        let rows = h.host.cdc_state.lock().unwrap();
+        for child in &children {
+            let row = rows
+                .iter()
+                .find(|r| r.tablet_id() == child.as_slice())
+                .unwrap();
+            assert_eq!(row.stream_id(), id.as_bytes());
+            // A gRPC stream's children start at 0.0, which the parent's SPLIT_OP moves.
+            assert_eq!((row.checkpoint.term(), row.checkpoint.index()), (0, 0));
+            assert_eq!(row.cdc_sdk_safe_time(), 42);
+            assert!(!row.has_last_replication_time());
+        }
+    }
+    // The parent is split and hidden.
+    h.xrepl
+        .writer
+        .mutate_with(&h.token, WriteOptions::default(), |snapshot| {
+            let entity = snapshot
+                .get(SysRowEntryType::TABLET, YSQL_TABLET.as_bytes())
+                .unwrap();
+            let mut pb: SysTabletsEntryPB = entity.parse().unwrap();
+            pb.split_tablet_ids = vec![b"child-1".to_vec(), b"child-2".to_vec()];
+            pb.set_hide_hybrid_time(9 << 12);
+            Ok((
+                Mutation::new().read(entity).upsert_message(
+                    SysRowEntryType::TABLET,
+                    YSQL_TABLET.as_bytes(),
+                    &pb,
+                )?,
+                (),
+            ))
+        })
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    let retained = || {
+        h.xrepl
+            .retains_hidden_tablet(&h.catalog.snapshot(), YSQL_TABLET.as_bytes())
+    };
+    assert!(retained());
+    // The children are not read yet.
+    h.xrepl.process_cdcsdk_hidden_tablets().await.unwrap();
+    assert!(retained());
+    for row in h.host.cdc_state.lock().unwrap().iter_mut() {
+        if children.iter().any(|c| c.as_slice() == row.tablet_id()) {
+            row.set_last_replication_time(200);
+        }
+    }
+    h.xrepl.process_cdcsdk_hidden_tablets().await.unwrap();
+    assert!(!retained());
+    let deletes: Vec<_> = h
+        .host
+        .calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(m, _)| m == "CdcStateDelete")
+        .map(|(_, r)| CdcStateDeleteRequestPB::parse_from_bytes(r).unwrap())
+        .collect();
+    assert_eq!(deletes.len(), 1);
+    assert_eq!(deletes[0].keys[0].tablet_id(), YSQL_TABLET.as_bytes());
+}
+
+#[tokio::test]
+async fn a_dropped_table_of_a_logical_replication_stream_is_kept_until_the_slot_passes_it() {
+    use master_catalog_state::{Mutation, WriteOptions};
+    use master_table_lifecycle::XreplHooks;
+    use yb_proto::pb::catalog_entity_info::SysTabletsEntryPB;
+    let h = Harness::new().await;
+    let id = ysql_stream(&h).await;
+    // The stream reads through a replication slot; the table is dropped and hidden.
+    let key = id.clone();
+    h.xrepl
+        .writer
+        .mutate_with(&h.token, WriteOptions::default(), move |snapshot| {
+            let stream = snapshot
+                .get(SysRowEntryType::CDC_STREAM, key.as_bytes())
+                .unwrap();
+            let mut pb: SysCDCStreamEntryPB = stream.parse().unwrap();
+            pb.set_cdcsdk_ysql_replication_slot_plugin_name("pgoutput".into());
+            let table = snapshot
+                .get(SysRowEntryType::TABLE, YSQL_TABLE.as_bytes())
+                .unwrap();
+            let mut tpb: SysTablesEntryPB = table.parse().unwrap();
+            tpb.set_hide_state(sys_tables_entry_pb::HideState::HIDDEN);
+            let tablet = snapshot
+                .get(SysRowEntryType::TABLET, YSQL_TABLET.as_bytes())
+                .unwrap();
+            let mut tbpb: SysTabletsEntryPB = tablet.parse().unwrap();
+            tbpb.set_hide_hybrid_time(9 << 12);
+            Ok((
+                Mutation::new()
+                    .read(stream)
+                    .upsert_message(SysRowEntryType::CDC_STREAM, key.as_bytes(), &pb)?
+                    .read(table)
+                    .upsert_message(SysRowEntryType::TABLE, YSQL_TABLE.as_bytes(), &tpb)?
+                    .read(tablet)
+                    .upsert_message(SysRowEntryType::TABLET, YSQL_TABLET.as_bytes(), &tbpb)?,
+                (),
+            ))
+        })
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    let snapshot = || h.catalog.snapshot();
+    assert!(h
+        .xrepl
+        .retains_dropped_table(&snapshot(), YSQL_TABLE.as_bytes()));
+    assert!(h
+        .xrepl
+        .retains_hidden_tablet(&snapshot(), YSQL_TABLET.as_bytes()));
+    // Still in the stream while its tablet is kept.
+    h.xrepl
+        .clean_up_cdcsdk_streams_metadata(&h.token)
+        .await
+        .unwrap();
+    h.catalog.barrier().await;
+    assert_eq!(stream_row(&h, &id).table_id, vec![YSQL_TABLE.to_string()]);
+    // The slot has not reached the hide time, and the stream read the tablet recently.
+    for row in h.host.cdc_state.lock().unwrap().iter_mut() {
+        row.set_active_time(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros() as u64,
+        );
+    }
+    let slot = |time: u64| {
+        let mut row = CdcStateEntryPB::new();
+        row.set_tablet_id(b"dummy_id_for_replication_slot".to_vec());
+        row.set_stream_id(id.as_bytes().to_vec());
+        row.set_record_id_commit_time(time);
+        row
+    };
+    h.host.cdc_state.lock().unwrap().push(slot(8 << 12));
+    h.xrepl.process_cdcsdk_hidden_tablets().await.unwrap();
+    assert!(h
+        .xrepl
+        .retains_hidden_tablet(&snapshot(), YSQL_TABLET.as_bytes()));
+    // Now it has.
+    for row in h.host.cdc_state.lock().unwrap().iter_mut() {
+        if row.has_record_id_commit_time() {
+            row.set_record_id_commit_time(10 << 12);
+        }
+    }
+    h.xrepl.process_cdcsdk_hidden_tablets().await.unwrap();
+    assert!(!h
+        .xrepl
+        .retains_hidden_tablet(&snapshot(), YSQL_TABLET.as_bytes()));
+}
+
+#[tokio::test]
+async fn a_table_a_stream_may_not_have_leaves_it() {
+    // The harness's CDCSDK stream names t1, a YCQL table no CDCSDK stream may have, and t2,
+    // which does not exist (left to the dropped-table cleanup).
+    let h = Harness::new().await;
+    h.xrepl.process_table_removals(&h.token).await.unwrap();
+    h.catalog.barrier().await;
+    assert_eq!(stream_row(&h, CDCSDK).table_id, vec!["t2".to_string()]);
 }

@@ -155,6 +155,24 @@ impl TableLifecycle {
         if req.is_pg_catalog_table() {
             return self.create_ysql_sys_table(token, deadline, req, resp).await;
         }
+        // `CDCSDKValidateCreateTableRequest`: a rewrite of a table in a CDCSDK stream.
+        if !req.old_rewrite_table_id().is_empty() {
+            let snapshot = self.catalog.snapshot();
+            let old = req.old_rewrite_table_id();
+            let namespace_id = snapshot
+                .get(SysRowEntryType::TABLE, old)
+                .and_then(|t| t.table().map(|t| t.namespace_id.clone()))
+                .unwrap_or_default();
+            if crate::truncate::cdcsdk_streamed(&snapshot, &namespace_id, old) {
+                // The old table, once dropped, stays hidden until the slots are past it.
+                crate::truncate::cdcsdk_allow_table_rewrite(
+                    &snapshot,
+                    &self.options,
+                    old,
+                    req.is_truncate(),
+                )?;
+            }
+        }
         // An index's indexed table: `index_info.indexed_table_id`, or the deprecated field.
         let indexed_table_id: Option<Vec<u8>> = if req.index_info.is_some() {
             Some(req.index_info.indexed_table_id().to_vec())
@@ -1702,10 +1720,9 @@ pub(crate) struct SubTxnRollback {
 /// `kSysCatalogTabletId`.
 const SYS_CATALOG_TABLET_ID: &[u8] = b"00000000000000000000000000000000";
 
-/// `DeleteYsqlDatabase`'s checks and its first write: the namespace DELETING. Refused while a
-/// snapshot schedule covers the database or one of its tables is replicated by xCluster. C++
-/// drops the database's CDCSDK streams; that comes with the CDC service (W11), so a database with
-/// one is refused.
+/// `DeleteYsqlDatabase`'s checks and its first write: the namespace DELETING, and its CDCSDK
+/// streams with it. Refused while a snapshot schedule covers the database or one of its tables is
+/// replicated by xCluster.
 pub(crate) fn start_database_drop(
     snapshot: &CatalogSnapshot,
     namespace: &std::sync::Arc<master_catalog_entity::Entity>,
@@ -1745,29 +1762,39 @@ pub(crate) fn start_database_drop(
             ));
         }
     }
-    let streamed = snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
-        stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
-            pb.namespace_id().as_bytes() == &**id
-                && !matches!(
-                    pb.state(),
-                    sys_cdcstream_entry_pb::State::DELETING
-                        | sys_cdcstream_entry_pb::State::DELETED
-                )
-        })
-    });
-    if streamed {
-        return Err(error(
-            Code::INVALID_REQUEST,
-            StatusCode::NotSupported,
-            "Dropping a database with CDC streams is not served by a Rust master leader yet",
-        ));
-    }
     let mut ns: SysNamespaceEntryPB = namespace.parse().map_err(corrupt)?;
     ns.set_state(sys_namespace_entry_pb::State::DELETING);
-    Mutation::new()
+    let mut mutation = Mutation::new()
         .read(namespace)
         .upsert_message(SysRowEntryType::NAMESPACE, id, &ns)
-        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))
+        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+    // `DropAllCDCSDKStreams`: the database's streams become DELETING, in the same write; the CDC
+    // streams' controller deletes them.
+    for stream in snapshot.iter(SysRowEntryType::CDC_STREAM) {
+        let Ok(mut pb) = stream.parse::<SysCDCStreamEntryPB>() else {
+            continue;
+        };
+        if pb.namespace_id().as_bytes() != &**id
+            || matches!(
+                pb.state(),
+                sys_cdcstream_entry_pb::State::DELETING | sys_cdcstream_entry_pb::State::DELETED
+            )
+        {
+            continue;
+        }
+        tracing::info!(
+            "Deleting all CDCSDK streams for namespace: {}",
+            String::from_utf8_lossy(id)
+        );
+        pb.state = Some(protobuf::EnumOrUnknown::new(
+            sys_cdcstream_entry_pb::State::DELETING,
+        ));
+        mutation = mutation
+            .read(stream)
+            .upsert_message(SysRowEntryType::CDC_STREAM, &stream.key.id, &pb)
+            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+    }
+    Ok(mutation)
 }
 
 /// `DeleteNamespace` during a YSQL major upgrade, which only pg_upgrade reaches: the database

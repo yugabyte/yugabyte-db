@@ -112,6 +112,13 @@ impl Xrepl {
         let mut ids = ids.to_vec();
         ids.sort();
         ids.dedup();
+        let to_mark = stream_rows(&self.catalog.snapshot())
+            .iter()
+            .any(|r| ids.contains(&r.id) && !r.is_deleting());
+        if to_mark {
+            self.fail_for_testing("DropXReplStreams::FailBeforeStreamsStateChangesPersisted")
+                .await?;
+        }
         self.writer
             .mutate_with(
                 token,
@@ -175,6 +182,8 @@ impl Xrepl {
             deleting.iter().map(|r| &r.id).collect::<Vec<_>>()
         );
         let ids: HashSet<String> = deleting.iter().map(|r| r.id.clone()).collect();
+        self.fail_for_testing("CleanUpDeletedXReplStreams::FailBeforeStreamDeletion")
+            .await?;
         self.writer
             .mutate_with(token, WriteOptions::default(), |snapshot| {
                 let mut mutation = Mutation::new();

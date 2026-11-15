@@ -356,10 +356,15 @@ impl Xrepl {
             if row.is_deleting() {
                 continue;
             }
+            // The id type filters only when the request names one; a stream without the option
+            // is a TABLE_ID one.
             let id_type = row.id_type();
-            let wanted = match req.id_type() {
-                IdTypePB::NAMESPACE_ID => id_type == Some(NAMESPACE_ID.as_bytes()),
-                IdTypePB::TABLE_ID => id_type != Some(NAMESPACE_ID.as_bytes()),
+            let wanted = match id_type {
+                None => req.id_type() != IdTypePB::NAMESPACE_ID,
+                Some(_) if !req.has_id_type() => true,
+                Some(t) => {
+                    (t == NAMESPACE_ID.as_bytes()) == (req.id_type() == IdTypePB::NAMESPACE_ID)
+                }
             };
             if !wanted {
                 continue;

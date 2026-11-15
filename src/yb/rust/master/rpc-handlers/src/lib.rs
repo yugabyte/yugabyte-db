@@ -133,12 +133,19 @@ use yb_proto::pb::master_encryption::{
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_replication::{
-    CreateCDCStreamRequestPB, CreateCDCStreamResponsePB, DeleteCDCStreamRequestPB,
-    DeleteCDCStreamResponsePB, DisableDynamicTableAdditionOnCDCSDKStreamRequestPB,
+    CleanupStaleCDCStreamsRequestPB, CleanupStaleCDCStreamsResponsePB, CreateCDCStreamRequestPB,
+    CreateCDCStreamResponsePB, DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB,
+    DisableDynamicTableAdditionOnCDCSDKStreamRequestPB,
     DisableDynamicTableAdditionOnCDCSDKStreamResponsePB, GetCDCDBStreamInfoRequestPB,
     GetCDCDBStreamInfoResponsePB, GetCDCStreamRequestPB, GetCDCStreamResponsePB,
-    IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB, ListCDCStreamsRequestPB,
-    ListCDCStreamsResponsePB, UpdateCDCStreamRequestPB, UpdateCDCStreamResponsePB,
+    GetTableSchemaFromSysCatalogRequestPB, GetTableSchemaFromSysCatalogResponsePB,
+    GetUDTypeMetadataRequestPB, GetUDTypeMetadataResponsePB, IsNamespacePartOfCDCSDKRequestPB,
+    IsNamespacePartOfCDCSDKResponsePB, ListCDCStreamsRequestPB, ListCDCStreamsResponsePB,
+    RemoveTablesFromCDCSDKStreamRequestPB, RemoveTablesFromCDCSDKStreamResponsePB,
+    RemoveUserTableFromCDCSDKStreamRequestPB, RemoveUserTableFromCDCSDKStreamResponsePB,
+    UpdateCDCStreamRequestPB, UpdateCDCStreamResponsePB,
+    ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB,
+    ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB,
 };
 use yb_proto::pb::master_rust_peer::{
     auto_flags_change_request_pb, dump_catalog_response_pb, AutoFlagsChangeRequestPB,
@@ -1439,6 +1446,57 @@ impl Shared {
                 GetCDCDBStreamInfoRequestPB,
                 GetCDCDBStreamInfoResponsePB,
                 |req, resp| leader.xrepl.get_cdc_db_stream_info(&req, &mut resp)
+            ),
+            "RemoveUserTableFromCDCSDKStream" => serve_ddl!(
+                RemoveUserTableFromCDCSDKStreamRequestPB,
+                RemoveUserTableFromCDCSDKStreamResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xrepl
+                        .remove_user_table_from_cdcsdk_stream(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "RemoveTablesFromCDCSDKStream" => serve_ddl!(
+                RemoveTablesFromCDCSDKStreamRequestPB,
+                RemoveTablesFromCDCSDKStreamResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xrepl
+                        .remove_tables_from_cdcsdk_stream(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "CleanupStaleCDCStreams" => serve_ddl!(
+                CleanupStaleCDCStreamsRequestPB,
+                CleanupStaleCDCStreamsResponsePB,
+                |req, resp| leader
+                    .xrepl
+                    .cleanup_stale_cdc_streams(&req, &mut resp)
+                    .await
+            ),
+            "ValidateAndSyncCDCStateEntriesForCDCSDKStream" => serve_ddl!(
+                ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB,
+                ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB,
+                |req, resp| leader
+                    .xrepl
+                    .validate_and_sync_cdc_state_entries(&req, &mut resp)
+                    .await
+            ),
+            "GetTableSchemaFromSysCatalog" => serve_ddl!(
+                GetTableSchemaFromSysCatalogRequestPB,
+                GetTableSchemaFromSysCatalogResponsePB,
+                |req, resp| leader
+                    .xrepl
+                    .get_table_schema_from_sys_catalog(&req, &mut resp)
+                    .await
+            ),
+            "GetUDTypeMetadata" => serve_ddl!(
+                GetUDTypeMetadataRequestPB,
+                GetUDTypeMetadataResponsePB,
+                |req, resp| leader.xrepl.get_ud_type_metadata(&req, &mut resp).await
             ),
             "ListCDCStreams" => serve_ddl!(
                 ListCDCStreamsRequestPB,

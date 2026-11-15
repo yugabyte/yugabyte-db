@@ -172,12 +172,7 @@ impl Truncates {
             ));
         }
         if cdcsdk_streamed(snapshot, pb.namespace_id(), table_id) {
-            // `CDCSDKAllowTableRewrite` comes with the CDC service (W11).
-            return Err(error(
-                Code::INVALID_REQUEST,
-                StatusCode::NotSupported,
-                "Truncating a table in a CDC stream is not served by a Rust master leader yet",
-            ));
+            cdcsdk_allow_table_rewrite(snapshot, &self.lifecycle.options, table_id, true)?;
         }
         let rpc = self.rpc.get().cloned().ok_or_else(|| {
             error(
@@ -301,6 +296,95 @@ async fn truncate_tablet(
         (options.retry)(),
     )
     .await
+}
+
+/// The live CDCSDK streams that have the table.
+fn cdcsdk_streams_of(snapshot: &CatalogSnapshot, table_id: &[u8]) -> Vec<SysCDCStreamEntryPB> {
+    snapshot
+        .iter(SysRowEntryType::CDC_STREAM)
+        .filter_map(|s| s.parse::<SysCDCStreamEntryPB>().ok())
+        .filter(|pb| {
+            !pb.namespace_id().is_empty()
+                && pb.table_id.iter().any(|t| t.as_bytes() == table_id)
+                && !matches!(
+                    pb.state(),
+                    sys_cdcstream_entry_pb::State::DELETING
+                        | sys_cdcstream_entry_pb::State::DELETED
+                        | sys_cdcstream_entry_pb::State::DELETING_METADATA
+                )
+        })
+        .collect()
+}
+
+/// `CDCSDKAllowTableRewrite`, for a table in a CDCSDK stream: a rewrite (or, without
+/// `enable_truncate_cdcsdk_table`, a truncate) is allowed only for logical replication streams
+/// that all detect publication changes implicitly, with `enable_table_rewrite_for_cdcsdk_table`
+/// and `cdc_enable_dynamic_schema_changes`, on a table that is not colocated.
+pub(crate) fn cdcsdk_allow_table_rewrite(
+    snapshot: &CatalogSnapshot,
+    options: &crate::LifecycleOptions,
+    table_id: &[u8],
+    is_truncate: bool,
+) -> Result<(), MasterErrorPB> {
+    if is_truncate && (options.enable_truncate_cdcsdk_table)() {
+        return Ok(());
+    }
+    let streams = cdcsdk_streams_of(snapshot, table_id);
+    let id = String::from_utf8_lossy(table_id);
+    let refuse = |message: String| {
+        Err(error(
+            Code::UNKNOWN_ERROR,
+            StatusCode::NotSupported,
+            message,
+        ))
+    };
+    let logical = streams.iter().any(|s| {
+        !s.cdcsdk_ysql_replication_slot_plugin_name().is_empty()
+            && s.cdcsdk_ysql_replication_slot_plugin_name() != "yb_grpc"
+    });
+    if !logical {
+        return refuse(format!(
+            "Table rewrite is not allowed for table {id} when CDC is enabled with gRPC streams"
+        ));
+    }
+    if streams
+        .iter()
+        .any(|s| !s.detect_publication_changes_implicitly())
+    {
+        return refuse(format!(
+            "Table rewrite is not allowed for table {id} when there exists a logical replication \
+             stream which uses pub refresh mechanism. Inorder to proceed use list CDC streams to \
+             find out the streams which do not have the field \
+             detect_publication_changes_implicitly set to true. Drop all such streams to proceed \
+             with table rewrite when CDC is enabled with logical replication streams."
+        ));
+    }
+    if !(options.enable_table_rewrite_for_cdcsdk_table)() {
+        return refuse(format!(
+            "Table rewrite is not allowed for table {id} with CDC logical replication streams, \
+             when the flag enable_table_rewrite_for_cdcsdk_table is disabled."
+        ));
+    }
+    let colocated = snapshot
+        .get(SysRowEntryType::TABLE, table_id)
+        .and_then(|t| {
+            t.parse::<yb_proto::pb::catalog_entity_info::SysTablesEntryPB>()
+                .ok()
+        })
+        .is_some_and(|t| t.colocated());
+    if colocated {
+        return refuse(format!(
+            "Table rewrite is not supported for colocated table {id} that is part of a CDC \
+             logical replication stream."
+        ));
+    }
+    if !(options.cdc_enable_dynamic_schema_changes)() {
+        return refuse(format!(
+            "Table rewrite is not allowed for table {id} with CDC logical replication streams, \
+             when upgrade is in progress."
+        ));
+    }
+    Ok(())
 }
 
 /// `IsTablePartOfCDCSDK`: a live CDCSDK stream of the namespace includes the table.

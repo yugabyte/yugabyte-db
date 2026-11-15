@@ -80,7 +80,7 @@ impl CreatesTables for TableLifecycle {
 }
 
 /// `kYbGrpcStreamIndicator`: the plugin name of a gRPC stream's slot.
-const GRPC_STREAM_INDICATOR: &str = "yb_grpc";
+pub(crate) const GRPC_STREAM_INDICATOR: &str = "yb_grpc";
 /// `kCDCSDKSlotEntryTabletId`: the `cdc_state` row of a replication slot.
 const SLOT_ENTRY_TABLET_ID: &str = "dummy_id_for_replication_slot";
 /// `kPgYbNotificationsTableName`.
@@ -150,7 +150,7 @@ fn is_logical_replication_request(req: &CreateCDCStreamRequestPB, namespace_name
 }
 
 /// `IsCdcLogicalReplicationStream`.
-fn is_logical_replication_stream(snapshot: &CatalogSnapshot, row: &StreamRow) -> bool {
+pub(crate) fn is_logical_replication_stream(snapshot: &CatalogSnapshot, row: &StreamRow) -> bool {
     if row.pb.namespace_id().is_empty() {
         return false;
     }
@@ -286,6 +286,17 @@ impl Xrepl {
         })
     }
 
+    /// `IsTableEligibleForCDCSDKStream` without the schema checks, catalog tables or tables
+    /// without a primary key.
+    pub(crate) fn eligible_table_unchecked(
+        &self,
+        snapshot: &CatalogSnapshot,
+        entity: &Arc<Entity>,
+    ) -> bool {
+        table_view(snapshot, entity)
+            .is_some_and(|t| self.eligible_for_cdcsdk(snapshot, &t, false, false, false))
+    }
+
     fn is_catalog_table_eligible(&self, oid: u32) -> bool {
         matches!(
             oid,
@@ -294,7 +305,7 @@ impl Xrepl {
     }
 
     /// `FindAllTablesForCDCSDK`.
-    fn tables_for_cdcsdk(
+    pub(crate) fn tables_for_cdcsdk(
         &self,
         snapshot: &CatalogSnapshot,
         namespace_id: &[u8],
@@ -703,6 +714,9 @@ impl Xrepl {
                 pb.cdcsdk_ysql_replication_slot_ordering_mode = c.ordering_mode;
             }
         }
+        self.fail_at("CreateCDCSDKStream::kBeforeSysCatalogEntry")
+            .await
+            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
         // The row, unless a concurrent create took the slot.
         let written = self
             .writer
@@ -742,23 +756,31 @@ impl Xrepl {
                 error(Code::UNKNOWN_ERROR, s.code, s.message)
             });
         }
-        resp.set_stream_id(stream_id.clone().into_bytes());
-        tracing::info!("Created CDC stream {stream_id}");
-        // A bootstrap (initial state other than ACTIVE) leaves cdc_state to BootstrapProducer.
-        if (self.options.disable_cdc_state_insert_on_setup)()
-            || (req.has_initial_state() && req.initial_state() != StreamState::ACTIVE)
-        {
-            return Ok(());
-        }
-        let history_for_record_type = !use_replica_identity
-            && req
-                .options
-                .iter()
-                .filter(|o| o.key() == RECORD_TYPE)
-                .next_back()
-                .is_some_and(|o| !matches!(o.value(), b"CHANGE" | b"PG_NOTHING"));
-        let finished = self
-            .finish_cdcsdk_stream(
+        let finished = async {
+            let e = |s: Status| error(Code::UNKNOWN_ERROR, s.code, s.message);
+            self.fail_at("CreateCDCSDKStream::kBeforeInMemoryStateCommit")
+                .await
+                .map_err(e)?;
+            resp.set_stream_id(stream_id.clone().into_bytes());
+            tracing::info!("Created CDC stream {stream_id}");
+            self.enable_cdc_service().await;
+            self.fail_at("CreateCDCSDKStream::kAfterInMemoryStateCommit")
+                .await
+                .map_err(e)?;
+            // A bootstrap (initial state other than ACTIVE) leaves cdc_state to BootstrapProducer.
+            if (self.options.disable_cdc_state_insert_on_setup)()
+                || (req.has_initial_state() && req.initial_state() != StreamState::ACTIVE)
+            {
+                return Ok(());
+            }
+            let history_for_record_type = !use_replica_identity
+                && req
+                    .options
+                    .iter()
+                    .filter(|o| o.key() == RECORD_TYPE)
+                    .next_back()
+                    .is_some_and(|o| !matches!(o.value(), b"CHANGE" | b"PG_NOTHING"));
+            self.finish_cdcsdk_stream(
                 token,
                 deadline,
                 req,
@@ -770,7 +792,9 @@ impl Xrepl {
                 require_slot_entry,
                 resp,
             )
-            .await;
+            .await
+        }
+        .await;
         if let Err(e) = finished {
             tracing::warn!("Rolling back the CDC stream creation for stream {stream_id}: {e:?}");
             if let Err(s) = self
@@ -813,6 +837,9 @@ impl Xrepl {
         self.populate_cdc_state(stream_id, table_ids, false, false, 0, 0, false)
             .await
             .map_err(e)?;
+        self.fail_at("CreateCDCSDKStream::kAfterDummyCDCStateEntries")
+            .await
+            .map_err(e)?;
         // Step 2: retention barriers; with the consistent snapshot option they also write each
         // tablet's snapshot safe op id.
         self.set_retention_barriers(
@@ -825,6 +852,9 @@ impl Xrepl {
         )
         .await
         .map_err(e)?;
+        self.fail_at("CreateCDCSDKStream::kAfterRetentionBarriers")
+            .await
+            .map_err(e)?;
         // Step 3: one consistent snapshot time for every tablet.
         let creation_time = now_micros();
         let mut snapshot_time = 0;
@@ -876,7 +906,19 @@ impl Xrepl {
             require_slot_entry,
         )
         .await
-        .map_err(e)
+        .map_err(e)?;
+        self.fail_at("CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails")
+            .await
+            .map_err(e)
+    }
+
+    /// Whether `system.cdc_state` exists (`TableExists`).
+    pub(crate) fn cdc_state_table_exists(&self, snapshot: &CatalogSnapshot) -> bool {
+        snapshot.iter(SysRowEntryType::TABLE).any(|t| {
+            t.table().is_some_and(|h| {
+                h.namespace_id.as_slice() == SYSTEM_NAMESPACE_ID && h.name == "cdc_state"
+            }) && master_table_lifecycle::lookup::is_visible_to_client(t)
+        })
     }
 
     /// `CreateCdcStateTableIfNotFound`: `system.cdc_state`, created by the first stream.
@@ -886,13 +928,7 @@ impl Xrepl {
         token: &LeaderToken,
         deadline: Instant,
     ) -> Result<(), MasterErrorPB> {
-        let snapshot = self.catalog.snapshot();
-        let exists = snapshot.iter(SysRowEntryType::TABLE).any(|t| {
-            t.table().is_some_and(|h| {
-                h.namespace_id.as_slice() == SYSTEM_NAMESPACE_ID && h.name == "cdc_state"
-            }) && master_table_lifecycle::lookup::is_visible_to_client(t)
-        });
-        if exists {
+        if self.cdc_state_table_exists(&self.catalog.snapshot()) {
             return Ok(());
         }
         let resp: CdcStateCreateTableRequestResponsePB = self
@@ -1026,9 +1062,57 @@ impl Xrepl {
         consistent_option: bool,
         require_history_cutoff: bool,
     ) -> Result<(), Status> {
+        self.write_wal_retention(token, deadline, table_ids).await?;
+        // `FlushCDCSDKRetentionBarrierBatch`: full batches, then the remainder.
+        let size = match (self.options.alter_batch_size)() {
+            n if n <= 0 => usize::MAX,
+            n => n as usize,
+        };
+        let mut catalog_barrier = false;
+        let mut start = 0;
+        while table_ids.len() - start >= size {
+            catalog_barrier |= self
+                .flush_barrier_batch(
+                    token,
+                    deadline,
+                    stream_id,
+                    &table_ids[start..start + size],
+                    consistent_option,
+                    require_history_cutoff,
+                )
+                .await?;
+            start += size;
+        }
+        self.fail_at("CreateCDCSDKStream::kBeforeFinalAlterTableBatchFlush")
+            .await?;
+        if start < table_ids.len() {
+            catalog_barrier |= self
+                .flush_barrier_batch(
+                    token,
+                    deadline,
+                    stream_id,
+                    &table_ids[start..],
+                    consistent_option,
+                    require_history_cutoff,
+                )
+                .await?;
+        }
+        if catalog_barrier {
+            self.wait_for_catalog_snapshot_safe_op_id(stream_id, deadline)
+                .await?;
+        }
+        Ok(())
+    }
+
+    /// `AlterTable` with only `wal_retention_secs`: the rows, without a new schema version.
+    pub(crate) async fn write_wal_retention(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        table_ids: &[Vec<u8>],
+    ) -> Result<(), Status> {
         let retention = (self.options.wal_retention_secs)();
         let ids: Vec<Vec<u8>> = table_ids.to_vec();
-        // `AlterTable` with only wal_retention_secs: the row, without a new schema version.
         self.writer
             .mutate_with(
                 token,
@@ -1071,7 +1155,23 @@ impl Xrepl {
                 },
             )
             .await?;
+        Ok(())
+    }
+
+    /// One batch of retention barriers: every tablet's alter has finished, and written its
+    /// `cdc_state` row, when this returns. True if the sys catalog tablet's barrier was submitted;
+    /// its row is written asynchronously by the host.
+    async fn flush_barrier_batch(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        stream_id: &str,
+        table_ids: &[Vec<u8>],
+        consistent_option: bool,
+        require_history_cutoff: bool,
+    ) -> Result<bool, Status> {
         let snapshot = self.catalog.snapshot();
+        let mut catalog_barrier = false;
         let mut sends = Vec::new();
         for table_id in table_ids {
             let Some(table) = snapshot.get(SysRowEntryType::TABLE, table_id) else {
@@ -1098,6 +1198,7 @@ impl Xrepl {
                     }
                     let _: SetCatalogRetentionBarrierResponsePB =
                         self.host_call("SetCatalogRetentionBarrier", req).await?;
+                    catalog_barrier = true;
                 }
                 continue;
             }
@@ -1113,8 +1214,16 @@ impl Xrepl {
                 ));
             }
         }
+        // `AlterTableBatchTracker::Wait(deadline)`: a late tablet fails the create, which rolls
+        // back; its alter is abandoned.
+        let Ok(results) = tokio::time::timeout_at(deadline, join_all(sends)).await else {
+            return Err(Status::new(
+                StatusCode::TimedOut,
+                "Timed out waiting for the retention barriers to be set",
+            ));
+        };
         let mut first_error = None;
-        for result in join_all(sends).await {
+        for result in results {
             if let Err(s) = result {
                 first_error.get_or_insert(s);
             }
@@ -1128,18 +1237,18 @@ impl Xrepl {
                 ),
             ));
         }
-        if consistent_option {
-            self.wait_for_snapshot_safe_op_ids(stream_id, table_ids, deadline)
-                .await?;
+        let delay = (self.options.alter_batch_delay)();
+        if !delay.is_zero() {
+            tokio::time::sleep(delay).await;
         }
-        Ok(())
+        Ok(catalog_barrier)
     }
 
     /// One `AsyncAlterTable` of a create-stream context: on the response, the tablet's snapshot
     /// safe op id becomes its `cdc_state` row (`PopulateCDCStateTableWithCDCSDKSnapshotSafeOpId
     /// Details`).
     #[allow(clippy::too_many_arguments)]
-    async fn alter_tablet(
+    pub(crate) async fn alter_tablet(
         &self,
         token: LeaderToken,
         deadline: Instant,
@@ -1240,6 +1349,8 @@ impl Xrepl {
         let Some(stream_id) = stream_id else {
             return Ok(());
         };
+        self.sync_point_with("AsyncAlterTable::CDCSDKCreateStream", &tablet_id)
+            .await;
         let resp = response.into_inner().unwrap();
         let Some(resp) = resp
             .filter(|r| r.cdc_sdk_snapshot_safe_op_id.is_some() && r.has_propagated_hybrid_time())
@@ -1251,6 +1362,8 @@ impl Xrepl {
             );
             return Ok(());
         };
+        self.sync_point("PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start")
+            .await;
         let proposed = resp.propagated_hybrid_time();
         let safe = resp.cdc_sdk_snapshot_safe_op_id.clone().unwrap_or_default();
         let physical_micros = proposed >> 12;
@@ -1275,10 +1388,19 @@ impl Xrepl {
         if table.colocated() {
             upsert.entries.push(entry(Some(&table_id)));
         }
-        if let Err(s) = self
-            .host_call::<_, CdcStateUpsertResponsePB>("CdcStateUpsert", upsert)
+        let stored = match self
+            .fail_at("CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails")
             .await
         {
+            Ok(()) => {
+                self.host_call::<_, CdcStateUpsertResponsePB>("CdcStateUpsert", upsert)
+                    .await
+            }
+            Err(s) => Err(s),
+        };
+        // The row keeps its invalid checkpoint, which fails the creation in
+        // `PopulateCDCStateTable`.
+        if let Err(s) = stored {
             tracing::warn!(
                 "Populating the cdc_state table for stream {stream_id} and tablet {} failed: {s}",
                 String::from_utf8_lossy(&tablet_id)
@@ -1287,38 +1409,22 @@ impl Xrepl {
         Ok(())
     }
 
-    /// `WaitForSnapshotSafeOpIdToBePopulated`: every tablet's row has its checkpoint (the catalog
-    /// tables' one tablet counted once).
-    async fn wait_for_snapshot_safe_op_ids(
+    /// The sys catalog tablet's `cdc_state` row, written when its barrier's CHANGE_METADATA_OP
+    /// applies.
+    async fn wait_for_catalog_snapshot_safe_op_id(
         &self,
         stream_id: &str,
-        table_ids: &[Vec<u8>],
         deadline: Instant,
     ) -> Result<(), Status> {
-        let snapshot = self.catalog.snapshot();
-        let mut expected = 0;
-        let mut sys_catalog_seen = false;
-        for table_id in table_ids {
-            let tablets = snapshot.hosting_tablets_of(table_id);
-            let on_sys_catalog = tablets.len() == 1 && &*tablets[0].key.id == SYS_CATALOG_TABLET_ID;
-            if on_sys_catalog {
-                if !sys_catalog_seen {
-                    expected += 1;
-                    sys_catalog_seen = true;
-                }
-            } else {
-                expected += tablets.len();
-            }
-        }
         loop {
             let mut read = CdcStateReadRequestPB::new();
             read.set_stream_id(stream_id.as_bytes().to_vec());
             let rows: CdcStateReadResponsePB = self.host_call("CdcStateRead", read).await?;
-            let all_valid = rows
-                .entries
-                .iter()
-                .all(|r| r.checkpoint.is_some() && !is_invalid(&r.checkpoint));
-            if all_valid && rows.entries.len() >= expected {
+            if rows.entries.iter().any(|r| {
+                r.tablet_id() == SYS_CATALOG_TABLET_ID
+                    && r.checkpoint.is_some()
+                    && !is_invalid(&r.checkpoint)
+            }) {
                 return Ok(());
             }
             if Instant::now() + Duration::from_millis(500) >= deadline {

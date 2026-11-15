@@ -105,6 +105,8 @@ pub struct TabletSplitManager {
     tablespaces: OnceLock<Arc<master_table_lifecycle::Tablespaces>>,
     /// Which retired parents are hidden.
     retention: OnceLock<Arc<dyn Retention>>,
+    /// What CDC streams need from a split; set once the CDC streams service exists.
+    xrepl_hooks: OnceLock<Arc<dyn master_table_lifecycle::XreplHooks>>,
     executor: Arc<TsRpcExecutor>,
     retry: RetryPolicy,
     options: SplitOptions,
@@ -199,6 +201,7 @@ impl TabletSplitManager {
             rpc: OnceLock::new(),
             tablespaces: OnceLock::new(),
             retention: OnceLock::new(),
+            xrepl_hooks: OnceLock::new(),
             executor,
             retry,
             options,
@@ -497,6 +500,12 @@ impl TabletSplitManager {
         true
     }
 
+    /// Splits of tables in CDC streams update the streams; set once the CDC streams service
+    /// exists.
+    pub fn set_xrepl_hooks(&self, hooks: Arc<dyn master_table_lifecycle::XreplHooks>) {
+        let _ = self.xrepl_hooks.set(hooks);
+    }
+
     /// Retired split parents a snapshot needs are hidden; set once the coordinator exists.
     pub fn set_retention(&self, retention: Arc<dyn Retention>) {
         let _ = self.retention.set(retention);
@@ -509,7 +518,7 @@ impl TabletSplitManager {
                 fn table_drop(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> Retainer {
                     Retainer {
                         schedules: covering_schedules(snapshot, SysRowEntryType::TABLE, table_id),
-                        active_snapshot: false,
+                        ..Retainer::default()
                     }
                 }
                 fn tablet_drop(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> Retainer {
@@ -839,6 +848,28 @@ impl TabletSplitManager {
                 Ok((mutation, ids))
             })
             .await?;
+        // `ProcessSplitTabletResult`: idempotent, as a resumed split calls it again.
+        if let Some(hooks) = self.xrepl_hooks.get() {
+            let table_id = snapshot
+                .get(SysRowEntryType::TABLET, tablet_id)
+                .and_then(|t| t.tablet().map(|t| t.table_id.clone()))
+                .unwrap_or_default();
+            hooks
+                .split_registered(table_id.clone(), tablet_id.to_vec(), children.clone())
+                .await
+                .map_err(|s| {
+                    Status::new(
+                        s.code,
+                        format!(
+                            "Encountered an error while updating the CDC producer metadata. Table \
+                             id: {}, Split Tablets: {}: {}",
+                            String::from_utf8_lossy(&table_id),
+                            String::from_utf8_lossy(tablet_id),
+                            s.message
+                        ),
+                    )
+                })?;
+        }
         Ok(children)
     }
 
@@ -862,6 +893,7 @@ impl TabletSplitManager {
             local_time_string()
         );
         let retention = self.retention();
+        let hooks = self.xrepl_hooks.get().cloned();
         let now = self.hybrid_time_now();
         let result = self
             .writer
@@ -879,7 +911,11 @@ impl TabletSplitManager {
                     };
                     let mut pb: SysTabletsEntryPB = tablet.parse().map_err(corrupt)?;
                     let retainer = retention.tablet_drop(snapshot, &tablet_id);
-                    let hide = retainer.hide_only();
+                    // CDCSDK streams read the parent up to its SPLIT_OP.
+                    let hide = retainer.hide_only()
+                        || hooks
+                            .as_ref()
+                            .is_some_and(|h| h.retains_hidden_tablet(snapshot, &tablet_id));
                     if hide {
                         let now = now.clone().map_err(|s| s.clone())?;
                         if pb.hide_hybrid_time() == 0 {
@@ -1146,13 +1182,33 @@ pub(crate) fn validate_table(
             ),
         ));
     }
-    // A split must update the streams' tablet mappings (`ProcessSplitTabletResult`), which a
-    // Rust leader does not do yet.
-    if streamed(snapshot, &table.key.id) {
+    // A split must update xCluster's tablet mappings (`ProcessSplitTabletResult`), which a Rust
+    // leader does not do yet; CDCSDK streams are updated.
+    if xcluster_streamed(snapshot, &table.key.id) {
         return Err(not_supported(format!(
-            "Splitting a table in an xCluster or CDC stream is not supported on a Rust leader \
-             yet: {}",
+            "Splitting a table in an xCluster stream is not supported on a Rust leader yet: {}",
             name()
+        )));
+    }
+    // `XReplValidateSplitCandidateTable`'s CDCSDK checks.
+    let streams = cdcsdk_streams(snapshot, &table.key.id);
+    if !(options.split_cdcsdk_streamed_tables)() && !streams.is_empty() {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for tables that are a part of a CDCSDK stream, \
+             table_id: {}",
+            String::from_utf8_lossy(&table.key.id)
+        )));
+    }
+    if !(options.split_replication_slot_streamed_tables)()
+        && streams.iter().any(|s| {
+            !s.cdcsdk_ysql_replication_slot_plugin_name().is_empty()
+                && s.cdcsdk_ysql_replication_slot_plugin_name() != "yb_grpc"
+        })
+    {
+        return Err(not_supported(format!(
+            "Tablet splitting is not supported for tables that are a part of a replication slot, \
+             table_id: {}",
+            String::from_utf8_lossy(&table.key.id)
         )));
     }
     // `IsBackfilling`: the index backfill writes to the indexed table's tablets.
@@ -1189,9 +1245,27 @@ pub(crate) fn validate_table(
 /// `kPgSequencesDataTableId`.
 const PG_SEQUENCES_DATA_TABLE_ID: &[u8] = b"0000ffff00003000800000000000ffff";
 
-/// A CDC stream on the table that is not being deleted, or an xCluster stream into it.
-fn streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
-    let outbound = outbound_streamed(snapshot, table_id);
+/// `IsTablePartOfCDCSDK`: the live CDCSDK streams that have the table.
+fn cdcsdk_streams(snapshot: &CatalogSnapshot, table_id: &[u8]) -> Vec<SysCDCStreamEntryPB> {
+    snapshot
+        .iter(SysRowEntryType::CDC_STREAM)
+        .filter_map(|s| s.parse::<SysCDCStreamEntryPB>().ok())
+        .filter(|pb| {
+            !pb.namespace_id().is_empty()
+                && pb.table_id.iter().any(|t| t.as_bytes() == table_id)
+                && !matches!(
+                    pb.state(),
+                    sys_cdcstream_entry_pb::State::DELETING
+                        | sys_cdcstream_entry_pb::State::DELETING_METADATA
+                        | sys_cdcstream_entry_pb::State::DELETED
+                )
+        })
+        .collect()
+}
+
+/// An xCluster stream from the table that is not being deleted, or one into it.
+fn xcluster_streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+    let outbound = outbound_xcluster_streamed(snapshot, table_id);
     let config: SysClusterConfigEntryPB = snapshot
         .cluster_config()
         .and_then(|c| c.parse().ok())
@@ -1205,12 +1279,13 @@ fn streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
             .any(|stream| stream.consumer_table_id.as_bytes() == table_id)
 }
 
-/// The table is the source of a live xCluster or CDCSDK stream, whose pollers read its tablets'
-/// WAL, a split parent's up to its SPLIT_OP included.
-fn outbound_streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+/// The table is the source of a live xCluster stream (one without a namespace), whose pollers
+/// read its tablets' WAL, a split parent's up to its SPLIT_OP included.
+fn outbound_xcluster_streamed(snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
     snapshot.iter(SysRowEntryType::CDC_STREAM).any(|stream| {
         stream.parse::<SysCDCStreamEntryPB>().is_ok_and(|pb| {
-            pb.table_id.iter().any(|t| t.as_bytes() == table_id)
+            pb.namespace_id().is_empty()
+                && pb.table_id.iter().any(|t| t.as_bytes() == table_id)
                 && !matches!(
                     pb.state(),
                     sys_cdcstream_entry_pb::State::DELETING
@@ -1297,14 +1372,14 @@ fn check_can_delete(
         ));
     }
     // C++ retains such a parent until the streams have read it
-    // (`GetDeleteRetainerInfoForTabletDrop`).
-    // A Rust leader starts no split of a streamed table, but finishes one a C++ leader registered.
-    if outbound_streamed(snapshot, &hot.table_id) {
+    // (`GetDeleteRetainerInfoForTabletDrop`). A Rust leader starts no split of an xCluster
+    // streamed table, but finishes one a C++ leader registered.
+    if outbound_xcluster_streamed(snapshot, &hot.table_id) {
         return Err(error(
             Code::UNKNOWN_ERROR,
             StatusCode::NotSupported,
-            "Retaining a split parent of a table in an xCluster or CDC stream is not supported on \
-             a Rust leader yet",
+            "Retaining a split parent of a table in an xCluster stream is not supported on a Rust \
+             leader yet",
         ));
     }
     let gap = |from: &[u8], to: &[u8]| {

@@ -124,20 +124,22 @@ fn uuid_string(bytes: &[u8]) -> String {
 }
 
 /// What keeps a dropped table's or a retired tablet's data (`TabletDeleteRetainerInfo`): the
-/// snapshot schedules that cover it and snapshots that hold it. Such an object is hidden, not
-/// deleted, until nothing needs it.
+/// snapshot schedules that cover it, snapshots that hold it and CDCSDK streams that still read
+/// it. Such an object is hidden, not deleted, until nothing needs it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Retainer {
     /// The schedules (16-byte ids) that cover it.
     pub schedules: Vec<Vec<u8>>,
     /// A snapshot holds it, or one of its namespace is being created.
     pub active_snapshot: bool,
+    /// A CDCSDK logical replication stream still reads it (`active_cdcsdk`).
+    pub active_cdcsdk: bool,
 }
 
 impl Retainer {
     /// `IsHideOnly`.
     pub fn hide_only(&self) -> bool {
-        !self.schedules.is_empty() || self.active_snapshot
+        !self.schedules.is_empty() || self.active_snapshot || self.active_cdcsdk
     }
 }
 
@@ -156,7 +158,7 @@ impl Retention for SchedulesOnly {
     fn table_drop(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> Retainer {
         Retainer {
             schedules: covering_schedules(snapshot, SysRowEntryType::TABLE, table_id),
-            active_snapshot: false,
+            ..Retainer::default()
         }
     }
 

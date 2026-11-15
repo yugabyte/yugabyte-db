@@ -74,6 +74,7 @@
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/master_rust_peer.pb.h"
 
 #include "yb/master_host/sys_catalog_tap.h"
@@ -132,6 +133,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/ulimit_util.h"
@@ -169,6 +171,8 @@ DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_int32(master_remote_bootstrap_svc_queue_length);
 DECLARE_int32(master_svc_queue_length);
 DECLARE_int32(master_tserver_svc_queue_length);
+DECLARE_int32(master_xrepl_svc_queue_length);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_int32(master_yb_client_default_timeout_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_string(tmp_dir);
@@ -211,6 +215,29 @@ Result<cdc::CDCStateTableEntry> CdcStateEntryFromPB(const master::CdcStateEntryP
     entry.last_decided_pub_refresh_time = pb.last_decided_pub_refresh_time();
   }
   return entry;
+}
+
+// The Rust leader's CdcStateEntryPB of a cdc_state row.
+void CdcStateEntryToPB(const cdc::CDCStateTableEntry& entry, master::CdcStateEntryPB* pb) {
+  pb->set_tablet_id(entry.key.tablet_id);
+  pb->set_stream_id(entry.key.stream_id.ToString());
+  if (!entry.key.colocated_table_id.empty()) {
+    pb->set_colocated_table_id(entry.key.colocated_table_id);
+  }
+  if (entry.checkpoint) entry.checkpoint->ToPB(pb->mutable_checkpoint());
+  if (entry.last_replication_time) pb->set_last_replication_time(*entry.last_replication_time);
+  if (entry.active_time) pb->set_active_time(*entry.active_time);
+  if (entry.cdc_sdk_safe_time) pb->set_cdc_sdk_safe_time(*entry.cdc_sdk_safe_time);
+  if (entry.snapshot_key) pb->set_snapshot_key(*entry.snapshot_key);
+  if (entry.confirmed_flush_lsn) pb->set_confirmed_flush_lsn(*entry.confirmed_flush_lsn);
+  if (entry.restart_lsn) pb->set_restart_lsn(*entry.restart_lsn);
+  if (entry.xmin) pb->set_xmin(*entry.xmin);
+  if (entry.record_id_commit_time) pb->set_record_id_commit_time(*entry.record_id_commit_time);
+  if (entry.last_pub_refresh_time) pb->set_last_pub_refresh_time(*entry.last_pub_refresh_time);
+  if (entry.pub_refresh_times) pb->set_pub_refresh_times(*entry.pub_refresh_times);
+  if (entry.last_decided_pub_refresh_time) {
+    pb->set_last_decided_pub_refresh_time(*entry.last_decided_pub_refresh_time);
+  }
 }
 
 
@@ -1046,6 +1073,13 @@ Status MasterHost::DoStart() {
       FLAGS_master_tserver_svc_queue_length,
       std::make_shared<master::MasterTabletServiceImpl>(
           tablet_server_.get(), tablet_server_context_.get())));
+  // Logical replication reads the PG catalog tables' changes from the sys catalog tablet; the
+  // service stays disabled until a CDCSDK stream exists (EnableCDCService).
+  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    RETURN_NOT_OK(RegisterService(
+        FLAGS_master_xrepl_svc_queue_length,
+        tablet_server_->CreateCDCService(metric_entity(), client_future(), metric_registry())));
+  }
   // initdb, including the major upgrade's, runs PG against this master as its tserver.
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_svc_queue_length,
@@ -1927,6 +1961,14 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return Status::OK();
         });
   }
+  if (name == "EnableCDCService") {
+    // CatalogManager::SetCDCServiceEnabled.
+    return HandleRequest<master::EnableCdcServiceRequestPB, master::EnableCdcServiceResponsePB>(
+        request, [this](const auto&, auto*) -> Status {
+          tablet_server_->EnableCDCService();
+          return Status::OK();
+        });
+  }
   if (name == "HybridTimeNow") {
     return HandleRequest<master::HybridTimeNowRequestPB, master::HybridTimeNowResponsePB>(
         request, [this](const auto& req, auto* resp) {
@@ -2229,24 +2271,25 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
   if (name == "CdcStateRead") {
     return HandleRequest<master::CdcStateReadRequestPB, master::CdcStateReadResponsePB>(
         request, [this](const auto& req, auto* resp) -> Status {
-          auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req.stream_id()));
+          // Without a stream, every row (CleanupStaleCDCStreams).
+          std::optional<xrepl::StreamId> stream_id;
+          if (req.has_stream_id()) {
+            stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req.stream_id()));
+          }
           Status iteration_status;
-          auto rows = VERIFY_RESULT(CdcStateTable().GetTableRange(
-              cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &iteration_status));
+          auto selector = cdc::CDCStateTableEntrySelector().IncludeAll();
+          // A full scan does not wait for the table to be created; the Rust leader reports it
+          // missing instead.
+          auto& table = CdcStateTable();
+          auto rows = VERIFY_RESULT(
+              stream_id ? table.GetTableRange(std::move(selector), &iteration_status)
+                        : table.GetTableRangeAsync(std::move(selector), &iteration_status));
           for (const auto& row : rows) {
             RETURN_NOT_OK(row);
-            if (row->key.stream_id != stream_id) {
+            if (stream_id && row->key.stream_id != *stream_id) {
               continue;
             }
-            auto* out = resp->add_entries();
-            out->set_tablet_id(row->key.tablet_id);
-            out->set_stream_id(row->key.stream_id.ToString());
-            if (!row->key.colocated_table_id.empty()) {
-              out->set_colocated_table_id(row->key.colocated_table_id);
-            }
-            if (row->checkpoint) {
-              row->checkpoint->ToPB(out->mutable_checkpoint());
-            }
+            CdcStateEntryToPB(*row, resp->add_entries());
           }
           return iteration_status;
         });
@@ -2291,6 +2334,12 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
             if (!s.ok()) {
               LOG(WARNING) << "Failed to set retention barriers on the sys catalog tablet. Will "
                               "not populate its state table entry for stream: " << stream_id;
+              return;
+            }
+            bool fail = false;
+            TEST_SYNC_POINT_CALLBACK(
+                "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails", &fail);
+            if (fail) {
               return;
             }
             const auto now = clock()->Now();
@@ -2356,6 +2405,98 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
               : ReadHybridTime();
           resp->set_count(VERIFY_RESULT(
               sys_catalog_->CountPgYbMigrationRows(req.database_oid(), read_time)));
+          return Status::OK();
+        });
+  }
+  if (name == "ReadTableSchema") {
+    return HandleRequest<
+        master::ReadTableSchemaRequestPB, master::GetTableSchemaFromSysCatalogResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto read_time = ReadHybridTime::FromUint64(req.read_time());
+          Schema schema;
+          uint32_t version = 0;
+          RETURN_NOT_OK(sys_catalog_->GetTableSchema(req.table_id(), read_time, &schema, &version));
+          SchemaToPB(schema, resp->mutable_schema());
+          resp->set_version(version);
+          if (!req.has_database_oid()) {
+            return Status::OK();
+          }
+          // YsqlManager::GetPgSchemaName; a table not committed at read_time has no name.
+          auto relfilenode = sys_catalog_->ReadPgClassColumnWithOidValue(
+              req.database_oid(), req.pg_table_oid(), master::kPgClassRelFileNodeColumnName,
+              read_time);
+          if (!relfilenode.ok() || *relfilenode != req.relfilenode_oid()) {
+            return Status::OK();
+          }
+          auto relnamespace = sys_catalog_->ReadPgClassColumnWithOidValue(
+              req.database_oid(), req.pg_table_oid(), master::kPgClassRelNamespaceColumnName,
+              read_time);
+          if (!relnamespace.ok() || *relnamespace == kPgInvalidOid) {
+            return Status::OK();
+          }
+          auto name =
+              sys_catalog_->ReadPgNamespaceNspname(req.database_oid(), *relnamespace, read_time);
+          if (name.ok() && !name->empty()) {
+            resp->set_pgschema_name(std::move(*name));
+          } else {
+            LOG(WARNING) << "Unable to find schema name for YSQL table " << req.table_id()
+                         << ": " << name;
+          }
+          return Status::OK();
+        });
+  }
+  if (name == "TestSyncPointCallback") {
+    return HandleRequest<
+        master::TestSyncPointCallbackRequestPB, master::TestSyncPointCallbackResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          if (req.has_string_arg()) {
+            std::string arg = req.string_arg();
+            TEST_SYNC_POINT_CALLBACK(req.name(), &arg);
+            return Status::OK();
+          }
+          bool fail = false;
+          TEST_SYNC_POINT_CALLBACK(req.name(), &fail);
+          resp->set_fail(fail);
+          return Status::OK();
+        });
+  }
+  if (name == "ReadUDTypeMetadata") {
+    // CatalogManager::GetUDTypeMetadata's pg_catalog reads; Rust resolved the namespace to its id.
+    return HandleRequest<master::GetUDTypeMetadataRequestPB, master::GetUDTypeMetadataResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(req.namespace_().id()));
+          const auto type_oid = req.has_pg_type_oid() ? req.pg_type_oid() : kPgInvalidOid;
+          if (req.pg_enum_info()) {
+            for (const auto& [oid, label] :
+                 VERIFY_RESULT(sys_catalog_->ReadPgEnum(database_oid, type_oid))) {
+              auto* info = resp->add_enums();
+              info->set_oid(oid);
+              info->set_label(label);
+            }
+          } else if (req.pg_composite_info()) {
+            const auto reltype_oid_map = VERIFY_RESULT(
+                sys_catalog_->ReadCompositeTypeFromPgClass(database_oid, type_oid));
+            std::vector<uint32_t> table_oids;
+            for (const auto& [reltype, oid] : reltype_oid_map) {
+              table_oids.push_back(oid);
+            }
+            std::sort(table_oids.begin(), table_oids.end());
+            auto attributes_map =
+                VERIFY_RESULT(sys_catalog_->ReadPgAttributeInfo(database_oid, table_oids));
+            for (const auto& [reltype, oid] : reltype_oid_map) {
+              auto it = attributes_map.find(oid);
+              if (it == attributes_map.end()) {
+                LOG_WITH_FUNC(INFO) << "No attributes found for attrelid: " << oid
+                                    << " corresponding to composite type of id: " << reltype;
+                continue;
+              }
+              auto* info = resp->add_composites();
+              info->set_oid(reltype);
+              for (const auto& attribute : it->second) {
+                *info->add_attributes() = attribute;
+              }
+            }
+          }
           return Status::OK();
         });
   }

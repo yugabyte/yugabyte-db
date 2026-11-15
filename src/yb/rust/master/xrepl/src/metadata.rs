@@ -80,7 +80,9 @@ impl Xrepl {
             }
             let mut tables: BTreeSet<Vec<u8>> = row.pb.dropped_table_id.iter().cloned().collect();
             for t in stream_tables(&row.pb) {
-                if table_dropped(&snapshot, &t) {
+                // A retained table leaves once its tablets are released and deleted, as C++'s
+                // CleanupHiddenTables removes it.
+                if table_dropped(&snapshot, &t) && !self.still_retained(&snapshot, &t) {
                     tables.insert(t);
                 }
             }
@@ -90,6 +92,11 @@ impl Xrepl {
         }
         if dropped.is_empty() {
             return Ok(());
+        }
+        let with_tables = dropped.values().any(|t| !t.is_empty());
+        if with_tables {
+            self.sync_point("CleanUpCDCStreamMetadata::StartStep1")
+                .await;
         }
         // The cdc_state rows of tablets that hold no other table of the stream.
         let mut keys = Vec::new();
@@ -105,6 +112,12 @@ impl Xrepl {
                 self.state_rows_of_dropped_tables(&snapshot, &row, tables)
                     .await?,
             );
+        }
+        if with_tables {
+            self.sync_point("CleanUpCDCStreamMetadata::CompletedStep1")
+                .await;
+            self.sync_point("CleanUpCDCStreamMetadata::StartStep2")
+                .await;
         }
         if !keys.is_empty() {
             tracing::info!(
@@ -212,6 +225,14 @@ impl Xrepl {
             }
         }
         Ok(keys)
+    }
+
+    /// A dropped table with a tablet still kept for the streams.
+    fn still_retained(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
+        snapshot
+            .tablets_of(table_id)
+            .iter()
+            .any(|t| self.retains_tablet(snapshot, &t.key.id))
     }
 
     /// Whether a table on a tablet of the stream is still one the stream may have.

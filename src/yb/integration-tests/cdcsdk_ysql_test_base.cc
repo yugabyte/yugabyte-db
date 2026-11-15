@@ -25,6 +25,7 @@
 #include "yb/client/yb_table_name.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
@@ -786,10 +787,17 @@ Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluste
   yb::master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
-  auto& cm = cluster->mini_cluster_->mini_master()->catalog_manager();
-  RETURN_NOT_OK(cm.SplitTablet(
-      tablet_id, master::ManualSplit::kTrue, cluster->mini_cluster_->GetSplitFactor(),
-      cm.GetLeaderEpochInternal()));
+  auto* leader = VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster());
+  if (leader->is_rust()) {
+    // A Rust master has no CatalogManager; MasterAdmin.SplitTablet is the same manual split.
+    master::MasterAdminProxy proxy(&cluster->client_->proxy_cache(), leader->bound_rpc_addr());
+    RETURN_NOT_OK(proxy.SplitTablet(req, &resp, &rpc));
+  } else {
+    auto& cm = leader->catalog_manager();
+    RETURN_NOT_OK(cm.SplitTablet(
+        tablet_id, master::ManualSplit::kTrue, cluster->mini_cluster_->GetSplitFactor(),
+        cm.GetLeaderEpochInternal()));
+  }
 
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));

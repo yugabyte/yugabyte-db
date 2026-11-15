@@ -64,6 +64,7 @@ pub use create::{
 pub use drop::TableDeleter;
 pub use flush::{FlushOptions, Flushes};
 pub use placement::{replication_info_set, table_replication_info};
+pub use read::{pg_table_all_oids, PgTableAllOids};
 pub use schedules::{covering_schedules, Retainer, Retention};
 pub use tablespaces::{
     uses_tablespaces, TablespaceController, TablespaceOptions, Tablespaces,
@@ -100,6 +101,14 @@ pub struct LifecycleOptions {
     pub transaction_table_num_tablets_per_tserver: fn() -> i32,
     /// `enable_delete_truncate_xcluster_replicated_table`.
     pub enable_delete_truncate_xcluster_replicated_table: fn() -> bool,
+    /// `enable_truncate_cdcsdk_table`.
+    pub enable_truncate_cdcsdk_table: fn() -> bool,
+    /// `TEST_running_test`: test sync points are passed on the host.
+    pub sync_points: fn() -> bool,
+    /// `enable_table_rewrite_for_cdcsdk_table`.
+    pub enable_table_rewrite_for_cdcsdk_table: fn() -> bool,
+    /// The `cdc_enable_dynamic_schema_changes` AutoFlag.
+    pub cdc_enable_dynamic_schema_changes: fn() -> bool,
     /// `enable_ysql`: YSQL needs `system.transactions` from the start.
     pub enable_ysql: fn() -> bool,
     /// `txn_table_wait_min_ts_count`.
@@ -176,6 +185,10 @@ impl Default for LifecycleOptions {
             transaction_table_num_tablets: || 0,
             transaction_table_num_tablets_per_tserver: || -1,
             enable_delete_truncate_xcluster_replicated_table: || false,
+            enable_truncate_cdcsdk_table: || false,
+            sync_points: || false,
+            enable_table_rewrite_for_cdcsdk_table: || true,
+            cdc_enable_dynamic_schema_changes: || true,
             enable_ysql: || false,
             txn_table_wait_min_ts_count: || 1,
             legacy_colocated_database_creation: || false,
@@ -212,6 +225,53 @@ impl Default for LifecycleOptions {
     }
 }
 
+/// What CDC streams need from tablet creation, splits and hidden-tablet cleanup, which
+/// `master-xrepl` provides. Logical replication streams get their retention barriers and
+/// `cdc_state` rows when a tablet is created (`cdc_sdk_set_retention_barriers`,
+/// `PopulateCDCStateTableOnNewTableCreation`); a split adds the children's rows
+/// (`UpdateCDCProducerOnTabletSplit`); split parents and dropped tables are kept hidden until the
+/// streams have read them (`retained_by_cdcsdk_`).
+pub trait XreplHooks: Send + Sync {
+    /// Whether a new tablet of the table gets CDCSDK retention barriers.
+    fn retention_barriers(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        table_id: &[u8],
+    ) -> bool;
+
+    /// A replica created the tablet with barriers held from `safe_op_id`.
+    fn created(
+        &self,
+        table_id: Vec<u8>,
+        tablet_id: Vec<u8>,
+        safe_op_id: yb_proto::pb::opid::OpIdPB,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>>;
+
+    /// The children of a split of the table were registered.
+    fn split_registered(
+        &self,
+        table_id: Vec<u8>,
+        parent: Vec<u8>,
+        children: Vec<Vec<u8>>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>>;
+
+    /// Whether a tablet is retained (hidden, not deleted) for the streams: a split parent they
+    /// have not finished, or a tablet of a dropped table they still read.
+    fn retains_hidden_tablet(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        tablet_id: &[u8],
+    ) -> bool;
+
+    /// Whether a dropped table is retained for the streams
+    /// (`CDCSDKPopulateDeleteRetainerInfoForTableDrop`).
+    fn retains_dropped_table(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        table_id: &[u8],
+    ) -> bool;
+}
+
 /// A schema version and the DDL transaction whose `AlterTable` made it.
 pub(crate) type AlterTxn = (u32, Vec<u8>);
 
@@ -243,6 +303,8 @@ pub struct TableLifecycle {
     pub(crate) tablet_rpc: std::sync::OnceLock<TabletRpc>,
     /// Whether a dropped table must be hidden; set once the snapshot coordinator exists.
     pub(crate) retention: std::sync::OnceLock<Arc<dyn Retention>>,
+    /// What CDC streams need from DDL; set once the CDC streams service exists.
+    pub(crate) xrepl_hooks: std::sync::OnceLock<Arc<dyn XreplHooks>>,
     /// Held while a tablespace's transaction status table is created
     /// (`tablespace_transaction_table_creation_mutex_`).
     pub(crate) local_transaction_tables: tokio::sync::Mutex<()>,
@@ -270,6 +332,36 @@ impl TableLifecycle {
             .get()
             .cloned()
             .unwrap_or_else(|| Arc::new(schedules::SchedulesOnly))
+    }
+
+    /// A C++ test sync point (`TEST_SYNC_POINT`), which itests order themselves against with
+    /// `LoadDependency`.
+    pub(crate) async fn sync_point(&self, name: &'static str) {
+        use protobuf::Message;
+        if !(self.options.sync_points)() {
+            return;
+        }
+        let mut req = yb_proto::pb::master_rust_peer::TestSyncPointCallbackRequestPB::new();
+        req.set_name(name.to_string());
+        let Ok(bytes) = req.write_to_bytes() else {
+            return;
+        };
+        let host = self.host.clone();
+        if let Ok(Err(s)) =
+            tokio::task::spawn_blocking(move || host.call("TestSyncPointCallback", &bytes)).await
+        {
+            tracing::warn!("Sync point {name}: {s}");
+        }
+    }
+
+    /// Gives DDL what CDC streams need from it.
+    pub fn set_xrepl_hooks(&self, hooks: Arc<dyn XreplHooks>) {
+        let _ = self.xrepl_hooks.set(hooks);
+    }
+
+    /// What CDC streams need from DDL, once set.
+    pub fn xrepl_hooks(&self) -> Option<Arc<dyn XreplHooks>> {
+        self.xrepl_hooks.get().cloned()
     }
 
     /// Gives the DDL paths that call tservers directly the master's RPC client.
@@ -377,6 +469,7 @@ impl TableLifecycle {
             backfill_requesters: Default::default(),
             tablet_rpc: std::sync::OnceLock::new(),
             retention: std::sync::OnceLock::new(),
+            xrepl_hooks: std::sync::OnceLock::new(),
         })
     }
 

@@ -608,6 +608,7 @@ message CdcStateUpsertResponsePB {
 
 // The cdc_state rows of a stream with their checkpoints.
 message CdcStateReadRequestPB {
+  // Without it, every row.
   optional bytes stream_id = 1;
 }
 
@@ -657,6 +658,38 @@ message CdcStateDeleteStreamsRequestPB {
 message CdcStateDeleteStreamsResponsePB {
   optional MasterErrorPB error = 1;
   optional uint32 deleted = 2;
+}
+
+// CatalogManager::GetTableSchemaFromSysCatalog: the table's schema in the sys catalog as of
+// read_time, and with the oids, its PG schema name then (YsqlManager::GetPgSchemaName). The
+// response is GetTableSchemaFromSysCatalogResponsePB.
+message ReadTableSchemaRequestPB {
+  optional bytes table_id = 1;
+  optional fixed64 read_time = 2;
+  optional uint32 database_oid = 3;
+  optional uint32 relfilenode_oid = 4;
+  optional uint32 pg_table_oid = 5;
+}
+
+// MasterTabletServer::EnableCDCService: the master's CDC service serves GetChanges on the sys
+// catalog tablet once a CDCSDK stream exists.
+message EnableCdcServiceRequestPB {}
+
+message EnableCdcServiceResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// TEST_SYNC_POINT_CALLBACK on the host, so tests that drive the leader through the C++ SyncPoint
+// registry drive a Rust leader the same way. The callback gets a std::string* to string_arg when
+// set, else a bool* whose value is returned as fail.
+message TestSyncPointCallbackRequestPB {
+  optional string name = 1;
+  optional bytes string_arg = 2;
+}
+
+message TestSyncPointCallbackResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool fail = 2;
 }
 
 // CatalogManager::GetClosestLiveTserver among the given live tservers.

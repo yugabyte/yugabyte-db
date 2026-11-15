@@ -18,7 +18,10 @@ mod cdcsdk;
 mod controller;
 mod create;
 mod delete;
+mod dynamic;
 mod metadata;
+mod removal;
+mod split;
 mod streams;
 #[cfg(test)]
 mod tests;
@@ -27,7 +30,8 @@ pub use controller::XreplController;
 pub use create::CreatesTables;
 pub use streams::{stream_rows, StreamRow};
 
-use std::sync::{Arc, OnceLock};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use master_catalog_state::{Catalog, CatalogWriter};
@@ -104,6 +108,31 @@ pub struct XreplOptions {
     pub add_indexes_to_stream: fn() -> bool,
     /// `master_ts_rpc_timeout_ms`.
     pub rpc_timeout: fn() -> Duration,
+    /// `cdc_create_stream_alter_table_dispatch_batch_size`: tables per batch of retention barrier
+    /// alters; 0 or less sends one batch.
+    pub alter_batch_size: fn() -> i32,
+    /// `cdc_create_stream_alter_table_dispatch_delay_ms`: the pause after each batch.
+    pub alter_batch_delay: fn() -> Duration,
+    /// `TEST_running_test`: test sync points are consulted on the host.
+    pub sync_points: fn() -> bool,
+    /// The `cdcsdk_enable_dynamic_table_addition_with_table_cleanup` AutoFlag.
+    pub table_cleanup: fn() -> bool,
+    /// `cdcsdk_table_processing_limit_per_run`.
+    pub table_processing_limit: fn() -> i32,
+    /// `TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal`.
+    pub skip_state_entries_on_table_removal: fn() -> bool,
+    /// `TEST_cdcsdk_skip_table_removal_from_qualified_list`.
+    pub skip_table_removal_from_qualified_list: fn() -> bool,
+    /// `TEST_cdcsdk_skip_processing_unqualified_tables`.
+    pub skip_processing_unqualified_tables: fn() -> bool,
+    /// `cdc_intent_retention_ms`: how long a tablet's barriers outlive its last activity.
+    pub intent_retention: fn() -> Duration,
+    /// `enable_table_rewrite_for_cdcsdk_table`: dropped tables of logical replication streams are
+    /// kept hidden until the slots are past them.
+    pub table_rewrite_retention: fn() -> bool,
+    /// `TEST_cdc_add_dynamic_index_to_state_table`: every new tablet gets barriers and rows for
+    /// every CDCSDK stream, eligible or not.
+    pub add_dynamic_index_to_state_table: fn() -> bool,
 }
 
 impl Default for XreplOptions {
@@ -131,6 +160,17 @@ impl Default for XreplOptions {
             disable_cdc_state_insert_on_setup: || false,
             add_indexes_to_stream: || false,
             rpc_timeout: || Duration::from_secs(30),
+            alter_batch_size: || 0,
+            alter_batch_delay: || Duration::ZERO,
+            sync_points: || false,
+            table_cleanup: || true,
+            table_processing_limit: || 2,
+            skip_state_entries_on_table_removal: || false,
+            skip_table_removal_from_qualified_list: || false,
+            skip_processing_unqualified_tables: || false,
+            intent_retention: || Duration::from_secs(8 * 3600),
+            table_rewrite_retention: || true,
+            add_dynamic_index_to_state_table: || false,
         }
     }
 }
@@ -147,6 +187,18 @@ pub struct Xrepl {
     pub(crate) executor: Arc<TsRpcExecutor>,
     pub(crate) retry: RetryPolicy,
     pub(crate) options: XreplOptions,
+    /// `cdcsdk_ineligible_tables_to_streams_`: tables whose `cdc_state` rows of the streams are
+    /// to be deleted.
+    pub(crate) ineligible_tables: Mutex<BTreeMap<Vec<u8>, BTreeSet<String>>>,
+    /// `namespace_to_cdcsdk_non_eligible_table_map_`: the tables to take out of streams that may
+    /// not have them, found in the first pass of the term.
+    #[allow(clippy::type_complexity)]
+    pub(crate) non_eligible_tables: Mutex<(Option<i64>, BTreeMap<Vec<u8>, BTreeSet<String>>)>,
+    /// Hidden split parents no stream needs any more, for the hidden-objects cleanup.
+    pub(crate) released_split_parents: Mutex<HashSet<Vec<u8>>>,
+    /// The host's CDC service serves GetChanges on the sys catalog tablet; enabled once, as C++
+    /// never disables it.
+    pub(crate) cdc_service_enabled: std::sync::atomic::AtomicBool,
 }
 
 impl Xrepl {
@@ -172,6 +224,10 @@ impl Xrepl {
             executor,
             retry,
             options,
+            ineligible_tables: Mutex::default(),
+            released_split_parents: Mutex::default(),
+            non_eligible_tables: Mutex::default(),
+            cdc_service_enabled: Default::default(),
         })
     }
 
@@ -202,6 +258,83 @@ impl Xrepl {
 
     fn hybrid_time_now(&self, max_global: bool) -> Result<u64, Status> {
         hybrid_time_now(&*self.host, max_global)
+    }
+
+    /// `TEST_CDCSDKFailCreateStreamRequestIfNeeded`: Aborted when a test's callback for the sync
+    /// point asks for a failure.
+    pub(crate) async fn fail_at(&self, sync_point: &'static str) -> Result<(), Status> {
+        if !(self.options.sync_points)() {
+            return Ok(());
+        }
+        let mut req = yb_proto::pb::master_rust_peer::TestSyncPointCallbackRequestPB::new();
+        req.set_name(sync_point.to_string());
+        let resp: yb_proto::pb::master_rust_peer::TestSyncPointCallbackResponsePB =
+            self.host_call("TestSyncPointCallback", req).await?;
+        if resp.fail() {
+            return Err(Status::new(
+                StatusCode::Aborted,
+                format!("Test failure for sync point {sync_point}."),
+            ));
+        }
+        Ok(())
+    }
+
+    /// `SetCDCServiceEnabled`: the master's CDC service, which logical replication polls the
+    /// PG catalog tables through, serves once a CDCSDK stream exists.
+    pub(crate) async fn enable_cdc_service(&self) {
+        use std::sync::atomic::Ordering;
+        if self.cdc_service_enabled.load(Ordering::Acquire) {
+            return;
+        }
+        let req = yb_proto::pb::master_rust_peer::EnableCdcServiceRequestPB::new();
+        match self
+            .host_call::<_, yb_proto::pb::master_rust_peer::EnableCdcServiceResponsePB>(
+                "EnableCDCService",
+                req,
+            )
+            .await
+        {
+            Ok(_) => self.cdc_service_enabled.store(true, Ordering::Release),
+            Err(s) => tracing::warn!("Enabling the master's CDC service failed: {s}"),
+        }
+    }
+
+    /// A `TEST_SYNC_POINT_CALLBACK` whose test callback fails the step, as C++'s
+    /// `SCHECK(!TEST_fail)` does.
+    pub(crate) async fn fail_for_testing(&self, sync_point: &'static str) -> Result<(), Status> {
+        match self.fail_at(sync_point).await {
+            Err(s) if s.code == StatusCode::Aborted => {
+                tracing::info!("Failing at {sync_point} for testing");
+                Err(Status::new(StatusCode::IllegalState, "Failing for TESTING"))
+            }
+            other => other,
+        }
+    }
+
+    /// A test sync point; a test's `LoadDependency` may hold the caller here.
+    pub(crate) async fn sync_point(&self, sync_point: &'static str) {
+        if let Err(s) = self.fail_at(sync_point).await {
+            tracing::warn!("Sync point {sync_point}: {s}");
+        }
+    }
+
+    /// A test sync point whose callback takes a `std::string*`, such as a tablet id.
+    pub(crate) async fn sync_point_with(&self, sync_point: &'static str, arg: &[u8]) {
+        if !(self.options.sync_points)() {
+            return;
+        }
+        let mut req = yb_proto::pb::master_rust_peer::TestSyncPointCallbackRequestPB::new();
+        req.set_name(sync_point.to_string());
+        req.set_string_arg(arg.to_vec());
+        if let Err(s) = self
+            .host_call::<_, yb_proto::pb::master_rust_peer::TestSyncPointCallbackResponsePB>(
+                "TestSyncPointCallback",
+                req,
+            )
+            .await
+        {
+            tracing::warn!("Sync point {sync_point} failed: {s}");
+        }
     }
 }
 

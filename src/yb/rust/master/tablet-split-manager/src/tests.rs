@@ -37,8 +37,14 @@ use crate::{child_partitions, validate_split_candidate, AutoSplitOptions, Tablet
 
 struct NoHost;
 
+/// Only the clock, for hide times.
 impl SchemaHost for NoHost {
     fn call(&self, method: &'static str, _: &[u8]) -> Result<Vec<u8>, Status> {
+        if method == "HybridTimeNow" {
+            let mut resp = yb_proto::pb::master_rust_peer::HybridTimeNowResponsePB::new();
+            resp.set_hybrid_time(7 << 12);
+            return Ok(resp.write_to_bytes().unwrap());
+        }
         Err(Status::new(StatusCode::NotSupported, method))
     }
 }
@@ -268,7 +274,7 @@ async fn the_parent_goes_once_its_children_cover_it() {
 }
 
 #[tokio::test]
-async fn the_parent_of_a_streamed_table_is_kept() {
+async fn the_parent_of_an_xcluster_streamed_table_is_kept() {
     let h = Harness::new().await;
     let children = h
         .splits
@@ -277,7 +283,8 @@ async fn the_parent_of_a_streamed_table_is_kept() {
         .unwrap();
     h.set_running(&children[0]).await;
     h.set_running(&children[1]).await;
-    // A C++ leader split a table with an outbound stream, whose pollers still read the parent.
+    // A C++ leader split a table with an outbound xCluster stream (no namespace), whose pollers
+    // still read the parent.
     let mut stream = yb_proto::pb::catalog_entity_info::SysCDCStreamEntryPB::new();
     stream.table_id.push("t1".to_string());
     h.writer
@@ -299,15 +306,86 @@ async fn the_parent_of_a_streamed_table_is_kept() {
         .delete_not_serving_tablet(h.token, deadline, &req)
         .await
         .unwrap_err();
-    assert!(
-        e.status.message().contains("xCluster or CDC stream"),
-        "{e:?}"
-    );
+    assert!(e.status.message().contains("xCluster stream"), "{e:?}");
     assert_eq!(
         h.tablet(b"parent").state(),
         sys_tablets_entry_pb::State::RUNNING
     );
     assert!(h.ts_manager.deletes.pending().is_empty());
+}
+
+/// A split the streams heard of: table, parent, children.
+type Split = (Vec<u8>, Vec<u8>, Vec<Vec<u8>>);
+
+/// Records splits and retains every split parent, as CDCSDK streams on the table would.
+#[derive(Default)]
+struct RetainingStreams {
+    splits: std::sync::Mutex<Vec<Split>>,
+}
+
+impl master_table_lifecycle::XreplHooks for RetainingStreams {
+    fn retention_barriers(&self, _: &master_catalog_state::CatalogSnapshot, _: &[u8]) -> bool {
+        false
+    }
+
+    fn created(
+        &self,
+        _: Vec<u8>,
+        _: Vec<u8>,
+        _: yb_proto::pb::opid::OpIdPB,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn split_registered(
+        &self,
+        table_id: Vec<u8>,
+        parent: Vec<u8>,
+        children: Vec<Vec<u8>>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+        self.splits
+            .lock()
+            .unwrap()
+            .push((table_id, parent, children));
+        Box::pin(async { Ok(()) })
+    }
+
+    fn retains_hidden_tablet(&self, _: &master_catalog_state::CatalogSnapshot, _: &[u8]) -> bool {
+        true
+    }
+
+    fn retains_dropped_table(&self, _: &master_catalog_state::CatalogSnapshot, _: &[u8]) -> bool {
+        false
+    }
+}
+
+#[tokio::test]
+async fn a_split_informs_the_streams_and_a_parent_they_retain_is_hidden() {
+    let h = Harness::new().await;
+    let streams = Arc::new(RetainingStreams::default());
+    h.splits.set_xrepl_hooks(streams.clone());
+    let children = h
+        .splits
+        .do_split(h.token, b"parent", vec![vec![0x80, 0x00]], true)
+        .await
+        .unwrap();
+    assert_eq!(
+        *streams.splits.lock().unwrap(),
+        vec![(b"t1".to_vec(), b"parent".to_vec(), children.clone())]
+    );
+    h.set_running(&children[0]).await;
+    h.set_running(&children[1]).await;
+    let mut req = DeleteNotServingTabletRequestPB::new();
+    req.set_tablet_id(b"parent".to_vec());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    h.splits
+        .delete_not_serving_tablet(h.token, deadline, &req)
+        .await
+        .unwrap();
+    // Hidden, not deleted: its replicas keep their data for the streams.
+    let parent = h.tablet(b"parent");
+    assert_eq!(parent.state(), sys_tablets_entry_pb::State::RUNNING);
+    assert_ne!(parent.hide_hybrid_time(), 0);
 }
 
 #[tokio::test]

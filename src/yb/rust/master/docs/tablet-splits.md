@@ -12,7 +12,7 @@ The leader side of tablet splitting: `CatalogManager::SplitTablet`, `DoSplitTabl
    committed (`enable_tablet_split_of_uncommitted_ysql_tables`), with a vector index only when
    manual or `enable_tablet_split_of_tables_with_vector_index`, not a range-partitioned index
    before partitioning version 1, not one hosting stateful services, covered by a snapshot
-   schedule, in an xCluster or CDC stream or backfilling an index, not colocated, RUNNING, and a
+   schedule, in an xCluster stream or backfilling an index, not colocated, RUNNING, and a
    split child only once its parent is gone), then the table limits
    (`max_create_tablets_per_ts` per live tserver, `tablet_split_limit_per_table`), and answers.
    As C++ schedules `AsyncGetTabletSplitKey`, the leader then asks the tablet's leader for the
@@ -74,8 +74,10 @@ than deleted ([snapshot-coordinator.md](snapshot-coordinator.md#hidden-objects))
 - `CheckIfCanDeleteSingleTablet` accepts a tablet over the whole key space with nothing covering
   it, since its empty start and end compare equal; the Rust check requires a running tablet over
   the range.
-- A table in an xCluster or CDC stream is not split: the streams' tablet mappings would need
-  updating (`ProcessSplitTabletResult`), which a Rust leader does not do.
+- A table in an xCluster stream is not split: xCluster's tablet mappings would need updating
+  (`ProcessSplitTabletResult`), which a Rust leader does not do yet. CDCSDK streams get their
+  children's `cdc_state` rows and keep the parent hidden
+  ([xrepl.md](xrepl.md#splits-and-dropped-tables)).
 - C++ evaluates a parent with registered children as a fresh candidate, and a later
   `DoSplitTablet` resumes it; the Rust pass leaves registered splits to the `tablet-splits`
   controller and counts them only against the limits.

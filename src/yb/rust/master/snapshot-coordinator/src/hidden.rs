@@ -82,6 +82,10 @@ impl Retention for SnapshotCoordinator {
                     .tablets_of(table_id)
                     .iter()
                     .any(|t| covered.contains(&*t.key.id)),
+            active_cdcsdk: self
+                .xrepl_hooks
+                .get()
+                .is_some_and(|x| x.retains_dropped_table(snapshot, table_id)),
         }
     }
 
@@ -98,6 +102,7 @@ impl Retention for SnapshotCoordinator {
             schedules: covering_schedules(snapshot, SysRowEntryType::TABLE, &table_id),
             active_snapshot: covering_tablets(snapshot).contains(tablet_id)
                 || self.is_namespace_retained(&namespace_id),
+            ..Retainer::default()
         }
     }
 }
@@ -166,6 +171,7 @@ impl SnapshotCoordinator {
     ) {
         let min_times = schedule_min_restore_times(snapshot, rows);
         let covered = covering_tablets(snapshot);
+        let xrepl = self.xrepl_hooks.get();
         // `CleanupHiddenTablets`.
         let expired: Vec<Vec<u8>> = snapshot
             .iter(SysRowEntryType::TABLET)
@@ -173,6 +179,7 @@ impl SnapshotCoordinator {
                 t.tablet()
                     .is_some_and(|h| h.hidden && !is_inactive_state(h.state))
             })
+            .filter(|t| !xrepl.is_some_and(|x| x.retains_hidden_tablet(snapshot, &t.key.id)))
             .filter(|t| {
                 t.parse::<SysTabletsEntryPB>().is_ok_and(|pb| {
                     !self.should_retain(

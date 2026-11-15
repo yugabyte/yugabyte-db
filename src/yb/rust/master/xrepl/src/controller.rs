@@ -46,10 +46,28 @@ impl Controller for XreplController {
             let Ok(token) = xrepl.leadership.token() else {
                 return;
             };
+            xrepl.sync_point("RunXReplBgTasks::Start").await;
+            let snapshot = xrepl.catalog.snapshot();
+            if crate::streams::stream_rows(&snapshot)
+                .iter()
+                .any(|r| !r.is_deleting() && !r.pb.namespace_id().is_empty())
+            {
+                xrepl.enable_cdc_service().await;
+            }
             if !(xrepl.options.disable_deleted_stream_cleanup)() {
                 if let Err(status) = xrepl.clean_up_deleted_streams(&token).await {
                     tracing::warn!("Failed Cleaning Deleted XRepl Streams: {status}");
                 }
+            }
+            if let Err(status) = xrepl.process_new_tables(&token).await {
+                tracing::warn!("Failed to add new tables to CDCSDK streams: {status}");
+            }
+            xrepl.prune_released(&xrepl.catalog.snapshot());
+            if let Err(status) = xrepl.process_cdcsdk_hidden_tablets().await {
+                tracing::warn!("Failed to run DoProcessCDCSDKTabletDeletion: {status}");
+            }
+            if let Err(status) = xrepl.process_table_removals(&token).await {
+                tracing::warn!("Failed to remove tables from CDCSDK streams: {status}");
             }
             if !(xrepl.options.disable_drop_table_cleanup)() {
                 if let Err(status) = xrepl.clean_up_cdcsdk_streams_metadata(&token).await {

@@ -1548,6 +1548,77 @@ mod ysql {
         assert_eq!(err.code(), Code::OBJECT_NOT_FOUND);
     }
 
+    /// A gRPC CDCSDK stream on the table refuses a truncate as C++ does
+    /// (`CDCSDKAllowTableRewrite`); a drop of its database marks the stream DELETING in the same
+    /// write.
+    #[tokio::test]
+    async fn cdcsdk_streams_refuse_truncate_and_go_with_their_database() {
+        use crate::{TruncateOptions, Truncates};
+        use yb_proto::pb::catalog_entity_info::{sys_cdcstream_entry_pb, SysCDCStreamEntryPB};
+        use yb_proto::pb::master_ddl::{TruncateTableRequestPB, TruncateTableResponsePB};
+        let h = ysql_harness().await;
+        h.create_ysql(None).await.unwrap();
+        h.set_table_state(TABLE_ID, sys_tables_entry_pb::State::RUNNING)
+            .await;
+        let mut stream = SysCDCStreamEntryPB::new();
+        stream.set_namespace_id(String::from_utf8(DB_ID.to_vec()).unwrap());
+        stream
+            .table_id
+            .push(String::from_utf8(TABLE_ID.to_vec()).unwrap());
+        stream.state = Some(EnumOrUnknown::new(sys_cdcstream_entry_pb::State::ACTIVE));
+        h.lifecycle
+            .writer
+            .submit(
+                &h.token,
+                master_catalog_state::Mutation::new()
+                    .upsert_message(SysRowEntryType::CDC_STREAM, b"stream", &stream)
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        h.catalog.barrier().await;
+        let truncates = Truncates::new(
+            h.lifecycle.clone(),
+            master_task_runtime::TsRpcExecutor::new(|_| 1),
+            TruncateOptions {
+                disable_truncate_table: || false,
+                enable_truncate_on_pitr_table: || false,
+                rpc_timeout: || std::time::Duration::from_secs(1),
+                retry: Default::default,
+            },
+        );
+        let mut req = TruncateTableRequestPB::new();
+        req.table_ids.push(TABLE_ID.to_vec());
+        let err = truncates
+            .truncate_table(&h.token, &req, &mut TruncateTableResponsePB::new())
+            .unwrap_err();
+        assert!(
+            err.status
+                .message()
+                .contains("when CDC is enabled with gRPC streams"),
+            "{err:?}"
+        );
+
+        let mut drop = DeleteNamespaceRequestPB::new();
+        drop.namespace
+            .mut_or_insert_default()
+            .set_id(DB_ID.to_vec());
+        drop.namespace
+            .mut_or_insert_default()
+            .set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+        h.lifecycle
+            .delete_namespace(&h.token, Harness::deadline(), &drop)
+            .await
+            .unwrap();
+        let stream: SysCDCStreamEntryPB = h
+            .snapshot()
+            .get(SysRowEntryType::CDC_STREAM, b"stream")
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(stream.state(), sys_cdcstream_entry_pb::State::DELETING);
+    }
+
     /// An index joins its table at WRITE_AND_DELETE, keeping delete markers; `BackfillIndex`
     /// moves it to DO_BACKFILL; `GetBackfillStatus` reports success only once it is
     /// READ_WRITE_AND_DELETE; a drop takes it out of its table.

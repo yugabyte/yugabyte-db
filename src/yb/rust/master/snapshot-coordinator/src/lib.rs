@@ -200,6 +200,8 @@ pub struct SnapshotCoordinator {
     pub(crate) poke: watch::Sender<u64>,
     /// Hooks into other leader components.
     pub(crate) hooks: OnceLock<Arc<dyn RestoreHooks>>,
+    /// CDC streams, which keep some hidden split parents; set once.
+    pub(crate) xrepl_hooks: OnceLock<Arc<dyn master_table_lifecycle::XreplHooks>>,
 }
 
 /// What a finished PITR tells other leader components.
@@ -245,7 +247,13 @@ impl SnapshotCoordinator {
             retained_namespaces: Mutex::default(),
             poke: watch::channel(0).0,
             hooks: OnceLock::new(),
+            xrepl_hooks: OnceLock::new(),
         })
+    }
+
+    /// CDC streams, which keep some hidden split parents (`ShouldRetainHiddenTablet`); set once.
+    pub fn set_xrepl_hooks(&self, hooks: Arc<dyn master_table_lifecycle::XreplHooks>) {
+        let _ = self.xrepl_hooks.set(hooks);
     }
 
     /// The RPC client tservers are called with; set once, before any leader term.

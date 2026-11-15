@@ -17,13 +17,103 @@ use master_leadership::LeaderToken;
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
 use yb_proto::pb::catalog_entity_info::SysCDCStreamEntryPB;
-use yb_proto::pb::master_replication::DisableDynamicTableAdditionOnCDCSDKStreamRequestPB;
+use yb_proto::pb::catalog_entity_info::SysTablesEntryPB;
+use yb_proto::pb::common_types::YQLDatabase;
+use yb_proto::pb::master_replication::{
+    DisableDynamicTableAdditionOnCDCSDKStreamRequestPB, GetTableSchemaFromSysCatalogRequestPB,
+    GetTableSchemaFromSysCatalogResponsePB, GetUDTypeMetadataRequestPB,
+    GetUDTypeMetadataResponsePB,
+};
+use yb_proto::pb::master_rust_peer::ReadTableSchemaRequestPB;
 use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
 
 use crate::streams::{parse_stream_id, StreamRow};
 use crate::{error, Xrepl};
 
 impl Xrepl {
+    /// `GetTableSchemaFromSysCatalog`: the table's schema as of `read_time` (the latest without
+    /// it), read from the sys catalog by the host, with its PG schema name then.
+    pub async fn get_table_schema_from_sys_catalog(
+        &self,
+        req: &GetTableSchemaFromSysCatalogRequestPB,
+        resp: &mut GetTableSchemaFromSysCatalogResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let table_id = req.table.table_id();
+        let read_time = if req.has_read_time() {
+            req.read_time() as u64
+        } else {
+            tracing::info!(
+                "Reading latest schema version for: {} from system catalog table",
+                String::from_utf8_lossy(table_id)
+            );
+            u64::MAX
+        };
+        let mut host_req = ReadTableSchemaRequestPB::new();
+        host_req.set_table_id(table_id.to_vec());
+        host_req.set_read_time(read_time);
+        let oids = self
+            .catalog
+            .snapshot()
+            .get(SysRowEntryType::TABLE, table_id)
+            .and_then(|t| t.parse::<SysTablesEntryPB>().ok())
+            .and_then(|pb| master_table_lifecycle::pg_table_all_oids(table_id, &pb));
+        if let Some(oids) = oids {
+            host_req.set_database_oid(oids.database);
+            host_req.set_relfilenode_oid(oids.relfilenode);
+            host_req.set_pg_table_oid(oids.pg_table);
+        }
+        let mut out: GetTableSchemaFromSysCatalogResponsePB = self
+            .host_call("ReadTableSchema", host_req)
+            .await
+            .map_err(|_| {
+                error(
+                    Code::OBJECT_NOT_FOUND,
+                    StatusCode::NotFound,
+                    format!(
+                        "Could not find specific schema from system catalog for request {}.",
+                        protobuf::text_format::print_to_string(req)
+                    ),
+                )
+            })?;
+        out.error = Default::default();
+        *resp = out;
+        Ok(())
+    }
+
+    /// `GetUDTypeMetadata`: the enum labels or composite type attributes of a YSQL database, read
+    /// from its pg_catalog by the host.
+    pub async fn get_ud_type_metadata(
+        &self,
+        req: &GetUDTypeMetadataRequestPB,
+        resp: &mut GetUDTypeMetadataResponsePB,
+    ) -> Result<(), MasterErrorPB> {
+        let namespace = master_table_lifecycle::lookup::find_namespace(
+            &self.catalog.snapshot(),
+            &req.namespace,
+        )?;
+        let database_type = namespace.namespace().map_or(0, |n| n.database_type);
+        if database_type != YQLDatabase::YQL_DATABASE_PGSQL as i32 {
+            return Err(error(
+                Code::UNKNOWN_ERROR,
+                StatusCode::InternalError,
+                format!("Expected YSQL database, got: {database_type}"),
+            ));
+        }
+        let mut host_req = req.clone();
+        host_req.namespace.mut_or_insert_default().clear_name();
+        host_req
+            .namespace
+            .mut_or_insert_default()
+            .set_id(namespace.key.id.to_vec());
+        let mut out: GetUDTypeMetadataResponsePB = self
+            .host_call("ReadUDTypeMetadata", host_req)
+            .await
+            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+        resp.enums = std::mem::take(&mut out.enums);
+        resp.composites = std::mem::take(&mut out.composites);
+        Ok(())
+    }
+
     /// `ValidateStreamForTableRemoval`: a live CDCSDK stream.
     pub(crate) fn cdcsdk_stream(&self, id: &str) -> Result<StreamRow, MasterErrorPB> {
         let row = self

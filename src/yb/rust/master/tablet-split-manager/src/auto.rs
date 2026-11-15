@@ -43,6 +43,10 @@ pub struct AutoSplitOptions {
     pub split_uncommitted_ysql_tables: fn() -> bool,
     /// `enable_tablet_split_of_tables_with_vector_index`.
     pub split_tables_with_vector_index: fn() -> bool,
+    /// `enable_tablet_split_of_cdcsdk_streamed_tables`.
+    pub split_cdcsdk_streamed_tables: fn() -> bool,
+    /// `enable_tablet_split_of_replication_slot_streamed_tables`.
+    pub split_replication_slot_streamed_tables: fn() -> bool,
     /// `process_split_tablet_candidates_interval_msec`.
     pub interval: fn() -> Duration,
     /// `outstanding_tablet_split_limit`; 0 for no limit.
@@ -82,6 +86,8 @@ impl Default for AutoSplitOptions {
             enabled: || false,
             split_uncommitted_ysql_tables: || false,
             split_tables_with_vector_index: || true,
+            split_cdcsdk_streamed_tables: || true,
+            split_replication_slot_streamed_tables: || true,
             interval: || Duration::ZERO,
             outstanding_limit: || 0,
             outstanding_limit_per_tserver: || -1,

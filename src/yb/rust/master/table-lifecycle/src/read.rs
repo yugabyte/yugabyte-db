@@ -306,6 +306,22 @@ fn replication_info_set(info: &yb_proto::pb::common_net::ReplicationInfoPB) -> b
 /// `TableInfo::ShouldLookupPgSchemaName` and `GetPgTableAllOids`: the database and relation oids
 /// of a YSQL relation outside the PG catalog, the sequences database and colocation parents.
 fn pg_schema_lookup(table_id: &[u8], pb: &SysTablesEntryPB) -> Option<(u32, u32)> {
+    pg_table_all_oids(table_id, pb).map(|o| (o.database, o.pg_table))
+}
+
+/// `PgTableAllOids` of a table whose PG schema name can be looked up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PgTableAllOids {
+    /// The PG database.
+    pub database: u32,
+    /// The oid in the table id, which a table rewrite changes.
+    pub relfilenode: u32,
+    /// The relation's oid in pg_class.
+    pub pg_table: u32,
+}
+
+/// `TableInfo::ShouldLookupPgSchemaName` and `GetPgTableAllOids`.
+pub fn pg_table_all_oids(table_id: &[u8], pb: &SysTablesEntryPB) -> Option<PgTableAllOids> {
     if pb.table_type() != TableType::PGSQL_TABLE_TYPE
         || crate::lookup::is_colocation_parent_table_id(table_id)
     {
@@ -315,13 +331,18 @@ fn pg_schema_lookup(table_id: &[u8], pb: &SysTablesEntryPB) -> Option<(u32, u32)
     if database == 65535 {
         return None;
     }
-    let relation = if pb.pg_table_id().is_empty() {
-        crate::ysql::pg_table_oid(table_id)?
+    let relfilenode = crate::ysql::pg_table_oid(table_id)?;
+    let pg_table = if pb.pg_table_id().is_empty() {
+        relfilenode
     } else {
         crate::ysql::pg_table_oid(pb.pg_table_id())?
     };
     // Below kPgFirstNormalObjectId: a PG catalog table, which lives in the sys catalog tablet.
-    (relation >= 16384).then_some((database, relation))
+    (pg_table >= 16384).then_some(PgTableAllOids {
+        database,
+        relfilenode,
+        pg_table,
+    })
 }
 
 impl TableLifecycle {

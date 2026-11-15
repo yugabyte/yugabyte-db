@@ -185,6 +185,28 @@ static SLOT_CONSUMPTION: FlagRef<bool> =
 static DISABLE_CDC_STATE_INSERT: FlagRef<bool> =
     FlagRef::new("TEST_disable_cdc_state_insert_on_setup");
 static CDCSDK_ADD_INDEXES: FlagRef<bool> = FlagRef::new("TEST_cdcsdk_add_indexes_to_stream");
+static CDC_ALTER_BATCH_SIZE: FlagRef<i32> =
+    FlagRef::new("cdc_create_stream_alter_table_dispatch_batch_size");
+static CDC_ALTER_BATCH_DELAY_MS: FlagRef<i32> =
+    FlagRef::new("cdc_create_stream_alter_table_dispatch_delay_ms");
+static RUNNING_TEST: FlagRef<bool> = FlagRef::new("TEST_running_test");
+static CDC_ADD_DYNAMIC_INDEX: FlagRef<bool> =
+    FlagRef::new("TEST_cdc_add_dynamic_index_to_state_table");
+static SPLIT_CDCSDK_STREAMED_TABLES: FlagRef<bool> =
+    FlagRef::new("enable_tablet_split_of_cdcsdk_streamed_tables");
+static SPLIT_REPLICATION_SLOT_STREAMED_TABLES: FlagRef<bool> =
+    FlagRef::new("enable_tablet_split_of_replication_slot_streamed_tables");
+static CDC_INTENT_RETENTION_MS: FlagRef<u64> = FlagRef::new("cdc_intent_retention_ms");
+static CDCSDK_TABLE_CLEANUP: FlagRef<bool> =
+    FlagRef::new("cdcsdk_enable_dynamic_table_addition_with_table_cleanup");
+static CDCSDK_TABLE_PROCESSING_LIMIT: FlagRef<i32> =
+    FlagRef::new("cdcsdk_table_processing_limit_per_run");
+static CDCSDK_SKIP_STATE_ON_REMOVAL: FlagRef<bool> =
+    FlagRef::new("TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal");
+static CDCSDK_SKIP_UNQUALIFIED: FlagRef<bool> =
+    FlagRef::new("TEST_cdcsdk_skip_processing_unqualified_tables");
+static CDCSDK_SKIP_QUALIFIED_REMOVAL: FlagRef<bool> =
+    FlagRef::new("TEST_cdcsdk_skip_table_removal_from_qualified_list");
 static CLONE_PG_SCHEMA_RPC_TIMEOUT_MS: FlagRef<i32> =
     FlagRef::new("ysql_clone_pg_schema_rpc_timeout_ms");
 static FAIL_CLONE_PG_SCHEMA: FlagRef<bool> = FlagRef::new("TEST_fail_clone_pg_schema");
@@ -228,6 +250,9 @@ static TRANSACTION_TABLE_NUM_TABLETS_PER_TSERVER: FlagRef<i32> =
     FlagRef::new("transaction_table_num_tablets_per_tserver");
 static ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE: FlagRef<bool> =
     FlagRef::new("enable_delete_truncate_xcluster_replicated_table");
+static ENABLE_TRUNCATE_CDCSDK_TABLE: FlagRef<bool> = FlagRef::new("enable_truncate_cdcsdk_table");
+static ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE: FlagRef<bool> =
+    FlagRef::new("enable_table_rewrite_for_cdcsdk_table");
 static BLACKLIST_PROGRESS_INITIAL_DELAY_SECS: FlagRef<i32> =
     FlagRef::new("blacklist_progress_initial_delay_secs");
 static DELAY_LEADER_BLACKLIST_COMPLETION: FlagRef<bool> =
@@ -688,6 +713,10 @@ impl Core {
                 auto: AutoSplitOptions {
                     split_uncommitted_ysql_tables: || SPLIT_UNCOMMITTED_YSQL_TABLES.get(),
                     split_tables_with_vector_index: || SPLIT_TABLES_WITH_VECTOR_INDEX.get(),
+                    split_cdcsdk_streamed_tables: || SPLIT_CDCSDK_STREAMED_TABLES.get(),
+                    split_replication_slot_streamed_tables: || {
+                        SPLIT_REPLICATION_SLOT_STREAMED_TABLES.get()
+                    },
                     enabled: || AUTO_SPLIT.get(),
                     interval: || millis(SPLIT_CANDIDATES_INTERVAL_MS.get().max(0)),
                     outstanding_limit: || OUTSTANDING_SPLIT_LIMIT.get(),
@@ -784,6 +813,12 @@ impl Core {
                 enable_delete_truncate_xcluster_replicated_table: || {
                     ENABLE_DELETE_TRUNCATE_XCLUSTER_REPLICATED_TABLE.get()
                 },
+                enable_truncate_cdcsdk_table: || ENABLE_TRUNCATE_CDCSDK_TABLE.get(),
+                sync_points: || RUNNING_TEST.get(),
+                enable_table_rewrite_for_cdcsdk_table: || {
+                    ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE.get()
+                },
+                cdc_enable_dynamic_schema_changes: || CDC_DYNAMIC_SCHEMA_CHANGES.get(),
             },
         );
         splits.set_tablespaces(tables.tablespaces());
@@ -951,6 +986,17 @@ impl Core {
                     disable_cdc_state_insert_on_setup: || DISABLE_CDC_STATE_INSERT.get(),
                     add_indexes_to_stream: || CDCSDK_ADD_INDEXES.get(),
                     rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                    alter_batch_size: || CDC_ALTER_BATCH_SIZE.get(),
+                    alter_batch_delay: || millis(CDC_ALTER_BATCH_DELAY_MS.get().max(0)),
+                    sync_points: || RUNNING_TEST.get(),
+                    intent_retention: || Duration::from_millis(CDC_INTENT_RETENTION_MS.get()),
+                    table_rewrite_retention: || ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE.get(),
+                    add_dynamic_index_to_state_table: || CDC_ADD_DYNAMIC_INDEX.get(),
+                    table_cleanup: || CDCSDK_TABLE_CLEANUP.get(),
+                    table_processing_limit: || CDCSDK_TABLE_PROCESSING_LIMIT.get(),
+                    skip_state_entries_on_table_removal: || CDCSDK_SKIP_STATE_ON_REMOVAL.get(),
+                    skip_table_removal_from_qualified_list: || CDCSDK_SKIP_QUALIFIED_REMOVAL.get(),
+                    skip_processing_unqualified_tables: || CDCSDK_SKIP_UNQUALIFIED.get(),
                 },
             ),
             leases,
@@ -1098,6 +1144,9 @@ impl Core {
         leader.splits.set_rpc(rpc.clone());
         leader.snapshots.set_rpc(rpc.clone());
         leader.xrepl.set_rpc(rpc.clone());
+        leader.tables.set_xrepl_hooks(leader.xrepl.clone());
+        leader.splits.set_xrepl_hooks(leader.xrepl.clone());
+        leader.snapshots.set_xrepl_hooks(leader.xrepl.clone());
         leader.locks.set_rpc(rpc.clone());
         leader.backends.set_rpc(rpc.clone());
         leader.truncates.set_rpc(rpc.clone());

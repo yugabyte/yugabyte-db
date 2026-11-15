@@ -72,6 +72,19 @@ impl TableLifecycle {
         req: &DeleteTableRequestPB,
         resp: &mut DeleteTableResponsePB,
     ) -> Result<(), MasterErrorPB> {
+        self.delete_table_internal(token, deadline, req, resp)
+            .await?;
+        self.sync_point("DeleteTableInternal::End").await;
+        Ok(())
+    }
+
+    async fn delete_table_internal(
+        &self,
+        token: &LeaderToken,
+        deadline: Instant,
+        req: &DeleteTableRequestPB,
+        resp: &mut DeleteTableResponsePB,
+    ) -> Result<(), MasterErrorPB> {
         let snapshot = self.catalog.snapshot();
         let table = find_table(&snapshot, &req.table, false)?;
         resp.set_table_id(table.key.id.to_vec());

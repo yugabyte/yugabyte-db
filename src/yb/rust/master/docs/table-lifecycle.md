@@ -18,7 +18,7 @@ YCQL keyspaces, tables and indexes:
 | `AlterTable`, `IsAlterTableDone` | Below. |
 | `DeleteTable`, `IsDeleteTableDone` | Below. A table a snapshot schedule or snapshot retains is hidden rather than deleted ([snapshot-coordinator.md](snapshot-coordinator.md#hidden-objects)). |
 | `FlushTables`, `IsFlushTablesDone` | `flush.rs`, as C++'s `FlushManager`: one `FlushTablets` per tserver with a replica of the tables' (and with `add_indexes`, their indexes') tablets; a compaction records `last_full_compaction_request_time`. Not persisted, so a new leader answers NotFound for an old leader's request, as C++ does. |
-| `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is refused until W11. |
+| `TruncateTable`, `IsTruncateTableDone` | `truncate.rs`. As C++: `Truncate` to each tablet's leader, and a YCQL table's indexes too (PG truncates each YSQL index itself). Not persisted, so a new leader reports an unfinished truncate as done, as C++ does. A table in a CDCSDK stream is truncated only as `CDCSDKAllowTableRewrite` allows. |
 
 YSQL databases, tables and indexes (below), in a tablegroup or not, in any tablespace.
 `AlterNamespace` renames a running namespace. YCQL roles, permissions and UDTs are below too.
@@ -54,6 +54,10 @@ committed drop and an aborted create become DELETING, anything else just loses t
 table that becomes DELETING takes the indexes still in its `indexes` with it, as
 `DeleteTableInMemory` does: a rewrite drops the old DocDB table and builds new indexes, so nothing
 else would drop the old ones.
+A rewrite (`old_rewrite_table_id`) of a table in a CDCSDK stream is checked as
+`CDCSDKValidateCreateTableRequest` does. A dropped table that a logical replication stream has
+is hidden rather than deleted (`Retainer::active_cdcsdk`,
+[xrepl.md](xrepl.md#splits-and-dropped-tables)).
 An ALTER of a YSQL table in a DDL transaction records the table as it was (`previous_schema`,
 `previous_table_name`) with `contains_alter_table_op`. An abort restores that as an alter of its
 own; a commit drops the columns the transaction marked for deletion, also as an alter. Either way
@@ -251,10 +255,10 @@ one started:
    sys-catalog tablet's row and sets the database DELETED. C++ does these in two writes.
 3. The tables' tablets are deleted as for DROP TABLE.
 
-A database with a shared table goes to FAILED, as C++'s check fails it. Not done yet: dropping the
-database's CDCSDK streams (a database with one is refused until W11), erasing its xCluster
-persistence block, and removing the DELETED row on the next leader load (C++ keeps it as a
-tombstone until then).
+The first write also marks the database's CDCSDK streams DELETING (`DropAllCDCSDKStreams`, which
+C++ does in the asynchronous part). A database with a shared table goes to FAILED, as C++'s check
+fails it. Not done yet: erasing its xCluster persistence block, and removing the DELETED row on
+the next leader load (C++ keeps it as a tombstone until then).
 
 ## During a YSQL major upgrade (`major_upgrade.rs`)
 

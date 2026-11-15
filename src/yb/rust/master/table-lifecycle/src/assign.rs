@@ -428,9 +428,14 @@ impl TabletAssigner {
         snapshot: &CatalogSnapshot,
         tablet: &Arc<Entity>,
     ) {
-        let Some(request) = create_request(snapshot, tablet) else {
+        let Some(mut request) = create_request(snapshot, tablet) else {
             return;
         };
+        let hook = self.lifecycle.xrepl_hooks.get().cloned();
+        let hook = hook.filter(|h| h.retention_barriers(snapshot, request.table_id()));
+        if hook.is_some() {
+            request.set_cdc_sdk_set_retention_barriers(true);
+        }
         tracing::info!(
             "Sending CreateTablet for tablet {} to {} replicas",
             String::from_utf8_lossy(&tablet.key.id),
@@ -462,6 +467,8 @@ impl TabletAssigner {
             let rpc_timeout = (self.rpc_timeout)();
             let tablet_id = tablet.key.id.to_vec();
             let sent = self.sent.clone();
+            let hook = hook.clone();
+            let table_id = request.table_id().to_vec();
             scope.entity().spawn("create-tablet", async move {
                 let result = executor
                     .run(&ts_uuid, "CreateTablet", &policy, |attempt| {
@@ -490,14 +497,36 @@ impl TabletAssigner {
                         }
                     })
                     .await;
-                if let Err(status) = result {
-                    tracing::warn!(
-                        "CreateTablet of {} on {} failed: {status}",
-                        String::from_utf8_lossy(&tablet_id),
-                        String::from_utf8_lossy(&ts_uuid)
-                    );
-                    if let Some((_, resend)) = sent.lock().unwrap().get_mut(&tablet_id) {
-                        *resend = true;
+                match result {
+                    Err(status) => {
+                        tracing::warn!(
+                            "CreateTablet of {} on {} failed: {status}",
+                            String::from_utf8_lossy(&tablet_id),
+                            String::from_utf8_lossy(&ts_uuid)
+                        );
+                        if let Some((_, resend)) = sent.lock().unwrap().get_mut(&tablet_id) {
+                            *resend = true;
+                        }
+                    }
+                    // `AsyncCreateReplica::HandleResponse`.
+                    Ok(safe_op_id) => {
+                        let Some(hook) = hook else { return };
+                        let Some(safe_op_id) = safe_op_id else {
+                            tracing::warn!(
+                                "Response did not include cdcsdk_safe_op_id. Not inserting any \
+                                 rows into cdc_state table for tablet id: {}",
+                                String::from_utf8_lossy(&tablet_id)
+                            );
+                            return;
+                        };
+                        if let Err(status) =
+                            hook.created(table_id, tablet_id.clone(), safe_op_id).await
+                        {
+                            tracing::warn!(
+                                "Populating the cdc_state table for new tablet {} failed: {status}",
+                                String::from_utf8_lossy(&tablet_id)
+                            );
+                        }
                     }
                 }
             });
@@ -768,14 +797,15 @@ fn create_request(snapshot: &CatalogSnapshot, tablet: &Entity) -> Option<CreateT
     Some(req)
 }
 
-/// One `CreateTablet` call. A replica that already has the tablet counts as created.
+/// One `CreateTablet` call, with the op id the replica's CDCSDK retention barriers hold from. A
+/// replica that already has the tablet counts as created.
 async fn send_create(
     rpc: &dyn RpcClient,
     host: &str,
     port: u16,
     request: &CreateTabletRequestPB,
     timeout: Duration,
-) -> Result<(), Attempt> {
+) -> Result<Option<yb_proto::pb::opid::OpIdPB>, Attempt> {
     let bytes = request
         .write_to_bytes()
         .map_err(|e| Attempt::Fail(internal(e)))?;
@@ -793,13 +823,13 @@ async fn send_create(
     let response = CreateTabletResponsePB::parse_from_bytes(&response)
         .map_err(|e| Attempt::Retry(Status::new(StatusCode::Corruption, e.to_string())))?;
     let Some(error) = response.error.as_ref() else {
-        return Ok(());
+        return Ok(response.cdc_sdk_safe_op_id.into_option());
     };
     let code = StatusCode::from_i32(error.status.code().value());
     if code == StatusCode::AlreadyPresent
         || error.code() == tablet_server_error_pb::Code::TABLET_ALREADY_EXISTS
     {
-        return Ok(());
+        return Ok(None);
     }
     Err(Attempt::Retry(Status::new(
         code,
