@@ -290,7 +290,7 @@ CreateTableAddColumn(YbcPgStatement handle,
 static void
 CreateTableAddColumns(YbcPgStatement handle, TupleDesc desc,
 					  Constraint *primary_key, const bool colocated,
-					  const bool is_tablegroup)
+					  const bool is_tablegroup, const bool check_key_types)
 {
 	ListCell   *cell;
 	IndexElem  *index_elem;
@@ -314,7 +314,8 @@ CreateTableAddColumns(YbcPgStatement handle, TupleDesc desc,
 
 				if (strcmp(NameStr(att->attname), index_elem->name) == 0)
 				{
-					if (!YbDataTypeIsValidForKey(att->atttypid))
+					if (check_key_types &&
+						!YbDataTypeIsValidForKey(att->atttypid))
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("PRIMARY KEY containing column of type"
@@ -921,8 +922,16 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   isTruncate,
 									   &handle));
 
+	/*
+	 * Recreating an existing table (TRUNCATE, table rewrite), an upgrade or a
+	 * restore keeps a primary key that exists already, even of a type no
+	 * longer allowed in a key (int2vector). A new or changed primary key
+	 * still goes through the check in YbCheckIndexKeyTypes.
+	 */
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
-						  is_tablegroup);
+						  is_tablegroup,
+						  !is_internal_rewrite && !IsBinaryUpgrade &&
+						  !yb_binary_restore);
 
 	if (stmt->partspec != NULL)
 	{
@@ -1176,6 +1185,36 @@ CreateIndexHandleSplitOptions(YbcPgStatement handle,
 	}
 }
 
+/*
+ * Check that the key columns of a new lsm or ybgin index, or of a primary key,
+ * have types DocDB can use as keys. index_create calls this where the key is
+ * defined, not where its DocDB table is created: an ALTER TABLE that rewrites
+ * the table defines the index first and creates its DocDB table later, through
+ * the same recreate path as TRUNCATE, which keeps existing keys unchecked.
+ */
+void
+YbCheckIndexKeyTypes(TupleDesc indexTupleDesc, int numIndexKeyAttrs,
+					 bool is_primary)
+{
+	for (int i = 0; i < numIndexKeyAttrs; i++)
+	{
+		Form_pg_attribute att = TupleDescAttr(indexTupleDesc, i);
+
+		if (YbDataTypeIsValidForKey(att->atttypid))
+			continue;
+		if (is_primary)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("PRIMARY KEY containing column of type"
+							" '%s' not yet supported",
+							YBPgTypeOidToStr(att->atttypid))));
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("INDEX on column of type '%s' not yet supported",
+						YBPgTypeOidToStr(att->atttypid))));
+	}
+}
+
 void
 YBCBindCreateIndexColumns(YbcPgStatement handle,
 						  IndexInfo *indexInfo,
@@ -1191,15 +1230,6 @@ YBCBindCreateIndexColumns(YbcPgStatement handle,
 		const YbcPgTypeEntity *col_type = YbDataTypeFromOidMod(attnum, att->atttypid);
 
 		const bool	is_key = (i < numIndexKeyAttrs);
-
-		if (is_key)
-		{
-			if (!YbDataTypeIsValidForKey(att->atttypid))
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("INDEX on column of type '%s' not yet supported",
-								YBPgTypeOidToStr(att->atttypid))));
-		}
 
 		/*
 		 * Non-key columns' options are always 0, and aren't explicitly stored

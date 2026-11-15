@@ -1030,6 +1030,17 @@ index_create(Relation heapRelation,
 	Assert(indexRelationId == RelationGetRelid(indexRelation));
 
 	/*
+	 * YB: an upgrade or a restore keeps keys that exist already, even of a
+	 * type no longer allowed in a key (int2vector).
+	 */
+	if (IsYBRelation(indexRelation) &&
+		!IsBinaryUpgrade && !yb_binary_restore &&
+		(accessMethodObjectId == LSM_AM_OID ||
+		 accessMethodObjectId == YBGIN_AM_OID))
+		YbCheckIndexKeyTypes(indexTupDesc, indexInfo->ii_NumIndexKeyAttrs,
+							 isprimary);
+
+	/*
 	 * Create index in YugaByte only if it is a secondary index. Primary key is
 	 * an implicit part of the base table in YugaByte and doesn't need to be created.
 	 */

@@ -86,6 +86,9 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid oldRelfileNodeId,
 						   Oid *opclassOids);
 
+extern void YbCheckIndexKeyTypes(TupleDesc indexTupleDesc,
+								 int numIndexKeyAttrs, bool is_primary);
+
 extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 									  IndexInfo *indexInfo,
 									  TupleDesc indexTupleDesc,
