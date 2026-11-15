@@ -9884,6 +9884,12 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 	 */
 	if (IsYBRelation(rel) && stmt->primary && !yb_skip_pk_rewrite)
 	{
+		/* The index exists, but the primary key is new. */
+		YbCheckIndexKeyTypes(RelationGetDescr(indexRel),
+							 IndexRelationGetNumberOfKeyAttributes(indexRel),
+							 true /* is_primary */ ,
+							 NIL /* old_key_type_oids */ );
+
 		YbGetTableProperties(rel);
 		/* Don't copy split options if we are creating a range key. */
 		bool		skip_copy_split_options = YbATIsRangePk(YbGetIndexKeySortOrdering(indexRel),
@@ -15128,6 +15134,8 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 			{
 				if (IsYugaByteEnabled())
 					YbATCopyIndexSplitOptions(oldId, stmt, tab);
+				if (IsYBRelation(tab->rel))
+					stmt->yb_old_key_type_oids = YbGetIndexKeyTypeOids(oldId);
 
 				stmt->reset_default_tblspc = true;
 				/* keep the index's comment */
@@ -15178,6 +15186,9 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 						continue;
 					else
 					{
+						if (IsYBRelation(tab->rel))
+							indstmt->yb_old_key_type_oids =
+								YbGetIndexKeyTypeOids(indoid);
 						/* keep any comment on the index */
 						indstmt->idxcomment = GetComment(indoid,
 														 RelationRelationId, 0);
@@ -23079,6 +23090,9 @@ YbATCopyIndexes(Relation old_rel, Oid new_relid, const AttrMap *new2old_attmap,
 													   idx_rel, new2old_attmap,
 													   NULL);	/* parent constraint OID
 																 * pointer */
+
+		idx_stmt->yb_old_key_type_oids =
+			YbGetIndexKeyTypeOids(RelationGetRelid(idx_rel));
 
 		/*
 		* For range partitioned secondary indexes, we only clone split options

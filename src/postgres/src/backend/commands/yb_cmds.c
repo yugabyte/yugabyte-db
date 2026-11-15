@@ -283,6 +283,31 @@ CreateTableAddColumn(YbcPgStatement handle,
 }
 
 /*
+ * Check that a key column's type is one DocDB can use as a key.
+ * keep_existing_int2vector: the key exists already, so allow int2vector (or a
+ * domain over it). It is not a key type, since DocDB orders it by bytes, but
+ * keys created before that must keep working.
+ */
+static void
+YbCheckKeyColumnType(Oid typid, bool is_primary, bool keep_existing_int2vector)
+{
+	if (YbDataTypeIsValidForKey(typid))
+		return;
+	if (keep_existing_int2vector && getBaseType(typid) == INT2VECTOROID)
+		return;
+	if (is_primary)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("PRIMARY KEY containing column of type"
+						" '%s' not yet supported",
+						YBPgTypeOidToStr(typid))));
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("INDEX on column of type '%s' not yet supported",
+					YBPgTypeOidToStr(typid))));
+}
+
+/*
  * Utility function to add columns to the YB create statement
  * Columns need to be sent in order first hash columns, then rest of primary
  * key columns, then regular columns.
@@ -290,7 +315,8 @@ CreateTableAddColumn(YbcPgStatement handle,
 static void
 CreateTableAddColumns(YbcPgStatement handle, TupleDesc desc,
 					  Constraint *primary_key, const bool colocated,
-					  const bool is_tablegroup, const bool check_key_types)
+					  const bool is_tablegroup,
+					  const bool keep_existing_int2vector_key)
 {
 	ListCell   *cell;
 	IndexElem  *index_elem;
@@ -314,13 +340,8 @@ CreateTableAddColumns(YbcPgStatement handle, TupleDesc desc,
 
 				if (strcmp(NameStr(att->attname), index_elem->name) == 0)
 				{
-					if (check_key_types &&
-						!YbDataTypeIsValidForKey(att->atttypid))
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("PRIMARY KEY containing column of type"
-										" '%s' not yet supported",
-										YBPgTypeOidToStr(att->atttypid))));
+					YbCheckKeyColumnType(att->atttypid, true /* is_primary */ ,
+										 keep_existing_int2vector_key);
 
 
 					/*
@@ -923,15 +944,15 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   &handle));
 
 	/*
-	 * Recreating an existing table (TRUNCATE, table rewrite), an upgrade or a
-	 * restore keeps a primary key that exists already, even of a type no
-	 * longer allowed in a key (int2vector). A new or changed primary key
-	 * still goes through the check in YbCheckIndexKeyTypes.
+	 * Recreating an existing table's DocDB table (TRUNCATE, table rewrite),
+	 * an upgrade or a restore keeps an int2vector primary key that exists
+	 * already. When a rewrite adds or changes the primary key, index_create or
+	 * ATExecAddIndexConstraint checks it.
 	 */
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
 						  is_tablegroup,
-						  !is_internal_rewrite && !IsBinaryUpgrade &&
-						  !yb_binary_restore);
+						  is_internal_rewrite || IsBinaryUpgrade ||
+						  yb_binary_restore);
 
 	if (stmt->partspec != NULL)
 	{
@@ -1186,33 +1207,49 @@ CreateIndexHandleSplitOptions(YbcPgStatement handle,
 }
 
 /*
- * Check that the key columns of a new lsm or ybgin index, or of a primary key,
- * have types DocDB can use as keys. index_create calls this where the key is
- * defined, not where its DocDB table is created: an ALTER TABLE that rewrites
- * the table defines the index first and creates its DocDB table later, through
- * the same recreate path as TRUNCATE, which keeps existing keys unchecked.
+ * Check that the key columns of an lsm or ybgin index, or of a primary key,
+ * have types DocDB can use as keys. This runs where a key is defined
+ * (index_create, ADD PRIMARY KEY USING INDEX), not where its DocDB table is
+ * created, which TRUNCATE and table rewrites also do for existing keys.
+ *
+ * An index that an ALTER TABLE rebuilds from an existing one (ALTER COLUMN
+ * TYPE, or a copy of the table with yb_enable_alter_table_rewrite off) passes
+ * the old index's key types in old_key_type_oids: an int2vector key whose type
+ * is unchanged exists already and is kept. An upgrade or a restore keeps every
+ * int2vector key.
  */
 void
 YbCheckIndexKeyTypes(TupleDesc indexTupleDesc, int numIndexKeyAttrs,
-					 bool is_primary)
+					 bool is_primary, List *old_key_type_oids)
 {
 	for (int i = 0; i < numIndexKeyAttrs; i++)
 	{
-		Form_pg_attribute att = TupleDescAttr(indexTupleDesc, i);
+		Oid			typid = TupleDescAttr(indexTupleDesc, i)->atttypid;
+		bool		type_unchanged = (i < list_length(old_key_type_oids) &&
+									  list_nth_oid(old_key_type_oids, i) ==
+									  typid);
+		bool		key_exists = (IsBinaryUpgrade || yb_binary_restore ||
+								  type_unchanged);
 
-		if (YbDataTypeIsValidForKey(att->atttypid))
-			continue;
-		if (is_primary)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("PRIMARY KEY containing column of type"
-							" '%s' not yet supported",
-							YBPgTypeOidToStr(att->atttypid))));
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("INDEX on column of type '%s' not yet supported",
-						YBPgTypeOidToStr(att->atttypid))));
+		YbCheckKeyColumnType(typid, is_primary, key_exists);
 	}
+}
+
+/*
+ * The key column types of an existing index, for YbCheckIndexKeyTypes when an
+ * ALTER TABLE rebuilds the index.
+ */
+List *
+YbGetIndexKeyTypeOids(Oid indexOid)
+{
+	Relation	indexRel = index_open(indexOid, AccessShareLock);
+	TupleDesc	desc = RelationGetDescr(indexRel);
+	List	   *result = NIL;
+
+	for (int i = 0; i < IndexRelationGetNumberOfKeyAttributes(indexRel); i++)
+		result = lappend_oid(result, TupleDescAttr(desc, i)->atttypid);
+	index_close(indexRel, AccessShareLock);
+	return result;
 }
 
 void

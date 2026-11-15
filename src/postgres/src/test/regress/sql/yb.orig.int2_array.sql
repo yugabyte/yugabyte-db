@@ -94,3 +94,66 @@ ALTER TABLE int2vector_no_pk ADD PRIMARY KEY (a);
 \d int2vector_old_idx
 DROP TABLE int2vector_old_pk, int2vector_old_idx, int2vector_text_pk,
   int2vector_no_pk;
+
+-- Rebuilding an index or primary key keeps an existing int2vector key whose
+-- type does not change. Under a restore, other non-key types stay rejected.
+SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = true;
+SET yb_ignore_relfilenode_ids = true;
+SELECT binary_upgrade_set_next_pg_type_oid('1000005'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000006'::oid);
+CREATE TABLE int2vector_old_mix (id int PRIMARY KEY, a int2vector, b int);
+CREATE INDEX int2vector_old_mix_ab ON int2vector_old_mix (a ASC, b);
+CREATE INDEX int2vector_old_mix_incl ON int2vector_old_mix (a ASC) INCLUDE (b);
+CREATE INDEX int2vector_old_mix_part ON int2vector_old_mix (a ASC) WHERE b > 0;
+SELECT binary_upgrade_set_next_pg_type_oid('1000007'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000008'::oid);
+CREATE TABLE int2vector_old_pk2 (a int2vector, b int, PRIMARY KEY (a ASC, b));
+SELECT binary_upgrade_set_next_pg_type_oid('1000009'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000010'::oid);
+CREATE TABLE int2vector_old_uniq (id int PRIMARY KEY, a int2vector);
+CREATE UNIQUE INDEX int2vector_old_uniq_a ON int2vector_old_uniq (a ASC);
+SELECT binary_upgrade_set_next_pg_type_oid('1000011'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000012'::oid);
+CREATE TABLE int2vector_old_part (a int2vector, b int, c int)
+  PARTITION BY RANGE (b);
+SELECT binary_upgrade_set_next_pg_type_oid('1000013'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000014'::oid);
+CREATE TABLE int2vector_old_part1 PARTITION OF int2vector_old_part
+  FOR VALUES FROM (0) TO (100);
+CREATE INDEX int2vector_old_part_ac ON int2vector_old_part (a ASC, c);
+SELECT binary_upgrade_set_next_pg_type_oid('1000015'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000016'::oid);
+CREATE TABLE int2array_restore (a int2[]);
+CREATE INDEX int2array_restore_a ON int2array_restore (a ASC);
+SELECT binary_upgrade_set_next_pg_type_oid('1000017'::oid);
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000018'::oid);
+CREATE TABLE int2array_restore_pk (a int2[], PRIMARY KEY (a ASC));
+RESET yb_binary_restore;
+RESET yb_ignore_pg_class_oids;
+RESET yb_ignore_relfilenode_ids;
+INSERT INTO int2vector_old_mix VALUES (1, '1 2', 1), (2, '10', 2);
+INSERT INTO int2vector_old_pk2 VALUES ('1 2', 1), ('10', 2);
+INSERT INTO int2vector_old_uniq VALUES (1, '1 2'), (2, '10');
+INSERT INTO int2vector_old_part VALUES ('1 2', 1, 1), ('10', 2, 2);
+-- Type change of a non-key column that an int2vector index or PK references.
+ALTER TABLE int2vector_old_mix ALTER COLUMN b TYPE bigint;
+ALTER TABLE int2vector_old_pk2 ALTER COLUMN b TYPE bigint;
+ALTER TABLE int2vector_old_part ALTER COLUMN c TYPE bigint;
+\d int2vector_old_mix
+\d int2vector_old_pk2
+\d int2vector_old_part1
+SELECT b FROM int2vector_old_pk2 WHERE a = '10'::int2vector;
+-- With rewrites off, ALTER COLUMN TYPE copies the table and all its indexes.
+SET yb_enable_alter_table_rewrite = off;
+ALTER TABLE int2vector_old_mix ALTER COLUMN b TYPE smallint;
+RESET yb_enable_alter_table_rewrite;
+\d int2vector_old_mix
+-- Not allowed: a new primary key from an existing int2vector index.
+ALTER TABLE int2vector_old_uniq DROP CONSTRAINT int2vector_old_uniq_pkey;
+ALTER TABLE int2vector_old_uniq ADD PRIMARY KEY USING INDEX int2vector_old_uniq_a;
+\d int2vector_old_uniq
+SELECT id FROM int2vector_old_uniq ORDER BY id;
+DROP TABLE int2vector_old_mix, int2vector_old_pk2, int2vector_old_uniq,
+  int2vector_old_part, int2array_restore;
+DROP TABLE IF EXISTS int2array_restore_pk;

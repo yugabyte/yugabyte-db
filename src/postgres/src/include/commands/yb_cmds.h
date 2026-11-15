@@ -87,7 +87,10 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid *opclassOids);
 
 extern void YbCheckIndexKeyTypes(TupleDesc indexTupleDesc,
-								 int numIndexKeyAttrs, bool is_primary);
+								 int numIndexKeyAttrs, bool is_primary,
+								 List *old_key_type_oids);
+
+extern List *YbGetIndexKeyTypeOids(Oid indexOid);
 
 extern void YBCBindCreateIndexColumns(YbcPgStatement handle,
 									  IndexInfo *indexInfo,

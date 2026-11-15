@@ -1788,7 +1788,8 @@ DefineIndex(Oid relationId,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
 					 !concurrent, is_colocated, tablegroupId, colocation_id,
-					 yb_skip_index_creation, stmt->yb_index_old_relfilenode);
+					 yb_skip_index_creation, stmt->yb_index_old_relfilenode,
+					 stmt->yb_old_key_type_oids);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 

@@ -3927,6 +3927,7 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_SCALAR_FIELD(reset_default_tblspc);
 	COPY_NODE_FIELD(split_options);
 	COPY_SCALAR_FIELD(yb_index_old_relfilenode);
+	COPY_NODE_FIELD(yb_old_key_type_oids);
 
 	return newnode;
 }

@@ -749,7 +749,8 @@ index_create(Relation heapRelation,
 			 Oid tablegroupId,
 			 Oid colocationId,
 			 bool yb_skip_index_creation,
-			 Oid yb_index_old_relfilenode)
+			 Oid yb_index_old_relfilenode,
+			 List *yb_old_key_type_oids)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -1029,16 +1030,12 @@ index_create(Relation heapRelation,
 	Assert(relminmxid == InvalidMultiXactId);
 	Assert(indexRelationId == RelationGetRelid(indexRelation));
 
-	/*
-	 * YB: an upgrade or a restore keeps keys that exist already, even of a
-	 * type no longer allowed in a key (int2vector).
-	 */
+	/* YB: check key types where the key is defined, see the function. */
 	if (IsYBRelation(indexRelation) &&
-		!IsBinaryUpgrade && !yb_binary_restore &&
 		(accessMethodObjectId == LSM_AM_OID ||
 		 accessMethodObjectId == YBGIN_AM_OID))
 		YbCheckIndexKeyTypes(indexTupDesc, indexInfo->ii_NumIndexKeyAttrs,
-							 isprimary);
+							 isprimary, yb_old_key_type_oids);
 
 	/*
 	 * Create index in YugaByte only if it is a secondary index. Primary key is
@@ -1587,7 +1584,8 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 											 * appropriately when adding
 											 * support for reindex */
 							  false /* yb_skip_index_creation */ ,
-							  InvalidOid /* yb_index_old_relfilenode */ );
+							  InvalidOid /* yb_index_old_relfilenode */ ,
+							  NIL /* yb_old_key_type_oids */ );
 
 	/* Close the relations used and clean up */
 	index_close(indexRelation, NoLock);

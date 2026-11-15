@@ -3087,6 +3087,9 @@ typedef struct IndexStmt
 	Oid			yb_index_old_relfilenode;	/* relfilenode of the dropped index
 											 * this stmt recreates (ALTER
 											 * COLUMN TYPE), if any */
+	List	   *yb_old_key_type_oids;	/* key column types of the existing
+										 * index an ALTER TABLE rebuilds with
+										 * this stmt, or NIL */
 } IndexStmt;
 
 /* ----------------------
