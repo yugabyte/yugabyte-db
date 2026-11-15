@@ -42,6 +42,7 @@
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
@@ -270,6 +271,53 @@ YbInstantiatePushdownExprs(YbPushdownExprs *pushdown, EState *estate)
 	 * the reference.
 	 */
 	result->colrefs = pushdown->colrefs;
+	return result;
+}
+
+/*
+ * YbResetScanPushdownCxt
+ *	  Free the pushdown expressions instantiated for the scan's previous
+ *	  (re)scan.  Call once per (re)scan, before instantiating the expressions
+ *	  for it with YbInstantiateScanPushdownExprs.
+ */
+void
+YbResetScanPushdownCxt(MemoryContext cxt)
+{
+	if (cxt)
+		MemoryContextReset(cxt);
+}
+
+/*
+ * YbInstantiateScanPushdownExprs
+ *	  YbInstantiatePushdownExprs into *cxt, a memory context owned by the
+ *	  scan state node.  *cxt is created on first use.
+ *
+ *	  A scan instantiates its pushdown expressions on every rescan, and a
+ *	  rescan runs in the per-query context, so a scan rescanned once per outer
+ *	  row (the inner side of a nested loop, a correlated subquery) would
+ *	  otherwise accumulate a copy per rescan until the end of the statement.
+ *	  The result stays valid until the next YbResetScanPushdownCxt on the same
+ *	  scan, so it must only be referenced while the scan request is built.
+ */
+YbPushdownExprs *
+YbInstantiateScanPushdownExprs(MemoryContext *cxt, EState *estate,
+							   YbPushdownExprs *pushdown)
+{
+	MemoryContext oldcxt;
+	YbPushdownExprs *result;
+
+	if (pushdown->quals == NIL)
+		return NULL;
+
+	if (*cxt == NULL)
+		*cxt = AllocSetContextCreate(estate->es_query_cxt,
+									 "YB scan pushdown expressions",
+									 ALLOCSET_SMALL_SIZES);
+
+	oldcxt = MemoryContextSwitchTo(*cxt);
+	result = YbInstantiatePushdownExprs(pushdown, estate);
+	MemoryContextSwitchTo(oldcxt);
+
 	return result;
 }
 
@@ -662,8 +710,8 @@ YbCanPushdownExpr(Expr *pg_expr, List **colrefs, Oid relid)
 	}
 	else if (yb_major_version_upgrade_compatibility > 0)
 	{
-		/* YB_UPGRADE: Handle this case for each new PG version. */
-		Assert(false);
+		/* Mixed mode of any later major upgrade: plans built now push nothing down. */
+		return false;
 	}
 
 	return !yb_pushdown_walker((Node *) pg_expr, colrefs);
@@ -798,9 +846,13 @@ YBCNewEvalExprCall(YbcPgStatement ybc_stmt, Expr *pg_expr)
 									collation_info.collate_is_valid_non_c,
 									&ybc_expr));
 
-	Datum		expr_datum = CStringGetDatum(ybSerializeNode(pg_expr));
+	char	   *serialized_expr = ybSerializeNode(pg_expr);
 	YbcPgExpr	expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,
-									  expr_datum, /* IsNull */ false);
+									  CStringGetDatum(serialized_expr),
+									  /* IsNull */ false);
+
+	/* The constant keeps its own copy, and this runs on every (re)scan. */
+	pfree(serialized_expr);
 
 	HandleYBStatus(YBCPgOperatorAppendArg(ybc_expr, expr));
 	return ybc_expr;

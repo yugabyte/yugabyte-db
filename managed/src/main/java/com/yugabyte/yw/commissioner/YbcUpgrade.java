@@ -551,7 +551,6 @@ public class YbcUpgrade {
       UpgradeResultRequest request =
           UpgradeResultRequest.newBuilder().setYbcVersion(ybcVersion).build();
       int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-      String certFile = universe.getCertificateNodetoNode();
       boolean success = true;
       for (NodeDetails node : universe.getNodes()) {
         // Polling a master fails the upgrade, so the version is never stamped (PLAT-22025).
@@ -562,7 +561,7 @@ public class YbcUpgrade {
         String nodeIp = node.cloudInfo.private_ip;
         YbcClient client = null;
         try {
-          client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+          client = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
           UpgradeResultResponse resp = client.UpgradeResult(request);
           if (resp == null) {
             success = false;
@@ -607,12 +606,11 @@ public class YbcUpgrade {
 
   public synchronized void shutdownYbcOnNode(Universe universe, NodeDetails node) {
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     ShutdownRequest request = ShutdownRequest.newBuilder().build();
     String nodeIp = node.cloudInfo.private_ip;
     YbcClient client = null;
     try {
-      client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+      client = ybcClientService.getNewClient(nodeIp, ybcPort, universe);
       if (client == null) {
         // Assuming ybc is already dead if YBA is unable to create yb-client.
         return;
@@ -659,7 +657,7 @@ public class YbcUpgrade {
                         ybcClientService.getNewClient(
                             node.cloudInfo.private_ip,
                             universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
-                            universe.getCertificateNodetoNode());
+                            universe);
                     if (client != null) {
                       VersionRequest req = VersionRequest.newBuilder().build();
                       VersionResponse resp = client.version(req);

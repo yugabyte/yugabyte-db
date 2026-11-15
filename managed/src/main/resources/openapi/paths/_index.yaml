@@ -284,6 +284,7 @@
         resourceLocation:
           path: customers
           sourceType: endpoint
+    x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 '/customers/{cUUID}/auto-yba-backups':
@@ -1712,6 +1713,164 @@
       noAuthz: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/storage-configs':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createStorageConfig
+    summary: Create a storage configuration
+    description: |
+      Creates a backup storage configuration. Unless yb.storage_config.skip_validation is set,
+      YBA first checks the locations and that it can reach the storage with the given
+      credentials, as validateStorageConfig does, and creates nothing if it can't. Retry with the same
+      Idempotency-Key to get the configuration created by a request whose response was lost.
+    tags:
+      - Storage Config
+    requestBody:
+      $ref: "../components/requestBodies/StorageConfigCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/StorageConfigResp.yaml"
+      '400':
+        description: 'Invalid input, such as a missing secret, a blank name or a region listed twice. A malformed location or host found by the storage check has error.code STORAGE_CONFIG_INVALID, with error.errors listing the failures by field.'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no create permission on the customer'
+      '409':
+        description: The customer already has a storage configuration with this name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid names the existing configuration.
+      '422':
+        description: 'The storage check failed: YBA reached the storage, or tried to, and it refused the configuration, e.g. with access denied or no such bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field and, when the provider answered, error.provider_status (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout. An error with no error.code means the Idempotency-Key was already used for a different request.'
+      '500':
+        description: Server error
+      '503':
+        description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status) or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage check thread (yb.storage_config_validation.max_threads) is busy.'
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: CustomerConfig
+      auditTargetId: obj.getInfo().getUuid().toString()
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-idempotent: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/storage-configs/validate':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: validateStorageConfig
+    summary: Validate a storage configuration
+    description: |
+      Checks a storage configuration without creating it: the same checks as
+      createStorageConfig, including that the name is free and, unless
+      yb.storage_config.skip_validation is set, that YBA can write, read, list and delete a test
+      object at each location with the given credentials. Returns 200 with no body if the
+      configuration can be created.
+    tags:
+      - Storage Config
+    requestBody:
+      $ref: "../components/requestBodies/StorageConfigValidateReq.yaml"
+    responses:
+      '200':
+        description: The storage configuration can be created
+      '400':
+        description: 'Invalid input, such as a missing secret, a blank name or a region listed twice. A malformed location or host found by the storage check has error.code STORAGE_CONFIG_INVALID, with error.errors listing the failures by field.'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no create permission on the customer'
+      '409':
+        description: The customer already has a storage configuration with this name. error.code is STORAGE_CONFIG_NAME_CONFLICT and error.storage_config_uuid names the existing configuration.
+      '422':
+        description: 'The storage check failed: YBA reached the storage, or tried to, and it refused the configuration, e.g. with access denied or no such bucket. error.code is STORAGE_VALIDATION_FAILED, with error.errors listing the failures by field and, when the provider answered, error.provider_status (its HTTP status) and error.provider_error_code. error.code is STORAGE_VALIDATION_TIMEOUT if the check took longer than yb.storage_config.validation_timeout.'
+      '500':
+        description: Server error
+      '503':
+        description: 'Retry later: error.code is STORAGE_PROVIDER_UNAVAILABLE if the provider throttled or failed the check (HTTP 429 or 5xx, with error.provider_status) or a request to it timed out, or STORAGE_VALIDATION_BUSY if every storage check thread (yb.storage_config_validation.max_threads) is busy.'
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: create
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/storage-configs/{scUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: scUUID
+      in: path
+      description: Storage configuration UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: getStorageConfig
+    summary: Get a storage configuration
+    description: 'Returns a storage configuration, without its secrets.'
+    tags:
+      - Storage Config
+    responses:
+      '200':
+        $ref: "../components/responses/StorageConfigResp.yaml"
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no read permission on the customer'
+      '404':
+        description: The customer has no storage configuration with this UUID
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/support-bundle/components':
   parameters:
     - name: cUUID
@@ -1889,7 +2048,7 @@
   post:
     operationId: estimateSupportBundleSize
     summary: Estimate support bundle size
-    description: Estimate support bundle size for the given payload on a universe.
+    description: Estimate support bundle size for the given payload on a universe. V2 responses use logical component names from specs (e.g. UniverseLogs) as inner map keys.
     tags:
       - Support Bundle
     requestBody:
@@ -4783,6 +4942,52 @@
           sourceType: endpoint
         checkOnlyPermission: false
     x-yba-api-block-operator-resource: universe
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/users':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: createUser
+    summary: Add a user
+    description: 'Adds a local user with a system role to the customer. SuperAdmin users can''t be created this way. With generate_api_token, the response also carries an API token for the new user.'
+    tags:
+      - User
+    requestBody:
+      $ref: "../components/requestBodies/UserCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/UserCreationResp.yaml"
+      '400':
+        description: 'Invalid input, such as an invalid email, a missing role, the SuperAdmin role, or a password that violates the password policy'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer (including a customer that doesn''t exist), or the caller''s role has no create permission on users'
+      '409':
+        description: 'A user with this email already exists, or OIDC SSO creates users automatically on this YBA'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      auditTargetType: User
+      auditTargetId: obj.getUser().getInfo().getUuid().toString()
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: user
+          action: create
+        resourceLocation:
+          path: users
+          sourceType: endpoint
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
 /yba-info:

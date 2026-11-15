@@ -134,7 +134,7 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
             universe.getCertificateNodetoNode(),
             timeoutMs,
             timeoutMs);
-    return ybService.getClientWithConfig(clientConfig);
+    return ybService.getClientWithConfig(clientConfig.withClientCertOf(universe));
   }
 
   private void ensureStateIsRestored(YBClientApi client, Universe universe, UUID restorationUuid) {

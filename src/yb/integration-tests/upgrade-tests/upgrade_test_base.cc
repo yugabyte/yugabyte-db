@@ -13,12 +13,18 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/regex.hpp>
 
 #include <gtest/gtest.h>
+
+#include "yb/gutil/walltime.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
@@ -35,8 +41,6 @@
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
 
-DECLARE_uint32(auto_flags_apply_delay_ms);
-
 using namespace std::literals;
 
 namespace yb {
@@ -45,15 +49,33 @@ namespace {
 
 const MonoDelta kRpcTimeout = 20s * kTimeMultiplier;
 
-// Returns the URL for the current build type and os platform. Returns empty string if a valid URL
-// does not exist.
+// Shorter than the 10s default, but still longer than the default heartbeat interval, so every
+// daemon usually gets a new config before it is applied.
+const uint32_t kAutoFlagsApplyDelayMs = 2000;
+
+// Fastdebug builds run against a fastdebug build of the old version when builds.xml has one, so
+// that the old version's DCHECKs and PG assertions run too. Otherwise the old version is a release
+// build: debug builds are on-disk compatible with release builds, and a debug (-O0) build of the
+// old version makes the tests several times slower.
+bool UseFastdebugOldVersion(const BuildInfo& info) {
+#if defined(FASTDEBUG) && defined(__linux__) && defined(__x86_64__)
+  return !info.linux_fastdebug_x86_url.empty();
+#else
+  return false;
+#endif
+}
+
+// Returns the URL for the current os platform. Returns empty string if a valid URL does not exist.
 std::string GetRelevantUrl(const BuildInfo& info) {
+  if (UseFastdebugOldVersion(info)) {
+    return info.linux_fastdebug_x86_url;
+  }
 #if defined(__APPLE__) && defined(__aarch64__)
-  return kIsDebug ? info.darwin_debug_arm64_url : info.darwin_release_arm64_url;
+  return info.darwin_release_arm64_url;
 #elif defined(__linux__) && defined(__x86_64__)
-  return kIsDebug ? info.linux_debug_x86_url : info.linux_release_x86_url;
+  return info.linux_release_x86_url;
 #elif defined(__linux__) && defined(__aarch64__)
-  return kIsDebug ? "" : info.linux_release_aarch64_url;
+  return info.linux_release_aarch64_url;
 #endif
 
   return "";
@@ -72,6 +94,17 @@ std::string GetXmlPathAsString(const T& node, const std::string& key) {
   return value;
 }
 
+// Same as GetXmlPathAsString, but returns an empty string if the key does not exist.
+template <typename T>
+std::string GetOptionalXmlPathAsString(const T& node, const std::string& key) {
+  auto value = node.template get_optional<std::string>(key);
+  if (!value) {
+    return "";
+  }
+  boost::trim(*value);
+  return *value;
+}
+
 // Gets the build info for the given version from the builds.xml file.
 Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
   const auto sub_dir = "upgrade_test_builds";
@@ -88,10 +121,10 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
         BuildInfo build_info;
         build_info.version = version;
         build_info.build_number = GetXmlPathAsString(node, "build_number");
-        build_info.linux_debug_x86_url = GetXmlPathAsString(node, "linux_debug_x86");
         build_info.linux_release_x86_url = GetXmlPathAsString(node, "linux_release_x86");
+        build_info.linux_fastdebug_x86_url =
+            GetOptionalXmlPathAsString(node, "linux_fastdebug_x86");
         build_info.linux_release_aarch64_url = GetXmlPathAsString(node, "linux_release_aarch64");
-        build_info.darwin_debug_arm64_url = GetXmlPathAsString(node, "darwin_debug_arm64");
         build_info.darwin_release_arm64_url = GetXmlPathAsString(node, "darwin_release_arm64");
         return build_info;
       }
@@ -104,75 +137,114 @@ Result<BuildInfo> GetBuildInfoForVersion(const std::string& version) {
       NotFound, "Build info for version $0 not found in $1", version, build_file_xml);
 }
 
-// Download and extract the old version if it does not already exist, and return the old version bin
-// path. A ready.txt file is placed in the bin directory to indicate that the old version is ready
-// for use.
+// Tarballs of old versions and their extracted copies. Like the thirdparty and toolchain caches in
+// /opt/yb-build, this persists across builds and is shared by every build tree and user on the
+// machine. Jenkins workers unpack a fresh build tree for every build, so a cache in the build tree
+// made almost every upgrade test extract the tarball again.
+const std::string kDownloadDir = "/opt/yb-build/db-upgrade";
+// Same directory as the locks of the thirdparty and toolchain downloads.
+const std::string kDownloadLocksDir = "/tmp/yb_download_locks";
+
+// Creates `dir` if missing and lets every user create files in it. Changing the mode of a directory
+// that another user owns fails, which is fine: that user already shared it.
+Status CreateSharedDirIfMissing(Env* env, const std::string& dir) {
+  RETURN_NOT_OK(env_util::CreateDirIfMissing(env, dir));
+  chmod(dir.c_str(), 0777);
+  return Status::OK();
+}
+
+// Locks `path`, creating it writable by every user so that other users can lock it too.
+Result<FileLock*> LockSharedFile(Env* env, const std::string& path) {
+  const int fd = open(path.c_str(), O_RDWR | O_CREAT, 0666);
+  if (fd >= 0) {
+    fchmod(fd, 0666);
+    close(fd);
+  }
+  FileLock* lock = nullptr;
+  const auto start = MonoTime::Now();
+  while (!env->LockFile(path, &lock, /*recursive_lock_ok=*/false).ok()) {
+    SCHECK_LT(
+        MonoTime::Now() - start, 5min, IllegalState, Format("Failed to acquire lock $0", path));
+    SleepFor(100ms);
+  }
+  return lock;
+}
+
+// Downloads and extracts the old version if it is not in kDownloadDir yet, and returns its bin
+// path.
+// - The extracted copy is named after the tarball, so a different tarball never reuses it.
+// - ready.txt is written last. Once it exists, the copy is used without taking the lock.
+// - The tarball and the copy are written to temporary paths and renamed into place, so an
+//   interrupted run leaves neither a partial tarball nor a partial copy behind.
 Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
-  std::string arch = "linux";
   std::string tar_bin = "tar";
 #ifdef __APPLE__
-  arch = "darwin";
   tar_bin = "gtar";
 #endif
-  arch += kIsDebug ? "_debug" : "_release";
 
   auto env = Env::Default();
-  const std::string build_root =
-      JoinPathSegments(DirName(env_util::GetRootDir("bin")), "db-upgrade");
-  RETURN_NOT_OK(env_util::CreateDirIfMissing(env, build_root));
-  const auto version_root_path = JoinPathSegments(
-      build_root, Format("yugabyte_$0-$1_$2", build_info.version, build_info.build_number, arch));
-  RETURN_NOT_OK(env_util::CreateDirIfMissing(env, version_root_path));
-
-  // Get a lock on a file since multiple tests can be running in parallel and downloading the same
-  // build to the same location.
-  const auto lock_file = JoinPathSegments(version_root_path, "lock.lck");
-  FileLock* f_lock = nullptr;
-  MonoTime start = MonoTime::Now();
-  do {
-    auto s = env->LockFile(lock_file, &f_lock, /*recursive_lock_ok=*/false);
-    if (s.ok()) {
-      break;
-    }
-
-    SCHECK_LT(
-        MonoTime::Now() - start, 5min, IllegalState,
-        Format("Failed to acquire lock on ready file $0", lock_file));
-    SleepFor(100ms);
-  } while (true);
-  auto se = ScopeExit([f_lock, &env] { CHECK_OK(env->UnlockFile(f_lock)); });
-
-  const auto ready_file = JoinPathSegments(version_root_path, "ready.txt");
-  const auto extract_path =
-      JoinPathSegments(version_root_path, Format("yugabyte-$0", build_info.version));
-  const auto bin_path = JoinPathSegments(extract_path, "bin");
+  const auto download_url = GetRelevantUrl(build_info);
+  const auto tar_file_name = BaseName(download_url);
+  SCHECK(
+      tar_file_name.ends_with(".tar.gz"), IllegalState,
+      Format("Unexpected old version URL: $0", download_url));
+  const auto copy_name = tar_file_name.substr(0, tar_file_name.size() - strlen(".tar.gz"));
+  const auto copy_path = JoinPathSegments(kDownloadDir, copy_name);
+  const auto ready_file = JoinPathSegments(copy_path, "ready.txt");
+  const auto bin_path =
+      JoinPathSegments(copy_path, Format("yugabyte-$0", build_info.version), "bin");
   if (env->FileExists(ready_file)) {
     LOG(INFO) << bin_path << " already downloaded and ready for use";
     return bin_path;
   }
 
-  const auto download_url = GetRelevantUrl(build_info);
-  const auto tar_file_name = BaseName(download_url);
+  RETURN_NOT_OK(CreateSharedDirIfMissing(env, kDownloadDir));
+  RETURN_NOT_OK(CreateSharedDirIfMissing(env, kDownloadLocksDir));
+  // Several tests, possibly from several build trees, can download the same version at once.
+  auto* lock = VERIFY_RESULT(
+      LockSharedFile(env, JoinPathSegments(kDownloadLocksDir, "db-upgrade-" + copy_name)));
+  auto unlock = ScopeExit([lock, env] { CHECK_OK(env->UnlockFile(lock)); });
+  if (env->FileExists(ready_file)) {
+    LOG(INFO) << bin_path << " already downloaded and ready for use";
+    return bin_path;
+  }
 
-  const std::string kDownloadDir = "/opt/yb-build/db-upgrade";
   const auto tar_file_path = JoinPathSegments(kDownloadDir, tar_file_name);
-
   if (!env->FileExists(tar_file_path)) {
-    RETURN_NOT_OK(env_util::CreateDirIfMissing(env, kDownloadDir));
+    const auto tmp_tar_file_path = Format("$0.tmp.$1", tar_file_path, getpid());
     LOG(INFO) << "Downloading " << download_url << " to " << tar_file_path;
-    RETURN_NOT_OK(RunCommand(
-        {"curl", "--retry", "3", "--retry-delay", "3", download_url, "-o", tar_file_path}));
+    auto status = RunCommand(
+        {"curl", "--fail", "--retry", "3", "--retry-delay", "3", download_url, "-o",
+         tmp_tar_file_path});
+    if (!status.ok()) {
+      WARN_NOT_OK(env->DeleteFile(tmp_tar_file_path), "Failed to delete " + tmp_tar_file_path);
+      return status;
+    }
+    chmod(tmp_tar_file_path.c_str(), 0644);
+    RETURN_NOT_OK(env->RenameFile(tmp_tar_file_path, tar_file_path));
   }
 
-  LOG(INFO) << "Extracting " << tar_file_path << " to " << version_root_path;
-  if (env->DirExists(extract_path)) {
-    RETURN_NOT_OK(env->DeleteRecursively(extract_path));
+  // A copy without ready.txt is left over from an interrupted run.
+  if (env->DirExists(copy_path)) {
+    const auto stale_path = Format("$0.stale.$1", copy_path, getpid());
+    LOG(INFO) << "Moving incomplete " << copy_path << " to " << stale_path;
+    RETURN_NOT_OK(env->RenameFile(copy_path, stale_path));
+    WARN_NOT_OK(env->DeleteRecursively(stale_path), "Failed to delete " + stale_path);
   }
-  RETURN_NOT_OK(env->CreateDir(extract_path));
-  RETURN_NOT_OK(RunCommand(
-      {tar_bin, "xzf", tar_file_path, "--skip-old-files", "--exclude=._*", "-C",
-       version_root_path}));
 
+  std::string tmp_path = copy_path + ".tmp.XXXXXX";
+  SCHECK(mkdtemp(tmp_path.data()), IOError, Format("mkdtemp failed for $0", tmp_path));
+  auto delete_tmp = ScopeExit([&tmp_path, env] {
+    if (env->DirExists(tmp_path)) {
+      WARN_NOT_OK(env->DeleteRecursively(tmp_path), "Failed to delete " + tmp_path);
+    }
+  });
+  chmod(tmp_path.c_str(), 0755);
+  LOG(INFO) << "Extracting " << tar_file_path << " to " << copy_path;
+  RETURN_NOT_OK(RunCommand({tar_bin, "xzf", tar_file_path, "--exclude=._*", "-C", tmp_path}));
+  RETURN_NOT_OK(env->RenameFile(tmp_path, copy_path));
+
+  // post_install.sh runs in the final location since it can write absolute paths.
 #if defined(__linux__)
   RETURN_NOT_OK(RunCommand({"bash", JoinPathSegments(bin_path, "post_install.sh")}));
 #endif
@@ -189,8 +261,6 @@ Status RestartDaemonInVersion(T& daemon, const std::string& bin_path) {
   return daemon.Restart();
 }
 
-
-void WaitForAutoFlagApply() { SleepFor(FLAGS_auto_flags_apply_delay_ms * 1ms + 3s); }
 
 // This is a pg15 version which supports upgrade only from certain versions.
 // Check if the given version is supported for upgrade.
@@ -329,6 +399,10 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
       opts.extra_master_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
   AddUnDefOkAndSetFlag(
       opts.extra_tserver_flags, "TEST_always_return_consensus_info_for_succeeded_rpc", "false");
+
+  for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
+    AddUnDefOkAndSetFlag(*flags, "auto_flags_apply_delay_ms", AsString(kAutoFlagsApplyDelayMs));
+  }
 
   ExternalMiniClusterITestBase::SetUpOptions(opts);
 }
@@ -535,7 +609,9 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
     return StatusFromPB(resp.error().status());
   }
 
-  WaitForAutoFlagApply();
+  if (resp.flags_promoted()) {
+    RETURN_NOT_OK(WaitForAutoFlagsConfigApplied(resp.new_config_version()));
+  }
 
   LOG(INFO) << "Promoted AutoFlags: " << resp.DebugString();
 
@@ -548,6 +624,56 @@ Status UpgradeTestBase::PromoteAutoFlags(AutoFlagClass flag_class) {
   } else {
     // Can no longer rollback volatile flags.
     auto_flags_rollback_version_.reset();
+  }
+
+  return Status::OK();
+}
+
+Status UpgradeTestBase::WaitForAutoFlagsConfigApplied(uint32_t config_version) {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(kRpcTimeout);
+  RETURN_NOT_OK(cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>().GetAutoFlagsConfig(
+      req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  SCHECK_GE(
+      resp.config().config_version(), config_version, IllegalState,
+      "Master leader does not have the new AutoFlags config");
+
+  RETURN_NOT_OK(LoggedWaitFor(
+      [this, config_version]() -> Result<bool> {
+        for (auto* daemon : cluster_->daemons()) {
+          if (daemon->IsShutdown()) {
+            continue;
+          }
+          server::GetAutoFlagsConfigVersionRequestPB req;
+          server::GetAutoFlagsConfigVersionResponsePB resp;
+          rpc::RpcController rpc;
+          rpc.set_timeout(kRpcTimeout);
+          RETURN_NOT_OK(cluster_->GetProxy<server::GenericServiceProxy>(daemon)
+                            .GetAutoFlagsConfigVersion(req, &resp, &rpc));
+          if (resp.config_version() < config_version) {
+            return false;
+          }
+        }
+        return true;
+      },
+      60s * kTimeMultiplier, Format("Waiting for all daemons to get AutoFlags config $0",
+                                    config_version),
+      /*initial_delay=*/100ms));
+
+  // A daemon that gets the config before its apply time applies it at that time, so wait for it.
+  if (resp.config().has_config_apply_time()) {
+    HybridTime apply_time;
+    RETURN_NOT_OK(apply_time.FromUint64(resp.config().config_apply_time()));
+    const auto time_left = MonoDelta::FromMicroseconds(
+        static_cast<int64_t>(apply_time.GetPhysicalValueMicros()) - GetCurrentTimeMicros());
+    if (time_left > -500ms) {
+      SleepFor(time_left + 500ms);
+    }
   }
 
   return Status::OK();
@@ -656,7 +782,9 @@ Status UpgradeTestBase::RollbackVolatileAutoFlags() {
   }
   auto_flags_rollback_version_.reset();
 
-  WaitForAutoFlagApply();
+  if (resp.flags_rolledback()) {
+    RETURN_NOT_OK(WaitForAutoFlagsConfigApplied(resp.new_config_version()));
+  }
 
   LOG(INFO) << "Rolled back AutoFlags: " << resp.DebugString();
 

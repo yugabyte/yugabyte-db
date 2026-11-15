@@ -76,7 +76,7 @@ The \\_df_ meta-command produces output for _date_part()_ in the normal way; but
 
 Three rows were removed manually:
 
-- The one for the _timetz_ argument data type. (See the [recommendation to avoid using _timetz_](../../../../type_datetime#avoid-timetz) on the overall _date-time_ section's main page.)
+- The one for the _timetz_ argument data type. (See the [recommendation to avoid using _timetz_](../../../../type_datetime/#avoid-timetz) on the overall _date-time_ section's main page.)
 - The two for the _abstime_ and _reltim_ data types. (See the recommendation below.)
 
 The remaining rows were re-ordered, and blank lines were added, to improve the readability.

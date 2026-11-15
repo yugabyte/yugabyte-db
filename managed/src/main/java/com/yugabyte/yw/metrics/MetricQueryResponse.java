@@ -2,10 +2,7 @@
 package com.yugabyte.yw.metrics;
 
 import static com.yugabyte.yw.metrics.MetricQueryHelper.AZ_NAME;
-import static com.yugabyte.yw.metrics.MetricQueryHelper.CONTAINER_METRIC_PREFIX;
-import static com.yugabyte.yw.metrics.MetricQueryHelper.CONTAINER_VOLUME_METRIC_PREFIX;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.EXPORTED_INSTANCE;
-import static com.yugabyte.yw.metrics.MetricQueryHelper.KUBELET_VOLUME_METRIC_PREFIX;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_ID;
 import static com.yugabyte.yw.metrics.MetricQueryHelper.NAMESPACE_NAME;
@@ -23,6 +20,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.models.MetricConfigDefinition;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -101,7 +99,10 @@ public class MetricQueryResponse {
     // We should use instance name for aggregated graph in case it's grouped by instance.
     boolean useInstanceName =
         config.getGroupBy() != null
-            && config.getGroupBy().equals(EXPORTED_INSTANCE)
+            && (config.getGroupBy().equals(EXPORTED_INSTANCE)
+                || Arrays.stream(config.getGroupBy().split(","))
+                    .map(String::trim)
+                    .anyMatch(PVC::equals))
             && metricSettings.getSplitMode() == SplitMode.NONE;
     for (final JsonNode objNode : data.result) {
       MetricGraphData metricGraphData = new MetricGraphData();
@@ -111,10 +112,11 @@ public class MetricQueryResponse {
       metricGraphData.instanceName = getAndRemoveLabelValue(metricInfo, EXPORTED_INSTANCE);
       // For container metrics, also check for pod_name label to set instanceName
       if (metricGraphData.instanceName == null
-          && (metricName.startsWith(CONTAINER_METRIC_PREFIX)
-              || metricName.startsWith(KUBELET_VOLUME_METRIC_PREFIX))) {
+          && MetricQueryHelper.getKubernetesKind(metricSettings.getMetric())
+              != MetricQueryHelper.KubernetesKind.NONE) {
         metricGraphData.instanceName =
-            getInstanceNameLabelForKubernetes(metricInfo, metricName, k8sPodNodeNameResolver);
+            getInstanceNameLabelForKubernetes(
+                metricInfo, metricSettings.getMetric(), k8sPodNodeNameResolver);
       }
       metricGraphData.tableId = getAndRemoveLabelValue(metricInfo, TABLE_ID);
       metricGraphData.tableName = getAndRemoveLabelValue(metricInfo, TABLE_NAME);
@@ -268,8 +270,7 @@ public class MetricQueryResponse {
     String azNameLabel = getAndRemoveLabelValue(metricInfo, AZ_NAME);
 
     boolean isVolumeMetric =
-        metricName.startsWith(CONTAINER_VOLUME_METRIC_PREFIX)
-            || metricName.startsWith(KUBELET_VOLUME_METRIC_PREFIX);
+        MetricQueryHelper.getKubernetesKind(metricName) == MetricQueryHelper.KubernetesKind.VOLUME;
     String rawLabel =
         isVolumeMetric
             ? getAndRemoveLabelValue(metricInfo, PVC)

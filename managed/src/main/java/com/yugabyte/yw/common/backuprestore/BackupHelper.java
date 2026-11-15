@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.HostCloudDetector;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -129,6 +130,8 @@ public class BackupHelper {
   private NodeUniverseManager nodeUniverseManager;
   private YbcBackupUtil ybcBackupUtil;
   private SoftwareUpgradeHelper softwareUpgradeHelper;
+  // The cloud YBA runs on: YBA needs no federation to reach a bucket there.
+  private final HostCloudDetector hostCloudDetector;
   private Commissioner commissioner;
 
   @Inject
@@ -142,7 +145,8 @@ public class BackupHelper {
       ValidateReplicationInfo validateReplicationInfo,
       NodeUniverseManager nodeUniverseManager,
       YbcBackupUtil ybcBackupUtil,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      HostCloudDetector hostCloudDetector) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
@@ -153,6 +157,7 @@ public class BackupHelper {
     this.ybcBackupUtil = ybcBackupUtil;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.commissioner = commissioner;
+    this.hostCloudDetector = hostCloudDetector;
   }
 
   public String getValidOwnerRegex() {
@@ -540,8 +545,10 @@ public class BackupHelper {
    * Stamps the resolved provider federation values on an in-memory storage config so YBA
    * authenticates to the bucket via in-process WIF (for preflight/delete) instead of default creds:
    * the GCP audience on a useGcpIam GCS config (GCS-on-AWS), or the AWS role ARN + audience on a
-   * cross-cloud federation S3 config (S3-on-GCP). No-op otherwise, or when no universe context /
-   * value is available.
+   * cross-cloud federation S3 config (S3-on-GCP). With YBA on the bucket's cloud nothing is
+   * stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS that means
+   * switching it to YBA's IAM role, with or without a universe. Otherwise, or when no universe
+   * context / value is available, nothing is stamped.
    */
   public void applyCrossCloudFederationAudience(
       CustomerConfigData configData, @Nullable Universe universe) {
@@ -550,7 +557,7 @@ public class BackupHelper {
       // Only when YBA itself needs to federate. A YBA on GCP reaching a GCS bucket is same-cloud
       // and must keep its native identity; stamping an audience there would make it build an
       // AWS-IMDS external_account credential it cannot satisfy.
-      if (GCPUtil.isCrossCloudFederationConfig(gcs)) {
+      if (GCPUtil.isCrossCloudFederationConfig(gcs) && !ybaRunsOn(CloudType.gcp)) {
         CrossCloudFederationTarget target =
             resolveCrossCloudFederationTarget(universe, CloudType.gcp);
         if (target != null) {
@@ -559,7 +566,9 @@ public class BackupHelper {
       }
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
-      if (AWSUtil.isCrossCloudFederationConfig(s3)) {
+      if (AWSUtil.isCrossCloudFederationConfig(s3) && ybaRunsOn(CloudType.aws)) {
+        useYbaIamRole(s3);
+      } else if (AWSUtil.isCrossCloudFederationConfig(s3)) {
         CrossCloudFederationTarget target =
             resolveCrossCloudFederationTarget(universe, CloudType.aws);
         if (target != null) {
@@ -574,20 +583,29 @@ public class BackupHelper {
    * Stamps onto {@code configData} the federation identity YBA needs to reach this backup's bucket
    * itself, for deletion. Prefers the snapshot taken when the backup was created, which survives
    * deletion of the universe and its provider; falls back to the live universe for backups taken
-   * before the snapshot existed. No-op for a config that is not federated.
+   * before the snapshot existed. With YBA on the bucket's cloud the snapshot is ignored and nothing
+   * is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS that
+   * means switching it to YBA's IAM role. No-op for a config that is not federated.
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup) {
     String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
     String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
     if (configData instanceof CustomerConfigStorageGCSData
-        && ((CustomerConfigStorageGCSData) configData).useGcpIam) {
+        && GCPUtil.isCrossCloudFederationConfig((CustomerConfigStorageGCSData) configData)) {
+      if (ybaRunsOn(CloudType.gcp)) {
+        return;
+      }
       if (StringUtils.isNotBlank(snapshotAudience)) {
         ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience = snapshotAudience;
         return;
       }
     } else if (configData instanceof CustomerConfigStorageS3Data
         && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+      if (ybaRunsOn(CloudType.aws)) {
+        useYbaIamRole((CustomerConfigStorageS3Data) configData);
+        return;
+      }
       if (StringUtils.isNotBlank(snapshotAudience) && StringUtils.isNotBlank(snapshotRoleArn)) {
         CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
         s3.crossCloudFederationAudience = snapshotAudience;
@@ -599,6 +617,37 @@ public class BackupHelper {
     }
     Universe.maybeGet(backup.getUniverseUUID())
         .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
+  }
+
+  /**
+   * Has YBA on AWS reach a federated S3 bucket with its own IAM role. A federated config usually
+   * carries no access keys and need not set the IAM role flag (only the UI does), so without this
+   * its client would be built from blank keys. Only on confirmed AWS: on an EC2-compatible cloud
+   * the role chain would be probed in vain. A config that does carry keys keeps using them. Known
+   * limit: on AWS that cannot be confirmed (see {@link HostCloudDetector#isConfirmedAws}) a keyless
+   * config keeps its blank keys, as before, and setting IAM_INSTANCE_PROFILE on it works around it.
+   */
+  private void useYbaIamRole(CustomerConfigStorageS3Data s3) {
+    if (StringUtils.isBlank(s3.awsAccessKeyId) && hostCloudDetector.isConfirmedAws()) {
+      log.debug("YBA runs on AWS: using its IAM role for a federated storage config");
+      s3.isIAMInstanceProfile = true;
+    }
+  }
+
+  /**
+   * Whether YBA itself runs on {@code cloud}. Where YBA builds its own client for the bucket
+   * (backup deletion) it then uses its native identity: it has no identity from another cloud to
+   * federate with. For S3 the federated config is still the DB nodes' way to the bucket when they
+   * run elsewhere; the GCS flag is YBA's own access only. YBA-side validation of a federated config
+   * stays deferred to the nodes either way. False when the host cloud is not detected, which keeps
+   * the previous behaviour.
+   */
+  private boolean ybaRunsOn(CloudType cloud) {
+    if (!hostCloudDetector.isHostCloud(cloud)) {
+      return false;
+    }
+    log.debug("YBA runs on {}: not federating its own access to a federated storage config", cloud);
+    return true;
   }
 
   /**

@@ -25,6 +25,7 @@ YBQueryRetryData
 YBReorderBufferSchemaChangeCB
 YBSharedInvalMessageHeader
 YBTableSpaceOpts
+YBTaggedQueryString
 YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
@@ -155,6 +156,10 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscReplayState
+YbOscTargetOrder
+YbOscTransform
+YbOscTriggerSpec
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState

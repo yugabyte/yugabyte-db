@@ -85,6 +85,12 @@ public class MetricConfigDefinition {
   @ApiModelProperty(value = "Operator, applied to metric value", accessMode = READ_ONLY)
   private String operator;
 
+  @ApiModelProperty(
+      value = "For a ratio metric, the labels its numerator and denominator are joined on",
+      accessMode = READ_ONLY)
+  @JsonProperty("join_on")
+  private List<String> joinOn;
+
   // If we have any special filter pattern, then we need to use =~ instead
   // of = in our filter condition. Special patterns include *, |, $ or +.
   static final Pattern specialFilterPattern = Pattern.compile("[*|+$]");
@@ -206,10 +212,12 @@ public class MetricConfigDefinition {
           numerator.getQuery(MetricSettings.defaultSettings(numerator.metric), context);
       String denomQuery =
           denominator.getQuery(MetricSettings.defaultSettings(denominator.metric), context);
+      // Joining on join_on only, since the two sides can come from scrapes whose labels differ.
+      String division = joinOn == null ? "/" : "/ on (" + String.join(", ", joinOn) + ")";
       return context.isSecondLevelAggregation()
           // Filter out the `NaN` values from divide by 0 when performing second level aggregation.
-          ? String.format("((%s) / (%s != 0)) * 100", numQuery, denomQuery, denomQuery)
-          : String.format("((%s) / (%s)) * 100", numQuery, denomQuery);
+          ? String.format("((%s) %s (%s != 0)) * 100", numQuery, division, denomQuery)
+          : String.format("((%s) %s (%s)) * 100", numQuery, division, denomQuery);
     }
 
     String queryStr;

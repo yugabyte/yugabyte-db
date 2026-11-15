@@ -116,12 +116,14 @@ typedef struct PsqlScanStateData
 	char	   *dolqstart;		/* current $foo$ quote start string */
 
 	/*
-	 * State to track boundaries of BEGIN ... END blocks in function
-	 * definitions, so that semicolons do not send query too early.
+	 * State used to track boundaries of BEGIN ... END blocks in function
+	 * definitions, so that semicolons do not send query too early.  We also
+	 * use this state to detect and count COPY FROM STDIN commands.
 	 */
-	int			identifier_count;	/* identifiers since start of statement */
-	char		identifiers[4]; /* records the first few identifiers */
 	int			begin_depth;	/* depth of begin/end pairs */
+	int			copy_stdin_count;	/* number of COPY FROM STDIN commands */
+	int			init_idents_count;	/* # identifiers since start of statement */
+	char		init_idents[8]; /* records the first few identifiers */
 
 	/*
 	 * Callback functions provided by the program making use of the lexer,
@@ -130,6 +132,24 @@ typedef struct PsqlScanStateData
 	const PsqlScanCallbacks *callbacks;
 	void	   *cb_passthrough;
 } PsqlScanStateData;
+
+/*
+ * Conditional scanning (\if ... \endif) needs to be able to reset the
+ * lexer's state to what it was at the beginning of a chunk of text that
+ * we choose to ignore.  PsqlScanStateSave holds the values that need
+ * to be saved and restored.  We assume that saving/restoring happens only
+ * while processing a backslash command, so we needn't save state that is
+ * concerned with comment or SQL literal processing: we won't be inside
+ * one of those.
+ */
+struct PsqlScanStateSave
+{
+	int			paren_depth;	/* depth of nesting in parentheses */
+	int			begin_depth;	/* depth of begin/end pairs */
+	int			copy_stdin_count;	/* number of COPY FROM STDIN commands */
+	int			init_idents_count;	/* # identifiers since start of statement */
+	char		init_idents[8]; /* records the first few identifiers */
+};
 
 
 /*

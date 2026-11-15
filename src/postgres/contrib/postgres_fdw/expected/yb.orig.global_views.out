@@ -2585,7 +2585,9 @@ CREATE FOREIGN TABLE IF NOT EXISTS "gv$pg_stat_statements" (
     docdb_nexts INT8,
     docdb_prevs INT8,
     docdb_read_time FLOAT8,
-    docdb_write_time FLOAT8
+    docdb_write_time FLOAT8,
+    docdb_bloom_filter_useful INT8,
+    docdb_bloom_filter_checked INT8
 )
 SERVER gv_server
 OPTIONS (schema_name 'public', table_name 'pg_stat_statements_with_server_uuid');

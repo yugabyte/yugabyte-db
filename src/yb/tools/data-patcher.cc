@@ -16,6 +16,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/consensus/log.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
@@ -605,6 +606,11 @@ Status ChangeTimeInWalDir(
       /*read_wal_mem_tracker=*/nullptr));
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader->GetSegmentsSnapshot(&segments));
+  // Bootstrap updates the clock with the quiescent marker's hybrid time, so it is patched as well.
+  std::optional<log::QuiescentMarkerPB> quiescent_marker;
+  if (env->FileExists(log::Log::QuiescentMarkerPath(dir))) {
+    quiescent_marker = VERIFY_RESULT(log::Log::ReadQuiescentMarkerFile(env, dir));
+  }
   auto patched_dir = dir + kPatchedExtension;
   RETURN_NOT_OK(env->CreateDirs(patched_dir));
   auto new_segment_path = JoinPathSegments(patched_dir, FsManager::GetWalSegmentFileName(1));
@@ -639,6 +645,14 @@ Status ChangeTimeInWalDir(
   };
 
   for (int is_final_step = bound_time ? 0 : 1; is_final_step != 2; ++is_final_step) {
+    if (quiescent_marker) {
+      auto marker_ht = HybridTime(quiescent_marker->hybrid_time());
+      if (is_final_step) {
+        quiescent_marker->set_hybrid_time(VERIFY_RESULT(add_delta(marker_ht)));
+      } else {
+        delta_data.AddEarlyTime(marker_ht);
+      }
+    }
     for (const auto& segment : segments) {
       // Read entry batches of a WAL segment, and write as few entry batches as possible, but still
       // make sure that we don't create consecutive entries in the same write batch where the Raft
@@ -762,6 +776,9 @@ Status ChangeTimeInWalDir(
   }
 
   RETURN_NOT_OK(new_segment.WriteIndexWithFooterAndClose(log_index.get(), &footer));
+  if (quiescent_marker) {
+    RETURN_NOT_OK(log::Log::WriteQuiescentMarkerFile(env, patched_dir, *quiescent_marker));
+  }
   return Env::Default()->RenameFile(tmp_segment_path, new_segment_path);
 }
 

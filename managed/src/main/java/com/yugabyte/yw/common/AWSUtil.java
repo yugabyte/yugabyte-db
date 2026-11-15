@@ -1010,9 +1010,7 @@ public class AWSUtil implements CloudUtil {
     S3Client client = null;
     var builder = S3Client.builder();
 
-    if (isCrossCloudFederationConfig(s3Data)
-        && StringUtils.isNotBlank(s3Data.crossCloudFederationRoleArn)
-        && StringUtils.isNotBlank(s3Data.crossCloudFederationAudience)) {
+    if (usesCrossCloudFederationCredentials(s3Data)) {
       // Cross-cloud federation (S3-on-GCP): YBA (on GCP) exchanges its GCE identity token for
       // temporary AWS creds via AssumeRoleWithWebIdentity, using the role/audience resolved from
       // the provider. Only reached at backup/delete time, once those transients are stamped. Let a
@@ -1171,6 +1169,16 @@ public class AWSUtil implements CloudUtil {
                       .build())
               .build();
     }
+  }
+
+  /**
+   * Whether YBA's S3 client for this config uses federated credentials: only once the role ARN and
+   * audience have been stamped on it.
+   */
+  public static boolean usesCrossCloudFederationCredentials(CustomerConfigStorageS3Data s3Data) {
+    return isCrossCloudFederationConfig(s3Data)
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationRoleArn)
+        && StringUtils.isNotBlank(s3Data.crossCloudFederationAudience);
   }
 
   public static Map<String, AWSHostBase> getRegionHostBaseMap(CustomerConfigData configData) {
@@ -2049,9 +2057,16 @@ public class AWSUtil implements CloudUtil {
           EXPECTATION_FAILED,
           "Created object " + objectName + " was not found in bucket " + bucketName);
     } catch (S3Exception e) {
-      throw new PlatformServiceException(
-          EXPECTATION_FAILED,
-          "Error reading test object " + objectName + ", exception occurred: " + getStackTrace(e));
+      PlatformServiceException error =
+          new PlatformServiceException(
+              EXPECTATION_FAILED,
+              "Error reading test object "
+                  + objectName
+                  + ", exception occurred: "
+                  + getStackTrace(e));
+      // Lets the v2 storage config API classify the error by S3's answer.
+      error.initCause(e);
+      throw error;
     }
   }
 

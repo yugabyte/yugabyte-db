@@ -61,6 +61,13 @@ public class TlsToggleParams extends UpgradeTaskParams {
       UUID existingRootCA = universeDetails.rootCA;
       UUID existingClientRootCA = universeDetails.getClientRootCA();
 
+      if (userIntent.useNodeToNodeClientCerts && !this.enableNodeToNodeEncrypt) {
+        throw new PlatformServiceException(
+            Status.BAD_REQUEST,
+            "Node-to-node encryption can't be turned off on a universe with"
+                + " useNodeToNodeClientCerts.");
+      }
+
       if (this.enableClientToNodeEncrypt == existingEnableClientToNodeEncrypt
           && this.enableNodeToNodeEncrypt == existingEnableNodeToNodeEncrypt) {
         throw new PlatformServiceException(

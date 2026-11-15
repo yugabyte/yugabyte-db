@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <ranges>
+#include <thread>
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
@@ -116,28 +117,39 @@ size_t SessionRegistryBase::Count() {
 
 bool SessionRegistryBase::Shutdown() {
   std::vector<ClientSessionPtr> sessions;
-  size_t num_active_sessions = 0;
   {
     std::lock_guard lock(mutex_);
     if (shutting_down_) {
       return false;
     }
     shutting_down_ = true;
-    num_active_sessions = sessions_.size();
-    sessions.reserve(num_active_sessions + stopping_sessions_.size());
     sessions.insert_range(sessions.end(), std::views::values(sessions_));
-    sessions.insert_range(sessions.end(), stopping_sessions_);
     sessions_.clear();
-    stopping_sessions_.clear();
   }
-  for (const auto& session : sessions | std::views::take(num_active_sessions)) {
+  for (const auto& session : sessions) {
     session->StartShutdown(/* service_shutting_down= */ true);
+  }
+  // A running CheckExpiredSessions could still park expired sessions in stopping_sessions_, so it
+  // is collected only after the task is done.
+  check_expired_sessions_.StartShutdown();
+  check_expired_sessions_.CompleteShutdown();
+  {
+    std::lock_guard lock(mutex_);
+    sessions.insert_range(sessions.end(), stopping_sessions_);
+    stopping_sessions_.clear();
   }
   for (const auto& session : sessions) {
     session->CompleteShutdown();
   }
-  check_expired_sessions_.StartShutdown();
-  check_expired_sessions_.CompleteShutdown();
+  // A session destructor waits for the session's in-flight requests, so the last reference must
+  // not be released by one of them.
+  for (const auto& session : sessions) {
+    while (!session->ReadyToShutdown()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << "Waiting for session " << session->id() << " to be ready to shutdown";
+      std::this_thread::sleep_for(10ms);
+    }
+  }
   return true;
 }
 

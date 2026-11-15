@@ -31,6 +31,7 @@ exit 1
 ":"""
 
 import argparse
+import glob
 import json
 import logging
 import os
@@ -77,6 +78,9 @@ K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
 
 K8S_CLIENT_CERTS_PATH = "/root/.yugabytedb/"
 K8S_CLIENT_CA_CERT_FILE_PATH = os.path.join(K8S_CLIENT_CERTS_PATH, "root.crt")
+
+# Postgres puts its socket directory here when the tserver's --tmp_dir is longer than 60 chars.
+PG_DEFAULT_TMP_DIR = "/tmp"
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -1542,25 +1546,38 @@ class NodeChecker():
         metric = Metric.from_definition(YB_NODE_REDIS_CONNECT).add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
+    def find_ysql_socket_dir(self, port):
+        # ysqlsh -h <dir> -p <port> opens <dir>/.s.PGSQL.<port>, so ignore sockets a SIGKILLed
+        # postmaster left on another port. Postgres touches live sockets hourly; newest wins.
+        parents = sorted({'{{TMP_DIR}}', PG_DEFAULT_TMP_DIR})
+        sockets = []
+        for parent in parents:
+            sockets.extend(glob.glob('{}/.yb.*/.s.PGSQL.{}'.format(parent, port)))
+        if not sockets:
+            raise RuntimeError("Could not find local socket .s.PGSQL.{} under {}".format(
+                port, " or ".join(p + "/.yb.*" for p in parents)))
+
+        def mtime(path):
+            try:
+                return os.path.getmtime(path)
+            except OSError:
+                return 0
+        return os.path.dirname(max(sockets, key=mtime))
+
     def create_ysqlsh_command(self, db_name="system_platform", use_internal_port = False):
         ysqlsh = '{}/bin/ysqlsh'.format(self.yb_tserver_dir())
-        port_args = "-p {}".format(self.internal_ysql_port if use_internal_port else self.ysql_port)
+        port = self.internal_ysql_port if use_internal_port else self.ysql_port
         host = self.node
 
         if self.enable_ysql_auth:
             # If YSQL-auth is enabled, we'll try connecting over the UNIX domain socket in the hopes
             # that we can circumvent md5 authentication (assumption made:
             # "local all yugabyte trust" is in the hba file)
-            socket_fds_output = self._check_output('ls {{TMP_DIR}}/.yb.*/.s.PGSQL.*').strip()
-            socket_fds = socket_fds_output.split()
-            if ("Error" not in socket_fds_output) and len(socket_fds):
-                host = os.path.dirname(socket_fds[0])
-            else:
-                raise RuntimeError("Could not find local socket")
+            host = self.find_ysql_socket_dir(port)
 
-        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte -d {}".format(
+        ysqlsh_cmd = "{} {} -h {} -p {} -U yugabyte -d {}".format(
             'env sslmode="require"' if (self.enable_tls_client) else '',
-            ysqlsh, host, port_args, db_name)
+            ysqlsh, host, port, db_name)
 
         return ysqlsh_cmd
 

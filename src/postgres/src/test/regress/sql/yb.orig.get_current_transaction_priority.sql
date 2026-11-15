@@ -131,3 +131,14 @@ BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 SELECT * FROM test WHERE k = 1 FOR UPDATE;
 SELECT * FROM yb_get_current_transaction_priority_platform_independent();
 COMMIT;
+
+-- (6) With force_parallel_mode on, the function still returns the transaction's
+-- priority: it is PARALLEL RESTRICTED, so the leader runs it, not a parallel
+-- worker, which does not have the priority.
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO test VALUES (9, '9'); -- starts a distributed transaction
+SELECT yb_get_current_transaction_priority() AS leader_priority \gset
+SET LOCAL force_parallel_mode = on;
+EXPLAIN (COSTS OFF) SELECT yb_get_current_transaction_priority();
+SELECT yb_get_current_transaction_priority()::text = :'leader_priority' AS same_priority;
+COMMIT;

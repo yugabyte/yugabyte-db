@@ -2,7 +2,7 @@ import { omit, isEmpty } from 'lodash';
 import { TFunction } from 'i18next';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { ResilienceFormMode, ResilienceType } from '../steps/resilence-regions/dtos';
-import { OtherAdvancedProps } from '../steps/advanced-settings/dtos';
+import { OtherAdvancedProps, ProxyAdvancedProps } from '../steps/advanced-settings/dtos';
 import {
   CommunicationPortsSpec,
   PlacementRegion,
@@ -12,6 +12,7 @@ import {
   ClusterPlacementSpec,
   ClusterPerProviderSpec,
   ClusterNetworkingSpec,
+  NodeProxyConfig,
   PlacementCloud
 } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, Region } from '@app/redesign/features/universe/universe-form/utils/dto';
@@ -31,6 +32,7 @@ import {
   DEFAULT_CONNECTION_POOLING_PORTS,
   shouldKeepCustomInternalYsqlPort
 } from '../helpers/syncConnectionPoolingPorts';
+import { instanceTagsToObject } from './instanceTags';
 import { DEFAULT_COMMUNICATION_PORTS } from '../helpers/constants';
 import {
   getPrimaryProvider,
@@ -216,13 +218,31 @@ function mapInstanceTags(
 ): Record<string, string> | undefined {
   // Tags are only editable for cloud vendors; drop any left over from a provider switch.
   if (!isCloudVendorCloudType(providerCode)) return undefined;
-  return otherAdvancedSettings.instanceTags.reduce(
-    (acc, tag) => {
-      if (tag.name && tag.value) acc[tag.name] = tag.value;
-      return acc;
-    },
-    {} as Record<string, string>
-  );
+  return instanceTagsToObject(otherAdvancedSettings.instanceTags);
+}
+
+/**
+ * Shared by create and edit. When `clearNoProxyList` is set, an unchecked bypass toggle sends an
+ * empty list (so an edit clears a stored list); otherwise the key is omitted.
+ */
+export function mapProxySettingsToProxyConfig(
+  proxySettings: ProxyAdvancedProps,
+  { clearNoProxyList = false } = {}
+): NodeProxyConfig {
+  const noProxyList = proxySettings.byPassProxyList
+    ? (proxySettings.byPassProxyListValues ?? [])
+    : clearNoProxyList
+      ? []
+      : undefined;
+  return {
+    http_proxy: proxySettings.webProxy
+      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+      : '',
+    https_proxy: proxySettings.secureWebProxy
+      ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+      : '',
+    ...(noProxyList ? { no_proxy_list: noProxyList } : {})
+  };
 }
 
 function mapClusterNetworkingSpec(
@@ -235,18 +255,7 @@ function mapClusterNetworkingSpec(
       ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
       : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
     ...(proxySettings.enableProxyServer
-      ? {
-          proxy_config: {
-            http_proxy:
-              proxySettings.enableProxyServer && proxySettings.webProxy
-                ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
-                : '',
-            https_proxy: proxySettings.secureWebProxy
-              ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
-              : '',
-            no_proxy_list: proxySettings.byPassProxyListValues ?? []
-          }
-        }
+      ? { proxy_config: mapProxySettingsToProxyConfig(proxySettings) }
       : {})
   };
 }

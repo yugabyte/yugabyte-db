@@ -66,14 +66,8 @@ extern const uint8_t *GetVarint64Ptr(const uint8_t *p, const uint8_t *limit, uin
 extern int VarintLength(uint64_t v);
 
 // Lower-level versions of Put... that write directly into a character buffer
-// REQUIRES: dst has enough space for the value being written
-extern void EncodeFixed32(uint8_t *dst, uint32_t value);
-extern void EncodeFixed64(uint8_t *dst, uint64_t value);
-
-// Lower-level versions of Put... that write directly into a character buffer
 // and return a pointer just past the last byte written.
 // REQUIRES: dst has enough space for the value being written
-extern uint8_t *EncodeVarint32(uint8_t *dst, uint32_t value);
 extern uint8_t *EncodeVarint64(uint8_t *dst, uint64_t value);
 
 // Lower-level versions of Get... that read directly from a character buffer

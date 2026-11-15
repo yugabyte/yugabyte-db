@@ -12,6 +12,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -48,6 +50,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -99,8 +102,10 @@ public class KubernetesUtil {
         >= 0;
   }
 
-  public static boolean isNodeExporterSidecarSupported(@Nullable String universeSoftwareVersion) {
+  public static boolean isNodeExporterSidecarEnabled(
+      @Nullable String universeSoftwareVersion, Universe universe, RuntimeConfGetter confGetter) {
     return universeSoftwareVersion != null
+        && confGetter.getConfForScope(universe, UniverseConfKeys.k8sNodeExporterEnabled)
         && Util.compareYBVersions(
                 universeSoftwareVersion,
                 MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
@@ -260,6 +265,32 @@ public class KubernetesUtil {
       }
     }
 
+    return azToConfig;
+  }
+
+  /**
+   * Every zone of the provider with its config merged as getConfigPerAZ merges it for the tasks.
+   * Zones with no kubeconfig at any level are left out, since no pods can be deployed to them.
+   * Zones keep the provider's region and zone order.
+   */
+  public static Map<UUID, Map<String, String>> getConfigPerProviderZone(Provider provider) {
+    Map<UUID, Map<String, String>> azToConfig = new LinkedHashMap<>();
+    boolean providerHasKubeConfig =
+        CloudInfoInterface.fetchEnvVars(provider).containsKey("KUBECONFIG");
+    for (Region region : Region.getByProvider(provider.getUuid())) {
+      boolean regionHasKubeConfig =
+          providerHasKubeConfig
+              || CloudInfoInterface.fetchEnvVars(region).containsKey("KUBECONFIG");
+      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
+        if (!regionHasKubeConfig
+            && !CloudInfoInterface.fetchEnvVars(az).containsKey("KUBECONFIG")) {
+          continue;
+        }
+        PlacementInfo pi = new PlacementInfo();
+        PlacementInfoUtil.addPlacementZone(az.getUuid(), pi);
+        azToConfig.putAll(getConfigPerAZ(pi));
+      }
+    }
     return azToConfig;
   }
 
@@ -789,10 +820,14 @@ public class KubernetesUtil {
     if (!newNamingStyle) {
       return "datadir0";
     }
+    return getHelmFullName(helmReleaseName) + "-datadir0";
+  }
+
+  /** The chart's yugabyte.fullname for a release YBA installs with fullnameOverride set. */
+  public static String getHelmFullName(String helmReleaseName) {
     // trunc then trimSuffix, matching the helm pipeline order: truncation can expose a trailing
     // "-".
-    String fullName = StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
-    return fullName + "-datadir0";
+    return StringUtils.removeEnd(StringUtils.substring(helmReleaseName, 0, 43), "-");
   }
 
   /**
@@ -1602,10 +1637,13 @@ public class KubernetesUtil {
       NodeDetails nodeDetails) {
 
     String serverType = nodeDetails.isTserver ? "tserver" : "master";
-    Double UserIntentcpuCoreCount =
+    UserIntent.K8SNodeResourceSpec resourceSpec =
         nodeDetails.isTserver
-            ? userIntent.tserverK8SNodeResourceSpec.cpuCoreCount
-            : userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+            ? userIntent.tserverK8SNodeResourceSpec
+            : userIntent.masterK8SNodeResourceSpec;
+    // Using the default spec when there is none, since that is what the pods are deployed with.
+    Double UserIntentcpuCoreCount =
+        (resourceSpec == null ? new UserIntent.K8SNodeResourceSpec() : resourceSpec).cpuCoreCount;
     try {
       Object azOverrides = finalUniverseOverridesAZMap.get(nodeDetails.azUuid);
       // Traverse the overrides map to find the specific CPU core count for the server type
@@ -1619,7 +1657,7 @@ public class KubernetesUtil {
       }
       return (azOverrides == null || azOverrides.toString().isEmpty())
           ? UserIntentcpuCoreCount
-          : Double.parseDouble(azOverrides.toString());
+          : Quantity.getAmountInBytes(new Quantity(azOverrides.toString())).doubleValue();
     } catch (Exception e) {
       log.warn(
           "Failed to get core count for node {} with user intent {} and overrides {}",

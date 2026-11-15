@@ -10,12 +10,16 @@ properties:
   script_path:
     description: |
       Path on the YBA host to the script file to execute on the node.
-      Must resolve to one of the shipped support bundle scripts, node_utils.sh or
-      yba_utils.sh, under the platform devops directory. A relative path is resolved
+      Must resolve to one of the shipped support bundle scripts, support_bundle_utils.sh
+      or yba_utils.sh, under the platform devops directory. A relative path is resolved
       against that directory. Any other path is rejected.
     type: string
   params:
-    description: Arguments appended after the script (entrypoint + flags).
+    description: |
+      Arguments appended after the script (entrypoint + flags).
+      YBA replaces them with the arguments its support bundle manifest
+      gives component_name; the request's collection window and options
+      such as filter_pg_audit_logs still apply.
     type: array
     items:
       type: string
@@ -33,6 +37,9 @@ properties:
       /var/log.
     type: string
   timeout_secs:
-    description: Script execution timeout in seconds.
+    description: |
+      Script execution timeout in seconds.
+      YBA uses the timeout its support bundle manifest gives
+      component_name instead.
     type: integer
     format: int64

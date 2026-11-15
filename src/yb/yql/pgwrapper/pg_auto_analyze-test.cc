@@ -602,6 +602,25 @@ TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeSingleTable) {
   ASSERT_OK(WaitForTableReltuples(conn, table_name, 102));
 }
 
+TEST_F(PgAutoAnalyzeTest, TriggerAnalyzeQuotedIdentifiers) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0.01;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
+  auto conn = ASSERT_RESULT(Connect());
+
+  const std::string schema_name = "s\"chema";
+  const std::string table_name = "t\"bl";
+  const auto qualified_table_name =
+      PqEscapeIdentifier(schema_name) + "." + PqEscapeIdentifier(table_name);
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", PqEscapeIdentifier(schema_name)));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i INT)", qualified_table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10)",
+                               qualified_table_name));
+
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 10));
+}
+
 TEST_F(PgAutoAnalyzeTest, MutationCountHelperResetAndSaturatingSubtract) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
   auto conn = ASSERT_RESULT(Connect());
@@ -2033,12 +2052,17 @@ TEST_F(PgConcurrentDDLAnalyzeTest, ConcurrentDDLWithinTxnAnalyze) {
 class PgConcurrentCreateIndexTest : public PgConcurrentDDLAnalyzeTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    // The master leader rejects WaitForYsqlBackendsCatalogVersion until the lease TTL has passed
+    // since it became leader, which can be after CREATE INDEX starts waiting. Make the wait timeout
+    // cover that window plus the time needed for the wait itself.
+    constexpr int kLeaseTtlMs = 10000;
     options->extra_tserver_flags.emplace_back(
             Format("--ysql_yb_wait_for_backends_catalog_version_timeout=$0",
-                   5000 * kTimeMultiplier));
+                   kLeaseTtlMs + 5000 * kTimeMultiplier));
     options->extra_tserver_flags.emplace_back(
             "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=1000");
-    options->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
+    options->extra_master_flags.emplace_back(
+            Format("--master_ysql_operation_lease_ttl_ms=$0", kLeaseTtlMs));
     PgConcurrentDDLAnalyzeTest::UpdateMiniClusterOptions(options);
   }
 };

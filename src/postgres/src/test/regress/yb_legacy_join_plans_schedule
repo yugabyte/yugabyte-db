@@ -1,0 +1,6 @@
+# src/test/regress/yb_legacy_join_plans_schedule
+#
+####################################################################################################
+# Join plans under the legacy cost model modes
+####################################################################################################
+test: yb.orig.legacy_join_plans

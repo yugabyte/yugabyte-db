@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-Audit your account activity using the **Activity** tab on the **Security** page. The **Activity** tab provides the following two logs:
+Audit account activity using the **Activity** tab on the **Security** page. The **Activity** tab provides the following two logs:
 
-- **Console Audit Log** - lists cluster and account activity, including the activity type, who performed the activity, timestamp, and result.
+- **Console Activity** - lists cluster and account activity, including the activity type, who performed the activity, timestamp, and result.
 - **Access History** - lists all login activity, including the client IP address, activity type, number of attempts, timestamp, and result.
 
 Cluster activity is also displayed on the cluster [**Activity** tab](../../cloud-monitor/monitor-activity).

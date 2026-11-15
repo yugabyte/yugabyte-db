@@ -45,7 +45,8 @@ export default class MetricsPanel extends Component {
 
   static propTypes = {
     metric: PropTypes.object.isRequired,
-    metricKey: PropTypes.string.isRequired
+    metricKey: PropTypes.string.isRequired,
+    notes: PropTypes.arrayOf(PropTypes.string)
   };
 
   plotGraph = (metricOperation = null) => {
@@ -315,7 +316,8 @@ export default class MetricsPanel extends Component {
   }
 
   render() {
-    const { prometheusQueryEnabled, operations, metricMeasure, metricType, className } = this.props;
+    const { prometheusQueryEnabled, operations, metricMeasure, metricType, className, notes } =
+      this.props;
     let showDropdown = false;
     let numButtonsInDropdown = 0;
     let metricOperationsDisplayed = operations;
@@ -353,7 +355,10 @@ export default class MetricsPanel extends Component {
       ? `${this.props.metricKey}-printMode`
       : this.props.metricKey;
     return (
-      <div id={newMetricKey} className={clsx(className, 'metrics-panel')}>
+      <div
+        id={newMetricKey}
+        className={clsx(className, 'metrics-panel', isNonEmptyArray(notes) && 'has-notes')}
+      >
         <span ref={this.outlierButtonsRef} className="outlier-buttons-container">
           {(metricMeasure === MetricMeasure.OUTLIER ||
             metricType === MetricTypes.OUTLIER_TABLES ||
@@ -418,6 +423,13 @@ export default class MetricsPanel extends Component {
           </OverlayTrigger>
         ) : null}
         <div />
+        {isNonEmptyArray(notes) && (
+          <ul className="metrics-panel-notes">
+            {notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   }

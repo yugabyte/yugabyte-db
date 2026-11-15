@@ -40,10 +40,6 @@ func PopulateDescribeUniverseCLIOutput(
 	primaryK8sMasterResourceSpec := primaryUserIntent.GetMasterK8SNodeResourceSpec()
 
 	var rootCA, clientRootCA string
-	if details.GetClientRootCA() == "" {
-		clientRootCA = details.GetRootCA()
-	}
-
 	for _, cert := range universe.Certificates {
 		if cert.GetUuid() == details.GetRootCA() {
 			rootCA = cert.GetLabel()
@@ -51,6 +47,9 @@ func PopulateDescribeUniverseCLIOutput(
 		if cert.GetUuid() == details.GetClientRootCA() {
 			clientRootCA = cert.GetLabel()
 		}
+	}
+	if details.GetClientRootCA() == "" {
+		clientRootCA = rootCA
 	}
 
 	var earKMSConfig string
