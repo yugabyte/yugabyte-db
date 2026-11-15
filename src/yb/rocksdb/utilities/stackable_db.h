@@ -277,6 +277,10 @@ class StackableDB : public DB {
     db_->GetLiveFileNumbersNotOnPath(path_id, out);
   }
 
+  size_t EvictTableReaders() override {
+    return db_->EvictTableReaders();
+  }
+
   yb::storage::FrontierInfo GetFrontiers(yb::storage::FrontierKinds kinds) override {
     return db_->GetFrontiers(kinds);
   }

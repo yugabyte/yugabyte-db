@@ -137,7 +137,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     bundleUuid = UUID.randomUUID();
     stagingDir = "/tmp/yba-support-bundle-" + bundleUuid + "-10_0_0_1";
 
-    localScriptPath = Files.createTempFile("node_utils", ".sh");
+    localScriptPath = Files.createTempFile("support_bundle_utils", ".sh");
     Files.writeString(localScriptPath, "#!/bin/bash\necho ok\n");
     commandResponse = ok("out\n" + trailer("quota"));
   }
@@ -195,7 +195,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         bundleUuid,
         universe,
         node,
-        "bin/node_utils.sh",
+        "bin/support_bundle_utils.sh",
         localScriptPath,
         PARAMS,
         context,
@@ -318,7 +318,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
 
     String dir = "/data/tmp/yba-support-bundle-" + bundleUuid + "-10_0_0_1";
     List<String> argv = commandsRun.get(0);
-    assertTrue(argv.toString(), argv.get(1).startsWith(dir + "/node_utils"));
+    assertTrue(argv.toString(), argv.get(1).startsWith(dir + "/support_bundle_utils"));
     assertEquals(dir, argv.get(argv.indexOf("--tmp_dir") + 1));
   }
 
@@ -551,7 +551,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         bundleUuid,
         universe,
         node,
-        "bin/node_utils.sh",
+        "bin/support_bundle_utils.sh",
         localScriptPath,
         PARAMS,
         ShellProcessContext.builder().sshUser("ec2-user").timeoutSecs(300L).build(),
@@ -566,8 +566,8 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
                     e.getLevel() == Level.INFO
                         && e.getFormattedMessage()
                             .equals(
-                                "Running bin/node_utils.sh for component 'SystemLogs' on node"
-                                    + " 'u-n1' as 'ec2-user' (setup as 'yugabyte')")));
+                                "Running bin/support_bundle_utils.sh for component 'SystemLogs' on"
+                                    + " node 'u-n1' as 'ec2-user' (setup as 'yugabyte')")));
   }
 
   @Test

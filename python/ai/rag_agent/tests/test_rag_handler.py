@@ -104,6 +104,30 @@ class TestRagPipelineHandler:
     @patch('rag_pipeline.rag_handler.EmbeddingsGenerator')
     @patch('rag_pipeline.rag_handler.PipelineTracking')
     @patch('rag_pipeline.rag_handler.YugabyteDBVectorStore')
+    def test_ingest_document_passes_embed_concurrency_from_env(
+        self, mock_vs_cls, mock_pt_cls, mock_embed_cls, monkeypatch
+    ):
+        """KB ingestion is the one caller that opts into EMBED_CONCURRENCY."""
+        monkeypatch.setenv("EMBED_CONCURRENCY", "3")
+        handler, mock_vs, mock_pt = _create_handler(mock_vs_cls, mock_pt_cls)
+        mock_embed_cls.return_value.generate_embeddings.return_value = []
+
+        handler._ingest_document(
+            pipeline_id=PIPELINE_ID,
+            source_id=123,
+            document_id=456,
+            document_uri="test_document.txt",
+            table_name="test_table",
+            metadata={"source": "test"},
+            chunk_kwargs={"chunk_size": 500},
+            embedding_model_params=DEFAULT_EMBEDDING_PARAMS
+        )
+
+        assert mock_embed_cls.call_args.kwargs["embed_concurrency"] == 3
+
+    @patch('rag_pipeline.rag_handler.EmbeddingsGenerator')
+    @patch('rag_pipeline.rag_handler.PipelineTracking')
+    @patch('rag_pipeline.rag_handler.YugabyteDBVectorStore')
     def test_ingest_document_no_metadata(self, mock_vs_cls, mock_pt_cls, mock_embed_cls):
         """Test document ingestion without metadata."""
         handler, mock_vs, mock_pt = _create_handler(mock_vs_cls, mock_pt_cls)
@@ -162,9 +186,10 @@ class TestRagPipelineHandler:
     @patch('rag_pipeline.rag_handler.PipelineTracking')
     @patch('rag_pipeline.rag_handler.YugabyteDBVectorStore')
     def test_ingest_document_with_embedding_model(
-        self, mock_vs_cls, mock_pt_cls, mock_embed_cls
+        self, mock_vs_cls, mock_pt_cls, mock_embed_cls, monkeypatch
     ):
         """Test document ingestion with custom embedding model."""
+        monkeypatch.delenv("EMBED_CONCURRENCY", raising=False)
         handler, mock_vs, mock_pt = _create_handler(mock_vs_cls, mock_pt_cls)
 
         mock_embedder = Mock()
@@ -188,7 +213,8 @@ class TestRagPipelineHandler:
         mock_embed_cls.assert_called_once_with(
             embedding_model="custom_model",
             embedding_model_params=custom_params,
-            ai_provider=None
+            ai_provider=None,
+            embed_concurrency=1,
         )
 
     @patch('rag_pipeline.rag_handler.PipelineTracking')

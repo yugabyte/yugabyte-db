@@ -2008,6 +2008,11 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     }
   }
 
+  // Before the chunk is marked on disk, so the wait does not hold the manifest.
+  if (options_.wait_frontier_durable && chunk->applied_frontiers) {
+    options_.wait_frontier_durable(chunk->applied_frontiers->Largest());
+  }
+
   TEST_SYNC_POINT("VectorLSM::DoSaveChunk:BeforeManifestCheck");
 
   WritableFile* manifest_file = nullptr;

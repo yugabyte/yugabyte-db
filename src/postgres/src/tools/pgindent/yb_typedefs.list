@@ -156,6 +156,10 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscReplayState
+YbOscTargetOrder
+YbOscTransform
+YbOscTriggerSpec
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState
