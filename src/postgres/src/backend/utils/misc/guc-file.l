@@ -233,6 +233,7 @@ YbGetConfigFileIntValue(const char *name)
 									 false /* applySettings */ , DEBUG3);
 	for (item = head; item; item = item->next)
 	{
+		/* Applied: the last entry for this name, and its value is valid. */
 		if (item->applied && guc_name_compare(item->name, record->name) == 0)
 			(void) parse_int(item->value, &result, record->flags, NULL);
 	}

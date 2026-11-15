@@ -81,7 +81,11 @@ YbComputePasswordValidUntil(Oid roleid, bool has_valid_until_clause,
 	if (has_valid_until_clause)
 		return false;
 
-	validity = YbRolePasswordValidity(roleid);
+	/* This session's value was loaded for the role that logged in. */
+	if (roleid == GetAuthenticatedUserId())
+		validity = yb_password_validity;
+	else
+		validity = YbRolePasswordValidity(roleid);
 	if (validity == 0)
 		return false;
 

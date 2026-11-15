@@ -23,8 +23,8 @@
  * login.  An admin resetting another role's password does not apply them:
  * the admin's window can prune history the target's own policy still
  * protects.  That reset records and prunes under the target's windows, read
- * from pg_db_role_setting, so history stays bounded for a role whose
- * password only an operator changes.
+ * from pg_db_role_setting or ysql_pg.conf, so history stays bounded for a
+ * role whose password only an operator changes.
  *
  * YbRolePasswordValidity() reads the yb_password_validity of the role whose
  * password is being set, for the expiration CREATE ROLE and ALTER ROLE stamp.
@@ -54,7 +54,6 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
-#include "utils/guc_tables.h"
 #include "utils/rel.h"
 #include "utils/timestamp.h"
 
@@ -304,60 +303,43 @@ yb_role_setting_int(Relation settings, Oid roleid, const char *name,
 	return found;
 }
 
-static GucSource
-yb_guc_source(const char *name)
-{
-	struct config_generic **vars = get_guc_variables();
-	int			nvars = GetNumConfigOptions();
-
-	for (int i = 0; i < nvars; i++)
-		if (strcmp(vars[i]->name, name) == 0)
-			return vars[i]->source;
-	elog(ERROR, "unrecognized configuration parameter \"%s\"", name);
-	return PGC_S_DEFAULT;		/* keep compiler quiet */
-}
-
-static bool
-yb_role_reuse_window(Relation settings, Oid roleid, const char *name,
-					 int flags, int session_value, int *result)
-{
-	if (yb_role_setting_int(settings, roleid, name, flags, result) ||
-		yb_role_setting_int(settings, InvalidOid, name, flags, result))
-		return true;
-
-	/*
-	 * Only the configuration file or the default is left. This session holds
-	 * that value unless its own value came from a role setting, which
-	 * replaced it at login.
-	 */
-	if (yb_guc_source(name) <= PGC_S_ARGV)
-	{
-		*result = session_value;
-		return true;
-	}
-	return false;
-}
-
 /*
- * The reuse windows that roleid's own login would load: its ALTER ROLE SET
- * value, else ALTER ROLE ALL SET, else the configuration file, the order
- * process_settings() applies them in. AlterSetting() rejects per-database
- * forms. Returns false when the configuration-file value is not visible in
- * this session.
+ * Given roleid, a setting name, and flags (the setting's unit, e.g.
+ * GUC_UNIT_MIN), return the role's value of that integer setting.
+ * Check these in order, and return the first one that is set:
+ * 1. the role's own value (ALTER ROLE <role> SET)
+ * 2. the value for all roles (ALTER ROLE ALL SET)
+ * 3. the value in ysql_pg.conf
+ * 4. the default value
+ *
+ * E.g. after ALTER ROLE app_user SET yb_password_validity = '20d',
+ * yb_role_setting(settings, app_user's OID, "yb_password_validity",
+ * GUC_UNIT_MIN) returns 28800 (20 days in minutes).
  */
-static bool
+static int
+yb_role_setting(Relation settings, Oid roleid, const char *name, int flags)
+{
+	int			result;
+
+	if ((OidIsValid(roleid) &&
+		 yb_role_setting_int(settings, roleid, name, flags, &result)) ||
+		yb_role_setting_int(settings, InvalidOid, name, flags, &result))
+		return result;
+	return YbGetConfigFileIntValue(name);
+}
+
+/* The reuse windows that apply to roleid, read with yb_role_setting(). */
+static void
 yb_role_reuse_windows(Oid roleid, int *reuse_max, int *reuse_time_mins)
 {
 	Relation	settings = table_open(DbRoleSettingRelationId, AccessShareLock);
-	bool		known;
 
-	known = yb_role_reuse_window(settings, roleid, "yb_password_reuse_history",
-								 0, yb_password_reuse_history, reuse_max) &&
-		yb_role_reuse_window(settings, roleid, "yb_password_reuse_interval",
-							 GUC_UNIT_MIN, yb_password_reuse_interval,
-							 reuse_time_mins);
+	*reuse_max = yb_role_setting(settings, roleid,
+								 "yb_password_reuse_history", 0);
+	*reuse_time_mins = yb_role_setting(settings, roleid,
+									   "yb_password_reuse_interval",
+									   GUC_UNIT_MIN);
 	table_close(settings, AccessShareLock);
-	return known;
 }
 
 /*
@@ -368,9 +350,7 @@ yb_role_reuse_windows(Oid roleid, int *reuse_max, int *reuse_time_mins)
  * admin reset, or CREATE ROLE). This session's windows are then another
  * role's (see file header), so the target's own windows are resolved from
  * the catalog instead and used to record and prune; a reused password is not
- * rejected. When those windows cannot be resolved, the secret is recorded
- * and nothing is pruned: dropping a row the target's policy still protects
- * would be worse than one extra row.
+ * rejected.
  *
  * The PK (pwdhstrole, pwdhstchangetime) makes a forward scan return this
  * role's rows in ascending pwdhstchangetime order, so a row's count-window rank
@@ -388,7 +368,6 @@ YbApplyPasswordHistory(Oid roleid, const char *rolename,
 {
 	int			reuse_max = yb_password_reuse_history;
 	int			reuse_time_mins = yb_password_reuse_interval;
-	bool		prune = true;
 	Relation	rel;
 	ScanKeyData skey;
 	TableScanDesc scan;
@@ -408,32 +387,13 @@ YbApplyPasswordHistory(Oid roleid, const char *rolename,
 	if (!IsYugaByteEnabled())
 		return false;
 
-	if (enforce_reuse ||
-		yb_role_reuse_windows(roleid, &reuse_max, &reuse_time_mins))
-	{
-		if (!YbPasswordReusePolicyActive(reuse_max, reuse_time_mins, true))
-			return false;
-	}
-	else
-	{
-		prune = false;
-		if (!yb_password_history_catalog_exists())
-			return false;
-	}
+	if (!enforce_reuse)
+		yb_role_reuse_windows(roleid, &reuse_max, &reuse_time_mins);
+	if (!YbPasswordReusePolicyActive(reuse_max, reuse_time_mins, true))
+		return false;
 
 	now = GetCurrentTimestamp();
 	rel = table_open(YbPasswordHistoryRelationId, RowExclusiveLock);
-
-	if (!prune)
-	{
-		yb_record_password(rel, roleid, shadow_pass, now);
-		elog(DEBUG1,
-			 "recorded password for role %u; its reuse windows are not visible in this session",
-			 roleid);
-		/* Keep the lock on pg_yb_password_history until commit */
-		table_close(rel, NoLock);
-		return true;
-	}
 
 	time_cutoff = (reuse_time_mins > 0)
 		? TimestampTzPlusMilliseconds(now, -60000 * (int64) reuse_time_mins)
@@ -556,28 +516,15 @@ YbDeletePasswordHistory(Oid roleid)
 	return ndeleted;
 }
 
-/*
- * Given roleid, return the role's yb_password_validity, in minutes.
- * Check these in order, and return the first one that is set:
- * 1. the role's own value (ALTER ROLE <role> SET)
- * 2. the value for all roles (ALTER ROLE ALL SET)
- * 3. the value in ysql_pg.conf
- * 4. the default value
- */
+/* Given roleid, return the role's yb_password_validity, in minutes. */
 int
 YbRolePasswordValidity(Oid roleid)
 {
-	const char *name = "yb_password_validity";
 	Relation	settings = table_open(DbRoleSettingRelationId, AccessShareLock);
-	int			validity;
-	bool		found;
+	int			validity = yb_role_setting(settings, roleid,
+										   "yb_password_validity",
+										   GUC_UNIT_MIN);
 
-	found = (OidIsValid(roleid) &&
-			 yb_role_setting_int(settings, roleid, name, GUC_UNIT_MIN,
-								 &validity)) ||
-		yb_role_setting_int(settings, InvalidOid, name, GUC_UNIT_MIN,
-							&validity);
 	table_close(settings, AccessShareLock);
-
-	return found ? validity : YbGetConfigFileIntValue(name);
+	return validity;
 }
