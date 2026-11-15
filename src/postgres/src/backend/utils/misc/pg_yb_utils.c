@@ -5673,12 +5673,25 @@ yb_hash_code(PG_FUNCTION_ARGS)
 		size_t		typesize;
 		const YbcPgTypeEntity *typeentity = YbDataTypeFromOidMod(InvalidAttrNumber,
 																 argtype);
-		YbcStatus	status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity,
-												PG_ARGISNULL(i), &typesize);
 
-		if (unlikely(status))
+		/*
+		 * Only key types, and int2vector: it is no longer a key type because
+		 * DocDB orders it by bytes, but its hash is well defined, and
+		 * expressions stored before may hash it.
+		 */
+		bool		is_hashable = (typeentity &&
+								   (typeentity->allow_for_primary_key ||
+									typeentity->type_oid == INT2VECTOROID));
+		YbcStatus	status = NULL;
+
+		if (is_hashable)
+			status = YBCGetDocDBKeySize(PG_GETARG_DATUM(i), typeentity,
+										PG_ARGISNULL(i), &typesize);
+
+		if (unlikely(!is_hashable || status))
 		{
-			YBCFreeStatus(status);
+			if (status)
+				YBCFreeStatus(status);
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("unsupported datatype given to yb_hash_code"),

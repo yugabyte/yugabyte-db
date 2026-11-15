@@ -643,6 +643,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 					 tableName);
 
 	Constraint *primary_key = NULL;
+	bool		is_pk_inherited = false;
 
 	foreach(listptr, stmt->constraints)
 	{
@@ -703,6 +704,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			idxstmt = generateClonedIndexStmt(NULL, idxRel, attmap, &constraintOid);
 
 			primary_key = makeNode(Constraint);
+			is_pk_inherited = true;
 			primary_key->contype = CONSTR_PRIMARY;
 			primary_key->conname = idxstmt->idxname;
 			primary_key->options = idxstmt->options;
@@ -946,14 +948,15 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	/*
 	 * Recreating an existing table's DocDB table (TRUNCATE, table rewrite),
 	 * an upgrade, a restore or an xCluster DDL replay keeps an int2vector
-	 * primary key that exists already (on the xCluster source). When a rewrite
-	 * adds or changes the primary key, index_create or ATExecAddIndexConstraint
+	 * primary key that exists already (on the xCluster source), and so does a
+	 * partition that inherits its parent's primary key. When a rewrite adds or
+	 * changes the primary key, index_create or ATExecAddIndexConstraint
 	 * checks it.
 	 */
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
 						  is_tablegroup,
-						  is_internal_rewrite || IsBinaryUpgrade ||
-						  yb_binary_restore ||
+						  is_internal_rewrite || is_pk_inherited ||
+						  IsBinaryUpgrade || yb_binary_restore ||
 						  yb_xcluster_automatic_mode_target_ddl);
 
 	if (stmt->partspec != NULL)

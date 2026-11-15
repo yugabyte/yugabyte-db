@@ -3944,12 +3944,14 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 
 		/*
 		 * The Var side can match any key column of the index.
-		 * YB: except an int2vector one, which serves only equality.
 		 */
 		for (i = 0; i < index->nkeycolumns; i++)
 		{
-			if (!yb_indexcol_is_equality_only(index, i) &&
-				match_index_to_operand(varop, i, index) &&
+			/* YB: An int2vector key column serves only equality. */
+			if (yb_indexcol_is_equality_only(index, i))
+				continue;
+
+			if (match_index_to_operand(varop, i, index) &&
 				get_op_opfamily_strategy(expr_op,
 										 index->opfamily[i]) == op_strategy &&
 				IndexCollMatchesExprColl(index->indexcollations[i],

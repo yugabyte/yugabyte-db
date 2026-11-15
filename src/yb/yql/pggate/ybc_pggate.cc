@@ -1976,9 +1976,9 @@ YbcStatus YBCPgNewTupleExpr(
 YbcStatus YBCGetDocDBKeySize(uint64_t data, const YbcPgTypeEntity *typeentity,
                             bool is_null, size_t *type_size) {
 
+  // The caller checks that the type is one it may hash (yb_hash_code).
   if (typeentity == nullptr
-      || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA
-      || !typeentity->allow_for_primary_key) {
+      || typeentity->yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA) {
     return ToYBCStatus(STATUS(NotSupported, "Feature is not supported"));
   }
 

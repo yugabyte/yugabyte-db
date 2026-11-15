@@ -1030,10 +1030,14 @@ index_create(Relation heapRelation,
 	Assert(relminmxid == InvalidMultiXactId);
 	Assert(indexRelationId == RelationGetRelid(indexRelation));
 
-	/* YB: check key types where the key is defined, see the function. */
+	/*
+	 * YB: check key types where the key is defined, see the function. A
+	 * partition's index clones its parent's index, whose keys were checked.
+	 */
 	if (IsYBRelation(indexRelation) &&
 		(accessMethodObjectId == LSM_AM_OID ||
-		 accessMethodObjectId == YBGIN_AM_OID))
+		 accessMethodObjectId == YBGIN_AM_OID) &&
+		!OidIsValid(parentIndexRelid))
 		YbCheckIndexKeyTypes(indexTupDesc, indexInfo->ii_NumIndexKeyAttrs,
 							 isprimary, yb_old_key_type_oids);
 
