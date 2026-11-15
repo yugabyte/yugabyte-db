@@ -42,7 +42,7 @@ Index creation in YugabyteDB can happen CONCURRENTLY or NONCONCURRENTLY. If you 
 
 A nonconcurrent build does not perform online index backfill. Unless [table-level locks](../../../../../architecture/transactions/concurrency-control/#table-level-locks) are enabled, concurrent writes during nonconcurrent index creation can result in an inconsistent index. When table-level locks are enabled, those writes wait until the nonconcurrent CREATE INDEX completes instead.
 
-A nonconcurrent build reads the table at one read point. If it runs longer than the YB-TServer flag [timestamp_history_retention_interval_sec](../../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) (default 900 seconds), it fails with `Snapshot too old`. Before a nonconcurrent build on a large table, raise this flag above the expected build time, and reset it after the build finishes.
+A nonconcurrent build reads the table at one read point. If it runs longer than the YB-TServer flag [timestamp_history_retention_interval_sec](../../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) (default 900 seconds), it fails with `Snapshot too old`. Before a nonconcurrent build on a large table, set the flag higher than the expected build time on all YB-TServers (it can be changed at runtime), and reset it after the build finishes. A higher value retains more history, which increases storage use.
 
 Specify CONCURRENTLY explicitly whenever possible. With the explicit keyword, a statement that cannot be built concurrently (inside a transaction block or on a partitioned table) fails with an error instead of silently switching to a nonconcurrent build.
 
