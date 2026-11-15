@@ -194,6 +194,17 @@ Status IsInitDbDoneByRpc(MiniMaster& master, master::IsInitDbDoneResponsePB* res
   return ResponseStatus(*resp);
 }
 
+Status IsLoadBalancerIdleByRpc(MiniMaster& master) {
+  rpc::ProxyCache proxy_cache(&master.messenger());
+  master::MasterClusterProxy proxy(&proxy_cache, master.bound_rpc_addr());
+  master::IsLoadBalancerIdleRequestPB req;
+  master::IsLoadBalancerIdleResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(10s);
+  RETURN_NOT_OK(proxy.IsLoadBalancerIdle(req, &resp, &controller));
+  return ResponseStatus(resp);
+}
+
 // The tservers of `tservers` (uuid to instance seqno) the master lists, live ones only when
 // `live_only`. Unlike the C++ path it cannot check that each sent a full tablet report.
 Result<size_t> CountRegisteredTabletServers(
@@ -1066,9 +1077,16 @@ Status MiniCluster::ChangeClusterConfig(
 
 
 Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
-  auto master_leader = VERIFY_RESULT(GetLeaderMiniMaster())->master();
+  auto* leader_mini_master = VERIFY_RESULT(GetLeaderMiniMaster());
   const auto start_time = MonoTime::Now();
   const auto deadline = start_time + timeout;
+  if (leader_mini_master->is_rust()) {
+    // No RPC tells when a Rust leader's balancer last ran; idle means its recent runs were idle.
+    return Wait(
+        [&]() -> Result<bool> { return IsLoadBalancerIdleByRpc(*leader_mini_master).ok(); },
+        deadline, "IsLoadBalancerIdle");
+  }
+  auto master_leader = leader_mini_master->master();
   RETURN_NOT_OK(Wait(
       [&]() -> Result<bool> {
         return master_leader->catalog_manager_impl()->LastLoadBalancerRunTime() > start_time;

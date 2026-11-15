@@ -31,7 +31,7 @@ use crate::streams::{stream_rows, strip_sequences_data_alias};
 use crate::{error, new_stream_id, Xrepl};
 
 /// `GetXClusterStreamOptions`: the options every xCluster stream has.
-pub(crate) fn xcluster_stream_options() -> Vec<CDCStreamOptionsPB> {
+pub fn xcluster_stream_options() -> Vec<CDCStreamOptionsPB> {
     [
         ("source_type", "XCLUSTER"),
         ("record_type", "CHANGE"),
@@ -131,18 +131,31 @@ impl Xrepl {
 
     /// `CheckpointStreamsToOp0`: a row per tablet of the table at op 0.0.
     async fn checkpoint_to_op0(&self, table_id: &str, stream_id: &str) -> Result<(), Status> {
+        self.checkpoint_streams_to_op0(&[(table_id.to_string(), stream_id.to_string())])
+            .await
+    }
+
+    /// `CheckpointStreamsToOp0` of (table, stream) pairs; a table may be a `sequences_data`
+    /// alias.
+    pub async fn checkpoint_streams_to_op0(
+        &self,
+        table_streams: &[(String, String)],
+    ) -> Result<(), Status> {
         let snapshot = self.catalog.snapshot();
         let mut upsert = CdcStateUpsertRequestPB::new();
-        for tablet in snapshot.hosting_tablets_of(table_id.as_bytes()) {
-            let mut entry = CdcStateEntryPB::new();
-            entry.set_tablet_id(tablet.key.id.to_vec());
-            entry.set_stream_id(stream_id.as_bytes().to_vec());
-            let mut min = OpIdPB::new();
-            min.set_term(0);
-            min.set_index(0);
-            entry.checkpoint = MessageField::some(min);
-            entry.set_last_replication_time(now_micros());
-            upsert.entries.push(entry);
+        for (table_id, stream_id) in table_streams {
+            let table_id = strip_sequences_data_alias(table_id);
+            for tablet in snapshot.hosting_tablets_of(table_id.as_bytes()) {
+                let mut entry = CdcStateEntryPB::new();
+                entry.set_tablet_id(tablet.key.id.to_vec());
+                entry.set_stream_id(stream_id.as_bytes().to_vec());
+                let mut min = OpIdPB::new();
+                min.set_term(0);
+                min.set_index(0);
+                entry.checkpoint = MessageField::some(min);
+                entry.set_last_replication_time(now_micros());
+                upsert.entries.push(entry);
+            }
         }
         if upsert.entries.is_empty() {
             return Ok(());

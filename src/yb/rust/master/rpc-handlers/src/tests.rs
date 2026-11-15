@@ -680,6 +680,16 @@ mod leader_tests {
                 Default::default(),
                 Default::default(),
             );
+            let xcluster = master_xcluster::XCluster::new(
+                catalog.clone(),
+                writer.clone(),
+                leadership.clone(),
+                ts_manager.clone(),
+                xrepl.clone(),
+                tables.clone(),
+                Arc::new(NoRemoteMasters),
+                Default::default(),
+            );
             Arc::new(LeaderServices {
                 catalog,
                 writer,
@@ -696,6 +706,7 @@ mod leader_tests {
                 splits,
                 snapshots,
                 xrepl,
+                xcluster,
                 leases,
                 locks,
                 backends,
@@ -951,5 +962,24 @@ mod leader_tests {
         assert_eq!(resp.error.code(), master_error_pb::Code::NOT_THE_LEADER);
         assert_eq!(resp.master_uuid(), "self-uuid");
         let _ = EnumOrUnknown::new(PeerRole::LEADER);
+    }
+}
+
+/// No other universe is reachable.
+struct NoRemoteMasters;
+
+impl master_xcluster::RemoteMasters for NoRemoteMasters {
+    #[allow(clippy::too_many_arguments)]
+    fn call(
+        &self,
+        _id: &str,
+        _masters: &[yb_proto::pb::common_net::HostPortPB],
+        _service: &'static str,
+        _method: &'static str,
+        _request: Vec<u8>,
+        _timeout: Duration,
+        _refresh: bool,
+    ) -> master_task_runtime::BoxFuture<'static, Result<Vec<u8>, Status>> {
+        Box::pin(async { Err(Status::new(StatusCode::NetworkError, "no remote universe")) })
     }
 }

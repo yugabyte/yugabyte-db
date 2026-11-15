@@ -270,6 +270,15 @@ pub trait XreplHooks: Send + Sync {
         snapshot: &master_catalog_state::CatalogSnapshot,
         table_id: &[u8],
     ) -> bool;
+
+    /// Work a new table's tablets wait for before it runs (`GetPostTabletCreateTasks`): its
+    /// xCluster streams. An error leaves the table PREPARING, retried on the next pass.
+    fn post_tablet_create(
+        &self,
+        _table_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// A schema version and the DDL transaction whose `AlterTable` made it.

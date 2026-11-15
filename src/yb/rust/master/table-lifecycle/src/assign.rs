@@ -595,7 +595,17 @@ impl TabletAssigner {
             .filter(|t| all_tablets_running(&snapshot, &t.key.id))
             .map(|t| t.key.id.to_vec())
             .collect();
+        let hooks = self.lifecycle.xrepl_hooks.get().cloned();
         for table_id in ready {
+            if let Some(hooks) = &hooks {
+                if let Err(status) = hooks.post_tablet_create(table_id.clone()).await {
+                    tracing::warn!(
+                        "Post tablet creation work of table {} failed, will retry: {status}",
+                        String::from_utf8_lossy(&table_id)
+                    );
+                    continue;
+                }
+            }
             let result = self
                 .lifecycle
                 .writer

@@ -675,6 +675,7 @@ dependencies = [
  "master-tablet-split-manager",
  "master-task-runtime",
  "master-ts-manager",
+ "master-xcluster",
  "master-xrepl",
  "master-ysql-manager",
  "protobuf",
@@ -700,6 +701,7 @@ dependencies = [
  "master-tablet-split-manager",
  "master-task-runtime",
  "master-ts-manager",
+ "master-xcluster",
  "master-xrepl",
  "master-ysql-manager",
  "protobuf",
@@ -839,6 +841,26 @@ dependencies = [
  "tracing",
  "yb-cpp-host",
  "yb-flags",
+ "yb-host-api",
+ "yb-proto",
+]
+
+[[package]]
+name = "master-xcluster"
+version = "0.1.0"
+dependencies = [
+ "master-catalog-entity",
+ "master-catalog-state",
+ "master-leadership",
+ "master-sys-catalog",
+ "master-table-lifecycle",
+ "master-tablet-locations",
+ "master-task-runtime",
+ "master-ts-manager",
+ "master-xrepl",
+ "protobuf",
+ "tokio",
+ "tracing",
  "yb-host-api",
  "yb-proto",
 ]

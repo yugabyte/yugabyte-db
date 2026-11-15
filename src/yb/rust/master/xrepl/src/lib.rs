@@ -29,7 +29,8 @@ mod xcluster;
 
 pub use controller::XreplController;
 pub use create::CreatesTables;
-pub use streams::{stream_rows, StreamRow};
+pub use streams::{parse_stream_id, stream_rows, strip_sequences_data_alias, StreamRow};
+pub use xcluster::xcluster_stream_options;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -176,6 +177,29 @@ impl Default for XreplOptions {
     }
 }
 
+/// What master-xcluster adds to the hooks DDL calls through [`Xrepl`].
+pub trait XreplExtension: Send + Sync {
+    /// Work before a new table runs (`GetPostTabletCreateTasks`).
+    fn post_tablet_create(
+        &self,
+        table_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>>;
+
+    /// Whether a dropped table is hidden, not deleted, for xCluster streams.
+    fn retains_dropped_table(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        table_id: &[u8],
+    ) -> bool;
+
+    /// Whether a hidden tablet is still kept for xCluster streams.
+    fn retains_hidden_tablet(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        tablet_id: &[u8],
+    ) -> bool;
+}
+
 /// The CDC stream service of the leader.
 pub struct Xrepl {
     pub(crate) catalog: Arc<Catalog>,
@@ -200,6 +224,8 @@ pub struct Xrepl {
     /// The host's CDC service serves GetChanges on the sys catalog tablet; enabled once, as C++
     /// never disables it.
     pub(crate) cdc_service_enabled: std::sync::atomic::AtomicBool,
+    /// master-xcluster's part of the hooks.
+    pub(crate) extension: OnceLock<Arc<dyn XreplExtension>>,
 }
 
 impl Xrepl {
@@ -229,7 +255,13 @@ impl Xrepl {
             released_split_parents: Mutex::default(),
             non_eligible_tables: Mutex::default(),
             cdc_service_enabled: Default::default(),
+            extension: OnceLock::new(),
         })
+    }
+
+    /// master-xcluster's part of the hooks; set once, before any leader term.
+    pub fn set_extension(&self, extension: Arc<dyn XreplExtension>) {
+        let _ = self.extension.set(extension);
     }
 
     /// The RPC client tservers are called with; set once, before any leader term.
@@ -245,7 +277,7 @@ impl Xrepl {
     }
 
     /// `Clock::Now` of the host.
-    pub(crate) fn host_now(&self) -> Result<u64, Status> {
+    pub fn host_now(&self) -> Result<u64, Status> {
         self.hybrid_time_now(false)
     }
 
@@ -263,7 +295,7 @@ impl Xrepl {
 
     /// `TEST_CDCSDKFailCreateStreamRequestIfNeeded`: Aborted when a test's callback for the sync
     /// point asks for a failure.
-    pub(crate) async fn fail_at(&self, sync_point: &'static str) -> Result<(), Status> {
+    pub async fn fail_at(&self, sync_point: &'static str) -> Result<(), Status> {
         if !(self.options.sync_points)() {
             return Ok(());
         }
@@ -313,7 +345,7 @@ impl Xrepl {
     }
 
     /// A test sync point; a test's `LoadDependency` may hold the caller here.
-    pub(crate) async fn sync_point(&self, sync_point: &'static str) {
+    pub async fn sync_point(&self, sync_point: &'static str) {
         if let Err(s) = self.fail_at(sync_point).await {
             tracing::warn!("Sync point {sync_point}: {s}");
         }
@@ -352,7 +384,7 @@ fn hybrid_time_now(host: &dyn SchemaHost, max_global: bool) -> Result<u64, Statu
 }
 
 /// `GenerateNewXreplStreamId`: a random id no stream row has, as `Uuid::ToHexString` writes it.
-pub(crate) fn new_stream_id(rows: &[StreamRow]) -> String {
+pub fn new_stream_id(rows: &[StreamRow]) -> String {
     loop {
         let mut b: [u8; 16] = rand::random();
         // Version 4, variant 1, as boost's random_generator.

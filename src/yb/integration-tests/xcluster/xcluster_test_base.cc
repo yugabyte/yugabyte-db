@@ -37,6 +37,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -539,7 +540,16 @@ Status XClusterTestBase::GetCDCStreamForTable(
     if (!leader_mini_master.ok()) {
       return false;
     }
-    Status s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, resp);
+    Status s;
+    if ((*leader_mini_master)->is_rust()) {
+      rpc::ProxyCache proxy_cache(&(*leader_mini_master)->messenger());
+      master::MasterReplicationProxy proxy(&proxy_cache, (*leader_mini_master)->bound_rpc_addr());
+      rpc::RpcController controller;
+      controller.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+      s = proxy.ListCDCStreams(req, resp, &controller);
+    } else {
+      s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, resp);
+    }
     if (!s.ok() || resp->has_error()) {
       return false;
     }

@@ -31,12 +31,13 @@ use protobuf::UnknownValueRef;
 const ROOT_DIRS: &[&str] = &["yb/master"];
 
 /// Single files generated the same way: the tserver services the master calls, which the tserver
-/// simulator (master/tools/tserver-sim) serves.
+/// simulator (master/tools/tserver-sim) serves, and the CDC service xCluster bootstraps through.
 const ROOT_FILES: &[&str] = &[
     "yb/tserver/tserver_admin.proto",
     "yb/tserver/tserver_service.proto",
     "yb/tserver/backup.proto",
     "yb/consensus/consensus.proto",
+    "yb/cdc/cdc_service.proto",
 ];
 
 /// Field number of `custom_service_name` in yb/rpc/service.proto.

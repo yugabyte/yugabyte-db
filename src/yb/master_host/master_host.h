@@ -57,6 +57,10 @@ namespace yb::cdc {
 class CDCStateTable;
 }  // namespace yb::cdc
 
+namespace yb::client {
+class XClusterRemoteClientHolder;
+}  // namespace yb::client
+
 namespace yb {
 
 class MaintenanceManager;
@@ -317,6 +321,14 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   cdc::CDCStateTable& CdcStateTable();
   std::mutex cdc_state_table_mutex_;
   std::unique_ptr<cdc::CDCStateTable> cdc_state_table_;
+  // The Rust leader's connections to other universes' masters (K9), one per replication group,
+  // with the addresses it was made for.
+  Result<std::shared_ptr<client::XClusterRemoteClientHolder>> XClusterRemoteClient(
+      const std::string& replication_group_id, const std::vector<HostPort>& masters);
+  std::mutex xcluster_remote_mutex_;
+  std::unordered_map<
+      std::string, std::pair<std::string, std::shared_ptr<client::XClusterRemoteClientHolder>>>
+      xcluster_remote_clients_;
   // Wraps snapshot_coordinator_ for the tablet.
   std::unique_ptr<SysCatalogTap> tap_;
   std::unique_ptr<master::MasterAutoFlagsManager> auto_flags_manager_;

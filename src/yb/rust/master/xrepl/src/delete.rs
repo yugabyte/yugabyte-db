@@ -244,7 +244,7 @@ impl Xrepl {
     }
 
     /// One of the host's C++ steps, off the async threads.
-    pub(crate) async fn host_call<Req: Message, Resp: protobuf::MessageFull>(
+    pub async fn host_call<Req: Message, Resp: protobuf::MessageFull>(
         &self,
         method: &'static str,
         req: Req,

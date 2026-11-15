@@ -87,6 +87,8 @@ pub struct LeaderServices {
     pub snapshots: Arc<master_snapshot_coordinator::SnapshotCoordinator>,
     /// CDC streams (W11).
     pub xrepl: Arc<master_xrepl::Xrepl>,
+    /// xCluster (W11).
+    pub xcluster: Arc<master_xcluster::XCluster>,
     /// YSQL operation leases.
     pub leases: Arc<master_ysql_manager::lease::YsqlLeases>,
     /// Global DDL object locks.

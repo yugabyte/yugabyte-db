@@ -19,6 +19,7 @@
 #include <unordered_set>
 
 #include "yb/client/client.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/schema.h"
 
 #include "yb/cdc/cdc_state_table.h"
@@ -52,6 +53,7 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/ysql_sequence_util.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.pb.h"
@@ -108,6 +110,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_service.h"
@@ -185,6 +188,7 @@ DEFINE_test_flag(bool, rust_master_allow_leadership, false,
     "no DDL, snapshots, load balancing or YSQL leases.");
 DECLARE_string(webserver_password_file);
 DECLARE_bool(webserver_redirect_http_to_https);
+DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
 namespace yb::master_host {
 
@@ -1499,6 +1503,15 @@ void MasterHost::ShutdownHost() {
   if (async_client_init_) {
     async_client_init_->Shutdown();
   }
+  {
+    std::lock_guard lock(xcluster_remote_mutex_);
+    for (auto& [_, entry] : xcluster_remote_clients_) {
+      if (entry.second) {
+        entry.second->Shutdown();
+      }
+    }
+    xcluster_remote_clients_.clear();
+  }
   RpcAndWebServerBase::Shutdown();
   if (leadership_pool_) {
     leadership_pool_->Shutdown();
@@ -2445,6 +2458,61 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
           return Status::OK();
         });
   }
+  if (name == "XClusterRemoteCall") {
+    // One call to the leader master of another universe; Rust retries leader changes.
+    return HandleRequest<
+        master::XClusterRemoteCallRequestPB, master::XClusterRemoteCallResponsePB>(
+        request, [this](const auto& req, auto* resp) -> Status {
+          std::vector<HostPort> masters;
+          HostPortsFromPBs(req.master_addresses(), &masters);
+          auto holder = VERIFY_RESULT(XClusterRemoteClient(req.replication_group_id(), masters));
+          auto& client = holder->GetYbClient();
+          HostPort leader;
+          if (!req.refresh_leader()) {
+            leader = client.GetMasterLeaderAddress();
+          }
+          if (leader.host().empty()) {
+            leader = VERIFY_RESULT(client.RefreshMasterLeaderAddress());
+          }
+          rpc::RemoteMethod method(req.service(), req.method());
+          rust_bridge::RawMessage call_request(req.request());
+          rust_bridge::RawMessage call_response;
+          rpc::RpcController controller;
+          controller.set_timeout(
+              MonoDelta::FromMilliseconds(std::max<int64_t>(1, req.timeout_ms())));
+          auto proxy = client.proxy_cache().GetProxy(leader, /* protocol= */ nullptr, MonoDelta());
+          RETURN_NOT_OK(proxy->SyncRequest(
+              &method, /* method_metrics= */ nullptr, call_request, &call_response, &controller));
+          resp->set_response(call_response.data());
+          return Status::OK();
+        });
+  }
+  if (name == "CreateSequencesDataTable") {
+    return HandleRequest<
+        master::CreateSequencesDataTableRequestPB, master::CreateSequencesDataTableResponsePB>(
+        request, [this](const auto&, auto*) -> Status {
+          auto* client = client_future().get();
+          SCHECK(client, IllegalState, "Client not initialized or shutting down");
+          return tserver::CreateSequencesDataTable(
+              client, CoarseMonoClock::now() +
+                          MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec));
+        });
+  }
+  if (name == "EnsureSequenceUpdatesAreInWal") {
+    return HandleRequest<
+        master::EnsureSequenceUpdatesAreInWalRequestPB,
+        master::EnsureSequenceUpdatesAreInWalResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          auto* client = client_future().get();
+          SCHECK(client, IllegalState, "Client not initialized or shutting down");
+          for (auto db_oid : req.database_oids()) {
+            auto sequences = VERIFY_RESULT(master::ScanSequencesDataTable(*client, db_oid));
+            VLOG(1) << "Found " << sequences.size() << " sequences in database " << db_oid;
+            RETURN_NOT_OK(master::EnsureSequenceUpdatesAreInWal(*client, db_oid, sequences));
+          }
+          return Status::OK();
+        });
+  }
   if (name == "TestSyncPointCallback") {
     return HandleRequest<
         master::TestSyncPointCallbackRequestPB, master::TestSyncPointCallbackResponsePB>(
@@ -3103,6 +3171,22 @@ RaftLeaderStateFfi MasterHost::SysCatalogLeaderState() const {
       : (*consensus)->ConsensusState(consensus::CONSENSUS_CONFIG_ACTIVE).current_term();
   result.role = (*consensus)->role();
   return result;
+}
+
+Result<std::shared_ptr<client::XClusterRemoteClientHolder>> MasterHost::XClusterRemoteClient(
+    const std::string& replication_group_id, const std::vector<HostPort>& masters) {
+  SCHECK(!masters.empty(), InvalidArgument, "No master addresses provided");
+  const auto addresses = HostPort::ToCommaSeparatedString(masters);
+  std::lock_guard lock(xcluster_remote_mutex_);
+  auto& [known_addresses, holder] = xcluster_remote_clients_[replication_group_id];
+  if (!holder) {
+    holder = VERIFY_RESULT(client::XClusterRemoteClientHolder::Create(
+        xcluster::ReplicationGroupId(replication_group_id), masters));
+  } else if (known_addresses != addresses) {
+    RETURN_NOT_OK(holder->SetMasterAddresses(masters));
+  }
+  known_addresses = addresses;
+  return holder;
 }
 
 cdc::CDCStateTable& MasterHost::CdcStateTable() {

@@ -934,7 +934,7 @@ impl Xrepl {
     }
 
     /// `CreateCdcStateTableIfNotFound`: `system.cdc_state`, created by the first stream.
-    pub(crate) async fn create_cdc_state_table_if_not_found(
+    pub async fn create_cdc_state_table_if_not_found(
         &self,
         tables: &dyn CreatesTables,
         token: &LeaderToken,

@@ -190,6 +190,28 @@ static CDC_ALTER_BATCH_SIZE: FlagRef<i32> =
 static CDC_ALTER_BATCH_DELAY_MS: FlagRef<i32> =
     FlagRef::new("cdc_create_stream_alter_table_dispatch_delay_ms");
 static RUNNING_TEST: FlagRef<bool> = FlagRef::new("TEST_running_test");
+static XCLUSTER_API_V2: FlagRef<bool> = FlagRef::new("enable_xcluster_api_v2");
+static XCLUSTER_DDL_REPLICATION: FlagRef<bool> = FlagRef::new("xcluster_enable_ddl_replication");
+static FORCE_AUTOMATIC_DDL_MODE: FlagRef<bool> =
+    FlagRef::new("TEST_force_automatic_ddl_replication_mode");
+static MAX_XCLUSTER_STREAMS_TO_CHECKPOINT: FlagRef<u32> =
+    FlagRef::new("max_xcluster_streams_to_checkpoint_in_parallel");
+static XCLUSTER_YSQL_STATEMENT_TIMEOUT_SEC: FlagRef<u32> =
+    FlagRef::new("xcluster_ysql_statement_timeout_sec");
+static XCLUSTER_WAL_ANCHOR_STREAM_INFRA: FlagRef<bool> =
+    FlagRef::new("enable_xcluster_wal_anchor_stream_infra");
+static XCLUSTER_WAL_ANCHOR_STREAM: FlagRef<bool> =
+    FlagRef::new("enable_xcluster_wal_anchor_stream");
+static XCLUSTER_TARGET_APPLIED_FILTER: FlagRef<bool> =
+    FlagRef::new("xcluster_enable_target_applied_filter");
+static XCLUSTER_FAIL_TABLE_STREAM_CHECKPOINT: FlagRef<bool> =
+    FlagRef::new("TEST_xcluster_fail_table_stream_checkpoint");
+static BLOCK_XCLUSTER_CHECKPOINT_TASK: FlagRef<bool> =
+    FlagRef::new("TEST_block_xcluster_checkpoint_namespace_task");
+static FAIL_ENSURE_SEQUENCE_UPDATES: FlagRef<bool> =
+    FlagRef::new("TEST_simulate_EnsureSequenceUpdatesAreInWal_failure");
+static SKIP_FIELDS_MOVED_TO_GUARDED_INFO: FlagRef<bool> =
+    FlagRef::new("skip_fields_moved_to_xcluster_guarded_info");
 static CDC_ADD_DYNAMIC_INDEX: FlagRef<bool> =
     FlagRef::new("TEST_cdc_add_dynamic_index_to_state_table");
 static SPLIT_CDCSDK_STREAMED_TABLES: FlagRef<bool> =
@@ -570,69 +592,180 @@ impl RestoreHooks for SnapshotHooks {
         &self,
         namespace_id: Vec<u8>,
     ) -> master_task_runtime::BoxFuture<'static, Result<(), yb_host_api::Status>> {
-        let (tables, host, leadership, catalog) = (
+        advance_oid_counters(
             self.tables.clone(),
             self.host.clone(),
             self.leadership.clone(),
             self.catalog.clone(),
-        );
-        Box::pin(async move {
-            let database_oid =
-                master_table_lifecycle::pg_database_oid(&namespace_id).ok_or_else(|| {
-                    yb_host_api::Status::new(StatusCode::InvalidArgument, "not a YSQL database")
-                })?;
-            let mut req = HighestPreservableOidsRequestPB::new();
-            req.set_database_oid(database_oid);
-            let snapshot = catalog.snapshot();
-            for table in snapshot.iter(yb_proto::pb::master_types::SysRowEntryType::TABLE) {
-                if table
-                    .table()
-                    .is_some_and(|t| t.namespace_id == namespace_id)
-                {
-                    if let Some(oid) = master_table_lifecycle::pg_table_oid(&table.key.id) {
-                        req.table_oids.push(oid);
-                    }
-                }
-            }
-            let bytes = req
-                .write_to_bytes()
-                .map_err(|e| yb_host_api::Status::new(StatusCode::InternalError, e.to_string()))?;
-            let resp =
-                tokio::task::spawn_blocking(move || host.call("HighestPreservableOids", &bytes))
-                    .await
-                    .map_err(|e| {
-                        yb_host_api::Status::new(StatusCode::InternalError, e.to_string())
-                    })??;
-            let highest = HighestPreservableOidsResponsePB::parse_from_bytes(&resp)
-                .map_err(|e| yb_host_api::Status::new(StatusCode::Corruption, e.to_string()))?;
-            let token = leadership.token()?;
-            for (next, secondary) in [
-                (highest.normal_space(), false),
-                (highest.secondary_space(), true),
-            ] {
-                let mut req = ReservePgsqlOidsRequestPB::new();
-                req.set_namespace_id(namespace_id.clone());
-                req.set_next_oid(next);
-                req.set_count(1);
-                req.set_use_secondary_space(secondary);
-                let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-                tables
-                    .reserve_pgsql_oids(&token, deadline, &req, &mut Default::default())
-                    .await
-                    .map_err(|e| {
-                        yb_host_api::Status::new(
-                            StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
-                            e.status.message().to_string(),
-                        )
-                    })?;
-            }
-            Ok(())
-        })
+            namespace_id,
+        )
     }
 
     fn is_automatic_xcluster_target(&self, _namespace_id: &[u8]) -> bool {
         // xCluster comes with W11.
         false
+    }
+}
+
+/// `AdvanceOidCounters`: the namespace's normal and secondary OID counters move above the highest
+/// OID it uses, preserved ones included.
+fn advance_oid_counters(
+    tables: Arc<TableLifecycle>,
+    host: Arc<dyn SchemaHost>,
+    leadership: Arc<Leadership>,
+    catalog: Arc<Catalog>,
+    namespace_id: Vec<u8>,
+) -> master_task_runtime::BoxFuture<'static, Result<(), yb_host_api::Status>> {
+    Box::pin(async move {
+        let database_oid =
+            master_table_lifecycle::pg_database_oid(&namespace_id).ok_or_else(|| {
+                yb_host_api::Status::new(StatusCode::InvalidArgument, "not a YSQL database")
+            })?;
+        let mut req = HighestPreservableOidsRequestPB::new();
+        req.set_database_oid(database_oid);
+        let snapshot = catalog.snapshot();
+        for table in snapshot.iter(yb_proto::pb::master_types::SysRowEntryType::TABLE) {
+            if table
+                .table()
+                .is_some_and(|t| t.namespace_id == namespace_id)
+            {
+                if let Some(oid) = master_table_lifecycle::pg_table_oid(&table.key.id) {
+                    req.table_oids.push(oid);
+                }
+            }
+        }
+        let bytes = req
+            .write_to_bytes()
+            .map_err(|e| yb_host_api::Status::new(StatusCode::InternalError, e.to_string()))?;
+        let resp = tokio::task::spawn_blocking(move || host.call("HighestPreservableOids", &bytes))
+            .await
+            .map_err(|e| yb_host_api::Status::new(StatusCode::InternalError, e.to_string()))??;
+        let highest = HighestPreservableOidsResponsePB::parse_from_bytes(&resp)
+            .map_err(|e| yb_host_api::Status::new(StatusCode::Corruption, e.to_string()))?;
+        let token = leadership.token()?;
+        for (next, secondary) in [
+            (highest.normal_space(), false),
+            (highest.secondary_space(), true),
+        ] {
+            let mut req = ReservePgsqlOidsRequestPB::new();
+            req.set_namespace_id(namespace_id.clone());
+            req.set_next_oid(next);
+            req.set_count(1);
+            req.set_use_secondary_space(secondary);
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+            tables
+                .reserve_pgsql_oids(&token, deadline, &req, &mut Default::default())
+                .await
+                .map_err(|e| {
+                    yb_host_api::Status::new(
+                        StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
+                        e.status.message().to_string(),
+                    )
+                })?;
+        }
+        Ok(())
+    })
+}
+
+/// The OID counters for master-xcluster.
+struct XClusterOidHooks {
+    tables: Arc<TableLifecycle>,
+    host: Arc<dyn SchemaHost>,
+    leadership: Arc<Leadership>,
+    catalog: Arc<Catalog>,
+}
+
+impl master_xcluster::XClusterHooks for XClusterOidHooks {
+    fn advance_oid_counters(
+        &self,
+        namespace_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'static, Result<(), yb_host_api::Status>> {
+        advance_oid_counters(
+            self.tables.clone(),
+            self.host.clone(),
+            self.leadership.clone(),
+            self.catalog.clone(),
+            namespace_id,
+        )
+    }
+
+    fn reserve_normal_oid(
+        &self,
+        namespace_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'static, Result<u32, yb_host_api::Status>> {
+        let (tables, leadership) = (self.tables.clone(), self.leadership.clone());
+        Box::pin(async move {
+            let token = leadership.token()?;
+            let mut req = ReservePgsqlOidsRequestPB::new();
+            req.set_namespace_id(namespace_id);
+            req.set_next_oid(0);
+            req.set_count(1);
+            req.set_use_secondary_space(false);
+            let mut resp = Default::default();
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+            tables
+                .reserve_pgsql_oids(&token, deadline, &req, &mut resp)
+                .await
+                .map_err(|e| {
+                    yb_host_api::Status::new(
+                        StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
+                        e.status.message().to_string(),
+                    )
+                })?;
+            let resp: &yb_proto::pb::master_client::ReservePgsqlOidsResponsePB = &resp;
+            Ok(resp.begin_oid())
+        })
+    }
+}
+
+/// The masters of another universe, reached through the host's `XClusterRemoteClientHolder`.
+struct HostRemoteMasters {
+    host: Arc<dyn SchemaHost>,
+}
+
+impl master_xcluster::RemoteMasters for HostRemoteMasters {
+    #[allow(clippy::too_many_arguments)]
+    fn call(
+        &self,
+        replication_group_id: &str,
+        masters: &[yb_proto::pb::common_net::HostPortPB],
+        service: &'static str,
+        method: &'static str,
+        request: Vec<u8>,
+        timeout: Duration,
+        refresh_leader: bool,
+    ) -> master_task_runtime::BoxFuture<'static, Result<Vec<u8>, yb_host_api::Status>> {
+        use yb_proto::pb::master_rust_peer::{
+            XClusterRemoteCallRequestPB, XClusterRemoteCallResponsePB,
+        };
+        let mut req = XClusterRemoteCallRequestPB::new();
+        req.set_replication_group_id(replication_group_id.to_string());
+        req.master_addresses = masters.to_vec();
+        req.set_service(service.to_string());
+        req.set_method(method.to_string());
+        req.set_request(request);
+        req.set_timeout_ms(timeout.as_millis().min(i64::MAX as u128) as i64);
+        req.set_refresh_leader(refresh_leader);
+        let host = self.host.clone();
+        Box::pin(async move {
+            let bytes = req
+                .write_to_bytes()
+                .map_err(|e| yb_host_api::Status::new(StatusCode::InternalError, e.to_string()))?;
+            let out = tokio::task::spawn_blocking(move || host.call("XClusterRemoteCall", &bytes))
+                .await
+                .map_err(|e| {
+                    yb_host_api::Status::new(StatusCode::InternalError, e.to_string())
+                })??;
+            let resp = XClusterRemoteCallResponsePB::parse_from_bytes(&out)
+                .map_err(|e| yb_host_api::Status::new(StatusCode::Corruption, e.to_string()))?;
+            if let Some(e) = resp.error.as_ref() {
+                return Err(yb_host_api::Status::new(
+                    StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
+                    e.status.message().to_string(),
+                ));
+            }
+            Ok(resp.response().to_vec())
+        })
     }
 }
 
@@ -940,6 +1073,90 @@ impl Core {
             leadership: leadership.clone(),
             catalog: catalog.clone(),
         }));
+        let xrepl = master_xrepl::Xrepl::new(
+            catalog.clone(),
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            schema.clone(),
+            ts_rpc.clone(),
+            retry_policy(true),
+            master_xrepl::XreplOptions {
+                dynamic_tables_disable_option: || DYNAMIC_TABLES_DISABLE_OPTION.get(),
+                allow_lsn_types: || ALLOW_REPLICATION_SLOT_LSN_TYPES.get(),
+                allow_ordering_modes: || ALLOW_REPLICATION_SLOT_ORDERING_MODES.get(),
+                fail_setup_stream_update: || FAIL_SETUP_STREAM_UPDATE.get(),
+                bg_task_interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+                disable_deleted_stream_cleanup: || DISABLE_DELETED_STREAM_CLEANUP.get(),
+                disable_drop_table_cleanup: || DISABLE_DROP_TABLE_CLEANUP.get(),
+                replication_commands: || YSQL_REPLICATION_COMMANDS.get(),
+                tables_without_primary_key: || CDCSDK_TABLES_WITHOUT_PK.get(),
+                implicit_dynamic_tables: || IMPLICIT_DYNAMIC_TABLES.get(),
+                dynamic_schema_changes: || CDC_DYNAMIC_SCHEMA_CHANGES.get(),
+                replication_slot_transactional_ddl: || SLOT_TRANSACTIONAL_DDL.get(),
+                max_replication_slots: || MAX_REPLICATION_SLOTS.get(),
+                consistent_snapshot_streams: || CONSISTENT_SNAPSHOT_STREAMS.get(),
+                pg_create_grpc_stream: || PG_CREATE_GRPC_STREAM.get(),
+                replica_identity: || YSQL_REPLICA_IDENTITY.get(),
+                postgres_replica_identity: || POSTGRES_REPLICA_IDENTITY.get(),
+                wal_retention_secs: || CDC_WAL_RETENTION_SECS.get(),
+                replication_slot_consumption: || SLOT_CONSUMPTION.get(),
+                disable_cdc_state_insert_on_setup: || DISABLE_CDC_STATE_INSERT.get(),
+                add_indexes_to_stream: || CDCSDK_ADD_INDEXES.get(),
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                alter_batch_size: || CDC_ALTER_BATCH_SIZE.get(),
+                alter_batch_delay: || millis(CDC_ALTER_BATCH_DELAY_MS.get().max(0)),
+                sync_points: || RUNNING_TEST.get(),
+                intent_retention: || Duration::from_millis(CDC_INTENT_RETENTION_MS.get()),
+                table_rewrite_retention: || ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE.get(),
+                add_dynamic_index_to_state_table: || CDC_ADD_DYNAMIC_INDEX.get(),
+                table_cleanup: || CDCSDK_TABLE_CLEANUP.get(),
+                table_processing_limit: || CDCSDK_TABLE_PROCESSING_LIMIT.get(),
+                skip_state_entries_on_table_removal: || CDCSDK_SKIP_STATE_ON_REMOVAL.get(),
+                skip_table_removal_from_qualified_list: || CDCSDK_SKIP_QUALIFIED_REMOVAL.get(),
+                skip_processing_unqualified_tables: || CDCSDK_SKIP_UNQUALIFIED.get(),
+            },
+        );
+        let xcluster = master_xcluster::XCluster::new(
+            catalog.clone(),
+            writer.clone(),
+            leadership.clone(),
+            ts_manager.clone(),
+            xrepl.clone(),
+            tables.clone(),
+            Arc::new(HostRemoteMasters {
+                host: schema.clone(),
+            }),
+            master_xcluster::XClusterOptions {
+                api_v2: || XCLUSTER_API_V2.get(),
+                ddl_replication: || XCLUSTER_DDL_REPLICATION.get(),
+                force_automatic_ddl_mode: || FORCE_AUTOMATIC_DDL_MODE.get(),
+                max_streams_to_checkpoint: || MAX_XCLUSTER_STREAMS_TO_CHECKPOINT.get(),
+                ysql_statement_timeout: || {
+                    Duration::from_secs(XCLUSTER_YSQL_STATEMENT_TIMEOUT_SEC.get().into())
+                },
+                wal_anchor_streams: || {
+                    XCLUSTER_WAL_ANCHOR_STREAM_INFRA.get() && XCLUSTER_WAL_ANCHOR_STREAM.get()
+                },
+                target_applied_filter: || XCLUSTER_TARGET_APPLIED_FILTER.get(),
+                fail_table_stream_checkpoint: || XCLUSTER_FAIL_TABLE_STREAM_CHECKPOINT.get(),
+                block_checkpoint_namespace_task: || BLOCK_XCLUSTER_CHECKPOINT_TASK.get(),
+                fail_ensure_sequence_updates: || FAIL_ENSURE_SEQUENCE_UPDATES.get(),
+                wal_retention: || Duration::from_secs(CDC_WAL_RETENTION_SECS.get().into()),
+                skip_fields_moved_to_guarded_info: || SKIP_FIELDS_MOVED_TO_GUARDED_INFO.get(),
+                rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
+                bg_task_interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+            },
+        );
+        xcluster.set_hooks(Arc::new(XClusterOidHooks {
+            tables: tables.clone(),
+            host: schema.clone(),
+            leadership: leadership.clone(),
+            catalog: catalog.clone(),
+        }));
+        xrepl.set_extension(xcluster.clone());
+        let mut contributors = contributors;
+        contributors.push(xcluster.clone());
         let leader = Arc::new(LeaderServices {
             catalog: catalog.clone(),
             writer: writer.clone(),
@@ -955,50 +1172,8 @@ impl Core {
             transaction_tables_use_preferred_zones: || TXN_TABLES_USE_PREFERRED_ZONES.get(),
             splits,
             snapshots,
-            xrepl: master_xrepl::Xrepl::new(
-                catalog.clone(),
-                writer.clone(),
-                leadership.clone(),
-                ts_manager.clone(),
-                schema.clone(),
-                ts_rpc.clone(),
-                retry_policy(true),
-                master_xrepl::XreplOptions {
-                    dynamic_tables_disable_option: || DYNAMIC_TABLES_DISABLE_OPTION.get(),
-                    allow_lsn_types: || ALLOW_REPLICATION_SLOT_LSN_TYPES.get(),
-                    allow_ordering_modes: || ALLOW_REPLICATION_SLOT_ORDERING_MODES.get(),
-                    fail_setup_stream_update: || FAIL_SETUP_STREAM_UPDATE.get(),
-                    bg_task_interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
-                    disable_deleted_stream_cleanup: || DISABLE_DELETED_STREAM_CLEANUP.get(),
-                    disable_drop_table_cleanup: || DISABLE_DROP_TABLE_CLEANUP.get(),
-                    replication_commands: || YSQL_REPLICATION_COMMANDS.get(),
-                    tables_without_primary_key: || CDCSDK_TABLES_WITHOUT_PK.get(),
-                    implicit_dynamic_tables: || IMPLICIT_DYNAMIC_TABLES.get(),
-                    dynamic_schema_changes: || CDC_DYNAMIC_SCHEMA_CHANGES.get(),
-                    replication_slot_transactional_ddl: || SLOT_TRANSACTIONAL_DDL.get(),
-                    max_replication_slots: || MAX_REPLICATION_SLOTS.get(),
-                    consistent_snapshot_streams: || CONSISTENT_SNAPSHOT_STREAMS.get(),
-                    pg_create_grpc_stream: || PG_CREATE_GRPC_STREAM.get(),
-                    replica_identity: || YSQL_REPLICA_IDENTITY.get(),
-                    postgres_replica_identity: || POSTGRES_REPLICA_IDENTITY.get(),
-                    wal_retention_secs: || CDC_WAL_RETENTION_SECS.get(),
-                    replication_slot_consumption: || SLOT_CONSUMPTION.get(),
-                    disable_cdc_state_insert_on_setup: || DISABLE_CDC_STATE_INSERT.get(),
-                    add_indexes_to_stream: || CDCSDK_ADD_INDEXES.get(),
-                    rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
-                    alter_batch_size: || CDC_ALTER_BATCH_SIZE.get(),
-                    alter_batch_delay: || millis(CDC_ALTER_BATCH_DELAY_MS.get().max(0)),
-                    sync_points: || RUNNING_TEST.get(),
-                    intent_retention: || Duration::from_millis(CDC_INTENT_RETENTION_MS.get()),
-                    table_rewrite_retention: || ENABLE_TABLE_REWRITE_FOR_CDCSDK_TABLE.get(),
-                    add_dynamic_index_to_state_table: || CDC_ADD_DYNAMIC_INDEX.get(),
-                    table_cleanup: || CDCSDK_TABLE_CLEANUP.get(),
-                    table_processing_limit: || CDCSDK_TABLE_PROCESSING_LIMIT.get(),
-                    skip_state_entries_on_table_removal: || CDCSDK_SKIP_STATE_ON_REMOVAL.get(),
-                    skip_table_removal_from_qualified_list: || CDCSDK_SKIP_QUALIFIED_REMOVAL.get(),
-                    skip_processing_unqualified_tables: || CDCSDK_SKIP_UNQUALIFIED.get(),
-                },
-            ),
+            xrepl: xrepl.clone(),
+            xcluster: xcluster.clone(),
             leases,
             locks: locks.clone(),
             backends,
@@ -1144,6 +1319,7 @@ impl Core {
         leader.splits.set_rpc(rpc.clone());
         leader.snapshots.set_rpc(rpc.clone());
         leader.xrepl.set_rpc(rpc.clone());
+        leader.xcluster.set_rpc(rpc.clone());
         leader.tables.set_xrepl_hooks(leader.xrepl.clone());
         leader.splits.set_xrepl_hooks(leader.xrepl.clone());
         leader.snapshots.set_xrepl_hooks(leader.xrepl.clone());
@@ -1214,6 +1390,11 @@ fn start_term(
         scope,
         master_xrepl::XreplController::new(leader.xrepl.clone()),
         leader.catalog.subscribe(),
+    );
+    run_controller(
+        scope,
+        master_xcluster::XClusterController::new(leader.xcluster.clone()),
+        watch::channel(0).1,
     );
     run_controller(
         scope,

@@ -366,12 +366,33 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
 
     fn retains_hidden_tablet(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> bool {
         self.retains_tablet(snapshot, tablet_id)
+            || self
+                .extension
+                .get()
+                .is_some_and(|x| x.retains_hidden_tablet(snapshot, tablet_id))
     }
 
     fn retains_dropped_table(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
         self.retains_table(snapshot, table_id)
+            || self
+                .extension
+                .get()
+                .is_some_and(|x| x.retains_dropped_table(snapshot, table_id))
+    }
+
+    fn post_tablet_create(
+        &self,
+        table_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+        Box::pin(async move {
+            match self.extension.get() {
+                Some(x) => x.post_tablet_create(table_id).await,
+                None => Ok(()),
+            }
+        })
     }
 }
+
 fn now_micros() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

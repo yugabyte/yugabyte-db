@@ -28,6 +28,7 @@ members = [
     "master/server",
     "master/snapshot-coordinator",
     "master/xrepl",
+    "master/xcluster",
     "master/rpc-handlers",
     "master/sys-catalog",
     "master/table-lifecycle",
@@ -88,6 +89,7 @@ master-leadership = { path = "master/leadership" }
 master-rpc-handlers = { path = "master/rpc-handlers" }
 master-snapshot-coordinator = { path = "master/snapshot-coordinator" }
 master-xrepl = { path = "master/xrepl" }
+master-xcluster = { path = "master/xcluster" }
 master-sys-catalog = { path = "master/sys-catalog" }
 master-table-lifecycle = { path = "master/table-lifecycle" }
 master-tablet-split-manager = { path = "master/tablet-split-manager" }

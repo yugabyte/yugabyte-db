@@ -1,0 +1,342 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+//! xCluster on a Rust leader (`src/yb/master/xcluster/`).
+//!
+//! The source side is the DB-scoped outbound replication groups
+//! (`XCLUSTER_OUTBOUND_REPLICATION_GROUP` rows): each namespace's tables get an xCluster stream,
+//! checkpointed by a task per CHECKPOINTING namespace, and a table created later gets its stream
+//! before it runs. The streams themselves are master-xrepl's. The other universe's masters are
+//! called through the host's `XClusterRemoteClientHolder` (K9).
+
+mod checkpoint;
+mod config;
+mod controller;
+mod outbound;
+mod remote;
+#[cfg(test)]
+mod tests;
+
+pub use controller::XClusterController;
+pub use remote::RemoteMasters;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
+
+use master_catalog_entity::Entity;
+use master_catalog_state::{Catalog, CatalogSnapshot, CatalogWriter};
+use master_leadership::Leadership;
+use master_ts_manager::TsManager;
+use master_xrepl::{CreatesTables, Xrepl};
+use protobuf::Message;
+use yb_host_api::rpc::RpcClient;
+use yb_host_api::{Status, StatusCode};
+use yb_proto::pb::catalog_entity_info::{sys_tables_entry_pb, SysTablesEntryPB};
+use yb_proto::pb::common_types::TableType;
+use yb_proto::pb::master_types::{master_error_pb::Code, MasterErrorPB, SysRowEntryType};
+
+/// `kDDLQueuePgSchemaName`: the schema of the DDL replication extension's tables.
+pub const DDL_QUEUE_PG_SCHEMA_NAME: &str = "yb_xcluster_ddl_replication";
+/// `kDDLQueueTableName`.
+pub const DDL_QUEUE_TABLE_NAME: &str = "ddl_queue";
+/// `kDDLReplicatedTableName`.
+pub const DDL_REPLICATED_TABLE_NAME: &str = "replicated_ddls";
+/// `kPgSequencesDataTableId`: `system_postgres.sequences_data`.
+pub const SEQUENCES_DATA_TABLE_ID: &str = "0000ffff00003000800000000000ffff";
+/// `kSequencesDataAliasTableIdMid`.
+const SEQUENCES_DATA_ALIAS_MID: &str = ".sequences_data_for.";
+
+/// Flags, read when used.
+#[derive(Clone, Copy, Debug)]
+pub struct XClusterOptions {
+    /// `enable_xcluster_api_v2`.
+    pub api_v2: fn() -> bool,
+    /// `xcluster_enable_ddl_replication`.
+    pub ddl_replication: fn() -> bool,
+    /// `TEST_force_automatic_ddl_replication_mode`.
+    pub force_automatic_ddl_mode: fn() -> bool,
+    /// `max_xcluster_streams_to_checkpoint_in_parallel`.
+    pub max_streams_to_checkpoint: fn() -> u32,
+    /// `xcluster_ysql_statement_timeout_sec`.
+    pub ysql_statement_timeout: fn() -> Duration,
+    /// `enable_xcluster_wal_anchor_stream_infra` and `enable_xcluster_wal_anchor_stream`.
+    pub wal_anchor_streams: fn() -> bool,
+    /// `xcluster_enable_target_applied_filter`.
+    pub target_applied_filter: fn() -> bool,
+    /// `TEST_xcluster_fail_table_stream_checkpoint`.
+    pub fail_table_stream_checkpoint: fn() -> bool,
+    /// `TEST_block_xcluster_checkpoint_namespace_task`.
+    pub block_checkpoint_namespace_task: fn() -> bool,
+    /// `TEST_simulate_EnsureSequenceUpdatesAreInWal_failure`.
+    pub fail_ensure_sequence_updates: fn() -> bool,
+    /// `cdc_wal_retention_time_secs`: how long a dropped table's streams keep it.
+    pub wal_retention: fn() -> Duration,
+    /// `skip_fields_moved_to_xcluster_guarded_info`.
+    pub skip_fields_moved_to_guarded_info: fn() -> bool,
+    /// `master_ts_rpc_timeout_ms`.
+    pub rpc_timeout: fn() -> Duration,
+    /// `catalog_manager_bg_task_wait_ms`.
+    pub bg_task_interval: fn() -> Duration,
+}
+
+impl Default for XClusterOptions {
+    fn default() -> Self {
+        XClusterOptions {
+            api_v2: || true,
+            ddl_replication: || true,
+            force_automatic_ddl_mode: || false,
+            max_streams_to_checkpoint: || 200,
+            ysql_statement_timeout: || Duration::from_secs(300),
+            wal_anchor_streams: || false,
+            target_applied_filter: || false,
+            fail_table_stream_checkpoint: || false,
+            block_checkpoint_namespace_task: || false,
+            fail_ensure_sequence_updates: || false,
+            wal_retention: || Duration::from_secs(4 * 3600),
+            skip_fields_moved_to_guarded_info: || false,
+            rpc_timeout: || Duration::from_secs(30),
+            bg_task_interval: || Duration::from_secs(1),
+        }
+    }
+}
+
+/// The OID counters, which the leader's YSQL DDL owns.
+pub trait XClusterHooks: Send + Sync {
+    /// `AdvanceOidCounters`: the namespace's counters move above every OID it uses.
+    fn advance_oid_counters(
+        &self,
+        namespace_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'static, Result<(), Status>>;
+
+    /// One normal-space OID reserved now: above every one the namespace used.
+    fn reserve_normal_oid(
+        &self,
+        namespace_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'static, Result<u32, Status>>;
+}
+
+/// xCluster on the leader.
+pub struct XCluster {
+    pub(crate) catalog: Arc<Catalog>,
+    pub(crate) writer: Arc<CatalogWriter>,
+    pub(crate) leadership: Arc<Leadership>,
+    pub(crate) ts_manager: Arc<TsManager>,
+    pub(crate) xrepl: Arc<Xrepl>,
+    pub(crate) tables: Arc<dyn CreatesTables>,
+    pub(crate) rpc: OnceLock<Arc<dyn RpcClient>>,
+    pub(crate) remote: Arc<dyn RemoteMasters>,
+    pub(crate) options: XClusterOptions,
+    /// What only the wiring can do.
+    pub(crate) hooks: OnceLock<Arc<dyn XClusterHooks>>,
+    /// The checkpoint task of each (group, namespace) and the term it runs in
+    /// (`XClusterCheckpointNamespaceTask`).
+    pub(crate) checkpoints: Mutex<HashMap<(String, String), (i64, tokio::task::AbortHandle)>>,
+}
+
+impl XCluster {
+    /// The service of this master.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        catalog: Arc<Catalog>,
+        writer: Arc<CatalogWriter>,
+        leadership: Arc<Leadership>,
+        ts_manager: Arc<TsManager>,
+        xrepl: Arc<Xrepl>,
+        tables: Arc<dyn CreatesTables>,
+        remote: Arc<dyn RemoteMasters>,
+        options: XClusterOptions,
+    ) -> Arc<XCluster> {
+        Arc::new(XCluster {
+            catalog,
+            writer,
+            leadership,
+            ts_manager,
+            xrepl,
+            tables,
+            rpc: OnceLock::new(),
+            remote,
+            options,
+            hooks: OnceLock::new(),
+            checkpoints: Mutex::default(),
+        })
+    }
+
+    /// Set once, before any leader term.
+    pub fn set_hooks(&self, hooks: Arc<dyn XClusterHooks>) {
+        let _ = self.hooks.set(hooks);
+    }
+
+    /// The RPC client tservers are called with; set once, before any leader term.
+    pub fn set_rpc(&self, rpc: Arc<dyn RpcClient>) {
+        let _ = self.rpc.set(rpc);
+    }
+
+    pub(crate) fn rpc(&self) -> Result<Arc<dyn RpcClient>, Status> {
+        self.rpc
+            .get()
+            .cloned()
+            .ok_or_else(|| Status::new(StatusCode::ServiceUnavailable, "No RPC client yet"))
+    }
+
+    /// One of the host's C++ steps, off the async threads.
+    pub(crate) async fn host_call<Req: Message, Resp: protobuf::MessageFull>(
+        &self,
+        method: &'static str,
+        req: Req,
+    ) -> Result<Resp, Status> {
+        self.xrepl.host_call(method, req).await
+    }
+}
+
+/// An RPC error of the master with no more specific code, as C++ handlers return a status.
+pub(crate) fn unknown(status: Status) -> MasterErrorPB {
+    master_ts_manager::master_error_coded(Code::UNKNOWN_ERROR, status.code, &status.message)
+}
+
+pub(crate) fn status(code: StatusCode, message: impl Into<String>) -> Status {
+    Status::new(code, message.into())
+}
+
+pub(crate) fn corrupt(e: impl std::fmt::Display) -> Status {
+    Status::new(StatusCode::Corruption, e.to_string())
+}
+
+pub(crate) fn status_of(e: &MasterErrorPB) -> Status {
+    Status::new(
+        StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
+        e.status.message().to_string(),
+    )
+}
+
+/// `StatusToPB`.
+pub(crate) fn app_status(result: &Result<(), Status>) -> yb_proto::pb::wire_protocol::AppStatusPB {
+    match result {
+        Ok(()) => {
+            let mut pb = yb_proto::pb::wire_protocol::AppStatusPB::new();
+            pb.code = Some(protobuf::EnumOrUnknown::from_i32(0));
+            pb
+        }
+        Err(s) => unknown(s.clone()).status.unwrap_or_default(),
+    }
+}
+
+/// `TableInfo::is_running`: RUNNING or ALTERING, hidden or not.
+pub(crate) fn is_running(table: &Entity) -> bool {
+    table.table().is_some_and(|t| {
+        t.state == sys_tables_entry_pb::State::RUNNING as i32
+            || t.state == sys_tables_entry_pb::State::ALTERING as i32
+    })
+}
+
+/// `GetSequencesDataAliasForNamespace`: the id the sequences of one database are replicated as.
+pub fn sequences_data_alias(namespace_id: &str) -> String {
+    format!("{SEQUENCES_DATA_TABLE_ID}{SEQUENCES_DATA_ALIAS_MID}{namespace_id}")
+}
+
+/// Whether the table is `ddl_queue` of the DDL replication extension.
+pub(crate) fn is_ddl_queue_table(pb: &SysTablesEntryPB) -> bool {
+    pb.table_type() == TableType::PGSQL_TABLE_TYPE
+        && pb.schema.DEPRECATED_pgschema_name() == DDL_QUEUE_PG_SCHEMA_NAME
+        && pb.name() == DDL_QUEUE_TABLE_NAME.as_bytes()
+}
+
+/// Whether the table is `replicated_ddls` of the DDL replication extension.
+pub(crate) fn is_replicated_ddls_table(pb: &SysTablesEntryPB) -> bool {
+    pb.table_type() == TableType::PGSQL_TABLE_TYPE
+        && pb.schema.DEPRECATED_pgschema_name() == DDL_QUEUE_PG_SCHEMA_NAME
+        && pb.name() == DDL_REPLICATED_TABLE_NAME.as_bytes()
+}
+
+/// A table a replication group can have: its id (for `sequences_data`, the namespace's alias),
+/// name and schema.
+#[derive(Clone, Debug)]
+pub(crate) struct TableDesignator {
+    pub id: String,
+    pub name: String,
+    pub pgschema_name: String,
+}
+
+/// `IsTableEligibleForXClusterReplication`: a visible user YSQL table that is not a colocated
+/// table (only the parent is replicated), the sequences table, `replicated_ddls`, or (outside
+/// automatic mode) a materialized view.
+pub(crate) fn is_eligible(
+    snapshot: &CatalogSnapshot,
+    table: &Entity,
+    pb: &SysTablesEntryPB,
+    automatic_ddl_mode: bool,
+) -> bool {
+    if !master_table_lifecycle::lookup::is_visible_to_client(table) {
+        return false;
+    }
+    if pb.table_type() != TableType::PGSQL_TABLE_TYPE
+        || master_table_lifecycle::lookup::is_system_table(snapshot, table)
+    {
+        return false;
+    }
+    if master_table_lifecycle::lookup::is_colocation_parent_table_id(&table.key.id) {
+        return true;
+    }
+    if pb.is_matview() && !automatic_ddl_mode {
+        return false;
+    }
+    if pb.colocated() {
+        return false;
+    }
+    if &*table.key.id == SEQUENCES_DATA_TABLE_ID.as_bytes() {
+        return false;
+    }
+    !is_replicated_ddls_table(pb)
+}
+
+/// `GetTablesEligibleForXClusterReplication`: in automatic mode also the namespace's alias of
+/// `sequences_data`, once that table exists.
+pub(crate) fn eligible_tables(
+    snapshot: &CatalogSnapshot,
+    namespace_id: &str,
+    automatic_ddl_mode: bool,
+) -> Result<Vec<TableDesignator>, Status> {
+    let mut out = Vec::new();
+    for table in snapshot.iter(SysRowEntryType::TABLE) {
+        if table
+            .table()
+            .is_none_or(|t| t.namespace_id != namespace_id.as_bytes())
+        {
+            continue;
+        }
+        let pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
+        if is_eligible(snapshot, table, &pb, automatic_ddl_mode) {
+            out.push(designator(&table.key.id, &pb));
+        }
+    }
+    if automatic_ddl_mode {
+        if let Some(seq) = snapshot.get(SysRowEntryType::TABLE, SEQUENCES_DATA_TABLE_ID.as_bytes())
+        {
+            let pb: SysTablesEntryPB = seq.parse().map_err(corrupt)?;
+            if pb.state() != sys_tables_entry_pb::State::UNKNOWN {
+                let mut d = designator(&seq.key.id, &pb);
+                d.id = sequences_data_alias(namespace_id);
+                out.push(d);
+            }
+        }
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
+}
+
+fn designator(id: &[u8], pb: &SysTablesEntryPB) -> TableDesignator {
+    TableDesignator {
+        id: String::from_utf8_lossy(id).into_owned(),
+        name: String::from_utf8_lossy(pb.name()).into_owned(),
+        pgschema_name: pb.schema.DEPRECATED_pgschema_name().to_string(),
+    }
+}

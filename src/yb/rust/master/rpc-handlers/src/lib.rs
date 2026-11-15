@@ -133,19 +133,44 @@ use yb_proto::pb::master_encryption::{
 };
 use yb_proto::pb::master_heartbeat::{TSHeartbeatRequestPB, TSHeartbeatResponsePB};
 use yb_proto::pb::master_replication::{
+    AddNamespaceToXClusterReplicationRequestPB, AddNamespaceToXClusterReplicationResponsePB,
     CleanupStaleCDCStreamsRequestPB, CleanupStaleCDCStreamsResponsePB, CreateCDCStreamRequestPB,
-    CreateCDCStreamResponsePB, DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB,
+    CreateCDCStreamResponsePB, CreateXClusterReplicationRequestPB,
+    CreateXClusterReplicationResponsePB, DeleteCDCStreamRequestPB, DeleteCDCStreamResponsePB,
+    DeleteXClusterWalAnchorStreamsRequestPB, DeleteXClusterWalAnchorStreamsResponsePB,
     DisableDynamicTableAdditionOnCDCSDKStreamRequestPB,
     DisableDynamicTableAdditionOnCDCSDKStreamResponsePB, GetCDCDBStreamInfoRequestPB,
     GetCDCDBStreamInfoResponsePB, GetCDCStreamRequestPB, GetCDCStreamResponsePB,
     GetTableSchemaFromSysCatalogRequestPB, GetTableSchemaFromSysCatalogResponsePB,
-    GetUDTypeMetadataRequestPB, GetUDTypeMetadataResponsePB, IsNamespacePartOfCDCSDKRequestPB,
-    IsNamespacePartOfCDCSDKResponsePB, ListCDCStreamsRequestPB, ListCDCStreamsResponsePB,
-    RemoveTablesFromCDCSDKStreamRequestPB, RemoveTablesFromCDCSDKStreamResponsePB,
-    RemoveUserTableFromCDCSDKStreamRequestPB, RemoveUserTableFromCDCSDKStreamResponsePB,
-    UpdateCDCStreamRequestPB, UpdateCDCStreamResponsePB,
-    ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB,
+    GetUDTypeMetadataRequestPB, GetUDTypeMetadataResponsePB,
+    GetXClusterOutboundReplicationGroupInfoRequestPB,
+    GetXClusterOutboundReplicationGroupInfoResponsePB,
+    GetXClusterOutboundReplicationGroupsRequestPB, GetXClusterOutboundReplicationGroupsResponsePB,
+    GetXClusterStreamsRequestPB, GetXClusterStreamsResponsePB,
+    IsAlterXClusterReplicationDoneRequestPB, IsAlterXClusterReplicationDoneResponsePB,
+    IsCreateXClusterReplicationDoneRequestPB, IsCreateXClusterReplicationDoneResponsePB,
+    IsNamespacePartOfCDCSDKRequestPB, IsNamespacePartOfCDCSDKResponsePB,
+    IsXClusterBootstrapRequiredRequestPB, IsXClusterBootstrapRequiredResponsePB,
+    ListCDCStreamsRequestPB, ListCDCStreamsResponsePB, PauseResumeXClusterProducerStreamsRequestPB,
+    PauseResumeXClusterProducerStreamsResponsePB, RemoveTablesFromCDCSDKStreamRequestPB,
+    RemoveTablesFromCDCSDKStreamResponsePB, RemoveUserTableFromCDCSDKStreamRequestPB,
+    RemoveUserTableFromCDCSDKStreamResponsePB,
+    RepairOutboundXClusterReplicationGroupAddTableRequestPB,
+    RepairOutboundXClusterReplicationGroupAddTableResponsePB,
+    RepairOutboundXClusterReplicationGroupRemoveTableRequestPB,
+    RepairOutboundXClusterReplicationGroupRemoveTableResponsePB, UpdateCDCStreamRequestPB,
+    UpdateCDCStreamResponsePB, ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB,
     ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB,
+    XClusterAddNamespaceToOutboundReplicationGroupRequestPB,
+    XClusterAddNamespaceToOutboundReplicationGroupResponsePB,
+    XClusterCreateOutboundReplicationGroupRequestPB,
+    XClusterCreateOutboundReplicationGroupResponsePB,
+    XClusterDeleteOutboundReplicationGroupRequestPB,
+    XClusterDeleteOutboundReplicationGroupResponsePB,
+    XClusterEnsureSequenceUpdatesAreInWalRequestPB,
+    XClusterEnsureSequenceUpdatesAreInWalResponsePB,
+    XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB,
+    XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB,
 };
 use yb_proto::pb::master_rust_peer::{
     auto_flags_change_request_pb, dump_catalog_response_pb, AutoFlagsChangeRequestPB,
@@ -461,6 +486,24 @@ impl Shared {
             }
         }
         resp
+    }
+
+    /// `GetMasterAddressHostPorts`: every address of every master of the Raft config.
+    fn master_host_ports(&self) -> Vec<yb_proto::pb::common_net::HostPortPB> {
+        let Ok(state) = self.info.committed_consensus_state() else {
+            return Vec::new();
+        };
+        state
+            .config
+            .peers
+            .iter()
+            .flat_map(|p| {
+                p.last_known_private_addr
+                    .iter()
+                    .chain(p.last_known_broadcast_addr.iter())
+                    .cloned()
+            })
+            .collect()
     }
 
     /// The follower half of `MasterHeartbeatServiceImpl::TSHeartbeat`.
@@ -1511,6 +1554,163 @@ impl Shared {
                     leader
                         .xrepl
                         .disable_dynamic_table_addition(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "XClusterCreateOutboundReplicationGroup" => serve_ddl!(
+                XClusterCreateOutboundReplicationGroupRequestPB,
+                XClusterCreateOutboundReplicationGroupResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.xcluster.create_outbound_group(&token, &req).await
+                }
+            ),
+            "XClusterAddNamespaceToOutboundReplicationGroup" => serve_ddl!(
+                XClusterAddNamespaceToOutboundReplicationGroupRequestPB,
+                XClusterAddNamespaceToOutboundReplicationGroupResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .add_namespace_to_outbound_group(&token, &req)
+                        .await
+                }
+            ),
+            "XClusterRemoveNamespaceFromOutboundReplicationGroup" => serve_ddl!(
+                XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB,
+                XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .remove_namespace_from_outbound_group(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "XClusterDeleteOutboundReplicationGroup" => serve_ddl!(
+                XClusterDeleteOutboundReplicationGroupRequestPB,
+                XClusterDeleteOutboundReplicationGroupResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .delete_outbound_group(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "IsXClusterBootstrapRequired" => serve_ddl!(
+                IsXClusterBootstrapRequiredRequestPB,
+                IsXClusterBootstrapRequiredResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .is_xcluster_bootstrap_required(&req, &mut resp)
+            ),
+            "GetXClusterStreams" => serve_ddl!(
+                GetXClusterStreamsRequestPB,
+                GetXClusterStreamsResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .get_xcluster_streams(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "GetXClusterOutboundReplicationGroups" => serve_ddl!(
+                GetXClusterOutboundReplicationGroupsRequestPB,
+                GetXClusterOutboundReplicationGroupsResponsePB,
+                |req, resp| leader.xcluster.get_outbound_groups(&req, &mut resp)
+            ),
+            "GetXClusterOutboundReplicationGroupInfo" => serve_ddl!(
+                GetXClusterOutboundReplicationGroupInfoRequestPB,
+                GetXClusterOutboundReplicationGroupInfoResponsePB,
+                |req, resp| leader.xcluster.get_outbound_group_info(&req, &mut resp)
+            ),
+            "RepairOutboundXClusterReplicationGroupAddTable" => serve_ddl!(
+                RepairOutboundXClusterReplicationGroupAddTableRequestPB,
+                RepairOutboundXClusterReplicationGroupAddTableResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader.xcluster.repair_add_table(&token, &req).await
+                }
+            ),
+            "RepairOutboundXClusterReplicationGroupRemoveTable" => serve_ddl!(
+                RepairOutboundXClusterReplicationGroupRemoveTableRequestPB,
+                RepairOutboundXClusterReplicationGroupRemoveTableResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .repair_remove_table(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "DeleteXClusterWalAnchorStreams" => serve_ddl!(
+                DeleteXClusterWalAnchorStreamsRequestPB,
+                DeleteXClusterWalAnchorStreamsResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .delete_wal_anchor_streams(&token, deadline, &req)
+                        .await
+                }
+            ),
+            "XClusterEnsureSequenceUpdatesAreInWal" => serve_ddl!(
+                XClusterEnsureSequenceUpdatesAreInWalRequestPB,
+                XClusterEnsureSequenceUpdatesAreInWalResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .ensure_sequence_updates_are_in_wal(&req)
+                        .await
+                }
+            ),
+            "CreateXClusterReplication" => serve_ddl!(
+                CreateXClusterReplicationRequestPB,
+                CreateXClusterReplicationResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    let masters = self.master_host_ports();
+                    leader
+                        .xcluster
+                        .create_xcluster_replication(&token, deadline, &req, masters)
+                        .await
+                }
+            ),
+            "IsCreateXClusterReplicationDone" => serve_ddl!(
+                IsCreateXClusterReplicationDoneRequestPB,
+                IsCreateXClusterReplicationDoneResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .is_create_xcluster_replication_done(&token, deadline, &req, &mut resp)
+                    .await
+            ),
+            "AddNamespaceToXClusterReplication" => serve_ddl!(
+                AddNamespaceToXClusterReplicationRequestPB,
+                AddNamespaceToXClusterReplicationResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .add_namespace_to_xcluster_replication(deadline, &req)
+                        .await
+                }
+            ),
+            "IsAlterXClusterReplicationDone" => serve_ddl!(
+                IsAlterXClusterReplicationDoneRequestPB,
+                IsAlterXClusterReplicationDoneResponsePB,
+                |req, resp| leader
+                    .xcluster
+                    .is_alter_xcluster_replication_done(deadline, &req, &mut resp)
+                    .await
+            ),
+            "PauseResumeXClusterProducerStreams" => serve_ddl!(
+                PauseResumeXClusterProducerStreamsRequestPB,
+                PauseResumeXClusterProducerStreamsResponsePB,
+                |req, resp| {
+                    let _ = &mut resp;
+                    leader
+                        .xcluster
+                        .pause_resume_producer_streams(&token, &req)
                         .await
                 }
             ),

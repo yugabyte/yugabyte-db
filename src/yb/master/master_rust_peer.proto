@@ -692,6 +692,43 @@ message TestSyncPointCallbackResponsePB {
   optional bool fail = 2;
 }
 
+// tserver::CreateSequencesDataTable through the host's client: system_postgres.sequences_data,
+// which xCluster's automatic mode replicates.
+message CreateSequencesDataTableRequestPB {
+}
+
+message CreateSequencesDataTableResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// A call to the leader master of another universe, through the replication group's
+// XClusterRemoteClientHolder (its certificates, from certs_for_cdc_dir). The error is a transport
+// failure; the method's own error is in the response.
+message XClusterRemoteCallRequestPB {
+  optional string replication_group_id = 1;
+  repeated HostPortPB master_addresses = 2;
+  optional string service = 3;
+  optional string method = 4;
+  optional bytes request = 5;
+  optional int64 timeout_ms = 6;
+  // Ask the masters which one leads, rather than use the one last found.
+  optional bool refresh_leader = 7;
+}
+
+message XClusterRemoteCallResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bytes response = 2;
+}
+
+// ScanSequencesDataTable and EnsureSequenceUpdatesAreInWal through the host's client.
+message EnsureSequenceUpdatesAreInWalRequestPB {
+  repeated uint32 database_oids = 1;
+}
+
+message EnsureSequenceUpdatesAreInWalResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 // CatalogManager::GetClosestLiveTserver among the given live tservers.
 message ClosestLiveTserverRequestPB {
   repeated TSInformationPB live_tservers = 1;

@@ -32,6 +32,7 @@ without it the Rust master never leads ([leadership.md](leadership.md)).
 | [ysql-manager.md](ysql-manager.md) | YSQL on the leader: initdb, leases, the sys catalog tablet |
 | [snapshot-coordinator.md](snapshot-coordinator.md) | Snapshots, schedules, restores, PITR, import, hidden objects |
 | [xrepl.md](xrepl.md) | CDC streams: lookups, updates, deletion, CDCSDK stream creation |
+| [xcluster.md](xcluster.md) | xCluster: outbound replication groups, checkpointing, the other universe |
 | [task-runtime.md](task-runtime.md) | Scopes, controllers, retries, blocking pools |
 | [web.md](web.md) | The web port and pages |
 | [testing.md](testing.md) | Unit tests, conformance against the C++ master, itests |
@@ -52,6 +53,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-tablet-split-manager` | Tablet splits: the split RPCs, the children's registration, the controller that sends splits |
 | `master-snapshot-coordinator` | The leader half of the snapshot coordinator: snapshots, schedules, restores, PITR, `ImportSnapshotMeta`, hidden objects |
 | `master-xrepl` | CDC streams shared by xCluster and CDCSDK, and the CDCSDK stream lifecycle |
+| `master-xcluster` | xCluster: the source's outbound replication groups and calls to the other universe |
 | `master-ysql-manager` | YSQL on the leader: the initial sys catalog snapshot, `IsInitDbDone`, YSQL operation leases, the YSQL major upgrade |
 | `master-leadership` | Leader phases and `LeaderToken` |
 | `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools |
@@ -77,7 +79,7 @@ Dependencies point down: `rpc-handlers` -> `ts-manager` -> `tablet-locations`, `
 | MasterDcl | YCQL roles and permissions ([table-lifecycle.md](table-lifecycle.md#ycql-roles-and-types-rolesrs-udtypesrs)) | |
 | MasterAdmin | SplitTablet, DeleteNotServingTablet, DisableTabletSplitting, IsTabletSplittingComplete ([tablet-splits.md](tablet-splits.md)); IsInitDbDone, WaitForYsqlBackendsCatalogVersion, the YSQL major upgrade methods and ClientUpgradeYsql ([ysql-manager.md](ysql-manager.md)); FlushTables, IsFlushTablesDone, GetCompactionStatus, CreateTransactionStatusTable, AddTransactionStatusTablet, DdlLog, AreNodesSafeToTakeDown ([table-lifecycle.md](table-lifecycle.md)); CheckIfPitrActive, GetMasterHeartbeatDelays (the host); AccessYsqlBackendsManagerTestRegister on every master | |
 | MasterBackup | CreateSnapshot, ListSnapshots, DeleteSnapshot, RestoreSnapshot, ListSnapshotRestorations, AbortSnapshotRestore, ImportSnapshotMeta, CreateSnapshotSchedule, ListSnapshotSchedules, DeleteSnapshotSchedule, EditSnapshotSchedule, RestoreSnapshotSchedule, CloneNamespace, ListClones ([snapshot-coordinator.md](snapshot-coordinator.md)) | |
-| MasterReplication | ValidateReplicationInfo ([table-lifecycle.md](table-lifecycle.md#tablespaces-tablespacesrs)); GetCDCStream, GetCDCDBStreamInfo, ListCDCStreams, UpdateCDCStream, DeleteCDCStream, CreateCDCStream (CDCSDK, and table-level xCluster), DisableDynamicTableAdditionOnCDCSDKStream, GetUDTypeMetadata, GetTableSchemaFromSysCatalog, RemoveUserTableFromCDCSDKStream, RemoveTablesFromCDCSDKStream, ValidateAndSyncCDCStateEntriesForCDCSDKStream, CleanupStaleCDCStreams ([xrepl.md](xrepl.md)) | xCluster (W11) |
+| MasterReplication | ValidateReplicationInfo ([table-lifecycle.md](table-lifecycle.md#tablespaces-tablespacesrs)); GetCDCStream, GetCDCDBStreamInfo, ListCDCStreams, UpdateCDCStream, DeleteCDCStream, CreateCDCStream (CDCSDK, and table-level xCluster), DisableDynamicTableAdditionOnCDCSDKStream, GetUDTypeMetadata, GetTableSchemaFromSysCatalog, RemoveUserTableFromCDCSDKStream, RemoveTablesFromCDCSDKStream, ValidateAndSyncCDCStateEntriesForCDCSDKStream, CleanupStaleCDCStreams ([xrepl.md](xrepl.md)); the outbound replication group RPCs, CreateXClusterReplication and its Is/Add/IsAlter, XClusterEnsureSequenceUpdatesAreInWal, PauseResumeXClusterProducerStreams ([xcluster.md](xcluster.md)) | The xCluster target (W11) |
 | MasterYsqlLease | RefreshYsqlLease, RelinquishYsqlLease ([ysql-manager.md](ysql-manager.md)) | |
 | MasterEncryption | GetFullUniverseKeyRegistry, IsEncryptionEnabled, ChangeEncryptionInfo (the host's encryption manager edits the cluster config's encryption info; every tserver is sent the key registry again); GetUniverseKeyRegistry, AddUniverseKeys and HasUniverseKeyInMemory on every master | |
 | MasterTest | TestRetry on every master (the host) | |

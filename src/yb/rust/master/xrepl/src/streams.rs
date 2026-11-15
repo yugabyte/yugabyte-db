@@ -45,6 +45,14 @@ pub struct StreamRow {
 }
 
 impl StreamRow {
+    /// A row with only an id, for ids taken but not yet written.
+    pub fn placeholder(id: &str) -> StreamRow {
+        StreamRow {
+            id: id.to_string(),
+            pb: SysCDCStreamEntryPB::new(),
+        }
+    }
+
     /// `CDCStreamInfo::is_deleting`: DELETING, DELETING_METADATA or DELETED.
     pub fn is_deleting(&self) -> bool {
         matches!(
@@ -81,7 +89,7 @@ pub fn stream_rows(snapshot: &CatalogSnapshot) -> Vec<StreamRow> {
 
 /// `xrepl::StreamId::FromString` (`Uuid::FromHexString`): 32 hex digits, which the rows hold in
 /// lower case.
-pub(crate) fn parse_stream_id(id: &[u8]) -> Result<String, MasterErrorPB> {
+pub fn parse_stream_id(id: &[u8]) -> Result<String, MasterErrorPB> {
     if id.len() != 32 {
         return Err(error(
             Code::UNKNOWN_ERROR,
