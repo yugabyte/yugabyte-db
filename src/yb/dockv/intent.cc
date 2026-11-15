@@ -279,6 +279,11 @@ bool IntentValueType(char ch) {
          ch == KeyEntryTypeAsChar::kObsoleteIntentType;
 }
 
+bool IsDeleteVectorIdsRecord(Slice reverse_index_value) {
+  return reverse_index_value.starts_with(ValueEntryTypeAsChar::kDeleteVectorIds) ||
+         reverse_index_value.starts_with(ValueEntryTypeAsChar::kDeleteVectorIdsWithSubTransaction);
+}
+
 namespace {
 
 // Checks if the given slice points to the part of an encoded SubDocKey past all of the subkeys

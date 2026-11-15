@@ -46,6 +46,7 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/endian_util.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
@@ -289,6 +290,22 @@ Status TombstoneVectorReverseMappingIds(
   return Status::OK();
 }
 
+// The subtransaction id as intent values store it: the kSubTransactionId marker followed by the big
+// endian id, empty for kMinSubTransactionId.
+auto EncodeSubTransactionId(SubTransactionId id) {
+  DCHECK_GE(id, kMinSubTransactionId);
+  // The encoding takes 1 + sizeof(SubTransactionId) bytes, while a ByteBuffer holds at least
+  // sizeof(void*) bytes inline.
+  constexpr size_t kBufferSize = 8;
+  static_assert(1 + sizeof(SubTransactionId) <= kBufferSize);
+  ByteBuffer<kBufferSize> result;
+  if (id > kMinSubTransactionId) {
+    auto big_endian_id = BigEndian::FromHost32(id);
+    result.AppendWithPrefix(KeyEntryTypeAsChar::kSubTransactionId, Slice::FromPod(&big_endian_id));
+  }
+  return result;
+}
+
 [[nodiscard]] dockv::ReadIntentTypeSets GetIntentTypesForRead(
     IsolationLevel level, RowMarkType row_mark, bool read_is_for_write_op) {
   auto result = dockv::GetIntentTypesForRead(level, row_mark);
@@ -421,9 +438,17 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
       put_batch_.delete_vector_ids_after_rows()
           ? dockv::InvertEncodedDocHT(doc_ht, &inverted_doc_ht_buffer) : doc_ht,
     }};
-    auto value_type = ValueEntryTypeAsChar::kDeleteVectorIds;
-    std::array<Slice, 2> value = {{
+    // The value is kDeleteVectorIdsWithSubTransaction, the big endian subtransaction id of the
+    // batch and the vector ids. Or, before vector_index_delete_list_subtransaction,
+    // kDeleteVectorIds and the vector ids.
+    const auto with_subtransaction = put_batch_.delete_vector_ids_subtransaction();
+    const auto value_type = with_subtransaction
+        ? ValueEntryTypeAsChar::kDeleteVectorIdsWithSubTransaction
+        : ValueEntryTypeAsChar::kDeleteVectorIds;
+    const auto big_endian_subtransaction_id = BigEndian::FromHost32(subtransaction_id_);
+    std::array<Slice, 3> value = {{
       Slice(&value_type, sizeof(value_type)),
+      with_subtransaction ? Slice::FromPod(&big_endian_subtransaction_id) : Slice(),
       Slice(put_batch_.delete_vector_ids()),
     }};
 
@@ -513,17 +538,7 @@ Status TransactionalWriter::operator()(
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
 
-  const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
-  SubTransactionId big_endian_subtxn_id;
-  Slice subtransaction_marker;
-  Slice subtransaction_id;
-  if (subtransaction_id_ > kMinSubTransactionId) {
-    subtransaction_marker = Slice(&subtransaction_value_type, 1);
-    big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
-    subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
-  } else {
-    DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
-  }
+  auto subtransaction_id = EncodeSubTransactionId(subtransaction_id_);
 
   if (is_top_level_key && intent_value.empty() &&
       intent_types.Test(dockv::IntentType::kStrongWrite)) {
@@ -535,11 +550,10 @@ Status TransactionalWriter::operator()(
     RSTATUS_DCHECK_EQ(skip_prefix_locks_, dockv::SkipPrefixLocks::kTrue, InvalidArgument, msg);
   }
 
-  std::array<Slice, 7> value = {{
+  std::array<Slice, 6> value = {{
       Slice(&transaction_value_type, 1),
       transaction_id_.AsSlice(),
-      subtransaction_marker,
-      subtransaction_id,
+      subtransaction_id.AsSlice(),
       Slice(&write_id_value_type, 1),
       Slice::FromPod(&big_endian_write_id),
       intent_value,
@@ -572,23 +586,11 @@ Status TransactionalWriter::Finish() {
 
   DocHybridTimeBuffer doc_ht_buffer;
 
-  const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
-  SubTransactionId big_endian_subtxn_id;
-  Slice subtransaction_marker;
-  Slice subtransaction_id;
-  if (subtransaction_id_ > kMinSubTransactionId) {
-    subtransaction_marker = Slice(&subtransaction_value_type, 1);
-    big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
-    subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
-  } else {
-    DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
-  }
-
-  std::array<Slice, 4> value = {{
+  auto subtransaction_id = EncodeSubTransactionId(subtransaction_id_);
+  std::array<Slice, 3> value = {{
       Slice(&transaction_id_value_type, 1),
       transaction_id_.AsSlice(),
-      subtransaction_marker,
-      subtransaction_id,
+      subtransaction_id.AsSlice(),
   }};
 
   if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
@@ -611,7 +613,7 @@ Status TransactionalWriter::Finish() {
 
 Status TransactionalWriter::AddWeakIntent(
     const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
-    const std::array<Slice, 4>& value,
+    const std::array<Slice, 3>& value,
     DocHybridTimeBuffer* doc_ht_buffer) {
   char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
                           static_cast<char>(intent_and_types.second.ToUIntPtr()) };
@@ -761,7 +763,15 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
         CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
         RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
       } else if (reverse_index_value.TryConsumeByte(ValueEntryTypeAsChar::kDeleteVectorIds)) {
-        RETURN_NOT_OK(context_.DeleteVectorIds(key_slice, reverse_index_value, handler));
+        RETURN_NOT_OK(context_.DeleteVectorIds(
+            key_slice, kMinSubTransactionId, reverse_index_value, handler));
+        continue;
+      } else if (reverse_index_value.TryConsumeByte(
+                     ValueEntryTypeAsChar::kDeleteVectorIdsWithSubTransaction)) {
+        auto subtransaction_id = VERIFY_RESULT((
+            CheckedRead<SubTransactionId, BigEndian>(reverse_index_value)));
+        RETURN_NOT_OK(context_.DeleteVectorIds(
+            key_slice, subtransaction_id, reverse_index_value, handler));
         continue;
       }
     }
@@ -1019,9 +1029,12 @@ Status ApplyIntentsContext::Complete(
 }
 
 Status ApplyIntentsContext::DeleteVectorIds(
-    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
-  // TODO(#36288): the delete-list record has no subtransaction id, so the ids of a batch rolled
-  // back to a savepoint are tombstoned too, including vectors written earlier in this transaction.
+    Slice key, SubTransactionId subtransaction_id, Slice ids,
+    rocksdb::DirectWriteHandler& handler) {
+  // The rows of a rolled back subtransaction keep their vectors.
+  if (aborted_.Test(subtransaction_id)) {
+    return Status::OK();
+  }
   if (ApplyToRegularDB()) {
     RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
         handler, ids, DocHybridTime(commit_ht_, write_id_)));
@@ -1134,7 +1147,8 @@ Status RemoveIntentsContext::Complete(
 }
 
 Status RemoveIntentsContext::DeleteVectorIds(
-    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+    Slice key, SubTransactionId subtransaction_id, Slice ids,
+    rocksdb::DirectWriteHandler& handler) {
   handler.SingleDelete(key);
   YB_TRANSACTION_DUMP(RemoveIntent, transaction_id(), reason_, key);
   RegisterRecord();
@@ -1587,7 +1601,8 @@ Result<bool> DumpIntentsContext::Entry(const Slice& reverse_index_key,
 }
 
 Status DumpIntentsContext::DeleteVectorIds(
-    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+    Slice key, SubTransactionId subtransaction_id, Slice ids,
+    rocksdb::DirectWriteHandler& handler) {
   return Status::OK();
 }
 

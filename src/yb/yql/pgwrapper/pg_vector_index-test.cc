@@ -117,6 +117,7 @@ DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_enable_pk_routing);
 DECLARE_bool(vector_index_include_into_post_split_compaction);
 DECLARE_bool(vector_index_delete_list_after_rows);
+DECLARE_bool(vector_index_delete_list_subtransaction);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
@@ -7673,6 +7674,39 @@ TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   StringWaiterLogSink decode_failure_log("Failed to decode intent while loading transaction");
   ASSERT_OK(RestartAndWaitTransactionsLoaded());
   ASSERT_FALSE(decode_failure_log.IsEventOccurred());
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/36288.
+TEST_F(PgVectorIndexUtilTest, RolledBackSubtransactionKeepsVectors) {
+  constexpr int64_t kNumRows = 20;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  // Written without the subtransaction id, so a delete list without one is applied too.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_subtransaction) = false;
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 19"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT a"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_subtransaction) = true;
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 20"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  ASSERT_OK(conn.Execute("SAVEPOINT c"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[0, 0, 500]' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT c"));
+  ASSERT_OK(conn.Execute("SAVEPOINT d"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT d"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  using Ids = std::vector<int64_t>;
+  for (const auto& [query, expected] :
+           {std::pair(kQueryA, Ids{20, 18}), std::pair(kQueryB, Ids{1, 3})}) {
+    auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(
+        "SELECT id FROM test" + IndexQuerySuffix(query, expected.size())));
+    EXPECT_EQ(ids, expected) << "Query: " << query;
+  }
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/30262.

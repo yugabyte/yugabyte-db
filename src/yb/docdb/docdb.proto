@@ -122,6 +122,11 @@ message KeyValueWriteBatchPB {
   // time, so the delete list is applied right after the rows of its batch. Set by the leader, so
   // that all replicas, and WAL replay, use the same encoding.
   optional bool delete_vector_ids_after_rows = 20;
+
+  // Whether the delete list record of delete_vector_ids in a transaction carries the subtransaction
+  // id of the batch, so the apply skips it when the subtransaction is rolled back. Set by the
+  // leader, like delete_vector_ids_after_rows.
+  optional bool delete_vector_ids_subtransaction = 21;
 }
 
 message PerDbFilterPB {

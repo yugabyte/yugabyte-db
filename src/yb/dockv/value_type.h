@@ -192,6 +192,8 @@ namespace yb::dockv {
     ((kVectorId, 'V')) /* ASCII code 86 */ \
     ((kDeleteVectorIds, 'W')) /* ASCII code 87 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
+    /* kDeleteVectorIds with the subtransaction id of the batch, see TransactionalWriter. */ \
+    ((kDeleteVectorIdsWithSubTransaction, 'Y'))  /* ASCII code 89 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \
     \

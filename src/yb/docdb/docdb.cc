@@ -416,12 +416,11 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
             dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime) {
       auto reverse_index_value = reverse_index_iter.value();
 
-      // The intents with kDeleteVectorIds value type correspond to the tombstones added for
-      // optimal vector indexing. They do not contain a main intent data key in their value field
-      // and hence should be skipped.
-      if (dockv::DecodeValueEntryType(reverse_index_value) ==
-              dockv::ValueEntryType::kDeleteVectorIds) {
-        VLOG_WITH_FUNC(3) << "Skipping an intent of type kDeleteVectorIds, with key: "
+      // The delete list records correspond to the tombstones added for optimal vector indexing.
+      // They do not contain a main intent data key in their value field and hence should be
+      // skipped.
+      if (dockv::IsDeleteVectorIdsRecord(reverse_index_value)) {
+        VLOG_WITH_FUNC(3) << "Skipping a delete list record, with key: "
                           << key_slice.ToDebugHexString() << ", transactionId: " << transaction_id;
         reverse_index_iter.Next();
         continue;

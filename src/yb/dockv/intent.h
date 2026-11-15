@@ -121,6 +121,10 @@ IntentTypeSet ObsoleteIntentTypeSetToNew(uint8_t obsolete_intent_type_set);
 // Returns true if ch is value type of one of intent types, obsolete or not.
 bool IntentValueType(char ch);
 
+// Whether the value of a reverse index record of a transaction is the delete list of a batch, which
+// holds vector ids rather than an intent key.
+bool IsDeleteVectorIdsRecord(Slice reverse_index_value);
+
 YB_STRONGLY_TYPED_BOOL(LastKey);
 
 // Enumerates intents corresponding to provided key value pairs.

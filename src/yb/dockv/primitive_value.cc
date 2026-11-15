@@ -64,6 +64,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kJsonb: [[fallthrough]]; \
     case ValueEntryType::kObject: [[fallthrough]]; \
     case ValueEntryType::kDeleteVectorIds: [[fallthrough]]; \
+    case ValueEntryType::kDeleteVectorIdsWithSubTransaction: [[fallthrough]]; \
     case ValueEntryType::kPackedRowV1: [[fallthrough]]; \
     case ValueEntryType::kPackedRowV2: [[fallthrough]]; \
     case ValueEntryType::kRedisList: [[fallthrough]]; \
@@ -707,7 +708,8 @@ std::string PrimitiveValue::ValueToString() const {
       return Format("VECTOR_DATA($0)", Slice(str_val_).ToDebugHexString());
     case ValueEntryType::kVectorId:
       return DocVectorIdToString(uuid_val_);
-    case ValueEntryType::kDeleteVectorIds:
+    case ValueEntryType::kDeleteVectorIds: [[fallthrough]];
+    case ValueEntryType::kDeleteVectorIdsWithSubTransaction:
       return "<DELETE VECTOR ID>";
     case ValueEntryType::kRowLock:
       return "l";
@@ -1900,6 +1902,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
 
     case ValueEntryType::kInvalid: [[fallthrough]];
     case ValueEntryType::kDeleteVectorIds: [[fallthrough]];
+    case ValueEntryType::kDeleteVectorIdsWithSubTransaction: [[fallthrough]];
     case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kMaxByte:
@@ -2145,6 +2148,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
     case ValueEntryType::kInvalid: [[fallthrough]];
     case ValueEntryType::kDeleteVectorIds: [[fallthrough]];
+    case ValueEntryType::kDeleteVectorIdsWithSubTransaction: [[fallthrough]];
     case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kRowLock: [[fallthrough]];
