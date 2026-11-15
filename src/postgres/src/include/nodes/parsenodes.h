@@ -3049,6 +3049,10 @@ typedef struct FetchStmt
  * index, just a UNIQUE/PKEY constraint using an existing index.  isconstraint
  * must always be true in this case, and the fields describing the index
  * properties are empty.
+ *
+ * YB: yb_old_key_type_oids holds the key column types of the existing index
+ * that an ALTER TABLE rebuilds with this stmt (ATPostAlterTypeParse,
+ * YbATCopyIndexes), so that index_create keeps an existing int2vector key.
  * ----------------------
  */
 typedef struct IndexStmt
@@ -3087,9 +3091,7 @@ typedef struct IndexStmt
 	Oid			yb_index_old_relfilenode;	/* relfilenode of the dropped index
 											 * this stmt recreates (ALTER
 											 * COLUMN TYPE), if any */
-	List	   *yb_old_key_type_oids;	/* key column types of the existing
-										 * index an ALTER TABLE rebuilds with
-										 * this stmt, or NIL */
+	List	   *yb_old_key_type_oids;	/* old index's key types, or NIL */
 } IndexStmt;
 
 /* ----------------------

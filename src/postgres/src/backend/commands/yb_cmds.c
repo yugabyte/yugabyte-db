@@ -945,14 +945,16 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 
 	/*
 	 * Recreating an existing table's DocDB table (TRUNCATE, table rewrite),
-	 * an upgrade or a restore keeps an int2vector primary key that exists
-	 * already. When a rewrite adds or changes the primary key, index_create or
-	 * ATExecAddIndexConstraint checks it.
+	 * an upgrade, a restore or an xCluster DDL replay keeps an int2vector
+	 * primary key that exists already (on the xCluster source). When a rewrite
+	 * adds or changes the primary key, index_create or ATExecAddIndexConstraint
+	 * checks it.
 	 */
 	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
 						  is_tablegroup,
 						  is_internal_rewrite || IsBinaryUpgrade ||
-						  yb_binary_restore);
+						  yb_binary_restore ||
+						  yb_xcluster_automatic_mode_target_ddl);
 
 	if (stmt->partspec != NULL)
 	{
@@ -1215,7 +1217,8 @@ CreateIndexHandleSplitOptions(YbcPgStatement handle,
  * An index that an ALTER TABLE rebuilds from an existing one (ALTER COLUMN
  * TYPE, or a copy of the table with yb_enable_alter_table_rewrite off) passes
  * the old index's key types in old_key_type_oids: an int2vector key whose type
- * is unchanged exists already and is kept. An upgrade or a restore keeps every
+ * is unchanged exists already and is kept. An upgrade, a restore or an
+ * xCluster DDL replay (whose source already accepted the key) keeps every
  * int2vector key.
  */
 void
@@ -1229,6 +1232,7 @@ YbCheckIndexKeyTypes(TupleDesc indexTupleDesc, int numIndexKeyAttrs,
 									  list_nth_oid(old_key_type_oids, i) ==
 									  typid);
 		bool		key_exists = (IsBinaryUpgrade || yb_binary_restore ||
+								  yb_xcluster_automatic_mode_target_ddl ||
 								  type_unchanged);
 
 		YbCheckKeyColumnType(typid, is_primary, key_exists);

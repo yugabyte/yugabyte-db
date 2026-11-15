@@ -650,6 +650,17 @@ build_index_pathkeys(PlannerInfo *root,
 		if (i >= index->nkeycolumns)
 			break;
 
+		/*
+		 * YB: DocDB orders an int2vector key column by its bytes, so the
+		 * index is not ordered on it or on any later column.
+		 */
+		if (yb_indexcol_is_equality_only(index, i))
+		{
+			if (yb_is_hash_column)
+				return NIL;
+			break;
+		}
+
 		/* We assume we don't need to make a copy of the tlist item */
 		indexkey = indextle->expr;
 

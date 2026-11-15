@@ -435,3 +435,453 @@ DROP TABLE int2vector_old_mix, int2vector_old_pk2, int2vector_old_uniq,
   int2vector_old_part, int2array_restore;
 DROP TABLE IF EXISTS int2array_restore_pk;
 NOTICE:  table "int2array_restore_pk" does not exist, skipping
+-- An existing int2vector key serves only equality: DocDB orders it by bytes,
+-- not by array_cmp. Range quals and row comparisons on it are filters, and
+-- index order stops before it.
+SET yb_binary_restore = true;
+SET yb_ignore_pg_class_oids = true;
+SET yb_ignore_relfilenode_ids = true;
+SELECT binary_upgrade_set_next_pg_type_oid('1000019'::oid);
+ binary_upgrade_set_next_pg_type_oid 
+-------------------------------------
+ 
+(1 row)
+
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000020'::oid);
+ binary_upgrade_set_next_array_pg_type_oid 
+-------------------------------------------
+ 
+(1 row)
+
+CREATE TABLE int2vector_rs_idx (id int PRIMARY KEY, a int2vector);
+CREATE INDEX int2vector_rs_idx_a ON int2vector_rs_idx (a ASC);
+SELECT binary_upgrade_set_next_pg_type_oid('1000021'::oid);
+ binary_upgrade_set_next_pg_type_oid 
+-------------------------------------
+ 
+(1 row)
+
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000022'::oid);
+ binary_upgrade_set_next_array_pg_type_oid 
+-------------------------------------------
+ 
+(1 row)
+
+CREATE TABLE int2vector_rs_desc (id int PRIMARY KEY, a int2vector);
+CREATE INDEX int2vector_rs_desc_a ON int2vector_rs_desc (a DESC);
+SELECT binary_upgrade_set_next_pg_type_oid('1000023'::oid);
+ binary_upgrade_set_next_pg_type_oid 
+-------------------------------------
+ 
+(1 row)
+
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000024'::oid);
+ binary_upgrade_set_next_array_pg_type_oid 
+-------------------------------------------
+ 
+(1 row)
+
+CREATE TABLE int2vector_rs_pk (a int2vector, id int, PRIMARY KEY (a ASC, id));
+SELECT binary_upgrade_set_next_pg_type_oid('1000025'::oid);
+ binary_upgrade_set_next_pg_type_oid 
+-------------------------------------
+ 
+(1 row)
+
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000026'::oid);
+ binary_upgrade_set_next_array_pg_type_oid 
+-------------------------------------------
+ 
+(1 row)
+
+CREATE DOMAIN int2vector_rs_dom AS int2vector;
+SELECT binary_upgrade_set_next_pg_type_oid('1000027'::oid);
+ binary_upgrade_set_next_pg_type_oid 
+-------------------------------------
+ 
+(1 row)
+
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000028'::oid);
+ binary_upgrade_set_next_array_pg_type_oid 
+-------------------------------------------
+ 
+(1 row)
+
+CREATE TABLE int2vector_rs_dom_pk (a int2vector_rs_dom, id int,
+  PRIMARY KEY (a ASC));
+SELECT binary_upgrade_set_next_pg_type_oid('1000029'::oid);
+ binary_upgrade_set_next_pg_type_oid 
+-------------------------------------
+ 
+(1 row)
+
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000030'::oid);
+ binary_upgrade_set_next_array_pg_type_oid 
+-------------------------------------------
+ 
+(1 row)
+
+CREATE TABLE int2vector_rs_ida (id int, a int2vector, PRIMARY KEY (id ASC, a ASC));
+SELECT binary_upgrade_set_next_pg_type_oid('1000031'::oid);
+ binary_upgrade_set_next_pg_type_oid 
+-------------------------------------
+ 
+(1 row)
+
+SELECT binary_upgrade_set_next_array_pg_type_oid('1000032'::oid);
+ binary_upgrade_set_next_array_pg_type_oid 
+-------------------------------------------
+ 
+(1 row)
+
+CREATE TABLE int2vector_rs_ida2 (k int PRIMARY KEY, id int, a int2vector);
+CREATE INDEX int2vector_rs_ida2_id_a ON int2vector_rs_ida2 (id ASC, a ASC);
+RESET yb_binary_restore;
+RESET yb_ignore_pg_class_oids;
+RESET yb_ignore_relfilenode_ids;
+-- xCluster DDL replay runs DDL that its source already accepted, so it keeps
+-- int2vector keys too.
+SET yb_xcluster_automatic_mode_target_ddl = true;
+CREATE TABLE int2vector_xc (id int PRIMARY KEY, a int2vector);
+CREATE INDEX int2vector_xc_a ON int2vector_xc (a ASC);
+CREATE TABLE int2vector_xc_pk (a int2vector, id int, PRIMARY KEY (a ASC));
+RESET yb_xcluster_automatic_mode_target_ddl;
+CREATE INDEX int2vector_xc_a_desc ON int2vector_xc (a DESC);
+ERROR:  INDEX on column of type 'INT2VECTOR' not yet supported
+INSERT INTO int2vector_rs_idx VALUES (1, ''), (2, '1'), (3, '1 2'), (4, '2 1'),
+  (5, '1 2 3'), (6, '0'), (7, '-1'), (8, '10');
+INSERT INTO int2vector_rs_desc SELECT id, a FROM int2vector_rs_idx;
+INSERT INTO int2vector_rs_pk SELECT a, id FROM int2vector_rs_idx;
+INSERT INTO int2vector_rs_dom_pk SELECT a, id FROM int2vector_rs_idx;
+INSERT INTO int2vector_rs_ida SELECT 1, a FROM int2vector_rs_idx;
+INSERT INTO int2vector_rs_ida VALUES (0, '10'), (2, '0');
+INSERT INTO int2vector_rs_ida2 SELECT row_number() OVER (), id, a
+  FROM int2vector_rs_ida;
+INSERT INTO int2vector_xc SELECT id, a FROM int2vector_rs_idx;
+INSERT INTO int2vector_xc_pk SELECT a, id FROM int2vector_rs_idx;
+SET enable_seqscan = off;
+-- Range quals on an int2vector key column.
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_idx WHERE a < '1 2'::int2vector;
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on int2vector_rs_idx
+   Filter: (a < '1 2'::int2vector)
+(2 rows)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_idx WHERE a < '1 2'::int2vector;
+ array_agg 
+-----------
+ {1,2,6,7}
+(1 row)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_idx WHERE a > '1 2'::int2vector;
+ array_agg 
+-----------
+ {4,5,8}
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_desc WHERE a > '1 2'::int2vector;
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on int2vector_rs_desc
+   Filter: (a > '1 2'::int2vector)
+(2 rows)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_desc WHERE a > '1 2'::int2vector;
+ array_agg 
+-----------
+ {4,5,8}
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_pk WHERE a < '1 2'::int2vector;
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on int2vector_rs_pk
+   Filter: (a < '1 2'::int2vector)
+(2 rows)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_pk WHERE a < '1 2'::int2vector;
+ array_agg 
+-----------
+ {1,2,6,7}
+(1 row)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_dom_pk WHERE a > '1 2'::int2vector;
+ array_agg 
+-----------
+ {4,5,8}
+(1 row)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_xc WHERE a < '1 2'::int2vector;
+ array_agg 
+-----------
+ {1,2,6,7}
+(1 row)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_idx
+  WHERE a = ANY ('{"1 2", "10"}'::int2vector[]);
+ array_agg 
+-----------
+ {3,8}
+(1 row)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_idx
+  WHERE a < ANY ('{"1 2", "0"}'::int2vector[]);
+ array_agg 
+-----------
+ {1,2,6,7}
+(1 row)
+
+-- Ordering by an int2vector key column.
+EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_idx ORDER BY a;
+             QUERY PLAN              
+-------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on int2vector_rs_idx
+(3 rows)
+
+SELECT id, a FROM int2vector_rs_idx ORDER BY a;
+ id |   a   
+----+-------
+  1 | 
+  7 | -1
+  6 | 0
+  2 | 1
+  3 | 1 2
+  5 | 1 2 3
+  4 | 2 1
+  8 | 10
+(8 rows)
+
+SELECT id FROM int2vector_rs_desc ORDER BY a DESC;
+ id 
+----
+  8
+  4
+  5
+  3
+  2
+  6
+  7
+  1
+(8 rows)
+
+SELECT id FROM int2vector_rs_pk ORDER BY a;
+ id 
+----
+  1
+  7
+  6
+  2
+  3
+  5
+  4
+  8
+(8 rows)
+
+SELECT id FROM int2vector_rs_dom_pk ORDER BY a;
+ id 
+----
+  1
+  7
+  6
+  2
+  3
+  5
+  4
+  8
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_xc_pk ORDER BY a;
+             QUERY PLAN             
+------------------------------------
+ Sort
+   Sort Key: a
+   ->  Seq Scan on int2vector_xc_pk
+(3 rows)
+
+SELECT id FROM int2vector_xc_pk ORDER BY a;
+ id 
+----
+  1
+  7
+  6
+  2
+  3
+  5
+  4
+  8
+(8 rows)
+
+EXPLAIN (COSTS OFF) SELECT min(a), max(a) FROM int2vector_rs_idx;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using int2vector_rs_idx_a on int2vector_rs_idx
+(2 rows)
+
+SELECT min(a), max(a) FROM int2vector_rs_idx;
+ min | max 
+-----+-----
+     | 10
+(1 row)
+
+-- Row comparisons with the int2vector column first and second.
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_pk
+  WHERE ROW(a, id) > ROW('1 2'::int2vector, 0);
+                     QUERY PLAN                     
+----------------------------------------------------
+ Seq Scan on int2vector_rs_pk
+   Filter: (ROW(a, id) > ROW('1 2'::int2vector, 0))
+(2 rows)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_pk
+  WHERE ROW(a, id) > ROW('1 2'::int2vector, 0);
+ array_agg 
+-----------
+ {3,4,5,8}
+(1 row)
+
+SELECT array_agg(id ORDER BY id) FROM int2vector_rs_idx
+  WHERE ROW(a, id) > ROW('1 2'::int2vector, 0);
+ array_agg 
+-----------
+ {3,4,5,8}
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida
+  WHERE ROW(id, a) > ROW(1, '1 2'::int2vector);
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Index Scan using int2vector_rs_ida_pkey on int2vector_rs_ida
+   Index Cond: (id >= 1)
+   Filter: (ROW(id, a) > ROW(1, '1 2'::int2vector))
+(3 rows)
+
+SELECT id, a FROM int2vector_rs_ida
+  WHERE ROW(id, a) > ROW(1, '1 2'::int2vector) ORDER BY id, a;
+ id |   a   
+----+-------
+  1 | 1 2 3
+  1 | 2 1
+  1 | 10
+  2 | 0
+(4 rows)
+
+EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida2
+  WHERE ROW(id, a) > ROW(1, '1 2'::int2vector);
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Index Only Scan using int2vector_rs_ida2_id_a on int2vector_rs_ida2
+   Index Cond: (id >= 1)
+   Filter: (ROW(id, a) > ROW(1, '1 2'::int2vector))
+(3 rows)
+
+SELECT id, a FROM int2vector_rs_ida2
+  WHERE ROW(id, a) > ROW(1, '1 2'::int2vector) ORDER BY id, a;
+ id |   a   
+----+-------
+  1 | 1 2 3
+  1 | 2 1
+  1 | 10
+  2 | 0
+(4 rows)
+
+-- The key columns before the int2vector column keep their order.
+EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida ORDER BY id;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Index Scan using int2vector_rs_ida_pkey on int2vector_rs_ida
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida ORDER BY id, a;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Incremental Sort
+   Sort Key: id, a
+   Presorted Key: id
+   ->  Index Scan using int2vector_rs_ida_pkey on int2vector_rs_ida
+(4 rows)
+
+SELECT id, a FROM int2vector_rs_ida ORDER BY id, a;
+ id |   a   
+----+-------
+  0 | 10
+  1 | 
+  1 | -1
+  1 | 0
+  1 | 1
+  1 | 1 2
+  1 | 1 2 3
+  1 | 2 1
+  1 | 10
+  2 | 0
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT id, a FROM int2vector_rs_ida2 ORDER BY id, a;
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Incremental Sort
+   Sort Key: id, a
+   Presorted Key: id
+   ->  Index Only Scan using int2vector_rs_ida2_id_a on int2vector_rs_ida2
+(4 rows)
+
+SELECT id, a FROM int2vector_rs_ida2 ORDER BY id, a;
+ id |   a   
+----+-------
+  0 | 10
+  1 | 
+  1 | -1
+  1 | 0
+  1 | 1
+  1 | 1 2
+  1 | 1 2 3
+  1 | 2 1
+  1 | 10
+  2 | 0
+(10 rows)
+
+-- Equality on the int2vector column, and a range on a later column, still use
+-- the index.
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_idx WHERE a = '10'::int2vector;
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using int2vector_rs_idx_a on int2vector_rs_idx
+   Index Cond: (a = '10'::int2vector)
+(2 rows)
+
+SELECT id FROM int2vector_rs_idx WHERE a = '10'::int2vector;
+ id 
+----
+  8
+(1 row)
+
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_idx
+  WHERE a = ANY ('{"1 2", "10"}'::int2vector[]);
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Index Scan using int2vector_rs_idx_a on int2vector_rs_idx
+   Index Cond: (a = ANY ('{"1 2",10}'::int2vector[]))
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT id FROM int2vector_rs_pk
+  WHERE a = '1 2'::int2vector AND id > 0;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Index Scan using int2vector_rs_pk_pkey on int2vector_rs_pk
+   Index Cond: ((a = '1 2'::int2vector) AND (id > 0))
+(2 rows)
+
+SELECT id FROM int2vector_rs_pk WHERE a = '1 2'::int2vector AND id > 0;
+ id 
+----
+  3
+(1 row)
+
+RESET enable_seqscan;
+DROP TABLE int2vector_rs_idx, int2vector_rs_desc, int2vector_rs_pk,
+  int2vector_rs_dom_pk, int2vector_rs_ida, int2vector_rs_ida2;
+DROP TABLE IF EXISTS int2vector_xc, int2vector_xc_pk;
+DROP DOMAIN int2vector_rs_dom;

@@ -293,5 +293,7 @@ extern Path *get_singleton_append_subpath(Path *path);
 extern List *yb_convert_subquery_uniqkeys(RelOptInfo *rel,
 										  List *subquery_uniqkeys,
 										  List *subquery_tlist);
+extern bool yb_indexcol_is_equality_only(const IndexOptInfo *index,
+										 int indexcol);
 
 #endif							/* PATHS_H */

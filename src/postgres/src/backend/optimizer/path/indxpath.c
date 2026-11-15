@@ -3468,8 +3468,10 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		 * this index and the clause uses an inequality operator, then index
 		 * scan cannot be used. This is because a hash index is sorted by the
 		 * hash value and not by the value of the column. #13241
+		 * The same holds for an int2vector key column, ordered by its bytes.
 		 */
-		if (is_hash_column_in_lsm_index(index, indexcol))
+		if (is_hash_column_in_lsm_index(index, indexcol) ||
+			yb_indexcol_is_equality_only(index, indexcol))
 		{
 			int			op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
 
@@ -3511,8 +3513,10 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		 * this index and the clause uses an inequality operator, then index
 		 * scan cannot be used. This is because a hash index is sorted by the
 		 * hash value and not by the value of the column. #13241
+		 * The same holds for an int2vector key column, ordered by its bytes.
 		 */
-		if (is_hash_column_in_lsm_index(index, indexcol))
+		if (is_hash_column_in_lsm_index(index, indexcol) ||
+			yb_indexcol_is_equality_only(index, indexcol))
 		{
 			int			op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
 
@@ -3712,6 +3716,12 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
+		/* YB: An int2vector key column serves only equality. */
+		if (yb_indexcol_is_equality_only(index, indexcol) &&
+			get_op_opfamily_strategy(expr_op, opfamily) !=
+			BTEqualStrategyNumber)
+			return NULL;
+
 		if (IndexCollMatchesExprColl(idxcollation, expr_coll) &&
 			op_in_opfamily(expr_op, opfamily))
 		{
@@ -3764,7 +3774,8 @@ match_rowcompare_to_indexcol(PlannerInfo *root,
 	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
 		return NULL;
 
-	if (is_hash_column_in_lsm_index(index, indexcol))
+	if (is_hash_column_in_lsm_index(index, indexcol) ||
+		yb_indexcol_is_equality_only(index, indexcol))
 		return NULL;
 
 	index_relid = index->rel->relid;
@@ -3933,10 +3944,12 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 
 		/*
 		 * The Var side can match any key column of the index.
+		 * YB: except an int2vector one, which serves only equality.
 		 */
 		for (i = 0; i < index->nkeycolumns; i++)
 		{
-			if (match_index_to_operand(varop, i, index) &&
+			if (!yb_indexcol_is_equality_only(index, i) &&
+				match_index_to_operand(varop, i, index) &&
 				get_op_opfamily_strategy(expr_op,
 										 index->opfamily[i]) == op_strategy &&
 				IndexCollMatchesExprColl(index->indexcollations[i],
@@ -4827,6 +4840,23 @@ is_pseudo_constant_for_index(PlannerInfo *root, Node *expr, IndexOptInfo *index)
 	if (contain_volatile_functions(expr))
 		return false;			/* no good, volatile comparison value */
 	return true;
+}
+
+/*
+ * YB: Whether a key column of an lsm index has type int2vector or a domain
+ * over it. DocDB orders such a key by its bytes, not by int2vector's btree
+ * order, so the column can serve equality but no range bound or ordering.
+ * New int2vector keys are rejected; this covers ones that exist already.
+ */
+bool
+yb_indexcol_is_equality_only(const IndexOptInfo *index, int indexcol)
+{
+	TargetEntry *tle;
+
+	if (index->relam != LSM_AM_OID || indexcol >= index->nkeycolumns)
+		return false;
+	tle = list_nth_node(TargetEntry, index->indextlist, indexcol);
+	return getBaseType(exprType((Node *) tle->expr)) == INT2VECTOROID;
 }
 
 static bool
