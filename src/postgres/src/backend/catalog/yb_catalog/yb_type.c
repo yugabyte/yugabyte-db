@@ -887,7 +887,7 @@ static const YbcPgTypeEntity YbTypeEntityTable[] = {
 		(YbcPgDatumToData) YbDatumToInt16,
 	(YbcPgDatumFromData) YbInt16ToDatum},
 
-	{INT2VECTOROID, YB_YQL_DATA_TYPE_BINARY, true, -1, false,
+	{INT2VECTOROID, YB_YQL_DATA_TYPE_BINARY, false, -1, false,
 		(YbcPgDatumToData) YbDatumToBinary,
 	(YbcPgDatumFromData) YbBinaryToDatum},
 
