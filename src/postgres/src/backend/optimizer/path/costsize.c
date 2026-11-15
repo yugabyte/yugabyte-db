@@ -106,7 +106,9 @@
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type_d.h"
+#include "commands/defrem.h"
 #include "executor/ybExpr.h"
+#include "optimizer/planner.h"
 #include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
@@ -586,6 +588,28 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	path->path.total_cost = (startup_cost + run_cost + input_total_cost);
 }
 
+static bool
+ybShouldPenalizeMergeOption(IndexPath *path)
+{
+	bool penalize = false;
+	if (path->indexinfo->yb_options != NIL)
+	{
+		int mergeOptionValue = ybGetValueForMergeOption(path->indexinfo->yb_options);
+		if (mergeOptionValue >= 0)
+		{
+			if (path->yb_index_path_info.merge_scan_info == NULL)
+			{
+				if (mergeOptionValue == 1)
+					penalize = true;
+			}
+			else if (mergeOptionValue == 0)
+				penalize = true;
+		}
+	}
+
+	return penalize;
+}
+
 /*
  * cost_index
  *	  Determines and returns the cost of scanning a relation using an index.
@@ -662,7 +686,8 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 											  path->indexclauses);
 	}
 
-	if (!enable_indexscan)
+	if (!enable_indexscan ||
+		ybShouldPenalizeMergeOption(path) /* YB */ )
 		startup_cost += disable_cost;
 	/* we don't need to check enable_indexonlyscan; indxpath.c does that */
 
@@ -10610,10 +10635,10 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
 
 	/* we don't need to check enable_index_onlyscan; indxpath.c does that */
-	if (!enable_indexscan)
+	if (!enable_indexscan || ybShouldPenalizeMergeOption(path))
 		startup_cost += disable_cost;
 
-	if (path->yb_index_path_info.merge_scan_stream_cols)
+	if (path->yb_index_path_info.merge_scan_info)
 	{
 		/*
 		 * The merge's own work: per row passed up, a constant overhead plus
@@ -10628,7 +10653,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * add_path then falls back to startup_cost before pathkeys.
 		 */
 		int			num_streams =
-			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_stream_cols);
+			yb_merge_scan_num_streams(path->yb_index_path_info.merge_scan_info->stream_cols);
 		Cardinality merge_rows;
 		Cost		merge_cost;
 		Cost		plain_startup_cost = startup_cost;

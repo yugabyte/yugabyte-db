@@ -1145,7 +1145,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
                     .getPrimaryCluster()
                     .userIntent
                     .getUserIntentOverrides()
-                    .updateAZOverride(az2, azOverride -> azOverride.getDeviceInfo().volumeSize = 600));
+                    .updateAZOverride(
+                        az2, azOverride -> azOverride.getDeviceInfo().volumeSize = 600));
     stubCloudVolumePerNode(DEFAULT_VOLUME_SIZE);
     RollbackContext context =
         buildContext(failedResizeParams(DEFAULT_VOLUME_SIZE), DateUtils.addHours(new Date(), -48));
@@ -1153,7 +1154,8 @@ public class ResizeNodeRollbackComputerTest extends FakeDBApplication {
     PlatformServiceException ex =
         assertThrows(PlatformServiceException.class, () -> computer.compute(context));
     assertTrue(
-        ex.getMessage(), ex.getMessage().contains("records 600 GB for node n2, larger than the 500"));
+        ex.getMessage(),
+        ex.getMessage().contains("records 600 GB for node n2, larger than the 500"));
   }
 
   @Test

@@ -280,6 +280,49 @@ DocDB uses a highly customized version of [RocksDB](https://rocksdb.org/), a log
 
 -->
 
+## Advanced metrics
+
+[Advanced Observability](../cluster-load/) provides additional charts.
+
+To enable Advanced Observability for the universe:
+
+1. Open the universe and click **Actions > More > Enable Performance Monitoring**.
+
+1. Choose **Advanced** and click **Apply changes**.
+
+Advanced Observability is a licensed feature and available in v2026.1.3.0 and later. If you do not already have a license, contact {{% support-platform %}}.
+
+To view advanced metrics, open the universe **Performance** tab and select **Metrics**.
+
+The charts are grouped in the same way as the **Universe Metrics**, and you can filter by outlier nodes, tables, and databases.
+
+<!--
+You can filter by cluster, region, zone, or node. On a universe that mixes master-only and tablet-server nodes, you can also limit the view to masters or tablet servers.
+
+| Nodes | Groups |
+| :---- | :----- |
+| Masters | **Resource** (or **Container** on Kubernetes), **Master Server**, and **Master Server Advanced** |
+| Tablet servers | **YSQL**, **YCQL**, **Resource** (or **Container** on Kubernetes), **Per Process**, **Disk I/O**, **Tablet Server**, and **DocDB** |
+-->
+
+The following additional charts are provided in this view.
+
+### Tablet server
+
+| Graph | Description |
+| :---- | :---------- |
+| Tracked Memory | Memory the tablet server process reports through its memory trackers. This is separate from host memory usage and from **TCMalloc Stats**. |
+| DocDB Keys Found | Keys found during DocDB searches. **Keys Found** counts keys returned from RocksDB, including keys that are no longer valid. **Obsolete Keys Found** counts obsolete keys past the history cutoff. |
+
+### Master server
+
+| Graph | Description |
+| :---- | :---------- |
+| Tracked Memory | Memory the master process reports through its memory trackers. This is separate from host memory usage and from **TCMalloc Stats**. |
+| Tablet split candidates | Tablets the automatic split manager found eligible to split in the current run. |
+
+When you view outlier tables or outlier databases, **DocDB Keys Found** is included with the table charts.
+
 ## Command-line access to metrics
 
 YugabyteDB Anywhere allows you to access all metrics via the command-line interface (CLI), including those not available from the **Metrics** page.

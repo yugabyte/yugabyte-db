@@ -29,6 +29,7 @@
 
 #include "yb/tools/pgvector_wrapper.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/thread_annotations.h"
@@ -38,6 +39,7 @@
 #include "yb/rocksdb/cache.h"
 
 #include "yb/util/env.h"
+#include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -107,6 +109,31 @@ Status HelpExecute(const HelpArguments& args) {
 const std::string kBenchmarkDescription =
     "Run a benchmark on the HNSW algorithm with varying parameters";
 
+// Resolves symbolic links and relative parts of a path whose file might not exist yet.
+Result<std::string> CanonicalPath(const std::string& path) {
+  auto* env = Env::Default();
+  if (env->FileExists(path)) {
+    return env->Canonicalize(path);
+  }
+  // Replacing the file would replace such a link rather than create its target.
+  auto is_symlink = env->IsSymlink(path);
+  if (is_symlink.ok() && *is_symlink) {
+    return STATUS_FORMAT(InvalidArgument, "$0 is a symbolic link to a missing file", path);
+  }
+  return JoinPathSegments(VERIFY_RESULT(env->Canonicalize(DirName(path))), BaseName(path));
+}
+
+// Creates a file under a unique temporary name next to path, and returns that name.
+// Unlike mkstemp, which allows only the owner to read the file, it applies the umask.
+Result<std::string> CreateTempFileNextTo(
+    const std::string& path, std::unique_ptr<WritableFile>* file) {
+  WritableFileOptions options;
+  options.mode = Env::CREATE_NON_EXISTING;
+  auto tmp_path = Format("$0.tmp.$1", path, RandomHumanReadableString(10));
+  RETURN_NOT_OK(Env::Default()->NewWritableFile(options, tmp_path, file));
+  return tmp_path;
+}
+
 // See the command-line help below for the documentation of these options.
 struct BenchmarkArguments {
   bool validate_ground_truth = false;
@@ -124,6 +151,7 @@ struct BenchmarkArguments {
   size_t num_index_shards = 1;
   std::string build_vecs_path;
   std::string ground_truth_path;
+  std::string save_ground_truth_path;
   std::string query_vecs_path;
   BenchmarkAnnMethod ann_method;
   std::string yb_hnsw_dir;
@@ -156,6 +184,7 @@ struct BenchmarkArguments {
         num_vectors_to_insert,
         query_vecs_path,
         report_num_keys,
+        save_ground_truth_path,
         validate_ground_truth,
         yb_hnsw_dir,
         yb_hnsw_variants,
@@ -190,6 +219,45 @@ struct BenchmarkArguments {
     } else {
       ef_values = VERIFY_RESULT((ParseCommaSeparatedListOfNumbers<size_t, std::set<size_t>>(
           ef_values_comma_sep, /* lower_bound= */ static_cast<size_t>(1))));
+    }
+    if (ef_values.empty()) {
+      return STATUS(InvalidArgument, "No ef values specified");
+    }
+    if (ann_method == BenchmarkAnnMethod::kPgVector &&
+        *ef_values.rbegin() > kPgVectorMaxEfSearch) {
+      return STATUS_FORMAT(
+          InvalidArgument, "pgvector limits ef to $0, got $1", kPgVectorMaxEfSearch,
+          *ef_values.rbegin());
+    }
+    if (!save_ground_truth_path.empty()) {
+      // Neither is reproducible with random vectors.
+      if (build_vecs_path.empty() || query_vecs_path.empty()) {
+        return STATUS(
+            InvalidArgument,
+            "--save_ground_truth_path needs --build_vecs_path and --query_vecs_path");
+      }
+      // Saving replaces the file that a symbolic link points to, not the link.
+      save_ground_truth_path = VERIFY_RESULT_PREPEND(
+          CanonicalPath(save_ground_truth_path), "Bad --save_ground_truth_path");
+      if (VERIFY_RESULT(GetVectorFileType(save_ground_truth_path)).coordinate_kind !=
+              CoordinateKind::kInt32) {
+        return STATUS_FORMAT(
+            InvalidArgument, "Ground truth can only be saved to an .ivecs or .ibin file: $0",
+            save_ground_truth_path);
+      }
+      if (!ground_truth_path.empty() &&
+          save_ground_truth_path == VERIFY_RESULT(CanonicalPath(ground_truth_path))) {
+        return STATUS(
+            InvalidArgument, "--save_ground_truth_path must differ from --ground_truth_path");
+      }
+      // The ground truth is saved after the brute force search, so a path that cannot be written
+      // should fail now rather than hours later.
+      std::unique_ptr<WritableFile> tmp_file;
+      auto tmp_path = VERIFY_RESULT_PREPEND(
+          CreateTempFileNextTo(save_ground_truth_path, &tmp_file),
+          "Cannot write next to --save_ground_truth_path");
+      env_util::ScopedFileDeleter tmp_deleter(Env::Default(), tmp_path);
+      RETURN_NOT_OK(tmp_file->Close());
     }
     if (!yb_hnsw_dir.empty() && num_index_shards != 1) {
       return STATUS(InvalidArgument, "yb_hnsw_dir is not supported with multiple index shards");
@@ -261,12 +329,25 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Number of vectors to use for building the index. This is used if no input file is "
        "specified.")
       (OPTIONAL_ARG_FIELD(build_vecs_path),
-       "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs format.")
+       "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs/fbin "
+       "format.")
       (OPTIONAL_ARG_FIELD(query_vecs_path),
-       "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs format.")
+       "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs/fbin "
+       "format.")
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
-       "(0-based in the input dataset) for each query.")
+       "(0-based in the input dataset) for each query, in the ivecs format or the "
+       "big-ann-benchmarks ibin ground truth format (identifiers followed by distances). Needs a "
+       "record per query, or only per query used when --num_validation_queries limits them. "
+       "Fewer records are allowed with --save_ground_truth_path.")
+      (OPTIONAL_ARG_FIELD(save_ground_truth_path),
+       "Output .ivecs or .ibin file to save the ground truth to, for --ground_truth_path in later "
+       "runs with the same base vectors and --distance_kind. It covers only the base vectors "
+       "used, which --num_vectors_to_insert may limit. With it, --ground_truth_path must refer "
+       "only to those vectors, and may have fewer records than queries: the missing records are "
+       "computed, and a sample of the loaded ones is validated. The .ibin distances are this "
+       "tool's --distance_kind values as float, e.g. squared L2 or 1 - inner product, and are not "
+       "read back.")
       ("k", po::value(&args.k_values_comma_sep)->default_value(
           args.k_values_comma_sep),
        "A comma-separated list of the possible numbers of results k to retrieve with each "
@@ -274,7 +355,8 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "precomputed ground truth data, the maximum specified value of k can't be higher than "
        "the precomputed result set size.")
       (OPTIONAL_ARG_FIELD(num_validation_queries),
-       "Number of validation queries to execute")
+       "Number of validation queries to execute. With --query_vecs_path, 0 means all queries "
+       "in the file.")
       ("dimensions", po::value(&args.hnsw_options.dimensions),
        "Number of dimensions for automatically generated vectors. Required if no input file "
        "is specified.")
@@ -303,10 +385,10 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "used for constructing the neighborhood of a newly added vertex. Higher values result in "
        "a higher quality graph at the cost of higher indexing time.")
       (HNSW_OPTION_ARG(ef),
-       "The expansion factor used during search. At least this many approximate nearest neighbors "
-       "are obtained regardless of the user-specified value of k, and the result list is truncated "
-       "to the user-specified length k if needed. Higher values of ef should result in higher "
-       "recall at the cost of slower retrieval.")
+       "The expansion factor used during search when --ef_values is not set. At least this many "
+       "approximate nearest neighbors are obtained regardless of the user-specified value of k, "
+       "and the result list is truncated to the user-specified length k if needed. Higher values "
+       "of ef should result in higher recall at the cost of slower retrieval.")
       (HNSW_OPTION_ARG(robust_prune_alpha),
        "The parameter inspired by DiskANN that controls the neighborhood pruning procedure. "
        "Higher values result in fewer candidates being pruned. Typically between 1.0 and 1.6.")
@@ -359,7 +441,8 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "does not reserve space in it.")
       ("ef_values", po::value(&args.ef_values_comma_sep)->default_value(
           args.ef_values_comma_sep),
-       "A comma-separated list of ef values used by the search benchmark. Defaults to ef.")
+       "A comma-separated list of ef values used by recall validation and the search benchmark. "
+       "Defaults to ef.")
       (OPTIONAL_ARG_FIELD(num_search_repeats),
        "Number of times every index is measured by the search benchmark, in rotating order. "
        "Reported values are medians across repeats. 0 disables the search benchmark.")
@@ -378,7 +461,7 @@ Result<CoordinateKind> DetermineCoordinateKind(BenchmarkArguments& args) {
   std::optional<CoordinateKind> coordinate_kind;
   for (const std::string& file_path : {args.build_vecs_path, args.query_vecs_path}) {
     if (!file_path.empty()) {
-      auto file_coordinate_kind = VERIFY_RESULT(GetCoordinateKindFromVecsFileName(file_path));
+      auto file_coordinate_kind = VERIFY_RESULT(GetVectorFileType(file_path)).coordinate_kind;
       if (coordinate_kind.has_value() &&
           *coordinate_kind != file_coordinate_kind) {
         return STATUS_FORMAT(
@@ -456,6 +539,10 @@ class BenchmarkTool {
     }
 
     PrintConfiguration();
+
+    // Before the index build, so that a mismatching --ground_truth_path fails early, and a saved
+    // ground truth survives a failed build.
+    RETURN_NOT_OK(PrepareGroundTruth());
 
     if (args_.num_index_shards > 1) {
       index_pre_factory_ = [pre_factory = index_pre_factory_, num_shards = args_.num_index_shards](
@@ -537,8 +624,7 @@ class BenchmarkTool {
       const std::string& description,
       size_t num_vectors_to_use) {
     if (!vectors_file_path.empty()) {
-      auto vec_reader = VERIFY_RESULT(OpenVecsFile<InputVector>(vectors_file_path, description));
-      RETURN_NOT_OK(vec_reader->Open());
+      auto vec_reader = VERIFY_RESULT(OpenVectorFile<InputVector>(vectors_file_path, description));
       RETURN_NOT_OK(SetDimensions(vec_reader->dimensions()));
       return vec_reader;
     }
@@ -556,6 +642,13 @@ class BenchmarkTool {
         "Could not determine $0", description);
   }
 
+  // A query file may have more queries than --num_validation_queries.
+  size_t num_queries() const {
+    const auto num_points = query_vector_source_->num_points();
+    return args_.num_validation_queries
+        ? std::min(num_points, args_.num_validation_queries) : num_points;
+  }
+
   Status LoadPrecomputedGroundTruth() {
     if (args_.ground_truth_path.empty()) {
       return Status::OK();
@@ -569,16 +662,22 @@ class BenchmarkTool {
     }
     // The ground truth file contains result sets composed of 0-based vector indexes in the
     // corresponding "base" input file. Convert them to our vertex ids.
-    auto ground_truth_by_index = VERIFY_RESULT(
-        LoadVecsFile<Int32Vector>(args_.ground_truth_path, "precomputed ground truth file"));
-    if (ground_truth_by_index.size() != query_vector_source_->num_points()) {
+    auto reader = VERIFY_RESULT(OpenVectorFile<Int32Vector>(
+        args_.ground_truth_path, "precomputed ground truth file"));
+    // One record per query, but only the queries used are needed when
+    // --num_validation_queries limits them. With --save_ground_truth_path, the missing records are
+    // computed.
+    const auto num_records = reader->num_points();
+    const bool queries_limited = num_queries() < query_vector_source_->num_points();
+    const bool partial = num_records < num_queries() && !args_.save_ground_truth_path.empty();
+    if (!partial &&
+        (queries_limited ? num_records < num_queries() : num_records != num_queries())) {
       return STATUS_FORMAT(
           IllegalState,
-          "The number of provided ground truth records $0 does not match the number of provided "
-          "queries $1.",
-          ground_truth_by_index.size(),
-          query_vector_source_->num_points());
+          "The number of provided ground truth records $0 $1 the number of queries $2.",
+          num_records, queries_limited ? "is less than" : "does not match", num_queries());
     }
+    auto ground_truth_by_index = VERIFY_RESULT(reader->LoadVectors(num_queries()));
     loaded_ground_truth_.clear();
     loaded_ground_truth_.reserve(ground_truth_by_index.size());
     std::unordered_set<int32_t> used_indexes;
@@ -592,6 +691,14 @@ class BenchmarkTool {
               "The number of top results provided in the precomputed ground truth ($0) is "
               "less than the maximum number k of results to use for evaluation ($1)",
               *num_provided_top_results, args_.max_k);
+        }
+        // The saved file has max_k results per query.
+        if (*num_provided_top_results > args_.max_k && !args_.save_ground_truth_path.empty()) {
+          return STATUS_FORMAT(
+              InvalidArgument,
+              "--save_ground_truth_path would keep only $0 of the $1 results per query in $2, "
+              "pass --k $1",
+              args_.max_k, *num_provided_top_results, args_.ground_truth_path);
         }
       } else if (*num_provided_top_results != ground_truth_vec.size()) {
         return STATUS_FORMAT(
@@ -610,6 +717,16 @@ class BenchmarkTool {
         SCHECK_GE(idx, 0, IllegalState, kInvalidMsg);
         SCHECK_LT(idx, total_num_vectors, IllegalState, kInvalidMsg);
         if (correct_top_k_vertex_ids.size() < args_.max_k) {
+          // Only the base vectors used are loaded, and both the brute force search that validates
+          // the loaded ground truth and the saved ground truth cover only them.
+          if ((!args_.save_ground_truth_path.empty() || args_.validate_ground_truth) &&
+              static_cast<size_t>(idx) >= max_num_vectors_to_insert()) {
+            return STATUS_FORMAT(
+                InvalidArgument,
+                "With --save_ground_truth_path or --validate_ground_truth, the top $0 results in "
+                "$1 must be among the first $2 base vectors used, got $3",
+                args_.max_k, args_.ground_truth_path, max_num_vectors_to_insert(), idx);
+          }
           // Only keep the first k items of the provided list.
           correct_top_k_vertex_ids.push_back(InputVectorIndexToVectorId(idx));
         }
@@ -627,18 +744,86 @@ class BenchmarkTool {
     return Status::OK();
   }
 
-  Status Validate() {
-    LOG(INFO) << "Index stats:\n" << vector_index_->IndexStatsStr();
-    query_vectors_ = VERIFY_RESULT(query_vector_source_->LoadVectors());
+  // Saves the ground truth as 0-based input vector indexes, in the format of the file extension.
+  Status SaveGroundTruth(
+      const VertexIdToVectorDistanceFunction<InputVector, InputDistanceResult>& distance_fn) {
+    const auto& path = args_.save_ground_truth_path;
+    const auto format = VERIFY_RESULT(GetVectorFileType(path)).format;
+    const auto& ground_truth = ground_truth_->ground_truth();
+    SCHECK(!ground_truth.empty(), IllegalState, "No ground truth to save");
+    const auto k = narrow_cast<uint32_t>(ground_truth.front().size());
+    std::string data;
+    auto append = [&data](auto value) {
+      data.append(reinterpret_cast<const char*>(&value), sizeof(value));
+    };
+    if (format == VectorFileFormat::kBinGroundTruth) {
+      append(narrow_cast<uint32_t>(ground_truth.size()));
+      append(k);
+    }
+    for (const auto& record : ground_truth) {
+      SCHECK_EQ(record.size(), k, IllegalState, "Ground truth records differ in size");
+      if (format == VectorFileFormat::kVecs) {
+        append(k);
+      }
+      for (auto vertex_id : record) {
+        append(narrow_cast<int32_t>(VertexIdToInputVectorIndex(vertex_id)));
+      }
+    }
+    if (format == VectorFileFormat::kBinGroundTruth) {
+      for (size_t i = 0; i != ground_truth.size(); ++i) {
+        for (auto vertex_id : ground_truth[i]) {
+          append(static_cast<float>(distance_fn(vertex_id, query_vectors_[i])));
+        }
+      }
+    }
+    // Written under a unique temporary name first, so that a later run never loads a partial file,
+    // and concurrent runs saving to the same path do not write the same file.
+    auto* env = Env::Default();
+    std::unique_ptr<WritableFile> file;
+    auto tmp_path = VERIFY_RESULT(CreateTempFileNextTo(path, &file));
+    env_util::ScopedFileDeleter tmp_deleter(env, tmp_path);
+    RETURN_NOT_OK(file->Append(data));
+    RETURN_NOT_OK(file->Sync());
+    RETURN_NOT_OK(file->Close());
+    RETURN_NOT_OK(env->RenameFile(tmp_path, path));
+    tmp_deleter.Cancel();
+    RETURN_NOT_OK(env->SyncDir(DirName(path)));
+    LOG(INFO) << "Saved ground truth of " << ground_truth.size() << " queries to " << path;
+    return Status::OK();
+  }
+
+  // Loads the queries, and computes the ground truth that was not loaded or must be validated.
+  Status PrepareGroundTruth() {
+    query_vectors_ = VERIFY_RESULT(query_vector_source_->LoadVectors(num_queries()));
 
     auto distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
         args_.hnsw_options.distance_kind);
 
     auto vertex_id_to_query_distance_fn =
-      [this, &distance_fn](VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
+      [this, distance_fn](VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
         // Avoid vector_cast on the critical path of the brute force search here.
         return distance_fn(input_vectors_[VertexIdToInputVectorIndex(vertex_id)], v);
       };
+
+    // The ground truth evaluation is always done in the input coordinate type.
+    ground_truth_.emplace(
+        vertex_id_to_query_distance_fn,
+        args_.max_k,
+        query_vectors_,
+        loaded_ground_truth_,
+        args_.validate_ground_truth,
+        // A loaded ground truth that is validated or extended must refer only to these vectors.
+        vertex_ids_to_insert_);
+    RETURN_NOT_OK(ground_truth_->Prepare(args_.num_query_threads));
+    if (!args_.save_ground_truth_path.empty()) {
+      // Failing to save loses only the cached ground truth, not the results of this run.
+      WARN_NOT_OK(SaveGroundTruth(vertex_id_to_query_distance_fn), "Failed to save ground truth");
+    }
+    return Status::OK();
+  }
+
+  Status Validate() {
+    LOG(INFO) << "Index stats:\n" << vector_index_->IndexStatsStr();
 
     VectorIndexReaderIf<InputVector, InputDistanceResult>* reader;
     using Adapter = VectorIndexReaderAdapter<
@@ -654,33 +839,20 @@ class BenchmarkTool {
       reader = &adapter.value();
     }
     for (auto k : args_.k_values) {
-      // The ground truth evaluation is always done in the input coordinate type.
-      GroundTruth<InputVector, InputDistanceResult> ground_truth(
-          vertex_id_to_query_distance_fn,
-          k,
-          query_vectors_,
-          loaded_ground_truth_,
-          args_.validate_ground_truth,
-          *reader,
-          // The set of vertex ids to recompute ground truth with.
-          //
-          // In case ground truth is specified as an input file, it must have been computed using
-          // all input vectors, so we must use all vectors to validate them. Otherwise, use the set
-          // of vectors we've inserted.
-          loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
+      for (auto ef : args_.ef_values) {
+        LOG(INFO) << "Validating top k=" << k << " ef=" << ef << " results with "
+                  << query_vectors_.size() << " queries using " << args_.num_query_threads
+                  << " threads";
 
-      LOG(INFO) << "Validating top k=" << k << " results with " << query_vectors_.size()
-                << " queries using " << args_.num_query_threads << " threads "
-                << (args_.validate_ground_truth ? "(also recomputing and validating provided"
-                                                  " ground truth)"
-                                                : "");
-
-      auto start_time = MonoTime::Now();
-      auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads));
-      auto elapsed_time = MonoTime::Now() - start_time;
-      LOG(INFO) << "Validation finished in " << elapsed_time;
-      for (size_t j = 0; j < result.size(); ++j) {
-        LOG(INFO) << (j + 1) << "-recall @ " << k << ": " << FixedPoint(result[j], 10);
+        auto start_time = MonoTime::Now();
+        auto result = VERIFY_RESULT(
+            ground_truth_->EvaluateRecall(*reader, args_.num_query_threads, k, ef));
+        auto elapsed_time = MonoTime::Now() - start_time;
+        LOG(INFO) << "Validation finished in " << elapsed_time;
+        for (size_t j = 0; j < result.size(); ++j) {
+          LOG(INFO) << (j + 1) << "-recall @ k=" << k << " ef=" << ef << ": "
+                    << FixedPoint(result[j], 10);
+        }
       }
     }
     return Status::OK();
@@ -830,21 +1002,23 @@ class BenchmarkTool {
     const auto k = args_.max_k;
     const SearchOptions options { .max_num_results = k, .ef = ef };
     size_t overlap = 0;
+    // A computed record has fewer than k results when there are fewer base vectors.
+    size_t num_expected = 0;
+    const auto& ground_truth = ground_truth_->ground_truth();
     for (size_t i = 0; i != queries_.size(); ++i) {
       auto result = VERIFY_RESULT(index.Search(queries_[i], options));
-      if (loaded_ground_truth_.empty()) {
-        continue;
-      }
-      const auto& expected = loaded_ground_truth_[i];
-      std::unordered_set<VectorId> expected_set(expected.begin(), expected.begin() + k);
+      const auto& expected = ground_truth[i];
+      const auto n = std::min(k, expected.size());
+      std::unordered_set<VectorId> expected_set(expected.begin(), expected.begin() + n);
+      num_expected += n;
       for (const auto& entry : result) {
         overlap += expected_set.contains(entry.vector_id);
       }
     }
-    if (loaded_ground_truth_.empty()) {
+    if (num_expected == 0) {
       return "n/a";
     }
-    return FixedPoint(overlap * 1.0 / (queries_.size() * k), 4);
+    return FixedPoint(overlap * 1.0 / num_expected, 4);
   }
 
   // Searches with num_threads threads for search_time_ms.
@@ -952,11 +1126,6 @@ class BenchmarkTool {
     for (size_t i = 0; i < max_to_insert; ++i) {
       vertex_ids_to_insert_.push_back(InputVectorIndexToVectorId(i));
       num_points_used++;
-    }
-
-    all_vertex_ids_.reserve(input_vectors_.size());
-    for (size_t i = 0; i < input_vectors_.size(); ++i) {
-      all_vertex_ids_.push_back(InputVectorIndexToVectorId(i));
     }
 
     if (num_points_used == 0) {
@@ -1086,8 +1255,10 @@ class BenchmarkTool {
   // Ground truth data loaded from a provided file, not computed on the fly.
   std::vector<std::vector<VectorId>> loaded_ground_truth_;
 
+  // Ground truth of all queries, loaded or computed by PrepareGroundTruth.
+  std::optional<GroundTruth<InputVector, InputDistanceResult>> ground_truth_;
+
   std::vector<VectorId> vertex_ids_to_insert_;
-  std::vector<VectorId> all_vertex_ids_;
 
   // Raw input vectors in the order they appeared in the input file.
   std::vector<InputVector> input_vectors_;

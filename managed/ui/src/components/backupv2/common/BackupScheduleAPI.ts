@@ -58,6 +58,8 @@ export const createBackupSchedule = (values: Record<string, any>) => {
   const payload = prepareBackupCreationPayload(values, cUUID);
 
   payload['scheduleName'] = values['scheduleName'];
+  // New schedules evaluate cron in UTC; existing schedules keep their stored setting.
+  payload['useLocalTimezone'] = false;
 
   if (values['use_cron_expression']) {
     payload['cronExpression'] = values['cron_expression'];

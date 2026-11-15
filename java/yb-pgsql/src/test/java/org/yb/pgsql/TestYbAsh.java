@@ -37,6 +37,7 @@ import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
+import org.yb.client.TestUtils;
 
 import com.yugabyte.util.PSQLException;
 
@@ -393,9 +394,17 @@ public class TestYbAsh extends BasePgSQLTest {
       }
       long pstmtQueryId = getSingleRow(statement, String.format("SELECT queryid FROM " +
           "pg_stat_statements WHERE query = '%s'", pstmt)).getLong(0);
-      int res = getSingleRow(statement, String.format("SELECT COUNT(*) FROM %s WHERE " +
-          "query_id = %d", ASH_VIEW, pstmtQueryId)).getLong(0).intValue();
-      assertGreaterThan(res, 0);
+      final String countSamples = String.format(
+          "SELECT COUNT(*) FROM %s WHERE query_id = %d", ASH_VIEW, pstmtQueryId);
+      // A batch of EXECUTEs can finish without any sample landing inside one of them, since
+      // each EXECUTE is short compared to the sampling interval. Keep executing until a sample
+      // carries the prepared statement's query id.
+      TestUtils.waitFor(() -> {
+        for (int i = 0; i < 100; ++i) {
+          statement.execute(String.format("EXECUTE f(%d)", i));
+        }
+        return getSingleRow(statement, countSamples).getLong(0) > 0;
+      }, 30000);
     }
   }
 

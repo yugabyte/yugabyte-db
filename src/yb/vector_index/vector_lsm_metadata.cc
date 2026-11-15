@@ -291,7 +291,7 @@ Result<bool> VectorLSMMetadataModifyChunkFrontiers(
   }
 
   auto file = VERIFY_RESULT(VectorLSMMetadataOpenFile(env, dir, *next_free_file_no));
-  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*file, update));
+  RETURN_NOT_OK(VectorLSMMetadataAppendUpdate(*env, *file, update));
   RETURN_NOT_OK(file->Close());
   // A caller can rely on the update surviving a crash, e.g. to skip a replay, so the new file
   // must not be lost with its directory entry.

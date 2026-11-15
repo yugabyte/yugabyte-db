@@ -294,17 +294,15 @@ public class DrConfigController extends AuthenticatedController {
     BootstrapParams bootstrapParams =
         drConfigHelper.getBootstrapParamsFromRestartBootstrapParams(
             setTablesForm.bootstrapParams, setTablesForm.tables);
+    // Defer the table-set computation (and its universe RPCs and bookkeeping DB writes) to the
+    // EditXClusterConfig task (SetTablesDrConfig maps to that task), where it runs under the
+    // source/target universe locks. See XClusterConfigController.edit for details.
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.tables = setTablesForm.tables;
+    editFormData.bootstrapParams = bootstrapParams;
+    editFormData.autoIncludeIndexTables = setTablesForm.autoIncludeIndexTables;
     XClusterConfigTaskParams taskParams =
-        XClusterConfigController.getSetTablesTaskParams(
-            ybService,
-            xClusterConfig,
-            sourceUniverse,
-            targetUniverse,
-            setTablesForm.tables,
-            bootstrapParams,
-            setTablesForm.autoIncludeIndexTables,
-            false /* dryRun */,
-            softwareUpgradeHelper);
+        new XClusterConfigTaskParams(xClusterConfig, editFormData);
 
     UUID taskUUID = commissioner.submit(TaskType.SetTablesDrConfig, taskParams);
     CustomerTask.create(

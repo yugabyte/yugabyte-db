@@ -142,6 +142,8 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   auto tablet_peer = ASSERT_RESULT(
       tablet_server->server()->tablet_manager()->GetServingTablet(tablet_id));
   ASSERT_OK(tablet_server->WaitStarted());
+  // If this replica was a follower, no election happens on restart, so write to force an append.
+  PutKeyValue("key2", "value2");
   log::SegmentSequence segments;
   auto log_reader = ASSERT_RESULT(tablet_peer->log()->GetLogReader());
   // The second segment is started by the first append after restart.

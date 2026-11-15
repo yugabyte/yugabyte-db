@@ -82,6 +82,32 @@ public class BackupTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpdateBackupInfoSyncsStorageConfigColumn() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getId());
+    Backup backup =
+        ModelFactory.createBackup(
+            defaultCustomer.getUuid(), universe.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    backup.transitionState(BackupState.Completed);
+    UUID otherConfigUuid =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "TEST26-OTHER").getConfigUUID();
+
+    // As when the backup is deleted with another storage config.
+    BackupTableParams params = backup.getBackupInfo();
+    params.storageConfigUUID = otherConfigUuid;
+    backup.updateBackupInfo(params);
+
+    Backup reloaded = Backup.getOrBadRequest(defaultCustomer.getUuid(), backup.getBackupUUID());
+    assertEquals(otherConfigUuid, reloaded.getStorageConfigUUID());
+    assertEquals(otherConfigUuid, reloaded.getBackupInfo().storageConfigUUID);
+    assertEquals(
+        Map.of(otherConfigUuid, Set.of(universe.getUniverseUUID())),
+        Backup.getInProgressAndCompletedUniversesByStorageConfig(defaultCustomer.getUuid()));
+    assertTrue(
+        Backup.existsInProgressOrCompletedWithStorageConfig(
+            defaultCustomer.getUuid(), otherConfigUuid));
+  }
+
+  @Test
   public void testCreateWithoutTableUUID() {
     Universe defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     BackupTableParams params = new BackupTableParams();
