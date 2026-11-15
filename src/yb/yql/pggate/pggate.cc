@@ -102,7 +102,6 @@ DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
-DECLARE_bool(use_node_hostname_for_local_tserver);
 
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
@@ -520,13 +519,10 @@ tserver::TServerSharedData& GetTServerSharedData() {
 
 PgClient::ProxyInitInfo MakeProxyInitInfo(
     rpc::ProxyCache& proxy_cache, const tserver::TServerSharedData& tserver_shared_data) {
-  PgClient::ProxyInitInfo result{proxy_cache, HostPort{tserver_shared_data.endpoint()}, {}};
-  if (FLAGS_use_node_hostname_for_local_tserver) {
-    result.host_port = HostPort(tserver_shared_data.host().ToBuffer(),
-                          tserver_shared_data.endpoint().port());
-    result.resolve_cache_timeout = MonoDelta::kMax;
-  }
-  return result;
+  return PgClient::ProxyInitInfo{
+      proxy_cache,
+      HostPort(tserver_shared_data.host().ToBuffer(), tserver_shared_data.port()),
+      MonoDelta::kMax};
 }
 
 YbcCloudInfo MakeYbcCloudInfo(const CloudInfoPB& pb) {

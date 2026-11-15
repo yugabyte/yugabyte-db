@@ -43,8 +43,7 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-DEFINE_UNKNOWN_bool(use_node_hostname_for_local_tserver, false,
-    "Connect to local t-server by using host name instead of local IP");
+DEPRECATE_FLAG(bool, use_node_hostname_for_local_tserver, "11_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_rc_force_pick_read_time_on_pg_client, false,
                         "When resetting read time for a statement in Read Commited isolation level,"
