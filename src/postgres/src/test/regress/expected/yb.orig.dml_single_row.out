@@ -4096,3 +4096,54 @@ SELECT * FROM sr_wholerow ORDER BY k;
 (1 row)
 
 DROP TABLE sr_wholerow, sr_wholerow_text, sr_wholerow_drop, sr_wholerow_part;
+-- Same for LIST and HASH partitioning, and DELETE on a partitioned target.
+CREATE TABLE sr_wholerow_list (k int PRIMARY KEY, v int, w int) PARTITION BY LIST (k);
+CREATE TABLE sr_wholerow_list_1 PARTITION OF sr_wholerow_list FOR VALUES IN (1, 2);
+CREATE TABLE sr_wholerow_hash (k int PRIMARY KEY, v int, w int) PARTITION BY HASH (k);
+CREATE TABLE sr_wholerow_hash_0 PARTITION OF sr_wholerow_hash FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+CREATE TABLE sr_wholerow_hash_1 PARTITION OF sr_wholerow_hash FOR VALUES WITH (MODULUS 2, REMAINDER 1);
+INSERT INTO sr_wholerow_list VALUES (1, 0, 10), (2, 0, 20);
+INSERT INTO sr_wholerow_hash VALUES (1, 0, 10);
+EXPLAIN (COSTS OFF) UPDATE sr_wholerow_list SET v = 1 WHERE k = 1 RETURNING sr_wholerow_list;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Update on sr_wholerow_list
+   Update on sr_wholerow_list_1 sr_wholerow_list
+   ->  Result sr_wholerow_list
+(3 rows)
+
+EXPLAIN (COSTS OFF) DELETE FROM sr_wholerow_list WHERE k = 2 RETURNING sr_wholerow_list;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Delete on sr_wholerow_list
+   Delete on sr_wholerow_list_1 sr_wholerow_list
+   ->  Result sr_wholerow_list
+(3 rows)
+
+EXPLAIN (COSTS OFF) UPDATE sr_wholerow_hash SET v = 1 WHERE k = 1 RETURNING sr_wholerow_hash;
+                   QUERY PLAN                    
+-------------------------------------------------
+ Update on sr_wholerow_hash
+   Update on sr_wholerow_hash_0 sr_wholerow_hash
+   ->  Result sr_wholerow_hash
+(3 rows)
+
+UPDATE sr_wholerow_list SET v = 1 WHERE k = 1 RETURNING sr_wholerow_list;
+ sr_wholerow_list 
+------------------
+ (1,1,10)
+(1 row)
+
+DELETE FROM sr_wholerow_list WHERE k = 2 RETURNING sr_wholerow_list;
+ sr_wholerow_list 
+------------------
+ (2,0,20)
+(1 row)
+
+UPDATE sr_wholerow_hash SET v = 1 WHERE k = 1 RETURNING sr_wholerow_hash;
+ sr_wholerow_hash 
+------------------
+ (1,1,10)
+(1 row)
+
+DROP TABLE sr_wholerow_list, sr_wholerow_hash;

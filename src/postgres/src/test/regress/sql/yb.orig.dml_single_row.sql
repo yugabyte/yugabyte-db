@@ -1397,3 +1397,18 @@ UPDATE sr_wholerow SET v = 3, w = 30 WHERE k = 2 RETURNING sr_wholerow;
 CALL check_fast_path_txn('UPDATE sr_wholerow SET v = 4 WHERE k = 2 RETURNING sr_wholerow', true);
 SELECT * FROM sr_wholerow ORDER BY k;
 DROP TABLE sr_wholerow, sr_wholerow_text, sr_wholerow_drop, sr_wholerow_part;
+-- Same for LIST and HASH partitioning, and DELETE on a partitioned target.
+CREATE TABLE sr_wholerow_list (k int PRIMARY KEY, v int, w int) PARTITION BY LIST (k);
+CREATE TABLE sr_wholerow_list_1 PARTITION OF sr_wholerow_list FOR VALUES IN (1, 2);
+CREATE TABLE sr_wholerow_hash (k int PRIMARY KEY, v int, w int) PARTITION BY HASH (k);
+CREATE TABLE sr_wholerow_hash_0 PARTITION OF sr_wholerow_hash FOR VALUES WITH (MODULUS 2, REMAINDER 0);
+CREATE TABLE sr_wholerow_hash_1 PARTITION OF sr_wholerow_hash FOR VALUES WITH (MODULUS 2, REMAINDER 1);
+INSERT INTO sr_wholerow_list VALUES (1, 0, 10), (2, 0, 20);
+INSERT INTO sr_wholerow_hash VALUES (1, 0, 10);
+EXPLAIN (COSTS OFF) UPDATE sr_wholerow_list SET v = 1 WHERE k = 1 RETURNING sr_wholerow_list;
+EXPLAIN (COSTS OFF) DELETE FROM sr_wholerow_list WHERE k = 2 RETURNING sr_wholerow_list;
+EXPLAIN (COSTS OFF) UPDATE sr_wholerow_hash SET v = 1 WHERE k = 1 RETURNING sr_wholerow_hash;
+UPDATE sr_wholerow_list SET v = 1 WHERE k = 1 RETURNING sr_wholerow_list;
+DELETE FROM sr_wholerow_list WHERE k = 2 RETURNING sr_wholerow_list;
+UPDATE sr_wholerow_hash SET v = 1 WHERE k = 1 RETURNING sr_wholerow_hash;
+DROP TABLE sr_wholerow_list, sr_wholerow_hash;
