@@ -51,6 +51,17 @@ var setTelemetryConfigCmd = &cobra.Command{
 					"telemetry-config-file-path\n",
 				formatter.RedColor))
 		}
+		if cmd.Flags().Changed("upgrade-option") {
+			upgradeOption, _ := cmd.Flags().GetString("upgrade-option")
+			switch strings.ToLower(upgradeOption) {
+			case "rolling", "non-rolling":
+			default:
+				logrus.Fatalln(formatter.Colorize(
+					"Invalid upgrade-option specified. Allowed values (case insensitive): "+
+						"Rolling, Non-Rolling\n",
+					formatter.RedColor))
+			}
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI, universe, err := Validations(cmd)
@@ -202,37 +213,43 @@ func logExporterResolution(
 	}
 }
 
+// buildUpgradeOptions sends only the flags the user set. A set upgrade-option stops YBA from
+// skipping the restart when only collector-handled export types change.
 func buildUpgradeOptions(cmd *cobra.Command) *ybav2client.ExportTelemetryUpgradeOptions {
 	options := ybav2client.ExportTelemetryUpgradeOptions{}
+	set := false
 
-	upgradeOption, err := cmd.Flags().GetString("upgrade-option")
-	if err != nil {
-		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-	}
-	switch strings.ToLower(upgradeOption) {
-	case "rolling":
-		options.SetRollingUpgrade(true)
-	case "non-rolling":
-		options.SetRollingUpgrade(false)
-	default:
-		logrus.Fatal(formatter.Colorize(
-			"Invalid upgrade-option specified. Allowed values (case insensitive): "+
-				"Rolling, Non-Rolling\n",
-			formatter.RedColor))
+	if cmd.Flags().Changed("upgrade-option") {
+		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		// PreRun has checked the value.
+		options.SetRollingUpgrade(strings.EqualFold(upgradeOption, "rolling"))
+		set = true
 	}
 
-	masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
-	if err != nil {
-		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	if cmd.Flags().Changed("delay-between-master-servers") {
+		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		options.SetDelayBetweenMasterServers(masterDelay)
+		set = true
 	}
-	options.SetDelayBetweenMasterServers(masterDelay)
 
-	tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
-	if err != nil {
-		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	if cmd.Flags().Changed("delay-between-tservers") {
+		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		options.SetDelayBetweenTserverServers(tserverDelay)
+		set = true
 	}
-	options.SetDelayBetweenTserverServers(tserverDelay)
 
+	if !set {
+		return nil
+	}
 	return &options
 }
 
@@ -257,13 +274,17 @@ func init() {
 	setTelemetryConfigCmd.MarkFlagsMutuallyExclusive(
 		"telemetry-config", "telemetry-config-file-path")
 
-	setTelemetryConfigCmd.Flags().String("upgrade-option", "Rolling",
-		"[Optional] Upgrade option, defaults to Rolling. Allowed values (case "+
-			"insensitive): Rolling, Non-Rolling (involves DB downtime).")
-	setTelemetryConfigCmd.Flags().Int32("delay-between-master-servers", 18000,
-		"[Optional] Upgrade delay between Master servers (in milliseconds).")
-	setTelemetryConfigCmd.Flags().Int32("delay-between-tservers", 18000,
-		"[Optional] Upgrade delay between Tservers (in milliseconds).")
+	setTelemetryConfigCmd.Flags().String("upgrade-option", "",
+		"[Optional] Upgrade option. Allowed values (case insensitive): Rolling, "+
+			"Non-Rolling (involves DB downtime). When omitted, YBA picks: on a VM "+
+			"universe it skips the node restart if no changed export type needs "+
+			"one, and otherwise does a Rolling restart.")
+	setTelemetryConfigCmd.Flags().Int32("delay-between-master-servers", 0,
+		"[Optional] Upgrade delay between Master servers (in seconds). "+
+			"When omitted, YBA uses its default.")
+	setTelemetryConfigCmd.Flags().Int32("delay-between-tservers", 0,
+		"[Optional] Upgrade delay between Tservers (in seconds). "+
+			"When omitted, YBA uses its default.")
 	setTelemetryConfigCmd.Flags().Bool("dry-run", false,
 		"[Optional] Only validate the input and report what would change.")
 }

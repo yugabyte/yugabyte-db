@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	ybav2client "github.com/yugabyte/platform-go-client/v2"
 )
 
@@ -154,5 +155,51 @@ func TestStaticSinkCapabilitiesCoverEveryProviderType(t *testing.T) {
 	}
 	if staticSinkCapabilities["S3"].allowedForMetrics {
 		t.Error("S3 is a logs-only sink")
+	}
+}
+
+// YBA skips the node restart for collector-only changes only when rolling_upgrade is absent.
+func TestBuildUpgradeOptionsSendsOnlySetFlags(t *testing.T) {
+	cases := []struct {
+		args             []string
+		wantNil          bool
+		wantRolling      *bool
+		wantTserverDelay int32
+	}{
+		{args: nil, wantNil: true},
+		{args: []string{"--delay-between-tservers", "50"}, wantTserverDelay: 50},
+		{args: []string{"--upgrade-option", "Rolling"}, wantRolling: ybav2client.PtrBool(true)},
+		{
+			args:        []string{"--upgrade-option", "non-rolling"},
+			wantRolling: ybav2client.PtrBool(false),
+		},
+	}
+	for _, tc := range cases {
+		cmd := &cobra.Command{}
+		cmd.Flags().String("upgrade-option", "", "")
+		cmd.Flags().Int32("delay-between-master-servers", 0, "")
+		cmd.Flags().Int32("delay-between-tservers", 0, "")
+		if err := cmd.Flags().Parse(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		got := buildUpgradeOptions(cmd)
+		if (got == nil) != tc.wantNil {
+			t.Fatalf("%v: options = %+v, want nil = %v", tc.args, got, tc.wantNil)
+		}
+		if got == nil {
+			continue
+		}
+		if (got.RollingUpgrade == nil) != (tc.wantRolling == nil) ||
+			(got.RollingUpgrade != nil && *got.RollingUpgrade != *tc.wantRolling) {
+			t.Errorf("%v: rolling_upgrade = %v, want %v",
+				tc.args, got.RollingUpgrade, tc.wantRolling)
+		}
+		if got.DelayBetweenMasterServers != nil {
+			t.Errorf("%v: unset delay-between-master-servers was sent", tc.args)
+		}
+		if tc.wantTserverDelay != got.GetDelayBetweenTserverServers() {
+			t.Errorf("%v: delay_between_tserver_servers = %d, want %d",
+				tc.args, got.GetDelayBetweenTserverServers(), tc.wantTserverDelay)
+		}
 	}
 }
