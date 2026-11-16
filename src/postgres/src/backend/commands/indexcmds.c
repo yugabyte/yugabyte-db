@@ -74,6 +74,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "catalog/yb_catalog_version.h"
+#include "catalog/yb_type.h"
 #include "commands/progress.h"
 #include "commands/trigger.h"
 #include "commands/yb_tablegroup.h"
@@ -2682,6 +2683,44 @@ YbCheckCollationRestrictions(Oid attcollation, Oid opclassoid)
 }
 
 /*
+ * YbCheckOpClassInputType
+ *		An lsm key is stored in the encoding of the column type, so DocDB orders
+ *		and compares it as the column type's default lsm operator class would.
+ * Disallow an operator class if its input type and the column type have
+ * different default lsm operator classes, such as bpchar_ops on a text column
+ * or oid_ops on an int4 column. A type that cannot be an lsm key keeps its
+ * existing "not yet supported" error.
+ */
+static void
+YbCheckOpClassInputType(Oid atttype, Oid opclassoid)
+{
+	HeapTuple	classtup;
+	Form_pg_opclass classform;
+
+	classtup = SearchSysCache1(CLAOID, ObjectIdGetDatum(opclassoid));
+	if (!HeapTupleIsValid(classtup))
+		elog(ERROR, "cache lookup failed for operator class %u", opclassoid);
+	classform = (Form_pg_opclass) GETSTRUCT(classtup);
+	if (classform->opcintype != getBaseType(atttype) &&
+		GetDefaultOpClass(atttype, LSM_AM_OID) !=
+		GetDefaultOpClass(classform->opcintype, LSM_AM_OID) &&
+		YbDataTypeIsValidForKey(atttype))
+	{
+		/* Print bpchar, not "character", which means char(1) in a cast. */
+		char	   *opctypename = format_type_extended(classform->opcintype, -1,
+													   FORMAT_TYPE_TYPEMOD_GIVEN);
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("could not use operator class \"%s\" with column type %s",
+						NameStr(classform->opcname), format_type_be(atttype)),
+				 errhint("Use a column or an index expression of type %s instead.",
+						 opctypename)));
+	}
+	ReleaseSysCache(classtup);
+}
+
+/*
  * Compute per-index-column information, including indexed column numbers
  * or index expressions, opclasses and their options. Note, all output vectors
  * should be allocated for all columns, including "including" ones.
@@ -2985,6 +3024,14 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		 */
 		if (IsYugaByteEnabled() && YBIsCollationValidNonC(attcollation))
 			YbCheckCollationRestrictions(attcollation, classOidP[attn]);
+
+		/*
+		 * YB: binary upgrade and restore recreate indexes that already hold
+		 * data, so do not reject those.
+		 */
+		if (IsYugaByteEnabled() && accessMethodId == LSM_AM_OID &&
+			!IsBinaryUpgrade && !yb_binary_restore)
+			YbCheckOpClassInputType(atttype, classOidP[attn]);
 
 		if (OidIsValid(ddl_userid))
 		{
