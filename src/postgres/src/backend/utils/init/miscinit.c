@@ -328,6 +328,7 @@ GetBackendTypeDesc(BackendType backendType)
 		case YB_GLOBAL_VIEW_BACKEND:
 		case YB_XCLUSTER_DDL_QUEUE_BACKEND:
 		case YB_XCLUSTER_SETUP_BACKEND:
+		case YB_OSC_BACKFILL_BACKEND:
 			/*
 			 * Registered YB internal-connection kinds are handled by the
 			 * registry lookup at the top of this function; these cases exist

@@ -1,0 +1,22 @@
+title: GcsRegionLocation
+description: |
+  GcsRegionLocation
+
+  Backup location of one region of a GCS storage configuration. Part of GcsStorageSpec.
+type: object
+required:
+  - region
+  - location
+properties:
+  region:
+    description: Region of the universe whose backups go to this location
+    type: string
+    example: us-west1
+    minLength: 1
+  location:
+    description: 'Location of the region''s backups, as gs://<bucket>[/<path>]'
+    type: string
+    example: 'gs://backups-example-us-west1/yba'
+    minLength: 6
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

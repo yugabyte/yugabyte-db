@@ -597,7 +597,10 @@ DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
     "Delay creating child tablets and upserting them to sys catalog");
 
+DECLARE_bool(ysql_yb_enable_colocated_tables_with_tablespaces);
+namespace deprecated_flag_do_not_use {
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+}
 
 DEFINE_test_flag(bool, pause_pg_catalog_versions_cache_refresh, false,
     "When true, RefreshPgCatalogVersionCache() returns without doing anything, for both its "
@@ -676,11 +679,9 @@ DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "0 means vectors have no tenant. Applies only to the yb_hnsw_hnswlib backend. The tenant never "
     "covers the full primary key: values greater than or equal to the number of components use all "
     "components but the last one, so a single-component primary key has no tenant. The value is "
-    "fixed when the index is created. Must stay 0 until #36086: until then a saved YbHnsw chunk "
-    "keeps a single entry point, so its searches miss the vectors of all tenants but one. "
-    "Older releases cannot read payloads created with a nonzero "
-    "value and may write vectors without their tenant, so keep it 0 until the upgrade to this "
-    "release is finalized.");
+    "fixed when the index is created. Older releases cannot read payloads and vector index chunks "
+    "created with a nonzero value and may write vectors without their tenant, so keep it 0 until "
+    "the upgrade to this release is finalized.");
 TAG_FLAG(vector_index_tenant_hash_group_and_range_components, experimental);
 
 DEFINE_RUNTIME_AUTO_bool(enable_table_owned_vector_reverse_mapping, kExternal, false, true,
@@ -698,6 +699,14 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
 DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPersisted,
     false, true,
     "Enable support for tablespace-based transaction locality.");
+
+// AutoFlag so that no index is left pending forever: (1) an old master that becomes leader before
+// the CREATE INDEX transaction is verified does not finalize the index, and (2) after a rollback,
+// indexes that were still pending stay pending, and nothing finalizes them on re-upgrade.
+DEFINE_RUNTIME_AUTO_bool(enable_ysql_index_birth_time_state, kLocalPersisted, false, true,
+    "Track state for a YSQL index whether birth_time is set or pending "
+    "(IndexInfoPB.birth_time_state). This is required to decide if reads should throw a retryable "
+    "error if the birth time is not yet final to avoid inconsistent results.");
 
 DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false,
     "Fail CopyPgsqlSysTables for yugabyte database on the second creation attempt "
@@ -1483,7 +1492,8 @@ void CatalogManager::ValidateIndexTablesPostLoad(
         table_id, std::move(indexes),
         [this, tables_to_persist = DCHECK_NOTNULL(tables_to_persist)](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/,
+            IndexInfoPB::BirthTimeState /*birth_time_state*/) {
           DCHECK(status.ok());
           if (!status.ok()) {
             LOG(WARNING) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
@@ -1500,6 +1510,12 @@ void CatalogManager::ValidateIndexTablesPostLoad(
           auto index_table = CHECK_RESULT(GetTableById(index_id));
           auto index_table_wlock = index_table->LockForWrite();
           BackfillTable::UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
+          // Backfill is done, so the birth_time is final too (it is 0 if it was not persisted).
+          auto& index_pb = index_table_wlock.mutable_data()->pb;
+          if (index_pb.has_index_info() && index_pb.index_info().birth_time_state() ==
+                                               IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL) {
+            index_pb.mutable_index_info()->clear_birth_time_state();
+          }
           index_table_wlock.Commit();
           tables_to_persist->emplace(index_id);
         });
@@ -4724,6 +4740,26 @@ bool EnableTableOwnedVectorReverseMapping() {
       : FLAGS_enable_table_owned_vector_reverse_mapping;
 }
 
+// Returns the initial IndexInfoPB.birth_time_state of a new YSQL index: whether its birth_time is
+// not final yet, and which build path finalizes it. Vector indexes are not covered by the read
+// guard.
+IndexInfoPB::BirthTimeState InitialIndexBirthTimeState(
+    const CreateTableRequestPB& req, const IndexInfoPB& index_info, bool index_backfill_enabled) {
+  if (!FLAGS_enable_ysql_index_birth_time_state || index_info.has_vector_idx_options()) {
+    return IndexInfoPB::BIRTH_TIME_FINAL;
+  }
+  if (index_backfill_enabled && !req.skip_index_backfill()) {
+    // Finalized when backfill completes (BackfillTable::AllowCompactionsToGCDeleteMarkers).
+    return IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL;
+  }
+  if (req.skip_index_backfill() && req.has_transaction() && req.ysql_yb_ddl_rollback_enabled()) {
+    // Finalized when the CREATE INDEX transaction commits (HandleSuccessfulYsqlDdlTxn). That only
+    // runs for tables with DDL transaction verification, so without it the index stays FINAL.
+    return IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
+  }
+  return IndexInfoPB::BIRTH_TIME_FINAL;
+}
+
 } // namespace
 
 Status CatalogManager::PersistNewTable(
@@ -4886,14 +4922,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       !colocated || req.has_table_id(), InvalidArgument,
       "Colocated table should specify a table ID");
 
-  // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
-  // specified for indexes on colocated tables. Vector indexes are exempt: they are copartitioned
-  // with (and stored on) the indexed table's tablets, so a tablespace recorded for them only
-  // mirrors the indexed table's tablespace for catalog consistency and is never used for the
-  // vector index's (shared) placement.
+  // If colocated tables with tablespaces are not enabled then tablespaces cannot be specified for
+  // indexes on colocated tables. The deprecated flag counts as well, because postgres honors it
+  // too (see AppendPgGFlags). Vector indexes are exempt: they are copartitioned with (and stored
+  // on) the indexed table's tablets, so a tablespace recorded for them only mirrors the indexed
+  // table's tablespace for catalog consistency and is never used for the vector index's (shared)
+  // placement.
   SCHECK(
-      FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
-          is_vector_index || !req.has_tablespace_id(),
+      FLAGS_ysql_yb_enable_colocated_tables_with_tablespaces ||
+          deprecated_flag_do_not_use::FLAGS_ysql_enable_colocated_tables_with_tablespaces ||
+          !colocated || !IsIndex(req) || is_vector_index || !req.has_tablespace_id(),
       InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into
@@ -5035,6 +5073,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
       auto indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
       RETURN_NOT_OK(index_info_builder.ApplyColumnMapping(indexed_schema, schema));
+    }
+  }
+
+  if (req.has_index_info() && is_pg_table) {
+    const auto birth_time_state =
+        InitialIndexBirthTimeState(req, index_info, index_backfill_enabled);
+    if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
+      index_info.set_birth_time_state(birth_time_state);
     }
   }
 
@@ -7173,7 +7219,8 @@ void CatalogManager::GetBackfillStatus(
   // Utility functor to respond with the provided error for the remaining indexes.
   auto callback_failure = [&callback, &indexes](const Status& status) {
     for (const auto& index : indexes) {
-      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0});
+      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0},
+               IndexInfoPB::BIRTH_TIME_FINAL);
     }
   };
 
@@ -7223,13 +7270,15 @@ void CatalogManager::GetBackfillStatus(
 
   for (const auto& [index_id, backfill_status] : indexes_for_callback) {
     uint64_t birth_time = 0;
+    auto birth_time_state = IndexInfoPB::BIRTH_TIME_FINAL;
     if (auto index_table = GetTableInfo(index_id)) {
       auto l = index_table->LockForRead();
-      if (l->pb.has_index_info() && l->pb.index_info().has_birth_time()) {
+      if (l->pb.has_index_info()) {
         birth_time = l->pb.index_info().birth_time();
+        birth_time_state = l->pb.index_info().birth_time_state();
       }
     }
-    callback(Status::OK(), index_id, backfill_status, birth_time);
+    callback(Status::OK(), index_id, backfill_status, birth_time, birth_time_state);
   }
 
   // Notify the caller with the remaining indexes. There's a chance some of the indexes
@@ -7300,7 +7349,8 @@ Status CatalogManager::GetBackfillStatus(
         table_id, std::move(indexes),
         [&index_to_identifier_map, &resp](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time,
+            IndexInfoPB::BirthTimeState birth_time_state) {
           auto identifier_it = index_to_identifier_map.find(index_id);
           CHECK(identifier_it != index_to_identifier_map.end());
           auto* index_status = resp->add_index_status();
@@ -7310,6 +7360,7 @@ Status CatalogManager::GetBackfillStatus(
             if (birth_time != 0) {
               index_status->set_birth_time(birth_time);
             }
+            index_status->set_birth_time_state(birth_time_state);
           } else {
              StatusToPB(status, index_status->mutable_error());
           }
@@ -11798,10 +11849,7 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   }
   LOG_IF(INFO, PREDICT_FALSE(use_cache && FLAGS_TEST_log_catalog_version_cache_events))
       << "GetYsqlDBCatalogVersion: cache miss for db_oid " << db_oid;
-  auto table_id =
-      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
-  auto table_info = GetTableInfo(table_id);
-  if (table_info != nullptr) {
+  if (VERIFY_RESULT(IsYsqlCatalogVersionTableCreated())) {
     RETURN_NOT_OK(sys_catalog_->ReadYsqlDBCatalogVersion(
         kPgYbCatalogVersionTableId, db_oid, catalog_version, last_breaking_version));
     // If the version is properly initialized, we're done.
@@ -11826,13 +11874,19 @@ Status CatalogManager::GetYsqlDBCatalogVersion(
   return Status::OK();
 }
 
+Result<bool> CatalogManager::IsYsqlCatalogVersionTableCreated() const {
+  auto table_id =
+      VERIFY_RESULT(ysql_manager_->GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  return GetTableInfo(table_id) != nullptr;
+}
+
 Status CatalogManager::GetYsqlAllDBCatalogVersionsImpl(
     DbOidToCatalogVersionMap* versions, HybridTime* out_read_ht) {
   // pg_yb_catalog_version exists in every steady-state YSQL-enabled cluster (created during
-  // initdb). The only caller that may invoke this before the table exists is the initdb path
-  // (Master::get_ysql_db_oid_to_cat_version_info_map), which gates this call on a GetTableInfo
-  // check itself. Reading directly here avoids a SharedLock on the catalog manager's main
-  // mutex_ on every heartbeat-rate refresh.
+  // initdb). Callers that may run before the table exists (the initdb path in
+  // Master::get_ysql_db_oid_to_cat_version_info_map, and object lock releases) check
+  // IsYsqlCatalogVersionTableCreated first. Reading directly here avoids a SharedLock on the
+  // catalog manager's main mutex_ on every heartbeat-rate refresh.
   return sys_catalog_->ReadYsqlAllDBCatalogVersions(
       kPgYbCatalogVersionTableId, versions, out_read_ht);
 }
@@ -12467,6 +12521,9 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
   for (auto& tablet_data : tablets_data) {
     LOG(INFO) << (hide_only ? "Hid" : "Deleted") << " tablet " << tablet_data.tablet->tablet_id();
     tablet_data.lock.Commit();
+    if (!hide_only) {
+      tablet_data.tablet->StopCountingReplicaLoad();
+    }
   }
 
   TEST_SYNC_POINT("CatalogManager::DeleteOrHideTabletsAndSendRequests::AddToMaps");
@@ -12911,7 +12968,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
     } else {
-      LOG_WITH_FUNC(INFO)
+      VLOG_WITH_FUNC(1)
           << "Selected replicas for tablet " << tablet->id() << ": "
           << AsString(tablet->mutable_metadata()->mutable_dirty()->pb.committed_consensus_state());
       ok_status_tables.emplace(tablet->table().get());
@@ -12967,6 +13024,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
 
   // Send DeleteTablet requests to tablet servers serving deleted tablets.
   // This is asynchronous / non-blocking.
+  std::vector<TabletInfoPtr> deleted_tablets;
   for (const TabletInfoPtr& tablet : deferred.modified_tablets) {
     if (tablet->metadata().dirty().is_deleted()) {
       // Actual delete, because we delete tablet replica.
@@ -12975,10 +13033,17 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       DeleteTabletReplicas(tablet, tablet->metadata().dirty().pb.state_msg(), HideOnly::kFalse,
                            KeepData::kFalse,
                            TransactionId::Nil() /* exclude_aborting_transaction_id */, epoch);
+      deleted_tablets.push_back(tablet);
     }
   }
   // Send the CreateTablet() requests to the servers. This is asynchronous / non-blocking.
   unlocker.Commit();
+
+  // A replaced tablet is only dropped from the maps by the next background pass; its replicas
+  // leave the load count now rather than then.
+  for (const TabletInfoPtr& tablet : deleted_tablets) {
+    tablet->StopCountingReplicaLoad();
+  }
 
   {
     LockGuard lock(mutex_);
@@ -13126,7 +13191,7 @@ Status CatalogManager::SelectReplicasForTablet(
     RETURN_NOT_OK(SelectReplicasForPlacement(ts_descs, placement, config, per_table_state));
   }
 
-  LOG_WITH_FUNC(INFO)
+  VLOG_WITH_FUNC(1)
       << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
       << tablet->table()->id() << "]: "
       << CollectionToString(config->peers(), [](const auto& p) { return p.permanent_uuid(); });
@@ -13136,8 +13201,8 @@ Status CatalogManager::SelectReplicasForTablet(
   // initial leader after it receives a quorum of reports from bootstrapped replicas.
   RETURN_NOT_OK(SelectProtegeForTablet(tablet, config, global_state));
 
-  LOG(INFO) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
-            << tablet->InitiaLeaderElectionProtege();
+  VLOG(1) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
+          << tablet->InitiaLeaderElectionProtege();
 
   VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
@@ -14737,24 +14802,9 @@ Result<CMGlobalLoadState> CatalogManager::InitializeGlobalLoadState(
     const TSDescriptorVector& ts_descs) {
   CMGlobalLoadState state;
   for (const auto& ts : ts_descs) {
-    // Touch every tserver with 0 load.
-    state.per_ts_replica_load_[ts->permanent_uuid()];
+    state.per_ts_replica_load_[ts->permanent_uuid()] =
+        narrow_cast<uint32_t>(std::max<int64_t>(ts->replica_load(), 0));
     state.per_ts_protege_load_[ts->permanent_uuid()];
-  }
-
-  SharedLock l(mutex_);
-  // todo(zdrudi): replace this with a better index
-  for (const auto& info : tables_->GetAllTables()) {
-    // Ignore system, colocated and deleting/deleted tables.
-    {
-      auto l = info->LockForRead();
-      if (info->is_system() ||
-          info->IsSecondaryTable() ||
-          l->started_deleting()) {
-        continue;
-      }
-    }
-    RETURN_NOT_OK(CatalogManagerUtil::FillTableLoadState(info, &state.per_ts_replica_load_));
   }
   return state;
 }

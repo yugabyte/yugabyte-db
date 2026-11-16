@@ -98,7 +98,7 @@ TierMigrationStatusPB::State ToTierMigrationStatePB(const tablet::TierMigrationS
 void FillTierMigrationStatusPB(
     const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
   pb->set_state(ToTierMigrationStatePB(status));
-  pb->set_pass_in_flight(status.pass_in_flight);
+  pb->set_migration_pass_in_flight(status.migration_pass_in_flight);
   pb->set_files_total(status.files_total);
   pb->set_files_moved(status.files_moved);
   pb->set_files_failed(status.files_failed);
@@ -220,7 +220,7 @@ TierReconcilePassStats TierMigrationReconciler::RunPass() {
     ++stats.tablets_with_target;
 
     const auto status = tablet->tier_migration_status();
-    if (status.pass_in_flight || status.state == TierMigrationStatus::State::kFailed) {
+    if (status.migration_pass_in_flight || status.state == TierMigrationStatus::State::kFailed) {
       count_state(status.state);
       continue;
     }

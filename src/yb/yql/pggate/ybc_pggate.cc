@@ -739,6 +739,15 @@ void YBCTCMallocReleaseFreeMemory(int64_t bytes) {
   TCMallocReleaseMemoryToSystemIgnoringRecentDemand(bytes);
 }
 
+void YBCTCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms) {
+  TCMallocReleaseMemoryToSystemWithLookbacks(bytes, short_interval_ms, long_interval_ms);
+}
+
+void YBCTCMallocDrainCpuCaches() {
+  TCMallocDrainCpuCaches();
+}
+
 YbcStatus YBCGetHeapSnapshot(
     YbcHeapSnapshotSample** snapshot, int64_t* num_samples, bool peak_heap) {
   // Always sort by estimated bytes on Google TCMalloc (sampled bytes if gperftools).
@@ -2623,7 +2632,9 @@ void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo version_info,
     YbcPgSysTablePrefetcherCacheMode cache_mode,
-    YbcPgSysTablePrefetchKind kind) {
+    YbcPgSysTablePrefetchKind kind,
+    bool send_away_if_fill_in_flight,
+    bool part_of_connection_prefetch) {
   YBCStartSysTablePrefetchingImpl(
       PrefetcherOptions::CachingInfo{
           {
@@ -2631,7 +2642,8 @@ void YBCStartSysTablePrefetching(
               MakeReadHybridTime(version_info.version_read_time),
               version_info.is_db_catalog_version_mode
           },
-          database_oid, YBCMapPrefetcherCacheMode(cache_mode)},
+          database_oid, YBCMapPrefetcherCacheMode(cache_mode),
+          send_away_if_fill_in_flight, part_of_connection_prefetch},
       kind);
 }
 

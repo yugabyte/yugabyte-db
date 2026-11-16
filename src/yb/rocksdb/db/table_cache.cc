@@ -529,4 +529,15 @@ void TableCache::Evict(Cache* cache, uint64_t file_number) {
   cache->Erase(GetSliceForFileNumber(&file_number));
 }
 
+bool TableCache::EvictIfOpen(Cache* cache, uint64_t file_number) {
+  const Slice key = GetSliceForFileNumber(&file_number);
+  Cache::Handle* handle = cache->Lookup(key, kDefaultQueryId);
+  if (handle == nullptr) {
+    return false;
+  }
+  cache->Release(handle);
+  cache->Erase(key);
+  return true;
+}
+
 }  // namespace rocksdb

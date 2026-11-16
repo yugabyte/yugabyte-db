@@ -2953,6 +2953,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           paramsDeviceCluster.userIntent.masterK8SNodeResourceSpec =
               taskDeviceCluster.userIntent.masterK8SNodeResourceSpec;
         }
+        // Every release renders the primary cluster's expose service setting.
+        params.universeDetails.getPrimaryCluster().userIntent.enableExposingService =
+            primaryCluster.userIntent.enableExposingService;
         if (useNewTserverDeviceInfo) {
           if (isReadOnlyCluster) {
             params.universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo =

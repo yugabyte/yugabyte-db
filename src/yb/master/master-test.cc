@@ -3167,6 +3167,8 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::TableBackfillChunkResponsePB)
   UNUSED_TS_ADMIN_METHOD(BackfillDone, tablet::ChangeMetadataRequestPB,
                          tserver::ChangeMetadataResponsePB)
+  UNUSED_TS_ADMIN_METHOD(MarkNonConcurrentIndexDone, tablet::ChangeMetadataRequestPB,
+                         tserver::ChangeMetadataResponsePB)
   UNUSED_TS_ADMIN_METHOD(FlushTablets, tserver::FlushTabletsRequestPB,
                          tserver::FlushTabletsResponsePB)
   UNUSED_TS_ADMIN_METHOD(AlterTabletTier, tserver::AlterTabletTierRequestPB,
@@ -3203,6 +3205,8 @@ class FakeTabletServerAdminService : public tserver::TabletServerAdminServiceIf 
                          tserver::GetPgSocketDirResponsePB)
   UNUSED_TS_ADMIN_METHOD(GetActiveRbsInfo, tserver::GetActiveRbsInfoRequestPB,
                          tserver::GetActiveRbsInfoResponsePB)
+  UNUSED_TS_ADMIN_METHOD(ClearRocksDBCache, tserver::ClearRocksDBCacheRequestPB,
+                         tserver::ClearRocksDBCacheResponsePB)
 #undef UNUSED_TS_ADMIN_METHOD
 
  private:

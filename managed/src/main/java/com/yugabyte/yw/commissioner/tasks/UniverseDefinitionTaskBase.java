@@ -83,7 +83,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -113,6 +112,7 @@ import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
@@ -1874,6 +1874,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
+          if (opType == UniverseOpType.EDIT) {
+            // The read replica's services follow the primary cluster's expose service setting.
+            Cluster primaryCluster = taskParams().getPrimaryCluster();
+            if (primaryCluster == null) { // A read-replica-only edit.
+              primaryCluster = universeDetails.getPrimaryCluster();
+            }
+            ExposingServiceState exposingService = cluster.userIntent.enableExposingService;
+            if (exposingService != univCluster.userIntent.enableExposingService
+                && exposingService != primaryCluster.userIntent.enableExposingService) {
+              throw new IllegalArgumentException(
+                  "Readonly cluster's expose service setting follows the primary cluster and"
+                      + " can't be changed on its own.");
+            }
+          }
         } else {
           if (opType == UniverseOpType.EDIT) {
             // During edit universe, overrides can't be changed.
@@ -2251,8 +2265,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskParams(
-            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
+        .setTaskParams(RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams)));
   }
 
   /**

@@ -2531,6 +2531,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " configs are unaffected.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> storageConfigValidationTimeout =
+      new ConfKeyInfo<>(
+          "yb.storage_config.validation_timeout",
+          ScopeType.GLOBAL,
+          "Storage config validation timeout",
+          "How long the v2 storage config API waits for the storage validators to reach the"
+              + " backup storage before it answers that validation timed out.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> taskExecutorShutdownMaxWaitTime =
       new ConfKeyInfo<>(
           "yb.task_executor.shutdown_max_wait_time",
@@ -2576,4 +2585,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " construction. When disabled, those endpoints always return a full 200 body.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Duration> idempotencyKeyRetention =
+      new ConfKeyInfo<>(
+          "yb.api.idempotency.retention",
+          ScopeType.GLOBAL,
+          "Idempotency key retention",
+          "How long the response of a request sent with an Idempotency-Key header is kept for"
+              + " replay. A retry with the same key after this period runs the operation again.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
