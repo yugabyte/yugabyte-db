@@ -6960,13 +6960,18 @@ class PgLibPqTestTxnDdlCommitRetry : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgLibPqTest::UpdateMiniClusterOptions(options);
-    // Table locks and transactional DDL on, as on the cluster where #37717 was seen.
-    options->extra_master_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=true");
-    options->extra_master_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_tserver_flags.push_back("--ysql_yb_ddl_transaction_block_enabled=true");
-    options->extra_master_flags.push_back("--yb_enable_read_committed_isolation=true");
-    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
+    // Table locks and transactional DDL on, as on the cluster where #37717 was seen. Outside
+    // release builds, concurrent DDL and DDL savepoint support default to off; object locking
+    // requires the former, and the latter is set so that every build type runs the same mode.
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      flags->insert(flags->end(), {
+          "--enable_object_locking_for_table_locks=true",
+          "--ysql_yb_ddl_transaction_block_enabled=true",
+          "--ysql_enable_concurrent_ddl=true",
+          "--ysql_yb_enable_ddl_savepoint_support=true",
+          "--yb_enable_read_committed_isolation=true",
+      });
+    }
   }
 };
 
