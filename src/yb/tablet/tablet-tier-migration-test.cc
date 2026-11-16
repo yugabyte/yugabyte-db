@@ -837,6 +837,32 @@ TEST_F(TierMigrationTest, DeferredFileDoesNotWakeReconciler) {
 
 #endif  // NDEBUG
 
+// CurrentStorageTier agrees with GetTierInfo's current_tier at every step of a migration: one
+// tier while every SST is off the target disk, none while they straddle, the target's once they
+// are all under it (the case it answers without the per-SST scan).
+TEST_F(TierMigrationTest, CurrentStorageTierMatchesTierInfo) {
+  auto check = [this](const std::string& expected) {
+    ASSERT_EQ(ASSERT_RESULT(tablet()->CurrentStorageTier()), expected);
+    ASSERT_EQ(ASSERT_RESULT(tablet()->GetTierInfo()).current_tier, expected);
+  };
+  auto move = [this](uint64_t file_number, uint32_t path_id) {
+    std::promise<Status> done;
+    ASSERT_OK(tablet()->regular_db()->ScheduleDBPathMove(
+        file_number, path_id, [&done](const Status& s) { done.set_value(s); }));
+    ASSERT_OK(done.get_future().get());
+  };
+
+  ASSERT_NO_FATALS(check("ssd"));  // Empty, no target: the home disk.
+  const uint64_t first = WriteFileWithKey(1);
+  const uint64_t second = WriteFileWithKey(2);
+  ASSERT_OK(tablet()->SetTierMigrationTarget("hdd", kTargetPathId));
+  ASSERT_NO_FATALS(check("ssd"));  // Both SSTs still on home: one tier, not the target's.
+  ASSERT_NO_FATALS(move(first, kTargetPathId));
+  ASSERT_NO_FATALS(check(""));  // One on each disk: straddling.
+  ASSERT_NO_FATALS(move(second, kTargetPathId));
+  ASSERT_NO_FATALS(check("hdd"));  // Converged.
+}
+
 // Only a reconciler pass declares convergence, and only from a scan of its own: the pass that
 // moved the last file leaves the tablet kInProgress, the next one finds nothing and marks it
 // kDone. A file that later shows up outside the target directory puts it back to kInProgress

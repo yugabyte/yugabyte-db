@@ -6070,11 +6070,28 @@ Result<TabletTierInfo> Tablet::GetTierInfo() const {
   if (tiers_seen.size() == 1) {
     info.current_tier = *tiers_seen.begin();
   } else if (tiers_seen.size() > 1) {
-    // Straddling more than one tier (e.g. mid-migration): neither the home-tier default set
+    // Straddling more than one tier (e.g. mid-migration): neither the next-flush default set
     // above nor a single derived tier is accurate, so leave it unset rather than pick one.
     info.current_tier.clear();
   }
   return info;
+}
+
+Result<std::string> Tablet::CurrentStorageTier() const {
+  auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+  const auto target_path_id = metadata()->target_tier_path_id();
+  if (!metadata()->target_storage_tier().empty() && regular_db_ &&
+      CollectTierMigrationCandidates(target_path_id).empty()) {
+    // Every live SST is under the target's disk, or there is none yet: GetTierInfo would derive
+    // that disk's tier, after building a LiveFileMetaData per SST under the DB mutex.
+    for (const auto& tier_path : metadata()->tier_paths()) {
+      if (tier_path.path_id == target_path_id) {
+        return tier_path.tier;
+      }
+    }
+  }
+  return VERIFY_RESULT(GetTierInfo()).current_tier;
 }
 
 std::string Tablet::TEST_DocDBDumpStr(

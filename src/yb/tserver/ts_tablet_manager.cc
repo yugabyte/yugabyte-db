@@ -3551,8 +3551,9 @@ namespace {
 
 // Tiered storage: the three fields the master's placement logic reads back. A replica with no
 // target tier has every SST on its home disk, so its tier comes from the superblock alone; one
-// with a target may straddle two disks, which only a scan of the live SSTs (GetTierInfo) can
-// tell. Runs outside the tablet manager's lock, like the rest of the report.
+// with a target asks the tablet (Tablet::CurrentStorageTier), which scans per SST only while
+// some are still off the target's disk. Runs outside the tablet manager's lock, like the rest of
+// the report.
 void FillReportedStorageTier(
     const tablet::RaftGroupMetadata& meta, const tablet::TabletPtr& tablet,
     ReportedTabletPB* reported_tablet) {
@@ -3571,14 +3572,15 @@ void FillReportedStorageTier(
     // Not open yet. Opening marks the tablet dirty, so that report carries the rest.
     return;
   }
-  auto info = tablet->GetTierInfo();
-  if (!info.ok()) {
+  auto current_tier = tablet->CurrentStorageTier();
+  if (!current_tier.ok()) {
     return;  // Shutting down.
   }
-  if (!info->current_tier.empty()) {
-    reported_tablet->set_current_storage_tier(info->current_tier);
+  if (!current_tier->empty()) {
+    reported_tablet->set_current_storage_tier(*current_tier);
   }
-  reported_tablet->set_tier_migration_state(ToTierMigrationStatePB(info->migration));
+  reported_tablet->set_tier_migration_state(
+      ToTierMigrationStatePB(tablet->tier_migration_status()));
 }
 
 }  // namespace

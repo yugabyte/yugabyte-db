@@ -884,6 +884,14 @@ class Tablet : public AbstractTablet,
   // Reports which tier(s) and directories this tablet replica's live SSTs currently occupy.
   Result<TabletTierInfo> GetTierInfo() const;
 
+  // Tiered storage. GetTierInfo's current_tier alone: the tier every live regular-DB SST sits
+  // on, empty while they straddle more than one. Skips GetTierInfo's per-SST metadata scan in
+  // the common case, a replica with a target whose SSTs are all under the target's disk, or that
+  // has none yet: it is on that disk's tier. Only a replica with SSTs off that disk pays for the
+  // scan, to tell one other tier from a straddle. For the tablet report, which can carry every
+  // targeted replica at once.
+  Result<std::string> CurrentStorageTier() const;
+
   rocksdb::DB* regular_db() const {
     return regular_db_.get();
   }
