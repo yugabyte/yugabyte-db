@@ -54,6 +54,8 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -64,12 +66,15 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1501,6 +1506,7 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   private void hostCloud(CloudType cloud) {
+    when(mockHostCloudDetector.getHostCloud()).thenReturn(Optional.ofNullable(cloud));
     when(mockHostCloudDetector.isHostCloud(any())).thenAnswer(inv -> inv.getArgument(0) == cloud);
     when(mockHostCloudDetector.isConfirmedAws()).thenReturn(cloud == CloudType.aws);
   }
@@ -1626,5 +1632,235 @@ public class BackupHelperTest extends FakeDBApplication {
     spyBackupHelper.applyCrossCloudFederationFromBackup(gcsData, backupWithSnapshot("aud", null));
 
     assertNull(gcsData.crossCloudFederationAudience);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // YBA's own identity for work with no universe, or whose universe has no entry for the bucket's
+  // cloud: the continuous YBA backup, and backup deletion by a YBA that HA promoted on the other
+  // cloud.
+  // ---------------------------------------------------------------------------------------------
+
+  private static final String S3_AUDIENCE = "s3-audience";
+  private static final String S3_ROLE_ARN = "arn:aws:iam::123456789012:role/yb-fed";
+  private static final String GCS_AUDIENCE = "//iam.googleapis.com/projects/1/gcs-audience";
+
+  private static ProviderDetails.CloudInfo cloudInfo(Provider provider) {
+    ProviderDetails details = provider.getDetails();
+    if (details.getCloudInfo() == null) {
+      details.setCloudInfo(new ProviderDetails.CloudInfo());
+    }
+    return details.getCloudInfo();
+  }
+
+  /** A federated on-prem provider of the test customer, as for an on-prem universe on GCP. */
+  private void federatedOnPremProvider(String name, CrossCloudFederationTarget... targets) {
+    Provider provider = ModelFactory.newProvider(testCustomer, CloudType.onprem, name);
+    OnPremCloudInfo info = new OnPremCloudInfo();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = List.of(targets);
+    cloudInfo(provider).setOnprem(info);
+    provider.save();
+  }
+
+  /** A federated AWS provider of the test customer, whose nodes reach GCS. */
+  private void federatedAwsProvider(CrossCloudFederationTarget... targets) {
+    Provider provider = ModelFactory.newProvider(testCustomer, CloudType.aws, "fed-aws");
+    AWSCloudInfo info = new AWSCloudInfo();
+    info.enableFederatedIam = true;
+    info.crossCloudFederationTargets = List.of(targets);
+    cloudInfo(provider).setAws(info);
+    provider.save();
+  }
+
+  private static CustomerConfigStorageS3Data federatedS3() {
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = true;
+    return s3Data;
+  }
+
+  private static CustomerConfigStorageGCSData federatedGcs() {
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
+    return gcsData;
+  }
+
+  /** YBA on GCP -> S3 with no universe: YBA takes the entry its providers have for AWS. */
+  @Test
+  public void testYbaIdentityUsesProvidersEntryWithoutUniverse() {
+    hostCloud(CloudType.gcp);
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    assertEquals(S3_AUDIENCE, s3Data.crossCloudFederationAudience);
+    assertEquals(S3_ROLE_ARN, s3Data.crossCloudFederationRoleArn);
+    assertTrue(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+  }
+
+  /** YBA on AWS -> GCS with no universe: YBA takes the entry its providers have for GCP. */
+  @Test
+  public void testYbaIdentityUsesProvidersGcsEntryOnAws() {
+    hostCloud(CloudType.aws);
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+    CustomerConfigStorageGCSData gcsData = federatedGcs();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
+
+    assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
+  }
+
+  /** The universe's own entry wins over the one the other providers have. */
+  @Test
+  public void testYbaIdentityPrefersTheUniversesEntry() {
+    hostCloud(CloudType.gcp);
+    CrossCloudFederationTarget universeTarget = stubTarget(CloudType.aws);
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+
+    assertTrue(
+        spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), testUniverse));
+
+    assertEquals(universeTarget.audience, s3Data.crossCloudFederationAudience);
+    assertEquals(universeTarget.roleArn, s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** Providers that name different entries leave YBA unable to tell which one admits it. */
+  @Test
+  public void testYbaIdentityFailsWhenProvidersDisagree() {
+    hostCloud(CloudType.gcp);
+    federatedOnPremProvider(
+        "onprem-1", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    federatedOnPremProvider(
+        "onprem-2",
+        CrossCloudFederationTarget.of(
+            CloudType.aws, S3_AUDIENCE, "arn:aws:iam::123456789012:role/other"));
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+
+    assertFalse(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    assertNull(s3Data.crossCloudFederationAudience);
+    assertNull(s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** Two providers with the same entry agree. */
+  @Test
+  public void testYbaIdentityUsesTheEntryProvidersShare() {
+    hostCloud(CloudType.gcp);
+    federatedOnPremProvider(
+        "onprem-1", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    federatedOnPremProvider(
+        "onprem-2", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    assertEquals(S3_ROLE_ARN, s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** YBA on GCP with no entry for AWS anywhere has no way to reach an S3 bucket. */
+  @Test
+  public void testYbaIdentityFailsOnOtherCloudWithoutEntry() {
+    hostCloud(CloudType.gcp);
+    // A provider entry for another cloud does not help.
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+
+    assertFalse(
+        spyBackupHelper.applyYbaFederatedIdentity(federatedS3(), testCustomer.getUuid(), null));
+  }
+
+  /** With the host cloud unknown, the config is left as before: its own credentials may work. */
+  @Test
+  public void testYbaIdentityLeavesConfigWhenHostCloudUnknown() {
+    hostCloud(null);
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    assertNull(s3Data.crossCloudFederationRoleArn);
+    assertFalse(s3Data.isIAMInstanceProfile);
+  }
+
+  /** YBA on AWS -> S3: its own IAM role, even when a provider has an entry for AWS. */
+  @Test
+  public void testYbaIdentityIsNativeOnTheBucketsCloud() {
+    hostCloud(CloudType.aws);
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    assertNull(s3Data.crossCloudFederationRoleArn);
+    assertTrue(s3Data.isIAMInstanceProfile);
+    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+  }
+
+  /** A federated config that carries its own keys keeps using them, with or without an entry. */
+  @Test
+  public void testYbaIdentityKeepsTheConfigsOwnKeys() {
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+    s3Data.awsAccessKeyId = "key";
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+    assertNull(s3Data.crossCloudFederationRoleArn);
+    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+  }
+
+  /** A config that is not federated is left alone wherever YBA runs. */
+  @Test
+  public void testYbaIdentityIgnoresConfigWithoutFederation() {
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    assertNull(s3Data.crossCloudFederationAudience);
+  }
+
+  /**
+   * After HA promotes the YBA on GCP, deleting an AWS universe's S3 backup: the backup has no
+   * snapshot and its universe no entry for AWS, so YBA takes the one its providers have.
+   */
+  @Test
+  public void testDeletionFromOtherCloudUsesProvidersEntry() {
+    hostCloud(CloudType.gcp);
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    Backup backup = backupWithSnapshot(null, null);
+    when(backup.getCustomerUUID()).thenReturn(testCustomer.getUuid());
+    when(backup.getUniverseUUID()).thenReturn(testUniverse.getUniverseUUID());
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup);
+
+    assertEquals(S3_AUDIENCE, s3Data.crossCloudFederationAudience);
+    assertEquals(S3_ROLE_ARN, s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** Work that needs the bucket fails with what to change, naming the storage config. */
+  @Test
+  public void testRequireYbaIdentityExplainsWhatIsMissing() {
+    hostCloud(CloudType.gcp);
+    CustomerConfig config = new CustomerConfig();
+    config.setCustomerUUID(testCustomer.getUuid());
+    config.setConfigName("fed-s3");
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> spyBackupHelper.requireYbaFederatedIdentity(config, federatedS3()));
+
+    assertTrue(e.getMessage(), e.getMessage().contains("YBA runs on gcp"));
+    assertTrue(e.getMessage(), e.getMessage().contains("S3 bucket of storage config fed-s3"));
+    assertTrue(e.getMessage(), e.getMessage().contains("usable aws entry"));
   }
 }

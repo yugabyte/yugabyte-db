@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.prometheus.metrics.core.metrics.Gauge;
 import io.prometheus.metrics.model.registry.PrometheusRegistry;
@@ -121,6 +122,22 @@ public class CreateContinuousBackup extends AbstractTaskBase {
       log.info("No storage config UUID set, skipping creation of YBA backup.");
       return;
     }
+    CustomerConfig customerConfig = CustomerConfig.get(storageConfigUUID);
+    if (customerConfig == null) {
+      CONT_BACKUP_FAILING_GAUGE.labelValues(cbConfig.getStorageLocation()).set(0);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Could not find customer config with provided storage config UUID during create.");
+    }
+    // One copy for every call below: the federated identity is set on it, not on the stored config.
+    CustomerConfigData configData = customerConfig.getDataObject();
+    try {
+      // Before the backup is created, so a bucket YBA cannot reach does not cost a backup per run.
+      backupHelper.requireYbaFederatedIdentity(customerConfig, configData);
+    } catch (PlatformServiceException e) {
+      CONT_BACKUP_FAILING_GAUGE.labelValues(cbConfig.getStorageLocation()).set(0);
+      throw e;
+    }
     log.debug("Creating platform backup...");
     ShellResponse response =
         replicationHelper.runCommand(replicationManager.new CreatePlatformBackupParams());
@@ -137,15 +154,8 @@ public class CreateContinuousBackup extends AbstractTaskBase {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "could not find backup file");
     }
     File backup = backupOpt.get();
-    CustomerConfig customerConfig = CustomerConfig.get(storageConfigUUID);
-    if (customerConfig == null) {
-      CONT_BACKUP_FAILING_GAUGE.labelValues(cbConfig.getStorageLocation()).set(0);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR,
-          "Could not find customer config with provided storage config UUID during create.");
-    }
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
-    if (!storageUtil.uploadYbaBackup(customerConfig.getDataObject(), backup, dirName)) {
+    if (!storageUtil.uploadYbaBackup(configData, backup, dirName)) {
       CONT_BACKUP_FAILING_GAUGE.labelValues(cbConfig.getStorageLocation()).set(0);
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Could not upload YBA backup to cloud storage.");
@@ -155,14 +165,13 @@ public class CreateContinuousBackup extends AbstractTaskBase {
     cbConfig.updateLastBackup();
     CONT_BACKUP_FAILING_GAUGE.labelValues(cbConfig.getStorageLocation()).set(1);
 
-    if (!storageUtil.cleanupUploadedBackups(customerConfig.getDataObject(), dirName)) {
+    if (!storageUtil.cleanupUploadedBackups(configData, dirName)) {
       log.warn(
           "Error cleaning up uploaded backups to cloud storage, please delete manually to avoid"
               + " incurring unexpected costs.");
     }
 
-    Set<String> remoteReleases =
-        storageUtil.getRemoteReleaseVersions(customerConfig.getDataObject(), dirName);
+    Set<String> remoteReleases = storageUtil.getRemoteReleaseVersions(configData, dirName);
     // Get all local full paths
     Map<String, ReleaseContainer> localReleaseContainers =
         releaseManager.getAllLocalReleaseContainersByVersion();
@@ -177,10 +186,7 @@ public class CreateContinuousBackup extends AbstractTaskBase {
               .forEach(
                   release -> {
                     storageUtil.uploadYBDBRelease(
-                        customerConfig.getDataObject(),
-                        new File(release),
-                        dirName,
-                        container.getVersion());
+                        configData, new File(release), dirName, container.getVersion());
                   });
         });
     // Cleanup backups

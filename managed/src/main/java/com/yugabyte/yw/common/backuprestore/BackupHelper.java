@@ -87,6 +87,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -558,24 +559,159 @@ public class BackupHelper {
       // and must keep its native identity; stamping an audience there would make it build an
       // AWS-IMDS external_account credential it cannot satisfy.
       if (GCPUtil.isCrossCloudFederationConfig(gcs) && !ybaRunsOn(CloudType.gcp)) {
-        CrossCloudFederationTarget target =
-            resolveCrossCloudFederationTarget(universe, CloudType.gcp);
-        if (target != null) {
-          gcs.crossCloudFederationAudience = target.audience;
-        }
+        stampFederationTarget(gcs, resolveCrossCloudFederationTarget(universe, CloudType.gcp));
       }
     } else if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
       if (AWSUtil.isCrossCloudFederationConfig(s3) && ybaRunsOn(CloudType.aws)) {
         useYbaIamRole(s3);
       } else if (AWSUtil.isCrossCloudFederationConfig(s3)) {
-        CrossCloudFederationTarget target =
-            resolveCrossCloudFederationTarget(universe, CloudType.aws);
-        if (target != null) {
-          s3.crossCloudFederationAudience = target.audience;
-          s3.crossCloudFederationRoleArn = target.roleArn;
-        }
+        stampFederationTarget(s3, resolveCrossCloudFederationTarget(universe, CloudType.aws));
       }
+    }
+  }
+
+  /**
+   * Has YBA reach a federated bucket with its own identity, for the work YBA does on the bucket
+   * itself: the continuous YBA backup and its restore, which have no universe, and backup deletion.
+   * With YBA on the bucket's cloud that is its native identity. Otherwise YBA federates with the
+   * provider entry for the bucket's cloud: the universe's when it has one, else the one entry the
+   * customer's providers agree on. The second is what lets a YBA that HA promoted on the other
+   * cloud reach a bucket the universe reaches natively, such as an AWS universe's S3 bucket from a
+   * YBA on GCP. YBA presents its own host identity with that entry, so the entry's AWS role (S3) or
+   * workload identity pool (GCS) must also admit YBA, not only the DB nodes.
+   *
+   * @return false when YBA runs on another cloud than the bucket's and found no entry for it, so it
+   *     has no way to reach the bucket. With the host cloud unknown the config is left as it is, as
+   *     before, and true is returned.
+   */
+  public boolean applyYbaFederatedIdentity(
+      CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
+    CloudType bucketCloud = federatedBucketCloud(configData);
+    if (bucketCloud == null || hasOwnCredentials(configData)) {
+      return true;
+    }
+    if (ybaRunsOn(bucketCloud)) {
+      if (configData instanceof CustomerConfigStorageS3Data) {
+        useYbaIamRole((CustomerConfigStorageS3Data) configData);
+      }
+      return true;
+    }
+    CrossCloudFederationTarget target = resolveCrossCloudFederationTarget(universe, bucketCloud);
+    if (target == null) {
+      target = resolveCustomerFederationTarget(customerUUID, bucketCloud);
+    }
+    if (target != null) {
+      stampFederationTarget(configData, target);
+      return true;
+    }
+    return hostCloudDetector.getHostCloud().isEmpty();
+  }
+
+  /**
+   * {@link #applyYbaFederatedIdentity} for work that cannot go on without the bucket. Fails with
+   * what to change, instead of leaving the client to fall back to the default credentials of the
+   * bucket's cloud, which fail on YBA's cloud with an unrelated error.
+   */
+  public void requireYbaFederatedIdentity(CustomerConfig config, CustomerConfigData configData) {
+    if (applyYbaFederatedIdentity(configData, config.getCustomerUUID(), null /* universe */)) {
+      return;
+    }
+    CloudType bucketCloud = federatedBucketCloud(configData);
+    throw new PlatformServiceException(
+        BAD_REQUEST,
+        String.format(
+            "YBA runs on %s and cannot reach the %s bucket of storage config %s: no provider has"
+                + " a usable %s entry in its federated IAM targets, or providers have different"
+                + " ones. Add one whose %s also admits this YBA, or use a bucket YBA can reach"
+                + " natively.",
+            hostCloudDetector.getHostCloud().map(CloudType::name).orElse("another cloud"),
+            bucketCloud == CloudType.aws ? "S3" : "GCS",
+            config.getConfigName(),
+            bucketCloud,
+            bucketCloud == CloudType.aws ? "AWS role" : "workload identity pool"));
+  }
+
+  /** Cloud of the bucket when its config turns on cross-cloud federation, else null. */
+  @Nullable
+  private static CloudType federatedBucketCloud(CustomerConfigData configData) {
+    if (configData instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) configData)) {
+      return CloudType.aws;
+    }
+    if (configData instanceof CustomerConfigStorageGCSData
+        && GCPUtil.isCrossCloudFederationConfig((CustomerConfigStorageGCSData) configData)) {
+      return CloudType.gcp;
+    }
+    return null;
+  }
+
+  /**
+   * Whether the config carries credentials of its own, which YBA keeps using wherever it runs: S3
+   * access keys, or a GCS service account key (no GCP IAM).
+   */
+  private static boolean hasOwnCredentials(CustomerConfigData configData) {
+    if (configData instanceof CustomerConfigStorageS3Data) {
+      return StringUtils.isNotBlank(((CustomerConfigStorageS3Data) configData).awsAccessKeyId);
+    }
+    return configData instanceof CustomerConfigStorageGCSData
+        && !((CustomerConfigStorageGCSData) configData).useGcpIam;
+  }
+
+  /** Puts a provider's federation entry on the in-memory config; no-op when there is none. */
+  private static void stampFederationTarget(
+      CustomerConfigData configData, @Nullable CrossCloudFederationTarget target) {
+    if (target == null) {
+      return;
+    }
+    if (configData instanceof CustomerConfigStorageGCSData) {
+      ((CustomerConfigStorageGCSData) configData).crossCloudFederationAudience = target.audience;
+    } else if (configData instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+      s3.crossCloudFederationAudience = target.audience;
+      s3.crossCloudFederationRoleArn = target.roleArn;
+    }
+  }
+
+  /**
+   * The federation entry for {@code targetCloud} that the customer's providers agree on, or null
+   * when none has one or they have different ones: YBA cannot tell which of those admits it.
+   */
+  @Nullable
+  CrossCloudFederationTarget resolveCustomerFederationTarget(
+      @Nullable UUID customerUUID, CloudType targetCloud) {
+    if (customerUUID == null) {
+      return null;
+    }
+    List<CrossCloudFederationTarget> targets =
+        Provider.getAll(customerUUID).stream()
+            .map(p -> providerFederationTarget(p, targetCloud))
+            .filter(Objects::nonNull)
+            .distinct()
+            .collect(Collectors.toList());
+    if (targets.size() > 1) {
+      log.warn(
+          "Providers have {} different federated IAM entries for {}; YBA cannot tell which one"
+              + " admits it",
+          targets.size(),
+          targetCloud);
+      return null;
+    }
+    return targets.isEmpty() ? null : targets.get(0);
+  }
+
+  /** One provider's entry, or null when it has none or its settings cannot be read. */
+  @Nullable
+  private static CrossCloudFederationTarget providerFederationTarget(
+      Provider provider, CloudType targetCloud) {
+    try {
+      return CloudInfoInterface.getCrossCloudFederationTarget(provider, targetCloud);
+    } catch (Exception e) {
+      log.warn(
+          "Could not read the federated IAM settings of provider {}: {}",
+          provider.getUuid(),
+          e.getMessage());
+      return null;
     }
   }
 
@@ -583,9 +719,10 @@ public class BackupHelper {
    * Stamps onto {@code configData} the federation identity YBA needs to reach this backup's bucket
    * itself, for deletion. Prefers the snapshot taken when the backup was created, which survives
    * deletion of the universe and its provider; falls back to the live universe for backups taken
-   * before the snapshot existed. With YBA on the bucket's cloud the snapshot is ignored and nothing
-   * is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS that
-   * means switching it to YBA's IAM role. No-op for a config that is not federated.
+   * before the snapshot existed, then to the customer's providers (see {@link
+   * #applyYbaFederatedIdentity}). With YBA on the bucket's cloud the snapshot is ignored and
+   * nothing is stamped, so YBA uses its native identity; for a keyless S3 config on confirmed AWS
+   * that means switching it to YBA's IAM role. No-op for a config that is not federated.
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup) {
@@ -615,8 +752,12 @@ public class BackupHelper {
     } else {
       return;
     }
-    Universe.maybeGet(backup.getUniverseUUID())
-        .ifPresent(u -> applyCrossCloudFederationAudience(configData, u));
+    // No snapshot: the backup predates it, or its universe's provider has no entry for the bucket's
+    // cloud, as for an AWS universe's S3 backup deleted by a YBA that HA promoted on GCP.
+    applyYbaFederatedIdentity(
+        configData,
+        backup.getCustomerUUID(),
+        Universe.maybeGet(backup.getUniverseUUID()).orElse(null));
   }
 
   /**
