@@ -50,6 +50,16 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
     return Status::OK();
   }
 
+  // Corrupt pg_class.relchecks for a given table.
+  Status CorruptRelchecks(PGConn& conn, const std::string& table_name, int new_relchecks) {
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "UPDATE pg_class SET relchecks = $0 WHERE relname = '$1'",
+        new_relchecks, table_name));
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+    return Status::OK();
+  }
+
   // Run a DDL on a separate table to bump catalog version and invalidate the
   // relcache init file.
   Status InvalidateRelcacheInitFile(PGConn& conn) {
@@ -205,6 +215,49 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
     LOG(INFO) << "After fix, query result: " << rows;
   }
 
+  /*
+   * relchecks higher than the table's CHECK rows in pg_constraint (#37715). Like upstream
+   * PostgreSQL, building the relcache entry only warns, so connections and reads work, and
+   * writes to the table fail in ExecRelCheck. Before the fix, a preload of the table raised an
+   * ERROR that left a half-filled CHECK array behind, and the system-only retry crashed the
+   * backend freeing it.
+   */
+  void RunRelchecksHigherTest(const std::string& table_name) {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateFullSchema(setup_conn));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (col1 int CHECK (col1 > 0), col2 int)", table_name));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", table_name));
+
+    ASSERT_OK(CorruptRelchecks(setup_conn, table_name, 2));
+    ASSERT_OK(InvalidateRelcacheInitFile(setup_conn));
+
+    auto result = ASSERT_RESULT(TimedConnectAndQuery("SELECT 1"));
+    LOG(INFO) << "Connection + simple query took " << result.elapsed;
+
+    VerifyFullSchema(result.conn);
+
+    auto rows = ASSERT_RESULT(result.conn.FetchAllAsString(
+        Format("SELECT col1 + col2 FROM $0 ORDER BY col2", table_name)));
+    ASSERT_EQ(rows, "3; 7");
+
+    auto status = result.conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 6)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "1 pg_constraint record(s) missing");
+
+    // InvalidateRelcacheInitFile is a no-op the second time, and without a new catalog version
+    // the next preload can read the old relchecks. It no longer fails on it, so nothing would
+    // rebuild the entry.
+    ASSERT_OK(CorruptRelchecks(setup_conn, table_name, 1));
+    ASSERT_OK(IncrementAllDBCatalogVersions(setup_conn, IsBreakingCatalogVersionChange::kTrue));
+
+    auto verify_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(verify_conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 6)", table_name));
+    status = verify_conn.ExecuteFormat("INSERT INTO $0 VALUES (-1, 0)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "violates check constraint");
+  }
+
   void RunPartitionTwoDefaultsTest() {
     auto setup_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateFullSchema(setup_conn));
@@ -275,6 +328,14 @@ TEST_F(PgRelcacheFaultToleranceTest, RelnattsHigher) {
 
 TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelnattsHigher) {
   RunRelnattsHigherTest("t_relnatts_high");
+}
+
+TEST_F(PgRelcacheFaultToleranceTest, RelchecksHigher) {
+  RunRelchecksHigherTest("t_relchecks_high");
+}
+
+TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelchecksHigher) {
+  RunRelchecksHigherTest("t_relchecks_high");
 }
 
 TEST_F(PgRelcacheFaultToleranceTest, PartitionTwoDefaults) {
