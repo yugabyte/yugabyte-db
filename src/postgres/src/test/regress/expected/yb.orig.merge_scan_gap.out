@@ -92,13 +92,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 -- written: it chains the members of the class of ord1, gap, and d in the order
 -- the clauses bring them in, generates an equality for each link, and pushes an
 -- equality to the index only when it references index columns alone (see
--- #37785).
+-- #38120).
 -- - ord1 = d AND gap = d generates ord1 = d and d = gap, both pushed to the
 --   table, so a filter ties gap only at the table read.
 -- - ord1 = d AND ord1 = gap generates the same equalities, so the ord1 = gap it
 --   writes does not run on the index.
 -- - ord1 = gap AND ord1 = d generates ord1 = gap, which runs on the index,
 --   within each stream, before the merge, and gap = d.
+-- TODO(#38120): the first two queries should run ord1 = gap on the index.
 -- TODO(#37785): the last query should not merge on gap.
 CREATE TABLE gap_idx_tbl (k int, bkt int, ord1 int, gap int, ord2 int, d int,
     PRIMARY KEY (k ASC));
