@@ -21,12 +21,15 @@ are patched, so no Spark cluster (or pyspark) is exercised. Only the driver-side
 logic is under test.
 """
 
+import hashlib
+import io
 import os
+import subprocess
 import sys
 import threading
 import time
 import types
-from typing import Any, List, Set
+from typing import Any, List, Optional, Set
 
 import pytest
 
@@ -1894,3 +1897,214 @@ def test_a_cancelled_main_pass_repeats_nothing(monkeypatch: pytest.MonkeyPatch) 
         make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, True)
 
     assert submissions == []
+
+
+# The worker archive through GCS (YB_SPARK_ARCHIVE_GCS_PREFIX).
+
+ARCHIVE_SHA = 'ab' * 32
+
+
+def make_archive_conf(tmp_path: Any, sha: str = ARCHIVE_SHA) -> yb_dist_tests.TestConfig:
+    archive = tmp_path / 'archive_for_tests_on_spark.tar.gz.spark-no-extract'
+    archive.write_bytes(b'archive')
+    return yb_dist_tests.TestConfig(
+        build_root=str(tmp_path / 'src' / 'build' / 'debug-clang21-dynamic-ninja'),
+        build_type='debug',
+        yb_src_root=str(tmp_path / 'src'),
+        archive_for_workers=str(archive),
+        rel_build_root='build/debug-clang21-dynamic-ninja',
+        archive_sha256sum=sha,
+        compiler_type='clang21')
+
+
+GCS_PREFIX = 'gs://a-bucket/spark-archives/'
+
+
+@pytest.fixture
+def gcs_publish(monkeypatch: pytest.MonkeyPatch) -> List[List[str]]:
+    """Linux on GCE, no object in GCS yet; returns the gcloud copy commands run."""
+    copies: List[List[str]] = []
+    monkeypatch.setattr(rts, 'is_macos', lambda: False)
+    monkeypatch.setattr(rts, 'running_on_gce', lambda: True)
+    monkeypatch.setattr(rts, 'gcs_object_age_sec', lambda url: None)
+    monkeypatch.setattr(rts.subprocess, 'check_call', lambda args: copies.append(args))
+    return copies
+
+
+def test_the_archive_is_published_and_kept_out_of_spark(
+        gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    url = 'gs://a-bucket/spark-archives/%s.tar.gz' % ARCHIVE_SHA
+    assert conf.archive_gcs_url == url
+    assert gcs_publish == [['gcloud', 'storage', 'cp', conf.archive_for_workers, url]]
+    assert not rts.archive_sent_through_spark(conf)
+
+
+def test_a_recent_object_is_reused(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    monkeypatch.setattr(rts, 'gcs_object_age_sec', lambda url: 600.0)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is not None
+    assert gcs_publish == []
+
+
+def test_an_old_object_is_uploaded_again(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    """A lifecycle rule could delete it during the run, so it is replaced, which resets its age."""
+    monkeypatch.setattr(rts, 'gcs_object_age_sec',
+                        lambda url: rts.ARCHIVE_GCS_MAX_REUSE_AGE_SEC + 1.0)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert len(gcs_publish) == 1
+
+
+def test_a_failed_upload_falls_back_to_spark(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    def failing_copy(args: List[str]) -> None:
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(rts.subprocess, 'check_call', failing_copy)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is None
+    assert rts.archive_sent_through_spark(conf)
+
+
+@pytest.mark.parametrize(
+    'prefix', [None, '', 'a-bucket/spark-archives', 's3://a-bucket/spark-archives'])
+def test_without_a_gs_prefix_nothing_is_uploaded(
+        gcs_publish: List[List[str]], tmp_path: Any, prefix: Optional[str]) -> None:
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, prefix)
+    assert conf.archive_gcs_url is None
+    assert gcs_publish == []
+
+
+def test_macos_keeps_the_spark_path(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    monkeypatch.setattr(rts, 'is_macos', lambda: True)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is None
+    assert gcs_publish == []
+
+
+def test_off_gce_keeps_the_spark_path(
+        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
+    """Workers outside GCP (the AWS clusters) never download from GCS: the archive stays local."""
+    monkeypatch.setattr(rts, 'running_on_gce', lambda: False)
+    conf = make_archive_conf(tmp_path)
+    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
+    assert conf.archive_gcs_url is None
+    assert gcs_publish == []
+    assert rts.archive_sent_through_spark(conf)
+
+
+class FakeMetadataResponse(io.BytesIO):
+    def __init__(self, flavor: Optional[str]) -> None:
+        super().__init__(b'1234')
+        self.headers = {'Metadata-Flavor': flavor} if flavor else {}
+
+
+@pytest.mark.parametrize('answer,expected', [
+    (FakeMetadataResponse('Google'), True),
+    (FakeMetadataResponse(None), False),
+    (OSError('Name or service not known'), False),
+])
+def test_running_on_gce_asks_the_metadata_server(
+        monkeypatch: pytest.MonkeyPatch, answer: Any, expected: bool) -> None:
+    def fake_urlopen(request: Any, timeout: float) -> Any:
+        assert request.full_url == rts.GCE_METADATA_INSTANCE_ID_URL
+        assert timeout <= 1
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, 'urlopen', fake_urlopen)
+    rts.running_on_gce.cache_clear()
+    try:
+        assert rts.running_on_gce() is expected
+    finally:
+        rts.running_on_gce.cache_clear()
+
+
+def test_parse_gcs_url() -> None:
+    assert rts.parse_gcs_url('gs://a-bucket/a/b.tar.gz') == ('a-bucket', 'a/b.tar.gz')
+    for bad in ['s3://a-bucket/b', 'gs://a-bucket', 'gs:///b', 'a-bucket/b']:
+        with pytest.raises(ValueError):
+            rts.parse_gcs_url(bad)
+
+
+def fake_gcs(monkeypatch: pytest.MonkeyPatch, content: bytes) -> List[str]:
+    """Fakes the metadata server and GCS; returns the URLs requested."""
+    requested: List[str] = []
+
+    def fake_urlopen(request: Any, timeout: float) -> io.BytesIO:
+        requested.append(request.full_url)
+        if request.full_url == rts.GCE_METADATA_TOKEN_URL:
+            assert request.get_header('Metadata-flavor') == 'Google'
+            return io.BytesIO(b'{"access_token": "a-token"}')
+        assert request.get_header('Authorization') == 'Bearer a-token'
+        return io.BytesIO(content)
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, 'urlopen', fake_urlopen)
+    monkeypatch.setattr(rts.time, 'sleep', lambda sec: None)
+    return requested
+
+
+def test_the_download_is_checked_and_moved_into_place(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    content = b'the archive bytes' * 1000
+    requested = fake_gcs(monkeypatch, content)
+    dest = tmp_path / 'archive.tar.gz'
+    rts.download_archive_from_gcs(
+        'gs://a-bucket/spark-archives/x.tar.gz', str(dest), hashlib.sha256(content).hexdigest())
+    assert dest.read_bytes() == content
+    assert requested[-1] == ('https://storage.googleapis.com/storage/v1/b/a-bucket/o/'
+                             'spark-archives%2Fx.tar.gz?alt=media')
+    assert os.listdir(tmp_path) == ['archive.tar.gz']
+
+
+def test_a_corrupt_download_is_retried_then_refused(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    requested = fake_gcs(monkeypatch, b'truncated')
+    dest = tmp_path / 'archive.tar.gz'
+    with pytest.raises(IOError):
+        rts.download_archive_from_gcs('gs://a-bucket/x.tar.gz', str(dest), ARCHIVE_SHA)
+    # A token and a download per attempt, and nothing left behind.
+    assert len(requested) == 2 * rts.GCS_DOWNLOAD_ATTEMPTS
+    assert os.listdir(tmp_path) == []
+
+
+def test_an_extracted_tree_needs_no_download(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    os.makedirs(conf.yb_src_root)
+    with open(os.path.join(conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME), 'w') as sha_file:
+        sha_file.write(ARCHIVE_SHA + '\n')
+
+    def fail(*args: Any) -> None:
+        raise AssertionError("must not download")
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', fail)
+    rts.fetch_archive_from_gcs_if_needed(
+        conf, str(tmp_path / 'fetched.tar.gz'), str(tmp_path / 'lock'))
+
+
+def test_a_different_tree_triggers_the_download(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    conf = make_archive_conf(tmp_path)
+    conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    os.makedirs(conf.yb_src_root)
+    with open(os.path.join(conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME), 'w') as sha_file:
+        sha_file.write('cd' * 32)
+    downloads: List[Any] = []
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', lambda *args: downloads.append(args))
+    dest = str(tmp_path / 'fetched.tar.gz')
+    rts.fetch_archive_from_gcs_if_needed(conf, dest, str(tmp_path / 'lock'))
+    assert downloads == [('gs://a-bucket/x.tar.gz', dest, ARCHIVE_SHA)]

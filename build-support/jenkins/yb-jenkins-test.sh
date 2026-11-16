@@ -218,6 +218,11 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         fi
       fi
       run_tests_extra_args+=( "--send_archive_to_workers" )
+      # A gs:// prefix from the pipeline: the workers download the archive from there instead of
+      # all fetching it from this host through Spark. Without it the archive goes through Spark.
+      if [[ -n "${YB_SPARK_ARCHIVE_GCS_PREFIX:-}" ]]; then
+        run_tests_extra_args+=( "--archive_gcs_prefix" "$YB_SPARK_ARCHIVE_GCS_PREFIX" )
+      fi
 
       # Workers use /private path, which caused mis-match when check is done by yb_dist_tests that
       # YB_MVN_LOCAL_REPO is in source tree. So unsetting value here to allow default.

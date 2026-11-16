@@ -212,6 +212,15 @@ THREAD_JOIN_TIMEOUT_SEC = 10
 
 ARCHIVE_SHA_FILE_NAME = 'extracted_from_archive.sha256'
 
+# An archive already in GCS is reused only while younger than this, so a bucket lifecycle rule that
+# deletes old objects cannot remove it in the middle of a run.
+ARCHIVE_GCS_MAX_REUSE_AGE_SEC = 24 * 3600
+GCE_METADATA_TOKEN_URL = (
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token')
+GCE_METADATA_INSTANCE_ID_URL = 'http://metadata.google.internal/computeMetadata/v1/instance/id'
+GCS_DOWNLOAD_ATTEMPTS = 3
+GCS_DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
 UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
 set -euo pipefail
 (
@@ -370,7 +379,8 @@ def init_spark_context(conf: yb_dist_tests.TestConfig,
             '-x', '*.sw?', '-x', '*.pyc']
         subprocess.check_call(zip_cmd_args, cwd=os.path.join(conf.yb_src_root, 'python'))
         spark_context.addPyFile(yb_python_zip_path)
-    if conf.archive_for_workers is not None:
+    if archive_sent_through_spark(conf):
+        assert conf.archive_for_workers is not None
         remember_archive_for_workers(conf.archive_for_workers)
     # Send every remembered archive, not just this conf's. A re-created context starts with nothing
     # distributed, and the baseline tree's archive went to the context this one replaces -
@@ -384,6 +394,162 @@ def init_spark_context(conf: yb_dist_tests.TestConfig,
 def remember_archive_for_workers(archive_path: str) -> None:
     if archive_path not in g_spark_archives:
         g_spark_archives.append(archive_path)
+
+
+# Whether conf's archive reaches the workers through Spark's addFile. An archive the driver
+# published to GCS is not: Spark copies every added file to every executor before its first task,
+# needed or not, so adding it as well would bring back the transfer the GCS path avoids.
+def archive_sent_through_spark(conf: yb_dist_tests.TestConfig) -> bool:
+    return conf.archive_for_workers is not None and conf.archive_gcs_url is None
+
+
+def gcs_object_age_sec(gcs_url: str) -> Optional[float]:
+    """Age of the GCS object in seconds, or None if it does not exist or cannot be described."""
+    result = subprocess.run(
+        ['gcloud', 'storage', 'objects', 'describe', gcs_url,
+         '--format=value(creation_time)'],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    created = result.stdout.strip()
+    if result.returncode != 0 or not created:
+        return None
+    try:
+        created_at = datetime.fromisoformat(created.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    return time.time() - created_at.timestamp()
+
+
+# Whether this host is a GCE VM, from its metadata server. The archive goes through GCS only when
+# the driver runs on GCE, so it never crosses clouds: Spark workers outside GCP (the AWS clusters)
+# would pay for every download and have no metadata server to get credentials from.
+@functools.lru_cache(maxsize=1)
+def running_on_gce() -> bool:
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        GCE_METADATA_INSTANCE_ID_URL, headers={'Metadata-Flavor': 'Google'})
+    try:
+        with urllib.request.urlopen(request, timeout=1) as response:
+            return bool(response.headers.get('Metadata-Flavor') == 'Google')
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def publish_archive_to_gcs(conf: yb_dist_tests.TestConfig, prefix: Optional[str]) -> None:
+    """
+    Uploads conf's worker archive under the gs:// prefix (--archive_gcs_prefix), named by its
+    checksum, and records its URL in conf.archive_gcs_url, so that the workers download it from GCS
+    instead of all fetching it from the driver through Spark's file server, where the driver's
+    network link is the limit. Best-effort: without the prefix, on macOS, off GCE, or if the
+    upload fails, the URL stays unset and the archive goes through Spark as before.
+    """
+    prefix = (prefix or '').strip()
+    if not prefix or is_macos() or not conf.archive_for_workers or not conf.archive_sha256sum:
+        return
+    if not prefix.startswith('gs://'):
+        logging.warning("--archive_gcs_prefix %s is not a gs:// URL, sending the archive through "
+                        "Spark", prefix)
+        return
+    if not running_on_gce():
+        logging.info("Not running on GCE, sending the archive through Spark instead of %s", prefix)
+        return
+    gcs_url = '%s/%s.tar.gz' % (prefix.rstrip('/'), conf.archive_sha256sum)
+    start_time_sec = time.time()
+    try:
+        age_sec = gcs_object_age_sec(gcs_url)
+        reused = age_sec is not None and age_sec < ARCHIVE_GCS_MAX_REUSE_AGE_SEC
+        if not reused:
+            subprocess.check_call(['gcloud', 'storage', 'cp', conf.archive_for_workers, gcs_url])
+    except (OSError, subprocess.CalledProcessError) as error:
+        logging.warning("Could not upload %s to %s, sending it through Spark instead: %s",
+                        conf.archive_for_workers, gcs_url, error)
+        return
+    conf.archive_gcs_url = gcs_url
+    logging.info("Workers will download the archive from %s (%s, %.1f sec)", gcs_url,
+                 'already there' if reused else 'uploaded', time.time() - start_time_sec)
+
+
+def parse_gcs_url(gcs_url: str) -> Tuple[str, str]:
+    if not gcs_url.startswith('gs://'):
+        raise ValueError("Not a gs:// URL: %s" % gcs_url)
+    bucket, _, object_name = gcs_url[len('gs://'):].partition('/')
+    if not bucket or not object_name:
+        raise ValueError("No bucket or object name in %s" % gcs_url)
+    return bucket, object_name
+
+
+# Runs on a Spark worker. Streams the object to dest_path with the worker VM's own service account
+# (from the GCE metadata server, so the worker needs no key file), hashing it on the way, and moves
+# it into place only if the checksum matches. Retries a few times before giving up.
+def download_archive_from_gcs(gcs_url: str, dest_path: str, expected_sha256sum: str) -> None:
+    import hashlib
+    import urllib.parse
+    import urllib.request
+
+    bucket, object_name = parse_gcs_url(gcs_url)
+    media_url = 'https://storage.googleapis.com/storage/v1/b/%s/o/%s?alt=media' % (
+        urllib.parse.quote(bucket, safe=''), urllib.parse.quote(object_name, safe=''))
+    last_error: Optional[Exception] = None
+    for attempt in range(1, GCS_DOWNLOAD_ATTEMPTS + 1):
+        tmp_path = '%s.download.%d' % (dest_path, random.randint(0, 2**32))
+        start_time_sec = time.time()
+        try:
+            token_request = urllib.request.Request(
+                GCE_METADATA_TOKEN_URL, headers={'Metadata-Flavor': 'Google'})
+            with urllib.request.urlopen(token_request, timeout=30) as token_response:
+                access_token = json.load(token_response)['access_token']
+            media_request = urllib.request.Request(
+                media_url, headers={'Authorization': 'Bearer ' + access_token})
+            sha256 = hashlib.sha256()
+            with urllib.request.urlopen(media_request, timeout=300) as response, \
+                    open(tmp_path, 'wb') as output_file:
+                while True:
+                    chunk = response.read(GCS_DOWNLOAD_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    sha256.update(chunk)
+                    output_file.write(chunk)
+            actual_sha256sum = sha256.hexdigest()
+            if actual_sha256sum != expected_sha256sum:
+                raise IOError("SHA256 sum of %s is %s, expected %s" % (
+                    gcs_url, actual_sha256sum, expected_sha256sum))
+            os.replace(tmp_path, dest_path)
+            logging.info("Downloaded %s in %.1f sec", gcs_url, time.time() - start_time_sec)
+            return
+        except Exception as error:
+            last_error = error
+            logging.warning("Attempt %d of %d to download %s failed: %s",
+                            attempt, GCS_DOWNLOAD_ATTEMPTS, gcs_url, error)
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            if attempt < GCS_DOWNLOAD_ATTEMPTS:
+                time.sleep(5 * attempt)
+    raise IOError("Could not download %s: %s" % (gcs_url, last_error))
+
+
+# Runs on a Spark worker, before the untar script. Downloads conf's archive from GCS to
+# archive_path, unless the tree extracted from it is already in place (the untar script then skips
+# extraction and never reads the archive) or another task already downloaded it. Holds the untar
+# script's lock (flock on the same file), so the two never overlap.
+def fetch_archive_from_gcs_if_needed(
+        conf: yb_dist_tests.TestConfig, archive_path: str, lock_path: str) -> None:
+    import fcntl
+
+    assert conf.archive_gcs_url is not None and conf.archive_sha256sum is not None
+    with open(lock_path, 'a') as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            sha_file_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
+            if os.path.isfile(sha_file_path):
+                with open(sha_file_path) as sha_file:
+                    if sha_file.read().strip() == conf.archive_sha256sum:
+                        return
+            if os.path.exists(archive_path):
+                return
+            download_archive_from_gcs(conf.archive_gcs_url, archive_path, conf.archive_sha256sum)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 # Distributes every remembered archive to the current context. Called on each context creation, so a
@@ -766,8 +932,14 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig,
 
     worker_tmp_dir = os.path.abspath(SparkFiles.getRootDirectory())
     archive_path = os.path.join(worker_tmp_dir, archive_name)
+    lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
+            conf.yb_src_root.replace('/', '__'))
     if not os.path.exists(archive_path):
-        raise IOError("Archive not found: %s" % archive_path)
+        if conf.archive_gcs_url:
+            # Not sent through Spark: download it, unless the extracted tree is already in place.
+            fetch_archive_from_gcs_if_needed(conf, archive_path, lock_path)
+        else:
+            raise IOError("Archive not found: %s" % archive_path)
     # We install the code into the same path where it was installed on the main build node (Jenkins
     # worker or dev server), but put it in as separate variable to have flexibility to change it
     # later.
@@ -785,8 +957,6 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig,
         # We also copy the temporary script here for later reference.
         untar_script_path_for_reference = os.path.join(
                 worker_tmp_dir, 'untar_archive_once.sh')
-        lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
-                conf.yb_src_root.replace('/', '__'))
         bash_shebang = get_bash_shebang()
         with open(untar_script_path, 'w') as untar_script_file:
             # Do the locking using the flock command in Bash -- file locking in Python is painful.
@@ -1635,7 +1805,8 @@ def filter_already_run_on_baseline(
 # Runs once during setup, before the Spark context exists, so the driver does not hold an idle
 # context while tar runs.
 def prepare_baseline_conf_and_archive(
-        baseline_build_root: str, send_archive_to_workers: bool) -> yb_dist_tests.TestConfig:
+        baseline_build_root: str, send_archive_to_workers: bool,
+        archive_gcs_prefix: Optional[str] = None) -> yb_dist_tests.TestConfig:
     conf = yb_dist_tests.make_conf_for_build_root(
         baseline_build_root, send_archive_to_workers,
         yb_dist_tests.BASELINE_ARCHIVE_FOR_WORKERS_NAME)
@@ -1643,6 +1814,7 @@ def prepare_baseline_conf_and_archive(
     if send_archive_to_workers:
         # Include the baseline tree's own Maven repo, as its build recorded it.
         create_archive_and_record_checksum(conf, get_mvn_local_repo(conf.build_root))
+        publish_archive_to_gcs(conf, archive_gcs_prefix)
 
     return conf
 
@@ -2233,6 +2405,11 @@ def main() -> None:
                         help='When --send_archive_to_workers is specified, use this option to '
                              're-create the archive that we would send to workers even if it '
                              'already exists.')
+    parser.add_argument('--archive_gcs_prefix',
+                        help='A gs:// prefix. With --send_archive_to_workers, upload the archive '
+                             'there and have the workers download it from GCS instead of '
+                             'receiving it through Spark from this host. Ignored on macOS and '
+                             'off GCE; if the upload fails, the archive goes through Spark.')
     parser.add_argument('--max-num-test_failures', type=int, dest='max_num_test_failures',
                         default=None,
                         help='Maximum number of test failures before aborting the Spark test job.'
@@ -2423,6 +2600,7 @@ def main() -> None:
             create_archive_and_record_checksum(conf, mvn_local_repo)
         else:
             yb_dist_tests.compute_archive_sha256sum(conf)
+        publish_archive_to_gcs(conf, args.archive_gcs_prefix)
 
     # Same for the baseline tree, if the failed tests are going to run on it. Best-effort like the
     # rest of the baseline work: anything wrong with that tree (an out-of-tree Maven repo, a partial
@@ -2431,7 +2609,7 @@ def main() -> None:
     if args.baseline_build_root:
         try:
             baseline_conf = prepare_baseline_conf_and_archive(
-                args.baseline_build_root, args.send_archive_to_workers)
+                args.baseline_build_root, args.send_archive_to_workers, args.archive_gcs_prefix)
         except Exception:
             logging.exception("Could not prepare the baseline build at %s for the workers; "
                               "not running the failed tests on it", args.baseline_build_root)
@@ -2500,7 +2678,11 @@ def main() -> None:
         app_name_details += ['{} repetitions of {} tests'.format(num_repetitions, spark_test_cnt)]
     init_spark_context(conf, app_name_details)
 
-    if baseline_conf is not None and baseline_conf.archive_for_workers is not None:
+    if baseline_conf is not None and baseline_conf.archive_gcs_url is not None:
+        # Only the workers that run a task on the baseline tree download it, when they get one.
+        logging.info("Baseline test run: enabled; workers download the baseline archive from %s",
+                     baseline_conf.archive_gcs_url)
+    elif baseline_conf is not None and baseline_conf.archive_for_workers is not None:
         # Send the baseline build's worker archive along with the diff's. Workers rebuild the
         # baseline tree at its own yb_src_root - a distinct path from the diff tree
         # (path-identity) - so both can be there at once. Without archives there is nothing to
