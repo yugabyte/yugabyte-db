@@ -695,23 +695,22 @@ class MasterHeartbeatITestThreeMasters : public YBMiniClusterTestBase<MiniCluste
   }
 };
 
-// The lock-free leader check used for heartbeat tablet reports must agree with the locked one
-// on every master, and follow a leader step-down on both sides.
+// The lock-free leader check used for heartbeat tablet reports passes on the leader, and fails on
+// a master that loses leadership while it holds the leader lock.
 TEST_F(MasterHeartbeatITestThreeMasters, LeaderRoleAndReadyTermFollowsLeadership) {
   auto check_all_masters = [this](master::MiniMaster* leader) {
     ASSERT_OK(leader->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
     for (size_t i = 0; i < cluster_->num_masters(); ++i) {
       auto* mini_master = cluster_->mini_master(i);
       SCOPED_LEADER_SHARED_LOCK(l, &mini_master->catalog_manager_impl());
-      auto s = mini_master->catalog_manager_impl().CheckLeaderRoleAndReadyTerm();
-      ASSERT_EQ(s.ok(), mini_master->catalog_manager().CheckIsLeaderAndReady().ok()) << s;
-      if (mini_master == leader) {
-        ASSERT_OK(s);
+      if (mini_master != leader) {
+        // A follower's lock is not held, so the check must not be called.
+        ASSERT_FALSE(l.IsInitializedAndIsLeader());
         continue;
       }
-      ASSERT_TRUE(s.IsIllegalState()) << s;
-      ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Not the leader");
-      ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Role: FOLLOWER");
+      ASSERT_TRUE(l.IsInitializedAndIsLeader());
+      ASSERT_OK(mini_master->catalog_manager_impl().CheckLeaderRoleAndReadyTerm());
+      ASSERT_OK(mini_master->catalog_manager().CheckIsLeaderAndReady());
     }
   };
 
@@ -721,11 +720,19 @@ TEST_F(MasterHeartbeatITestThreeMasters, LeaderRoleAndReadyTermFollowsLeadership
   // The mini cluster's simulated network puts the only tserver in the same group as the first two
   // masters; a leader elsewhere cannot reach it, and teardown's cluster check would then time out.
   auto* successor = cluster_->mini_master(leader == cluster_->mini_master(0) ? 1 : 0);
-  ASSERT_OK(StepDown(leader->tablet_peer(), successor->permanent_uuid(), ForceStepDown::kTrue));
-  ASSERT_OK(WaitFor([leader]() -> Result<bool> {
+  {
+    // Held across the step-down, like a heartbeat that started while this master was the leader.
     SCOPED_LEADER_SHARED_LOCK(l, &leader->catalog_manager_impl());
-    return !leader->catalog_manager_impl().CheckLeaderRoleAndReadyTerm().ok();
-  }, 10s, "old leader fails the lock-free leader check"));
+    ASSERT_TRUE(l.IsInitializedAndIsLeader());
+    ASSERT_OK(StepDown(leader->tablet_peer(), successor->permanent_uuid(), ForceStepDown::kTrue));
+    ASSERT_OK(WaitFor([leader]() -> Result<bool> {
+      return !leader->catalog_manager().CheckIsLeaderAndReady().ok();
+    }, 10s, "old leader fails the locked leader check"));
+    auto s = leader->catalog_manager_impl().CheckLeaderRoleAndReadyTerm();
+    ASSERT_TRUE(s.IsIllegalState()) << s;
+    ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Not the leader");
+    ASSERT_STR_CONTAINS(s.message().ToBuffer(), "Role: FOLLOWER");
+  }
 
   ASSERT_NO_FATALS(check_all_masters(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())));
 }

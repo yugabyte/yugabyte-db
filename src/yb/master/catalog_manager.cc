@@ -2325,6 +2325,7 @@ Status CatalogManager::CheckIsLeaderAndReady() const {
 }
 
 Status CatalogManager::CheckLeaderRoleAndReadyTerm() const {
+  AssertLeaderLockAcquiredForReading();
   const auto [role, term] = VERIFY_RESULT(tablet_peer()->GetRaftConsensus())->GetRoleAndTerm();
   if (PREDICT_FALSE(role != PeerRole::LEADER)) {
     return STATUS_FORMAT(
@@ -6121,7 +6122,7 @@ Status CatalogManager::GetPlacementLocalTransactionStatusTablets(
 Status CatalogManager::GetTransactionStatusTablets(
     const GetTransactionStatusTabletsRequestPB* req,
     GetTransactionStatusTabletsResponsePB* resp,
-    rpc::RpcContext *rpc) {
+    rpc::RpcContext *rpc) NO_THREAD_SAFETY_ANALYSIS {
   for (;;) {
     SCOPED_LEADER_SHARED_LOCK(lock, this);
     auto global_txn_table = VERIFY_RESULT(GetGlobalTransactionStatusTable());
