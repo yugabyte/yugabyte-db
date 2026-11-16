@@ -9,8 +9,10 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
@@ -170,7 +172,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
               if (oldMasterIp.equals(invocation.getArgument(0))) {
                 throw new RuntimeException("node agent unreachable");
               }
-              return null;
+              return upgradedNodeAgent(invocation.getArgument(0));
             });
 
     NodeTaskParams taskParams =
@@ -201,6 +203,9 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
     assertEquals(Boolean.TRUE, ignoreErrorsByNode.get("host-n1"));
     assertEquals(2, ignoreErrorsByNode.size());
     assertEquals(0, Collections.frequency(ignoreErrorsByNode.values(), Boolean.FALSE));
+    // The new master's refresh reaches its node-agent; ignoreErrors would hide a failure.
+    verify(mockNodeAgentClient)
+        .runInstallOtelCollector(argThat(n -> !oldMasterIp.equals(n.getIp())), any(), any());
     // The old-master refresh runs after the master address update, so a hung node cannot delay
     // it.
     int oldMasterRefresh =
@@ -286,7 +291,7 @@ public class MasterFailoverTaskTest extends CommissionerBaseTest {
               if (oldMasterIp.equals(invocation.getArgument(0))) {
                 throw new RuntimeException(new InterruptedException("aborted"));
               }
-              return null;
+              return upgradedNodeAgent(invocation.getArgument(0));
             });
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
