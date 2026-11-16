@@ -1,3 +1,4 @@
+test: detach-partition-concurrently-2
 test: yb.port.fk-partitioned-1
 test: propagate-lock-delete
 test: multiple-cic

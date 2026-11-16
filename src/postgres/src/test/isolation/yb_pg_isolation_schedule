@@ -23,3 +23,4 @@ test: nowait-3
 test: skip-locked
 test: skip-locked-2
 test: skip-locked-3
+test: partition-key-update-4
