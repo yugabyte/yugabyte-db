@@ -14,7 +14,9 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.table.TableInfoUtil;
+import com.yugabyte.yw.controllers.XClusterConfigController;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
@@ -65,15 +67,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     XClusterConfigEditFormData editFormData = taskParams().getEditFormData();
 
-    // Lock the source universe.
-    lockAndFreezeUniverseForUpdate(
-        sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
     boolean taskSucceeded = false;
     try {
-      // Lock the target universe.
+      // Lock the source universe.
       lockAndFreezeUniverseForUpdate(
-          targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
+          sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion(), null /* Txn callback */);
       try {
+        // Lock the target universe.
+        lockAndFreezeUniverseForUpdate(
+            targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
 
         // Check Auto flags on source and target universes while resuming xCluster.
         if (editFormData.status != null && editFormData.status.equals("Running")) {
@@ -139,6 +141,35 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             throw new IllegalArgumentException(
                 "The tables cannot be provided for DB scoped replication");
           }
+          // When the params were submitted via the deferred constructor (both table-id sets are
+          // null), compute the add/remove table sets and fetch table info from both universes
+          // here, under the source/target universe locks, instead of synchronously in the
+          // controller. This also performs the in-DB table bookkeeping writes
+          // (addTablesIfNotExist, etc.). When the sets were precomputed by the caller they are
+          // used as-is.
+          //
+          // The computation is re-run on every attempt (including retries) and the results are
+          // only kept in memory (mergeComputedSetTablesParams does not persist), so the stored
+          // task params never change across a retry. Because a retry recomputes the diff against
+          // the now partially-applied config, the state-dependent request validations ("no change"
+          // / "remove all") are only enforced on the first attempt; previousTaskUUID is null on
+          // the first run and set on retries.
+          if (taskParams().getTableIdsToAdd() == null
+              && taskParams().getTableIdsToRemove() == null) {
+            XClusterConfigTaskParams computed =
+                XClusterConfigController.getSetTablesTaskParams(
+                    ybService,
+                    xClusterConfig,
+                    sourceUniverse,
+                    targetUniverse,
+                    editFormData.tables,
+                    editFormData.bootstrapParams,
+                    editFormData.autoIncludeIndexTables,
+                    false /* dryRun */,
+                    taskParams().getPreviousTaskUUID() == null /* validateRequestedChange */);
+            taskParams().mergeComputedSetTablesParams(computed);
+          }
+
           if (!CollectionUtils.isEmpty(taskParams().getTableInfoList())) {
             createSubTaskToAddTables(xClusterConfig);
           }
@@ -186,12 +217,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       log.error("{} hit error : {}", getName(), e.getMessage());
       xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
       if (editFormData.tables != null) {
-        // Set tables in updating status to failed.
+        // Set tables in updating status to failed. The table-id sets may not have been computed
+        // yet if the task failed before or during the deferred set-tables computation.
+        Set<String> tableIdsToRemove =
+            Objects.requireNonNullElse(taskParams().getTableIdsToRemove(), Collections.emptySet());
         Set<String> tablesInPendingStatus =
             xClusterConfig.getTableIdsInStatus(
                 Stream.concat(
                         getTableIds(taskParams().getTableInfoList()).stream(),
-                        taskParams().getTableIdsToRemove().stream())
+                        tableIdsToRemove.stream())
                     .collect(Collectors.toSet()),
                 X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
         xClusterConfig.updateStatusForTables(

@@ -53,6 +53,51 @@
     x-yba-api-idempotent: true
     x-yba-api-since: 2026.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/storage-configs/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: pageListStorageConfigs
+    summary: List storage configurations (paged)
+    description: |
+      Returns the customer's storage configurations, without their secrets, with what uses each
+      one (info.usage). Rows are ordered by name (case-insensitive), then UUID.
+    tags:
+      - Storage Config
+    requestBody:
+      $ref: "../components/requestBodies/StorageConfigPagedReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/StorageConfigPagedResp.yaml"
+      '400':
+        description: 'Invalid input, such as a limit outside 1-500'
+      '401':
+        description: 'The request has no valid API or session token, cUUID is not the caller''s customer, or the caller''s role has no read permission on the customer'
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+      - authTokenAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/storage-configs/validate':
   parameters:
     - name: cUUID
@@ -129,7 +174,7 @@
   get:
     operationId: getStorageConfig
     summary: Get a storage configuration
-    description: 'Returns a storage configuration, without its secrets.'
+    description: 'Returns a storage configuration, without its secrets, with what uses it (info.usage).'
     tags:
       - Storage Config
     responses:
