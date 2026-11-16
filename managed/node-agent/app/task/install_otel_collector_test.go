@@ -98,21 +98,39 @@ func TestRootOtelCollectorInUse(t *testing.T) {
 	}
 }
 
+// Only a failed root stop may blame the sudoers rules; a failed state check never ran a stop.
 func TestOtelCollectorStillRunningError(t *testing.T) {
 	binary := "/home/yugabyte/otel-collector/otelcol-contrib"
 	tests := []struct {
-		rootStopFailed bool
-		wantCause      string
+		rootStop  rootOtelCollectorStop
+		wantCause string
 	}{
-		{true, "root-level"},
-		{false, "user systemd manager"},
+		{rootOtelCollectorStopFailed, "sudoers"},
+		{rootOtelCollectorStateUnknown, "could not be read"},
+		{rootOtelCollectorNotInUse, "user systemd manager"},
 	}
 	for _, tt := range tests {
-		msg := otelCollectorStillRunningError(binary, tt.rootStopFailed).Error()
+		msg := otelCollectorStillRunningError(binary, tt.rootStop).Error()
 		if !strings.Contains(msg, binary) || !strings.Contains(msg, tt.wantCause) {
-			t.Errorf("rootStopFailed=%v: error %q must name %s and %q",
-				tt.rootStopFailed, msg, binary, tt.wantCause)
+			t.Errorf("rootStop=%v: error %q must name %s and %q",
+				tt.rootStop, msg, binary, tt.wantCause)
 		}
+		if tt.rootStop != rootOtelCollectorStopFailed && strings.Contains(msg, "sudoers") {
+			t.Errorf("rootStop=%v: error %q must not blame the sudoers rules", tt.rootStop, msg)
+		}
+	}
+}
+
+// The directory step must survive a yb_home path with a space or a quote.
+func TestEnsureOtelCollectorDirStepQuotesPath(t *testing.T) {
+	ybHome := filepath.Join(t.TempDir(), "o'neil home")
+	out, err := exec.Command("bash", "-c", ensureOtelCollectorDirStep(ybHome).Cmd).CombinedOutput()
+	if err != nil {
+		t.Fatalf("dir step: %v: %s", err, out)
+	}
+	info, err := os.Stat(filepath.Join(ybHome, "otel-collector"))
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o755 {
+		t.Fatalf("want a 0755 directory, got info=%v err=%v", info, err)
 	}
 }
 
