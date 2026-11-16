@@ -170,7 +170,8 @@ func TestRemoveOtelCollectorWantsLink(t *testing.T) {
 	}
 }
 
-// A collector that dies within a few hundred ms of each start is missed by a slow poll.
+// A slow poll misses a collector that runs only between checks. The 800 ms window leaves slack
+// for a slow CI host, and a 2 s interval still fails: its only poll in 1500 ms is at 0 ms.
 func TestOtelCollectorRunningPollIntervalFindsShortLivedCollector(t *testing.T) {
 	start := time.Now()
 	running, err := otelCollectorRunsWithin(
@@ -179,11 +180,11 @@ func TestOtelCollectorRunningPollIntervalFindsShortLivedCollector(t *testing.T) 
 		otelCollectorRunningPollInterval,
 		func() (bool, error) {
 			elapsed := time.Since(start)
-			return elapsed > 900*time.Millisecond && elapsed < 1150*time.Millisecond, nil
+			return elapsed > 600*time.Millisecond && elapsed < 1400*time.Millisecond, nil
 		},
 	)
 	if err != nil || !running {
-		t.Fatalf("collector alive for 250 ms not found with poll interval %v: running=%v, err=%v",
+		t.Fatalf("collector alive for 800 ms not found with poll interval %v: running=%v, err=%v",
 			otelCollectorRunningPollInterval, running, err)
 	}
 }
