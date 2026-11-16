@@ -190,9 +190,9 @@ DECLARE_int32(master_ysql_lease_svc_queue_length);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_string(webserver_authentication_domain);
 
-DEFINE_test_flag(bool, rust_master_allow_leadership, false,
-    "Lets the Rust master lead the sys catalog. A layer-2 Rust leader serves only the core RPCs: "
-    "no DDL, snapshots, load balancing or YSQL leases.");
+DEFINE_test_flag(bool, rust_master_allow_leadership, true,
+    "Lets the Rust master lead the sys catalog. When false it stays a follower: it never starts "
+    "an election and steps down if a leader transfer elects it.");
 DECLARE_string(webserver_password_file);
 DECLARE_bool(webserver_redirect_http_to_https);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
@@ -1164,7 +1164,7 @@ Status MasterHost::OpenSysCatalog() {
   if (!FLAGS_TEST_rust_master_allow_leadership) {
     return STATUS(
         NotSupported,
-        "The Rust master creates a new universe only with --TEST_rust_master_allow_leadership. "
+        "The Rust master creates no new universe with --TEST_rust_master_allow_leadership=false. "
         "Start it on an existing master's data, or in shell mode (no --master_addresses, or "
         "--master_join_existing_universe) and add it with change_master_config.");
   }

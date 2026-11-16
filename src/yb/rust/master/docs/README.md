@@ -13,9 +13,9 @@ answers. Every Rust master keeps an in-memory catalog built from what its sys-ca
 applies, the same way on leader and follower.
 
 Layer 2 adds the core of a leader: the catalog writer, leadership, the tserver registry,
-heartbeats and tablet reports, and the core cluster and client RPCs. A layer-2 leader serves no
-DDL, snapshots, load balancing or YSQL, so leading needs `--TEST_rust_master_allow_leadership`;
-without it the Rust master never leads ([leadership.md](leadership.md)).
+heartbeats and tablet reports, and the core cluster and client RPCs. Layer 3 serves the rest.
+`--TEST_rust_master_allow_leadership=false` keeps a Rust master a follower
+([leadership.md](leadership.md)).
 
 | Doc | Covers |
 |---|---|

@@ -48,8 +48,8 @@ master added from shell mode are the same as `CatalogManager::StartRemoteBootstr
 **A new universe (K10).** With `--master_addresses` and no data, the host creates the sys-catalog
 tablet (`SysCatalogTable::CreateNew`, after the same `CheckLocalHostInMasterAddresses` as
 `CatalogManager::InitSysCatalogAsync`) and the first Rust leader writes the default rows
-([catalog-state.md](catalog-state.md)). Without `--TEST_rust_master_allow_leadership` it refuses:
-such a master never starts an election. Only C++ can build the system tables' rows (their schemas
+([catalog-state.md](catalog-state.md)). With `--TEST_rust_master_allow_leadership=false` it
+refuses: such a master never starts an election. Only C++ can build the system tables' rows (their schemas
 come from the YCQL virtual table classes), so `SystemTableRows` builds them with
 `src/yb/master/system_tables.{h,cc}`, which `CatalogManager` uses too. The host also gives the
 default YCQL superuser's bcrypt hash and the YSQL major version. YSQL's initial sys catalog snapshot
@@ -99,9 +99,9 @@ targets, partition hashes and DNS lookups are C++'s, and the C++ classes read th
 `CatalogManager`, which a Rust master's host does not have. `system.partitions` is rebuilt on
 every read rather than cached as C++ caches it.
 
-**Leading.** Only with `--TEST_rust_master_allow_leadership`
+**Leading.** Unless `--TEST_rust_master_allow_leadership=false`
 ([leadership.md](leadership.md)): failure detection stays on and an election only nudges the
-Rust leadership loop. Without the flag the host turns off `enable_leader_failure_detection`, so it
+Rust leadership loop. With the flag false the host turns off `enable_leader_failure_detection`, so it
 never starts an election; if an explicit leader transfer elects it, the state-change callback
 steps it down at once, retrying while the step-down is refused, and `GetMasterRegistration`
 reports FOLLOWER meanwhile, as a C++ leader that is not ready does.

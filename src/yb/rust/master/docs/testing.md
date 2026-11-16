@@ -42,7 +42,7 @@ re-serialize identically. That check is manual: the release binary is not part o
 | Test | Checks |
 |---|---|
 | `FollowerKeepsSameCatalog` | A C++ follower restarted as Rust on its own data stays a follower through YCQL DDL, an index, a snapshot schedule and a PITR restore; serves `GetMasterRegistration` and `ListMasters`; answers `NOT_THE_LEADER` to leader-only methods. With the cluster stopped, its sys-catalog rows and `auto_flags_config` equal a C++ follower's, and all rows pass the conformance check. |
-| `NeverLeads` | A leader transfer to the Rust master ends with a C++ leader; the Rust master never reports LEADER. |
+| `NeverLeads` | With `TEST_rust_master_allow_leadership=false`, a leader transfer to the Rust master ends with a C++ leader; the Rust master never reports LEADER. |
 | `AddedThroughRemoteBootstrap` | A shell-mode Rust master is added with `ChangeConfig`, remote-bootstraps the sys catalog, follows a workload, and is removed. |
 | `WebPages` | On the Rust follower's web port, the master list, version, leader-fetched JSON and HTML pages equal a C++ follower's (uptimes and the build-time footer aside); `/masters` bolds the Rust master; `is-leader` is 503; `/varz` and `/prometheus-metrics` come through the proxy; the registration advertises the Rust port. |
 | `WebServerHttps` | With the webserver TLS flags the Rust master serves HTTPS with HSTS, refuses plain HTTP, fetches leader pages from an HTTP leader, and advertises the configured interface. |

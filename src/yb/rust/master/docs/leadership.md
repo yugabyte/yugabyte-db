@@ -52,13 +52,9 @@ it while the term catches up, and it equals the Ready token afterwards.
 | LeaseLapsed | the `LeaderState::CreateStatus` status (LeaderHasNoLease, LeaderNotReadyToServe) |
 | Reloading | ServiceUnavailable "Catalog manager is restoring" |
 
-## Leading is a test-only feature in layer 2
+## Keeping a Rust master a follower
 
-A layer-2 Rust leader serves only the core RPCs; in a quorum with C++ masters it would leave DDL,
-snapshots, the load balancer and YSQL leases unserved. So `--TEST_rust_master_allow_leadership`
-(default false, defined by the C++ host because it decides failure detection at startup) gates
-it. Without the flag the host keeps layer 1's behavior: no failure detection, and an immediate
-step-down if a leader transfer elects it.
-
-PITR restores cannot start while a Rust master leads in layer 2: the restore RPCs are not served.
-Restores applied while following are covered by the catch-up barrier.
+`--TEST_rust_master_allow_leadership` (default true; defined by the C++ host because it decides
+failure detection at startup) set to false keeps layer 1's behavior: no failure detection, and an
+immediate step-down if a leader transfer elects it. Tests that compare a Rust follower with C++
+followers set it.

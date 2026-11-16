@@ -12,9 +12,9 @@
 
 // The Rust master (yb-master-rs) in a quorum of C++ masters. As a follower it joins, keeps the same
 // sys catalog and the same in-memory catalog as the C++ leader through DDL, snapshots and a PITR
-// restore, answers the follower-servable RPCs, and never claims to lead. With
-// --TEST_rust_master_allow_leadership it leads and serves the core cluster, client and heartbeat
-// RPCs (src/yb/rust/master/docs/testing.md). YSQL is off: a layer-2 Rust leader does not serve it.
+// restore, answers the follower-servable RPCs, and, with --TEST_rust_master_allow_leadership=false,
+// never claims to lead. Otherwise it leads and serves the cluster, client and heartbeat RPCs
+// (src/yb/rust/master/docs/testing.md).
 
 #include <algorithm>
 #include <map>
@@ -113,6 +113,8 @@ class RustMasterTest : public YBTest {
     auto* master = cluster_->master(index);
     master->Shutdown();
     master->SetExe(rust_master_exe_);
+    // A follower unless the test lets it lead: these tests compare it with C++ followers.
+    master->AddExtraFlag("TEST_rust_master_allow_leadership", "false");
     for (const auto& [flag, value] : extra_flags) {
       master->AddExtraFlag(flag, value);
     }
