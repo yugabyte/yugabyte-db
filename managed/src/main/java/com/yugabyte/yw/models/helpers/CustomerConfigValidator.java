@@ -15,7 +15,6 @@ import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.OCIUtil;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -36,6 +35,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
@@ -192,18 +192,24 @@ public class CustomerConfigValidator extends BaseBeanValidator {
   }
 
   /**
-   * The saved data, as the baseline of an edit, or null. Data saved by an older YBA may not parse
-   * into the current class, for example when it carries a field that was removed since. That must
-   * not fail the edit, so the edit is then validated like a new config.
+   * The saved data, as the baseline of an edit, or null. It is read with the shared mapper, which
+   * ignores unknown properties, because data saved by an older YBA may carry a field that was
+   * removed since. If it still does not parse, the edit is validated like a new config rather than
+   * failing on data the user did not send.
    */
   @Nullable
   private static CustomerConfigData savedDataOrNull(@Nullable CustomerConfig saved) {
     if (saved == null) {
       return null;
     }
+    Class<? extends CustomerConfigData> dataClass =
+        CustomerConfig.getDataClass(saved.getType(), saved.getName());
+    if (dataClass == null) {
+      return null;
+    }
     try {
-      return saved.getDataObject();
-    } catch (PlatformServiceException e) {
+      return Json.fromJson(saved.getData(), dataClass);
+    } catch (RuntimeException e) {
       log.warn(
           "Validating the edit of config {} as a new config: its saved data does not parse: {}",
           saved.getConfigUUID(),

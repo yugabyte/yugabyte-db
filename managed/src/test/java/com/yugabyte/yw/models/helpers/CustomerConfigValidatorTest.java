@@ -731,20 +731,16 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   }
 
   /**
-   * Saved data that no longer parses, here with a field the current class does not have, does not
-   * fail the edit with a parse error. The edit is validated like a new config instead, so a stored
-   * combination is not exempt then.
+   * Saved data with a field the current class does not have, as an older YBA may have written, is
+   * still read as the edit's baseline, so a rename that keeps the stored combination is accepted.
    */
   @Test
-  public void testValidateDataContent_Storage_S3_EditOfUnparseableSavedDataIsValidatedAsNew() {
+  public void testValidateDataContent_Storage_S3_SavedDataWithRemovedFieldKeepsExemption() {
     ObjectNode data = s3FederationWithKeys();
     ObjectNode savedData = data.deepCopy();
     savedData.put("REMOVED_FIELD", "value");
     CustomerConfig saved = saveWithoutValidation(NAME_S3, savedData);
-    CustomerConfig config = renamed(saved, data);
-    assertThat(
-        () -> customerConfigValidator.validateConfig(config, saved),
-        thrown(PlatformServiceException.class, containsString("cannot be used together with")));
+    customerConfigValidator.validateConfig(renamed(saved, data), saved);
   }
 
   /** A create is checked as a new config, even when its body carries a saved config's UUID. */
