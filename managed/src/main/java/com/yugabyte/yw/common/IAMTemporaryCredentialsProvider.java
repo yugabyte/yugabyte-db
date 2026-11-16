@@ -16,8 +16,8 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +25,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.exception.AbortedException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkServiceException;
 import software.amazon.awssdk.regions.Region;
@@ -153,19 +154,23 @@ public class IAMTemporaryCredentialsProvider {
    * that is not on AWS, so whether {@link #getTemporaryCredentials} is worth leaving to its retries
    * there. Each source is resolved once, through the same SDK calls. One that gives credentials
    * counts, and so does one that fails on an error those retries can get past: an AWS throttle or
-   * server error, or an I/O error such as a timeout. One that fails otherwise does not: the host
-   * has nothing for it (no AWS_ROLE_ARN or web identity token file, no credentials in the profile,
-   * no container credentials endpoint), or AWS rejects what it has, as for a role that does not
-   * trust the host's token or a token that has expired. Neither does AWS instance metadata, which
-   * only AWS serves. As this runs on request threads, it gives up after {@link
-   * #OFF_AWS_CHECK_TIMEOUT}; a source still waiting on AWS then counts, as for a timeout.
+   * server error, STS failing to reach the token's identity provider, or a network error such as a
+   * timeout. One that fails otherwise does not: the host has nothing for it (no AWS_ROLE_ARN or web
+   * identity token file, no credentials in the profile, no container credentials endpoint), or AWS
+   * rejects what it has, as for a role that does not trust the host's token or a token that has
+   * expired. Neither does AWS instance metadata, which only AWS serves. As this runs on request
+   * threads, it runs on {@code executor}, a bounded shared pool, and gives up after {@link
+   * #OFF_AWS_CHECK_TIMEOUT} or when the pool has no room: a source still waiting on AWS then
+   * counts, as for a timeout.
    */
-  public boolean hasCredentialsOffAws(CustomerConfigStorageS3Data s3Data) {
-    Optional<Boolean> found = resultWithin(() -> resolveOffAws(s3Data), OFF_AWS_CHECK_TIMEOUT);
+  public boolean hasCredentialsOffAws(
+      CustomerConfigStorageS3Data s3Data, ExecutorService executor) {
+    Optional<Boolean> found =
+        resultWithin(() -> resolveOffAws(s3Data), OFF_AWS_CHECK_TIMEOUT, executor);
     if (found.isEmpty()) {
       log.warn(
-          "Resolving the IAM credential sources took over {}, leaving them to the client's"
-              + " retries",
+          "Resolving the IAM credential sources did not finish within {}, leaving them to the"
+              + " client's retries",
           OFF_AWS_CHECK_TIMEOUT);
       return true;
     }
@@ -174,7 +179,12 @@ public class IAMTemporaryCredentialsProvider {
 
   private boolean resolveOffAws(CustomerConfigStorageS3Data s3Data) {
     List<String> absent = new ArrayList<>();
+    boolean rejectedByAws = false;
     for (CustomAWSCredentials source : credentialSources(s3Data)) {
+      if (Thread.currentThread().isInterrupted()) {
+        // The caller gave up waiting: make no more calls for an answer nobody reads.
+        return true;
+      }
       if (source instanceof InstanceProfileCredentials) {
         absent.add(source.getSourceName() + ": no AWS instance metadata off AWS");
         continue;
@@ -183,6 +193,12 @@ public class IAMTemporaryCredentialsProvider {
         source.getCredentialsOrFail();
         return true;
       } catch (Exception e) {
+        if (isInterruption(e)) {
+          // The caller gave up waiting, and the SDK may have cleared the interrupt.
+          return true;
+        }
+        rejectedByAws |=
+            Throwables.getCausalChain(e).stream().anyMatch(SdkServiceException.class::isInstance);
         if (isRetryableFailure(e)) {
           log.warn(
               "IAM credential source {} is set up on this host but failed, leaving it to the"
@@ -194,45 +210,52 @@ public class IAMTemporaryCredentialsProvider {
         absent.add(source.getSourceName() + ": " + e.getMessage());
       }
     }
-    log.info("No IAM credential source has anything to use on this host: {}", absent);
+    if (rejectedByAws) {
+      log.warn("AWS refused the IAM credential sources set up on this host: {}", absent);
+    } else {
+      log.info("No IAM credential source has anything to use on this host: {}", absent);
+    }
     return false;
   }
 
   /**
-   * The result of {@code work} run on a thread of its own, or empty if it takes longer than {@code
-   * timeout}, in which case it is interrupted. What {@code work} throws is thrown here.
+   * The result of {@code work} run on {@code executor}, or empty if {@code executor} has no room
+   * for it or it takes longer than {@code timeout}, in which case it is interrupted. What {@code
+   * work} throws is thrown here.
    */
-  static <T> Optional<T> resultWithin(Callable<T> work, Duration timeout) {
-    ExecutorService executor =
-        Executors.newSingleThreadExecutor(
-            runnable -> {
-              Thread thread = new Thread(runnable, "iam-credentials-check");
-              thread.setDaemon(true);
-              return thread;
-            });
-    Future<T> result = executor.submit(work);
+  static <T> Optional<T> resultWithin(
+      Callable<T> work, Duration timeout, ExecutorService executor) {
+    Future<T> result;
+    try {
+      result = executor.submit(work);
+    } catch (RejectedExecutionException e) {
+      return Optional.empty();
+    }
     try {
       return Optional.of(result.get(timeout.toMillis(), TimeUnit.MILLISECONDS));
     } catch (TimeoutException e) {
+      result.cancel(true /* mayInterruptIfRunning */);
       return Optional.empty();
     } catch (InterruptedException e) {
+      result.cancel(true /* mayInterruptIfRunning */);
       Thread.currentThread().interrupt();
       throw new RuntimeException("Interrupted while resolving the IAM credential sources", e);
     } catch (ExecutionException e) {
       Throwables.throwIfUnchecked(e.getCause());
       throw new RuntimeException(e.getCause());
-    } finally {
-      executor.shutdownNow();
     }
   }
 
   /**
    * Whether {@code e} is an error that trying again can get past: a throttle or a server error in
    * the reply from AWS, STS failing to reach the token's identity provider (IDPCommunicationError,
-   * which AWS documents as often transient), or an I/O error on the way. Any other reply, such as
-   * AccessDenied or InvalidIdentityToken, is a rejection that every retry gets again.
+   * which AWS documents as often transient), or an I/O error the SDK hit on the way. Any other
+   * reply, such as AccessDenied or InvalidIdentityToken, is a rejection that every retry gets
+   * again, and an I/O error outside an SDK call, such as an unreadable profile file, is the host's
+   * own.
    */
   static boolean isRetryableFailure(Throwable e) {
+    boolean inSdkCall = false;
     for (Throwable t = e; t != null; t = t.getCause()) {
       if (t instanceof SdkServiceException) {
         SdkServiceException reply = (SdkServiceException) t;
@@ -243,11 +266,18 @@ public class IAMTemporaryCredentialsProvider {
                 && IDP_COMMUNICATION_ERROR.equals(
                     ((AwsServiceException) reply).awsErrorDetails().errorCode()));
       }
-      if (t instanceof IOException) {
+      inSdkCall |= t instanceof SdkClientException;
+      if (t instanceof IOException && inSdkCall) {
         return true;
       }
     }
     return false;
+  }
+
+  /** Whether {@code e} comes from the thread being interrupted. */
+  private static boolean isInterruption(Throwable e) {
+    return Throwables.getCausalChain(e).stream()
+        .anyMatch(t -> t instanceof InterruptedException || t instanceof AbortedException);
   }
 
   private interface CustomAWSCredentials {

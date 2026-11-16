@@ -13,6 +13,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.common.HostCloudDetector;
 import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider;
 import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
@@ -83,6 +85,7 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -94,6 +97,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -121,6 +125,9 @@ import play.libs.Json;
 public class BackupHelper {
   private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
   private static final int maxRetryCount = 5;
+  // Checks of the host's AWS credentials that may be in flight at once; one more waits up to a few
+  // seconds for a free thread, then is turned away and the config's own chain is kept.
+  private static final int IAM_CREDENTIALS_CHECK_THREADS = 4;
   private static final String TABLESPACES_SQL_QUERY =
       "SELECT jsonb_agg(t) from (SELECT spcname, spcoptions"
           + " from pg_catalog.pg_tablespace where spcname not like 'pg_%') as t;";
@@ -136,6 +143,8 @@ public class BackupHelper {
   private SoftwareUpgradeHelper softwareUpgradeHelper;
   // The cloud YBA runs on: YBA needs no federation to reach a bucket there.
   private final HostCloudDetector hostCloudDetector;
+  // Runs the check of the host's AWS credentials off request threads, a few at a time.
+  private final ExecutorService iamCredentialsCheckExecutor;
   private Commissioner commissioner;
 
   @Inject
@@ -150,7 +159,8 @@ public class BackupHelper {
       NodeUniverseManager nodeUniverseManager,
       YbcBackupUtil ybcBackupUtil,
       SoftwareUpgradeHelper softwareUpgradeHelper,
-      HostCloudDetector hostCloudDetector) {
+      HostCloudDetector hostCloudDetector,
+      PlatformExecutorFactory executorFactory) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
@@ -162,6 +172,17 @@ public class BackupHelper {
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.commissioner = commissioner;
     this.hostCloudDetector = hostCloudDetector;
+    this.iamCredentialsCheckExecutor =
+        executorFactory.createExecutor(
+            "iam_credentials_check",
+            0 /* corePoolSize */,
+            IAM_CREDENTIALS_CHECK_THREADS,
+            Duration.ofMinutes(1) /* keepAliveTime */,
+            0 /* queueCapacity: hand each check straight to a thread */,
+            new ThreadFactoryBuilder()
+                .setNameFormat("iam-credentials-check-%d")
+                .setDaemon(true)
+                .build());
   }
 
   public String getValidOwnerRegex() {
@@ -601,6 +622,28 @@ public class BackupHelper {
    */
   public boolean applyYbaFederatedIdentity(
       CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
+    return applyYbaFederatedIdentity(configData, customerUUID, universe, new ConfigIdentity());
+  }
+
+  /**
+   * YBA's way to one storage config's bucket apart from any universe: the config's own credentials,
+   * else the entry the customer's providers agree on. It depends only on the config, YBA's host and
+   * the providers, never on a backup, so a run over one config's backups resolves it once with this
+   * and reuses it. For one config and one run; not thread-safe.
+   */
+  public static final class ConfigIdentity {
+    // Null until asked.
+    @Nullable private Boolean ownCredentials;
+    private boolean customerTargetResolved;
+    @Nullable private CrossCloudFederationTarget customerTarget;
+    private boolean reportedUnreachable;
+  }
+
+  private boolean applyYbaFederatedIdentity(
+      CustomerConfigData configData,
+      @Nullable UUID customerUUID,
+      @Nullable Universe universe,
+      ConfigIdentity configIdentity) {
     CloudType bucketCloud = federatedBucketCloud(configData);
     if (bucketCloud == null) {
       return true;
@@ -621,11 +664,19 @@ public class BackupHelper {
       return true;
     }
     if (target == null) {
-      // Asked only here, as it can take calls to the bucket's cloud.
-      if (hasCredentialsOfItsOwn(configData)) {
+      if (configIdentity.ownCredentials == null) {
+        // Asked only here, as it can take calls to the bucket's cloud.
+        configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
+      }
+      if (configIdentity.ownCredentials) {
         return true;
       }
-      target = resolveCustomerFederationTarget(customerUUID, bucketCloud);
+      if (!configIdentity.customerTargetResolved) {
+        // A failed read is not remembered, so the next backup reads the providers again.
+        configIdentity.customerTarget = resolveCustomerFederationTarget(customerUUID, bucketCloud);
+        configIdentity.customerTargetResolved = true;
+      }
+      target = configIdentity.customerTarget;
       if (target == null) {
         return false;
       }
@@ -653,12 +704,15 @@ public class BackupHelper {
     if (federatedBucketCloud(configData) == CloudType.gcp) {
       return String.format(
           "YBA runs on AWS and has no credentials for the GCS bucket of storage config %s: the"
-              + " config uses GCP IAM, application default credentials do not resolve on this"
-              + " host, and no provider has a usable gcp entry in its federated IAM targets, or"
-              + " the providers' gcp entries differ. Add a gcp entry whose workload identity pool"
-              + " also admits this YBA's AWS role, or make the providers' gcp entries match."
-              + " Otherwise turn off GCP IAM on the storage config and give it a service account"
-              + " key, which is also what a restore onto a new YBA, with no providers yet, needs.",
+              + " config uses GCP IAM, application default credentials do not resolve on this host,"
+              + " and no provider has a usable gcp entry in its federated IAM targets, or the"
+              + " providers' gcp entries differ. Add a gcp entry whose workload identity pool also"
+              + " admits this YBA's AWS role, or make the providers' gcp entries match. Otherwise"
+              + " give this host application default credentials, such as"
+              + " GOOGLE_APPLICATION_CREDENTIALS naming a service account key or an"
+              + " external_account file, or turn off GCP IAM on the storage config and give it a"
+              + " service account key, which is also what a restore onto a new YBA, with no"
+              + " providers yet, needs.",
           storageConfig);
     }
     // The config's own way out depends on how it is set up: the host's credentials count only
@@ -709,6 +763,7 @@ public class BackupHelper {
             ? "clear the IAM role flag on the storage config and set access keys (with the flag"
                 + " set, its keys are not used), or "
                 + hostNeeds
+                + " (if it has that already, the YBA log says why AWS refused it)"
             : "set access keys on the storage config, or set its IAM role flag and " + hostNeeds;
     return String.format(
         "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the config"
@@ -771,17 +826,19 @@ public class BackupHelper {
    * Whether the config's IAM credential source has something on this host, which is not on AWS, to
    * get AWS credentials from, as {@link IAMTemporaryCredentialsProvider#hasCredentialsOffAws} finds
    * by resolving each source once through the SDK. A source that fails on an error the S3 client's
-   * retries can get past (an AWS throttle or server error, an I/O error) still counts and is left
-   * to them, so a transient failure does not switch YBA to another identity. One that AWS rejects,
-   * such as a role that does not trust the host's token, does not, so YBA can use the providers'
-   * entry instead. Package-private so tests do not depend on the machine they run on.
+   * retries can get past (an AWS throttle or server error, STS failing to reach the token's
+   * identity provider, a network error) still counts and is left to them, so a transient failure
+   * does not switch YBA to another identity. One that AWS rejects, such as a role that does not
+   * trust the host's token, does not, so YBA can use the providers' entry instead. Package-private
+   * so tests do not depend on the machine they run on.
    */
   boolean hostHasAwsCredentials(CustomerConfigStorageS3Data s3) {
     if (s3.iamConfig == null || s3.iamConfig.credentialSource == null) {
       // The S3 client cannot get credentials from the IAM chain either.
       return false;
     }
-    return new IAMTemporaryCredentialsProvider(confGetter).hasCredentialsOffAws(s3);
+    return new IAMTemporaryCredentialsProvider(confGetter)
+        .hasCredentialsOffAws(s3, iamCredentialsCheckExecutor);
   }
 
   /**
@@ -872,6 +929,17 @@ public class BackupHelper {
    */
   public void applyCrossCloudFederationFromBackup(
       CustomerConfigStorageData configData, Backup backup) {
+    applyCrossCloudFederationFromBackup(configData, backup, new ConfigIdentity());
+  }
+
+  /**
+   * {@link #applyCrossCloudFederationFromBackup(CustomerConfigStorageData, Backup)} for one of
+   * several backups of the same storage config, reusing {@code configIdentity} across them, so the
+   * host's credentials and the customer's providers are looked at once, and a config YBA has no way
+   * to reach is reported once.
+   */
+  public void applyCrossCloudFederationFromBackup(
+      CustomerConfigStorageData configData, Backup backup, ConfigIdentity configIdentity) {
     String snapshotAudience = backup.getBackupInfo().crossCloudFederationAudience;
     String snapshotRoleArn = backup.getBackupInfo().crossCloudFederationRoleArn;
     if (configData instanceof CustomerConfigStorageGCSData
@@ -908,12 +976,20 @@ public class BackupHelper {
           applyYbaFederatedIdentity(
               configData,
               backup.getCustomerUUID(),
-              Universe.maybeGet(backup.getUniverseUUID()).orElse(null));
+              Universe.maybeGet(backup.getUniverseUUID()).orElse(null),
+              configIdentity);
     } catch (PlatformServiceException e) {
       log.warn("Deleting backup {}: {}", backup.getBackupUUID(), e.getMessage());
       return;
     }
-    if (!reachable) {
+    if (reachable) {
+      return;
+    }
+    if (configIdentity.reportedUnreachable) {
+      log.debug(
+          "Deleting backup {}: YBA has no credentials for its bucket", backup.getBackupUUID());
+    } else {
+      configIdentity.reportedUnreachable = true;
       log.warn(
           "Deleting backup {}: {}",
           backup.getBackupUUID(),

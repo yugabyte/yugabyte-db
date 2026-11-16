@@ -10,11 +10,13 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -28,6 +30,7 @@ import com.yugabyte.yw.common.HostCloudDetector;
 import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerBackupLocationKeyspaceTables;
@@ -141,7 +144,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockNodeUniverseManager,
                 mockYbcBackupUtil,
                 mockSoftwareUpgradeHelper,
-                mockHostCloudDetector));
+                mockHostCloudDetector,
+                app.injector().instanceOf(PlatformExecutorFactory.class)));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
     // The host's own credentials depend on the machine the test runs on; none unless a test says.
@@ -1880,7 +1884,9 @@ public class BackupHelperTest extends FakeDBApplication {
   /**
    * A setup that reaches the bucket keeps its own credentials over the customer-wide entry: access
    * keys, or an IAM credential source that can work on YBA's host. One that cannot, such as
-   * EC2_INSTANCE off AWS, does not count, so the entry is used.
+   * EC2_INSTANCE off AWS, does not count, so the entry is used. The IAM_USER profile is stubbed, as
+   * it depends on the machine; EC2_INSTANCE goes through the real check, which makes no call off
+   * AWS.
    */
   @Test
   public void testYbaIdentityKeepsCredentialsOfItsOwnOverTheProvidersEntry() {
@@ -1907,6 +1913,13 @@ public class BackupHelperTest extends FakeDBApplication {
     assertFalse(AWSUtil.usesCrossCloudFederationCredentials(withIamUser));
 
     // An explicit source that cannot work here is not credentials of its own.
+    doCallRealMethod()
+        .when(spyBackupHelper)
+        .hostHasAwsCredentials(
+            argThat(
+                s3 ->
+                    s3 != null
+                        && s3.iamConfig.credentialSource == IAMCredentialSource.EC2_INSTANCE));
     CustomerConfigStorageS3Data withEc2Instance = federatedS3();
     withEc2Instance.isIAMInstanceProfile = true;
     withEc2Instance.iamConfig.credentialSource = IAMCredentialSource.EC2_INSTANCE;
@@ -2018,7 +2031,8 @@ public class BackupHelperTest extends FakeDBApplication {
             mockNodeUniverseManager,
             mockYbcBackupUtil,
             mockSoftwareUpgradeHelper,
-            mockHostCloudDetector);
+            mockHostCloudDetector,
+            app.injector().instanceOf(PlatformExecutorFactory.class));
     File config = File.createTempFile("aws-config", "");
     File credentials = File.createTempFile("aws-credentials", "");
     config.deleteOnExit();
@@ -2198,6 +2212,31 @@ public class BackupHelperTest extends FakeDBApplication {
     assertEquals(S3_ROLE_ARN, s3Data.crossCloudFederationRoleArn);
   }
 
+  /**
+   * Deleting a config's backups looks at the host's credentials and the customer's providers once
+   * for all of them, as the answer does not depend on the backup.
+   */
+  @Test
+  public void testDeletionOfAConfigsBackupsResolvesItsIdentityOnce() {
+    hostCloud(CloudType.gcp);
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    BackupHelper.ConfigIdentity configIdentity = new BackupHelper.ConfigIdentity();
+    for (int i = 0; i < 3; i++) {
+      Backup backup = backupWithSnapshot(null, null);
+      when(backup.getCustomerUUID()).thenReturn(testCustomer.getUuid());
+      when(backup.getUniverseUUID()).thenReturn(testUniverse.getUniverseUUID());
+      CustomerConfigStorageS3Data s3Data = federatedS3();
+      s3Data.isIAMInstanceProfile = true;
+
+      spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup, configIdentity);
+
+      assertEquals(S3_ROLE_ARN, s3Data.crossCloudFederationRoleArn);
+    }
+    verify(spyBackupHelper, times(1)).hostHasAwsCredentials(any(CustomerConfigStorageS3Data.class));
+    verify(spyBackupHelper, times(1)).resolveCustomerFederationTarget(any(), eq(CloudType.aws));
+  }
+
   /** Work that needs the bucket fails with what to change, naming the storage config. */
   @Test
   public void testRequireYbaIdentityExplainsWhatIsMissing() {
@@ -2250,6 +2289,8 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(e.getMessage(), e.getMessage().contains("GCS bucket of storage config fed-gcs"));
     assertTrue(e.getMessage(), e.getMessage().contains("usable gcp entry"));
     assertTrue(e.getMessage(), e.getMessage().contains("turn off GCP IAM"));
+    // Or the host's own application default credentials.
+    assertTrue(e.getMessage(), e.getMessage().contains("GOOGLE_APPLICATION_CREDENTIALS"));
     assertTrue(e.getMessage(), e.getMessage().contains("service account key"));
   }
 }

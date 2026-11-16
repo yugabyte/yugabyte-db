@@ -392,7 +392,6 @@ public class BackupGarbageCollector {
       BackupCategory category = backup.getCategory();
       CustomerConfigStorageData configData =
           (CustomerConfigStorageData) customerConfig.getDataObject();
-      backupHelper.applyCrossCloudFederationFromBackup(configData, backup);
       if (configData.immutableStorage) {
         log.info(
             "Skipping cloud backup deletion for backup {} as this is immutable storage, will only"
@@ -402,6 +401,8 @@ public class BackupGarbageCollector {
         log.info("Deleted YBA metadata for backup {}", backupUUID);
         deletedSuccessfully = true;
       } else if (isCredentialUsable(customerConfig, backup.getUniverseUUID(), category)) {
+        // Only here: YBA reaches the bucket, and immutable storage above never does.
+        backupHelper.applyCrossCloudFederationFromBackup(configData, backup);
         Map<String, List<String>> backupLocationsMap = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);

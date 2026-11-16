@@ -9,9 +9,16 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -59,32 +66,60 @@ public class IAMTemporaryCredentialsProviderTest {
     assertFalse(isRetryableFailure(new RuntimeException("wrapped", stsReply(403, "AccessDenied"))));
   }
 
-  /** The off-AWS check runs on request threads, so a check that hangs is given up on. */
+  /**
+   * The off-AWS check runs on request threads, so a check that hangs is given up on, and so is one
+   * the shared pool has no room for.
+   */
   @Test
-  public void testResultWithinGivesUpOnWorkThatTakesTooLong() {
-    assertEquals(Optional.of(true), resultWithin(() -> true, Duration.ofSeconds(5)));
-    long start = System.nanoTime();
-    assertEquals(
-        Optional.empty(),
-        resultWithin(
-            () -> {
-              Thread.sleep(60_000);
-              return true;
-            },
-            Duration.ofMillis(100)));
-    assertTrue(Duration.ofNanos(System.nanoTime() - start).compareTo(Duration.ofSeconds(5)) < 0);
-    assertThrows(
-        IllegalStateException.class,
-        () ->
-            resultWithin(
-                () -> {
-                  throw new IllegalStateException("failed");
-                },
-                Duration.ofSeconds(5)));
+  public void testResultWithinGivesUpOnWorkThatTakesTooLongOrHasNoRoom() throws Exception {
+    ThreadPoolExecutor executor =
+        new ThreadPoolExecutor(0, 1, 1, TimeUnit.MINUTES, new SynchronousQueue<>());
+    try {
+      assertEquals(Optional.of(true), resultWithin(() -> true, Duration.ofSeconds(5), executor));
+      assertThrows(
+          IllegalStateException.class,
+          () ->
+              resultWithin(
+                  () -> {
+                    throw new IllegalStateException("failed");
+                  },
+                  Duration.ofSeconds(5),
+                  executor));
+
+      CountDownLatch release = new CountDownLatch(1);
+      Callable<Boolean> hangs =
+          () -> {
+            release.await();
+            return true;
+          };
+      long start = System.nanoTime();
+      assertEquals(Optional.empty(), resultWithin(hangs, Duration.ofMillis(100), executor));
+      assertTrue(Duration.ofNanos(System.nanoTime() - start).compareTo(Duration.ofSeconds(5)) < 0);
+
+      // Once the timed-out work has seen its interrupt and freed the pool's one thread, hold that
+      // thread busy: the next check then finds no room.
+      while (executor.getActiveCount() > 0) {
+        Thread.sleep(10);
+      }
+      CountDownLatch busy = new CountDownLatch(1);
+      executor.submit(
+          () -> {
+            busy.countDown();
+            release.await();
+            return null;
+          });
+      busy.await();
+      assertEquals(Optional.empty(), resultWithin(() -> true, Duration.ofSeconds(5), executor));
+      release.countDown();
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test
   public void testNothingOnTheHostIsNotRetryable() {
+    // The host's own I/O, outside any call to AWS.
+    assertFalse(isRetryableFailure(new UncheckedIOException(new IOException("Permission denied"))));
     assertFalse(isRetryableFailure(new RuntimeException("AWS_ROLE_ARN: blank variable value.")));
     assertFalse(
         isRetryableFailure(
