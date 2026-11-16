@@ -14,6 +14,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -1721,7 +1722,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         HelmUtils.convertYamlToMap(primaryCluster.userIntent.universeOverrides);
     Map<String, String> azsOverrides = primaryCluster.userIntent.azOverrides;
 
-    int batchSize = 0; // Batch size for master will be 0
+    // Masters move in one batch, every AZ at once (batch size 0 moves every pod of an AZ in one
+    // step): the new masters join before any old one leaves, so the quorum never shrinks.
+    int batchSize = 0;
     if (serverType == ServerType.TSERVER) {
       batchSize =
           runtimeConfigFactory
@@ -1976,7 +1979,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
           // The old masters are removed by now. This render writes the final master list into
           // every gflags Secret of the AZ's release, tservers included, before the old master pods
-          // go. Keeping the masters' gflags checksum stops this from rolling the masters.
+          // go. The partitions hold the pods, so none rolls.
           KubernetesCommandExecutor podDeleteSubtask =
               createKubernetesExecutorTaskForServerType(
                   universeName,
@@ -1993,7 +1996,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                   azOverrides,
                   isReadOnlyCluster,
                   enableYbc,
-                  serverType == ServerType.MASTER /* usePreviousGflagsChecksum */,
+                  false /* usePreviousGflagsChecksum */,
                   false /* namespacedServiceReleaseOwner */,
                   null /* ysqlMajorVersionUpgradeState */,
                   moveParams,
@@ -2105,7 +2108,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               azOverrides,
               isReadOnlyCluster,
               enableYbc,
-              serverType == ServerType.MASTER /* usePreviousGflagsChecksum */,
+              false /* usePreviousGflagsChecksum */,
               false /* namespacedServiceReleaseOwner */,
               null /* ysqlMajorVersionUpgradeState */,
               null /* moveParams */,
@@ -2155,6 +2158,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 CollectionUtils.isEmpty(podsDeleteSubTaskGroupsMap.keySet())
                     ? Set.of(0)
                     : podsDeleteSubTaskGroupsMap.keySet()));
+    // The deferred master removes below run in the master batch, so there must be only one.
+    Preconditions.checkState(
+        serverType != ServerType.MASTER || subTaskGroupsSize <= 1,
+        "Masters must move in one batch, got %s",
+        subTaskGroupsSize);
     for (int i = startIndex; i < startIndex + subTaskGroupsSize; i++) {
       log.debug("Handling full move batch: {}", i);
       // Add helm upgrade task
@@ -2203,10 +2211,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       if (serverType == ServerType.MASTER) {
         Set<NodeDetails> mastersToAdd = filterMastersToAdd(new HashSet<>(serversToAdd), universe);
         commonTasks.accept(new ArrayList<>(mastersToAdd));
+        // The only master batch (see batchSize), so it also removes the deferred masters.
         List<NodeDetails> mastersToRemove = new ArrayList<>(serversToRemove);
-        if (i == startIndex + subTaskGroupsSize - 1) {
-          mastersToRemove.addAll(mastersToRemoveLast);
-        }
+        mastersToRemove.addAll(mastersToRemoveLast);
         // For masters, add change config task
         if (CollectionUtils.isNotEmpty(serversToAdd)
             || CollectionUtils.isNotEmpty(mastersToRemove)) {

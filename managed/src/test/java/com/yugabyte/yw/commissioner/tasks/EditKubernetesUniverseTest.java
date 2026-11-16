@@ -2364,9 +2364,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(lastPosition(createNewMasters) < firstPosition(waitForMasters));
     for (TaskInfo t : afterMastersJoined) {
       // The pod delete and final render rewrite every gflags Secret in the release, tservers
-      // included, without rolling any pod.
+      // included. The partitions hold every pod, so none rolls.
       assertEquals(newMasters, helmMasterAddresses(t));
-      assertTrue(keepsGflagsChecksum(t));
       assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
     }
     // Tserver phase renders the new list, as before.
@@ -2379,6 +2378,27 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     // The first master pod delete comes after the post-remove push.
     List<TaskInfo> podDeletes = subtasks(plan, TaskType.CheckNodeSafeToDelete, p -> true);
     assertTrue(firstPosition(podDeletes) > lastPosition(postRemove));
+  }
+
+  @Test
+  public void testMasterFullMoveRunsInOneBatch() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    // The batch size applies to tservers only.
+    factory.globalRuntimeConf().setValue(UniverseConfKeys.fullMoveRollBatchSize.getKey(), "1");
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.ybSoftwareVersion = FULL_MOVE_VERSION;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // Every AZ's new master joins before any old master leaves.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> removes = changeMasterConfigs(plan, "RemoveMaster");
+    assertEquals(3, adds.size());
+    assertEquals(3, removes.size());
+    assertTrue(lastPosition(adds) < firstPosition(removes));
   }
 
   @Test
@@ -3279,14 +3299,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     for (TaskInfo t : afterMastersJoined) {
       assertEquals(newMasters, helmMasterAddresses(t));
     }
-    // The pod delete and final render of each AZ keep the checksum, so no tserver pod rolls.
+    // The pod delete and final render of each AZ hold the tservers at their partition.
     List<TaskInfo> masterRenders =
         afterMastersJoined.stream()
             .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
             .collect(Collectors.toList());
     assertEquals(6, masterRenders.size());
     for (TaskInfo t : masterRenders) {
-      assertTrue(keepsGflagsChecksum(t));
       assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
       assertEquals(0, helmAZ(t).path("tsStsIndex").asInt());
     }
