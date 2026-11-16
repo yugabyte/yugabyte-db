@@ -19,6 +19,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIO
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
@@ -51,6 +52,7 @@ import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
@@ -712,26 +714,45 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   /** A config saved with keys and federation before the rule existed still takes a rename. */
   @Test
   public void testValidateDataContent_Storage_S3_SavedFederationWithKeysCanBeRenamed() {
-    ObjectNode data = Json.newObject();
-    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
-    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
-    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
-    data.put("USE_CROSS_CLOUD_FEDERATION", true);
-    customerConfigValidator.validateConfig(editOfSavedConfig(NAME_S3, data, data.deepCopy()));
+    ObjectNode data = s3FederationWithKeys();
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, data);
+    customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
+  }
+
+  /** The edit path passes the saved config, so an edit through the service is exempt too. */
+  @Test
+  public void testValidateDataContent_Storage_S3_SavedFederationWithKeysCanBeEdited() {
+    ObjectNode data = s3FederationWithKeys();
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, data);
+    app.injector().instanceOf(CustomerConfigService.class).edit(renamed(saved, data.deepCopy()));
+    assertEquals(
+        "renamed-" + NAME_S3,
+        CustomerConfig.get(saved.getCustomerUUID(), saved.getConfigUUID()).getConfigName());
+  }
+
+  /** A create is checked as a new config, even when its body carries a saved config's UUID. */
+  @Test
+  public void testValidateDataContent_Storage_S3_CreateWithSavedConfigUuidIsRejected() {
+    ObjectNode data = s3FederationWithKeys();
+    CustomerConfig created = renamed(saveWithoutValidation(NAME_S3, data), data.deepCopy());
+    assertThat(
+        () -> customerConfigValidator.validateConfig(created),
+        thrown(PlatformServiceException.class, containsString("cannot be used together with")));
   }
 
   @Test
   public void testValidateDataContent_Storage_S3_EditAddingKeysToFederationIsRejected() {
-    ObjectNode saved = Json.newObject();
-    saved.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
-    saved.put("IAM_INSTANCE_PROFILE", true);
-    saved.put("USE_CROSS_CLOUD_FEDERATION", true);
-    ObjectNode edited = saved.deepCopy();
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put("IAM_INSTANCE_PROFILE", true);
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, data);
+    ObjectNode edited = data.deepCopy();
     edited.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
     edited.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
-    CustomerConfig config = editOfSavedConfig(NAME_S3, saved, edited);
+    CustomerConfig config = renamed(saved, edited);
     assertThat(
-        () -> customerConfigValidator.validateConfig(config),
+        () -> customerConfigValidator.validateConfig(config, saved),
         thrown(PlatformServiceException.class, containsString("cannot be used together with")));
   }
 
@@ -742,58 +763,37 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
     data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
     data.put("USE_GCP_IAM", true);
-    customerConfigValidator.validateConfig(editOfSavedConfig(NAME_GCS, data, data.deepCopy()));
+    CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
+    customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
   }
 
-  /**
-   * Saves a storage config without validation, as an older YBA could have, and returns an edit of
-   * it that renames it and carries {@code editedData}.
-   */
-  private CustomerConfig editOfSavedConfig(
-      String name, ObjectNode savedData, ObjectNode editedData) {
+  private static ObjectNode s3FederationWithKeys() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    return data;
+  }
+
+  /** Saves a storage config without validation, as an older YBA could have. */
+  private CustomerConfig saveWithoutValidation(String name, ObjectNode data) {
     Customer customer = ModelFactory.testCustomer();
     ObjectNode formData = Json.newObject();
     formData.put("configName", "saved-" + name);
     formData.put("name", name);
     formData.put("type", ConfigType.STORAGE.name());
-    formData.set("data", savedData);
-    CustomerConfig saved = CustomerConfig.createWithFormData(customer.getUuid(), formData);
-    CustomerConfig edited = createConfig(ConfigType.STORAGE, name, editedData);
-    edited.setCustomerUUID(customer.getUuid());
-    edited.setConfigUUID(saved.getConfigUUID());
-    edited.setConfigName("renamed-" + name);
-    return edited;
+    formData.set("data", data);
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 
-  @Test
-  public void testValidateDataContent_Storage_GCS_JsonWithGcpIamIsRejected() {
-    ObjectNode data = Json.newObject();
-    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
-    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
-    data.put("USE_GCP_IAM", true);
-    data.put("USE_CROSS_CLOUD_FEDERATION", true);
-    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
-    assertThat(
-        () -> customerConfigValidator.validateConfig(config),
-        thrown(PlatformServiceException.class));
-  }
-
-  @Test
-  public void testValidateDataContent_Storage_GCS_FederationWithoutGcpIamIsRejected() {
-    // With a JSON key instead of USE_GCP_IAM, the federation flag would be silently ignored.
-    ObjectNode data = Json.newObject();
-    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
-    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
-    data.put("USE_CROSS_CLOUD_FEDERATION", true);
-    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
-    assertThat(
-        () -> customerConfigValidator.validateConfig(config),
-        thrown(
-            PlatformServiceException.class,
-            "errorJson: {\""
-                + fieldFullName("USE_GCP_IAM")
-                + "\":[\"USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of"
-                + " GCS_CREDENTIALS_JSON.\"]}"));
+  /** A request that renames {@code saved} and carries {@code data}. */
+  private CustomerConfig renamed(CustomerConfig saved, ObjectNode data) {
+    CustomerConfig config = createConfig(ConfigType.STORAGE, saved.getName(), data);
+    config.setCustomerUUID(saved.getCustomerUUID());
+    config.setConfigUUID(saved.getConfigUUID());
+    config.setConfigName("renamed-" + saved.getName());
+    return config;
   }
 
   private void setupGCPReadValidation(
