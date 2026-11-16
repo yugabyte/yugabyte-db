@@ -13,6 +13,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -518,6 +519,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const bool& validate_third_column = false, const bool is_nothing_record = false);
 
   void CheckCount(const uint32_t* expected_count, uint32_t* count);
+
+  void CheckTextTuple(
+      const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id,
+      const std::optional<std::string>& value);
 
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::VaryingExpectedRecord expected_records,
