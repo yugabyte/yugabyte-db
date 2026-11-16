@@ -2,7 +2,7 @@ BEGIN;
 CREATE EXTENSION anon CASCADE;
 -- This should RAISE NOTICE
 SELECT anon.detect();
-NOTICE:  The dictionnary of identifiers is not present.
+NOTICE:  The dictionary of identifiers is not present.
 HINT:  You probably need to run 'SELECT anon.init()' 
  detect 
 --------
