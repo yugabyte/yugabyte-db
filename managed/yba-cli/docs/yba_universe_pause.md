@@ -4,7 +4,7 @@ Pause a YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Pause a universe in YugabyteDB Anywhere. Fails if the universe is already paused or has a task in progress.
+Pause a universe. Fails if it is already paused or has a task in progress.
 
 ```
 yba universe pause [flags]

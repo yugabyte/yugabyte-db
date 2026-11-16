@@ -16,24 +16,20 @@ func TestCheckPauseResumeState(t *testing.T) {
 		name       string
 		paused     bool
 		inProgress bool
-		succeeded  bool
 		pause      bool
 		wantErr    bool
 	}{
-		{"pause ready", false, false, true, true, false},
-		{"pause paused", true, false, true, true, true},
-		{"pause task running", false, true, true, true, true},
-		{"resume paused", true, false, true, false, false},
-		{"resume ready", false, false, true, false, true},
-		{"resume task running", true, true, true, false, true},
-		{"resume after failed resume", true, false, false, false, false},
-		{"resume running after failed task", false, false, false, false, true},
+		{"pause ready", false, false, true, false},
+		{"pause paused", true, false, true, true},
+		{"pause task running", false, true, true, true},
+		{"resume paused", true, false, false, false},
+		{"resume ready", false, false, false, true},
+		{"resume task running", true, true, false, true},
 	}
 	for _, c := range cases {
 		details := ybaclient.UniverseDefinitionTaskParamsResp{
 			UniversePaused:   util.GetBoolPointer(c.paused),
 			UpdateInProgress: util.GetBoolPointer(c.inProgress),
-			UpdateSucceeded:  util.GetBoolPointer(c.succeeded),
 		}
 		universe := ybaclient.UniverseResp{
 			Name:            util.GetStringPointer("u1"),

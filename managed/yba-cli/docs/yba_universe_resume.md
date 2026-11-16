@@ -4,7 +4,7 @@ Resume a YugabyteDB Anywhere universe
 
 ### Synopsis
 
-Resume a paused universe in YugabyteDB Anywhere. Fails if the universe is not paused or has a task in progress.
+Resume a paused universe. Fails if it is not paused or has a task in progress.
 
 ```
 yba universe resume [flags]

@@ -23,8 +23,7 @@ var resumeUniverseCmd = &cobra.Command{
 	Use:     "resume",
 	GroupID: "action",
 	Short:   "Resume a YugabyteDB Anywhere universe",
-	Long: "Resume a paused universe in YugabyteDB Anywhere. " +
-		"Fails if the universe is not paused or has a task in progress.",
+	Long:    "Resume a paused universe. Fails if it is not paused or has a task in progress.",
 	Example: `yba universe resume --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))

@@ -23,8 +23,7 @@ var pauseUniverseCmd = &cobra.Command{
 	Use:     "pause",
 	GroupID: "action",
 	Short:   "Pause a YugabyteDB Anywhere universe",
-	Long: "Pause a universe in YugabyteDB Anywhere. " +
-		"Fails if the universe is already paused or has a task in progress.",
+	Long:    "Pause a universe. Fails if it is already paused or has a task in progress.",
 	Example: `yba universe pause --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
