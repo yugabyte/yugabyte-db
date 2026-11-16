@@ -1859,7 +1859,20 @@ public class BackupHelperTest extends FakeDBApplication {
 
     CustomerConfigStorageGCSData withKey = federatedGcs();
     withKey.useGcpIam = false;
+    withKey.gcsCredentialsJson = "{}";
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(withKey, testCustomer.getUuid(), null));
+
+    // Without GCP IAM, only a service account key on the config is its own, and a gcp entry,
+    // whose audience the client uses only with GCP IAM, does not stand in for one.
+    CustomerConfigStorageGCSData withoutKey = federatedGcs();
+    withoutKey.useGcpIam = false;
+    assertFalse(
+        spyBackupHelper.applyYbaFederatedIdentity(withoutKey, testCustomer.getUuid(), null));
+    federatedOnPremProvider(
+        "onprem-aws", CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+    assertFalse(
+        spyBackupHelper.applyYbaFederatedIdentity(withoutKey, testCustomer.getUuid(), null));
+    assertNull(withoutKey.crossCloudFederationAudience);
 
     doReturn(true).when(spyBackupHelper).hostHasGcpCredentials();
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));

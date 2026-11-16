@@ -51,7 +51,10 @@ public class IAMTemporaryCredentialsProvider {
   private static final int WAIT_EACH_RETRY_SECS = 5;
   private static final String IDP_COMMUNICATION_ERROR = "IDPCommunicationError";
 
-  /** How long {@link #hasCredentialsOffAws} may take in all. */
+  /**
+   * How long {@link #hasCredentialsOffAws} waits for the check once it runs. Handing it to the pool
+   * can take the pool's offer timeout on top of that when all its threads are busy.
+   */
   static final Duration OFF_AWS_CHECK_TIMEOUT = Duration.ofSeconds(10);
 
   private final RuntimeConfGetter confGetter;
@@ -160,13 +163,21 @@ public class IAMTemporaryCredentialsProvider {
    * rejects what it has, as for a role that does not trust the host's token or a token that has
    * expired. Neither does AWS instance metadata, which only AWS serves. As this runs on request
    * threads, it runs on {@code executor}, a bounded shared pool, and gives up after {@link
-   * #OFF_AWS_CHECK_TIMEOUT} or when the pool has no room: a source still waiting on AWS then
-   * counts, as for a timeout.
+   * #OFF_AWS_CHECK_TIMEOUT}, so a source still waiting on AWS counts, as for a timeout. When the
+   * pool has no room, which can take its offer timeout to find out, the check is not run and the
+   * config counts as having credentials, whatever its sources.
    */
   public boolean hasCredentialsOffAws(
       CustomerConfigStorageS3Data s3Data, ExecutorService executor) {
-    Optional<Boolean> found =
-        resultWithin(() -> resolveOffAws(s3Data), OFF_AWS_CHECK_TIMEOUT, executor);
+    Optional<Boolean> found;
+    try {
+      found = resultWithin(() -> resolveOffAws(s3Data), OFF_AWS_CHECK_TIMEOUT, executor);
+    } catch (RejectedExecutionException e) {
+      log.warn(
+          "No thread was free to resolve the IAM credential sources, leaving them to the client's"
+              + " retries");
+      return true;
+    }
     if (found.isEmpty()) {
       log.warn(
           "Resolving the IAM credential sources did not finish within {}, leaving them to the"
@@ -219,18 +230,13 @@ public class IAMTemporaryCredentialsProvider {
   }
 
   /**
-   * The result of {@code work} run on {@code executor}, or empty if {@code executor} has no room
-   * for it or it takes longer than {@code timeout}, in which case it is interrupted. What {@code
-   * work} throws is thrown here.
+   * The result of {@code work} run on {@code executor}, or empty if it takes longer than {@code
+   * timeout}, in which case it is interrupted. What {@code work} throws is thrown here, and so is
+   * the {@link RejectedExecutionException} of an {@code executor} with no room for it.
    */
   static <T> Optional<T> resultWithin(
       Callable<T> work, Duration timeout, ExecutorService executor) {
-    Future<T> result;
-    try {
-      result = executor.submit(work);
-    } catch (RejectedExecutionException e) {
-      return Optional.empty();
-    }
+    Future<T> result = executor.submit(work);
     try {
       return Optional.of(result.get(timeout.toMillis(), TimeUnit.MILLISECONDS));
     } catch (TimeoutException e) {

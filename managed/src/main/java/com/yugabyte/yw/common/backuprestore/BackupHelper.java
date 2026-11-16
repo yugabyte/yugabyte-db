@@ -125,8 +125,9 @@ import play.libs.Json;
 public class BackupHelper {
   private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
   private static final int maxRetryCount = 5;
-  // Checks of the host's AWS credentials that may be in flight at once; one more waits up to a few
-  // seconds for a free thread, then is turned away and the config's own chain is kept.
+  // Checks of the host's AWS credentials that may be in flight at once. One more waits up to the
+  // pool's offer timeout (3 s) for a free thread, then is not run, and the config's own chain is
+  // kept.
   private static final int IAM_CREDENTIALS_CHECK_THREADS = 4;
   private static final String TABLESPACES_SQL_QUERY =
       "SELECT jsonb_agg(t) from (SELECT spcname, spcoptions"
@@ -629,7 +630,7 @@ public class BackupHelper {
    * YBA's way to one storage config's bucket apart from any universe: the config's own credentials,
    * else the entry the customer's providers agree on. It depends only on the config, YBA's host and
    * the providers, never on a backup, so a run over one config's backups resolves it once with this
-   * and reuses it. For one config and one run; not thread-safe.
+   * and reuses it. For one config and one run; deletions running in parallel can share it.
    */
   public static final class ConfigIdentity {
     // Null until asked.
@@ -664,19 +665,29 @@ public class BackupHelper {
       return true;
     }
     if (target == null) {
-      if (configIdentity.ownCredentials == null) {
-        // Asked only here, as it can take calls to the bucket's cloud.
-        configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
+      // One deletion works it out while the others sharing it wait, up to the time the check takes,
+      // then reuse it instead of repeating the check.
+      synchronized (configIdentity) {
+        if (configIdentity.ownCredentials == null) {
+          // Asked only here, as it can take calls to the bucket's cloud.
+          configIdentity.ownCredentials = hasCredentialsOfItsOwn(configData);
+        }
+        if (configIdentity.ownCredentials) {
+          return true;
+        }
+        if (configData instanceof CustomerConfigStorageGCSData
+            && !((CustomerConfigStorageGCSData) configData).useGcpIam) {
+          // Without GCP IAM the client only uses the config's key, never an entry's audience.
+          return false;
+        }
+        if (!configIdentity.customerTargetResolved) {
+          // A failed read is not remembered, so the next backup reads the providers again.
+          configIdentity.customerTarget =
+              resolveCustomerFederationTarget(customerUUID, bucketCloud);
+          configIdentity.customerTargetResolved = true;
+        }
+        target = configIdentity.customerTarget;
       }
-      if (configIdentity.ownCredentials) {
-        return true;
-      }
-      if (!configIdentity.customerTargetResolved) {
-        // A failed read is not remembered, so the next backup reads the providers again.
-        configIdentity.customerTarget = resolveCustomerFederationTarget(customerUUID, bucketCloud);
-        configIdentity.customerTargetResolved = true;
-      }
-      target = configIdentity.customerTarget;
       if (target == null) {
         return false;
       }
@@ -701,6 +712,15 @@ public class BackupHelper {
   /** Why {@link #applyYbaFederatedIdentity} found no way to the bucket, and each way to fix it. */
   private static String noYbaCredentialsMessage(
       String storageConfig, CustomerConfigData configData) {
+    if (federatedBucketCloud(configData) == CloudType.gcp
+        && !((CustomerConfigStorageGCSData) configData).useGcpIam) {
+      return String.format(
+          "YBA has no credentials for the GCS bucket of storage config %s: the config uses neither"
+              + " GCP IAM nor a service account key. Give it a service account key, or turn on GCP"
+              + " IAM and add a gcp entry whose workload identity pool also admits this YBA's AWS"
+              + " role.",
+          storageConfig);
+    }
     if (federatedBucketCloud(configData) == CloudType.gcp) {
       return String.format(
           "YBA runs on AWS and has no credentials for the GCS bucket of storage config %s: the"
@@ -819,7 +839,7 @@ public class BackupHelper {
       return StringUtils.isNotBlank(s3.awsAccessKeyId);
     }
     CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
-    return !gcs.useGcpIam || hostHasGcpCredentials();
+    return gcs.useGcpIam ? hostHasGcpCredentials() : StringUtils.isNotBlank(gcs.gcsCredentialsJson);
   }
 
   /**
@@ -985,11 +1005,15 @@ public class BackupHelper {
     if (reachable) {
       return;
     }
-    if (configIdentity.reportedUnreachable) {
+    boolean reported;
+    synchronized (configIdentity) {
+      reported = configIdentity.reportedUnreachable;
+      configIdentity.reportedUnreachable = true;
+    }
+    if (reported) {
       log.debug(
           "Deleting backup {}: YBA has no credentials for its bucket", backup.getBackupUUID());
     } else {
-      configIdentity.reportedUnreachable = true;
       log.warn(
           "Deleting backup {}: {}",
           backup.getBackupUUID(),

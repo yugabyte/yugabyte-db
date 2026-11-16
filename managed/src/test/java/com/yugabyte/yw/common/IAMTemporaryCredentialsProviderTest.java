@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -109,7 +110,9 @@ public class IAMTemporaryCredentialsProviderTest {
             return null;
           });
       busy.await();
-      assertEquals(Optional.empty(), resultWithin(() -> true, Duration.ofSeconds(5), executor));
+      assertThrows(
+          RejectedExecutionException.class,
+          () -> resultWithin(() -> true, Duration.ofSeconds(5), executor));
       release.countDown();
     } finally {
       executor.shutdownNow();
