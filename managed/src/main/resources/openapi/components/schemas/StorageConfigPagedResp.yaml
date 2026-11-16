@@ -1,0 +1,8 @@
+title: StorageConfigPagedResp
+description: Paged list response for storage configurations.
+type: object
+x-data-container: PaginationResp
+x-data-item: StorageConfig
+x-data-entities-description: Storage configurations for this page.
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview
