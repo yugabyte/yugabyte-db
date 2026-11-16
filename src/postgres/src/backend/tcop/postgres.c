@@ -4698,20 +4698,39 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 					/*
 					 * YB: In connection manager auth, "options" always comes
 					 * from the logical client, so it must not set a parameter
-					 * reserved for the connection manager.
-					 *
-					 * TODO(#29744): This runs after authentication, so in
-					 * auth passthrough the FATAL ends the shared control
-					 * backend.  Send a FatalForLogicalConnection packet
-					 * instead, as the top-level check in
-					 * ProcessStartupPacket() does.
+					 * reserved for the connection manager.  In auth
+					 * passthrough this runs on the shared control backend, so
+					 * fail only the logical connection, as a failed auth
+					 * does, and skip the parameter.
+					 * YbAuthPassthroughSetupGUCAndReport() then skips the
+					 * rest of the setup.
 					 */
 					if (YbIsPerformingConnMgrAuth() &&
 						YbIsConnMgrReservedStartupParameter(name))
-						ereport(FATAL,
-								(errcode(ERRCODE_PROTOCOL_VIOLATION),
-								 errmsg("startup parameter \"%s\" is reserved "
-										"for the connection manager", name)));
+					{
+						bool		yb_auth_passthrough =
+							YbIsAuthPassthroughInProgress(MyProcPort);
+
+						/* In auth passthrough, report only the first one. */
+						if (!yb_auth_passthrough ||
+							!MyProcPort->yb_has_auth_passthrough_finished)
+						{
+							if (yb_auth_passthrough)
+							{
+								YbSendFatalForLogicalConnectionPacket();
+								MyProcPort->yb_has_auth_passthrough_finished = true;
+							}
+							ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
+									(errcode(ERRCODE_PROTOCOL_VIOLATION),
+									 errmsg("startup parameter \"%s\" is "
+											"reserved for the connection "
+											"manager", name)));
+						}
+						free(name);
+						if (value)
+							free(value);
+						break;
+					}
 
 					SetConfigOption(name, value, ctx, gucsource);
 					free(name);
