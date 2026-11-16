@@ -118,11 +118,44 @@ public class KubernetesOverridesUpgradeParamsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testNoChangeRejectedWhenPodCannotBeRead() {
+  public void testNoChangeRejectedWhenNoPodCanBeRead() {
     Universe u = k8sUniverse(SUPPORTED_VERSION);
     RuntimeConfigEntry.upsert(u, KEY, "true");
     when(mockKubernetesManager.getPodObject(any(), any(), any()))
         .thenThrow(new RuntimeException("kubectl failed"));
+    assertNoOverridesModified(u);
+  }
+
+  @Test
+  public void testNoChangeAcceptedWhenMasterPodCannotBeReadAndTserverDiffers() {
+    Universe u = k8sUniverse(SUPPORTED_VERSION);
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-master-0")))
+        .thenThrow(new RuntimeException("kubectl failed"));
+    when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-tserver-0")))
+        .thenReturn(pod("yb-tserver", false /* sidecar */));
+    noChangeParams().verifyParams(u, true);
+  }
+
+  @Test
+  public void testNoChangeAcceptedWhenTserverPodCannotBeReadAndMasterDiffers() {
+    Universe u = k8sUniverse(SUPPORTED_VERSION);
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-master-0")))
+        .thenReturn(pod("yb-master", false /* sidecar */));
+    when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-tserver-0")))
+        .thenThrow(new RuntimeException("kubectl failed"));
+    noChangeParams().verifyParams(u, true);
+  }
+
+  @Test
+  public void testNoChangeRejectedWhenOnePodCannotBeReadAndTheOtherMatches() {
+    Universe u = k8sUniverse(SUPPORTED_VERSION);
+    RuntimeConfigEntry.upsert(u, KEY, "true");
+    when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-master-0")))
+        .thenThrow(new RuntimeException("kubectl failed"));
+    when(mockKubernetesManager.getPodObject(any(), any(), eq("yb-tserver-0")))
+        .thenReturn(pod("yb-tserver", true /* sidecar */));
     assertNoOverridesModified(u);
   }
 

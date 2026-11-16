@@ -958,6 +958,138 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditTablesDeferredToTask() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+
+    // Request to keep only one of the two tables; this is a real change.
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest.putArray("tables").add(exampleTableID1);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest);
+    assertOk(result);
+
+    // The controller must defer the table-set computation (and its universe RPCs) to the task:
+    // the submitted params carry only the raw inputs, with the computed sets and table info unset.
+    ArgumentCaptor<XClusterConfigTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditXClusterConfig), paramsCaptor.capture());
+    XClusterConfigTaskParams submitted = paramsCaptor.getValue();
+    assertNull(submitted.getTableIdsToAdd());
+    assertNull(submitted.getTableIdsToRemove());
+    assertNull(submitted.getTableInfoList());
+    assertNotNull(submitted.getEditFormData());
+    assertEquals(Collections.singleton(exampleTableID1), submitted.getEditFormData().tables);
+
+    assertAuditEntry(1, customer.getUuid());
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testEditTablesDeferredDropsOtherEditFields() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+
+    // An empty table list does not count as an edit operation, so it can be combined with a
+    // status change. The deferred task must only see the set-tables request, never the status.
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest.putArray("tables");
+    editTablesRequest.put("status", "Paused");
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest);
+    assertOk(result);
+
+    ArgumentCaptor<XClusterConfigTaskParams> paramsCaptor =
+        ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditXClusterConfig), paramsCaptor.capture());
+    XClusterConfigEditFormData submittedForm = paramsCaptor.getValue().getEditFormData();
+    assertNull(submittedForm.status);
+    assertEquals(Collections.emptySet(), submittedForm.tables);
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testEditTablesDryRunNoChangeRejected() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+
+    initClientGetTablesList();
+
+    String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+
+    // dryRun with the same table set as the config: no change is detected, so the precheck must
+    // fail synchronously with BAD_REQUEST and submit no task.
+    ObjectNode editTablesRequest = Json.newObject();
+    editTablesRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    editTablesRequest.put("dryRun", true);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", editAPIEndpoint, user.createAuthToken(), editTablesRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertResponseError("No change in the xCluster config table list is detected", result);
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testGetSetTablesTaskParamsSkipsValidationOnRetry() throws Exception {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    initClientGetTablesList();
+
+    Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUUID);
+    // Requested set equals the current config, so the computed diff is empty.
+    Set<String> requestedTables = new HashSet<>(xClusterConfig.getTableIds());
+
+    // First attempt (validateRequestedChange = true): the empty diff is rejected.
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            XClusterConfigController.getSetTablesTaskParams(
+                mockService,
+                xClusterConfig,
+                sourceUniverse,
+                targetUniverse,
+                requestedTables,
+                null /* bootstrapParams */,
+                true /* autoIncludeIndexTables */,
+                true /* dryRun */,
+                true /* validateRequestedChange */));
+
+    // Retry (validateRequestedChange = false): the same empty diff is tolerated, since a retry
+    // recomputes against a partially-applied config.
+    XClusterConfigTaskParams params =
+        XClusterConfigController.getSetTablesTaskParams(
+            mockService,
+            xClusterConfig,
+            sourceUniverse,
+            targetUniverse,
+            requestedTables,
+            null /* bootstrapParams */,
+            true /* autoIncludeIndexTables */,
+            true /* dryRun */,
+            false /* validateRequestedChange */);
+    assertNotNull(params);
+
+    xClusterConfig.delete();
+  }
+
+  @Test
   public void testEditStatus() {
     XClusterConfig xClusterConfig =
         XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
@@ -1405,6 +1537,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
 
     String editAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    // The table-set validation runs in the task for a real submit, but is still enforced
+    // synchronously on the dryRun precheck path.
+    editFormData.dryRun = true;
     IllegalArgumentException exception =
         assertThrows(
             IllegalArgumentException.class,
@@ -1414,6 +1549,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     assertThat(
         exception.getMessage(),
         containsString("For YSQL tables, all the tables in a keyspace must be selected"));
+    editFormData.dryRun = false;
 
     params.allowBootstrap = true;
     Result result =

@@ -248,11 +248,10 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
   /**
    * The rollback must not shrink a disk, and must not grow one to cover another. A cluster-wide
    * cloud maximum would grow every AZ that inherits the cluster default to the size of the largest
-   * per-AZ override. So, per node, if the size the rollback sets is below the node's
-   * current-intent size (an AZ override persisted larger than {@code before}) or its cloud data-disk
-   * size, refuse the rollback instead of picking a size. A forward size grow leaves the
-   * rollback-safe window before its first disk update, so neither should happen for a rollbackable
-   * resize.
+   * per-AZ override. So, per node, if the size the rollback sets is below the node's current-intent
+   * size (an AZ override persisted larger than {@code before}) or its cloud data-disk size, refuse
+   * the rollback instead of picking a size. A forward size grow leaves the rollback-safe window
+   * before its first disk update, so neither should happen for a rollbackable resize.
    */
   private static void rejectShrinkingDisks(
       UserIntent restored,
@@ -274,9 +273,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
                 "Cannot roll back resize node: the universe records %d GB for node %s, larger than"
                     + " the %d GB the rollback would set for it, so it can't be rolled back. Retry"
                     + " the resize to drive it forward instead.",
-                currentDevice.volumeSize,
-                node.nodeName,
-                wanted.volumeSize));
+                currentDevice.volumeSize, node.nodeName, wanted.volumeSize));
       }
       CloudAPI.NodeDiskSpec diskSpec = diskSpecByNode.get(node.nodeName);
       if (diskSpec != null
@@ -288,9 +285,7 @@ public class ResizeNodeRollbackComputer implements TaskRollbackComputer {
                 "Cannot roll back resize node: the data disk of node %s is %d GB in the cloud,"
                     + " larger than the %d GB the rollback would set for it, so it can't be rolled"
                     + " back. Retry the resize to drive it forward instead.",
-                node.nodeName,
-                diskSpec.getVolumeSizeGb(),
-                wanted.volumeSize));
+                node.nodeName, diskSpec.getVolumeSizeGb(), wanted.volumeSize));
       }
     }
   }

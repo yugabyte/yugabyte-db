@@ -1708,6 +1708,9 @@ TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
   conn = ASSERT_RESULT(ConnectToDB(kDbName));
 
+  // Keeps the colocation tablet alive when kTableName is dropped.
+  ASSERT_OK(conn.Execute("CREATE TABLE keep_tablet (v int PRIMARY KEY)"));
+
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (v int PRIMARY KEY) WITH (colocation_id=$1)",
       kTableName, kColocationId));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1), ($2), ($3)",
@@ -5262,6 +5265,812 @@ TEST_F_EX(
   ASSERT_OK(CreateIndexedTableAndFill(" SPLIT AT VALUES ((700), (1400))", kNumRows));
   ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
   ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 3));
+}
+
+// ------------------------------------------------------------------------------------------------
+// Online schema change change-capture trigger tests
+// ------------------------------------------------------------------------------------------------
+// The triggers are attached directly, as YbOscCreateTrigger does, to an empty target. A source
+// row inserted before the triggers are attached stands for a row the backfill has not copied yet.
+
+namespace {
+
+Status AttachOnlineSchemaChangeTriggers(
+    PGConn* conn, const std::string& src, const std::string& target,
+    const std::string& transform) {
+  const auto target_oid = VERIFY_RESULT(conn->FetchRow<std::string>(
+      Format("SELECT '$0'::regclass::oid::text", target)));
+  const auto transform_oid = VERIFY_RESULT(conn->FetchRow<std::string>(
+      Format("SELECT '$0'::regproc::oid::text", transform)));
+
+  RETURN_NOT_OK(conn->ExecuteFormat(
+      "CREATE TRIGGER yb_osc_ins AFTER INSERT ON $0 "
+      "REFERENCING NEW TABLE AS yb_osc_new_rows "
+      "FOR EACH STATEMENT EXECUTE FUNCTION "
+      "pg_catalog.yb_online_schema_change_trigger('$1', '$2')",
+      src, target_oid, transform_oid));
+  RETURN_NOT_OK(conn->ExecuteFormat(
+      "CREATE TRIGGER yb_osc_upd AFTER UPDATE ON $0 "
+      "REFERENCING OLD TABLE AS yb_osc_old_rows NEW TABLE AS yb_osc_new_rows "
+      "FOR EACH STATEMENT EXECUTE FUNCTION "
+      "pg_catalog.yb_online_schema_change_trigger('$1', '$2')",
+      src, target_oid, transform_oid));
+  RETURN_NOT_OK(conn->ExecuteFormat(
+      "CREATE TRIGGER yb_osc_del AFTER DELETE ON $0 "
+      "REFERENCING OLD TABLE AS yb_osc_old_rows "
+      "FOR EACH STATEMENT EXECUTE FUNCTION "
+      "pg_catalog.yb_online_schema_change_trigger('$1', '$2')",
+      src, target_oid, transform_oid));
+  return Status::OK();
+}
+
+Result<double> ExplainStorageStat(PGConn* conn, const std::string& dml, const char* key) {
+  auto doc = VERIFY_RESULT(conn->FetchRow<JsonDocument>(
+      Format("EXPLAIN (ANALYZE, DIST, DEBUG, FORMAT JSON) $0", dml)));
+  return doc.Root()[0][key].GetDouble();
+}
+
+Result<double> ExplainFlushes(PGConn* conn, const std::string& dml) {
+  return ExplainStorageStat(conn, dml, "Storage Flush Requests");
+}
+
+// The rows t2 should hold for the current rows of t1, and the rows it holds.
+Result<std::string> ExpectedTargetRows(PGConn* conn) {
+  return conn->FetchAllAsString("SELECT t1_to_t2(t1)::text AS r FROM t1 ORDER BY r");
+}
+
+Result<std::string> TargetRows(PGConn* conn) {
+  return conn->FetchAllAsString("SELECT t2::text AS r FROM t2 ORDER BY r");
+}
+
+constexpr auto kOnlineSchemaChangeReplayOrderError =
+    "this way while an online schema change is copying it";
+
+}  // namespace
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerInsertReplay) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b'), (3, NULL)"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 3);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t2 WHERE id = 3 AND v IS NULL AND v2 IS NULL")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t2 WHERE v2 IS DISTINCT FROM (v || '_x')")), 0);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDeletePresent) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 2);
+
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 1"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE id = 1")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 1);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDeleteAbsentTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
+
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 1"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE id = 1")), 0);
+}
+
+// The tombstone for a row missing from the target is a blind delete; with a vector column on the
+// target, DocDB must not try to read the old vector id of a row it did not find.
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDeleteAbsentTargetWithVector) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, e vector(3), v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, '[1,2,3]'::vector, src.v)::t2; END $$"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 1"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'b2' WHERE id = 2"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT id, e::text, v FROM t2 ORDER BY id")),
+            "2, [1,2,3], b2");
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerUpdatePresent) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'a2' WHERE id = 1"));
+
+  const auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v, v2 FROM t2 WHERE id = 1")));
+  ASSERT_EQ(row, (decltype(row){"a2", "a2_x"}));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 1);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerUpdateAbsentTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'a2' WHERE id = 1"));
+
+  const auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v, v2 FROM t2 WHERE id = 1")));
+  ASSERT_EQ(row, (decltype(row){"a2", "a2_x"}));
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerUpdateChangesPrimaryKey) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET id = 2 WHERE id = 1"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE id = 1")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE id = 2")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 1);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerEmptyStatement) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 SELECT i, 'v' FROM generate_series(1, 0) i"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'x' WHERE id = 999"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 999"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDroppedTargetColumn) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, dead INT, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP COLUMN dead"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 1);
+  const auto row = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(
+      "SELECT v, v2 FROM t2 WHERE id = 1")));
+  ASSERT_EQ(row, (decltype(row){"a", "a_x"}));
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerSecondaryIndexes) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, name TEXT, age INT, city TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, name TEXT, age INT, city TEXT, tag TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_city_idx ON t2 (city)"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX t2_name_idx ON t2 (name)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_city_age_idx ON t2 (city, age)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_lower_name_idx ON t2 (lower(name))"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t2_senior_idx ON t2 (age) WHERE age >= 30"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.name, src.age, src.city, src.city || "
+      "'_' || src.age::text)::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 VALUES (1,'alice',30,'nyc'), (2,'bob',25,'sfo'), "
+      "(3,'carol',35,'nyc'), (4,'dave',40,'sea')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET name = 'robert', age = 26 WHERE id = 2"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 3"));
+
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t2 WHERE name = 'carol'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t2 WHERE lower(name) = 'carol'")), 0);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t2 WHERE city = 'nyc' AND age = 35")), 0);
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "SELECT id FROM t2 WHERE name = 'robert'")), 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t2 WHERE name = 'bob'")), 0);
+
+  auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, int32_t, std::string>(
+      "SELECT id, name, age, city FROM t1 ORDER BY id")));
+  for (const auto& [id, name, age, city] : rows) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>(
+        Format("SELECT id FROM t2 WHERE name = '$0'", name))), id);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        Format("SELECT count(*) FROM t2 WHERE city = '$0' AND id = $1", city, id))), 1);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        Format("SELECT count(*) FROM t2 WHERE city = '$0' AND age = $1 AND id = $2",
+               city, age, id))), 1);
+    if (age >= 30) {
+      ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+          Format("SELECT count(*) FROM t2 WHERE age = $0 AND id = $1", age, id))), 1);
+    }
+  }
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerDataTypes) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, n NUMERIC, b BOOL, ts TIMESTAMPTZ, raw BYTEA)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, n NUMERIC, b BOOL, ts TIMESTAMPTZ, raw BYTEA)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.n, src.b, src.ts, src.raw)::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t1 VALUES "
+      "(1, 123.456, true, '2024-01-02 03:04:05+00', '\\xdeadbeef'), "
+      "(2, -0.001, false, '1999-12-31 23:59:59+00', '\\x00')"));
+  ASSERT_OK(conn.Execute("DELETE FROM t1 WHERE id = 2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t1 JOIN t2 USING (id, n, b, ts, raw)")), 1);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerWorkloadEquivalence) {
+  constexpr int kKeys = 50;
+  constexpr int kOps = 400;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  for (int i = 0; i < kOps; ++i) {
+    const auto key = RandomUniformInt(1, kKeys);
+    const auto op = RandomUniformInt(0, 2);
+    if (op == 0) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO t1 VALUES ($0, '$1') ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v",
+          key, RandomHumanReadableString(8)));
+    } else if (op == 1) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "UPDATE t1 SET v = '$1' WHERE id = $0", key, RandomHumanReadableString(8)));
+    } else {
+      ASSERT_OK(conn.ExecuteFormat("DELETE FROM t1 WHERE id = $0", key));
+    }
+  }
+
+  auto src = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT id, v FROM t1 ORDER BY id")));
+  auto dst = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT id, v FROM t2 ORDER BY id")));
+  ASSERT_EQ(src, dst);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM t2 WHERE v2 IS DISTINCT FROM (v || '_x')")), 0);
+}
+
+// MERGE is the only statement that could fire all three capture triggers, and YB rejects it in the
+// grammar. If MERGE becomes supported this test fails; then check that every tombstone is still
+// written before every insert, that each trigger replays only its own rows, and that an action
+// matching no rows does not hit the "missing old/new transition table" errors.
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerMergeUnsupported) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1,'keep'), (2,'upd'), (3,'del')"));
+  ASSERT_OK(conn.Execute("CREATE TABLE s (id INT PRIMARY KEY, v TEXT, act TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO s VALUES (2,'upd_new','u'), (3,NULL,'d'), (4,'ins','i')"));
+
+  const auto status = conn.Execute(
+      "MERGE INTO t1 USING s ON t1.id = s.id "
+      "WHEN MATCHED AND s.act = 'd' THEN DELETE "
+      "WHEN MATCHED AND s.act = 'u' THEN UPDATE SET v = s.v "
+      "WHEN NOT MATCHED THEN INSERT (id, v) VALUES (s.id, s.v)");
+  ASSERT_NOK(status) << "MERGE now works on YB relations -- verify the capture trigger "
+                        "against it (see the comment above this test)";
+  ASSERT_STR_CONTAINS(status.ToString(), "not supported yet");
+
+  auto src = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT id, v FROM t1 ORDER BY id")));
+  auto dst = ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT id, v FROM t2 ORDER BY id")));
+  ASSERT_EQ(src, dst);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRequiresSuperuser) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE victim (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE ROLE attacker"));
+  ASSERT_OK(conn.Execute("GRANT CREATE ON SCHEMA public TO attacker"));
+
+  ASSERT_OK(conn.Execute("SET ROLE attacker"));
+  ASSERT_OK(conn.Execute("CREATE TABLE mine (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION mine_to_victim(src mine) RETURNS victim LANGUAGE plpgsql IMMUTABLE SET "
+      "search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v)::victim; END $$"));
+  ASSERT_NOK_STR_CONTAINS(
+      AttachOnlineSchemaChangeTriggers(&conn, "mine", "victim", "mine_to_victim"),
+      "permission denied for function pg_catalog.yb_online_schema_change_trigger");
+  ASSERT_OK(conn.Execute("INSERT INTO mine VALUES (1, 'x')"));
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM victim")), 0);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRunsAsInvoker) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, who TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, current_user::text)::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("CREATE ROLE app"));
+  ASSERT_OK(conn.Execute("GRANT SELECT, INSERT, UPDATE ON t1 TO app"));
+
+  ASSERT_OK(conn.Execute("SET ROLE app"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 'a'), (2, 'b')"));
+  ASSERT_OK(conn.Execute("UPDATE t1 SET v = 'c' WHERE id = 2"));
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+
+  const auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, std::string, std::string>(
+      "SELECT id, v, who FROM t2 ORDER BY id")));
+  ASSERT_EQ(rows, (decltype(rows){{1, "a", "app"}, {2, "c", "app"}}));
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRejectsSystemTarget) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (objoid OID PRIMARY KEY, classoid OID, objsubid INT, description TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_desc(src t1) RETURNS pg_description LANGUAGE plpgsql IMMUTABLE "
+      "SET search_path FROM CURRENT AS $$ BEGIN RETURN ROW(src.objoid, src.classoid, "
+      "src.objsubid, src.description)::pg_description; END $$"));
+  ASSERT_OK(
+      AttachOnlineSchemaChangeTriggers(&conn, "t1", "pg_catalog.pg_description", "t1_to_desc"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("INSERT INTO t1 VALUES (4000000000, 1259, 0, 'x')"),
+      "permission denied: \"pg_description\" is a system catalog");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_description WHERE objoid = 4000000000")), 0);
+}
+
+// The seed rows are inserted before the triggers are attached, so the target does not have them.
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerRejectsUnreplayableOrder) {
+  struct Case {
+    std::vector<std::string> setup;
+    std::string seed;
+    std::string statement;
+  };
+  const std::vector<Case> cases = {
+      // INSERT fires before the DELETE of the WITH query, which LIMIT leaves unfinished.
+      {{},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, NULL, 'b')",
+       "WITH d AS (DELETE FROM t1 WHERE id = 1 RETURNING id, v) "
+       "INSERT INTO t1 SELECT id, NULL, v || '2' FROM d LIMIT 1"},
+      {{},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, NULL, 'b')",
+       "WITH u AS (UPDATE t1 SET id = 102 WHERE id = 2 RETURNING v) "
+       "INSERT INTO t1 SELECT 2, NULL, v || '2' FROM u LIMIT 1"},
+      // The cascade's DELETE is queued again after the INSERT.
+      {{"ALTER TABLE t1 ADD FOREIGN KEY (parent) REFERENCES t1 (id) ON DELETE CASCADE"},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, 1, 'b')",
+       "WITH d AS (DELETE FROM t1 WHERE id = 1 RETURNING id, v) "
+       "INSERT INTO t1 SELECT id, NULL, v || '2' FROM d"},
+      {{"CREATE FUNCTION touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+        "IF pg_trigger_depth() = 1 THEN "
+        "UPDATE t1 SET v = NEW.v || '_touched' WHERE id = NEW.id; END IF; "
+        "RETURN NULL; END $$",
+        "CREATE TRIGGER touch AFTER UPDATE ON t1 FOR EACH ROW EXECUTE FUNCTION touch()"},
+       "INSERT INTO t1 VALUES (1, NULL, 'a')",
+       "UPDATE t1 SET v = 'b' WHERE id = 1"},
+      {{"CREATE FUNCTION prune() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+        "DELETE FROM t1 WHERE id <= NEW.id - 2; RETURN NULL; END $$",
+        "CREATE TRIGGER prune AFTER INSERT ON t1 FOR EACH ROW EXECUTE FUNCTION prune()"},
+       "",
+       "INSERT INTO t1 VALUES (11, NULL, 'x'), (12, NULL, 'y'), (13, NULL, 'z')"},
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  for (size_t i = 0; i < cases.size(); ++i) {
+    const auto& c = cases[i];
+    SCOPED_TRACE(c.statement);
+    ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA c$0", i));
+    ASSERT_OK(conn.ExecuteFormat("SET search_path TO c$0", i));
+    ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, parent INT, v TEXT)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, parent INT, v TEXT, v2 TEXT)"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+        "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.parent, src.v, src.v || '_x')::t2; END "
+        "$$"));
+    for (const auto& stmt : c.setup) {
+      ASSERT_OK(conn.Execute(stmt));
+    }
+    if (!c.seed.empty()) {
+      ASSERT_OK(conn.Execute(c.seed));
+    }
+    ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+    const auto source_before = ASSERT_RESULT(conn.FetchAllAsString(
+        "SELECT t1::text AS r FROM t1 ORDER BY r"));
+
+    ASSERT_NOK_STR_CONTAINS(conn.Execute(c.statement), kOnlineSchemaChangeReplayOrderError);
+
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString("SELECT t1::text AS r FROM t1 ORDER BY r")),
+              source_before);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
+  }
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerReplayableOrders) {
+  struct Case {
+    std::vector<std::string> setup;
+    std::string seed;
+    std::string statement;
+  };
+  const std::vector<Case> cases = {
+      {{},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, NULL, 'b')",
+       "WITH d AS (DELETE FROM t1 WHERE id = 1 RETURNING id, v) "
+       "INSERT INTO t1 SELECT id, NULL, v || '2' FROM d"},
+      {{},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, NULL, 'b')",
+       "WITH u AS (UPDATE t1 SET id = 102 WHERE id = 2 RETURNING v) "
+       "INSERT INTO t1 SELECT 2, NULL, v || '2' FROM u"},
+      {{},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, NULL, 'b')",
+       "INSERT INTO t1 VALUES (1, NULL, 'a2'), (3, NULL, 'c') "
+       "ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v"},
+      {{"ALTER TABLE t1 ADD FOREIGN KEY (parent) REFERENCES t1 (id) ON DELETE SET NULL"},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, 1, 'b')",
+       "DELETE FROM t1 WHERE id = 1"},
+      // A cascade's rows join the transition table of the statement that caused it.
+      {{"ALTER TABLE t1 ADD FOREIGN KEY (parent) REFERENCES t1 (id) "
+        "ON UPDATE CASCADE ON DELETE CASCADE"},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, 1, 'b'), (3, 2, 'c'), (4, NULL, 'd')",
+       "DELETE FROM t1 WHERE id = 1"},
+      {{"ALTER TABLE t1 ADD FOREIGN KEY (parent) REFERENCES t1 (id) "
+        "ON UPDATE CASCADE ON DELETE CASCADE"},
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, 1, 'b'), (3, 2, 'c'), (4, NULL, 'd')",
+       "UPDATE t1 SET id = 10 WHERE id = 1"},
+      // A statement trigger that sorts after the capture triggers fires after them.
+      {{"CREATE FUNCTION touch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+        "UPDATE t1 SET v = v || '_touched' WHERE id = 1; RETURN NULL; END $$",
+        "CREATE TRIGGER zz_touch AFTER INSERT ON t1 FOR EACH STATEMENT "
+        "EXECUTE FUNCTION touch()"},
+       "",
+       "INSERT INTO t1 VALUES (1, NULL, 'a'), (2, NULL, 'b')"},
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  for (size_t i = 0; i < cases.size(); ++i) {
+    const auto& c = cases[i];
+    SCOPED_TRACE(c.statement);
+    ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA c$0", i));
+    ASSERT_OK(conn.ExecuteFormat("SET search_path TO c$0", i));
+    ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, parent INT, v TEXT)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, parent INT, v TEXT, v2 TEXT)"));
+    ASSERT_OK(conn.Execute(
+        "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+        "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.parent, src.v, src.v || '_x')::t2; END "
+        "$$"));
+    for (const auto& stmt : c.setup) {
+      ASSERT_OK(conn.Execute(stmt));
+    }
+    ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+    if (!c.seed.empty()) {
+      ASSERT_OK(conn.Execute(c.seed));
+    }
+
+    ASSERT_OK(conn.Execute(c.statement));
+
+    ASSERT_EQ(ASSERT_RESULT(TargetRows(&conn)), ASSERT_RESULT(ExpectedTargetRows(&conn)));
+  }
+}
+
+// Command IDs restart in every transaction, including after a COMMIT in a DO block, so the first
+// statements of a transaction must not be taken for statements nested in the previous one's. And
+// consecutive statements, whose EStates can share an address, must not be taken for one statement.
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerReplayOrderAcrossStatements) {
+  constexpr int kIters = 30;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int i = 1; i <= kIters; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, 'a')", i));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE t1 SET v = 'b' WHERE id = $0", i));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM t1 WHERE id = $0", i - 1));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM t1 WHERE id = $0", kIters));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "DO $$$$ BEGIN "
+      "FOR i IN 1..$0 LOOP "
+      "INSERT INTO t1 VALUES (i, 'c'); UPDATE t1 SET v = 'd' WHERE id = i; "
+      "END LOOP; "
+      "COMMIT; "
+      "DELETE FROM t1 WHERE id = 1; "
+      "END $$$$",
+      kIters));
+
+  ASSERT_EQ(ASSERT_RESULT(TargetRows(&conn)), ASSERT_RESULT(ExpectedTargetRows(&conn)));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kIters - 1);
+}
+
+// YB retries a statement that hits a transaction conflict, and when nothing ran a
+// CommandCounterIncrement since the failed attempt, the retry runs with its command ID. With
+// yb_speculatively_execute_pl_statements the capture trigger does not flush, so the conflict on the
+// shared row 0 can surface after the INSERT firing was replayed. The UPDATE firing of the retry
+// must not be taken for a later firing of the failed attempt.
+TEST_F_EX(PgMiniTest, OnlineSchemaChangeTriggerRetriedStatement, PgMiniTestFailOnConflict) {
+  constexpr int kThreads = 4;
+  constexpr int kIters = 100;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (0, 'seed')"));
+
+  std::atomic<int> committed{0};
+  std::atomic<int> failed{0};
+  std::atomic<int> misordered{0};
+  TestThreadHolder thread_holder;
+  for (int t = 1; t <= kThreads; ++t) {
+    thread_holder.AddThreadFunctor([this, t, &committed, &failed, &misordered] {
+      auto thread_conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(thread_conn.Execute("SET yb_speculatively_execute_pl_statements = on"));
+      for (int i = 0; i < kIters; ++i) {
+        // Updates the shared row and inserts a new one, so each attempt fires both triggers.
+        auto status = thread_conn.ExecuteFormat(
+            "INSERT INTO t1 VALUES (0, 'v$0_$1'), ($2, 'n') "
+            "ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v",
+            t, i, 1000 * t + i);
+        if (status.ok()) {
+          ++committed;
+        } else if (
+            status.ToString().find(kOnlineSchemaChangeReplayOrderError) != std::string::npos) {
+          LOG(WARNING) << "Retried upsert rejected: " << status;
+          ++misordered;
+        } else {
+          ++failed;
+        }
+      }
+    });
+  }
+  thread_holder.JoinAll();
+
+  LOG(INFO) << "Upserts: " << committed << " committed, " << failed << " failed, " << misordered
+            << " rejected as misordered";
+  ASSERT_EQ(misordered, 0);
+  ASSERT_GT(committed, 0);
+  ASSERT_EQ(ASSERT_RESULT(TargetRows(&conn)), ASSERT_RESULT(ExpectedTargetRows(&conn)));
+}
+
+// The flush tests compare a statement's storage flushes with and without the capture triggers. The
+// replay must add a constant number of flushes, not one per row. Row counts stay below
+// ysql_session_max_batch_size, past which the buffer flushes on its own.
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushInsert) {
+  constexpr int kNumRows = 500;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE base (id INT PRIMARY KEY, v TEXT)"));
+  const auto base_single = ASSERT_RESULT(ExplainFlushes(
+      &conn, "INSERT INTO base VALUES (-1, 'x')"));
+  const auto base_bulk = ASSERT_RESULT(ExplainFlushes(&conn, Format(
+      "INSERT INTO base SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows)));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  const auto osc_single = ASSERT_RESULT(ExplainFlushes(
+      &conn, "INSERT INTO t1 VALUES (-1, 'x')"));
+  const auto osc_bulk = ASSERT_RESULT(ExplainFlushes(&conn, Format(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows)));
+
+  LOG(INFO) << "[FLUSH] INSERT single: baseline=" << base_single << " osc=" << osc_single
+            << " extra=" << (osc_single - base_single);
+  LOG(INFO) << "[FLUSH] INSERT bulk(" << kNumRows << "): baseline=" << base_bulk
+            << " osc=" << osc_bulk << " extra=" << (osc_bulk - base_bulk);
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kNumRows + 1);
+  ASSERT_LE(osc_bulk, base_bulk + 10) << "INSERT trigger should add O(1) flushes";
+  ASSERT_LE(osc_bulk, 20);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushUpdate) {
+  constexpr int kNumRows = 500;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE base (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO base SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows));
+  const auto base_bulk = ASSERT_RESULT(ExplainFlushes(
+      &conn, "UPDATE base SET v = 'new_' || v"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  const auto osc_bulk = ASSERT_RESULT(ExplainFlushes(
+      &conn, "UPDATE t1 SET v = 'new_' || v"));
+
+  LOG(INFO) << "[FLUSH] UPDATE bulk(" << kNumRows << "): baseline=" << base_bulk
+            << " osc=" << osc_bulk << " extra=" << (osc_bulk - base_bulk);
+
+  ASSERT_LE(osc_bulk, base_bulk + 15) << "UPDATE trigger should add O(1) flushes";
+  ASSERT_LE(osc_bulk, 30);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushDelete) {
+  constexpr int kNumRows = 500;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE base (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO base SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows));
+  const auto base_bulk = ASSERT_RESULT(ExplainFlushes(&conn, "DELETE FROM base"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  const auto osc_bulk = ASSERT_RESULT(ExplainFlushes(&conn, "DELETE FROM t1"));
+
+  LOG(INFO) << "[FLUSH] DELETE bulk(" << kNumRows << "): baseline=" << base_bulk
+            << " osc=" << osc_bulk << " extra=" << (osc_bulk - base_bulk);
+
+  ASSERT_LE(osc_bulk, base_bulk + 10) << "DELETE trigger should add O(1) flushes";
+  ASSERT_LE(osc_bulk, 20);
+}
+
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushSecondaryIndexes) {
+  constexpr int kNumRows = 500;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE s0 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE d0 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION s0_to_d0(src s0) RETURNS d0 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::d0; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "s0", "d0", "s0_to_d0"));
+  const auto no_idx = ASSERT_RESULT(ExplainFlushes(&conn, Format(
+      "INSERT INTO s0 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows)));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE s3 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE d3 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON d3 (v)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON d3 (v2)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON d3 (v2, id)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION s3_to_d3(src s3) RETURNS d3 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::d3; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "s3", "d3", "s3_to_d3"));
+  const auto three_idx = ASSERT_RESULT(ExplainFlushes(&conn, Format(
+      "INSERT INTO s3 SELECT i, 'v_' || i FROM generate_series(1, $0) i", kNumRows)));
+
+  LOG(INFO) << "[FLUSH] INSERT bulk(" << kNumRows << ") target indexes: 0=" << no_idx
+            << " 3=" << three_idx << " extra_per_idx=" << ((three_idx - no_idx) / 3.0);
+
+  ASSERT_LE(three_idx, 30) << "secondary indexes add writes, not O(rows) flushes";
+}
+
+// With yb_speculatively_execute_pl_statements on, a PL/pgSQL loop of INSERTs batches into one
+// flush, and the trigger must not turn that back into a flush per iteration.
+TEST_F(PgMiniTestSingleNode, OnlineSchemaChangeTriggerFlushPlpgsqlLoop) {
+  constexpr int kIters = 50;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE base (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION ins_base(n INT) RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
+      "FOR i IN 1..n LOOP INSERT INTO base VALUES (i, 'v'); END LOOP; END $$"));
+  const auto base = ASSERT_RESULT(ExplainFlushes(&conn, Format("SELECT ins_base($0)", kIters)));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, v TEXT)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.v, src.v || '_x')::t2; END $$"));
+  ASSERT_OK(AttachOnlineSchemaChangeTriggers(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION ins_t1(n INT) RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
+      "FOR i IN 1..n LOOP INSERT INTO t1 VALUES (i, 'v'); END LOOP; END $$"));
+  const auto osc = ASSERT_RESULT(ExplainFlushes(&conn, Format("SELECT ins_t1($0)", kIters)));
+
+  LOG(INFO) << "[FLUSH] default: plpgsql loop of " << kIters << " single-row INSERTs: baseline="
+            << base << " osc=" << osc << " extra=" << (osc - base);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kIters);
+  // Each firing ends with a flush while the setting is off. The plain loop flushes once per
+  // iteration in release builds but once in total in debug builds, so bound the firings' share.
+  ASSERT_LE(osc, base + kIters + 5) << "trigger should add at most one flush per firing";
+
+  ASSERT_OK(conn.Execute("SET yb_speculatively_execute_pl_statements = on"));
+  ASSERT_OK(conn.Execute("TRUNCATE base"));
+  ASSERT_OK(conn.Execute("TRUNCATE t1"));
+  ASSERT_OK(conn.Execute("TRUNCATE t2"));
+  const auto base_spec =
+      ASSERT_RESULT(ExplainFlushes(&conn, Format("SELECT ins_base($0)", kIters)));
+  const auto osc_spec =
+      ASSERT_RESULT(ExplainFlushes(&conn, Format("SELECT ins_t1($0)", kIters)));
+  LOG(INFO) << "[FLUSH] speculative: plpgsql loop of " << kIters
+            << " single-row INSERTs: baseline=" << base_spec << " osc=" << osc_spec
+            << " extra=" << (osc_spec - base_spec);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), kIters);
+  ASSERT_LE(osc_spec, base_spec + 5)
+      << "trigger flush defeats yb_speculatively_execute_pl_statements";
 }
 
 }  // namespace yb::pgwrapper

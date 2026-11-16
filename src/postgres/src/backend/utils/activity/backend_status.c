@@ -1331,6 +1331,8 @@ yb_pgstat_set_catalog_version(uint64_t catalog_version)
 	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
 
 	vbeentry->yb_st_catalog_version.version = catalog_version;
+	vbeentry->yb_st_catalog_version.catalog_pinned_to_historical_read_time =
+		YbIsCatalogPinnedToReadTime();
 
 	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)

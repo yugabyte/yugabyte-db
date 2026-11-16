@@ -42,13 +42,17 @@ void VectorPayloadMap::Reserve(size_t capacity) {
   payloads_.resize(capacity);
 }
 
-void VectorPayloadMap::Insert(size_t slot, Slice payload) {
+Slice VectorPayloadMap::Store(Slice payload) {
   DCHECK(!payload.empty());
-  DCHECK_LT(slot, payloads_.size());
   auto* buf = static_cast<uint8_t*>(arena_.AllocateBytes(kPayloadSizePrefix + payload.size()));
-  Store<uint32_t, LittleEndian>(buf, narrow_cast<uint32_t>(payload.size()));
+  yb::Store<uint32_t, LittleEndian>(buf, narrow_cast<uint32_t>(payload.size()));
   memcpy(buf + kPayloadSizePrefix, payload.data(), payload.size());
-  payloads_[slot] = Slice(buf + kPayloadSizePrefix, payload.size());
+  return Slice(buf + kPayloadSizePrefix, payload.size());
+}
+
+void VectorPayloadMap::Assign(size_t slot, Slice stored_payload) {
+  DCHECK_LT(slot, payloads_.size());
+  payloads_[slot] = stored_payload;
 }
 
 Result<Slice> VectorPayloadMap::Get(size_t slot) const {
@@ -65,7 +69,7 @@ Status VectorPayloadMap::SaveToFile(const std::string& index_path, size_t num_pa
   slices.reserve(num_payloads + 2);
   uint8_t header[kHeaderSize];
   header[0] = kSerializationVersion;
-  Store<uint64_t, LittleEndian>(header + 1, num_payloads);
+  yb::Store<uint64_t, LittleEndian>(header + 1, num_payloads);
   slices.emplace_back(header, sizeof(header));
   for (size_t slot = 0; slot != num_payloads; ++slot) {
     auto payload = payloads_[slot];
@@ -84,7 +88,7 @@ Status VectorPayloadMap::SaveToFile(const std::string& index_path, size_t num_pa
     crc.Feed(slice);
   }
   uint8_t crc_buf[kCrcSize];
-  Store<uint32_t, LittleEndian>(crc_buf, crc.result());
+  yb::Store<uint32_t, LittleEndian>(crc_buf, crc.result());
   slices.emplace_back(crc_buf, sizeof(crc_buf));
 
   auto* env = Env::Default();

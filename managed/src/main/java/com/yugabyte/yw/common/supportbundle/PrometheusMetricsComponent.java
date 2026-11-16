@@ -415,7 +415,7 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     // Gated on the provider, not on whether a pod name comes back: NodeDetails.getK8sPodName
     // falls back to slicing the private IP, so a VM node yields a plausible-looking selector
     // that matches nothing.
-    if (!SupportBundleV2K8sSupport.isK8s(universe)) {
+    if (!SupportBundleK8sSupport.isK8s(universe)) {
       return List.of();
     }
     Set<String> namespaces = new LinkedHashSet<>();

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <ranges>
 
 #include "usearch/index.hpp"
 
@@ -80,6 +81,9 @@ class YbHnswIndexAdapter {
   virtual NeighborsType Neighbors(size_t index, size_t level) = 0;
   virtual NeighborsType NeighborsBase(size_t index) = 0;
 
+  // Returns tenants with the indexes of their entry vectors, empty when vectors have no tenants.
+  virtual std::vector<std::pair<Slice, size_t>> TenantEntries() = 0;
+
   // Returns the payload attached to the vector, empty slice when the chunk does not store
   // payloads. index is the implementation-assigned slot of the vector, matching the payload map
   // indexing.
@@ -120,6 +124,52 @@ using NeighborsRefType = uint16_t;
 constexpr auto kNeighborsRefSize = sizeof(NeighborsRefType);
 constexpr auto kNeighborSize = sizeof(VectorNo);
 
+// Block of tenants ordered by tenant with their entry vectors: number of entries (uint32), end
+// offset of every entry (uint32), entries. An entry is the tenant followed by its entry vector.
+class TenantDirectoryBlock {
+ public:
+  explicit TenantDirectoryBlock(const std::byte* data)
+      : size_(Load<uint32_t, HnswEndian>(data)),
+        ends_(data + sizeof(uint32_t)),
+        entries_(ends_ + size_ * sizeof(uint32_t)) {}
+
+  size_t size() const {
+    return size_;
+  }
+
+  Slice tenant(size_t index) const {
+    return Slice(entries_ + Begin(index), entries_ + End(index) - sizeof(VectorNo));
+  }
+
+  VectorNo entry(size_t index) const {
+    return Load<VectorNo, HnswEndian>(entries_ + End(index) - sizeof(VectorNo));
+  }
+
+  // Returns the entry vector of the tenant, nullopt when the block has no such tenant.
+  std::optional<VectorNo> Find(Slice tenant) const {
+    auto indexes = std::views::iota(size_t{0}, size_);
+    auto it = std::ranges::lower_bound(
+        indexes, tenant, {}, [this](size_t index) { return this->tenant(index); });
+    if (it == indexes.end() || this->tenant(*it) != tenant) {
+      return std::nullopt;
+    }
+    return entry(*it);
+  }
+
+ private:
+  size_t Begin(size_t index) const {
+    return index ? End(index - 1) : 0;
+  }
+
+  size_t End(size_t index) const {
+    return Load<uint32_t, HnswEndian>(ends_ + index * sizeof(uint32_t));
+  }
+
+  const size_t size_;
+  const std::byte* const ends_;
+  const std::byte* const entries_;
+};
+
 size_t CalcMaxVectorsPerLayerBlock(size_t max_block_size, size_t connectivity) {
   size_t max_vector_size = kNeighborsRefSize + connectivity * kNeighborSize;
   auto result = std::min<size_t>(
@@ -151,6 +201,7 @@ class YbHnswBuilder {
     RETURN_NOT_OK(BuildNonBaseLayers());
     RETURN_NOT_OK(BuildBaseLayer());
     RETURN_NOT_OK(BuildVectorDataBlocks());
+    RETURN_NOT_OK(BuildTenantDirectoryBlocks());
     RETURN_NOT_OK(FlushBlock());
     RETURN_NOT_OK(WriteFooter());
     RETURN_NOT_OK(out_->Sync());
@@ -263,6 +314,58 @@ class YbHnswBuilder {
       auto* data = writer.Prepare(header_.vector_data_size);
       memcpy(data, &v.data, sizeof(VectorData));
       inspector_.NodeCoordinates(v.index, data + offsetof(VectorData, coordinates));
+    }
+    return Status::OK();
+  }
+
+  // Writes the entry vector of every tenant into tenant directory blocks ordered by tenant, see
+  // Header::tenant_directory_block.
+  Status BuildTenantDirectoryBlocks() {
+    auto tenants = inspector_.TenantEntries();
+    if (tenants.empty()) {
+      return Status::OK();
+    }
+    std::ranges::sort(tenants, {}, &std::pair<Slice, size_t>::first);
+    std::vector<std::pair<Slice, VectorNo>> entries;
+    size_t block_size = 0;
+    header_.tenant_directory_block = NextBlockId();
+    auto flush = [this, &entries, &block_size]() -> Status {
+      if (header_.num_tenant_directory_blocks++) {
+        header_.tenant_directory_boundaries.push_back(entries.front().first.ToBuffer());
+      }
+      RETURN_NOT_OK(WriteTenantDirectoryBlock(entries, block_size));
+      entries.clear();
+      return Status::OK();
+    };
+    for (const auto& [tenant, index] : tenants) {
+      auto entry_size = TenantDirectoryEntrySize(tenant);
+      if (!entries.empty() && block_size + entry_size > header_.max_block_size) {
+        RETURN_NOT_OK(flush());
+      }
+      if (entries.empty()) {
+        block_size = sizeof(uint32_t);
+      }
+      block_size += entry_size;
+      entries.emplace_back(tenant, slot_map_[index]);
+    }
+    return flush();
+  }
+
+  static size_t TenantDirectoryEntrySize(Slice tenant) {
+    return sizeof(uint32_t) + tenant.size() + sizeof(VectorNo);
+  }
+
+  Status WriteTenantDirectoryBlock(
+      const std::vector<std::pair<Slice, VectorNo>>& entries, size_t size) {
+    auto ends_writer = VERIFY_RESULT(StartNewBlock(size));
+    ends_writer.Append<uint32_t>(narrow_cast<uint32_t>(entries.size()));
+    auto entries_writer = ends_writer.Split(entries.size() * sizeof(uint32_t));
+    uint32_t end = 0;
+    for (const auto& [tenant, entry] : entries) {
+      entries_writer.AppendBytes(tenant);
+      entries_writer.Append<VectorNo>(entry);
+      end += narrow_cast<uint32_t>(tenant.size() + sizeof(VectorNo));
+      ends_writer.Append<uint32_t>(end);
     }
     return Status::OK();
   }
@@ -421,14 +524,18 @@ class YbHnswBuilder {
 
   Result<BlockWriter> StartNewBlock(size_t size) {
     RETURN_NOT_OK(FlushBlock());
-    current_block_.Allocate(size);
+    current_block_.Allocate(size + (builder_.has_block_trailers() ? kBlockTrailerSize : 0));
     ++num_blocks_;
-    return BlockWriter(current_block_);
+    auto* data = current_block_.data.get();
+    return BlockWriter(data, data + size);
   }
 
   Status FlushBlock() {
     if (num_blocks_ == 0) {
       return Status::OK();
+    }
+    if (builder_.has_block_trailers()) {
+      WriteBlockTrailer(current_block_);
     }
     RETURN_NOT_OK(out_->Append(Slice(current_block_.AsSlice())));
     if (!FLAGS_yb_hnsw_keep_new_blocks_in_cache) {
@@ -524,6 +631,10 @@ class YbHnswUsearchIndexAdapter : public YbHnswIndexAdapter {
     return NeighborsType(NodePtr(neighbors.cbegin()), NodePtr(neighbors.cend()));
   }
 
+  std::vector<std::pair<Slice, size_t>> TenantEntries() override {
+    return {};
+  }
+
  private:
   static VectorNoPtr NodePtr(
       unum::usearch::misaligned_ptr_gt<const unum::usearch::default_slot_t> ptr) {
@@ -603,6 +714,14 @@ class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
     return MakeNeighbors(index_.get_linklist0(CastIndex(index)));
   }
 
+  std::vector<std::pair<Slice, size_t>> TenantEntries() override {
+    std::vector<std::pair<Slice, size_t>> result;
+    for (auto [tenant, entry] : index_.getTenantEntries()) {
+      result.emplace_back(Slice(tenant), entry);
+    }
+    return result;
+  }
+
  private:
   static hnswlib::tableint CastIndex(size_t index) {
     return narrow_cast<hnswlib::tableint>(index);
@@ -636,16 +755,86 @@ Status YbHnsw::Init(const std::string& path) {
   return Status::OK();
 }
 
-YbHnsw::SearchResult YbHnsw::Search(
+Result<YbHnsw::SearchResult> YbHnsw::Search(
     const std::byte* query_vector, const vector_index::SearchOptions& options,
     YbHnswSearchContext& context) const {
   SearchCacheScope scs(context.search_cache, *this);
   context.search_cache.Bind(header_, *file_block_cache_);
   auto se = ScopeExit([&context] { context.search_cache.Release(); });
+  SearchResult result;
+  if (!header_.num_tenant_directory_blocks) {
+    DCHECK(options.tenant.empty());
+    result = SearchFrom(query_vector, header_.entry, options, context);
+  } else if (options.tenant.empty()) {
+    result = SearchAllTenants(query_vector, options, context);
+  } else if (auto entry = FindTenantEntry(options.tenant, context.search_cache)) {
+    result = SearchFrom(query_vector, *entry, options, context);
+  }
+  RETURN_NOT_OK(context.search_cache.status());
+  return result;
+}
+
+std::optional<VectorNo> YbHnsw::FindTenantEntry(Slice tenant, SearchCache& cache) const {
+  // Number of blocks after the first one that start with a tenant not greater than tenant.
+  const auto& boundaries = header_.tenant_directory_boundaries;
+  auto block = std::ranges::upper_bound(
+      boundaries, tenant, {}, [](const std::string& boundary) { return Slice(boundary); }) -
+      boundaries.begin();
+  auto data = cache.Data(header_.tenant_directory_block + block);
+  if (!data) {
+    return std::nullopt;
+  }
+  return TenantDirectoryBlock(data).Find(tenant);
+}
+
+YbHnsw::SearchResult YbHnsw::SearchFrom(
+    const std::byte* query_vector, VectorNo entry, const vector_index::SearchOptions& options,
+    YbHnswSearchContext& context) const {
   auto [best_vector, best_dist] = SearchInNonBaseLayers(
-      query_vector, context.search_cache);
+      query_vector, entry, context.search_cache);
   SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
   return MakeResult(options.max_num_results, context);
+}
+
+YbHnsw::SearchResult YbHnsw::SearchAllTenants(
+    const std::byte* query_vector, const vector_index::SearchOptions& options,
+    YbHnswSearchContext& context) const {
+  // Further first, like context.top.
+  YbHnswSearchContext::Top top;
+  const auto limit = options.max_num_results;
+  for (size_t block = 0; block != header_.num_tenant_directory_blocks; ++block) {
+    auto data = context.search_cache.Data(header_.tenant_directory_block + block);
+    if (!data) {
+      return {};
+    }
+    TenantDirectoryBlock directory(data);
+    for (size_t i = 0; i != directory.size(); ++i) {
+      auto [best_vector, best_dist] = SearchInNonBaseLayers(
+          query_vector, directory.entry(i), context.search_cache);
+      SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
+      if (!context.search_cache.status().ok()) {
+        return {};
+      }
+      for (const auto& entry : context.top.data()) {
+        if (top.size() < limit) {
+          top.push(entry);
+        } else if (limit && entry.first < top.top().first) {
+          top.replace_top(entry);
+        }
+      }
+    }
+  }
+  context.top.swap(top);
+  return MakeResult(limit, context);
+}
+
+size_t YbHnsw::VectorLevel(VectorNo vector) const {
+  // Upper layers are prefixes of vector numbers.
+  auto level = header_.max_level;
+  while (level > 0 && vector >= header_.layers[level].size) {
+    --level;
+  }
+  return level;
 }
 
 YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext& context) const {
@@ -659,12 +848,15 @@ YbHnsw::SearchResult YbHnsw::MakeResult(size_t max_results, YbHnswSearchContext&
 }
 
 std::pair<VectorNo, YbHnsw::DistanceType> YbHnsw::SearchInNonBaseLayers(
-    const std::byte* query_vector, SearchCache& cache) const {
-  auto best_vector = header_.entry;
+    const std::byte* query_vector, VectorNo entry, SearchCache& cache) const {
+  auto best_vector = entry;
   auto best_dist = Distance(query_vector, best_vector, cache);
   VLOG_WITH_FUNC(4) << "best_vector: " << best_vector << ", best_dist: " << best_dist;
 
-  for (auto level = header_.max_level; level > 0;) {
+  for (auto level = VectorLevel(entry); level > 0;) {
+    if (!cache.status().ok()) {
+      break;
+    }
     auto updated = false;
     VLOG_WITH_FUNC(4)
         << "level: " << level << ", best_vector: " << best_vector << ", best_dist: " << best_dist;
@@ -706,13 +898,24 @@ void YbHnsw::SearchInBaseLayer(
   auto top_limit = options.max_num_results;
   auto extra_top_limit = std::max<size_t>(
       options.ef, options.max_num_results) - options.max_num_results;
+  // The filter must not see the Nil id that GetVectorIdAndPayload returns after a failed load.
+  auto accepted = [&options, &cache](VectorNo vector) {
+    if (!options.filter) {
+      return true;
+    }
+    auto [vector_id, payload] = cache.GetVectorIdAndPayload(vector);
+    return cache.status().ok() && options.filter(vector_id, payload);
+  };
   next.push({best_dist, best_vector});
-  if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(best_vector))) {
+  if (accepted(best_vector)) {
     top.push({best_dist, best_vector});
   }
   visited.set(best_vector);
 
   while (!next.empty()) {
+    if (!cache.status().ok()) {
+      return;
+    }
     auto [dist, vector] = next.top();
     VLOG_WITH_FUNC(4) << "vector: " << vector << ", dist: " << dist << ", best_dist: " << best_dist;
     if (dist > best_dist && extra_top.size() == extra_top_limit && top.size() == top_limit) {
@@ -731,7 +934,7 @@ void YbHnsw::SearchInBaseLayer(
       if (top.size() < top_limit || extra_top.size() < extra_top_limit ||
           neighbor_dist < best_dist) {
         next.push({neighbor_dist, neighbor});
-        if (!options.filter || std::apply(options.filter, cache.GetVectorIdAndPayload(neighbor))) {
+        if (accepted(neighbor)) {
           if (top.size() == top_limit) {
             auto extra_push = top.top().first;
             if (neighbor_dist < extra_push) {
@@ -760,18 +963,11 @@ YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs
 
 YbHnsw::DistanceType YbHnsw::Distance(
     const std::byte* lhs, size_t vector, SearchCache& cache) const {
-  return Distance(lhs, cache.CoordinatesPtr(vector));
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::MakeCoordinates(
-    const std::byte* ptr) const {
-  auto start = MisalignedPtr<const CoordinateType>(ptr);
-  return boost::make_iterator_range(start, start + header_.dimensions);
-}
-
-boost::iterator_range<MisalignedPtr<const YbHnsw::CoordinateType>> YbHnsw::Coordinates(
-    size_t vector, SearchCache& cache) const {
-  return MakeCoordinates(cache.CoordinatesPtr(vector));
+  auto coordinates = cache.CoordinatesPtr(vector);
+  if (!coordinates) {
+    return std::numeric_limits<DistanceType>::max();
+  }
+  return Distance(lhs, coordinates);
 }
 
 const Header& YbHnsw::header() const {
@@ -783,9 +979,17 @@ const std::byte* SearchCache::Data(size_t index) {
   if (block) {
     return block;
   }
-  auto data = CHECK_RESULT(file_block_cache_->Take(index));
+  // The result of a failed search is discarded, so no point in loading more blocks.
+  if (!status_.ok()) {
+    return nullptr;
+  }
+  auto data = file_block_cache_->Take(index);
+  if (!data.ok()) {
+    status_ = data.status();
+    return nullptr;
+  }
   used_blocks_.push_back(index);
-  return block = data;
+  return block = *data;
 }
 
 void SearchCache::Bind(std::reference_wrapper<const Header> header, FileBlockCache& cache) {
@@ -801,12 +1005,19 @@ void SearchCache::Release() {
     file_block_cache_->Release(block);
   }
   used_blocks_.clear();
+  status_ = Status::OK();
 }
 
 boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsInBaseLayer(
     size_t vector) {
   auto vector_data = VectorHeader(vector);
+  if (!vector_data.raw()) {
+    return {};
+  }
   auto base_ptr = Data(*YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_block));
+  if (!base_ptr) {
+    return {};
+  }
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_begin);
   auto end = *YB_MISALIGNED_PTR(vector_data, VectorData, base_layer_neighbors_end);
   return boost::make_iterator_range(
@@ -827,6 +1038,9 @@ boost::iterator_range<MisalignedPtr<const VectorNo>> SearchCache::GetNeighborsIn
   vector %= max_vectors_per_block;
   auto& layer = header_->layers[level];
   auto base_ptr = Data(layer.block + block_index);
+  if (!base_ptr) {
+    return {};
+  }
   auto finish = Load<NeighborsRefType, HnswEndian>(base_ptr + vector * kNeighborsRefSize);
   auto start = vector > 0
       ? Load<NeighborsRefType, HnswEndian>(base_ptr + (vector - 1) * kNeighborsRefSize) : 0;
@@ -849,13 +1063,20 @@ const std::byte* SearchCache::BlockPtr(
     size_t block, size_t entries_per_block, size_t entry, size_t entry_size) {
   block += entry / entries_per_block;
   entry %= entries_per_block;
-  return Data(block) + entry * entry_size;
+  auto data = Data(block);
+  return data ? data + entry * entry_size : nullptr;
 }
 
 Slice SearchCache::GetVectorDataSlice(size_t vector) {
   auto vector_data = VectorHeader(vector);
+  if (!vector_data.raw()) {
+    return Slice();
+  }
   auto base_ptr = Data(
       *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_block));
+  if (!base_ptr) {
+    return Slice();
+  }
   auto begin = *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_begin);
   auto end = *YB_MISALIGNED_PTR(vector_data, VectorData, aux_data_end);
   return Slice(base_ptr + begin, base_ptr + end);
@@ -863,13 +1084,18 @@ Slice SearchCache::GetVectorDataSlice(size_t vector) {
 
 std::pair<vector_index::VectorId, Slice> SearchCache::GetVectorIdAndPayload(size_t vector) {
   auto data = GetVectorDataSlice(vector);
+  // Empty only when a block failed to load, see SearchCache::status().
+  if (data.empty()) {
+    return {vector_index::VectorId::Nil(), Slice()};
+  }
   return {
       vector_index::TryFullyDecodeVectorId(data.Prefix(sizeof(vector_index::VectorId))),
       data.WithoutPrefix(sizeof(vector_index::VectorId))};
 }
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
-  return VectorHeader(vector).raw() + offsetof(VectorData, coordinates);
+  auto header = VectorHeader(vector).raw();
+  return header ? header + offsetof(VectorData, coordinates) : nullptr;
 }
 
 HnswDistanceType UsearchMetric::Distance(

@@ -2499,8 +2499,7 @@ TEST_F(CompactionTest, RemoveCorruptDataBlocks) {
             << ", num_max_corrupt_keys_estimate: " << num_max_corrupt_keys_estimate;
 
   // Clear block cache.
-  cluster_->GetTabletManager(0)->TEST_tablet_options()->block_cache->Evict(
-      std::numeric_limits<size_t>::max() / 2);
+  cluster_->GetTabletManager(0)->TEST_tablet_options()->block_cache->EvictAll();
 
   ASSERT_OK(SET_FLAG(allow_compaction_failures_for_tablet_ids, tablet_id));
 

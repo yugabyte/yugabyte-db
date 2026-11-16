@@ -79,6 +79,8 @@ service CDCService {
   rpc UpdateAndPersistLSN (UpdateAndPersistLSNRequestPB) returns (UpdateAndPersistLSNResponsePB);
   rpc UpdatePublicationTableList (UpdatePublicationTableListRequestPB)
       returns (UpdatePublicationTableListResponsePB);
+  rpc InvalidateStreamMetadataCache (InvalidateStreamMetadataCacheRequestPB)
+      returns (InvalidateStreamMetadataCacheResponsePB);
 }
 
 message CDCErrorPB {
@@ -274,6 +276,13 @@ message UpdatePublicationTableListResponsePB {
   optional CDCErrorPB error = 1;
 }
 
+message InvalidateStreamMetadataCacheRequestPB {
+}
+
+message InvalidateStreamMetadataCacheResponsePB {
+  optional CDCErrorPB error = 1;
+}
+
 message CreateCDCStreamRequestPB {
   // Table to set up CDC on.
   optional string table_id = 1;
@@ -454,6 +463,11 @@ message CDCRecordPB {
   // Old vector IDs to tombstone on the target during UPDATE/DELETE.
   // See KeyValueWriteBatchPB.delete_vector_ids.
   optional bytes delete_vector_ids = 15;
+
+  // DocDB write time of the records, set only when it differs from time (the WAL op time). Index
+  // backfill writes at the backfill read time, below a concurrent DML's tombstone. The target must
+  // stamp the same time, or the stale entry wins over that tombstone (#25250).
+  optional uint64 external_hybrid_time = 16;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -191,9 +192,7 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
       Universe universe = registeredUniverse(server);
       // PA has it on; the universe's runtime flag is at its default, off.
       server.enqueue(new MockResponse().setBody(universeMetadataJson(universe, true)));
-      server.enqueue(
-          new MockResponse()
-              .setBody(Json.stringify(Json.toJson(universeMetadata(universe, false)))));
+      server.enqueue(new MockResponse().setBody(universeMetadataJson(universe, false)));
 
       perfAdvisorService.syncActiveTableMetrics(universe);
 
@@ -202,7 +201,7 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
       RecordedRequest put = server.takeRequest();
       assertThat(put.getMethod(), equalTo("PUT"));
       assertThat(
-          Json.parse(put.getBody().readUtf8()).get("activeTableMetricsEnabled").asBoolean(),
+          Json.parse(put.getBody().readUtf8()).get("active_table_metrics_enabled").asBoolean(),
           equalTo(false));
     }
   }
@@ -239,17 +238,15 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
   }
 
   /** PA's answer to a metadata lookup: a list with the universe's record. */
+  /** The universe as the collector's v2 API returns it. */
   private String universeMetadataJson(Universe universe, boolean activeTableMetricsEnabled) {
-    return Json.stringify(
-        Json.toJson(List.of(universeMetadata(universe, activeTableMetricsEnabled))));
-  }
-
-  private PerfAdvisorClient.UniverseMetadata universeMetadata(
-      Universe universe, boolean activeTableMetricsEnabled) {
-    return new PerfAdvisorClient.UniverseMetadata()
-        .setId(universe.getUniverseUUID())
-        .setCustomerId(defaultCustomerUuid)
-        .setActiveTableMetricsEnabled(activeTableMetricsEnabled);
+    ObjectNode universeJson = Json.newObject();
+    universeJson.putObject("info").put("universe_uuid", universe.getUniverseUUID().toString());
+    universeJson
+        .putObject("spec")
+        .put("customer_uuid", defaultCustomerUuid.toString())
+        .put("active_table_metrics_enabled", activeTableMetricsEnabled);
+    return Json.stringify(universeJson);
   }
 
   private PACollector createTestPlatform(String name) {

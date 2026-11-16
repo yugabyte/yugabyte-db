@@ -58,6 +58,15 @@ func TestValidateOCIRegionAndZoneNames(t *testing.T) {
 			wantErr:     "region r1-typo not found",
 		},
 		{
+			name:        "edit-region clearing the instance template",
+			editRegions: []string{"region-name=r1::instance-template="},
+		},
+		{
+			name:        "unknown region in edit-region clearing the instance template",
+			editRegions: []string{"region-name=r1-typo::instance-template="},
+			wantErr:     "region r1-typo not found",
+		},
+		{
 			name:     "unknown region in add-zone",
 			addZones: []string{"zone-name=z::region-name=r1-typo::subnet=s"},
 			wantErr:  "region r1-typo in --add-zone",

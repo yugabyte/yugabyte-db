@@ -209,6 +209,8 @@ public class AuditService {
     String path = request.path();
     JsonNode redactedParams = RedactingService.filterSecretFields(params, RedactionTarget.LOGS);
     JsonNode redactedTaskDiff = RedactingService.filterSecretFields(taskDiff, RedactionTarget.LOGS);
+    JsonNode redactedAdditionalDetails =
+        RedactingService.filterSecretFields(additionalDetails, RedactionTarget.LOGS);
     String userAddress = request.remoteAddress();
     Audit entry =
         Audit.create(
@@ -220,7 +222,7 @@ public class AuditService {
             action,
             redactedParams,
             taskUUID,
-            additionalDetails,
+            redactedAdditionalDetails,
             userAddress,
             redactedTaskDiff);
     MDC.put("logType", "audit");

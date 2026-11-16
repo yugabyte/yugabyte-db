@@ -408,11 +408,18 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   if (put_batch_.has_delete_vector_ids()) {
     auto key_type = KeyEntryTypeAsChar::kTransactionId;
     DocHybridTimeBuffer doc_ht_buffer;
+    dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
 
+    // Encoded like the reverse index keys of the intents (AddIntent), so the apply tombstones
+    // these ids right after the rows of this batch. Then the tombstones win over the reverse
+    // mapping entries of vectors that earlier writes of the same transaction added.
+    // The leader picks the encoding, see vector_index_delete_list_after_rows.
+    auto doc_ht = doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++);
     std::array<Slice, 3> key = {{
       Slice(&key_type, sizeof(key_type)),
       transaction_id_.AsSlice(),
-      doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
+      put_batch_.delete_vector_ids_after_rows()
+          ? dockv::InvertEncodedDocHT(doc_ht, &inverted_doc_ht_buffer) : doc_ht,
     }};
     auto value_type = ValueEntryTypeAsChar::kDeleteVectorIds;
     std::array<Slice, 2> value = {{
@@ -1013,6 +1020,8 @@ Status ApplyIntentsContext::Complete(
 
 Status ApplyIntentsContext::DeleteVectorIds(
     Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+  // TODO(#36288): the delete-list record has no subtransaction id, so the ids of a batch rolled
+  // back to a savepoint are tombstoned too, including vectors written earlier in this transaction.
   if (ApplyToRegularDB()) {
     RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
         handler, ids, DocHybridTime(commit_ht_, write_id_)));

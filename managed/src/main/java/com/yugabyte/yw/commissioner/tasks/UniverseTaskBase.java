@@ -1306,7 +1306,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseDefinitionTaskParams before = beforeUDTP;
     if (!rollbackSafe) {
       log.info(
-          "Universe {} keeps the pre-edit state and rollbackSafe=false of an earlier failed attempt",
+          "Universe {} keeps the pre-edit state and rollbackSafe=false of an earlier failed"
+              + " attempt",
           universe.getUniverseUUID());
       before = existing.getBeforeUniverseDetails();
     }
@@ -1342,6 +1343,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private boolean isPlacementLockHeldByOtherTask(UniverseDefinitionTaskParams universeDetails) {
     return universeDetails.placementModificationTaskUuid != null
         && !universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
+  }
+
+  /** Whether the universe's placement lock is held by a task of the given type. */
+  protected static boolean isPlacementLockHeldBy(Universe universe, TaskType taskType) {
+    UUID taskUuid = universe.getUniverseDetails().placementModificationTaskUuid;
+    return taskUuid != null
+        && TaskInfo.maybeGet(taskUuid).map(t -> t.getTaskType() == taskType).orElse(false);
   }
 
   private void initAndAddPrecheckTasks(Universe universe) {
@@ -2145,7 +2153,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ManageCatalogUpgradeSuperUser.Params params = new ManageCatalogUpgradeSuperUser.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.action = action;
-    params.password = password;
+    params.catalogUpgradePassword = password;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -5732,11 +5740,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /**
    * Removes tservers that were just deleted from the server blacklist, after waiting {@code
-   * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live first.
+   * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live
+   * first.
    */
-  public void createClearTserverBlacklistTasks(Universe universe, Collection<NodeDetails> tservers) {
+  public void createClearTserverBlacklistTasks(
+      Universe universe, Collection<NodeDetails> tservers) {
     Duration sleepBeforeClear =
-        confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
+        confGetter.getConfForScope(
+            universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
     if (sleepBeforeClear.compareTo(Duration.ZERO) > 0) {
       createWaitForDurationSubtask(universe, sleepBeforeClear)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);

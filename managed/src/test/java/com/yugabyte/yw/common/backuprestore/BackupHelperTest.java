@@ -19,7 +19,9 @@ import static org.mockito.Mockito.when;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.HostCloudDetector;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -100,6 +102,7 @@ public class BackupHelperTest extends FakeDBApplication {
   private ValidateReplicationInfo mockValidateReplicationInfo;
   private NodeUniverseManager mockNodeUniverseManager;
   private YbcBackupUtil mockYbcBackupUtil;
+  private HostCloudDetector mockHostCloudDetector;
 
   @Before
   public void setup() {
@@ -111,6 +114,8 @@ public class BackupHelperTest extends FakeDBApplication {
     mockValidateReplicationInfo = mock(ValidateReplicationInfo.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockYbcBackupUtil = mock(YbcBackupUtil.class);
+    // Host cloud not detected unless a test says otherwise: the previous behaviour.
+    mockHostCloudDetector = mock(HostCloudDetector.class);
     spyBackupHelper =
         Mockito.spy(
             new BackupHelper(
@@ -123,7 +128,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockValidateReplicationInfo,
                 mockNodeUniverseManager,
                 mockYbcBackupUtil,
-                mockSoftwareUpgradeHelper));
+                mockSoftwareUpgradeHelper,
+                mockHostCloudDetector));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
   }
@@ -1438,5 +1444,187 @@ public class BackupHelperTest extends FakeDBApplication {
 
     assertEquals(target.audience, s3Data.crossCloudFederationAudience);
     assertEquals(target.roleArn, s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** YBA on AWS -> S3 with federation on: the nodes may federate, YBA uses its native identity. */
+  @Test
+  public void testS3ConfigIsNotStampedWhenYbaRunsOnAws() {
+    stubTarget(CloudType.aws);
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(s3Data, testUniverse);
+
+    assertNull(s3Data.crossCloudFederationAudience);
+    assertNull(s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** YBA on GCP -> GCS with federation on: YBA keeps its native GCP identity. */
+  @Test
+  public void testGcsConfigIsNotStampedWhenYbaRunsOnGcp() {
+    stubTarget(CloudType.gcp);
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(gcsData, testUniverse);
+
+    assertNull(gcsData.crossCloudFederationAudience);
+  }
+
+  /** Deleting from a bucket on YBA's own cloud ignores the federation snapshot on the backup. */
+  @Test
+  public void testS3SnapshotIsNotStampedWhenYbaRunsOnAws() {
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = true;
+    spyBackupHelper.applyCrossCloudFederationFromBackup(
+        s3Data, backupWithSnapshot("audience", "arn:aws:iam::123456789012:role/r"));
+
+    assertNull(s3Data.crossCloudFederationAudience);
+    assertNull(s3Data.crossCloudFederationRoleArn);
+  }
+
+  /** The snapshot still applies when YBA is on the other cloud. */
+  @Test
+  public void testS3SnapshotIsStampedWhenYbaRunsOnGcp() {
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = true;
+    spyBackupHelper.applyCrossCloudFederationFromBackup(
+        s3Data, backupWithSnapshot("audience", "arn:aws:iam::123456789012:role/r"));
+
+    assertEquals("audience", s3Data.crossCloudFederationAudience);
+    assertEquals("arn:aws:iam::123456789012:role/r", s3Data.crossCloudFederationRoleArn);
+  }
+
+  private void hostCloud(CloudType cloud) {
+    when(mockHostCloudDetector.isHostCloud(any())).thenAnswer(inv -> inv.getArgument(0) == cloud);
+    when(mockHostCloudDetector.isConfirmedAws()).thenReturn(cloud == CloudType.aws);
+  }
+
+  private static Backup backupWithSnapshot(String audience, String roleArn) {
+    BackupTableParams params = new BackupTableParams();
+    params.crossCloudFederationAudience = audience;
+    params.crossCloudFederationRoleArn = roleArn;
+    Backup backup = mock(Backup.class);
+    when(backup.getBackupInfo()).thenReturn(params);
+    return backup;
+  }
+
+  /** YBA on GCP -> S3: still federates, and its S3 client takes the federated credentials. */
+  @Test
+  public void testS3ConfigIsStampedWhenYbaRunsOnGcp() {
+    CrossCloudFederationTarget target = stubTarget(CloudType.aws);
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    s3Data.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(s3Data, testUniverse);
+
+    assertEquals(target.audience, s3Data.crossCloudFederationAudience);
+    assertTrue(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+  }
+
+  /** YBA on AWS -> S3: the client YBA builds for deletion skips federation for its own role. */
+  @Test
+  public void testS3ClientSkipsFederationWhenYbaRunsOnAws() {
+    stubTarget(CloudType.aws);
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+    // As created through the API: no keys and no IAM role flag, only the federation flag.
+    s3Data.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(
+        s3Data, backupWithSnapshot("audience", "arn:aws:iam::123456789012:role/r"));
+
+    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+    assertTrue(s3Data.isIAMInstanceProfile);
+  }
+
+  /**
+   * Off AWS, with the host unknown, or on an EC2-compatible cloud taken for AWS, a keyless
+   * federated config is left as it was; one that carries keys keeps them even on AWS.
+   */
+  @Test
+  public void testS3ConfigKeepsItsCredentialsUnlessYbaIsOnConfirmedAws() {
+    for (CloudType host : new CloudType[] {null, CloudType.gcp, CloudType.aws}) {
+      if (host != null) {
+        hostCloud(host);
+      }
+      if (host == CloudType.aws) {
+        // Detected as AWS from IMDSv1 alone, which EC2-compatible clouds also answer.
+        when(mockHostCloudDetector.isConfirmedAws()).thenReturn(false);
+      }
+      CustomerConfigStorageS3Data s3Data = new CustomerConfigStorageS3Data();
+      s3Data.useCrossCloudFederation = true;
+      Backup backup = backupWithSnapshot(null, null);
+      // No snapshot: falls back to the backup's universe, which is gone.
+      when(backup.getUniverseUUID()).thenReturn(UUID.randomUUID());
+
+      spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup);
+
+      assertFalse(String.valueOf(host), s3Data.isIAMInstanceProfile);
+    }
+
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageS3Data withKeys = new CustomerConfigStorageS3Data();
+    withKeys.useCrossCloudFederation = true;
+    withKeys.awsAccessKeyId = "key";
+    spyBackupHelper.applyCrossCloudFederationFromBackup(withKeys, backupWithSnapshot(null, null));
+    assertFalse(withKeys.isIAMInstanceProfile);
+  }
+
+  /** YBA on AWS -> GCS: still federates with its AWS identity. */
+  @Test
+  public void testGcsConfigIsStampedWhenYbaRunsOnAws() {
+    CrossCloudFederationTarget target = stubTarget(CloudType.gcp);
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationAudience(gcsData, testUniverse);
+
+    assertEquals(target.audience, gcsData.crossCloudFederationAudience);
+  }
+
+  @Test
+  public void testGcsSnapshotIsNotStampedWhenYbaRunsOnGcp() {
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(gcsData, backupWithSnapshot("aud", null));
+
+    assertNull(gcsData.crossCloudFederationAudience);
+  }
+
+  @Test
+  public void testGcsSnapshotIsStampedWhenYbaRunsOnAws() {
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = true;
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(gcsData, backupWithSnapshot("aud", null));
+
+    assertEquals("aud", gcsData.crossCloudFederationAudience);
+  }
+
+  /** Use GCP IAM alone is native GCP access: a federation snapshot does not apply to it. */
+  @Test
+  public void testGcsSnapshotIsNotStampedWithoutFederation() {
+    hostCloud(CloudType.aws);
+    CustomerConfigStorageGCSData gcsData = new CustomerConfigStorageGCSData();
+    gcsData.useGcpIam = true;
+    gcsData.useCrossCloudFederation = false;
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(gcsData, backupWithSnapshot("aud", null));
+
+    assertNull(gcsData.crossCloudFederationAudience);
   }
 }

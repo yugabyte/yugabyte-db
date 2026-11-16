@@ -126,14 +126,14 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
     throw new PlatformServiceException(Status.BAD_REQUEST, "No kubernetes overrides modified.");
   }
 
-  // Each master or tserver node is one pod. If a pod can't be read, the upgrade is rejected as
-  // unchanged.
+  // Each master or tserver node is one pod; a pod that can't be read is skipped.
   private boolean changesNodeExporterSidecar(Universe universe, boolean nodeExporterWantedKey) {
     KubernetesManagerFactory kubernetesManagerFactory =
         StaticInjectorHolder.injector().instanceOf(KubernetesManagerFactory.class);
-    try {
-      for (NodeDetails node : universe.getUniverseDetails().nodeDetailsSet) {
-        boolean hasSidecar =
+    for (NodeDetails node : universe.getUniverseDetails().nodeDetailsSet) {
+      boolean hasSidecar;
+      try {
+        hasSidecar =
             kubernetesManagerFactory
                 .getManager()
                 .getPodObject(
@@ -144,15 +144,17 @@ public class KubernetesOverridesUpgradeParams extends UpgradeTaskParams {
                 .getContainers()
                 .stream()
                 .anyMatch(container -> "yb-node-exporter".equals(container.getName()));
-        if (hasSidecar != nodeExporterWantedKey) {
-          return true;
-        }
+      } catch (Exception e) {
+        log.warn(
+            "Unable to read pod {} of universe {} to check the node_exporter sidecar",
+            node.getK8sPodName(),
+            universe.getUniverseUUID(),
+            e);
+        continue;
       }
-    } catch (Exception e) {
-      log.warn(
-          "Unable to read the pods of universe {} to check the node_exporter sidecar",
-          universe.getUniverseUUID(),
-          e);
+      if (hasSidecar != nodeExporterWantedKey) {
+        return true;
+      }
     }
     return false;
   }
