@@ -593,10 +593,11 @@ public class BackupHelper {
    *
    * @return false when YBA has no way to reach the bucket: it found no entry, and either runs on
    *     GCP with an S3 config that has no access keys without the IAM role flag, or with the flag
-   *     an IAM credential source that resolves no AWS credentials on the host (its keys are then
-   *     ignored), or runs on confirmed AWS with a GCP IAM GCS config and no application default
-   *     credentials on the host. Known limit: on AWS that cannot be confirmed, a keyless S3 config
-   *     without the flag is still built from blank keys (see {@link #useYbaIamRole}).
+   *     an IAM credential source that has nothing on the host to use (its keys are then ignored),
+   *     or runs on confirmed AWS with a GCP IAM GCS config and no application default credentials
+   *     on the host. Known limit: on AWS that cannot be confirmed, a keyless S3 config without the
+   *     flag is still built from blank keys (see {@link #useYbaIamRole}).
+   * @throws PlatformServiceException when the customer's providers cannot be read.
    */
   public boolean applyYbaFederatedIdentity(
       CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
@@ -619,15 +620,18 @@ public class BackupHelper {
       stampFederationTarget(configData, target);
       return true;
     }
-    boolean ownCredentials = hasCredentialsOfItsOwn(configData);
-    if (target == null && !ownCredentials) {
+    if (target == null) {
+      // Asked only here, as it can take calls to the bucket's cloud.
+      if (hasCredentialsOfItsOwn(configData)) {
+        return true;
+      }
       target = resolveCustomerFederationTarget(customerUUID, bucketCloud);
+      if (target == null) {
+        return false;
+      }
     }
-    if (target != null) {
-      stampFederationTarget(configData, target);
-      return true;
-    }
-    return ownCredentials;
+    stampFederationTarget(configData, target);
+    return true;
   }
 
   /**
@@ -750,8 +754,8 @@ public class BackupHelper {
   /**
    * Whether the config, with what YBA's host gives it, has credentials of its own for the bucket's
    * cloud, which YBA keeps using over a customer-wide guess and falls back on when there is no
-   * entry, in the order {@link AWSUtil#createS3Client} uses them: with the IAM role flag, the
-   * credentials its credential source resolves on this host (any access keys are then ignored),
+   * entry, in the order {@link AWSUtil#createS3Client} uses them: with the IAM role flag, a
+   * credential source that has something on this host to use (any access keys are then ignored),
    * else S3 access keys; a GCS service account key, or with GCP IAM the application default
    * credentials the host resolves. Only asked off the bucket's cloud. The IAM role flag alone does
    * not count: the UI and v2 API set it on every federated S3 config.
@@ -769,22 +773,19 @@ public class BackupHelper {
   }
 
   /**
-   * Whether the config's IAM credential source gets AWS credentials on this host, resolved through
-   * {@link IAMTemporaryCredentialsProvider} as {@link AWSUtil#createS3Client} resolves them, so the
-   * answer is the one the S3 client would get. It is tried once, without the client's retries: on a
-   * GCP host with no AWS credentials, which then federates, those would hold up every run by the
-   * waits between them. Package-private so tests do not depend on the machine they run on.
+   * Whether the config's IAM credential source has something on this host, which is not on AWS, to
+   * get AWS credentials from, as {@link IAMTemporaryCredentialsProvider#hasCredentialsOffAws} finds
+   * by resolving each source once through the SDK. A source that is set up but fails on a reply
+   * from AWS or the network still counts, and is left to the S3 client's retries, so a transient
+   * failure does not switch YBA to another identity. Package-private so tests do not depend on the
+   * machine they run on.
    */
   boolean hostHasAwsCredentials(CustomerConfigStorageS3Data s3) {
-    try {
-      new IAMTemporaryCredentialsProvider(confGetter).getTemporaryCredentials(s3, 1 /* attempts */);
-      return true;
-    } catch (Exception e) {
-      log.info(
-          "The IAM credential source of the S3 config gives no AWS credentials on this host: {}",
-          e.getMessage());
+    if (s3.iamConfig == null || s3.iamConfig.credentialSource == null) {
+      // The S3 client cannot get credentials from the IAM chain either.
       return false;
     }
+    return new IAMTemporaryCredentialsProvider(confGetter).hasCredentialsOffAws(s3);
   }
 
   /**
@@ -844,12 +845,14 @@ public class BackupHelper {
               .distinct()
               .collect(Collectors.toList());
     } catch (Exception e) {
+      // Not taken for "no entry", which would reject the config with advice to add one.
       log.warn(
-          "Could not read the federated IAM entries for {} from the providers of customer {}",
-          targetCloud,
-          customerUUID,
-          e);
-      return null;
+          "Could not read the federated IAM entries for {} from the providers", targetCloud, e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Could not read the federated IAM entries for %s from the customer's providers: %s",
+              targetCloud, e.getMessage()));
     }
     if (targets.size() > 1) {
       log.warn(
@@ -901,11 +904,20 @@ public class BackupHelper {
     }
     // No snapshot: the backup predates it, or its universe's provider has no entry for the bucket's
     // cloud, as for an AWS universe's S3 backup deleted by a YBA that HA promoted on GCP.
-    if (!applyYbaFederatedIdentity(
-        configData,
-        backup.getCustomerUUID(),
-        Universe.maybeGet(backup.getUniverseUUID()).orElse(null))) {
-      // Logged, not thrown: an immutable-storage config is deleted without reaching the bucket.
+    // Failures are logged, not thrown: an immutable-storage config is deleted without reaching the
+    // bucket.
+    boolean reachable;
+    try {
+      reachable =
+          applyYbaFederatedIdentity(
+              configData,
+              backup.getCustomerUUID(),
+              Universe.maybeGet(backup.getUniverseUUID()).orElse(null));
+    } catch (PlatformServiceException e) {
+      log.warn("Deleting backup {}: {}", backup.getBackupUUID(), e.getMessage());
+      return;
+    }
+    if (!reachable) {
       log.warn(
           "Deleting backup {}: {}",
           backup.getBackupUUID(),

@@ -6,6 +6,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,6 +15,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkServiceException;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.awssdk.services.iam.IamClient;
@@ -65,16 +67,7 @@ public class IAMTemporaryCredentialsProvider {
     }
   }
 
-  public AwsCredentials getTemporaryCredentials(CustomerConfigStorageS3Data s3Data) {
-    return getTemporaryCredentials(
-        s3Data, confGetter.getStaticConf().getInt(NUM_RETRIES_CONFIG_PATH));
-  }
-
-  /**
-   * Tries the config's credential sources in order, up to {@code attempts} times 5 seconds apart,
-   * and returns the first credentials one of them gives.
-   */
-  public AwsCredentials getTemporaryCredentials(CustomerConfigStorageS3Data s3Data, int attempts) {
+  private List<CustomAWSCredentials> credentialSources(CustomerConfigStorageS3Data s3Data) {
     List<CustomAWSCredentials> credentialsSource = new ArrayList<>();
     switch (s3Data.iamConfig.credentialSource) {
       case ASSUME_INSTANCE_ROLE:
@@ -106,8 +99,12 @@ public class IAMTemporaryCredentialsProvider {
             String.format(
                 "Invalid IAM credential source option %s", s3Data.iamConfig.credentialSource));
     }
+    return credentialsSource;
+  }
 
-    int numRetries = attempts;
+  public AwsCredentials getTemporaryCredentials(CustomerConfigStorageS3Data s3Data) {
+    List<CustomAWSCredentials> credentialsSource = credentialSources(s3Data);
+    int numRetries = confGetter.getStaticConf().getInt(NUM_RETRIES_CONFIG_PATH);
     List<String> errorMessages = new ArrayList<>();
     while (numRetries > 0) {
       errorMessages.clear();
@@ -134,6 +131,55 @@ public class IAMTemporaryCredentialsProvider {
       }
     }
     throw new RuntimeException("Unable to load AWS credentials: " + errorMessages);
+  }
+
+  /**
+   * Whether the config's credential sources have something to get AWS credentials from on a host
+   * that is not on AWS, so whether {@link #getTemporaryCredentials} is worth leaving to its retries
+   * there. Each source is resolved once, through the same SDK calls. One that gives credentials
+   * counts, and so does one that fails on a reply from AWS or on an I/O error, such as an STS
+   * throttle or a timeout, which those retries can get past. One that fails before that, because
+   * the host has nothing for it (no AWS_ROLE_ARN or web identity token file, no credentials in the
+   * profile, no container credentials endpoint), does not, and neither does AWS instance metadata,
+   * which only AWS serves.
+   */
+  public boolean hasCredentialsOffAws(CustomerConfigStorageS3Data s3Data) {
+    List<String> absent = new ArrayList<>();
+    for (CustomAWSCredentials source : credentialSources(s3Data)) {
+      if (source instanceof InstanceProfileCredentials) {
+        absent.add(source.getSourceName() + ": no AWS instance metadata off AWS");
+        continue;
+      }
+      try {
+        source.getCredentialsOrFail();
+        return true;
+      } catch (Exception e) {
+        if (isRemoteFailure(e)) {
+          log.warn(
+              "IAM credential source {} is set up on this host but failed, leaving it to the"
+                  + " client's retries: {}",
+              source.getSourceName(),
+              e.getMessage());
+          return true;
+        }
+        absent.add(source.getSourceName() + ": " + e.getMessage());
+      }
+    }
+    log.info("No IAM credential source has anything to use on this host: {}", absent);
+    return false;
+  }
+
+  /**
+   * Whether {@code e} came from a reply from AWS or another endpoint, or from an I/O error on the
+   * way, rather than from the host having nothing for the source to use.
+   */
+  static boolean isRemoteFailure(Throwable e) {
+    for (Throwable t = e; t != null; t = t.getCause()) {
+      if (t instanceof SdkServiceException || t instanceof IOException) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private interface CustomAWSCredentials {

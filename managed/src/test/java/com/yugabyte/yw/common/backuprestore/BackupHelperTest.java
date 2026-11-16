@@ -14,7 +14,10 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -1721,7 +1724,10 @@ public class BackupHelperTest extends FakeDBApplication {
     assertEquals(GCS_AUDIENCE, gcsData.crossCloudFederationAudience);
   }
 
-  /** The universe's own entry wins over the one the other providers have. */
+  /**
+   * The universe's own entry wins over the one the other providers have, and over the config's IAM
+   * role chain.
+   */
   @Test
   public void testYbaIdentityPrefersTheUniversesEntry() {
     hostCloud(CloudType.gcp);
@@ -1729,12 +1735,15 @@ public class BackupHelperTest extends FakeDBApplication {
     federatedOnPremProvider(
         "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
     CustomerConfigStorageS3Data s3Data = federatedS3();
+    s3Data.isIAMInstanceProfile = true;
 
     assertTrue(
         spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), testUniverse));
 
     assertEquals(universeTarget.audience, s3Data.crossCloudFederationAudience);
     assertEquals(universeTarget.roleArn, s3Data.crossCloudFederationRoleArn);
+    // The host's own credentials, which can take calls to AWS, are only asked without an entry.
+    verify(spyBackupHelper, never()).hostHasAwsCredentials(any(CustomerConfigStorageS3Data.class));
   }
 
   /**
@@ -1974,10 +1983,10 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /**
-   * The host's AWS credentials are resolved through the config's IAM credential chain, as the S3
-   * client resolves them: a profile with keys counts, one with just a region, as `aws configure set
-   * region` writes, does not, nor does an SSO profile, as YBA does not ship the SSO module. Only
-   * sources that resolve without the network are tried here.
+   * The host's AWS credentials are found by resolving the config's IAM credential chain through the
+   * SDK: a profile with keys counts, one with just a region, as `aws configure set region` writes,
+   * does not, nor does an SSO profile, as YBA does not ship the SSO module. Only sources that
+   * resolve without the network are tried here.
    */
   @Test
   public void testHostAwsCredentialsResolveThroughTheIamChain() throws Exception {
@@ -2017,9 +2026,11 @@ public class BackupHelperTest extends FakeDBApplication {
       // The chain gets past the web identity source, which has no AWS_ROLE_ARN, to the profile.
       assertTrue(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.DEFAULT, "default")));
       assertFalse(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.IAM_USER, "other")));
-      // Container credentials, which this host does not have.
+      // Container credentials, which this host does not have, and AWS instance metadata, which is
+      // not asked for off AWS.
       assertFalse(
           helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.ASSUME_INSTANCE_ROLE, "default")));
+      assertFalse(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.EC2_INSTANCE, "default")));
 
       Files.writeString(credentials.toPath(), "");
       Files.writeString(
@@ -2042,23 +2053,30 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /**
-   * A failure to read the customer's providers leaves YBA without the customer-wide entry, as when
-   * none has one, instead of failing the caller.
+   * A failure to read the customer's providers is reported with its cause, not taken for "no entry"
+   * with advice to add one, and deletion only logs it.
    */
   @Test
-  public void testCustomerFederationTargetLookupFailureFindsNoEntry() {
+  public void testCustomerFederationTargetLookupFailureIsReported() {
     hostCloud(CloudType.gcp);
-    federatedOnPremProvider(
-        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
     CustomerConfigStorageS3Data s3Data = federatedS3();
+    Backup backup = backupWithSnapshot(null, null);
+    when(backup.getCustomerUUID()).thenReturn(testCustomer.getUuid());
+    when(backup.getUniverseUUID()).thenReturn(UUID.randomUUID());
     try (MockedStatic<Provider> providers = Mockito.mockStatic(Provider.class)) {
       providers
           .when(() -> Provider.getAll(any(UUID.class)))
           .thenThrow(new RuntimeException("provider lookup failed"));
 
-      assertNull(
-          spyBackupHelper.resolveCustomerFederationTarget(testCustomer.getUuid(), CloudType.aws));
-      assertFalse(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+      PlatformServiceException e =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+      assertEquals(INTERNAL_SERVER_ERROR, e.getHttpStatus());
+      assertTrue(e.getMessage(), e.getMessage().contains("provider lookup failed"));
+
+      spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup);
     }
     assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
   }
