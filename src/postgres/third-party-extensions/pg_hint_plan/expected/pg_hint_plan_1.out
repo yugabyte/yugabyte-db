@@ -113,7 +113,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
                Index Cond: (val = t2.val)
 (7 rows)
 
--- pg_hint_plan when enabled recognizes Test as an unknown keyword
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  pg_hint_plan: hint syntax error at or near " Test (t1 t2) "
@@ -140,8 +139,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (5 rows)
 
 SET pg_hint_plan.enable_hint TO on;
--- Planner Method Configuration parameters can be controlled as a part of pg_hint_plan comments.
--- pg_hint_plan comment formatting wrong
 /*Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
                             QUERY PLAN                             
@@ -153,7 +150,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          Index Cond: (id = ANY (ARRAY[t2.id, $1, $2, ..., $1023]))
 (5 rows)
 
--- pg_hint_plan comment formatting wrong
 --+Set(enable_indexscan off)
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
                             QUERY PLAN                             
@@ -203,7 +199,6 @@ error hint:
          ->  Seq Scan on t2
 (5 rows)
 
--- pg_hint_plan_comments can be used in between queries
 EXPLAIN (COSTS false) /*+Set(enable_indexscan off)*/
  SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
@@ -384,8 +379,6 @@ SeqScan()
         1
 (1 row)
 
--- SeqScan takes only 1 argument. Hence it appears in error hint and not in used hint in
--- the description.
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  pg_hint_plan: hint syntax error at or near ""
