@@ -597,10 +597,11 @@ public class BackupHelper {
    * {@link #hasCredentialsOfItsOwn}), so a setup that reached the bucket before keeps doing so.
    *
    * @return false when YBA has no way to reach the bucket: it found no entry, and either runs on
-   *     GCP with an S3 config that has no access keys and no IAM credential source that can work
-   *     there, or on confirmed AWS with a GCP IAM GCS config and no Google credentials file on the
-   *     host. Known limit: on AWS that cannot be confirmed, a keyless S3 config without the flag is
-   *     still built from blank keys (see {@link #useYbaIamRole}).
+   *     GCP with an S3 config that has no access keys without the IAM role flag, or with the flag
+   *     no IAM credential source the host can serve (its keys are then ignored), or runs on
+   *     confirmed AWS with a GCP IAM GCS config and no Google credentials file on the host. Known
+   *     limit: on AWS that cannot be confirmed, a keyless S3 config without the flag is still built
+   *     from blank keys (see {@link #useYbaIamRole}).
    */
   public boolean applyYbaFederatedIdentity(
       CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
@@ -617,7 +618,9 @@ public class BackupHelper {
     boolean canFederate = canPresentFederatedIdentity(bucketCloud);
     CrossCloudFederationTarget target = resolveCrossCloudFederationTarget(universe, bucketCloud);
     if (!canFederate) {
-      // The config's own credentials are all this host can use; nothing to judge them against.
+      // Only the universe's entry, used on any host as before, since detection can miss a GCP host
+      // on which it works; the customer's providers are not consulted where the host can't present
+      // their identity.
       stampFederationTarget(configData, target);
       return true;
     }
@@ -727,7 +730,7 @@ public class BackupHelper {
    * Whether YBA's host can present the identity a stamped entry calls for: a GCE identity token for
    * an S3 bucket (see {@link AWSUtil#createS3Client}), or the instance's AWS role for a GCS bucket
    * (the external_account built in {@link GCPUtil#getStorageService}). Elsewhere, including on an
-   * EC2-compatible cloud taken for AWS, the config's own credentials are all YBA can use.
+   * EC2-compatible cloud taken for AWS, YBA does not look up the customer's providers for one.
    */
   private boolean canPresentFederatedIdentity(CloudType bucketCloud) {
     return bucketCloud == CloudType.aws
