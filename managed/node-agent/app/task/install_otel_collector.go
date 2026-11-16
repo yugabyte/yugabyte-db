@@ -524,13 +524,14 @@ func logCleanupEnvSteps(
 	Desc string
 	Cmd  string
 } {
+	quotedEnvPath := shellSingleQuote(envPath)
 	return []struct {
 		Desc string
 		Cmd  string
 	}{
 		{
 			"clean-up-otel-log-cleanup-env",
-			fmt.Sprintf("rm -rf %s", envPath),
+			fmt.Sprintf("rm -rf %s", quotedEnvPath),
 		},
 		{
 			"write-otel-log-cleanup-env",
@@ -539,13 +540,13 @@ func logCleanupEnvSteps(
 					`&& echo "ycql_audit_log_level=%s" >> %s `+
 					`&& echo "ysql_audit_log_retention_days=%d" >> %s `+
 					`&& echo "ycql_audit_log_retention_days=%d" >> %s`,
-				envPath,
+				quotedEnvPath,
 				ycqlAuditLogLevel,
-				envPath,
+				quotedEnvPath,
 				ysqlAuditLogRetentionDays,
-				envPath,
+				quotedEnvPath,
 				ycqlAuditLogRetentionDays,
-				envPath,
+				quotedEnvPath,
 			),
 		},
 		{
@@ -557,12 +558,12 @@ func logCleanupEnvSteps(
 				"printf '%%s\\n' %s >> %s",
 				shellSingleQuote("ysql_audit_line_start_regex="+
 					shellSingleQuote(ysqlAuditLineStartRegex)),
-				envPath,
+				quotedEnvPath,
 			),
 		},
 		{
 			"set-permission-otel-log-cleanup-env",
-			fmt.Sprintf(`chmod 0440 %s`, envPath),
+			fmt.Sprintf(`chmod 0440 %s`, quotedEnvPath),
 		},
 	}
 }

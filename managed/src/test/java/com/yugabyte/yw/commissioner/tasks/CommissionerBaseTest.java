@@ -405,6 +405,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     lenient().when(mockKubernetesManagerFactory.getManager()).thenReturn(mockKubernetesManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
+    // An upgraded node-agent, as the OTEL install payload requires.
+    lenient()
+        .when(mockNodeAgentClient.getAndUpgradeOrThrow(anyString()))
+        .thenAnswer(
+            inv -> {
+              NodeAgent nodeAgent = new NodeAgent();
+              nodeAgent.setIp(inv.getArgument(0));
+              nodeAgent.setVersion(Util.getYbaVersion());
+              return nodeAgent;
+            });
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
