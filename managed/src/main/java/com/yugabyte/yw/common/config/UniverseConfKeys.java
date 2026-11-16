@@ -1857,6 +1857,19 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Threshold of memory percent for non-yba processes",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> healthPostgresPssCollectionIntervalSecs =
+      new ConfKeyInfo<>(
+          "yb.health_checks.postgres_pss_collection_interval_secs",
+          ScopeType.UNIVERSE,
+          "Minimum interval between postgres PSS collections",
+          "Minimum interval in seconds between postgres PSS collections by the health check. PSS"
+              + " is read from smaps_rollup for every postgres backend, which is costly on nodes"
+              + " with many connections. Runs that happen sooner skip PSS and do not report it."
+              + " 0 collects PSS on every run, -1 never collects it. Metrics are collected once a"
+              + " minute by default, so the default of 120 collects PSS every second run." +
+              " The PSS graphs average over 5 minutes, so values above 300 leave gaps in them.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableBackupsDuringDDL =
       new ConfKeyInfo<>(
           "yb.backup.enable_backups_during_ddl",
