@@ -869,6 +869,16 @@ public class BackupHelper {
   }
 
   private void precheckStorageConfig(CustomerConfig storageConfig, Universe universe) {
+    precheckStorageConfig(storageConfig, universe, true /* probeNodes */);
+  }
+
+  /**
+   * @param probeNodes whether an on-prem node whose cloud is not recorded may be probed. A request
+   *     thread passes false: a probe is a few commands on each node in turn, and the task that
+   *     follows the request runs this precheck again and probes there.
+   */
+  private void precheckStorageConfig(
+      CustomerConfig storageConfig, Universe universe, boolean probeNodes) {
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     if (storageUtil.isIamEnabled(storageConfig)
         && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
@@ -877,7 +887,7 @@ public class BackupHelper {
     if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
       validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
     }
-    validateCrossCloudFederationConfigured(storageConfig, universe);
+    validateCrossCloudFederationConfigured(storageConfig, universe, probeNodes);
   }
 
   /**
@@ -887,7 +897,7 @@ public class BackupHelper {
    * on it would otherwise wait about 15 minutes and then fail with no error.
    */
   private void validateCrossCloudFederationConfigured(
-      CustomerConfig storageConfig, Universe universe) {
+      CustomerConfig storageConfig, Universe universe, boolean probeNodes) {
     CustomerConfigData data = storageConfig.getDataObject();
     CloudType bucketCloud;
     if (data instanceof CustomerConfigStorageS3Data
@@ -916,7 +926,7 @@ public class BackupHelper {
       return;
     }
     for (NodeDetails node : universe.getRunningTserversInPrimaryCluster()) {
-      CloudType nodeCloud = nodeCloud(universe, primaryCluster, node);
+      CloudType nodeCloud = nodeCloud(universe, primaryCluster, node, probeNodes);
       // Only a VM on the other cloud can be federated; a node on the bucket's cloud reaches it
       // natively, and one whose cloud is unknown is left to the YBC check.
       if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp) && nodeCloud != bucketCloud) {
@@ -945,10 +955,11 @@ public class BackupHelper {
    * recorded the same way, so later prechecks do not probe that node again. Any other answer is
    * not: a metadata service that was only slow to answer looks the same as a physical machine. For
    * the same reason a recorded {@code onprem} is not trusted and the node is probed again: {@code
-   * ManageCloudFederation} records whatever its probe answered.
+   * ManageCloudFederation} records whatever its probe answered. Without {@code probe}, a node that
+   * would need a probe is unknown.
    */
   @Nullable
-  private CloudType nodeCloud(Universe universe, Cluster cluster, NodeDetails node) {
+  private CloudType nodeCloud(Universe universe, Cluster cluster, NodeDetails node, boolean probe) {
     CloudType providerCloud = cluster.getProviderCloudType(node);
     if (providerCloud != CloudType.onprem) {
       return providerCloud;
@@ -956,6 +967,9 @@ public class BackupHelper {
     String physicalCloud = node.cloudInfo == null ? null : node.cloudInfo.physicalCloud;
     if (CloudType.aws.name().equals(physicalCloud) || CloudType.gcp.name().equals(physicalCloud)) {
       return CloudType.valueOf(physicalCloud);
+    }
+    if (!probe) {
+      return null;
     }
     CloudType detected =
         nodeCloudDetector.detect(
@@ -1511,7 +1525,9 @@ public class BackupHelper {
   public Map<String, YbcBackupResponse> getYbcSuccessMarker(
       CustomerConfig storageConfig, Set<String> storageLocationList, UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    precheckStorageConfig(storageConfig, universe);
+    // The restore preflight API reaches this on a request thread. RestorePreflightValidate also
+    // does, between its own prechecks, which probe.
+    precheckStorageConfig(storageConfig, universe, false /* probeNodes */);
     Map<String, String> successMarkerStrs = new HashMap<>();
     try {
       storageLocationList.stream()

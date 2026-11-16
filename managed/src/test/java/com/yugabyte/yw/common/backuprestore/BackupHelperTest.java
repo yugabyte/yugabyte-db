@@ -1594,6 +1594,31 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(e.getMessage(), e.getMessage().contains("runs on aws"));
   }
 
+  /**
+   * The restore preflight API fetches the success markers on a request thread, so its precheck uses
+   * only a recorded cloud and does not probe nodes.
+   */
+  @Test
+  public void testSuccessMarkerPrecheckDoesNotProbeNodes() {
+    Universe universe = universeOnFederatingProvider(CloudType.onprem, true);
+    CustomerConfig config = gcsIamConfig();
+
+    spyBackupHelper.getYbcSuccessMarker(config, Collections.emptySet(), universe.getUniverseUUID());
+    Mockito.verify(mockNodeCloudDetector, Mockito.never()).detect(any(), any(), any());
+
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getNodes().forEach(n -> n.cloudInfo.physicalCloud = CloudType.aws.name()));
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.getYbcSuccessMarker(
+                    config, Collections.emptySet(), universe.getUniverseUUID()));
+    assertTrue(e.getMessage(), e.getMessage().contains("runs on aws"));
+    Mockito.verify(mockNodeCloudDetector, Mockito.never()).detect(any(), any(), any());
+  }
+
   /** YBA on AWS -> S3 with federation on: the nodes may federate, YBA uses its native identity. */
   @Test
   public void testS3ConfigIsNotStampedWhenYbaRunsOnAws() {
