@@ -224,6 +224,7 @@ static PAUSE_AT_START_OF_SETUP_MS: FlagRef<i32> =
     FlagRef::new("TEST_pause_at_start_of_setup_replication_group_ms");
 static EXIT_UNFINISHED_DELETING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_deleting");
 static DISABLE_UNIVERSE_GC: FlagRef<bool> = FlagRef::new("disable_universe_gc");
+static DISABLE_TABLET_DELETION: FlagRef<bool> = FlagRef::new("TEST_disable_tablet_deletion");
 static EXIT_UNFINISHED_MERGING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_merging");
 static FAIL_UNIVERSE_REPLICATION_MERGE: FlagRef<bool> =
     FlagRef::new("TEST_fail_universe_replication_merge");
@@ -1853,7 +1854,13 @@ fn start_term(
     let deletes_scope = scope.clone();
     scope.spawn("replica-deletes", async move {
         loop {
-            for delete in deletes_leader.ts_manager.deletes.drain() {
+            // `TEST_disable_tablet_deletion`: deletes stay queued, and go once it is cleared.
+            let deletes = if DISABLE_TABLET_DELETION.get() {
+                Vec::new()
+            } else {
+                deletes_leader.ts_manager.deletes.drain()
+            };
+            for delete in deletes {
                 let leader = deletes_leader.clone();
                 let rpc = deletes_rpc.clone();
                 let executor = deletes_executor.clone();

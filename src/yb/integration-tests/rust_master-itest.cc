@@ -42,7 +42,6 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -781,14 +780,15 @@ TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
     }
   }
 
-  // A leader method of a later workstream (snapshots, W10) is refused, not forwarded.
+  // A never-served leader method (rpc-handlers' leader::NEVER_SERVED) is refused, not forwarded.
   {
-    auto proxy = cluster_->GetProxy<master::MasterBackupProxy>(rust_master);
-    master::ListSnapshotsRequestPB req;
-    master::ListSnapshotsResponsePB resp;
+    auto proxy = cluster_->GetProxy<master::MasterClientProxy>(rust_master);
+    master::RedisConfigGetRequestPB req;
+    req.set_keyword("x");
+    master::RedisConfigGetResponsePB resp;
     rpc::RpcController controller;
     controller.set_timeout(10s);
-    ASSERT_OK(proxy.ListSnapshots(req, &resp, &controller));
+    ASSERT_OK(proxy.RedisConfigGet(req, &resp, &controller));
     ASSERT_EQ(resp.error().status().code(), AppStatusPB::NOT_SUPPORTED)
         << resp.ShortDebugString();
   }
