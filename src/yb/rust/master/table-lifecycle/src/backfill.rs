@@ -457,7 +457,30 @@ pub(crate) async fn run(
     let read_time = match job.read_time {
         Some(time) => time,
         None => {
-            let time = safe_time(ctx, &token, table_id, job.using_table_locks).await?;
+            let decision = match ctx.lifecycle.xrepl_hooks.get() {
+                Some(hooks) => {
+                    hooks
+                        .backfill_decision(index_ids.iter().cloned().collect(), table_id.to_vec())
+                        .await?
+                }
+                None => crate::BackfillDecision::TabletSafeTime,
+            };
+            let time = match decision {
+                crate::BackfillDecision::TabletSafeTime => {
+                    safe_time(ctx, &token, table_id, job.using_table_locks).await?
+                }
+                crate::BackfillDecision::RunLocalAt(time) => time,
+                crate::BackfillDecision::DeferToReplicated(_) => {
+                    // `FinalizeReplicatedIndexBackfill`: the source's backfill writes are
+                    // already applied here.
+                    tracing::info!(
+                        "Completed backfilling the index table, finalizing replicated index \
+                         backfill without local backfill."
+                    );
+                    completed(ctx, &index_ids).await?;
+                    return finish(ctx, &token, table_id, &index_ids, None).await;
+                }
+            };
             persist(ctx, &token, table_id, |pb| {
                 if let Some(job) = pb.backfill_jobs.first_mut() {
                     job.set_backfilling_timestamp(time);
@@ -996,7 +1019,20 @@ async fn succeed(
     for index_id in index_ids {
         allow_gc_of_delete_markers(ctx, token, index_id, read_time).await?;
     }
+    completed(ctx, index_ids).await?;
     finish(ctx, token, table_id, index_ids, None).await
+}
+
+/// `MarkIndexBackfillCompleted`, before the indexes are marked backfilled.
+async fn completed(ctx: &BackfillContext, index_ids: &HashSet<Vec<u8>>) -> Result<(), Status> {
+    match ctx.lifecycle.xrepl_hooks.get() {
+        Some(hooks) => {
+            hooks
+                .backfill_completed(index_ids.iter().cloned().collect())
+                .await
+        }
+        None => Ok(()),
+    }
 }
 
 /// `MarkIndexesAsFailed` and the permission update to WRITE_AND_DELETE_WHILE_REMOVING.

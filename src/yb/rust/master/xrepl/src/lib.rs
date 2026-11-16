@@ -32,6 +32,7 @@ pub use create::CreatesTables;
 pub use streams::{parse_stream_id, stream_rows, strip_sequences_data_alias, StreamRow};
 pub use xcluster::xcluster_stream_options;
 
+use master_table_lifecycle::BackfillDecision;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -201,6 +202,19 @@ pub trait XreplExtension: Send + Sync {
         table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
         mutation: master_catalog_state::Mutation,
     ) -> Result<master_catalog_state::Mutation, Status>;
+
+    /// `TryGetXClusterInfoForIndexBackfill`.
+    fn backfill_decision(
+        &self,
+        index_ids: Vec<Vec<u8>>,
+        indexed_table_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<BackfillDecision, Status>>;
+
+    /// `MarkIndexBackfillCompleted`.
+    fn backfill_completed(
+        &self,
+        index_ids: Vec<Vec<u8>>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>>;
 
     /// `IsNamespaceInAutomaticDDLMode`.
     fn is_automatic_ddl_mode(

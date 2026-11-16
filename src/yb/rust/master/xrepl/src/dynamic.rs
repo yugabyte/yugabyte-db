@@ -15,6 +15,7 @@
 //! unqualified (`FindAllTablesMissingInCDCSDKStream`). Here each pass applies that rule to the
 //! catalog, so a create needs no hook.
 
+use master_table_lifecycle::BackfillDecision;
 use std::collections::{BTreeMap, HashSet};
 use std::time::Duration;
 
@@ -390,6 +391,27 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         match self.extension.get() {
             Some(x) => x.xcluster_after_ddl(snapshot, table_id, table, mutation),
             None => Ok(mutation),
+        }
+    }
+
+    fn backfill_decision(
+        &self,
+        index_ids: Vec<Vec<u8>>,
+        indexed_table_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<BackfillDecision, Status>> {
+        match self.extension.get() {
+            Some(x) => x.backfill_decision(index_ids, indexed_table_id),
+            None => Box::pin(async { Ok(BackfillDecision::TabletSafeTime) }),
+        }
+    }
+
+    fn backfill_completed(
+        &self,
+        index_ids: Vec<Vec<u8>>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+        match self.extension.get() {
+            Some(x) => x.backfill_completed(index_ids),
+            None => Box::pin(async { Ok(()) }),
         }
     }
 

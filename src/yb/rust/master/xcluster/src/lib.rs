@@ -21,6 +21,7 @@
 mod alter;
 mod autoflags;
 mod automatic;
+mod backfill;
 mod checkpoint;
 mod config;
 mod consumer;

@@ -90,6 +90,16 @@ alter or delete left behind (FAILED, DELETED_ERROR, DELETING or `.ALTER`; C++
 `ClearFailedUniverse`), and every `xcluster_cleanup_tables_frequency_secs` it deletes old rows of
 the DDL replication tables in automatic-mode databases.
 
+## Index backfill
+
+`XreplHooks::backfill_decision` picks a backfill's read time (`backfill.rs`, C++
+`TryGetXClusterInfoForIndexBackfill`): on an automatic-mode target, the hybrid time the ddl_queue
+handler stored on the indexes, or no local backfill at all when every index's stream uses the
+target-applied filter (the source's backfill writes are replicated); otherwise the namespace's
+safe time for a consumer table, or the tablets' safe time. `backfill_completed` then clears the
+indexes' `xcluster_table_info` and, on a source, moves their streams to the end of the WAL, except
+target-applied-filter streams and WAL anchors. Bidirectional index auto-add is not served.
+
 ## Failover
 
 `XClusterFailover` on an automatic-mode target sets the group's `failover_in_progress` and starts a

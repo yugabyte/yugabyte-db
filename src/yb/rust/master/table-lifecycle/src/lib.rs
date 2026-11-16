@@ -225,6 +225,17 @@ impl Default for LifecycleOptions {
     }
 }
 
+/// How an index backfill picks its read time (`XClusterBackfillDecision`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BackfillDecision {
+    /// The tablets' safe time, as without xCluster.
+    TabletSafeTime,
+    /// A backfill on this universe at this hybrid time.
+    RunLocalAt(u64),
+    /// No backfill: the source's backfill writes, made at this hybrid time, are replicated.
+    DeferToReplicated(u64),
+}
+
 /// What CDC streams need from tablet creation, splits and hidden-tablet cleanup, which
 /// `master-xrepl` provides. Logical replication streams get their retention barriers and
 /// `cdc_state` rows when a tablet is created (`cdc_sdk_set_retention_barriers`,
@@ -303,6 +314,24 @@ pub trait XreplHooks: Send + Sync {
         _namespace_id: &[u8],
     ) -> bool {
         false
+    }
+
+    /// `TryGetXClusterInfoForIndexBackfill`: how the backfill of `index_ids` on `indexed_table`
+    /// picks its read time.
+    fn backfill_decision(
+        &self,
+        _index_ids: Vec<Vec<u8>>,
+        _indexed_table_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<BackfillDecision, Status>> {
+        Box::pin(async { Ok(BackfillDecision::TabletSafeTime) })
+    }
+
+    /// `MarkIndexBackfillCompleted`: before the indexes are marked backfilled.
+    fn backfill_completed(
+        &self,
+        _index_ids: Vec<Vec<u8>>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+        Box::pin(async { Ok(()) })
     }
 
     /// Work a new table's tablets wait for before it runs (`GetPostTabletCreateTasks`): its

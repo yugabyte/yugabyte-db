@@ -16,6 +16,7 @@
 //! target drops its table and then deletes the stream, or after `cdc_wal_retention_time_secs`
 //! the streams are dropped here (`DoProcessHiddenTablets`).
 
+use master_table_lifecycle::BackfillDecision;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -116,6 +117,21 @@ impl XreplExtension for XCluster {
         mutation: master_catalog_state::Mutation,
     ) -> Result<master_catalog_state::Mutation, Status> {
         self.clear_after_ddl(snapshot, table_id, table, mutation)
+    }
+
+    fn backfill_decision(
+        &self,
+        index_ids: Vec<Vec<u8>>,
+        indexed_table_id: Vec<u8>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<BackfillDecision, Status>> {
+        Box::pin(async move { self.backfill_decision(&index_ids, &indexed_table_id) })
+    }
+
+    fn backfill_completed(
+        &self,
+        index_ids: Vec<Vec<u8>>,
+    ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
+        Box::pin(async move { self.mark_index_backfill_completed(&index_ids).await })
     }
 
     fn is_automatic_ddl_mode(&self, snapshot: &CatalogSnapshot, namespace_id: &[u8]) -> bool {
