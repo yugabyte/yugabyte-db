@@ -1336,4 +1336,7 @@ extern void plpgsql_scanner_finish(yyscan_t yyscanner);
  */
 extern int	plpgsql_yyparse(PLpgSQL_stmt_block **plpgsql_parse_result_p, yyscan_t yyscanner);
 
+/* YB declarations */
+extern void yb_plpgsql_txn_restart_cb(void *arg);
+
 #endif							/* PLPGSQL_H */

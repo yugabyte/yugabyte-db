@@ -205,6 +205,8 @@ _PG_init(void)
 	RegisterXactCallback(plpgsql_xact_cb, NULL);
 	RegisterSubXactCallback(plpgsql_subxact_cb, NULL);
 
+	YbRegisterTxnRestartCallback(yb_plpgsql_txn_restart_cb, NULL);
+
 	/* Set up a rendezvous point with optional instrumentation plugin */
 	plpgsql_plugin_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 

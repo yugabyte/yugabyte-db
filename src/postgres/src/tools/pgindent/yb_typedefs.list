@@ -259,6 +259,8 @@ YbTupleCacheEntry
 YbTupleCacheIterator
 YbTupleCacheKeyExtractor
 YbTxnError
+YbTxnRestartCallback
+YbTxnRestartCallbackItem
 YbUpdateAffectedEntities
 YbUpdateRelationCacheState
 YbUserIdAndSecContext

@@ -399,6 +399,16 @@ static void ShowTransactionStateRec(const char *str, TransactionState s);
 static const char *BlockStateAsString(TBlockState blockState);
 static const char *TransStateAsString(TransState state);
 
+/* YB declarations */
+typedef struct YbTxnRestartCallbackItem
+{
+	struct YbTxnRestartCallbackItem *next;
+	YbTxnRestartCallback callback;
+	void	   *arg;
+} YbTxnRestartCallbackItem;
+
+static YbTxnRestartCallbackItem *yb_txn_restart_callbacks = NULL;
+
 
 /* ----------------------------------------------------------------
  *	transaction state accessors
@@ -2495,6 +2505,7 @@ YBCRestartWriteTransaction()
 
 	/* YB: After the loop above we must be at the top transaction only. */
 	TransactionState s = CurrentTransactionState;
+	VirtualTransactionId vxid;
 	Assert(s->parent == NULL);
 	Assert(s->nestingLevel == 1);
 
@@ -2504,6 +2515,16 @@ YBCRestartWriteTransaction()
 	 * user, removing all snapshots is safe.
 	 */
 	PopAllActiveSnapshots();
+
+	/*
+	 * Portals created by the failed attempt (EXECUTE, PL/pgSQL loops, cursors)
+	 * are left behind by the error, and their owners are about to be freed with
+	 * the owner tree. Abort them in the same way as aborting a transaction
+	 * would.
+	 * The portal being retried was detached byyb_clear_portal_before_restart
+	 * and is retained.
+	 */
+	AtAbort_Portals();
 
 	if (TopTransactionResourceOwner != NULL)
 	{
@@ -2526,6 +2547,8 @@ YBCRestartWriteTransaction()
 		 * the retry. Marking globals as NULL guards against stale pointer
 		 * accesses if resource owner recreation fails for any reason.
 		 */
+		AtCleanup_Portals();
+
 		Assert(s->curTransactionOwner == TopTransactionResourceOwner);
 		CurrentResourceOwner = NULL;
 		ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -2537,6 +2560,25 @@ YBCRestartWriteTransaction()
 		TopTransactionResourceOwner = s->curTransactionOwner;
 		CurTransactionResourceOwner = s->curTransactionOwner;
 		CurrentResourceOwner = s->curTransactionOwner;
+
+		/*
+		 * Use a new lxid for the transaction retry. Resources acquired by
+		 * modulesModules are typically keyed by lxid (such PL/pgSQL's
+		 * simple-expression plan refcounts), and the release above relinquished
+		 * those resources.
+		 */
+		vxid.procNumber = MyProcNumber;
+		vxid.localTransactionId = GetNextLocalTransactionId();
+		VirtualXactLockTableInsert(vxid);
+		MyProc->vxid.lxid = vxid.localTransactionId;
+
+		/*
+		 * Child owners of the old TopTransactionResourceOwner were deleted
+		 * with it, but the transaction is not aborted, so no xact callback
+		 * fires to tell modules that cached them, update themselves.
+		 */
+		for (YbTxnRestartCallbackItem *item = yb_txn_restart_callbacks; item; item = item->next)
+			item->callback(item->arg);
 	}
 	AtEOXact_SPI(false /* isCommit */ );
 	AtEOXact_Snapshot(false, true); /* and release the transaction's snapshots */
@@ -7270,4 +7312,23 @@ void
 decrement_sticky_object_count()
 {
 	CurrentTransactionState->ybUncommittedStickyObjectCount--;
+}
+
+/*
+ * Register a callback invoked by YBCRestartWriteTransaction after it replaces
+ * TopTransactionResourceOwner. Modules that cache TopTransactionResourceOwner
+ * or one of its children across statements must drop that pointer here.
+ *
+ * Intended for use by dynamically loaded modules, like RegisterXactCallback.
+ */
+void
+YbRegisterTxnRestartCallback(YbTxnRestartCallback callback, void *arg)
+{
+	YbTxnRestartCallbackItem *item;
+
+	item = (YbTxnRestartCallbackItem *) MemoryContextAlloc(TopMemoryContext, sizeof(YbTxnRestartCallbackItem));
+	item->callback = callback;
+	item->arg = arg;
+	item->next = yb_txn_restart_callbacks;
+	yb_txn_restart_callbacks = item;
 }
