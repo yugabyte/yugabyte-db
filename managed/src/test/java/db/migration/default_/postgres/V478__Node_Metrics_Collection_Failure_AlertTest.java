@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.junit.Test;
 
-public class V477__Node_Metrics_Collection_Failure_AlertTest extends FakeDBApplication {
+public class V478__Node_Metrics_Collection_Failure_AlertTest extends FakeDBApplication {
 
   @Test
   public void testSevereConfigurationWithDefinitionsOnVmUniversesOnly() throws Exception {
@@ -67,11 +67,11 @@ public class V477__Node_Metrics_Collection_Failure_AlertTest extends FakeDBAppli
   private static void runMigration() throws Exception {
     String sql =
         IOUtils.toString(
-            V477__Node_Metrics_Collection_Failure_AlertTest.class
+            V478__Node_Metrics_Collection_Failure_AlertTest.class
                 .getClassLoader()
                 .getResourceAsStream(
                     "db/migration/default_/postgres/"
-                        + "V477__Node_Metrics_Collection_Failure_Alert.sql"),
+                        + "V478__Node_Metrics_Collection_Failure_Alert.sql"),
             StandardCharsets.UTF_8);
     try (Connection connection = DB.getDefault().dataSource().getConnection();
         Statement statement = connection.createStatement()) {
