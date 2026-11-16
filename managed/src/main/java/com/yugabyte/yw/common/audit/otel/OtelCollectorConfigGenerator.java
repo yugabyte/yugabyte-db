@@ -2996,7 +2996,7 @@ public class OtelCollectorConfigGenerator {
     Map<String, OtelCollectorConfigFormat.Extension> extensions = collectorConfig.getExtensions();
     boolean setExtension = false;
     UUID providerUuid = telemetryProvider.getUuid();
-    Map<String, String> credentials = checkedCredentialFields(telemetryProvider);
+    Map<String, String> credentials = cleanCredentialFields(telemetryProvider);
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -3205,7 +3205,8 @@ public class OtelCollectorConfigGenerator {
                 new OtelCollectorConfigFormat.BasicAuthExtension();
             OtelCollectorConfigFormat.ClientAuth clientAuth =
                 new OtelCollectorConfigFormat.ClientAuth();
-            clientAuth.setUsername(otlpConfig.getBasicAuth().getUsername());
+            clientAuth.setUsername(
+                TelemetryProviderConfig.removeLineBreaks(otlpConfig.getBasicAuth().getUsername()));
             clientAuth.setPassword(
                 credentialRef(
                     providerUuid, CRED_OTLP_PASSWORD, credentials.get(CRED_OTLP_PASSWORD)));
@@ -3439,7 +3440,7 @@ public class OtelCollectorConfigGenerator {
    */
   public static Map<String, String> getCredentialEnv(TelemetryProvider telemetryProvider) {
     Map<String, String> env = new LinkedHashMap<>();
-    checkedCredentialFields(telemetryProvider)
+    cleanCredentialFields(telemetryProvider)
         .forEach(
             (field, value) -> {
               if (StringUtils.isNotEmpty(value)) {
@@ -3450,12 +3451,11 @@ public class OtelCollectorConfigGenerator {
   }
 
   /** The config and the env use these values, so they agree on which credentials are set. */
-  private static Map<String, String> checkedCredentialFields(TelemetryProvider telemetryProvider) {
+  private static Map<String, String> cleanCredentialFields(TelemetryProvider telemetryProvider) {
     Map<String, String> fields = new LinkedHashMap<>();
     credentialFields(telemetryProvider.getConfig())
         .forEach(
-            (field, value) ->
-                fields.put(field, checkedCredential(telemetryProvider, field, value)));
+            (field, value) -> fields.put(field, TelemetryProviderConfig.removeLineBreaks(value)));
     return fields;
   }
 
@@ -3478,25 +3478,8 @@ public class OtelCollectorConfigGenerator {
       }
     }
     return new Pair<>(
-        checkedCredential(telemetryProvider, "access key", accessKey),
-        checkedCredential(telemetryProvider, "secret key", secretKey));
-  }
-
-  /**
-   * Strips trailing line breaks, which a pasted value often has. Fails on any other line break: on
-   * VM nodes it would add a line to a credential file.
-   */
-  private static String checkedCredential(
-      TelemetryProvider telemetryProvider, String field, String value) {
-    String stripped = StringUtils.stripEnd(value, "\r\n");
-    if (StringUtils.containsAny(stripped, "\r\n")) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Credential %s of telemetry provider %s contains a line break."
-                  + " Replace the provider.",
-              field, telemetryProvider.getName()));
-    }
-    return stripped;
+        TelemetryProviderConfig.removeLineBreaks(accessKey),
+        TelemetryProviderConfig.removeLineBreaks(secretKey));
   }
 
   /**

@@ -78,6 +78,14 @@ public class TelemetryProviderConfig {
     return Collections.emptyList();
   }
 
+  /**
+   * Removes line breaks, which a pasted credential often has. No credential can hold one, and on VM
+   * nodes it would add a line to a credential file.
+   */
+  public static String removeLineBreaks(String value) {
+    return StringUtils.replaceChars(value, "\r\n", "");
+  }
+
   protected static List<String> nonEmpty(String... values) {
     return Arrays.stream(values).filter(StringUtils::isNotEmpty).collect(Collectors.toList());
   }

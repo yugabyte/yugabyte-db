@@ -567,8 +567,6 @@ public class NodeAgentRpcPayload {
       for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
         TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
         secretEnv.putAll(OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
-        // Fails on a line break in an AWS key.
-        OtelCollectorConfigGenerator.getAwsKeys(telemetryProvider);
       }
       checkNodeAgentReadsSecretEnv(nodeAgent, secretEnv);
     }

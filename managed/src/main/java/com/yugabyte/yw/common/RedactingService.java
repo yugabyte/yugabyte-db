@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1563,8 +1564,8 @@ public class RedactingService {
   private static List<String> secretForms(Collection<String> secrets) {
     Set<String> forms = new HashSet<>();
     for (String value : secrets) {
-      // Also the stripped form, as telemetry credentials are rendered without trailing line breaks.
-      for (String secret : new String[] {value, StringUtils.stripEnd(value, "\r\n")}) {
+      // Also the form without line breaks, as telemetry credentials are rendered that way.
+      for (String secret : new String[] {value, TelemetryProviderConfig.removeLineBreaks(value)}) {
         if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
           continue;
         }

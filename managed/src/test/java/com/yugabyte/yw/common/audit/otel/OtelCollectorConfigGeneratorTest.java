@@ -11,7 +11,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
@@ -2480,26 +2479,35 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertThat(vmConfig, not(containsString("${env:")));
   }
 
+  // A line break inside a credential is removed too, on VM and K8s, so no task fails on it.
   @Test
-  public void credentialInnerLineBreakFails() {
+  public void credentialInnerLineBreakIsRemoved() {
     DataDogConfig ddConfig = new DataDogConfig();
     ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("ddsite");
     ddConfig.setApiKey("apikey\ncredential_process=x\n");
     TelemetryProvider dd =
-        createTelemetryProvider(new UUID(0, 1), "dd-bad", ImmutableMap.of(), ddConfig);
-    IllegalArgumentException e =
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> OtelCollectorConfigGenerator.getCredentialEnv(dd));
-    assertThat(e.getMessage(), containsString("dd-bad"));
+        createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), ddConfig);
+    assertEquals(
+        List.of("apikeycredential_process=x"),
+        new ArrayList<>(OtelCollectorConfigGenerator.getCredentialEnv(dd).values()));
+    AuditLogConfig auditLogConfig = createAuditLogConfigWithYSQL(dd.getUuid(), ImmutableMap.of());
+    generateConfig(auditLogConfig, null, null);
+    OtelCollectorConfigGenerator.K8sOtelConfig k8sConfig =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().auditLogConfig(auditLogConfig).build(),
+            null,
+            "%m [%p] ");
+    assertEquals(1, k8sConfig.getSecretEnv().size());
 
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
     awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
     awsConfig.setAccessKey("access");
     awsConfig.setSecretKey("sec\rret");
     TelemetryProvider aws =
-        createTelemetryProvider(new UUID(0, 2), "aws-bad", ImmutableMap.of(), awsConfig);
-    assertThrows(
-        IllegalArgumentException.class, () -> OtelCollectorConfigGenerator.getAwsKeys(aws));
+        createTelemetryProvider(new UUID(0, 2), "aws", ImmutableMap.of(), awsConfig);
+    assertEquals("secret", OtelCollectorConfigGenerator.getAwsKeys(aws).getSecond());
   }
 }

@@ -263,7 +263,9 @@ public class LokiConfig extends TelemetryProviderConfig {
   public String basicAuthCredential() {
     return Base64.getEncoder()
         .encodeToString(
-            (basicAuth.getUsername() + ":" + basicAuth.getPassword())
+            (removeLineBreaks(basicAuth.getUsername())
+                    + ":"
+                    + removeLineBreaks(basicAuth.getPassword()))
                 .getBytes(StandardCharsets.UTF_8));
   }
 }
