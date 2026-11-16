@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -274,6 +275,7 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
     ImageBundle bundle =
         ImageBundle.getOrBadRequest(providerUUID, bundleUpgradeInfo.getImageBundleUuid());
+    ImageBundleUtil.checkArchMatchesUniverse(universe, bundle);
     if (bundle.getProvider().getCloudCode().usesPerRegionImages()
         && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")
         && !super.runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableImageBundleValidation)) {
