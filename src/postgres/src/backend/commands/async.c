@@ -3042,10 +3042,6 @@ ybInsertPendingNotifiesToTable(void)
 	TupleTableSlot *slot = MakeSingleTupleTableSlot(desc, &TTSOpsVirtual);
 	EState	   *estate = CreateExecutorState();
 
-	YbcPgTransactionSetting txn_setting = (IsTransactionBlock() ?
-										   YB_TRANSACTIONAL :
-										   YB_SINGLE_SHARD_TRANSACTION);
-
 	int			num_notifs = list_length(pendingNotifies->events);
 	Datum	   *uuids = (Datum *) palloc(num_notifs * sizeof(Datum));
 	int			i = 0;
@@ -3090,8 +3086,13 @@ ybInsertPendingNotifiesToTable(void)
 		slot->tts_isnull[yb_extra_options_att.attnum - 1] = true;
 		ExecStoreVirtualTuple(slot);
 
+		/*
+		 * Transactional even outside a transaction block: a single-shard
+		 * INSERT commits at once, so an error later in this commit, or the
+		 * query layer retry that follows it, would leave the row committed.
+		 */
 		YBCExecuteInsertForDb(dboid, rel, slot, ONCONFLICT_NONE, NULL,
-							  txn_setting);
+							  YB_TRANSACTIONAL);
 		i++;
 		nextNotify = lnext(pendingNotifies->events, nextNotify);
 	}
@@ -3100,8 +3101,6 @@ ybInsertPendingNotifiesToTable(void)
 	 * Phase 2: All DELETEs. Only notif_uuid (the PK) is needed for ybctid
 	 * computation.
 	 */
-	bool		can_buffer_deletes = (txn_setting == YB_TRANSACTIONAL);
-
 	for (i = 0; i < num_notifs; i++)
 	{
 		ExecClearTuple(slot);
@@ -3111,19 +3110,18 @@ ybInsertPendingNotifiesToTable(void)
 		slot->tts_values[yb_notif_uuid_att.attnum - 1] = uuids[i];
 		ExecStoreVirtualTuple(slot);
 
-		if (can_buffer_deletes)
-			TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
+		TABLETUPLE_YBCTID(slot) = YBCComputeYBTupleIdFromSlot(rel, slot);
 
 		/*
 		 * Buffering of DELETE requires target_tuple_fetched to be true. Hence,
-		 * pass can_buffer_deletes as the target_tuple_fetched argument, even
-		 * though no tuple is fetched irrespective of can_buffer_deletes.
+		 * pass true as the target_tuple_fetched argument, even though no tuple
+		 * is fetched.
 		 *
 		 * This hack will not be required if we can relax DELETE's buffering
 		 * requirement along the lines of UPDATE's (GHI #31856).
 		 */
-		YBCExecuteDelete(rel, slot, NIL, can_buffer_deletes /* target_tuple_fetched */ ,
-						 txn_setting, false /* changingPart */ ,
+		YBCExecuteDelete(rel, slot, NIL, true /* target_tuple_fetched */ ,
+						 YB_TRANSACTIONAL, false /* changingPart */ ,
 						 false /* persist_missing_row */ , estate);
 	}
 

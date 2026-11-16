@@ -1337,6 +1337,38 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     verifyListenNotifyWorks();
   }
 
+  /**
+   * An autocommit statement that reads a table and then calls pg_notify must deliver each
+   * notification once, and must succeed, under both query protocols.
+   */
+  @Test
+  public void testNotifyAfterTableReadInAutocommit() throws Exception {
+    for (String queryMode : Arrays.asList("simple", "extended")) {
+      final String channel = "read_notify_" + queryMode;
+      final String table = channel + "_t";
+
+      try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+           Statement listenerStmt = listenerConn.createStatement();
+           Connection notifierConn = getConnectionBuilder().withTServer(0)
+               .withPreferQueryMode(queryMode).connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        notifierStmt.execute("CREATE TABLE " + table + " (k int PRIMARY KEY)");
+        notifierStmt.execute("INSERT INTO " + table + " VALUES (1), (2)");
+        listenerStmt.execute("LISTEN " + channel);
+        // The table read picks the read time that the statement's later operations use.
+        notifierStmt.execute("SELECT pg_notify('" + channel + "', 'k' || k) FROM " + table
+            + " ORDER BY k");
+        // Runs in a distributed transaction; the same payload sent twice is delivered once.
+        notifierStmt.execute("UPDATE " + table + " SET k = k + 10 RETURNING pg_notify('"
+            + channel + "', 'upd')");
+        notifierStmt.execute("SELECT pg_notify('" + channel + "', 'bare')");
+        notifierStmt.execute("NOTIFY " + channel + ", 'end'");
+        assertEquals(queryMode, Arrays.asList("k1", "k2", "upd", "bare", "end"),
+            payloadsOf(waitForNotification(listenerConn, channel, "end")));
+      }
+    }
+  }
+
   private static void notifyInTransaction(Statement stmt, String channel, String... payloads)
       throws Exception {
     stmt.execute("BEGIN");
