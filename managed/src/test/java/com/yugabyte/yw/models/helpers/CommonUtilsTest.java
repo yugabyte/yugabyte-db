@@ -391,8 +391,9 @@ public class CommonUtilsTest {
     assertUnmaskRejected(
         original,
         incoming,
-        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but no single stored element"
-            + " matches it by REGION or LOCATION. Send the actual value.");
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but by REGION or LOCATION it"
+            + " matches more than one stored element, or one that another element in the request"
+            + " also matches. Send the actual value.");
   }
 
   @Test
@@ -403,8 +404,8 @@ public class CommonUtilsTest {
     assertUnmaskRejected(
         original,
         incoming,
-        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but no single stored element"
-            + " matches it by REGION or LOCATION. Send the actual value.");
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but no stored element matches"
+            + " it by REGION or LOCATION. Send the actual value.");
   }
 
   @Test
@@ -418,8 +419,20 @@ public class CommonUtilsTest {
     assertUnmaskRejected(
         original,
         incoming,
-        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but no single stored element"
-            + " matches it by REGION or LOCATION. Send the actual value.");
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but by REGION or LOCATION it"
+            + " matches more than one stored element, or one that another element in the request"
+            + " also matches. Send the actual value.");
+  }
+
+  @Test
+  public void testUnmaskConfigElementWithActualValueDoesNotTakeStoredMatch() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    ObjectNode incoming =
+        regionLocations(
+            region("eastus", "east-loc", "new-token"),
+            region("eastus", "east-loc", masked("east-token")));
+
+    assertEquals(List.of("new-token", "east-token"), unmaskedSasTokens(original, incoming));
   }
 
   @Test

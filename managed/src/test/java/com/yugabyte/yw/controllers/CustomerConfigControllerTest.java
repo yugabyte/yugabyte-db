@@ -969,8 +969,9 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> editAzureRegionalConfig(config, data));
     assertBadRequest(
         result,
-        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but no single stored element"
-            + " matches it by REGION or LOCATION. Send the actual value.");
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but by REGION or LOCATION it"
+            + " matches more than one stored element, or one that another element in the request"
+            + " also matches. Send the actual value.");
     assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
   }
 

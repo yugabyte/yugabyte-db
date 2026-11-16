@@ -406,10 +406,19 @@ public class CommonUtils {
               : (ObjectNode) elem;
       String maskedField = findUnresolvedMask(result, match);
       if (maskedField != null) {
-        String reason =
-            match != null
-                ? "the stored element it matches has no value to restore"
-                : "no single stored element matches it by " + String.join(" or ", identityFields);
+        String fields = String.join(" or ", identityFields);
+        String reason;
+        if (match != null) {
+          reason = "the stored element it matches has no value to restore";
+        } else if (stored.stream().noneMatch(s -> anyIdentityFieldEqual(s, elem, identityFields))) {
+          reason = "no stored element matches it by " + fields;
+        } else {
+          reason =
+              "by "
+                  + fields
+                  + " it matches more than one stored element, or one that another element in the"
+                  + " request also matches";
+        }
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
@@ -421,16 +430,18 @@ public class CommonUtils {
     return processed;
   }
 
-  // Pairs incoming elements with stored ones, one to one. An element first takes a stored element
-  // equal on every identity field. Failing that, it takes the only stored element equal on any
-  // identity field, as long as no other unpaired element could take that one too. Anything less
-  // certain stays unpaired (null), so its masked values are rejected rather than guessed.
+  // Pairs incoming elements that hold a mask with stored ones, one to one. An element first takes a
+  // stored element equal on every identity field. Failing that, it takes the only stored element
+  // equal on any identity field, as long as no other unpaired element could take that one too.
+  // Anything less certain stays unpaired (null), so its masked values are rejected rather than
+  // guessed. Elements without a mask have nothing to restore, so they don't take part: otherwise a
+  // new element could take the stored element a masked one came from, depending on array order.
   private static ObjectNode[] matchArrayElements(
       List<ObjectNode> stored, ArrayNode incoming, List<String> identityFields) {
     ObjectNode[] matches = new ObjectNode[incoming.size()];
     boolean[] claimed = new boolean[stored.size()];
     for (int i = 0; i < incoming.size(); i++) {
-      if (!incoming.get(i).isObject()) continue;
+      if (!hasMaskedSensitiveField(incoming.get(i))) continue;
       for (int j = 0; j < stored.size(); j++) {
         if (!claimed[j] && allIdentityFieldsEqual(stored.get(j), incoming.get(i), identityFields)) {
           matches[i] = stored.get(j);
@@ -443,7 +454,7 @@ public class CommonUtils {
     Map<Integer, List<Integer>> candidates = new HashMap<>();
     int[] demand = new int[stored.size()];
     for (int i = 0; i < incoming.size(); i++) {
-      if (matches[i] != null || !incoming.get(i).isObject()) continue;
+      if (matches[i] != null || !hasMaskedSensitiveField(incoming.get(i))) continue;
       List<Integer> elemCandidates = new ArrayList<>();
       for (int j = 0; j < stored.size(); j++) {
         if (!claimed[j] && anyIdentityFieldEqual(stored.get(j), incoming.get(i), identityFields)) {
@@ -478,6 +489,10 @@ public class CommonUtils {
   private static String textOrNull(JsonNode node, String field) {
     JsonNode value = node.get(field);
     return value != null && value.isTextual() ? value.asText() : null;
+  }
+
+  private static boolean hasMaskedSensitiveField(JsonNode elem) {
+    return elem.isObject() && findUnresolvedMask((ObjectNode) elem, null) != null;
   }
 
   // Returns a sensitive field that still holds a mask after unmasking, unless that mask is already
