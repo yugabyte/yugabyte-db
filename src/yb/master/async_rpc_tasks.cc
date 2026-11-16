@@ -698,6 +698,34 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
   return true;
 }
 
+bool AsyncMarkNonConcurrentIndexDone::SendRequest(int attempt) {
+  VLOG_WITH_PREFIX(1)
+      << "Send mark non-concurrent index done request to " << permanent_uuid() << " for "
+      << tablet_->tablet_id() << " version " << schema_version_ << " waiting for a read lock.";
+
+  tablet::ChangeMetadataRequestPB req;
+  {
+    auto l = table_->LockForRead();
+    VLOG_WITH_PREFIX(1)
+        << "Send mark non-concurrent index done request to " << permanent_uuid() << " for "
+        << tablet_->tablet_id() << " version " << schema_version_ << " obtained the read lock.";
+
+    req.set_backfill_done_table_id(table_id_);
+    req.set_dest_uuid(permanent_uuid());
+    req.set_tablet_id(tablet_->tablet_id());
+    req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+    req.set_mark_non_concurrent_index_done(true);
+    req.set_birth_time(birth_time_);
+    schema_version_ = l->pb.version();
+  }
+
+  ts_admin_proxy_->MarkNonConcurrentIndexDoneAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG_WITH_PREFIX(1)
+      << "Send mark non-concurrent index done request to " << permanent_uuid() << " for "
+      << tablet_->tablet_id() << " (attempt " << attempt << "):\n" << req.DebugString();
+  return true;
+}
+
 void AsyncInsertPackedSchemaForXClusterTarget::HandleInsertPackedSchema(
     tablet::ChangeMetadataRequestPB& req) {
   // Update insert_packed_schema and update the schema to the packed schema to insert.

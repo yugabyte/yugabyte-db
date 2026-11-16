@@ -13,6 +13,7 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(ysql_yb_enable_advisory_locks);
@@ -51,7 +52,21 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   // row type either way. Read before BEGIN: since #36572, a transaction that starts before
   // finalize takes local object locks, so a read in that transaction locks the view across
   // finalize, and V76 cannot replace the view.
-  ASSERT_OK(conn.Fetch(kPgLocksQuery));
+  // pg_locks fails while a transaction status tablet has no leader, and the tservers restarted
+  // just above, so retry that error until every status tablet has elected one.
+  ASSERT_OK(WaitFor([&conn, &kPgLocksQuery]() -> Result<bool> {
+    auto status = ResultToStatus(conn.Fetch(kPgLocksQuery));
+    if (status.ok()) {
+      return true;
+    }
+    if (status.message().ToString().find(
+            "Couldn't fetch old transactions for the following status tablets") ==
+        std::string::npos) {
+      return status;
+    }
+    LOG(WARNING) << "Retrying pg_locks read: " << status;
+    return false;
+  }, 15s * kTimeMultiplier, "pg_locks read after the tserver restarts"));
   // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
