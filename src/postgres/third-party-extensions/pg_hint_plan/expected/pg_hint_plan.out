@@ -510,8 +510,7 @@ error hint:
          ->  Seq Scan on t4
 (5 rows)
 
--- YB_COMMENT
--- Tid scan not supported by YB
+-- YB: YB tables have no ctid. TODO(#38119): filter on ybctid instead.
 -- /*+TidScan(t4)*/
 -- EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
 -- /*+NoTidScan(t1)*/
@@ -1299,8 +1298,7 @@ error hint:
 (16 rows)
 
 --
--- YB_COMMENT
--- CTID based scans and searches not supported in Yugabyte
+-- YB: YB tables have no ctid. TODO(#38119): filter on ybctid instead.
 -- full scan hint pattern test
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
 ERROR:  system column "ctid" is not supported yet

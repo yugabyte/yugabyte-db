@@ -94,8 +94,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+NoBitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
--- YB_COMMENT
--- Tid scan not supported by YB
+-- YB: YB tables have no ctid. TODO(#38119): filter on ybctid instead.
 -- /*+TidScan(t4)*/
 -- EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
 -- /*+NoTidScan(t1)*/
@@ -178,8 +177,7 @@ EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM
 
 
 --
--- YB_COMMENT
--- CTID based scans and searches not supported in Yugabyte
+-- YB: YB tables have no ctid. TODO(#38119): filter on ybctid instead.
 -- full scan hint pattern test
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
 -- /*+SeqScan(t1)*/
