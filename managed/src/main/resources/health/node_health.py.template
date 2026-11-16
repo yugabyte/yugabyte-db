@@ -518,6 +518,8 @@ class Report:
         tmp_path = path + '.tmp'
         with open(tmp_path, 'w') as tmp_file:
             tmp_file.write(self.to_prom_format())
+        # A new file gets the umask's mode; node_exporter may run as another user.
+        os.chmod(tmp_path, 0o644)
         os.replace(tmp_path, path)
         logging.info("Wrote %d metric family(ies) to %s",
                      len([m for e in self.entries if e.metrics for m in e.metrics]), path)

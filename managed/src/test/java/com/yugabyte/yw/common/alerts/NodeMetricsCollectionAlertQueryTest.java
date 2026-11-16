@@ -82,6 +82,7 @@ public class NodeMetricsCollectionAlertQueryTest extends FakeDBApplication {
     String uuid = universe.getUniverseUUID().toString();
     ObjectNode test = Json.newObject().put("interval", "1m");
     ArrayNode series = test.putArray("input_series");
+    series(series, "ybp_health_check_status{universe_uuid=\"" + uuid + "\"}", "1x20");
     // n1: textfile can't be read. n2: file not rewritten since time 0. n3: tserver up, but its
     // metrics are missing from the file. n4: node_exporter has no textfile directory, so the
     // health check collects its metrics instead. n5: healthy.
