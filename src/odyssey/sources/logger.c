@@ -356,6 +356,19 @@ od_logger_format(od_logger_t *logger, od_logger_level_t level, char *context,
 						  "none");
 				dst_pos += len;
 				break;
+			/* backend pid */
+			case 'b':
+				if (server && server->key.key_pid != 0) {
+					len = od_snprintf(dst_pos, dst_end - dst_pos,
+							  "%" PRIu32,
+							  server->key.key_pid);
+					dst_pos += len;
+					break;
+				}
+				len = od_snprintf(dst_pos, dst_end - dst_pos,
+						  "none");
+				dst_pos += len;
+				break;
 			/* user name */
 			case 'u':
 				if (client && client->startup.user.value_len) {
