@@ -717,6 +717,11 @@ public class Audit extends Model {
   @DbJson
   private JsonNode additionalDetails;
 
+  @ApiModelProperty(value = "Task Diff", accessMode = READ_ONLY, dataType = "Object")
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode taskDiff;
+
   @ApiModelProperty(
       value = "API call",
       example = "/api/v1/customers/<496fdea8-df25-11eb-ba80-0242ac130004>/providers",
@@ -777,6 +782,32 @@ public class Audit extends Model {
       UUID taskUUID,
       JsonNode details,
       String userAddress) {
+    return create(
+        user,
+        apiCall,
+        apiMethod,
+        target,
+        targetID,
+        action,
+        body,
+        taskUUID,
+        details,
+        userAddress,
+        null);
+  }
+
+  public static Audit create(
+      Users user,
+      String apiCall,
+      String apiMethod,
+      TargetType target,
+      String targetID,
+      ActionType action,
+      JsonNode body,
+      UUID taskUUID,
+      JsonNode details,
+      String userAddress,
+      JsonNode taskDiff) {
     Audit entry = new Audit();
     entry.setCustomerUUID(user.getCustomerUUID());
     entry.setUserUUID(user.getUuid());
@@ -789,6 +820,7 @@ public class Audit extends Model {
     entry.setTaskUUID(taskUUID);
     entry.setPayload(body);
     entry.setAdditionalDetails(details);
+    entry.setTaskDiff(taskDiff);
     entry.setUserAddress(userAddress);
     entry.save();
     return entry;
@@ -826,6 +858,11 @@ public class Audit extends Model {
 
   public void updateAdditionalDetails(JsonNode additionalDetails) {
     this.additionalDetails = additionalDetails;
+    this.update();
+  }
+
+  public void updateTaskDiff(JsonNode taskDiff) {
+    this.taskDiff = taskDiff;
     this.update();
   }
 

@@ -59,6 +59,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
@@ -99,6 +100,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
 DECLARE_int32(metrics_snapshotter_interval_ms);
 DECLARE_int32(num_cpus);
 DECLARE_int32(num_reactor_threads);
@@ -728,6 +730,26 @@ class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
     ASSERT_OK(source_conn_->ExecuteFormat(
         "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
   }
+
+  // Creates a table with a vector index and inserts even ids, then odd ids, returning the time
+  // between the two batches.
+  // Each clone replays hundreds of pgvector DDLs, which takes minutes in sanitizer builds, so the
+  // vector index tests do one clone each to fit the test timeout.
+  Result<Timestamp> SetUpVectorIndexTable() {
+    RETURN_NOT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(source_conn_->Execute(
+        "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1))"));
+    RETURN_NOT_OK(source_conn_->Execute(
+        "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+    for (int i = 0; i <= 10; i += 2) {
+      RETURN_NOT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+    }
+    auto timestamp = VERIFY_RESULT(GetCurrentTime());
+    for (int i = 1; i <= 10; i += 2) {
+      RETURN_NOT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
+    }
+    return timestamp;
+  }
 };
 
 class PgCloneTestWithColocatedDBParam
@@ -829,47 +851,39 @@ TEST_F_EX(PgCloneTest, TestOidsAdvancedAfterClone, PgCloneInitiallyEmptyDBTest) 
 }
 
 TEST_F(PgCloneTest, CloneVectorIndex) {
-  ASSERT_OK(source_conn_->Execute("CREATE EXTENSION vector"));
-  ASSERT_OK(source_conn_->Execute(
-      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1))"));
-  ASSERT_OK(source_conn_->Execute(
-      "CREATE INDEX test_vi ON test USING ybhnsw (embedding vector_l2_ops)"));
+  auto timestamp = ASSERT_RESULT(SetUpVectorIndexTable());
 
-  for (int i = 0; i <= 10; i += 2) {
-    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
-  }
-  auto timestamp = ASSERT_RESULT(GetCurrentTime());
-  for (int i = 1; i <= 10; i += 2) {
-    ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO test VALUES ($0, '[$0]')", i));
-  }
-
-  LOG(INFO) << "Create first clone";
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
       timestamp.ToInt64()));
 
-  LOG(INFO) << "Read first clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 2; 6");
   }
-  LOG(INFO) << "Drop first clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+}
 
-  LOG(INFO) << "Create second clone";
+TEST_F(PgCloneTest, CloneVectorIndexLatest) {
+  ASSERT_OK(ResultToStatus(SetUpVectorIndexTable()));
+
+  LOG(INFO) << "Create clone";
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
 
-  LOG(INFO) << "Read second clone";
+  LOG(INFO) << "Read clone";
   {
     auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
     auto row = ASSERT_RESULT((target_conn.FetchAllAsString(
         "SELECT id FROM test ORDER BY embedding <-> '[3.9]' LIMIT 3")));
     ASSERT_EQ(row, "4; 3; 5");
   }
-  LOG(INFO) << "Drop second clone";
+  LOG(INFO) << "Drop clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
 }
 
@@ -2271,6 +2285,59 @@ TEST_F(SysCatalogRestoreWithWritePipeliningTest, YB_DEBUG_ONLY_TEST(DdlTransacti
   auto table2_exists =
       ASSERT_RESULT(source_conn_->FetchRow<bool>("SELECT to_regclass('table2') IS NOT NULL"));
   ASSERT_FALSE(table2_exists) << "table2 from the aborted transaction unexpectedly persisted";
+}
+
+class RepartitionReplicaLoadTest : public PostgresMiniClusterTest {
+ protected:
+  static constexpr auto kTimeout = 120s * kTimeMultiplier;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
+    PostgresMiniClusterTest::SetUp();
+  }
+
+  Result<TableId> TableIdOf(const std::string& table_name) {
+    auto tables = VERIFY_RESULT(client_->ListTables(
+        table_name, /* exclude_ysql */ false, /* ysql_db_filter */ "", client::SkipHidden::kTrue));
+    SCHECK_EQ(tables.size(), 1u, IllegalState, Format("Expected one table named $0", table_name));
+    return tables.front().table_id();
+  }
+};
+
+// Importing a two-tablet snapshot into a one-tablet table repartitions it: the one tablet is
+// marked DELETED and dropped from the table on the spot. With the deleted-tablet cleanup off,
+// nothing else takes its replicas out of the load count.
+TEST_F(RepartitionReplicaLoadTest, RepartitionedTabletLeavesReplicaLoad) {
+  auto* master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 2 TABLETS"));
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+  const auto first_table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
+  const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(first_table_id));
+  const auto snapshots = ASSERT_RESULT(snapshot_util.ListSnapshots(
+      snapshot_id, client::ListDeleted::kFalse, client::PrepareForBackup::kTrue));
+  ASSERT_EQ(snapshots.size(), 1);
+
+  ASSERT_OK(conn.Execute("DROP TABLE repartitioned"));
+  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  const auto table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
+  auto table = master->catalog_manager().GetTableInfo(table_id);
+  ASSERT_NE(table.get(), nullptr);
+  const auto old_tablets = ASSERT_RESULT(table->GetTablets());
+  ASSERT_EQ(old_tablets.size(), 1u);
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return ReplicaLoadMatchesReplicaMaps(master); }, kTimeout,
+      "Counters match the maps before the import"));
+
+  ASSERT_RESULT(snapshot_util.StartImportSnapshot(snapshots[0]));
+  const auto& old_tablet = old_tablets.front();
+  ASSERT_TRUE(old_tablet->LockForRead()->is_deleted());
+  ASSERT_FALSE(old_tablet->GetReplicaLocations()->empty());
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return ReplicaLoadMatchesReplicaMaps(master); }, kTimeout,
+      "Repartitioned tablet left the count"));
 }
 
 }  // namespace master

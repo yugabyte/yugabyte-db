@@ -18,8 +18,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat;
-import com.yugabyte.yw.common.LdapBindPasswdHbaFormat.QuoteStyle;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -691,13 +689,14 @@ public class GFlagsUtilTest extends FakeDBApplication {
                       existingGFlags3, newGFlags3, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex3.getHttpStatus());
 
-      // Test case 4: Double-quote CSV format with special characters (real user case)
+      // Test case 4: Double-quote CSV format with special characters (real user case). The # is
+      // outside quotes, so Postgres reads a comment, which is redacted too.
       String originalYsqlHbaConf4 =
           "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
               + "ldapbindpasswd=\"\"My$ecret!With@Special#Chars\"\"";
       String newYsqlHbaConf4 =
-          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com "
-              + "ldapbindpasswd=\"\"REDACTED\"\"";
+          "host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com"
+              + " ldapbindpasswd=\"REDACTED\"#REDACTED";
 
       Map<String, String> existingGFlags4 = new HashMap<>();
       existingGFlags4.put("ysql_hba_conf_csv", originalYsqlHbaConf4);
@@ -734,6 +733,111 @@ public class GFlagsUtilTest extends FakeDBApplication {
               () -> GFlagsUtil.mergeSensitiveGFlags(existing, newFlags, gFlagsValidation, "2.18"));
       assertEquals(BAD_REQUEST, ex.getHttpStatus());
       assertTrue(ex.getMessage().contains("ycql_ldap_bind_passwd"));
+    }
+  }
+
+  @Test
+  public void testMergeSensitiveGFlagsRedactedWithNoStoredValueThrowsBadRequest() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      Map<String, String> newFlags = Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT);
+      String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT;
+
+      for (Map<String, String> existing : Arrays.asList(null, Map.of("webserver_port", "9000"))) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () ->
+                    GFlagsUtil.mergeSensitiveGFlags(existing, newFlags, gFlagsValidation, "2.18"));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+        assertTrue(ex.getMessage(), ex.getMessage().contains("ycql_ldap_bind_passwd"));
+      }
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      null, Map.of(YSQL_HBA_CONF_CSV, hba), gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      assertTrue(ex.getMessage(), ex.getMessage().contains(YSQL_HBA_CONF_CSV));
+
+      Map<String, String> plain = Map.of("webserver_port", "9100");
+      assertEquals(plain, GFlagsUtil.mergeSensitiveGFlags(null, plain, gFlagsValidation, "2.18"));
+    }
+  }
+
+  @Test
+  public void testMergeSensitiveSpecificGFlagsRedactedWithNoStoredGFlagsThrowsBadRequest() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd"));
+      SpecificGFlags newSpecificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(), new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT)));
+
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveSpecificGFlags(
+                      null, newSpecificGFlags, gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    }
+  }
+
+  @Test
+  public void testCheckNoRedactedGFlagsOnCreate() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd"));
+      UserIntent legacy = new UserIntent();
+      legacy.tserverGFlags = new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT));
+      UserIntent specific = new UserIntent();
+      specific.specificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(
+                  Map.of(
+                      YSQL_HBA_CONF_CSV,
+                      "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT)),
+              new HashMap<>());
+
+      for (UserIntent userIntent : List.of(legacy, specific)) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(userIntent, "2.25.0.0", null));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      }
+
+      UserIntent real = new UserIntent();
+      real.tserverGFlags =
+          new HashMap<>(
+              Map.of(
+                  "ycql_ldap_bind_passwd",
+                  "ycql-bind-secret-xyz",
+                  "ysql_pg_conf_csv",
+                  "application_name=" + SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(real, "2.25.0.0", null);
+
+      // Create rebuilds the deprecated maps from specificGFlags, so a REDACTED there is unused.
+      UserIntent copiedFromGet = new UserIntent();
+      copiedFromGet.specificGFlags =
+          SpecificGFlags.construct(
+              new HashMap<>(),
+              new HashMap<>(Map.of("ycql_ldap_bind_passwd", "ycql-bind-secret-xyz")));
+      copiedFromGet.tserverGFlags =
+          new HashMap<>(Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(copiedFromGet, "2.25.0.0", null);
     }
   }
 
@@ -898,7 +1002,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
       };
 
       for (String password : passwords) {
-        String encoded = LdapBindPasswdHbaFormat.encode(QuoteStyle.DOUBLED_CSV, password);
+        String encoded = "\"\"" + password.replace("\"", "\"\"") + "\"\"";
         String hbaOriginal =
             "host all all 0.0.0.0/0 ldap ldapserver="
                 + ldapHost

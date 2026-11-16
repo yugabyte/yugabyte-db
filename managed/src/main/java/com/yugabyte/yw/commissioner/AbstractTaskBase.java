@@ -20,6 +20,8 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -102,6 +105,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final GFlagsValidation gFlagsValidation;
   protected final NodeUniverseManager nodeUniverseManager;
   protected final NodeAgentClient nodeAgentClient;
+  protected final AuditService auditService;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -132,6 +136,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.gFlagsValidation = baseTaskDependencies.getGFlagsValidation();
     this.nodeUniverseManager = baseTaskDependencies.getNodeUniverseManager();
     this.nodeAgentClient = baseTaskDependencies.getNodeAgentClient();
+    this.auditService = baseTaskDependencies.getAuditService();
   }
 
   protected ITaskParams taskParams() {
@@ -155,7 +160,9 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public String toString() {
-    return getName() + " : params=" + getTaskParams();
+    return getName()
+        + " : params="
+        + RedactingService.filterSecretFields(getTaskParams(), RedactionTarget.LOGS);
   }
 
   @Override

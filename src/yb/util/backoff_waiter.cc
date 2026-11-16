@@ -139,7 +139,8 @@ void BusyWait(
     const LWFunction<bool()>& is_done,
     std::string_view description,
     MonoDelta poll_interval,
-    MonoDelta warn_after) {
+    MonoDelta warn_after,
+    MonoDelta max_poll_interval) {
   if (is_done()) {
     return;
   }
@@ -149,6 +150,9 @@ void BusyWait(
     SleepFor(poll_interval);
     if (is_done()) {
       return;
+    }
+    if (max_poll_interval) {
+      poll_interval = std::min(poll_interval * 2, max_poll_interval);
     }
     const auto now = CoarseMonoClock::Now();
     if (now >= next_warn) {

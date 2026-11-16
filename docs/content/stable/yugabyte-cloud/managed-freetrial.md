@@ -1,25 +1,23 @@
 ---
 title: Start a free trial
 linkTitle: Start a free trial
-description: Start a free trial of YugabyteDB Aeon to conduct POCs and performance testing.
-headcontent: Explore all YugabyteDB Aeon features
+description: Start a free trial of YugabyteDB Aeon Distributed Postgres to conduct POCs and performance testing.
+headcontent: Explore YugabyteDB Aeon Distributed Postgres
 menu:
   stable_yugabyte-cloud:
     identifier: managed-freetrial
-    parent: yugabytedb-managed
-    weight: 20
+    parent: distributed-postgres
+    weight: 10
 type: docs
 ---
 
-To go beyond the capabilities of the [Sandbox cluster](../cloud-basics/create-clusters/create-clusters-free/), start a free trial to receive free credits towards creating [Dedicated clusters](../cloud-basics/) and exploring other features in YugabyteDB Aeon.
+To go beyond the capabilities of the free [Serverless Postgres](../serverless/) tier, start a free trial to receive free credits towards creating [Distributed Postgres clusters](../cloud-basics/) and exploring other features in YugabyteDB Aeon.
 
 To start a free trial:
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
-1. Click **Start Free Trial** to display the **Start Your Free Trial** form.
-
-    ![Enter your details](/images/yb-cloud/managed-trial-2.png)
+1. Click **Request a Free Trial** to display the **Start Your Free Trial** form. (If you don't see the Request a Free Trial option, select the **Clusters** page, then click **Explore Cluster Types**.)
 
 1. If you have a promo code, enter it and click **Start Free Trial** to start your trial right away.
 

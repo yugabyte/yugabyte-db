@@ -4,6 +4,23 @@ description: |
 
   Differs from `SupportBundleSpec` in that it carries input-only knobs that are resolved
   server side and not persisted with the bundle.
+
+  Leaving every `*_component_specs` list empty makes the server build
+  them from the support bundle manifest shipped with YBA, keeping the
+  entries named in `components`. Populating any one list turns the
+  fill off for all of them, and
+  each spec is then checked against the same manifest: a component it
+  doesn't list, a different script or entrypoint, or a `linux_user` other
+  than yugabyte is rejected with 400. Either way, each spec runs with the
+  manifest's Files and Bash arguments, YSQL and YCQL queries, yb-admin
+  arguments, timeout and tar path, whatever the request carries; the
+  request still chooses the components, `db_name` and `keyspace`, and the
+  yb-admin commands within the allowed set. Scalars the request does
+  send, such as `filter_pg_audit_logs`, `max_num_recent_cores`,
+  `max_core_file_size` and the `prom_*` fields, override what the manifest
+  carries. The fill applies to the universe create and estimate-size
+  endpoints; the YBA-only endpoints don't fill, but check their specs and
+  set the tar path the same way.
 type: object
 required:
   - components
@@ -45,42 +62,42 @@ properties:
   files_component_specs:
     description: |
       Specs driving the generic node-level FilesComponent. Required when components contains
-      FilesComponent. On Kubernetes universes the SystemLogs and NodeAgent specs are dropped, since
-      a pod has neither the host's /var/log nor a node agent, and the YbcLogs spec is collected from
-      tserver pods only.
+      FilesComponent, unless the manifest fill applies. On Kubernetes universes the SystemLogs and
+      NodeAgent specs are dropped, since a pod has neither the host's /var/log nor a node agent, and
+      the YbcLogs spec is collected from tserver pods only.
     type: array
     items:
       $ref: "./FilesComponentSpec.yaml"
   bash_component_specs:
     description: |
-      Specs driving the node-level BashComponent. Required when components contains BashComponent.
-      On Kubernetes universes the collect_cdc_state and collect_threadz_memz_rpcz_stats specs are
-      collected from tserver pods only, and collect_heap_snapshot skips its tserver endpoints on a
-      master pod.
+      Specs driving the node-level BashComponent. Required when components contains BashComponent,
+      unless the manifest fill applies. On Kubernetes universes the collect_cdc_state and
+      collect_threadz_memz_rpcz_stats specs are collected from tserver pods only, and
+      collect_heap_snapshot skips its tserver endpoints on a master pod.
     type: array
     items:
       $ref: "./BashComponentSpec.yaml"
   ysql_component_specs:
     description: |
-      Specs driving the node-level YSQLComponent. Required when components contains YSQLComponent.
-      Collected from tserver pods only on Kubernetes universes.
+      Specs driving the node-level YSQLComponent. Required when components contains YSQLComponent,
+      unless the manifest fill applies. Collected from tserver pods only on Kubernetes universes.
     type: array
     items:
       $ref: "./YSQLComponentSpec.yaml"
   ycql_component_specs:
     description: |
-      Specs driving the node-level YCQLComponent. Required when components contains YCQLComponent.
-      Collected from tserver pods only on Kubernetes universes.
+      Specs driving the node-level YCQLComponent. Required when components contains YCQLComponent,
+      unless the manifest fill applies. Collected from tserver pods only on Kubernetes universes.
     type: array
     items:
       $ref: "./YCQLComponentSpec.yaml"
   yb_admin_component_specs:
-    description: Specs driving the node-level YbAdminComponent. Required when components contains YbAdminComponent.
+    description: 'Specs driving the node-level YbAdminComponent. Required when components contains YbAdminComponent, unless the manifest fill applies.'
     type: array
     items:
       $ref: "./YbAdminComponentSpec.yaml"
   yba_component_specs:
-    description: Specs driving the global-level YBAComponent. Required when components contains YBAComponent.
+    description: 'Specs driving the global-level YBAComponent. Required when components contains YBAComponent, unless the manifest fill applies.'
     type: array
     items:
       $ref: "./YbaComponentSpec.yaml"

@@ -4,6 +4,7 @@ import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBPanelItem } from '../../panels';
 import { CheckPerfAdvisorRegistration } from './CheckPerfAdvisorRegistration';
 import {
+  PaRegistrationMode,
   PerfAdvisorAPI,
   QUERY_KEY as PERF_ADVISOR_QUERY_KEY
 } from '../../../redesign/features/PerfAdvisor/api';
@@ -19,6 +20,7 @@ interface RegisterYBAToPerfAdvisorProps {
   universeUuid: string;
   appName: AppName;
   timezone: string;
+  registrationMode?: PaRegistrationMode;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -45,7 +47,8 @@ const buildProxyApiUrl = (customerId: string, paUuid: string) => {
 export const RegisterYBAToPerfAdvisor = ({
   universeUuid,
   appName,
-  timezone
+  timezone,
+  registrationMode
 }: RegisterYBAToPerfAdvisorProps) => {
   const helperClasses = useStyles();
 
@@ -92,6 +95,7 @@ export const RegisterYBAToPerfAdvisor = ({
       timezone={timezone}
       apiUrl={buildProxyApiUrl(customerId, paCollector?.uuid)}
       paUuid={paCollector?.uuid}
+      registrationMode={registrationMode}
     />
   );
 };

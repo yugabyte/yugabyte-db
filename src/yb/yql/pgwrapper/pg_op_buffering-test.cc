@@ -796,4 +796,75 @@ TEST_F(PgOpBufferingTest, BulkLoadForColocatedUseFastPathTxnTest) {
   CheckBulkLoadForColocatedUniqueIndex(&conn, table_name + "_unique_index", csv_filename, num_rows,
       write_rpc_watcher_);
 }
+
+// A partition can have foreign keys and triggers that its partitioned table doesn't have. COPY into
+// a partitioned table must not use the fast path, so a row that a partition rejects leaves no rows
+// behind.
+TEST_F(PgOpBufferingTest, BulkLoadForColocatedPartitionedTable) {
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colo_db"));
+  ASSERT_OK(conn.Execute("CREATE TABLE ref (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO ref VALUES (1)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION reject_999() RETURNS trigger LANGUAGE plpgsql AS "
+      "$$BEGIN IF NEW.v = 999 THEN RAISE EXCEPTION 'reject v = 999'; END IF; RETURN NULL; END$$"));
+  ASSERT_OK(conn.Execute("SET yb_fast_path_for_colocated_copy = true"));
+
+  // Copies rows (1, 1), (2, 999), (3, 1), where only row 2 is rejected, and expects the error and
+  // an empty table.
+  const auto check = [&conn](const std::string& table, const std::string& expected_error) {
+    const auto status = conn.CopyFromStdin(table, [](PGConn::RowMaker<int32_t, int32_t>& row) {
+      row(1, 1);
+      row(2, 999);
+      row(3, 1);
+    });
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), expected_error);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT count(*) FROM $0", table))), 0);
+  };
+
+  // Foreign key only on the partition.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE fk_parent (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE fk_leaf PARTITION OF fk_parent FOR VALUES FROM (1) TO (10)"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE fk_leaf ADD CONSTRAINT fk_leaf_v FOREIGN KEY (v) REFERENCES ref (k)"));
+  ASSERT_NO_FATALS(check("fk_parent", "violates foreign key constraint \"fk_leaf_v\""));
+
+  // Trigger only on the partition.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tg_parent (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tg_leaf PARTITION OF tg_parent FOR VALUES FROM (1) TO (10)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TRIGGER tg_leaf_reject AFTER INSERT ON tg_leaf "
+      "FOR EACH ROW EXECUTE FUNCTION reject_999()"));
+  ASSERT_NO_FATALS(check("tg_parent", "reject v = 999"));
+
+  // Foreign key only on a partition of a partition, copying into the top and into the middle table.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE sub_fk_parent (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE sub_fk_mid PARTITION OF sub_fk_parent FOR VALUES FROM (1) TO (10) "
+      "PARTITION BY RANGE (k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE sub_fk_leaf PARTITION OF sub_fk_mid FOR VALUES FROM (1) TO (10)"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE sub_fk_leaf ADD CONSTRAINT sub_fk_leaf_v FOREIGN KEY (v) REFERENCES ref (k)"));
+  ASSERT_NO_FATALS(check("sub_fk_parent", "violates foreign key constraint \"sub_fk_leaf_v\""));
+  ASSERT_NO_FATALS(check("sub_fk_mid", "violates foreign key constraint \"sub_fk_leaf_v\""));
+
+  // Trigger only on a partition of a partition.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE sub_tg_parent (k INT PRIMARY KEY, v INT) PARTITION BY RANGE (k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE sub_tg_mid PARTITION OF sub_tg_parent FOR VALUES FROM (1) TO (10) "
+      "PARTITION BY RANGE (k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE sub_tg_leaf PARTITION OF sub_tg_mid FOR VALUES FROM (1) TO (10)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TRIGGER sub_tg_leaf_reject AFTER INSERT ON sub_tg_leaf "
+      "FOR EACH ROW EXECUTE FUNCTION reject_999()"));
+  ASSERT_NO_FATALS(check("sub_tg_parent", "reject v = 999"));
+}
 } // namespace yb::pgwrapper
