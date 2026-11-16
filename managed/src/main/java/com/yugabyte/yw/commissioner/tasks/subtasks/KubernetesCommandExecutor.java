@@ -1799,19 +1799,20 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       }
     }
     // Done after all overrides, so none can turn the sidecar or its TLS on or off or move its port.
+    Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
     if (KubernetesUtil.isNodeExporterSidecarEnabled(
         taskParams().ybSoftwareVersion, universeFromDB, confGetter)) {
-      Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
       nodeExporter.put("enabled", true);
       nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
+      getOrCreateMap(nodeExporter, "tls")
+          .put(
+              "enabled",
+              KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+                  taskParams().ybSoftwareVersion, universeFromDB, confGetter));
     } else {
-      getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
+      nodeExporter.put("enabled", false);
+      getOrCreateMap(nodeExporter, "tls").put("enabled", false);
     }
-    getOrCreateMap(getOrCreateMap(overrides, "nodeExporter"), "tls")
-        .put(
-            "enabled",
-            KubernetesUtil.isNodeExporterSidecarTlsEnabled(
-                taskParams().ybSoftwareVersion, universeFromDB, confGetter));
 
     // For single AZ azUUID may be null, use non-null values
     UUID azUuid =
