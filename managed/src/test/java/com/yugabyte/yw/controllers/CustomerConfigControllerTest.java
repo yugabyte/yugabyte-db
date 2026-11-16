@@ -930,7 +930,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditAzureRegionsWithMaskedTokens_TokensPersist() {
-    CustomerConfig config = createAzureRegionalConfig();
+    CustomerConfig config = createAzureRegionalConfig("westus2");
 
     Result result = editAzureRegionalConfig(config, config.getMaskedData());
     assertOk(result);
@@ -938,31 +938,43 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditAzureRegionsDuplicateRegion() {
-    CustomerConfig config = createAzureRegionalConfig();
-    ObjectNode data = config.getMaskedData();
-    ((ObjectNode) data.get("REGION_LOCATIONS").get(1)).put("REGION", "eastus");
+  public void testEditAzureRegionsWithStoredDuplicateRegion_TokensPersist() {
+    CustomerConfig config = createAzureRegionalConfig("eastus");
 
-    Result result = assertPlatformException(() -> editAzureRegionalConfig(config, data));
-    assertBadRequest(result, "Duplicate REGION 'eastus' in REGION_LOCATIONS.");
+    Result result = editAzureRegionalConfig(config, config.getMaskedData());
+    assertOk(result);
     assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
   }
 
   @Test
-  public void testEditAzureRegionsRenamedRegionWithMaskedToken() {
-    CustomerConfig config = createAzureRegionalConfig();
+  public void testEditAzureRegionRenamed_TokenPersists() {
+    CustomerConfig config = createAzureRegionalConfig("westus2");
     ObjectNode data = config.getMaskedData();
     ((ObjectNode) data.get("REGION_LOCATIONS").get(1)).put("REGION", "WestUS2");
+
+    Result result = editAzureRegionalConfig(config, data);
+    assertOk(result);
+    JsonNode renamed = CustomerConfig.get(config.getConfigUUID()).getData().get("REGION_LOCATIONS");
+    assertEquals("WestUS2", renamed.get(1).get("REGION").asText());
+    assertEquals("west-sas-token", renamed.get(1).get("AZURE_STORAGE_SAS_TOKEN").asText());
+  }
+
+  @Test
+  public void testEditAzureRegionsSwapped_BadRequest() {
+    CustomerConfig config = createAzureRegionalConfig("westus2");
+    ObjectNode data = config.getMaskedData();
+    ((ObjectNode) data.get("REGION_LOCATIONS").get(0)).put("REGION", "westus2");
+    ((ObjectNode) data.get("REGION_LOCATIONS").get(1)).put("REGION", "eastus");
 
     Result result = assertPlatformException(() -> editAzureRegionalConfig(config, data));
     assertBadRequest(
         result,
-        "REGION_LOCATIONS[1].AZURE_STORAGE_SAS_TOKEN is masked, but no existing element has"
-            + " REGION 'WestUS2'. Send the actual value.");
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but no single stored element"
+            + " matches it by REGION or LOCATION. Send the actual value.");
     assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
   }
 
-  private CustomerConfig createAzureRegionalConfig() {
+  private CustomerConfig createAzureRegionalConfig(String secondRegion) {
     // Lenient: edits rejected before storage validation never reach the Azure util.
     lenient().when(mockStorageUtilFactory.getCloudUtil(Util.AZ)).thenReturn(mockAZUtil);
     ObjectNode data = Json.newObject();
@@ -976,7 +988,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         .put("AZURE_STORAGE_SAS_TOKEN", "east-sas-token");
     regions
         .addObject()
-        .put("REGION", "westus2")
+        .put("REGION", secondRegion)
         .put("LOCATION", "https://foo.blob.core.windows.net/west")
         .put("AZURE_STORAGE_SAS_TOKEN", "west-sas-token");
     ObjectNode formData = Json.newObject();
