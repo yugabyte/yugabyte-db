@@ -114,6 +114,10 @@ struct od_client {
 	 */
 	int64_t yb_logical_client_version;
 
+	/* YB */
+	uint64_t yb_route_ordinal;
+	uint64_t yb_attach_count;
+
 	/*
 	 * This stores the last unnamed prepared statement.
 	 * Fields are NULL/0 if no such case.
@@ -188,6 +192,9 @@ static inline void od_client_init(od_client_t *client)
 	client->yb_is_authenticating = false;
 	client->yb_external_client = NULL;
 	client->yb_logical_client_version = 0;
+	/* YB */
+	client->yb_route_ordinal = 0;
+	client->yb_attach_count = 0;
 	yb_prepared_statement_init(&client->yb_unnamed_prep_stmt);
 	client->yb_client_cert_der = NULL;
 	client->yb_client_cert_der_len = 0;

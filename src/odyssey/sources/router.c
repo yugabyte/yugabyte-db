@@ -820,6 +820,8 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 	od_client_pool_set(&route->client_pool, client, OD_CLIENT_PENDING);
 	client->rule = rule;
 	client->route = route;
+	/* YB */
+	client->yb_route_ordinal = route->yb_client_seq++;
 
 	od_route_unlock(route);
 	return OD_ROUTER_OK;
@@ -1066,6 +1068,16 @@ od_router_status_t od_router_attach(od_router_t *router,
 	is_warmup_needed = is_warmup_needed_flag != NULL && strcmp(is_warmup_needed_flag, "none") != 0;
 	random_allot = is_warmup_needed && strcmp(is_warmup_needed_flag, "random") == 0;
 
+	/* YB */
+	uint64_t yb_attach_n = client_for_router->yb_attach_count++;
+	uint64_t yb_r = 0;
+	if (random_allot)
+		yb_r = yb_od_mix64(
+			yb_random_allot_seed ^
+			yb_od_mix64(client_for_router->yb_route_ordinal *
+					    0x9e3779b97f4a7c15ULL ^
+				    yb_attach_n * 0xc2b2ae3d27d4eb4fULL));
+
 	od_debug(&instance->logger, "router-attach", client_for_router, NULL,
 		 "client_for_router logical client version = %" PRId64,
 		 client_for_router->yb_logical_client_version);
@@ -1106,7 +1118,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 				client_for_router->yb_logical_client_version,
 				max_logical_client_version,
 				instance->config.yb_alter_guc_adoption_strategy,
-				selection_mode, is_warmup_needed);
+				selection_mode, is_warmup_needed, yb_r);
 
 			/*
 			 * We can't warmup if we're using connection_static strategy and the global
@@ -1159,7 +1171,8 @@ od_router_status_t od_router_attach(od_router_t *router,
 			}
 		} else if (is_warmup_needed) {
 			if (random_allot)
-				server = yb_od_server_pool_idle_random(&route->server_pool);
+				server = yb_od_server_pool_idle_random(
+					&route->server_pool, yb_r);
 			else /* round_robin allotment */
 				server = yb_od_server_pool_idle_last(&route->server_pool);
 
@@ -1341,8 +1354,18 @@ od_router_status_t od_router_attach(od_router_t *router,
 	yb_slot_claimed = false;
 
 	od_route_lock(route);
+	/* YB */
+	server->yb_route_seq = route->yb_server_seq++;
 
 attach:
+	/* YB */
+	if (random_allot)
+		od_log(&instance->logger, "router-attach", client_for_router,
+		       server,
+		       "yb random pick: ordinal=%" PRIu64 " n=%" PRIu64
+		       " r=%016" PRIx64 " server_seq=%" PRIu64 " idle=%d",
+		       client_for_router->yb_route_ordinal, yb_attach_n, yb_r,
+		       server->yb_route_seq, route->server_pool.count_idle);
 	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_ACTIVE);
 	od_client_pool_set(&route->client_pool, client_for_router,
 			   OD_CLIENT_ACTIVE);

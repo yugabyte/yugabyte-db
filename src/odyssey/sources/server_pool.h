@@ -150,7 +150,21 @@ static inline od_server_t *yb_od_server_pool_idle_last(od_server_pool_t *pool)
 	return server;
 }
 
-static inline od_server_t *yb_od_server_pool_idle_random (od_server_pool_t *pool)
+/* YB: splitmix64 finalizer for random allotment */
+extern uint64_t yb_random_allot_seed;
+
+static inline uint64_t yb_od_mix64(uint64_t x)
+{
+	x ^= x >> 30;
+	x *= 0xbf58476d1ce4e5b9ULL;
+	x ^= x >> 27;
+	x *= 0x94d049bb133111ebULL;
+	x ^= x >> 31;
+	return x;
+}
+
+static inline od_server_t *yb_od_server_pool_idle_random(od_server_pool_t *pool,
+							 uint64_t r)
 {
 	od_list_t *target = &pool->idle;
 	od_server_t *server = NULL;
@@ -158,7 +172,8 @@ static inline od_server_t *yb_od_server_pool_idle_random (od_server_pool_t *pool
 	int len = pool->count_idle;
 	if (len == 0)
 		return NULL;
-	int idx = rand() % (len);
+	/* YB */
+	int idx = (int)(r % (uint64_t)len);
 	od_list_foreach_safe(target, i, n)
 	{
 		if (idx-- > 0)
@@ -202,7 +217,8 @@ static inline od_server_t *yb_od_server_pool_idle_version_matching(
 	od_server_pool_t *pool, int64_t logical_client_version,
 	int64_t max_logical_client_version,
 	enum yb_od_alter_guc_adoption guc_adoption_strategy,
-	enum yb_idle_selection_mode selection_mode, bool is_warmup_needed)
+	enum yb_idle_selection_mode selection_mode, bool is_warmup_needed,
+	uint64_t r)
 {
 	od_list_t *target = &pool->idle;
 	od_server_t *server;
@@ -221,7 +237,8 @@ static inline od_server_t *yb_od_server_pool_idle_version_matching(
 		}
 		if (match_count == 0)
 			return NULL;
-		int idx = rand() % match_count;
+		/* YB */
+		int idx = (int)(r % (uint64_t)match_count);
 		od_list_foreach(target, i)
 		{
 			server = od_container_of(i, od_server_t, link);
