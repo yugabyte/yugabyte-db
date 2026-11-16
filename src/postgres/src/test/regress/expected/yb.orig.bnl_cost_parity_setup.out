@@ -419,9 +419,9 @@ from
 --   ce.s2 : ce.s's ids and z shuffle with the pair
 --           (g, h) = ((id - 1) / 10 + 1, (id - 1) % 10 + 1), one pair per id.
 --   ce.r2 : every (g, h) of the 128 x 128 grid, one row each, so g and h are
---           independent and each has more distinct values than a batch of
---           128 keys.  ce.r2C is its colocated twin and ce.r2H holds the same
---           rows under a hash primary key.
+--           independent and each has 128 distinct values.  ce.r2C is its
+--           colocated twin and ce.r2H holds the same rows under a hash primary
+--           key.
 -- An outer row has its inner row iff its g <= 128, that is iff id <= 1280.
 --
 -- ce.s3 and ce.r3 are the key of yb.orig.bnl_inner_estimate's 2xxxx cases:

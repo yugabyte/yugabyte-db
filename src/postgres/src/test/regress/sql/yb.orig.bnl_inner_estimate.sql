@@ -21,9 +21,9 @@ delete from bnl_inner_queries;
 --          secondary index on b
 --   2xxxx: two-column key (g, h) whose g follows from h, inner ce.r3 (+1000
 --          for the colocated ce.r3C, +2000 for the hash-keyed ce.r3H)
---   3xxxx: two-column key (g, h) over independent columns, each with more
---          values than a batch of 128, inner ce.r2 (+1000 for the colocated
---          ce.r2C, +2000 for the hash-keyed ce.r2H)
+--   3xxxx: two-column key (g, h) over independent columns of 128 values
+--          each, inner ce.r2 (+1000 for the colocated ce.r2C, +2000 for the
+--          hash-keyed ce.r2H)
 --   4xxxx: three-column key (g, h, m) whose g and m follow from h, inner
 --          ce.r5
 -- Each outer is 1024 rows, so every batch is full, in the shuffled order of

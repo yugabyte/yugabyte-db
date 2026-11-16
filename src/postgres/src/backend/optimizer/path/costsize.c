@@ -8150,8 +8150,8 @@ yb_estimate_seeks_nexts_in_index_scan(PlannerInfo *root,
 				 *
 				 * A batched IN list that shares its batch with other columns
 				 * is not capped: the shares multiply to the tuples of the
-				 * batch, each within its column's distinct values, and a cap
-				 * on one of them would drop tuples from that count.
+				 * batch, each of which is a target, and a cap on one share
+				 * would drop tuples from that count.
 				 */
 				if (index_col > 0 && strictest_in_batch_share == 0)
 				{
@@ -9800,14 +9800,20 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	/*
 	 * The index conditions as they are estimated, a batched one in its
 	 * batched form (yb_batched_clauses), sorted into
-	 * `index_conditions_on_each_column`.
+	 * `index_conditions_on_each_column`.  The scan's parameterized clauses
+	 * decide which index conditions share a batch, as they do for ppi_rows.
 	 */
 	index_conditions = get_quals_from_indexclauses(path->indexclauses);
 	if (YB_PATH_NEEDS_BATCHED_RELS(&path->path))
-		index_conditions =
-			yb_batched_clauses(root, baserel, index_conditions,
-							   YB_PATH_REQ_OUTER_BATCHED(&path->path),
-							   YB_PATH_BATCHED_GROUPS(&path->path));
+	{
+		Relids		batchedrelids = YB_PATH_REQ_OUTER_BATCHED(&path->path);
+		List	   *groups =
+			yb_clause_batched_groups(path->path.param_info->ppi_clauses,
+									 batchedrelids, baserel->relids);
+
+		index_conditions = yb_batched_clauses(root, baserel, index_conditions,
+											  batchedrelids, groups);
+	}
 
 	index_conditions_on_each_column = palloc0(sizeof(List *) * index->nkeycolumns);
 	index_col = 0;
@@ -11381,9 +11387,13 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
  *
  * One batch feeds the clauses whose batched relations one join batches:
  * clauses with a relation in common, since one join batches a relation, and
- * clauses linked by a group of relations one batched expression reads
- * together (yb_ppi_batched_groups).  Clauses on disjoint relations may be fed
- * by nested joins, each with a batch of its own.
+ * clauses linked by one of groups.  A caller that passes only some of the
+ * scan's parameterized clauses passes in groups the sets of relations that
+ * those clauses read together (yb_clause_batched_groups).  The links come from
+ * the clauses alone, not from the groups that paths accumulate on the
+ * ParamPathInfo, so the estimate does not depend on the order the paths are
+ * built in.  Clauses on disjoint relations may be fed by nested joins, each
+ * with a batch of its own.
  *
  * The shares are assigned in clause order, each at most the reciprocal of its
  * clause's selectivity, where eqsel would clamp it, and the last clause takes
@@ -11399,8 +11409,9 @@ yb_first_fetch_limit(PlannerInfo *root, Path *path, bool has_local_quals)
  * value combinations and its columns are not independent.  The clauses then
  * carry rows_scale factors that together raise the estimate to one row per
  * probe tuple, each clause taking as much as keeps its selectivity within
- * one.  eqsel applies them, and the seek and next estimate does not, as the
- * scan still probes once per tuple.
+ * one.  eqsel applies them.  They scale the rows the clauses select and leave
+ * the shares alone, so the seek and next estimate still counts one target per
+ * tuple of the batch.
  */
 List *
 yb_batched_clauses(PlannerInfo *root, RelOptInfo *rel, List *clauses,
