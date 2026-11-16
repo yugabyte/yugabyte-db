@@ -59,6 +59,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
@@ -99,6 +100,7 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
+DECLARE_bool(master_enable_deleted_tablet_cleanup);
 DECLARE_int32(metrics_snapshotter_interval_ms);
 DECLARE_int32(num_cpus);
 DECLARE_int32(num_reactor_threads);
@@ -2283,6 +2285,59 @@ TEST_F(SysCatalogRestoreWithWritePipeliningTest, YB_DEBUG_ONLY_TEST(DdlTransacti
   auto table2_exists =
       ASSERT_RESULT(source_conn_->FetchRow<bool>("SELECT to_regclass('table2') IS NOT NULL"));
   ASSERT_FALSE(table2_exists) << "table2 from the aborted transaction unexpectedly persisted";
+}
+
+class RepartitionReplicaLoadTest : public PostgresMiniClusterTest {
+ protected:
+  static constexpr auto kTimeout = 120s * kTimeMultiplier;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_deleted_tablet_cleanup) = false;
+    PostgresMiniClusterTest::SetUp();
+  }
+
+  Result<TableId> TableIdOf(const std::string& table_name) {
+    auto tables = VERIFY_RESULT(client_->ListTables(
+        table_name, /* exclude_ysql */ false, /* ysql_db_filter */ "", client::SkipHidden::kTrue));
+    SCHECK_EQ(tables.size(), 1u, IllegalState, Format("Expected one table named $0", table_name));
+    return tables.front().table_id();
+  }
+};
+
+// Importing a two-tablet snapshot into a one-tablet table repartitions it: the one tablet is
+// marked DELETED and dropped from the table on the spot. With the deleted-tablet cleanup off,
+// nothing else takes its replicas out of the load count.
+TEST_F(RepartitionReplicaLoadTest, RepartitionedTabletLeavesReplicaLoad) {
+  auto* master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 2 TABLETS"));
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+  const auto first_table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
+  const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(first_table_id));
+  const auto snapshots = ASSERT_RESULT(snapshot_util.ListSnapshots(
+      snapshot_id, client::ListDeleted::kFalse, client::PrepareForBackup::kTrue));
+  ASSERT_EQ(snapshots.size(), 1);
+
+  ASSERT_OK(conn.Execute("DROP TABLE repartitioned"));
+  ASSERT_OK(conn.Execute("CREATE TABLE repartitioned (k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  const auto table_id = ASSERT_RESULT(TableIdOf("repartitioned"));
+  auto table = master->catalog_manager().GetTableInfo(table_id);
+  ASSERT_NE(table.get(), nullptr);
+  const auto old_tablets = ASSERT_RESULT(table->GetTablets());
+  ASSERT_EQ(old_tablets.size(), 1u);
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return ReplicaLoadMatchesReplicaMaps(master); }, kTimeout,
+      "Counters match the maps before the import"));
+
+  ASSERT_RESULT(snapshot_util.StartImportSnapshot(snapshots[0]));
+  const auto& old_tablet = old_tablets.front();
+  ASSERT_TRUE(old_tablet->LockForRead()->is_deleted());
+  ASSERT_FALSE(old_tablet->GetReplicaLocations()->empty());
+  ASSERT_OK(WaitFor(
+      [master]() -> Result<bool> { return ReplicaLoadMatchesReplicaMaps(master); }, kTimeout,
+      "Repartitioned tablet left the count"));
 }
 
 }  // namespace master

@@ -216,7 +216,8 @@ static void ExecMergeNotMatched(ModifyTableContext *context,
 static void YbPostProcessDml(CmdType cmd_type,
 							 Relation rel,
 							 TupleTableSlot *newslot);
-static void YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state);
+static void YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state,
+											 int batch_size);
 static void YbAddSlotToBatch(ModifyTableContext *context,
 							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *planSlot,
@@ -981,7 +982,7 @@ ExecInsert(ModifyTableContext *context,
 						 blockInsertStmt);
 		/* When we've reached the desired batch size, enter flushing mode. */
 		if (mtstate->yb_ioc_state->num_slots ==
-			yb_insert_on_conflict_read_batch_size)
+			mtstate->yb_ioc_batch_size)
 		{
 			returnSlot = YbFlushSlotsFromBatch(context, blockInsertStmt);
 		}
@@ -1631,6 +1632,7 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 												  YB_SINGLE_SHARD_TRANSACTION :
 												  YB_TRANSACTIONAL),
 												 changingPart,
+												 false /* persist_missing_row */ ,
 												 estate);
 
 		/*
@@ -1676,7 +1678,8 @@ ExecDeleteEpilogue(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		Datum		ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
 
 		/* Delete index entries of the old tuple */
-		ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple, estate);
+		ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple,
+							  false /* persist_missing_row */ , estate);
 	}
 
 	/*
@@ -5360,7 +5363,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		else
 			resultRelInfo->ri_BatchSize = 1;
 
-		YbInitIocStrategy(resultRelInfo, node);
+		/* YB: see ModifyTableState.yb_ioc_batch_size. */
+		mtstate->yb_ioc_batch_size = yb_insert_on_conflict_read_batch_size;
+		YbInitIocStrategy(resultRelInfo, node, mtstate->yb_ioc_batch_size);
 	}
 
 	/*
@@ -5486,13 +5491,13 @@ YbPostProcessDml(CmdType cmd_type,
 }
 
 static void
-YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state)
+YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state,
+								 int batch_size)
 {
+	Assert(batch_size > 0);
 	*state = palloc0(sizeof(YbInsertOnConflictBatchState));
-	(*state)->slots = palloc(sizeof(TupleTableSlot *) *
-							 yb_insert_on_conflict_read_batch_size);
-	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) *
-								 yb_insert_on_conflict_read_batch_size);
+	(*state)->slots = palloc(sizeof(TupleTableSlot *) * batch_size);
+	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) * batch_size);
 }
 
 static void
@@ -5570,7 +5575,8 @@ YbAddSlotToBatch(ModifyTableContext *context,
 
 	Assert(resultRelInfo->ri_ybIocBatchingPossible);
 	if (!context->mtstate->yb_ioc_state)
-		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state);
+		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state,
+										 context->mtstate->yb_ioc_batch_size);
 	YbInsertOnConflictBatchState *state = context->mtstate->yb_ioc_state;
 
 	/*
@@ -5585,6 +5591,8 @@ YbAddSlotToBatch(ModifyTableContext *context,
 	TupleDesc	tdesc = CreateTupleDescCopy(slot->tts_tupleDescriptor);
 	TupleDesc	plan_tdesc = CreateTupleDescCopy(planSlot->tts_tupleDescriptor);
 	int			slot_idx = state->num_slots;
+
+	Assert(slot_idx < context->mtstate->yb_ioc_batch_size);
 
 	state->slots[slot_idx] = MakeSingleTupleTableSlot(tdesc, slot->tts_ops);
 	/*
@@ -6009,11 +6017,11 @@ YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
  *    are single row).
  *
  * Transition-table capture does not need to be checked here: the single-row
- * UPDATE/DELETE path in createplan.c is only taken when no row triggers
- * apply (see has_applicable_triggers()), and that helper consults
- * YBRelHasOldRowTriggers() which already rejects any relation carrying an
- * AFTER UPDATE/DELETE trigger with REFERENCING OLD/NEW TABLE.  So a Result
- * outer plan implies no transition_capture.
+ * UPDATE/DELETE path in createplan.c is not taken when the target leaf
+ * (has_applicable_triggers()) or the relation named in the query
+ * (yb_target_has_transition_tables()) has an AFTER UPDATE/DELETE trigger
+ * with REFERENCING OLD/NEW TABLE.  So a Result outer plan implies no
+ * transition_capture.
  */
 static bool
 ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable, Relation targetRel)

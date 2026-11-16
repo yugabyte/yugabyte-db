@@ -3161,11 +3161,17 @@ TEST_F(RaftConsensusITest, CommitIndexOnlyUpdateIsDeferred) {
       followers.push_back(ts);
     }
   }
+  // The follower whose ack formed the majority learns the commit index only through the deferral.
+  // A follower that acks after the commit gets it right away through more_pending.
+  int lagging_followers = 0;
   for (auto* follower : followers) {
     const auto follower_committed = ASSERT_RESULT(GetLastOpIdForReplica(
         tablet_id_, follower, consensus::COMMITTED_OPID, kTimeout)).index;
-    ASSERT_LT(follower_committed, committed) << follower->uuid();
+    if (follower_committed < committed) {
+      ++lagging_followers;
+    }
   }
+  ASSERT_GE(lagging_followers, 1);
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     for (auto* follower : followers) {

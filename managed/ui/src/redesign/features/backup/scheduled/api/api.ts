@@ -21,7 +21,9 @@ export const createScheduledBackupPolicy = (payload: IBackupSchedule['backupInfo
   const customerUUID = localStorage.getItem('customerId');
   return axios.post(`${ROOT_URL}/customers/${customerUUID}/create_backup_schedule_async`, {
     ...payload,
-    customerUUID
+    customerUUID,
+    // New schedules evaluate cron in UTC; existing schedules keep their stored setting.
+    useLocalTimezone: false
   });
 };
 
