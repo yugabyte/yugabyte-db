@@ -1584,7 +1584,7 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 		pclauses = kept_clauses;
 	}
 
-	List	   *sel_clauses = pclauses;
+	List	   *yb_sel_clauses = pclauses;
 
 	/*
 	 * YB: Estimate the batched clauses in their batched forms.  The clauses
@@ -1593,11 +1593,12 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 	 * ParamPathInfo.
 	 */
 	if (!bms_is_empty(batchedrelids) && yb_enable_base_scans_cost_model)
-		sel_clauses = yb_batched_clauses(root, baserel, pclauses,
-										 batchedrelids, NIL);
+		yb_sel_clauses = yb_batched_clauses(root, baserel, pclauses,
+											batchedrelids, NIL);
 
 	/* Estimate the number of rows returned by the parameterized scan */
-	rows = get_parameterized_baserel_size(root, baserel, sel_clauses);
+	rows = get_parameterized_baserel_size(root, baserel, yb_sel_clauses);
+
 	/* And now we can build the ParamPathInfo */
 	ppi = makeNode(ParamPathInfo);
 	ppi->ppi_req_outer = required_outer;
