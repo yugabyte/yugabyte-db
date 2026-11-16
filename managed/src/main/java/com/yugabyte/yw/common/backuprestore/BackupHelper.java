@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.HostCloudDetector;
+import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -73,6 +74,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
@@ -80,6 +82,9 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -112,6 +117,7 @@ import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.NamespaceType;
 import org.yb.ybc.ProxyConfig;
 import play.libs.Json;
+import software.amazon.awssdk.profiles.ProfileFile;
 
 @Slf4j
 @Singleton
@@ -575,17 +581,18 @@ public class BackupHelper {
    * Has YBA reach a federated bucket with its own identity, for the work YBA does on the bucket
    * itself: the continuous YBA backup and its restore, which have no universe, and backup deletion.
    * With YBA on the bucket's cloud that is its native identity. Otherwise YBA federates with the
-   * provider entry for the bucket's cloud: the universe's when it has one, else, when YBA's host
-   * can present a federated identity for that cloud, the one entry the customer's providers agree
-   * on. The second is what lets a YBA that HA promoted on the other cloud reach a bucket the
-   * universe reaches natively, such as an AWS universe's S3 bucket from a YBA on GCP. YBA presents
-   * its own host identity with that entry, so the entry's AWS role (S3) or workload identity pool
-   * (GCS) must also admit YBA, not only the DB nodes. As on every other path, an entry is used
-   * ahead of the config's own credentials; those (access keys, the IAM role chain, a GCS key or
-   * application default credentials) are what is left when there is no entry. Only the
-   * customer-wide lookup is gated on the host: the universe's entry, like a backup's snapshot, is
-   * used on any host, as before that lookup existed, since detection can miss a GCP host on which
-   * the entry does work.
+   * provider entry for the bucket's cloud: the universe's when it has one, else the one entry the
+   * customer's providers agree on. The second is what lets a YBA that HA promoted on the other
+   * cloud reach a bucket the universe reaches natively, such as an AWS universe's S3 bucket from a
+   * YBA on GCP. YBA presents its own host identity with that entry, so the entry's AWS role (S3) or
+   * workload identity pool (GCS) must also admit YBA, not only the DB nodes.
+   *
+   * <p>The universe's entry, like a backup's snapshot, is used ahead of the config's own
+   * credentials and on any host, as on every path before this method: it is the identity that
+   * universe's backups were made with, and detection can miss a GCP host on which it works. The
+   * customer-wide entry is only a fallback for YBA's own access, used when YBA's host can present
+   * it and neither the config nor the host has credentials of its own for the bucket's cloud (see
+   * {@link #hasCredentialsOfItsOwn}), so a setup that reached the bucket before keeps doing so.
    *
    * @return false when YBA has no way to reach the bucket: it runs on GCP, found no entry for an S3
    *     bucket, and the config has neither access keys nor the IAM role flag. Known limit: on AWS
@@ -606,7 +613,7 @@ public class BackupHelper {
     }
     boolean canFederate = canPresentFederatedIdentity(bucketCloud);
     CrossCloudFederationTarget target = resolveCrossCloudFederationTarget(universe, bucketCloud);
-    if (target == null && canFederate) {
+    if (target == null && canFederate && !hasCredentialsOfItsOwn(configData)) {
       target = resolveCustomerFederationTarget(customerUUID, bucketCloud);
     }
     if (target != null) {
@@ -665,6 +672,67 @@ public class BackupHelper {
       return CloudType.gcp;
     }
     return null;
+  }
+
+  /**
+   * Whether the config, or YBA's host, has credentials of its own for the bucket's cloud, which
+   * reached the bucket before YBA could federate and must not be replaced by a customer-wide guess:
+   * S3 access keys, or with the IAM role flag an explicitly chosen credential source or what the
+   * default chain reads on the host; a GCS service account key, or with GCP IAM a Google
+   * credentials file on the host. The IAM role flag alone does not count: the UI and v2 API set it
+   * on every federated S3 config.
+   */
+  private boolean hasCredentialsOfItsOwn(CustomerConfigData configData) {
+    if (configData instanceof CustomerConfigStorageS3Data) {
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+      if (StringUtils.isNotBlank(s3.awsAccessKeyId)) {
+        return true;
+      }
+      if (!s3.isIAMInstanceProfile) {
+        return false;
+      }
+      IAMConfiguration iam = s3.iamConfig != null ? s3.iamConfig : new IAMConfiguration();
+      return iam.credentialSource != IAMCredentialSource.DEFAULT
+          || hostHasAwsCredentials(StringUtils.defaultIfBlank(iam.iamUserProfile, "default"));
+    }
+    CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
+    return !gcs.useGcpIam || hostHasGcpCredentials();
+  }
+
+  /**
+   * Whether the host gives the default IAM chain ({@link IAMTemporaryCredentialsProvider})
+   * something to use off AWS: a web identity token file, container credentials, or the profile.
+   * Package-private so tests do not depend on the machine they run on.
+   */
+  boolean hostHasAwsCredentials(String profileName) {
+    if (StringUtils.isNotBlank(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+        || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
+        || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"))) {
+      return true;
+    }
+    try {
+      return ProfileFile.defaultProfileFile().profile(profileName).isPresent();
+    } catch (Exception e) {
+      log.debug("Could not read the AWS profile file: {}", e.getMessage());
+      return false;
+    }
+  }
+
+  /**
+   * Whether the host gives Google's application default credentials something to use off GCP: a
+   * file named by GOOGLE_APPLICATION_CREDENTIALS, or gcloud's application default credentials.
+   * Package-private so tests do not depend on the machine they run on.
+   */
+  boolean hostHasGcpCredentials() {
+    if (StringUtils.isNotBlank(System.getenv("GOOGLE_APPLICATION_CREDENTIALS"))) {
+      return true;
+    }
+    String gcloudDir = System.getenv("CLOUDSDK_CONFIG");
+    Path dir =
+        StringUtils.isNotBlank(gcloudDir)
+            ? Paths.get(gcloudDir)
+            : Paths.get(System.getProperty("user.home"), ".config", "gcloud");
+    return Files.isRegularFile(dir.resolve("application_default_credentials.json"));
   }
 
   /**

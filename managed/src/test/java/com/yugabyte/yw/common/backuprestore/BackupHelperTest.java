@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.HostCloudDetector;
+import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -137,6 +138,9 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockHostCloudDetector));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
+    // The host's own credentials depend on the machine the test runs on; none unless a test says.
+    doReturn(false).when(spyBackupHelper).hostHasAwsCredentials(anyString());
+    doReturn(false).when(spyBackupHelper).hostHasGcpCredentials();
   }
 
   private TableInfo getTableInfoYCQL(UUID tableUUID, String tableName, String keyspace) {
@@ -1844,22 +1848,45 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /**
-   * A federated config with keys falls back on them without an entry; with one, the entry is used
-   * ahead of the keys, as on every other path.
+   * A setup that reached the bucket before keeps its own credentials over the customer-wide entry:
+   * access keys, an explicitly chosen IAM credential source, or credentials on YBA's host.
    */
   @Test
-  public void testYbaIdentityUsesTheEntryAheadOfKeys() {
+  public void testYbaIdentityKeepsCredentialsOfItsOwnOverTheProvidersEntry() {
     hostCloud(CloudType.gcp);
-    CustomerConfigStorageS3Data s3Data = federatedS3();
-    s3Data.awsAccessKeyId = "key";
-
-    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
-    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
-
     federatedOnPremProvider(
         "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
-    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
-    assertTrue(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+
+    CustomerConfigStorageS3Data withKeys = federatedS3();
+    withKeys.awsAccessKeyId = "key";
+    CustomerConfigStorageS3Data withIamUser = federatedS3();
+    withIamUser.isIAMInstanceProfile = true;
+    withIamUser.iamConfig.credentialSource = IAMCredentialSource.IAM_USER;
+    for (CustomerConfigStorageS3Data s3Data : List.of(withKeys, withIamUser)) {
+      assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+      assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+    }
+
+    // The IAM role flag with the default chain, and an AWS profile on YBA's host.
+    doReturn(true).when(spyBackupHelper).hostHasAwsCredentials("default");
+    CustomerConfigStorageS3Data withHostProfile = federatedS3();
+    withHostProfile.isIAMInstanceProfile = true;
+    assertTrue(
+        spyBackupHelper.applyYbaFederatedIdentity(withHostProfile, testCustomer.getUuid(), null));
+    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(withHostProfile));
+  }
+
+  /** YBA on AWS -> GCS with a Google credentials file on the host keeps using it. */
+  @Test
+  public void testYbaIdentityKeepsTheHostsGcpCredentialsOverTheProvidersEntry() {
+    hostCloud(CloudType.aws);
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+    doReturn(true).when(spyBackupHelper).hostHasGcpCredentials();
+    CustomerConfigStorageGCSData gcsData = federatedGcs();
+
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
+
+    assertNull(gcsData.crossCloudFederationAudience);
   }
 
   /**
