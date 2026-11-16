@@ -1574,6 +1574,26 @@ public class BackupHelperTest extends FakeDBApplication {
         .detect(any(), any(), any());
   }
 
+  /**
+   * A recorded onprem, as ManageCloudFederation records any answer, may come from a cloud VM whose
+   * metadata service was only slow, so the node is probed again.
+   */
+  @Test
+  public void testBackupPrecheckProbesAgainOverRecordedOnPrem() {
+    Universe universe =
+        Universe.saveDetails(
+            universeOnFederatingProvider(CloudType.onprem, true).getUniverseUUID(),
+            u -> u.getNodes().forEach(n -> n.cloudInfo.physicalCloud = CloudType.onprem.name()));
+    when(mockNodeCloudDetector.detect(any(), any(), any())).thenReturn(CloudType.aws);
+    CustomerConfig config = gcsIamConfig();
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> spyBackupHelper.validateStorageConfigForBackupOnUniverse(config, universe));
+    assertTrue(e.getMessage(), e.getMessage().contains("runs on aws"));
+  }
+
   /** YBA on AWS -> S3 with federation on: the nodes may federate, YBA uses its native identity. */
   @Test
   public void testS3ConfigIsNotStampedWhenYbaRunsOnAws() {

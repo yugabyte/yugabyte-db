@@ -943,7 +943,9 @@ public class BackupHelper {
    * The cloud a node runs on, or null when it cannot be told. An on-prem node's cloud is recorded
    * when federation is configured on it; until then it is probed here. An AWS or GCP answer is
    * recorded the same way, so later prechecks do not probe that node again. Any other answer is
-   * not: a metadata service that was only slow to answer looks the same as a physical machine.
+   * not: a metadata service that was only slow to answer looks the same as a physical machine. For
+   * the same reason a recorded {@code onprem} is not trusted and the node is probed again: {@code
+   * ManageCloudFederation} records whatever its probe answered.
    */
   @Nullable
   private CloudType nodeCloud(Universe universe, Cluster cluster, NodeDetails node) {
@@ -952,7 +954,7 @@ public class BackupHelper {
       return providerCloud;
     }
     String physicalCloud = node.cloudInfo == null ? null : node.cloudInfo.physicalCloud;
-    if (physicalCloud != null) {
+    if (CloudType.aws.name().equals(physicalCloud) || CloudType.gcp.name().equals(physicalCloud)) {
       return CloudType.valueOf(physicalCloud);
     }
     CloudType detected =

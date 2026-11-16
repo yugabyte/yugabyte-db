@@ -187,6 +187,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       universeNode.state = NodeState.InstanceCreated;
     } else if (universeNode.state == NodeState.Decommissioned) {
       universeNode.state = NodeState.ToBeAdded;
+      // The new machine may run on another cloud. Decommissioning clears this too, but a node
+      // decommissioned by an earlier YBA version still has its old machine's cloud.
+      universeNode.cloudInfo.physicalCloud = null;
     }
     // Confirm the node on hold.
     commitReservedNodes();
