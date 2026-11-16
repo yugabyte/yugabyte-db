@@ -2358,6 +2358,15 @@ yb_agg_pushdown_supported(AggState *aggstate)
 				return;
 
 			/*
+			 * DocDB compares int2vector values by their bytes, not in array
+			 * order, so min and max over one are left to Postgres.
+			 */
+			if (type == INT2VECTOROID &&
+				(strcmp(func_name, "min") == 0 ||
+				 strcmp(func_name, "max") == 0))
+				return;
+
+			/*
 			 * Aggregates over a money argument are pushed down only if
 			 * they are one of min/max/count, whose transition state
 			 * cannot overflow.  Anything else (sum(money) today, and

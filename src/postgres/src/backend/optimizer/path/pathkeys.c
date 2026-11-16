@@ -682,6 +682,19 @@ build_index_pathkeys(PlannerInfo *root,
 											  yb_is_hash_column);
 
 		/*
+		 * YB: DocDB orders an int2vector key by its bytes, so the index is not
+		 * ordered on such a column, or on any later one, unless the query pins
+		 * the column to one value.
+		 */
+		if (yb_is_int2vector_lsm_key_column(index, i) &&
+			!(cpathkey && EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass)))
+		{
+			if (yb_is_hash_column)
+				return NIL;
+			break;
+		}
+
+		/*
 		 * YB: Index keys part of scalar array operations may be eligible for
 		 * merge scan, in which case we can continue to examine lower-order
 		 * index columns.  Disqualify from consideration if the index key is

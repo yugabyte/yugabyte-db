@@ -88,6 +88,8 @@ extern bool match_index_to_operand(Node *operand, int indexcol,
 								   IndexOptInfo *index);
 extern void check_index_predicates(PlannerInfo *root, RelOptInfo *rel);
 extern bool yb_hash_code_match_index(Node *expr, IndexOptInfo *index);
+extern bool yb_is_int2vector_lsm_key_column(const IndexOptInfo *index,
+											 int indexcol);
 
 /*
  * tidpath.h
