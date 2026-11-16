@@ -961,14 +961,10 @@ func addOCIImageBundles(
 			regions[code] = ybaclient.BundleInfo{YbImage: util.GetStringPointer(image)}
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
-		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+		sshPort, err := strconv.ParseUint(bundle["ssh-port"], 10, 16)
+		if err != nil || sshPort == 0 {
+			return nil, fmt.Errorf("invalid ssh-port %s for image bundle %s; "+
+				"provide a port between 1 and 65535", bundle["ssh-port"], bundle["name"])
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

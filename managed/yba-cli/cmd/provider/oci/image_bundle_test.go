@@ -152,6 +152,24 @@ func TestAddOCIImageBundles(t *testing.T) {
 	})
 	checkErr(t, err, "unknown image bundles: typo")
 
+	_, err = addOCIImageBundles([]string{
+		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc::ssh-port=abc",
+	}, nil, one, nil)
+	checkErr(t, err, "invalid ssh-port abc for image bundle b1")
+
+	_, err = addOCIImageBundles([]string{
+		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc::ssh-port=70000",
+	}, nil, one, nil)
+	checkErr(t, err, "invalid ssh-port 70000 for image bundle b1")
+
+	got, err = addOCIImageBundles([]string{
+		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc::ssh-port=2222",
+	}, nil, one, nil)
+	checkErr(t, err, "")
+	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 2222 {
+		t.Errorf("ssh port = %v, want 2222", got[0].GetDetails().SshPort)
+	}
+
 	got, err = addOCIImageBundles([]string{
 		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc",
 		"image-bundle-name=b2::machine-image=img-b::ssh-user=opc::default=true",
