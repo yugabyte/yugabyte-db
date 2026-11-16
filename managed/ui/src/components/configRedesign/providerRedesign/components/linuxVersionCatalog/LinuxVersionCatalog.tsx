@@ -152,6 +152,15 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
     replace(images as any);
   };
 
+  const onArchOptionChange = (archOptions: Partial<Pick<YbImageOptions, 'useX86' | 'useArm'>>) => {
+    const opts: YbImageOptions = { ...ybImageOptions, ...archOptions };
+    // Ticking "include YugabyteDB versions" also sets useArm on providers that hide the aarch64
+    // checkbox, so only the visible architecture checkboxes decide whether it stays ticked.
+    opts.useYBImages = opts.useX86 || (hasYBAManagedArmImage(providerType) && opts.useArm);
+    setUseYBImages(opts);
+    updateImageBundles(opts, imageBundles);
+  };
+
   const dbNodePublicInternetAccess = useWatch({ name: 'dbNodePublicInternetAccess' });
 
   useEffect(() => {
@@ -259,11 +268,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
           </YBTooltip>
           <YBCheckbox
             label={t('x86_64', { keyPrefix: 'universeForm.instanceConfig' })}
-            onChange={(e) => {
-              const opts: YbImageOptions = { ...ybImageOptions, useX86: e.target.checked };
-              setUseYBImages(opts);
-              updateImageBundles(opts, imageBundles);
-            }}
+            onChange={(e) => onArchOptionChange({ useX86: e.target.checked })}
             disabled={
               isDisabled ||
               !ybImageOptions.useYBImages ||
@@ -277,11 +282,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
           {hasYBAManagedArmImage(providerType) && (
             <YBCheckbox
               label={t('aarch64', { keyPrefix: 'universeForm.instanceConfig' })}
-              onChange={(e) => {
-                const opts: YbImageOptions = { ...ybImageOptions, useArm: e.target.checked };
-                setUseYBImages(opts);
-                updateImageBundles(opts, imageBundles);
-              }}
+              onChange={(e) => onArchOptionChange({ useArm: e.target.checked })}
               disabled={
                 isDisabled ||
                 !ybImageOptions.useYBImages ||

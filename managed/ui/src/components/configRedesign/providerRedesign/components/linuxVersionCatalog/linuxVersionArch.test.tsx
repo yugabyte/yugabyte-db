@@ -1,5 +1,6 @@
 import { FC, ReactNode } from 'react';
 import { render } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { FormProvider, useForm } from 'react-hook-form';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { ThemeProvider } from '@material-ui/core';
@@ -10,12 +11,18 @@ import {
   ImageBundle,
   ImageBundleType
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
-import { ArchitectureType, ProviderCode } from '../../constants';
+import { ArchitectureType, ProviderCode, ProviderOperation } from '../../constants';
 import { AddLinuxVersionModal } from './AddLinuxVersionModal';
+import { LinuxVersionCatalog } from './LinuxVersionCatalog';
 import { LinuxVersionsList } from './LinuxVersionsList';
 
+// LinuxVersionCatalog renders nothing unless VM OS patching (VM_PATCHING_RUNTIME_CONFIG) is
+// enabled. vi.mock is hoisted above imports, so the key is spelled out.
 vi.mock('../../../../../api/admin', () => ({
-  fetchGlobalRunTimeConfigs: () => Promise.resolve({ data: { configEntries: [] } })
+  fetchGlobalRunTimeConfigs: () =>
+    Promise.resolve({
+      data: { configEntries: [{ key: 'yb.provider.vm_os_patching', value: 'true' }] }
+    })
 }));
 
 const armBundle = {
@@ -37,7 +44,9 @@ const FormWrapper: FC<{
   imageBundles?: ImageBundle[];
   children: (control: any) => ReactNode;
 }> = ({ imageBundles = [], children }) => {
-  const formMethods = useForm({ defaultValues: { imageBundles, regions: [] } });
+  const formMethods = useForm({
+    defaultValues: { imageBundles, regions: [], dbNodePublicInternetAccess: true }
+  });
   return <FormProvider {...formMethods}>{children(formMethods.control)}</FormProvider>;
 };
 
@@ -92,4 +101,44 @@ describe('Linux version catalog architecture support', () => {
       expect(getByRole('radio', { name: /x86_64/i })).toBeChecked();
     }
   );
+});
+
+describe('Linux version catalog YugabyteDB version checkboxes', () => {
+  const renderCatalog = (providerType: ProviderCode) =>
+    renderWithProviders(
+      <FormWrapper>
+        {(control) => (
+          <LinuxVersionCatalog
+            control={control}
+            providerType={providerType}
+            providerOperation={ProviderOperation.CREATE}
+            isDisabled={false}
+          />
+        )}
+      </FormWrapper>
+    );
+
+  it('GCP: unticking x86_64 unticks "include YugabyteDB versions"', async () => {
+    const { findByTestId, getByTestId, queryByTestId } = renderCatalog(ProviderCode.GCP);
+    const include = await findByTestId('LinuxVersionCatalog-IncludeYBVersion');
+
+    await userEvent.click(include);
+    expect(include).toBeChecked();
+    expect(queryByTestId('LinuxVersionCatalog-IncludeAarch')).not.toBeInTheDocument();
+
+    await userEvent.click(getByTestId('LinuxVersionCatalog-Includex86'));
+    expect(include).not.toBeChecked();
+  });
+
+  it('AWS: "include YugabyteDB versions" stays ticked until both architectures are unticked', async () => {
+    const { findByTestId, getByTestId } = renderCatalog(ProviderCode.AWS);
+    const include = await findByTestId('LinuxVersionCatalog-IncludeYBVersion');
+
+    await userEvent.click(include);
+    await userEvent.click(getByTestId('LinuxVersionCatalog-Includex86'));
+    expect(include).toBeChecked();
+
+    await userEvent.click(getByTestId('LinuxVersionCatalog-IncludeAarch'));
+    expect(include).not.toBeChecked();
+  });
 });
