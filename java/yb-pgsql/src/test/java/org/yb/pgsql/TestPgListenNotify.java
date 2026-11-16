@@ -522,10 +522,23 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
                 + " AND p.backend_type = 'notifications poller'"
                 + " AND p.backend_start > l.query_start)").getBoolean(0),
             Timeouts.adjustTimeoutSecForBuildType(30_000));
-        cancellerStmt.execute("SELECT pg_cancel_backend(pid) FROM pg_stat_activity"
-            + " WHERE query = '" + listenQuery + "' AND state = 'active'");
+        final String cancelQuery = "SELECT pid, pg_cancel_backend(pid) FROM pg_stat_activity"
+            + " WHERE query = '" + listenQuery + "' AND state = 'active'";
+        Row cancelled = getSingleRow(cancellerStmt, cancelQuery);
+        LOG.info("Sent a cancel to LISTEN backend {}", cancelled.getInt(0));
+        assertTrue("pg_cancel_backend should have signalled the LISTEN backend",
+            cancelled.getBoolean(1));
 
-        listenThread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+        // On TSAN a single cancel was not acted on (#36671), so cancel again until the LISTEN ends.
+        TestUtils.waitFor(() -> {
+          listenThread.join(1000);
+          if (!listenThread.isAlive()) {
+            return true;
+          }
+          LOG.info("LISTEN still running, cancelling it again: {}",
+              getRowList(cancellerStmt, cancelQuery));
+          return false;
+        }, 60_000);
         assertTrue("LISTEN should have been cancelled", listenError.get() != null);
         LOG.info("Expected LISTEN failure: {}", listenError.get().getMessage());
         assertTrue("Error should mention the cancel",
