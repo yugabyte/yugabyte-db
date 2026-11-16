@@ -101,7 +101,7 @@ class SCOPED_CAPABILITY ScopedLeaderSharedLock {
 
   ~ScopedLeaderSharedLock() RELEASE();
 
-  void Unlock();
+  void Unlock() RELEASE();
 
   // General status of the catalog manager. If not OK (e.g. the catalog
   // manager is still being initialized), all operations are illegal and
