@@ -32,6 +32,10 @@ public class TestPgRegressThirdPartyExtensionsPgHintPlan extends BasePgRegressTe
     Map<String, String> flagMap = super.getTServerFlags();
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    // BasePgRegressTest sets compute_query_id to regress, which hides the query
+    // identifier from EXPLAIN.  get_query_id() in sql/init.sql reads that
+    // identifier to key the hint table, so use upstream's default.
+    appendToYsqlPgConf(flagMap, "compute_query_id=auto");
     return flagMap;
   }
 
