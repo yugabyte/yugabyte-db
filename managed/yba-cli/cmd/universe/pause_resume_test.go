@@ -26,7 +26,8 @@ func TestCheckPauseResumeState(t *testing.T) {
 		{"resume paused", true, false, true, false, false},
 		{"resume ready", false, false, true, false, true},
 		{"resume task running", true, true, true, false, true},
-		{"resume after failed resume", false, false, false, false, false},
+		{"resume after failed resume", true, false, false, false, false},
+		{"resume running after failed task", false, false, false, false, true},
 	}
 	for _, c := range cases {
 		details := ybaclient.UniverseDefinitionTaskParamsResp{

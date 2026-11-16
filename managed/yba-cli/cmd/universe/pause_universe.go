@@ -104,8 +104,7 @@ func checkPauseResumeState(universe ybaclient.UniverseResp, pause bool) error {
 	if pause && paused {
 		return fmt.Errorf("Universe %s is already paused", name)
 	}
-	// A failed resume can leave the universe not paused; let the user run resume again.
-	if !pause && !paused && details.GetUpdateSucceeded() {
+	if !pause && !paused {
 		return fmt.Errorf("Universe %s is not paused", name)
 	}
 	return nil
