@@ -654,9 +654,9 @@ public class BackupHelper {
               + " config uses GCP IAM, this host has no Google credentials file, and no provider"
               + " has a usable gcp entry in its federated IAM targets, or the providers' gcp"
               + " entries differ. Add a gcp entry whose workload identity pool also admits this"
-              + " YBA's AWS role, or make the providers' gcp entries match. Otherwise give the"
-              + " storage config a service account key, which is also what a restore onto a new"
-              + " YBA, with no providers yet, needs.",
+              + " YBA's AWS role, or make the providers' gcp entries match. Otherwise turn off GCP"
+              + " IAM on the storage config and give it a service account key, which is also what"
+              + " a restore onto a new YBA, with no providers yet, needs.",
           storageConfig);
     }
     // The config's own way out depends on how it is set up: the host's credentials count only
@@ -666,28 +666,60 @@ public class BackupHelper {
         s3.iamConfig != null && s3.iamConfig.credentialSource != null
             ? s3.iamConfig.credentialSource
             : IAMCredentialSource.DEFAULT;
+    String profile =
+        s3.iamConfig != null
+            ? StringUtils.defaultIfBlank(s3.iamConfig.iamUserProfile, "default")
+            : "default";
     String ownWay;
     if (!s3.isIAMInstanceProfile) {
       ownWay =
-          "set the IAM role flag on it and give this host AWS credentials (a profile with keys, a"
-              + " web identity token file)";
-    } else if (source == IAMCredentialSource.EC2_INSTANCE) {
-      ownWay =
-          "switch its IAM credential source from EC2_INSTANCE, which needs AWS instance metadata,"
-              + " to one this host can serve";
+          "set access keys on the storage config, or set its IAM role flag and give this host"
+              + " AWS credentials (a profile with keys, a web identity token file with"
+              + " AWS_ROLE_ARN)";
     } else {
+      String hostNeeds;
+      switch (source) {
+        case EC2_INSTANCE:
+          hostNeeds =
+              "switch its IAM credential source from EC2_INSTANCE, which needs AWS instance"
+                  + " metadata, to one this host can serve";
+          break;
+        case IAM_USER:
+          hostNeeds =
+              String.format(
+                  "give this host the AWS profile '%s' with keys, a credential process or a role",
+                  profile);
+          break;
+        case WEB_TOKEN:
+          hostNeeds =
+              "give this host a web identity token file named by AWS_WEB_IDENTITY_TOKEN_FILE,"
+                  + " with AWS_ROLE_ARN";
+          break;
+        case ASSUME_INSTANCE_ROLE:
+          hostNeeds =
+              "give this host container credentials (AWS_CONTAINER_CREDENTIALS_FULL_URI or"
+                  + " AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)";
+          break;
+        default:
+          hostNeeds =
+              String.format(
+                  "give this host AWS credentials its IAM role chain can use: the AWS profile"
+                      + " '%s' with keys, a credential process or a role, a web identity token"
+                      + " file with AWS_ROLE_ARN, or container credentials",
+                  profile);
+      }
       ownWay =
-          "give this host AWS credentials its IAM credential source can use (a profile with keys,"
-              + " a web identity token file)";
+          "clear the IAM role flag on the storage config and set access keys (with the flag set,"
+              + " its keys are not used), or "
+              + hostNeeds;
     }
     return String.format(
         "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the config"
-            + " has no access keys, its IAM role chain has nothing to use on this host, and no"
-            + " provider has a usable aws entry in its federated IAM targets, or the providers' aws"
-            + " entries differ. Add an aws entry whose AWS role also trusts this YBA's service"
-            + " account, or make the providers' aws entries match. Otherwise set access keys on"
-            + " the storage config, or %s. Keys are also what a restore onto a new YBA, with no"
-            + " providers yet, needs.",
+            + " has no credentials this host can use, and no provider has a usable aws entry in"
+            + " its federated IAM targets, or the providers' aws entries differ. Add an aws entry"
+            + " whose AWS role also trusts this YBA's service account, or make the providers' aws"
+            + " entries match. Otherwise %s. Access keys are also what a restore onto a new YBA,"
+            + " with no providers yet, needs.",
         storageConfig, ownWay);
   }
 
@@ -720,19 +752,19 @@ public class BackupHelper {
   /**
    * Whether the config, with what YBA's host gives it, has credentials of its own for the bucket's
    * cloud, which YBA keeps using over a customer-wide guess and falls back on when there is no
-   * entry: S3 access keys, or with the IAM role flag a credential source that can work on this
-   * host; a GCS service account key, or with GCP IAM a Google credentials file on the host. Only
+   * entry, in the order {@link AWSUtil#createS3Client} uses them: with the IAM role flag, a
+   * credential source that can work on this host (any access keys are then ignored), else S3 access
+   * keys; a GCS service account key, or with GCP IAM a Google credentials file on the host. Only
    * asked off the bucket's cloud. The IAM role flag alone does not count: the UI and v2 API set it
    * on every federated S3 config.
    */
   private boolean hasCredentialsOfItsOwn(CustomerConfigData configData) {
     if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
-      if (StringUtils.isNotBlank(s3.awsAccessKeyId)) {
-        return true;
+      if (s3.isIAMInstanceProfile) {
+        return hostHasAwsCredentials(s3.iamConfig != null ? s3.iamConfig : new IAMConfiguration());
       }
-      return s3.isIAMInstanceProfile
-          && hostHasAwsCredentials(s3.iamConfig != null ? s3.iamConfig : new IAMConfiguration());
+      return StringUtils.isNotBlank(s3.awsAccessKeyId);
     }
     CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
     return !gcs.useGcpIam || hostHasGcpCredentials();

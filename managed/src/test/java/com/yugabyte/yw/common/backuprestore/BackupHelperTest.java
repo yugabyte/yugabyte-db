@@ -1900,6 +1900,58 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(AWSUtil.usesCrossCloudFederationCredentials(withEc2Instance));
   }
 
+  /**
+   * With the IAM role flag set, S3 access keys are not used (the IAM chain is), so they are not
+   * credentials of its own: the entry is used, or without one the config is rejected with advice to
+   * clear the flag.
+   */
+  @Test
+  public void testYbaIdentityIgnoresKeysUnderTheIamRoleFlag() {
+    hostCloud(CloudType.gcp);
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+    s3Data.isIAMInstanceProfile = true;
+    s3Data.awsAccessKeyId = "key";
+    assertFalse(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+
+    CustomerConfig config = new CustomerConfig();
+    config.setCustomerUUID(testCustomer.getUuid());
+    config.setConfigName("fed-s3");
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> spyBackupHelper.requireYbaFederatedIdentity(config, s3Data));
+    assertTrue(e.getMessage(), e.getMessage().contains("clear the IAM role flag"));
+
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+    assertTrue(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+  }
+
+  /** The advice names what the config's IAM credential source needs on the host. */
+  @Test
+  public void testRequireYbaIdentityNamesWhatTheSourceNeeds() {
+    hostCloud(CloudType.gcp);
+    CustomerConfig config = new CustomerConfig();
+    config.setCustomerUUID(testCustomer.getUuid());
+    config.setConfigName("fed-s3");
+    Map<IAMCredentialSource, String> needs =
+        Map.of(
+            IAMCredentialSource.IAM_USER, "the AWS profile 'default'",
+            IAMCredentialSource.WEB_TOKEN, "AWS_WEB_IDENTITY_TOKEN_FILE, with AWS_ROLE_ARN",
+            IAMCredentialSource.ASSUME_INSTANCE_ROLE, "AWS_CONTAINER_CREDENTIALS_FULL_URI");
+    for (Map.Entry<IAMCredentialSource, String> need : needs.entrySet()) {
+      CustomerConfigStorageS3Data s3Data = federatedS3();
+      s3Data.isIAMInstanceProfile = true;
+      s3Data.iamConfig.credentialSource = need.getKey();
+      PlatformServiceException e =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> spyBackupHelper.requireYbaFederatedIdentity(config, s3Data));
+      assertTrue(e.getMessage(), e.getMessage().contains(need.getValue()));
+    }
+  }
+
   /** Providers whose gcp entries share the audience agree, whatever unused role ARN they carry. */
   @Test
   public void testYbaIdentityGcpEntriesAgreeOnTheAudience() {
@@ -2108,7 +2160,7 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(e.getMessage(), e.getMessage().contains("make the providers' aws entries match"));
     assertTrue(e.getMessage(), e.getMessage().contains("set access keys on the storage config"));
     // Without the IAM role flag, the host's credentials count only once the flag is set.
-    assertTrue(e.getMessage(), e.getMessage().contains("set the IAM role flag on it"));
+    assertTrue(e.getMessage(), e.getMessage().contains("set its IAM role flag"));
 
     // An EC2_INSTANCE source can never work off AWS: the advice is to switch it.
     CustomerConfigStorageS3Data withEc2Instance = federatedS3();
@@ -2139,6 +2191,7 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(e.getMessage(), e.getMessage().contains("YBA runs on AWS"));
     assertTrue(e.getMessage(), e.getMessage().contains("GCS bucket of storage config fed-gcs"));
     assertTrue(e.getMessage(), e.getMessage().contains("usable gcp entry"));
+    assertTrue(e.getMessage(), e.getMessage().contains("turn off GCP IAM"));
     assertTrue(e.getMessage(), e.getMessage().contains("service account key"));
   }
 }
