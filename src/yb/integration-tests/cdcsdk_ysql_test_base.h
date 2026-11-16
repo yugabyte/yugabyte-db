@@ -13,6 +13,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -519,6 +520,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckCount(const uint32_t* expected_count, uint32_t* count);
 
+  void CheckTextTuple(
+      const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id,
+      const std::optional<std::string>& value);
+
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::VaryingExpectedRecord expected_records,
       uint32_t* count, uint32_t num_cols);
@@ -718,6 +723,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void WaitUntilSplitIsSuccesful(
       const TabletId& tablet_id, const yb::client::YBTableName& table,
       const int expected_num_tablets = 2);
+
+  void WaitUntilPeerLeaderState(
+      const tablet::TabletPeerPtr& peer, bool is_leader_and_ready, const std::string& description);
 
   void PollUntilTabletSplit(
       const xrepl::StreamId& stream_id,

@@ -127,8 +127,8 @@ Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_
     SCHECK_LE(
         origin, std::numeric_limits<uint32_t>::max(), Corruption,
         Format("Source origin out of range in $0", original.ToDebugHexString()));
-    result.cdr_source_origin = narrow_cast<uint32_t>(origin);
-    result.cdr_source_write_ht = HybridTime(VERIFY_RESULT_PREPEND(
+    result.cdr_metadata.source_origin = narrow_cast<uint32_t>(origin);
+    result.cdr_metadata.source_write_ht = HybridTime(VERIFY_RESULT_PREPEND(
         DecodeBigEndianUInt64(slice, "source write hybrid time"),
         Format("Failed to decode source write hybrid time in $0", original.ToDebugHexString())));
     entry_type = GetKeyEntryType(*slice);
@@ -137,11 +137,15 @@ Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_
 }
 
 template <class Out>
-void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
+void DoAppendEncoded(const ValueControlFields& fields, Slice intent_doc_ht, Out* out) {
   const auto initial_size = out->size();
   if (fields.merge_flags) {
     out->push_back(KeyEntryTypeAsChar::kMergeFlags);
     FastAppendUnsignedVarInt(fields.merge_flags, out);
+  }
+  if (!intent_doc_ht.empty()) {
+    out->push_back(KeyEntryTypeAsChar::kHybridTime);
+    out->append(intent_doc_ht.cdata(), intent_doc_ht.size());
   }
   if (!fields.ttl.Equals(ValueControlFields::kMaxTtl)) {
     out->push_back(KeyEntryTypeAsChar::kTtl);
@@ -153,8 +157,8 @@ void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
   }
   if (fields.has_cdr_metadata()) {
     out->push_back(KeyEntryTypeAsChar::kCdrMetadata);
-    FastAppendUnsignedVarInt(fields.cdr_source_origin, out);
-    util::AppendBigEndianUInt64(fields.cdr_source_write_ht.ToUint64(), out);
+    FastAppendUnsignedVarInt(fields.cdr_metadata.source_origin, out);
+    util::AppendBigEndianUInt64(fields.cdr_metadata.source_write_ht.ToUint64(), out);
   }
 
   DCHECK(
@@ -176,11 +180,15 @@ Result<ValueControlFields> ValueControlFields::DecodeWithIntentDocHt(
 }
 
 void ValueControlFields::AppendEncoded(std::string* out) const {
-  DoAppendEncoded(*this, out);
+  DoAppendEncoded(*this, Slice(), out);
 }
 
 void ValueControlFields::AppendEncoded(ValueBuffer* out) const {
-  DoAppendEncoded(*this, out);
+  DoAppendEncoded(*this, Slice(), out);
+}
+
+void ValueControlFields::AppendEncodedWithIntentDocHt(Slice intent_doc_ht, ValueBuffer* out) const {
+  DoAppendEncoded(*this, intent_doc_ht, out);
 }
 
 std::string ValueControlFields::ToString() const {
@@ -196,7 +204,8 @@ std::string ValueControlFields::ToString() const {
   }
   if (has_cdr_metadata()) {
     result += Format(
-        "; cdr source origin: $0; cdr source write ht: $1", cdr_source_origin, cdr_source_write_ht);
+        "; cdr source origin: $0; cdr source write ht: $1", cdr_metadata.source_origin,
+        cdr_metadata.source_write_ht);
   }
   return result;
 }

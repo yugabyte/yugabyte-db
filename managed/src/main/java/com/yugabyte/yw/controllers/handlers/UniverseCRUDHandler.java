@@ -948,6 +948,10 @@ public class UniverseCRUDHandler {
           taskParams.fipsEnabled,
           taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
           taskParams.nodeDetailsSet);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+          c.userIntent,
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+          gFlagsValidation);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
@@ -3028,14 +3032,7 @@ public class UniverseCRUDHandler {
           ImageBundle newBundle =
               ImageBundle.getOrBadRequest(
                   provider.getUuid(), newIntent.getImageBundleUUIDForProvider(providerUUID));
-          if (newBundle.getDetails().getArch() != universe.getUniverseDetails().arch) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Cannot change arch from "
-                    + universe.getUniverseDetails().arch
-                    + " to "
-                    + newBundle.getDetails().getArch());
-          }
+          ImageBundleUtil.checkArchMatchesUniverse(universe, newBundle);
         }
       }
 

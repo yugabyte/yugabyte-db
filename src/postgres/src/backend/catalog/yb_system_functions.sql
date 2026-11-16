@@ -140,6 +140,13 @@ VOLATILE
 AS 'yb_backfill_online_schema_change_chunk';
 
 CREATE OR REPLACE FUNCTION
+  yb_online_schema_change_trigger()
+RETURNS trigger
+LANGUAGE INTERNAL
+VOLATILE
+AS 'yb_online_schema_change_trigger';
+
+CREATE OR REPLACE FUNCTION
   yb_compute_row_ybctid(relid oid, key_atts record, ybidxbasectid bytea DEFAULT NULL)
 RETURNS bytea
 LANGUAGE INTERNAL
@@ -233,6 +240,9 @@ GRANT EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,bo
 REVOKE EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) FROM public;
 GRANT EXECUTE ON FUNCTION yb_cancel_query_diagnostics(int8) TO yb_db_admin;
 REVOKE EXECUTE ON FUNCTION yb_backfill_online_schema_change_chunk(oid,oid,oid,int8,bytea,bytea) FROM public;
+-- EXECUTE on a trigger function is checked only by CREATE TRIGGER, and a
+-- firing writes to whatever table the trigger arguments name.
+REVOKE EXECUTE ON FUNCTION yb_online_schema_change_trigger() FROM public;
 REVOKE EXECUTE ON FUNCTION yb_increment_db_catalog_version_with_inval_messages(oid,boolean,bytea,int4)
   FROM public;
 GRANT EXECUTE ON FUNCTION yb_increment_db_catalog_version_with_inval_messages(oid,boolean,bytea,int4)
