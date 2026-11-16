@@ -91,6 +91,9 @@ class Heartbeater {
   // tablet_metadata_processed from the last successful heartbeat response, if there was one.
   std::optional<bool> TEST_last_tablet_metadata_processed() const;
 
+  // Number of successful heartbeat responses that did not confirm the tablet metadata.
+  size_t TEST_num_tablet_metadata_unprocessed() const;
+
   ~Heartbeater();
 
  private:

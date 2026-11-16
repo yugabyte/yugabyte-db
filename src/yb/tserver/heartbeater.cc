@@ -114,6 +114,10 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
     return value < 0 ? std::nullopt : std::optional(value > 0);
   }
 
+  size_t TEST_num_tablet_metadata_unprocessed() const {
+    return TEST_num_tablet_metadata_unprocessed_.load(std::memory_order_acquire);
+  }
+
  private:
   Status DoPoll();
   Status TryHeartbeat();
@@ -137,6 +141,7 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
 
   // -1 until the first successful response.
   std::atomic<int8_t> TEST_last_tablet_metadata_processed_{-1};
+  std::atomic<size_t> TEST_num_tablet_metadata_unprocessed_{0};
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
 };
@@ -162,6 +167,10 @@ class Heartbeater::Impl {
 
   std::optional<bool> TEST_last_tablet_metadata_processed() const {
     return poller_->TEST_last_tablet_metadata_processed();
+  }
+
+  size_t TEST_num_tablet_metadata_unprocessed() const {
+    return poller_->TEST_num_tablet_metadata_unprocessed();
   }
 
  private:
@@ -205,6 +214,10 @@ HostPort Heartbeater::get_master_leader_hostport() {
 
 std::optional<bool> Heartbeater::TEST_last_tablet_metadata_processed() const {
   return impl_->TEST_last_tablet_metadata_processed();
+}
+
+size_t Heartbeater::TEST_num_tablet_metadata_unprocessed() const {
+  return impl_->TEST_num_tablet_metadata_unprocessed();
 }
 
 
@@ -535,6 +548,9 @@ Status HeartbeatPoller::TryHeartbeat() {
     last_hb_response_.Swap(&resp);
     TEST_last_tablet_metadata_processed_.store(
         last_hb_response_.tablet_metadata_processed() ? 1 : 0, std::memory_order_release);
+    if (!last_hb_response_.tablet_metadata_processed()) {
+      TEST_num_tablet_metadata_unprocessed_.fetch_add(1, std::memory_order_release);
+    }
     heartbeat_rtt_ = end_time.GetDeltaSince(start_time);
     server_.SetMasterHeartbeatInfo({
         .uuid = last_hb_response_.master_instance().permanent_uuid(),

@@ -957,6 +957,7 @@ class HeartbeatStorageMetadataCatchUpTest : public MasterHeartbeatITest {
       }
       return true;
     }, 30s, "Waiting for every tserver to run all tablets of the table"));
+    num_unconfirmed_before_ = NumUnconfirmed();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
   }
 
@@ -964,6 +965,18 @@ class HeartbeatStorageMetadataCatchUpTest : public MasterHeartbeatITest {
     return mini_cluster_->mini_tablet_server(ts_idx)->server()->heartbeater()
         ->TEST_last_tablet_metadata_processed();
   }
+
+  // Responses, over all tservers, that did not confirm the storage metadata.
+  size_t NumUnconfirmed() {
+    size_t result = 0;
+    for (size_t i = 0; i < num_tablet_servers(); ++i) {
+      result += mini_cluster_->mini_tablet_server(i)->server()->heartbeater()
+          ->TEST_num_tablet_metadata_unprocessed();
+    }
+    return result;
+  }
+
+  size_t num_unconfirmed_before_ = 0;
 };
 
 TEST_F(HeartbeatStorageMetadataCatchUpTest, ConfirmedOnlyOnceAllReplicasKnown) {
@@ -971,15 +984,7 @@ TEST_F(HeartbeatStorageMetadataCatchUpTest, ConfirmedOnlyOnceAllReplicasKnown) {
   auto tablets = ASSERT_RESULT(catalog_mgr.GetTableInfo(table_->id())->GetTablets());
   ASSERT_EQ(tablets.size(), static_cast<size_t>(num_tablets()));
 
-  // Responses sent while the master still lacked replica entries must not confirm the metadata,
-  // or the tserver never resends it.
-  std::set<size_t> unconfirmed;
   auto status = WaitFor([&]() {
-    for (size_t i = 0; i < num_tablet_servers(); ++i) {
-      if (LastConfirmed(i) == false) {
-        unconfirmed.insert(i);
-      }
-    }
     for (const auto& tablet : tablets) {
       auto replicas = tablet->GetReplicaLocations();
       if (replicas->size() < num_tablet_servers()) {
@@ -1000,7 +1005,9 @@ TEST_F(HeartbeatStorageMetadataCatchUpTest, ConfirmedOnlyOnceAllReplicasKnown) {
     }
   }
   ASSERT_TRUE(status.ok()) << status << drive_infos;
-  ASSERT_FALSE(unconfirmed.empty());
+  // Responses sent while the master still lacked replica entries must not confirm the metadata,
+  // or the tserver never resends it.
+  ASSERT_GT(NumUnconfirmed(), num_unconfirmed_before_);
 
   // Caught up, so the responses confirm again and the tservers stop resending.
   ASSERT_OK(WaitFor([&]() {
