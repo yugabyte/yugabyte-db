@@ -367,7 +367,7 @@ message IndexInfoPB {
     // Nonconcurrent (inline) build: finalized when the CREATE INDEX transaction commits.
     BIRTH_TIME_PENDING_DDL_COMMIT = 2;
   }
-  optional BirthTimeState birth_time_state = 39;
+  optional BirthTimeState birth_time_state = 40;
 
   // When backfill fails, the status it failed with. Unlike backfill_error_message, this
   // preserves error codes such as the PostgreSQL error code.
