@@ -38,6 +38,7 @@
 /* YB includes */
 #include "access/table.h"
 #include "access/yb_cost.h"
+#include "access/yb_scan_plan.h"
 #include "catalog/pg_proc.h"
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
@@ -3468,9 +3469,11 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		 * this index and the clause uses an inequality operator, then index
 		 * scan cannot be used. This is because a hash index is sorted by the
 		 * hash value and not by the value of the column. #13241
+		 * Likewise for a key column that DocDB orders differently from its
+		 * opclass, such as int2vector.
 		 */
 		if (is_hash_column_in_lsm_index(index, indexcol) ||
-			yb_is_int2vector_lsm_key_column(index, indexcol))
+			!yb_index_column_has_range_order(index, indexcol))
 		{
 			int			op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
 
@@ -3512,9 +3515,11 @@ match_opclause_to_indexcol(PlannerInfo *root,
 		 * this index and the clause uses an inequality operator, then index
 		 * scan cannot be used. This is because a hash index is sorted by the
 		 * hash value and not by the value of the column. #13241
+		 * Likewise for a key column that DocDB orders differently from its
+		 * opclass, such as int2vector.
 		 */
 		if (is_hash_column_in_lsm_index(index, indexcol) ||
-			yb_is_int2vector_lsm_key_column(index, indexcol))
+			!yb_index_column_has_range_order(index, indexcol))
 		{
 			int			op_strategy = get_op_opfamily_strategy(((OpExpr *) clause)->opno, opfamily);
 
@@ -3714,8 +3719,8 @@ match_saopclause_to_indexcol(PlannerInfo *root,
 		!bms_is_member(index_relid, right_relids) &&
 		!contain_volatile_functions(rightop))
 	{
-		/* YB: An int2vector key column serves only equality. */
-		if (yb_is_int2vector_lsm_key_column(index, indexcol) &&
+		/* YB: Such a key column serves only equality. */
+		if (!yb_index_column_has_range_order(index, indexcol) &&
 			get_op_opfamily_strategy(expr_op, opfamily) !=
 			BTEqualStrategyNumber)
 			return NULL;
@@ -3773,7 +3778,7 @@ match_rowcompare_to_indexcol(PlannerInfo *root,
 		return NULL;
 
 	if (is_hash_column_in_lsm_index(index, indexcol) ||
-		yb_is_int2vector_lsm_key_column(index, indexcol))
+		!yb_index_column_has_range_order(index, indexcol))
 		return NULL;
 
 	index_relid = index->rel->relid;
@@ -3945,8 +3950,10 @@ expand_indexqual_rowcompare(PlannerInfo *root,
 		 */
 		for (i = 0; i < index->nkeycolumns; i++)
 		{
-			if (!yb_is_int2vector_lsm_key_column(index, i) &&
-				match_index_to_operand(varop, i, index) &&
+			/* YB: Such a key column can't bound a row comparison. */
+			if (!yb_index_column_has_range_order(index, i))
+				continue;
+			if (match_index_to_operand(varop, i, index) &&
 				get_op_opfamily_strategy(expr_op,
 										 index->opfamily[i]) == op_strategy &&
 				IndexCollMatchesExprColl(index->indexcollations[i],
@@ -4840,19 +4847,20 @@ is_pseudo_constant_for_index(PlannerInfo *root, Node *expr, IndexOptInfo *index)
 }
 
 /*
- * YB: Whether key column 'indexcol' of an lsm index has type int2vector or a
- * domain over it.  DocDB orders such a key by its bytes, not by its array_ops
- * order, so the column can serve equality but no range bound or ordering.
+ * YB: Whether key column 'indexcol' of an index can serve a range bound or an
+ * ordering.  An lsm key column whose type DocDB orders differently from its
+ * opclass (YbKeyTypeSupportsRangeOrder) can serve only equality.  Scan-key
+ * setup applies the same rule.
  */
 bool
-yb_is_int2vector_lsm_key_column(const IndexOptInfo *index, int indexcol)
+yb_index_column_has_range_order(const IndexOptInfo *index, int indexcol)
 {
 	TargetEntry *tle;
 
 	if (index->relam != LSM_AM_OID || indexcol >= index->nkeycolumns)
-		return false;
+		return true;
 	tle = list_nth_node(TargetEntry, index->indextlist, indexcol);
-	return getBaseType(exprType((Node *) tle->expr)) == INT2VECTOROID;
+	return YbKeyTypeSupportsRangeOrder(exprType((Node *) tle->expr));
 }
 
 static bool
@@ -5532,8 +5540,8 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 		if (((Var *) varop)->varattno != index->indexkeys[indexcol])
 			break;
 
-		/* YB: An int2vector key column can't bound a row comparison. */
-		if (yb_is_int2vector_lsm_key_column(index, indexcol))
+		/* YB: Such a key column can't bound a row comparison. */
+		if (!yb_index_column_has_range_order(index, indexcol))
 			break;
 
 		/* The constant side must not reference the indexed relation. */

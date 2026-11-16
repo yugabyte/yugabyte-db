@@ -831,6 +831,7 @@ static bool
 ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 {
 	const int	idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
+	Oid			atttypid;
 
 	switch (op_strategy)
 	{
@@ -842,8 +843,16 @@ ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 		case BTGreaterEqualStrategyNumber:
 		case BTGreaterStrategyNumber:
 			/* range key */
-			return (!bms_is_member(idx, scan_plan->hash_key_cols) &&
-					bms_is_member(idx, scan_plan->key_cols));
+			if (bms_is_member(idx, scan_plan->hash_key_cols) ||
+				!bms_is_member(idx, scan_plan->key_cols))
+				return false;
+
+			/*
+			 * DocDB must order the column as its opclass does.  The planner
+			 * applies the same type rule.
+			 */
+			atttypid = ybc_get_atttypid(scan_plan->bind_desc, attnum);
+			return YbKeyTypeSupportsRangeOrder(atttypid);
 
 		default:
 			/* TODO: support other logical operators */

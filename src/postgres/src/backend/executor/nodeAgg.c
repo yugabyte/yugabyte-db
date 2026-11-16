@@ -277,6 +277,7 @@
 #include "utils/tuplesort.h"
 
 /* YB includes */
+#include "access/yb_scan_plan.h"
 #include "catalog/yb_type.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -2358,10 +2359,11 @@ yb_agg_pushdown_supported(AggState *aggstate)
 				return;
 
 			/*
-			 * DocDB compares int2vector values by their bytes, not in array
-			 * order, so min and max over one are left to Postgres.
+			 * DocDB compares values of some key types (int2vector) in another
+			 * order than Postgres does, so min and max over one are left to
+			 * Postgres.
 			 */
-			if (type == INT2VECTOROID &&
+			if (!YbKeyTypeSupportsRangeOrder(type) &&
 				(strcmp(func_name, "min") == 0 ||
 				 strcmp(func_name, "max") == 0))
 				return;

@@ -51,6 +51,16 @@ EXPLAIN (COSTS OFF) SELECT min(v), max(v) FROM int2vector_key_test;
 SELECT min(v), max(v) FROM int2vector_key_test;
 EXPLAIN (COSTS OFF) SELECT count(v) FROM int2vector_key_test;
 SELECT count(v) FROM int2vector_key_test;
+-- Two-column index: v pinned by = keeps the range on b and the order of b;
+-- an IN list on v does not give a merge scan.
+DROP INDEX int2vector_key_test_v_idx;
+CREATE INDEX int2vector_key_test_v_b_idx ON int2vector_key_test (v ASC, b ASC);
+EXPLAIN (COSTS OFF) SELECT k FROM int2vector_key_test WHERE v = '1 2' AND b < 5;
+EXPLAIN (COSTS OFF) SELECT k FROM int2vector_key_test WHERE v = '1 2' ORDER BY b;
+EXPLAIN (COSTS OFF) SELECT k FROM int2vector_key_test WHERE v IN ('1 2', '2 1') ORDER BY b;
+SELECT k FROM int2vector_key_test WHERE v IN ('1 2', '2 1') ORDER BY b;
+RESET enable_sort;
+RESET enable_incremental_sort;
 -- Merge join on v.
 CREATE TABLE int2vector_key_test2 (k int PRIMARY KEY, v int2vector);
 CREATE INDEX int2vector_key_test2_v_idx ON int2vector_key_test2 (v ASC);
@@ -63,16 +73,6 @@ SELECT count(*) FROM int2vector_key_test JOIN int2vector_key_test2 USING (v);
 RESET enable_hashjoin;
 RESET enable_nestloop;
 RESET yb_enable_batchednl;
--- Two-column index: v pinned by = keeps the range on b and the order of b;
--- an IN list on v does not give a merge scan.
-DROP INDEX int2vector_key_test_v_idx;
-CREATE INDEX int2vector_key_test_v_b_idx ON int2vector_key_test (v ASC, b ASC);
-EXPLAIN (COSTS OFF) SELECT k FROM int2vector_key_test WHERE v = '1 2' AND b < 5;
-EXPLAIN (COSTS OFF) SELECT k FROM int2vector_key_test WHERE v = '1 2' ORDER BY b;
-EXPLAIN (COSTS OFF) SELECT k FROM int2vector_key_test WHERE v IN ('1 2', '2 1') ORDER BY b;
-SELECT k FROM int2vector_key_test WHERE v IN ('1 2', '2 1') ORDER BY b;
-RESET enable_sort;
-RESET enable_incremental_sort;
 -- A row comparison led by v and < ANY on v are not index bounds.
 EXPLAIN (COSTS OFF) SELECT array_agg(k ORDER BY k) FROM int2vector_key_test WHERE (v, b) < ('1 2', 0);
 SELECT array_agg(k ORDER BY k) FROM int2vector_key_test WHERE (v, b) < ('1 2', 0);

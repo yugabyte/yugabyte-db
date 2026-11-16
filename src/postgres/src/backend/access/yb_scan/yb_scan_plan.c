@@ -28,8 +28,10 @@
 
 #include <limits.h>
 
+#include "access/transam.h"
 #include "access/yb_scan_plan.h"
 #include "catalog/pg_type.h"
+#include "utils/lsyscache.h"
 
 /* Return true if typid is one of the Object Identifier Types */
 static bool
@@ -195,4 +197,25 @@ YbIsScanCompatible(Oid column_typid,
 			/* Conservatively return false. */
 			return false;
 	}
+}
+
+/*
+ * Return whether DocDB orders key values of type column_typid as the type's
+ * lsm opclass does, so that a range bound or the index order on such a key
+ * column is right.  DocDB orders an int2vector key (or one of a domain over it)
+ * by its bytes, length first, while lsm/array_ops compares element by element.
+ * The planner keeps range quals and index order off such a column, and scan-key
+ * setup does not bind range keys on it.
+ */
+bool
+YbKeyTypeSupportsRangeOrder(Oid column_typid)
+{
+	/*
+	 * Types from pg_type.dat are never domains, so decide them without a
+	 * syscache lookup.  Scan-key setup of the catalog scan that such a lookup
+	 * runs would otherwise call back here and recurse.
+	 */
+	if (column_typid < FirstGenbkiObjectId)
+		return column_typid != INT2VECTOROID;
+	return getBaseType(column_typid) != INT2VECTOROID;
 }

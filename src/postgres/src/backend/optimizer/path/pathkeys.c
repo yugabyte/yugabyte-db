@@ -682,11 +682,11 @@ build_index_pathkeys(PlannerInfo *root,
 											  yb_is_hash_column);
 
 		/*
-		 * YB: DocDB orders an int2vector key by its bytes, so the index is not
-		 * ordered on such a column, or on any later one, unless the query pins
-		 * the column to one value.
+		 * YB: DocDB orders some key types (int2vector) differently from their
+		 * opclass, so the index is not ordered on such a column, or on any
+		 * later one, unless the query pins the column to one value.
 		 */
-		if (yb_is_int2vector_lsm_key_column(index, i) &&
+		if (!yb_index_column_has_range_order(index, i) &&
 			!(cpathkey && EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass)))
 		{
 			if (yb_is_hash_column)

@@ -161,33 +161,6 @@ SELECT count(v) FROM int2vector_key_test;
      9
 (1 row)
 
--- Merge join on v.
-CREATE TABLE int2vector_key_test2 (k int PRIMARY KEY, v int2vector);
-CREATE INDEX int2vector_key_test2_v_idx ON int2vector_key_test2 (v ASC);
-INSERT INTO int2vector_key_test2 SELECT k, v FROM int2vector_key_test;
-SET enable_hashjoin = off;
-SET enable_nestloop = off;
-SET yb_enable_batchednl = off;
-EXPLAIN (COSTS OFF) SELECT count(*) FROM int2vector_key_test JOIN int2vector_key_test2 USING (v);
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
- Aggregate
-   ->  YB Batched Nested Loop Join
-         Join Filter: (int2vector_key_test.v = int2vector_key_test2.v)
-         ->  Index Only Scan using int2vector_key_test_v_idx on int2vector_key_test
-         ->  Index Only Scan using int2vector_key_test2_v_idx on int2vector_key_test2
-               Index Cond: (v = ANY (ARRAY[int2vector_key_test.v, $1, $2, ..., $1023]))
-(6 rows)
-
-SELECT count(*) FROM int2vector_key_test JOIN int2vector_key_test2 USING (v);
- count 
--------
-     9
-(1 row)
-
-RESET enable_hashjoin;
-RESET enable_nestloop;
-RESET yb_enable_batchednl;
 -- Two-column index: v pinned by = keeps the range on b and the order of b;
 -- an IN list on v does not give a merge scan.
 DROP INDEX int2vector_key_test_v_idx;
@@ -224,6 +197,36 @@ SELECT k FROM int2vector_key_test WHERE v IN ('1 2', '2 1') ORDER BY b;
 
 RESET enable_sort;
 RESET enable_incremental_sort;
+-- Merge join on v.
+CREATE TABLE int2vector_key_test2 (k int PRIMARY KEY, v int2vector);
+CREATE INDEX int2vector_key_test2_v_idx ON int2vector_key_test2 (v ASC);
+INSERT INTO int2vector_key_test2 SELECT k, v FROM int2vector_key_test;
+SET enable_hashjoin = off;
+SET enable_nestloop = off;
+SET yb_enable_batchednl = off;
+EXPLAIN (COSTS OFF) SELECT count(*) FROM int2vector_key_test JOIN int2vector_key_test2 USING (v);
+                                         QUERY PLAN                                         
+--------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Merge Join
+         Merge Cond: (int2vector_key_test.v = int2vector_key_test2.v)
+         ->  Sort
+               Sort Key: int2vector_key_test.v
+               ->  Index Only Scan using int2vector_key_test_v_b_idx on int2vector_key_test
+         ->  Sort
+               Sort Key: int2vector_key_test2.v
+               ->  Index Only Scan using int2vector_key_test2_v_idx on int2vector_key_test2
+(9 rows)
+
+SELECT count(*) FROM int2vector_key_test JOIN int2vector_key_test2 USING (v);
+ count 
+-------
+     9
+(1 row)
+
+RESET enable_hashjoin;
+RESET enable_nestloop;
+RESET yb_enable_batchednl;
 -- A row comparison led by v and < ANY on v are not index bounds.
 EXPLAIN (COSTS OFF) SELECT array_agg(k ORDER BY k) FROM int2vector_key_test WHERE (v, b) < ('1 2', 0);
                        QUERY PLAN                        
