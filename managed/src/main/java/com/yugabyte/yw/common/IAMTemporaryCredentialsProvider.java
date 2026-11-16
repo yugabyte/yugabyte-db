@@ -66,6 +66,15 @@ public class IAMTemporaryCredentialsProvider {
   }
 
   public AwsCredentials getTemporaryCredentials(CustomerConfigStorageS3Data s3Data) {
+    return getTemporaryCredentials(
+        s3Data, confGetter.getStaticConf().getInt(NUM_RETRIES_CONFIG_PATH));
+  }
+
+  /**
+   * Tries the config's credential sources in order, up to {@code attempts} times 5 seconds apart,
+   * and returns the first credentials one of them gives.
+   */
+  public AwsCredentials getTemporaryCredentials(CustomerConfigStorageS3Data s3Data, int attempts) {
     List<CustomAWSCredentials> credentialsSource = new ArrayList<>();
     switch (s3Data.iamConfig.credentialSource) {
       case ASSUME_INSTANCE_ROLE:
@@ -98,7 +107,7 @@ public class IAMTemporaryCredentialsProvider {
                 "Invalid IAM credential source option %s", s3Data.iamConfig.credentialSource));
     }
 
-    int numRetries = confGetter.getStaticConf().getInt(NUM_RETRIES_CONFIG_PATH);
+    int numRetries = attempts;
     List<String> errorMessages = new ArrayList<>();
     while (numRetries > 0) {
       errorMessages.clear();

@@ -64,7 +64,6 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -143,7 +142,9 @@ public class BackupHelperTest extends FakeDBApplication {
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
     // The host's own credentials depend on the machine the test runs on; none unless a test says.
-    doReturn(false).when(spyBackupHelper).hostHasAwsCredentials(any(IAMConfiguration.class));
+    doReturn(false)
+        .when(spyBackupHelper)
+        .hostHasAwsCredentials(any(CustomerConfigStorageS3Data.class));
     doReturn(false).when(spyBackupHelper).hostHasGcpCredentials();
   }
 
@@ -1818,11 +1819,15 @@ public class BackupHelperTest extends FakeDBApplication {
     s3Data.isIAMInstanceProfile = true;
     assertFalse(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
 
-    doReturn(true).when(spyBackupHelper).hostHasAwsCredentials(any(IAMConfiguration.class));
+    doReturn(true)
+        .when(spyBackupHelper)
+        .hostHasAwsCredentials(any(CustomerConfigStorageS3Data.class));
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
     assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
 
-    doReturn(false).when(spyBackupHelper).hostHasAwsCredentials(any(IAMConfiguration.class));
+    doReturn(false)
+        .when(spyBackupHelper)
+        .hostHasAwsCredentials(any(CustomerConfigStorageS3Data.class));
     federatedOnPremProvider(
         "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
@@ -1831,7 +1836,7 @@ public class BackupHelperTest extends FakeDBApplication {
 
   /**
    * YBA on AWS -> GCS with no entry: application default credentials are left to try only when the
-   * host has a Google credentials file, or the config a service account key.
+   * host resolves application default credentials, or the config has a service account key.
    */
   @Test
   public void testYbaIdentityForGcsWithoutEntryNeedsCredentialsOfItsOwn() {
@@ -1883,7 +1888,8 @@ public class BackupHelperTest extends FakeDBApplication {
     doReturn(true)
         .when(spyBackupHelper)
         .hostHasAwsCredentials(
-            argThat(iam -> iam != null && iam.credentialSource == IAMCredentialSource.IAM_USER));
+            argThat(
+                s3 -> s3 != null && s3.iamConfig.credentialSource == IAMCredentialSource.IAM_USER));
     CustomerConfigStorageS3Data withIamUser = federatedS3();
     withIamUser.isIAMInstanceProfile = true;
     withIamUser.iamConfig.credentialSource = IAMCredentialSource.IAM_USER;
@@ -1968,11 +1974,13 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /**
-   * An AWS profile counts as the host's credentials only when the chain can get credentials from
-   * it: one with just a region, as `aws configure set region` writes, does not.
+   * The host's AWS credentials are resolved through the config's IAM credential chain, as the S3
+   * client resolves them: a profile with keys counts, one with just a region, as `aws configure set
+   * region` writes, does not, nor does an SSO profile, as YBA does not ship the SSO module. Only
+   * sources that resolve without the network are tried here.
    */
   @Test
-  public void testHostAwsProfileCountsOnlyWithCredentials() throws Exception {
+  public void testHostAwsCredentialsResolveThroughTheIamChain() throws Exception {
     Assume.assumeTrue(
         "the host has AWS credentials in its environment",
         System.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI") == null
@@ -2000,37 +2008,59 @@ public class BackupHelperTest extends FakeDBApplication {
     String oldCredentials = System.setProperty("aws.sharedCredentialsFile", credentials.getPath());
     try {
       Files.writeString(config.toPath(), "[default]\nregion = us-west-2\n");
-      assertFalse(helper.hostHasAwsCredentials(iam(IAMCredentialSource.DEFAULT, "default")));
+      assertFalse(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.IAM_USER, "default")));
 
       Files.writeString(
           credentials.toPath(),
           "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret\n");
-      assertTrue(helper.hostHasAwsCredentials(iam(IAMCredentialSource.DEFAULT, "default")));
-      assertTrue(helper.hostHasAwsCredentials(iam(IAMCredentialSource.IAM_USER, "default")));
-      assertFalse(helper.hostHasAwsCredentials(iam(IAMCredentialSource.IAM_USER, "other")));
-      // Sources that need AWS instance metadata or a container, which this host does not have.
-      assertFalse(helper.hostHasAwsCredentials(iam(IAMCredentialSource.EC2_INSTANCE, "default")));
+      assertTrue(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.IAM_USER, "default")));
+      // The chain gets past the web identity source, which has no AWS_ROLE_ARN, to the profile.
+      assertTrue(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.DEFAULT, "default")));
+      assertFalse(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.IAM_USER, "other")));
+      // Container credentials, which this host does not have.
       assertFalse(
-          helper.hostHasAwsCredentials(iam(IAMCredentialSource.ASSUME_INSTANCE_ROLE, "default")));
+          helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.ASSUME_INSTANCE_ROLE, "default")));
 
-      // YBA does not ship the SSO module, so an SSO profile gives the chain nothing.
       Files.writeString(credentials.toPath(), "");
       Files.writeString(
           config.toPath(),
           "[default]\nsso_start_url = https://example.awsapps.com/start\nsso_region ="
               + " us-east-1\nsso_account_id = 123456789012\nsso_role_name = r\n");
-      assertFalse(helper.hostHasAwsCredentials(iam(IAMCredentialSource.DEFAULT, "default")));
+      assertFalse(helper.hostHasAwsCredentials(iamS3(IAMCredentialSource.IAM_USER, "default")));
     } finally {
       restoreProperty("aws.configFile", oldConfig);
       restoreProperty("aws.sharedCredentialsFile", oldCredentials);
     }
   }
 
-  private static IAMConfiguration iam(IAMCredentialSource source, String profile) {
-    IAMConfiguration iam = new IAMConfiguration();
-    iam.credentialSource = source;
-    iam.iamUserProfile = profile;
-    return iam;
+  private static CustomerConfigStorageS3Data iamS3(IAMCredentialSource source, String profile) {
+    CustomerConfigStorageS3Data s3 = new CustomerConfigStorageS3Data();
+    s3.isIAMInstanceProfile = true;
+    s3.iamConfig.credentialSource = source;
+    s3.iamConfig.iamUserProfile = profile;
+    return s3;
+  }
+
+  /**
+   * A failure to read the customer's providers leaves YBA without the customer-wide entry, as when
+   * none has one, instead of failing the caller.
+   */
+  @Test
+  public void testCustomerFederationTargetLookupFailureFindsNoEntry() {
+    hostCloud(CloudType.gcp);
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+    try (MockedStatic<Provider> providers = Mockito.mockStatic(Provider.class)) {
+      providers
+          .when(() -> Provider.getAll(any(UUID.class)))
+          .thenThrow(new RuntimeException("provider lookup failed"));
+
+      assertNull(
+          spyBackupHelper.resolveCustomerFederationTarget(testCustomer.getUuid(), CloudType.aws));
+      assertFalse(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+    }
+    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
   }
 
   private static void restoreProperty(String key, String value) {
@@ -2041,7 +2071,7 @@ public class BackupHelperTest extends FakeDBApplication {
     }
   }
 
-  /** YBA on AWS -> GCS with a Google credentials file on the host keeps using it. */
+  /** YBA on AWS -> GCS with application default credentials on the host keeps using them. */
   @Test
   public void testYbaIdentityKeepsTheHostsGcpCredentialsOverTheProvidersEntry() {
     hostCloud(CloudType.aws);

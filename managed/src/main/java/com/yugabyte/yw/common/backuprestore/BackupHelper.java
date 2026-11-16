@@ -11,6 +11,7 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.HostCloudDetector;
+import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider;
 import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -74,7 +76,6 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
-import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.CrossCloudFederationTarget;
@@ -82,9 +83,6 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -99,7 +97,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -118,8 +115,6 @@ import org.yb.ybc.CloudStoreSpec;
 import org.yb.ybc.NamespaceType;
 import org.yb.ybc.ProxyConfig;
 import play.libs.Json;
-import software.amazon.awssdk.profiles.ProfileFile;
-import software.amazon.awssdk.profiles.ProfileProperty;
 
 @Slf4j
 @Singleton
@@ -598,10 +593,10 @@ public class BackupHelper {
    *
    * @return false when YBA has no way to reach the bucket: it found no entry, and either runs on
    *     GCP with an S3 config that has no access keys without the IAM role flag, or with the flag
-   *     no IAM credential source the host can serve (its keys are then ignored), or runs on
-   *     confirmed AWS with a GCP IAM GCS config and no Google credentials file on the host. Known
-   *     limit: on AWS that cannot be confirmed, a keyless S3 config without the flag is still built
-   *     from blank keys (see {@link #useYbaIamRole}).
+   *     an IAM credential source that resolves no AWS credentials on the host (its keys are then
+   *     ignored), or runs on confirmed AWS with a GCP IAM GCS config and no application default
+   *     credentials on the host. Known limit: on AWS that cannot be confirmed, a keyless S3 config
+   *     without the flag is still built from blank keys (see {@link #useYbaIamRole}).
    */
   public boolean applyYbaFederatedIdentity(
       CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
@@ -654,12 +649,12 @@ public class BackupHelper {
     if (federatedBucketCloud(configData) == CloudType.gcp) {
       return String.format(
           "YBA runs on AWS and has no credentials for the GCS bucket of storage config %s: the"
-              + " config uses GCP IAM, this host has no Google credentials file, and no provider"
-              + " has a usable gcp entry in its federated IAM targets, or the providers' gcp"
-              + " entries differ. Add a gcp entry whose workload identity pool also admits this"
-              + " YBA's AWS role, or make the providers' gcp entries match. Otherwise turn off GCP"
-              + " IAM on the storage config and give it a service account key, which is also what"
-              + " a restore onto a new YBA, with no providers yet, needs.",
+              + " config uses GCP IAM, application default credentials do not resolve on this"
+              + " host, and no provider has a usable gcp entry in its federated IAM targets, or"
+              + " the providers' gcp entries differ. Add a gcp entry whose workload identity pool"
+              + " also admits this YBA's AWS role, or make the providers' gcp entries match."
+              + " Otherwise turn off GCP IAM on the storage config and give it a service account"
+              + " key, which is also what a restore onto a new YBA, with no providers yet, needs.",
           storageConfig);
     }
     // The config's own way out depends on how it is set up: the host's credentials count only
@@ -755,17 +750,17 @@ public class BackupHelper {
   /**
    * Whether the config, with what YBA's host gives it, has credentials of its own for the bucket's
    * cloud, which YBA keeps using over a customer-wide guess and falls back on when there is no
-   * entry, in the order {@link AWSUtil#createS3Client} uses them: with the IAM role flag, a
-   * credential source that can work on this host (any access keys are then ignored), else S3 access
-   * keys; a GCS service account key, or with GCP IAM a Google credentials file on the host. Only
-   * asked off the bucket's cloud. The IAM role flag alone does not count: the UI and v2 API set it
-   * on every federated S3 config.
+   * entry, in the order {@link AWSUtil#createS3Client} uses them: with the IAM role flag, the
+   * credentials its credential source resolves on this host (any access keys are then ignored),
+   * else S3 access keys; a GCS service account key, or with GCP IAM the application default
+   * credentials the host resolves. Only asked off the bucket's cloud. The IAM role flag alone does
+   * not count: the UI and v2 API set it on every federated S3 config.
    */
   private boolean hasCredentialsOfItsOwn(CustomerConfigData configData) {
     if (configData instanceof CustomerConfigStorageS3Data) {
       CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
       if (s3.isIAMInstanceProfile) {
-        return hostHasAwsCredentials(s3.iamConfig != null ? s3.iamConfig : new IAMConfiguration());
+        return hostHasAwsCredentials(s3);
       }
       return StringUtils.isNotBlank(s3.awsAccessKeyId);
     }
@@ -774,82 +769,38 @@ public class BackupHelper {
   }
 
   /**
-   * Whether the config's IAM credential source ({@link IAMTemporaryCredentialsProvider}) can get
-   * credentials on this host, which is not on AWS: a web identity token file with its role
-   * (WEB_TOKEN), container credentials (ASSUME_INSTANCE_ROLE), a profile holding keys, a credential
-   * process or a role (IAM_USER), or any of those (DEFAULT). EC2_INSTANCE needs AWS instance
-   * metadata, so it never can. A profile with only settings in it, such as a region, does not
-   * count, nor does an SSO profile, as YBA does not ship the AWS SDK's SSO module. Package-private
-   * so tests do not depend on the machine they run on.
+   * Whether the config's IAM credential source gets AWS credentials on this host, resolved through
+   * {@link IAMTemporaryCredentialsProvider} as {@link AWSUtil#createS3Client} resolves them, so the
+   * answer is the one the S3 client would get. It is tried once, without the client's retries: on a
+   * GCP host with no AWS credentials, which then federates, those would hold up every run by the
+   * waits between them. Package-private so tests do not depend on the machine they run on.
    */
-  boolean hostHasAwsCredentials(IAMConfiguration iam) {
-    String profileName = StringUtils.defaultIfBlank(iam.iamUserProfile, "default");
-    IAMCredentialSource source =
-        iam.credentialSource != null ? iam.credentialSource : IAMCredentialSource.DEFAULT;
-    switch (source) {
-      case WEB_TOKEN:
-        return hasWebIdentityToken();
-      case ASSUME_INSTANCE_ROLE:
-        return hasContainerCredentials();
-      case IAM_USER:
-        return profileHasCredentials(profileName);
-      case EC2_INSTANCE:
-        return false;
-      default:
-        return hasWebIdentityToken()
-            || hasContainerCredentials()
-            || profileHasCredentials(profileName);
-    }
-  }
-
-  private static boolean hasWebIdentityToken() {
-    return isExistingFile(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
-        && StringUtils.isNotBlank(System.getenv("AWS_ROLE_ARN"));
-  }
-
-  /** Whether {@code path} names a regular file: a variable naming a stale path gives nothing. */
-  private static boolean isExistingFile(@Nullable String path) {
-    return StringUtils.isNotBlank(path) && Files.isRegularFile(Paths.get(path));
-  }
-
-  private static boolean hasContainerCredentials() {
-    return StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
-        || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"));
-  }
-
-  private static boolean profileHasCredentials(String profileName) {
+  boolean hostHasAwsCredentials(CustomerConfigStorageS3Data s3) {
     try {
-      return ProfileFile.defaultProfileFile()
-          .profile(profileName)
-          .filter(
-              profile ->
-                  Stream.of(
-                          ProfileProperty.AWS_ACCESS_KEY_ID,
-                          ProfileProperty.CREDENTIAL_PROCESS,
-                          ProfileProperty.ROLE_ARN)
-                      .anyMatch(key -> profile.property(key).isPresent()))
-          .isPresent();
+      new IAMTemporaryCredentialsProvider(confGetter).getTemporaryCredentials(s3, 1 /* attempts */);
+      return true;
     } catch (Exception e) {
-      log.warn("Could not read the AWS profile files for profile {}", profileName, e);
+      log.info(
+          "The IAM credential source of the S3 config gives no AWS credentials on this host: {}",
+          e.getMessage());
       return false;
     }
   }
 
   /**
-   * Whether the host gives Google's application default credentials something to use off GCP: a
-   * file named by GOOGLE_APPLICATION_CREDENTIALS, or gcloud's application default credentials.
-   * Package-private so tests do not depend on the machine they run on.
+   * Whether Google's application default credentials, which {@link GCPUtil#getStorageService} uses
+   * for a GCP IAM config, resolve on this host; GCP EAR resolves the host's credentials the same
+   * way. Package-private so tests do not depend on the machine they run on.
    */
   boolean hostHasGcpCredentials() {
-    if (isExistingFile(System.getenv("GOOGLE_APPLICATION_CREDENTIALS"))) {
+    try {
+      GoogleCredentials.getApplicationDefault();
       return true;
+    } catch (Exception e) {
+      log.info(
+          "Google application default credentials do not resolve on this host: {}", e.getMessage());
+      return false;
     }
-    String gcloudDir = System.getenv("CLOUDSDK_CONFIG");
-    Path dir =
-        StringUtils.isNotBlank(gcloudDir)
-            ? Paths.get(gcloudDir)
-            : Paths.get(System.getProperty("user.home"), ".config", "gcloud");
-    return Files.isRegularFile(dir.resolve("application_default_credentials.json"));
   }
 
   /** Puts a provider's federation entry on the in-memory config; no-op when there is none. */
@@ -877,19 +828,29 @@ public class BackupHelper {
     if (customerUUID == null) {
       return null;
     }
-    List<CrossCloudFederationTarget> targets =
-        Provider.getAll(customerUUID).stream()
-            .map(p -> CloudInfoInterface.getCrossCloudFederationTarget(p, targetCloud))
-            .filter(Objects::nonNull)
-            // Compare only what is stamped: a gcp entry's role ARN is unused and may differ.
-            .map(
-                t ->
-                    CrossCloudFederationTarget.of(
-                        t.targetCloud,
-                        t.audience,
-                        t.targetCloud == CloudType.aws ? t.roleArn : null))
-            .distinct()
-            .collect(Collectors.toList());
+    List<CrossCloudFederationTarget> targets;
+    try {
+      targets =
+          Provider.getAll(customerUUID).stream()
+              .map(p -> CloudInfoInterface.getCrossCloudFederationTarget(p, targetCloud))
+              .filter(Objects::nonNull)
+              // Compare only what is stamped: a gcp entry's role ARN is unused and may differ.
+              .map(
+                  t ->
+                      CrossCloudFederationTarget.of(
+                          t.targetCloud,
+                          t.audience,
+                          t.targetCloud == CloudType.aws ? t.roleArn : null))
+              .distinct()
+              .collect(Collectors.toList());
+    } catch (Exception e) {
+      log.warn(
+          "Could not read the federated IAM entries for {} from the providers of customer {}",
+          targetCloud,
+          customerUUID,
+          e);
+      return null;
+    }
     if (targets.size() > 1) {
       log.warn(
           "Providers have {} different federated IAM entries for {}; YBA cannot tell which one"
