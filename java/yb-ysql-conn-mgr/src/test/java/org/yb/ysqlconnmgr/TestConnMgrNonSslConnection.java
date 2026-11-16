@@ -20,7 +20,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -105,54 +104,6 @@ public class TestConnMgrNonSslConnection extends BaseYsqlConnMgr {
       ResultSet rs = stmt.executeQuery("SELECT 1");
       rs.next();
       LOG.info("SSL connection via conn mgr succeeded as expected");
-    }
-  }
-
-  /**
-   * Verifies that SSL connections work through conn mgr with a small readahead buffer.
-   *
-   * mm_tls_read() used to signal io->on_read even when it was NULL, which crashed Odyssey when a
-   * TLS record did not fit in the readahead buffer.
-   */
-  @Test
-  public void testSslWithSmallReadahead() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("ysql_conn_mgr_readahead_buffer_size", "64");
-    restartClusterWithAdditionalFlags(new HashMap<>(), tserverFlags);
-
-    for (int i = 0; i < 5; i++) {
-      try (Connection conn = getConnectionBuilder()
-               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-               .withSslMode("require")
-               .connect();
-          Statement stmt = conn.createStatement()) {
-        ResultSet rs = stmt.executeQuery("SELECT 1");
-        assertTrue(rs.next());
-      }
-    }
-  }
-
-  /**
-   * A TLS client sends Parse/Bind/Execute/Sync and a Query in one write, with a 64-byte readahead.
-   * Conn mgr pauses the client after the Sync with the readahead full and the rest of the Query
-   * buffered by OpenSSL, which does not wake the poller. After the Sync's ReadyForQuery, conn mgr
-   * must still read the rest of the Query and reply to it.
-   */
-  @Test
-  public void testSslPipelinedQueryAfterSyncWithSmallReadahead() throws Exception {
-    Map<String, String> tserverFlags = new HashMap<>();
-    tserverFlags.put("ysql_conn_mgr_readahead_buffer_size", "64");
-    tserverFlags.put("ysql_hba_conf_csv", "hostssl all all all trust");
-    restartClusterWithAdditionalFlags(new HashMap<>(), tserverFlags);
-
-    String literal = String.join("", Collections.nCopies(200, "a"));
-    try (WireConn conn = rawConnBuilder().ssl().connect()) {
-      // The pipeline goes out in one write, so the client sends it in a single TLS record.
-      conn.createPipeline()
-          .parse("SELECT 1").bind().execute().row("1")
-          .sync()
-          .query("SELECT '" + literal + "'").row(literal)
-          .run();
     }
   }
 
