@@ -164,6 +164,18 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 				   yb_server_cert_hash_len);
 	}
 
+	/* send the logical client's addr/port to the control backend. */
+	if (client->yb_ycm_client_addr[0] != '\0') {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_ADDR));
+		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_ycm_client_addr,
+				   strlen(client->yb_ycm_client_addr) + 1);
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_PORT));
+		yb_kiwi_set_fe_arg(&argv[argc++], client->yb_ycm_client_port,
+				   strlen(client->yb_ycm_client_port) + 1);
+	}
+
 	if (route->id.physical_rep) {
 		yb_kiwi_set_fe_arg(&argv[argc++],
 				   YB_NAME_AND_SIZEOF("replication"));
@@ -175,7 +187,12 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 				   YB_NAME_AND_SIZEOF("database"));
 	}
 
-	argc = yb_set_reserved_end_args(argv, argc, client);
+	/*
+	 * Must follow every reserved parameter: Postgres rejects reserved names
+	 * after it, which is where the logical client's settings go.
+	 */
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF(YB_YCM_INTERNAL_END));
+	yb_kiwi_set_fe_arg(&argv[argc++], "", 1);
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
 	assert(argc <= max_default_args);
