@@ -16,6 +16,7 @@
 #include <chrono>
 #include <iterator>
 #include <mutex>
+#include <optional>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -51,10 +52,12 @@
 #include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_uint32(tablet_validator_retain_delete_markers_validation_period_sec, 60,
-    "The time period in seconds for validation of retain delete markers property for index tables. "
-    "The value is not updated immediately, it is posponed till the nearest run of the periodic "
-    "validation task. The value of 0 is used to disable verification. In this case, the validation "
-    "task wakes up every minute to get a new flag value.");
+    "The time period in seconds for validation of retain delete markers property for index tables, "
+    "and of a pending birth time of index tables (e.g. a nonconcurrently built index whose "
+    "finalize from the master was lost). The value is not updated immediately, it is posponed "
+    "till the nearest run of the periodic validation task. The value of 0 is used to disable "
+    "verification. In this case, the validation task wakes up every minute to get a new flag "
+    "value.");
 TAG_FLAG(tablet_validator_retain_delete_markers_validation_period_sec, advanced);
 
 DEFINE_test_flag(uint32, tablet_validator_cache_retention_interval_sec, 3600,
@@ -140,14 +143,40 @@ bool IsBackfillDone(const master::IndexStatusPB& index_status) {
          index_status.backfill_status() == master::IndexStatusPB::BACKFILL_SUCCESS;
 }
 
+// True if the master reports the index's birth_time as final. A master that does not report
+// birth_time_state is treated as not final.
+bool IsBirthTimeFinal(const master::IndexStatusPB& index_status) {
+  return index_status.has_birth_time_state() &&
+         index_status.birth_time_state() == IndexInfoPB::BIRTH_TIME_FINAL;
+}
+
 struct IndexUpdateInfo {
   TableId index_table_id;
   uint64_t birth_time = 0;
+  bool backfill_done = false;
+  bool birth_time_final = false;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(index_table_id, birth_time);
+    return YB_STRUCT_TO_STRING(index_table_id, birth_time, backfill_done, birth_time_final);
   }
 };
+
+// Returns the metadata update to apply for an index table, if the master's index status allows
+// any.
+std::optional<IndexUpdateInfo> MakeIndexUpdateInfo(
+    const TableId& index_table_id, const master::IndexStatusPB& index_status) {
+  const bool backfill_done = IsBackfillDone(index_status);
+  const bool birth_time_final = IsBirthTimeFinal(index_status);
+  if (!backfill_done && !birth_time_final) {
+    return std::nullopt;
+  }
+  return IndexUpdateInfo{
+      .index_table_id = index_table_id,
+      .birth_time = index_status.has_birth_time() ? index_status.birth_time() : 0,
+      .backfill_done = backfill_done,
+      .birth_time_final = birth_time_final,
+  };
+}
 
 using TabletTablesMap = std::unordered_map<TabletId, std::vector<IndexUpdateInfo>>;
 
@@ -204,7 +233,8 @@ class TabletMetadataValidator::Impl final {
   // Requests index permissions for tables_to_sync_.
   Result<master::GetBackfillStatusResponsePB> SyncWithMaster();
 
-  // Updates metadata for the requested indexes. Currently, may trigger OnBackfillDone() only.
+  // Updates metadata for the requested indexes: triggers OnBackfillDone() or
+  // OnNonConcurrentIndexDone().
   void TriggerMetadataUpdate(const TabletTablesMap& indexes_for_update);
 
  private:
@@ -300,18 +330,18 @@ bool TabletMetadataValidator::Impl::HandleMasterResponse(
       LOG(INFO) << "Failed to get index status for table " << index_table_id << ", "
                 << "error: [" << StatusFromPB(index_status.error()) << "]. "
                 << "It is expected to get some errors from time to time.";
-    } else if (IsBackfillDone(index_status)) {
-      const uint64_t birth_time = index_status.has_birth_time()
-          ? index_status.birth_time() : 0;
+    } else if (auto update = MakeIndexUpdateInfo(index_table_id, index_status)) {
       auto [index_tablets_begin, index_tablets_end] =
           index_tablets_to_sync_.get<IndexTableIdTag>().equal_range(index_table_id);
       for (auto it = index_tablets_begin; it != index_tablets_end; ++it) {
-        indexes_for_update[it->index_tablet_id].push_back(
-            IndexUpdateInfo{index_table_id, birth_time});
+        indexes_for_update[it->index_tablet_id].push_back(*update);
       }
     }
 
     // Third step, clean index tables from future synchronization.
+    // TODO(#37622): an index that is still pending on the master is dropped here too, so if the
+    // master's finalize RPC is later lost, it is only rechecked when the tablet is reopened, and
+    // not even then while the cached (pending) answer is kept.
     index_tablets_to_sync_.get<IndexTableIdTag>().erase(index_table_id);
   }
 
@@ -346,14 +376,12 @@ std::pair<size_t, size_t> TabletMetadataValidator::Impl::HandleScheduledTablets(
     }
 
     // An index table is in the cache, no need to request its status from the master. Let's just
-    // check if its peers' metadata should be updated due to the table backfilling is done.
+    // check if its peers' metadata should be updated due to the table backfilling is done or its
+    // birth_time is final.
     VLOG_WITH_PREFIX(2) << "Index status for table " << cache_it->table_id()
                         << " was found in the cache: sync with master is not required";
-    if (IsBackfillDone(cache_it->index_status)) {
-      const uint64_t birth_time = cache_it->index_status.has_birth_time()
-          ? cache_it->index_status.birth_time() : 0;
-      indexes_from_cache[(*it).index_tablet_id].push_back(
-          IndexUpdateInfo{(*it).index_table_id, birth_time});
+    if (auto update = MakeIndexUpdateInfo((*it).index_table_id, cache_it->index_status)) {
+      indexes_from_cache[(*it).index_tablet_id].push_back(std::move(*update));
     }
   }
   VLOG_WITH_PREFIX(2) << "To sync: " << yb::ToString(index_tablets_to_sync_);
@@ -422,12 +450,15 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
     return false;
   }
 
-  // Pick all index tables with retain_delete_markers set to true.
+  // Pick all index tables with retain_delete_markers set to true, or whose birth_time is not final
+  // yet: the master's RPC that finalizes them might have failed.
   std::vector<IndexTableInfo> candidates;
   candidates.reserve(meta.GetColocatedTablesCount()); // Let's try to predict the size.
   meta.IterateColocatedTables([this, &meta, &candidates](const yb::tablet::TableInfo& info){
     VLOG_WITH_PREFIX(4) << "Candidate: " << info.ToString();
-    if (info.schema().table_properties().retain_delete_markers()) {
+    if (info.schema().table_properties().retain_delete_markers() ||
+        (info.index_info &&
+         info.index_info->birth_time_state() != IndexInfoPB::BIRTH_TIME_FINAL)) {
       // For colocation tables info.index_info may not be set and thus it's not possible
       // to get indexed_table_id to be able to prepare more optimal request. Let's use
       // index table id instead of indexed table id to reuse the same structures.
@@ -441,7 +472,8 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
   }
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << meta.raft_group_id() << ": found index table(s) with "
-                        << "retain delete markers set: " << yb::ToString(candidates);
+                        << "retain delete markers set or birth time pending: "
+                        << yb::ToString(candidates);
   {
     std::lock_guard lock(scheduled_index_tablets_mutex_);
     scheduled_index_tablets_.insert(
@@ -538,13 +570,42 @@ void TabletMetadataValidator::Impl::TriggerMetadataUpdate(
       continue;
     }
 
-    // Iterate through all tables of the current tablet and trigger backfill done.
+    // Iterate through all tables of the current tablet and trigger backfill done or non-concurrent
+    // index done.
     for (const auto& index_update : index_tables) {
-      LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id << " index table "
-                            << index_update.index_table_id << ": resetting backfill as done"
-                            << " (birth_time=" << index_update.birth_time << ")";
-      auto status = tablet_meta->OnBackfillDone(
-          index_update.index_table_id, index_update.birth_time);
+      auto table_info = tablet_meta->GetTableInfo(index_update.index_table_id);
+      if (!table_info.ok()) {
+        VLOG_WITH_PREFIX_AND_FUNC(2) << "Tablet " << index_tablet_id << " index table "
+                                     << index_update.index_table_id << " is not found: "
+                                     << table_info.status();
+        continue;
+      }
+      Status status;
+      if ((*table_info)->index_info && (*table_info)->index_info->birth_time_state() ==
+                                           IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT) {
+        // A nonconcurrently built index has read permissions (so "backfill done") as soon as it is
+        // created, so only the master's birth_time_state tells that its transaction committed.
+        if (!index_update.birth_time_final) {
+          VLOG_WITH_PREFIX_AND_FUNC(2) << "Tablet " << index_tablet_id << " index table "
+                                       << index_update.index_table_id
+                                       << ": birth time is not final on the master yet";
+          continue;
+        }
+        LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id << " index table "
+                              << index_update.index_table_id
+                              << ": resetting non-concurrent index as done"
+                              << " (birth_time=" << index_update.birth_time << ")";
+        status = tablet_meta->OnNonConcurrentIndexDone(
+            index_update.index_table_id, index_update.birth_time);
+      } else {
+        if (!index_update.backfill_done) {
+          continue;
+        }
+        LOG_WITH_PREFIX(INFO) << "Tablet " << index_tablet_id << " index table "
+                              << index_update.index_table_id << ": resetting backfill as done"
+                              << " (birth_time=" << index_update.birth_time << ")";
+        status = tablet_meta->OnBackfillDone(index_update.index_table_id, index_update.birth_time);
+      }
       // Sanity check. In accordace with the method description, NotFound is the only possible
       // error. We are OK to not handle the error as the peer is not serving the table anymore.
       if (!status.ok() && !status.IsNotFound()) {

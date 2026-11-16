@@ -43,8 +43,12 @@ import com.yugabyte.yba.v2.client.models.S3IamCredentials;
 import com.yugabyte.yba.v2.client.models.S3RegionLocation;
 import com.yugabyte.yba.v2.client.models.S3StorageSpec;
 import com.yugabyte.yba.v2.client.models.StorageConfig;
+import com.yugabyte.yba.v2.client.models.StorageConfigApiFilter;
+import com.yugabyte.yba.v2.client.models.StorageConfigPagedQuerySpec;
+import com.yugabyte.yba.v2.client.models.StorageConfigPagedResp;
 import com.yugabyte.yba.v2.client.models.StorageConfigSpec;
 import com.yugabyte.yba.v2.client.models.StorageConfigState;
+import com.yugabyte.yba.v2.client.models.StorageConfigUsage;
 import com.yugabyte.yba.v2.client.models.StorageSpec;
 import com.yugabyte.yba.v2.client.models.StorageType;
 import com.yugabyte.yba.v2.client.models.YBATask;
@@ -52,17 +56,25 @@ import com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.customer.config.UnsavedStorageConfigs;
+import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -99,6 +111,13 @@ public class StorageConfigApiTest extends FakeDBApplication {
 
   private UUID create(StorageConfigSpec spec) throws ApiException {
     return storageConfigApi.createStorageConfig(customer.getUuid(), spec, null).getResourceUuid();
+  }
+
+  /** Creates the config, then makes it Active as its passing storage check would. */
+  private UUID createActive(StorageConfigSpec spec) throws ApiException {
+    UUID uuid = create(spec);
+    CustomerConfig.get(customer.getUuid(), uuid).updateState(ConfigState.Active);
+    return uuid;
   }
 
   private static StorageConfigSpec s3Spec(String name) {
@@ -518,6 +537,178 @@ public class StorageConfigApiTest extends FakeDBApplication {
         assertThrows(
             ApiException.class, () -> storageConfigApi.getStorageConfig(other.getUuid(), nfs));
     assertEquals(401, e.getCode());
+  }
+
+  private List<String> names(StorageConfigPagedResp page) {
+    return page.getEntities().stream().map(c -> c.getSpec().getName()).toList();
+  }
+
+  private StorageConfigPagedResp list(StorageConfigApiFilter filter) throws ApiException {
+    StorageConfigPagedQuerySpec query = new StorageConfigPagedQuerySpec();
+    query.setFilter(filter);
+    return storageConfigApi.pageListStorageConfigs(customer.getUuid(), query);
+  }
+
+  @Test
+  public void listWithUsageAndFilters() throws ApiException {
+    UUID backedUp = createActive(nfsSpec("nfs-backups", "/mnt/a"));
+    UUID scheduled = createActive(nfsSpec("NFS-schedules", "/mnt/b"));
+    UUID dr = createActive(s3Spec("s3-dr"));
+    UUID unused = createActive(nfsSpec("nfs-unused", "/mnt/d"));
+    // Not listed: another type of config, and another customer's storage config.
+    CustomerConfig alerts = CustomerConfig.createAlertConfig(customer.getUuid(), Json.newObject());
+    alerts.generateUUID();
+    alerts.save();
+    Customer other = ModelFactory.testCustomer("other-customer");
+    CustomerConfig othersConfig =
+        CustomerConfig.createStorageConfig(
+            other.getUuid(), "NFS", "nfs-other", Json.parse("{\"BACKUP_LOCATION\": \"/mnt\"}"));
+    othersConfig.generateUUID();
+    othersConfig.save();
+
+    Universe backupUniverse = ModelFactory.createUniverse("backups", customer.getId());
+    ModelFactory.createBackup(customer.getUuid(), backupUniverse.getUniverseUUID(), backedUp);
+    // A backup of a universe that no longer exists still blocks delete.
+    ModelFactory.createBackup(customer.getUuid(), UUID.randomUUID(), backedUp);
+    Universe scheduleUniverse = ModelFactory.createUniverse("schedules", customer.getId());
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            customer.getUuid(), scheduleUniverse.getUniverseUUID(), scheduled);
+    Universe source = ModelFactory.createUniverse("source", customer.getId());
+    Universe target = ModelFactory.createUniverse("target", customer.getId());
+    BootstrapBackupParams bootstrap = new BootstrapBackupParams();
+    bootstrap.storageConfigUUID = dr;
+    DrConfig drConfig =
+        DrConfig.create(
+            "dr",
+            source.getUniverseUUID(),
+            target.getUniverseUUID(),
+            bootstrap,
+            new PitrParams(),
+            Set.of("db1"),
+            false);
+
+    StorageConfigPagedResp all = list(null);
+    // By name, case-insensitive.
+    assertEquals(List.of("nfs-backups", "NFS-schedules", "nfs-unused", "s3-dr"), names(all));
+    assertEquals(Integer.valueOf(4), all.getTotalCount());
+    Map<UUID, StorageConfigUsage> usage =
+        all.getEntities().stream()
+            .collect(
+                java.util.stream.Collectors.toMap(
+                    c -> c.getInfo().getUuid(), c -> c.getInfo().getUsage()));
+    assertTrue(usage.get(backedUp).getInUse());
+    assertEquals(List.of(backupUniverse.getUniverseUUID()), usage.get(backedUp).getUniverseUuids());
+    assertTrue(usage.get(scheduled).getInUse());
+    assertEquals(List.of(schedule.getScheduleUUID()), usage.get(scheduled).getScheduleUuids());
+    assertEquals(
+        List.of(scheduleUniverse.getUniverseUUID()), usage.get(scheduled).getUniverseUuids());
+    assertTrue(usage.get(dr).getInUse());
+    assertEquals(List.of(drConfig.getUuid()), usage.get(dr).getDrConfigUuids());
+    assertEquals(
+        Set.of(source.getUniverseUUID(), target.getUniverseUUID()),
+        Set.copyOf(usage.get(dr).getUniverseUuids()));
+    assertFalse(usage.get(unused).getInUse());
+    assertTrue(usage.get(unused).getUniverseUuids().isEmpty());
+
+    // GET reports the same usage.
+    assertEquals(
+        usage.get(backedUp),
+        storageConfigApi.getStorageConfig(customer.getUuid(), backedUp).getInfo().getUsage());
+
+    // A DR config whose only xCluster config is the failover one still lists its universes.
+    for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
+      xClusterConfig.setSecondary(true);
+      xClusterConfig.update();
+    }
+    assertEquals(
+        Set.of(source.getUniverseUUID(), target.getUniverseUUID()),
+        Set.copyOf(
+            storageConfigApi
+                .getStorageConfig(customer.getUuid(), dr)
+                .getInfo()
+                .getUsage()
+                .getUniverseUuids()));
+
+    assertEquals(
+        List.of("s3-dr"),
+        names(list(new StorageConfigApiFilter().storageTypes(List.of(StorageType.StorageTypeS3)))));
+    assertEquals(
+        List.of("NFS-schedules"), names(list(new StorageConfigApiFilter().name("NFS-schedules"))));
+    assertEquals(
+        List.of("nfs-backups", "NFS-schedules", "s3-dr"),
+        names(list(new StorageConfigApiFilter().inUse(true))));
+    assertEquals(List.of("nfs-unused"), names(list(new StorageConfigApiFilter().inUse(false))));
+
+    CustomerConfig queued = CustomerConfig.get(customer.getUuid(), unused);
+    queued.setState(ConfigState.QueuedForDeletion);
+    queued.update();
+    assertEquals(
+        List.of("nfs-unused"),
+        names(
+            list(
+                new StorageConfigApiFilter()
+                    .states(List.of(StorageConfigState.StorageConfigQueuedForDeletion)))));
+    queued.setState(ConfigState.Validating);
+    queued.update();
+    assertEquals(
+        List.of("nfs-unused"),
+        names(
+            list(
+                new StorageConfigApiFilter()
+                    .states(List.of(StorageConfigState.StorageConfigValidating)))));
+    assertFalse(
+        names(
+                list(
+                    new StorageConfigApiFilter()
+                        .states(List.of(StorageConfigState.StorageConfigActive))))
+            .contains("nfs-unused"));
+    queued.setState(ConfigState.QueuedForDeletion);
+    queued.update();
+    // Filters combine.
+    assertTrue(
+        list(new StorageConfigApiFilter()
+                .inUse(true)
+                .storageTypes(List.of(StorageType.StorageTypeNFS))
+                .name("s3-dr"))
+            .getEntities()
+            .isEmpty());
+
+    StorageConfigPagedQuerySpec page = new StorageConfigPagedQuerySpec();
+    page.setLimit(2);
+    page.setOffset(2);
+    page.setDirection(StorageConfigPagedQuerySpec.DirectionEnum.DESC);
+    StorageConfigPagedResp second =
+        storageConfigApi.pageListStorageConfigs(customer.getUuid(), page);
+    assertEquals(List.of("NFS-schedules", "nfs-backups"), names(second));
+    assertTrue(second.getHasPrev());
+    assertFalse(second.getHasNext());
+  }
+
+  @Test
+  public void schedulesCountedAsTheDeleteCountsThem() throws ApiException {
+    Universe universe = ModelFactory.createUniverse("schedules", customer.getId());
+    UUID stopped = createActive(nfsSpec("stopped", "/mnt/a"));
+    UUID createBackup = createActive(nfsSpec("create-backup", "/mnt/b"));
+    UUID deleting = createActive(nfsSpec("deleting", "/mnt/c"));
+    // A stopped schedule still keeps the v1 delete from removing the config.
+    ModelFactory.createScheduleBackup(customer.getUuid(), universe.getUniverseUUID(), stopped)
+        .setStatus(Schedule.State.Stopped);
+    ModelFactory.createScheduleBackup(
+        customer.getUuid(), universe.getUniverseUUID(), createBackup, TaskType.CreateBackup);
+    // One being deleted doesn't.
+    ModelFactory.createScheduleBackup(customer.getUuid(), universe.getUniverseUUID(), deleting)
+        .setStatus(Schedule.State.Deleting);
+
+    assertTrue(usageOf(stopped).getInUse());
+    assertTrue(usageOf(createBackup).getInUse());
+    assertFalse(usageOf(deleting).getInUse());
+    assertEquals(
+        List.of("create-backup", "stopped"), names(list(new StorageConfigApiFilter().inUse(true))));
+  }
+
+  private StorageConfigUsage usageOf(UUID configUuid) throws ApiException {
+    return storageConfigApi.getStorageConfig(customer.getUuid(), configUuid).getInfo().getUsage();
   }
 
   @Test

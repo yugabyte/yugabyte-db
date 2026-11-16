@@ -364,4 +364,18 @@ public class StorageConfigMapperTest {
     v1.setState(ConfigState.Active);
     assertEquals(StorageConfigState.StorageConfigActive, MAPPER.toStorageConfigInfo(v1).getState());
   }
+
+  @Test
+  public void stateFilterMapsBack() {
+    // Every v2 state maps back to the v1 state it came from, for the list's state filter.
+    for (ConfigState state : ConfigState.values()) {
+      CustomerConfig v1 =
+          toV1(
+              "nfs",
+              new NfsStorageSpec().storageType(StorageType.StorageTypeNFS).backupLocation("/mnt"));
+      v1.setConfigUUID(UUID.randomUUID());
+      v1.setState(state);
+      assertEquals(state, StorageConfigMapper.toV1State(MAPPER.toStorageConfigInfo(v1).getState()));
+    }
+  }
 }
