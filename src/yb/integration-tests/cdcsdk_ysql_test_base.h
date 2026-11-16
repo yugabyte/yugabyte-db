@@ -879,6 +879,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void LogRetentionBarrierDetails(const tablet::TabletPeerPtr& tablet_peer);
 
+  // If 'expected', waits until every peer of the table's tablets has CDCSDK retention barriers.
+  // Otherwise asserts that no peer has them.
+  void VerifyCDCSDKRetentionBarriers(const TableId& table_id, bool expected);
+
   void ConsumeSnapshotAndVerifyRecords(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,

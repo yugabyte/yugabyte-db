@@ -1825,6 +1825,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const google::protobuf::RepeatedPtrField<std::string>& table_ids) const
       REQUIRES_SHARED(mutex_);
 
+  // Whether 'table', created after the CDCSDK stream, can be added to the stream: a regular stream
+  // and one bound to a FOR ALL TABLES publication take every new table, while a stream bound to a
+  // publication with a table list takes it only if it is a rewrite of one of its tables.
+  bool CDCSDKStreamTakesNewTable(const CDCStreamInfo& stream, const TableInfo& table) const
+      REQUIRES_SHARED(mutex_);
+
+  // Whether 'table' is a rewrite of one of the tables of a CDCSDK stream, whose tables have the PG
+  // table oids 'stream_pg_table_oids'. A rewrite gives the PG table a new DocDB table with the same
+  // PG table oid, so sharing a PG table oid with a stream table is what identifies one.
+  static bool IsRewriteOfStreamTable(
+      const std::unordered_set<uint32_t>& stream_pg_table_oids, const TableInfo& table);
+
   // This method compares all tables in the namespace eligible for a CDCSDK stream to all the tables
   // added to a CDCSDK stream, to find indexes / mat views that are part of the CDCSDK streams.
   void FindAllNonEligibleTablesInCDCSDKStream(

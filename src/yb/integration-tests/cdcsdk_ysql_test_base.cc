@@ -4869,6 +4869,33 @@ void CDCSDKYsqlTest::LogRetentionBarrierDetails(
             << ", Intents protected from: " << tablet_peer->cdc_sdk_min_checkpoint_op_id();
 }
 
+void CDCSDKYsqlTest::VerifyCDCSDKRetentionBarriers(const TableId& table_id, bool expected) {
+  const auto tablet_ids = ListTabletIdsForTable(test_cluster(), table_id);
+  ASSERT_FALSE(tablet_ids.empty()) << "No tablets for table " << table_id;
+  auto all_peers_match = [&]() {
+    size_t num_peers = 0;
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (!tablet_ids.contains(peer->tablet_id())) {
+          continue;
+        }
+        ++num_peers;
+        if ((peer->cdc_sdk_min_checkpoint_op_id() != OpId::Invalid()) != expected) {
+          return false;
+        }
+      }
+    }
+    return num_peers > 0;
+  };
+  if (expected) {
+    ASSERT_OK(WaitFor(
+        all_peers_match, MonoDelta::FromSeconds(60),
+        Format("Retention barriers not set on table $0", table_id)));
+  } else {
+    ASSERT_TRUE(all_peers_match()) << "Retention barriers set on table " << table_id;
+  }
+}
+
 void CDCSDKYsqlTest::ConsumeSnapshotAndVerifyRecords(
     const xrepl::StreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,

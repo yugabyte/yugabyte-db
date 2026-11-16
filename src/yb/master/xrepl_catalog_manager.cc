@@ -369,8 +369,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
         auto stream_pg_table_oids =
             catalog_manager_->GetPgTableOidsOfCDCSDKStreamTables(metadata.table_id());
         std::erase_if(eligible_tables_info, [&](const TableInfoPtr& table_info) {
-          auto pg_table_oid = table_info->GetPgTableOid();
-          return !pg_table_oid.ok() || !stream_pg_table_oids.contains(*pg_table_oid);
+          return !CatalogManager::IsRewriteOfStreamTable(stream_pg_table_oids, *table_info);
         });
       }
       catalog_manager_->FindAllTablesMissingInCDCSDKStream(
@@ -2102,7 +2101,7 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
   auto namespace_id = table->namespace_id();
   std::vector<CDCStreamInfoPtr> streams;
 
-  // Get all the CDCSDK streams on the namespace
+  // Get all the CDCSDK streams on the namespace that take the new table
   {
     SharedLock lock(mutex_);
     for (const auto& entry : cdc_stream_map_) {
@@ -2112,7 +2111,8 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
            IsTableEligibleForCDCSDKStream(
                table, table->LockForRead(), /*check_schema=*/true,
                stream_info->IsTablesWithoutPrimaryKeyAllowed(),
-               stream_info->DetectPublicationChangesImplicitly()))) {
+               stream_info->DetectPublicationChangesImplicitly()) &&
+           CDCSDKStreamTakesNewTable(*stream_info, *table))) {
         streams.emplace_back(stream_info);
       }
     }
@@ -2448,7 +2448,10 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     auto ltm = stream_info->LockForRead();
     if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE ||
         ltm->pb.state() == SysCDCStreamEntryPB::DELETING_METADATA) {
-      std::optional<std::unordered_set<uint32_t>> stream_pg_table_oids;
+      std::unordered_set<uint32_t> stream_pg_table_oids;
+      if (takes_only_rewritten_tables) {
+        stream_pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
+      }
       for (const auto& unprocessed_table_id : *unprocessed_tables) {
         auto table = tables_->FindTableOrNull(unprocessed_table_id);
         if (!table) {
@@ -2464,14 +2467,9 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
           continue;
         }
 
-        if (takes_only_rewritten_tables) {
-          if (!stream_pg_table_oids) {
-            stream_pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
-          }
-          auto pg_table_oid = table->GetPgTableOid();
-          if (!pg_table_oid.ok() || !stream_pg_table_oids->contains(*pg_table_oid)) {
-            continue;
-          }
+        if (takes_only_rewritten_tables &&
+            !IsRewriteOfStreamTable(stream_pg_table_oids, *table)) {
+          continue;
         }
 
         bool present_in_qualified_table_list =
@@ -2554,6 +2552,22 @@ std::unordered_set<uint32_t> CatalogManager::GetPgTableOidsOfCDCSDKStreamTables(
     }
   }
   return pg_table_oids;
+}
+
+bool CatalogManager::CDCSDKStreamTakesNewTable(
+    const CDCStreamInfo& stream, const TableInfo& table) const {
+  auto ltm = stream.LockForRead();
+  if (!ltm->pb.cdcsdk_ysql_publications_bound_stream() ||
+      ltm->pb.cdcsdk_ysql_include_new_tables()) {
+    return true;
+  }
+  return IsRewriteOfStreamTable(GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id()), table);
+}
+
+bool CatalogManager::IsRewriteOfStreamTable(
+    const std::unordered_set<uint32_t>& stream_pg_table_oids, const TableInfo& table) {
+  auto pg_table_oid = table.GetPgTableOid();
+  return pg_table_oid.ok() && stream_pg_table_oids.contains(*pg_table_oid);
 }
 
 Status CatalogManager::FindCDCSDKStreamsForNonEligibleTables(

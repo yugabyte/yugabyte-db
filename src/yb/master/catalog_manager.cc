@@ -13301,14 +13301,15 @@ Status CatalogManager::SendCreateTabletRequests(
       for (const auto& entry : cdc_stream_map_) {
         const auto stream = entry.second;
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
-        // one stream with replication slot consumption exists on the namespace.
+        // one stream with replication slot consumption on the namespace takes the table.
         if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
             (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
              IsCdcLogicalReplicationStream(*stream) &&
              IsTableEligibleForCDCSDKStream(
                  tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
                  stream->IsTablesWithoutPrimaryKeyAllowed(),
-                 stream->DetectPublicationChangesImplicitly()))) {
+                 stream->DetectPublicationChangesImplicitly()) &&
+             CDCSDKStreamTakesNewTable(*stream, *tablet->table()))) {
           can_set_cdc_sdk_retention_barriers = true;
           break;
         }
