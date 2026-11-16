@@ -2546,8 +2546,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertTrue(removeIps.containsAll(beforeIps));
     // No CR state left after failed edit catch cleanup => no ReleaseCapacityReservation.
     assertFalse(rollbackTypes.contains(TaskType.DeleteCapacityReservation));
-    verify(mockSwamperHelper, atLeastOnce())
-        .writeUniverseTargetJson(universe.getUniverseUUID(), false);
+    verify(mockSwamperHelper, atLeastOnce()).writeUniverseTargetJson(universe.getUniverseUUID());
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(nodesBefore, universe.getUniverseDetails().nodeDetailsSet.size());

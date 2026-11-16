@@ -24,8 +24,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -128,24 +130,42 @@ public class TlsToggleKubernetesTest extends KubernetesUpgradeTaskTest {
     assertFalse(defaultUniverse.getUniverseDetails().allowInsecure);
   }
 
+  // The sidecar's scrape scheme follows node-to-node encryption, so the targets are rewritten
+  // once the pods have restarted with it.
   @Test
-  public void testNonRollingRewritesTargetsOnceWithSidecar() throws Exception {
-    assertEquals(1, countForcedTargetRewrites(enableTlsNonRolling(true /* sidecarKey */)));
+  public void testTlsToggleRewritesTargetsAfterTheRestart() throws Exception {
+    TaskInfo taskInfo = enableTlsNonRolling();
+    List<Integer> rewrites =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.SwamperTargetsFileUpdate)
+            .map(TaskInfo::getPosition)
+            .collect(Collectors.toList());
+    int lastWait =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.WaitForServer)
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .orElseThrow();
+    assertEquals(1, rewrites.size());
+    assertTrue(rewrites.get(0) > lastWait);
   }
 
+  // Every pod restarted on the template rendered with node-to-node encryption, so the sidecars are
+  // recorded as serving TLS.
   @Test
-  public void testNonRollingDoesNotForceTargetRewriteWithoutSidecar() throws Exception {
-    assertEquals(0, countForcedTargetRewrites(enableTlsNonRolling(false /* sidecarKey */)));
+  public void testTlsToggleRecordsSidecarTls() throws Exception {
+    enableTlsNonRolling();
+    assertTrue(isNodeExporterHttpsRecorded());
   }
 
-  private TaskInfo enableTlsNonRolling(boolean sidecarKey) throws Exception {
+  private TaskInfo enableTlsNonRolling() throws Exception {
     tlsToggleKubernetes.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
     TestHelper.updateUniverseVersion(
         defaultUniverse, NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.kubernetes.node_exporter.enabled", String.valueOf(sidecarKey));
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "true");
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
     rootCAUUID = UUID.randomUUID();
     createRootCAUUID();
     TlsToggleParams tlsToggleParams = new TlsToggleParams();
@@ -158,13 +178,6 @@ public class TlsToggleKubernetesTest extends KubernetesUpgradeTaskTest {
     TaskInfo taskInfo = submitTask(tlsToggleParams);
     assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
     return taskInfo;
-  }
-
-  private static long countForcedTargetRewrites(TaskInfo taskInfo) {
-    return taskInfo.getSubTasks().stream()
-        .filter(t -> t.getTaskType() == TaskType.SwamperTargetsFileUpdate)
-        .filter(t -> t.getTaskParams().path("readPods").asBoolean())
-        .count();
   }
 
   @Test

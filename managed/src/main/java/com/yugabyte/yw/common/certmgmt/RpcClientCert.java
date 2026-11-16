@@ -9,7 +9,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -17,7 +16,10 @@ import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.PrivateKey;
 import java.security.Signature;
 import java.security.cert.X509Certificate;
@@ -310,6 +312,18 @@ public class RpcClientCert {
   }
 
   private static void replace(String file, String content) throws IOException {
-    FileUtils.writeFileAtomically(file, content, "rw-------");
+    Path path = Paths.get(file);
+    Path tmp =
+        Files.createTempFile(
+            path.getParent(),
+            path.getFileName().toString(),
+            ".tmp",
+            PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+    try {
+      Files.writeString(tmp, content);
+      Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    } finally {
+      Files.deleteIfExists(tmp);
+    }
   }
 }

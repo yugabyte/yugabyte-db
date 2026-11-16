@@ -524,6 +524,11 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           false /* useNewMasterDeviceInfo */,
           false /* useNewTserverDeviceInfo */);
     }
+
+    // POD_DELETE restarts pods on the template they already have.
+    if (upgradeMasters && upgradeTservers && commandType == CommandType.HELM_UPGRADE) {
+      createRecordNodeExporterTlsTask(softwareVersion);
+    }
   }
 
   public void createNonRollingUpgradeTask(
@@ -670,6 +675,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           createWaitForYbcServerTask(replicaTservers);
         }
       }
+    }
+
+    if (isMasterChanged && isTServerChanged) {
+      createRecordNodeExporterTlsTask(softwareVersion);
     }
   }
 

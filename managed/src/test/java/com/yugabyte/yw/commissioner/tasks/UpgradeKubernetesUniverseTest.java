@@ -31,7 +31,6 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
@@ -112,10 +111,6 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
-    // The test versions don't parse and so pass the sidecar's gate; default the sidecar to off.
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue(UniverseConfKeys.k8sNodeExporterEnabled.getKey(), "false");
 
     try {
       File jsonFile = new File("src/test/resources/testPod.json");
@@ -299,8 +294,10 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitStartingFromTime,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
           TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<TaskType> KUBERNETES_UPGRADE_GFLAG_TASKS =
@@ -356,6 +353,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitStartingFromTime,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static List<JsonNode> createUpgradeSoftwareResult(boolean isSingleAZ) {
@@ -452,6 +451,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }
 
@@ -529,6 +530,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
                 "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -627,33 +630,6 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UpgradeTaskParams.UpgradeTaskType.Software, true);
     assertEquals(Success, taskInfo.getTaskState());
-  }
-
-  @Test
-  public void testSoftwareUpgradeRewritesTargetsAfterEachBatchWithSidecar() {
-    setupUniverseSingleAZ(/* Create Masters */ false);
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue(UniverseConfKeys.k8sNodeExporterEnabled.getKey(), "true");
-
-    UpgradeKubernetesUniverse.Params taskParams = new UpgradeKubernetesUniverse.Params();
-    taskParams.ybSoftwareVersion = "new-version";
-    TaskInfo taskInfo = submitTask(taskParams, UpgradeTaskParams.UpgradeTaskType.Software);
-
-    assertEquals(Success, taskInfo.getTaskState());
-    long batches =
-        taskInfo.getSubTasks().stream()
-            .filter(t -> t.getTaskType() == TaskType.WaitForServerReady)
-            .map(TaskInfo::getPosition)
-            .distinct()
-            .count();
-    assertTrue(batches > 1);
-    assertEquals(
-        batches,
-        taskInfo.getSubTasks().stream()
-            .filter(t -> t.getTaskType() == TaskType.SwamperTargetsFileUpdate)
-            .filter(t -> t.getTaskParams().path("readPods").asBoolean())
-            .count());
   }
 
   @Test

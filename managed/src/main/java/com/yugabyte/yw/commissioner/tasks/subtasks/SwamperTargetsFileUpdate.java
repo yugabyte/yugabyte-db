@@ -32,8 +32,6 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
   public static class Params extends AbstractTaskParams {
     public UUID universeUUID;
     public boolean removeFile = false;
-    // Read each K8s pod's node_exporter scheme even when the previous targets list every node.
-    public boolean readPods = false;
   }
 
   protected SwamperTargetsFileUpdate.Params taskParams() {
@@ -55,7 +53,7 @@ public class SwamperTargetsFileUpdate extends AbstractTaskBase {
     try {
       log.info("Running {}", getName());
       if (!taskParams().removeFile) {
-        swamperHelper.writeUniverseTargetJson(taskParams().universeUUID, taskParams().readPods);
+        swamperHelper.writeUniverseTargetJson(taskParams().universeUUID);
       } else {
         swamperHelper.removeUniverseTargetJson(taskParams().universeUUID);
       }

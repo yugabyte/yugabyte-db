@@ -539,7 +539,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testNodeExporterTlsOnWithSidecarTlsKeyAndNodeToNode() throws IOException {
-    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE;
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
     UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
     defaultUserIntent.enableNodeToNodeEncrypt = true;
     details.upsertPrimaryCluster(defaultUserIntent, null, null);
@@ -554,7 +554,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
   @Test
   public void testNodeExporterTlsUserOverridesCannotTurnItOn() throws IOException {
-    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE;
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
 
     assertEquals(
         ImmutableMap.of("enabled", false),

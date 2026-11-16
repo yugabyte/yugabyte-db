@@ -39,12 +39,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import io.fabric8.kubernetes.api.model.Container;
-import io.fabric8.kubernetes.api.model.ContainerBuilder;
-import io.fabric8.kubernetes.api.model.Pod;
-import io.fabric8.kubernetes.api.model.PodBuilder;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -881,67 +876,36 @@ public class KubernetesUtilTest extends FakeDBApplication {
     // Each term turns it off on its own.
     assertFalse(
         KubernetesUtil.isNodeExporterSidecarTlsEnabled(
-            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE,
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
             nodeToNode,
             confGetterWithTlsKeys(false, true, false)));
     assertFalse(
         KubernetesUtil.isNodeExporterSidecarTlsEnabled(
-            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE,
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
             nodeToNode,
             confGetterWithTlsKeys(true, false, false)));
     assertFalse(
         KubernetesUtil.isNodeExporterSidecarTlsEnabled(
-            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE,
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
             nodeToNode,
             confGetterWithTlsKeys(true, true, true)));
     assertFalse(
         KubernetesUtil.isNodeExporterSidecarTlsEnabled(
-            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE,
+            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE,
             k8sUniverseWithNodeToNode(false),
             allOn));
     assertFalse(KubernetesUtil.isNodeExporterSidecarTlsEnabled(null, nodeToNode, allOn));
   }
 
+  // The universe form reads the recorded version and is false for a universe that isn't K8s.
   @Test
-  public void testIsNodeExporterSidecarTlsEnabledVersionGate() {
-    Universe nodeToNode = k8sUniverseWithNodeToNode(true);
-    RuntimeConfGetter allOn = confGetterWithTlsKeys(true, true, false);
-    String stable = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE;
-    String preview = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_PREVIEW;
-    String sidecarStable = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
-    String sidecarPreview = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW;
-    try {
-      // Raise the TLS gate above the sidecar's so it is the term that decides.
-      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE = "2026.2.0.0-b9000";
-      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_PREVIEW = "2.33.0.0-b9000";
-      assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled(sidecarStable, nodeToNode, allOn));
-      assertFalse(KubernetesUtil.isNodeExporterSidecarTlsEnabled(sidecarStable, nodeToNode, allOn));
-      assertFalse(
-          KubernetesUtil.isNodeExporterSidecarTlsEnabled(sidecarPreview, nodeToNode, allOn));
-      assertTrue(
-          KubernetesUtil.isNodeExporterSidecarTlsEnabled("2026.2.0.0-b9000", nodeToNode, allOn));
-      assertTrue(
-          KubernetesUtil.isNodeExporterSidecarTlsEnabled("2.33.0.0-b9000", nodeToNode, allOn));
-    } finally {
-      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE = stable;
-      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_PREVIEW = preview;
-    }
-  }
-
-  // The universe forms read the recorded version and are false for a universe that isn't K8s.
-  @Test
-  public void testNodeExporterSidecarHelpersForRecordedVersion() {
+  public void testNodeExporterSidecarEnabledForRecordedVersion() {
     RuntimeConfGetter allOn = confGetterWithTlsKeys(true, true, false);
     Universe k8s = withVersionAndNodeToNode(k8sUniverseWithNodeToNode(true));
     Universe vm =
         withVersionAndNodeToNode(ModelFactory.createUniverse("vm-sidecar", customer.getId()));
     assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled(k8s, allOn));
-    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsEnabled(k8s, allOn));
-    assertTrue(
-        KubernetesUtil.isNodeExporterSidecarTlsEnabled(
-            KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE, vm, allOn));
     assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled(vm, allOn));
-    assertFalse(KubernetesUtil.isNodeExporterSidecarTlsEnabled(vm, allOn));
   }
 
   private Universe withVersionAndNodeToNode(Universe universe) {
@@ -950,35 +914,9 @@ public class KubernetesUtilTest extends FakeDBApplication {
         u -> {
           UniverseDefinitionTaskParams details = u.getUniverseDetails();
           details.getPrimaryCluster().userIntent.ybSoftwareVersion =
-              KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE;
+              KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
           details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
           u.setUniverseDetails(details);
         });
-  }
-
-  @Test
-  public void testHasNodeExporterSidecar() {
-    assertTrue(KubernetesUtil.hasNodeExporterSidecar(sidecarPod(true, false)));
-    assertFalse(KubernetesUtil.hasNodeExporterSidecar(sidecarPod(false, false)));
-  }
-
-  @Test
-  public void testIsNodeExporterSidecarTlsRendered() {
-    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsRendered(sidecarPod(true, true)));
-    assertFalse(KubernetesUtil.isNodeExporterSidecarTlsRendered(sidecarPod(true, false)));
-    assertFalse(KubernetesUtil.isNodeExporterSidecarTlsRendered(sidecarPod(false, false)));
-  }
-
-  private static Pod sidecarPod(boolean sidecar, boolean tls) {
-    List<Container> containers = new ArrayList<>();
-    containers.add(new ContainerBuilder().withName("yb-tserver").build());
-    if (sidecar) {
-      ContainerBuilder exporter = new ContainerBuilder().withName("yb-node-exporter");
-      if (tls) {
-        exporter.addNewEnv().withName("YB_NODE_EXPORTER_TLS_CERT").withValue("/c.crt").endEnv();
-      }
-      containers.add(exporter.build());
-    }
-    return new PodBuilder().withNewSpec().withContainers(containers).endSpec().build();
   }
 }

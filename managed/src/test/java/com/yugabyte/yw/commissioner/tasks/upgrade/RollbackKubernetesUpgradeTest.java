@@ -409,17 +409,9 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     taskParams.verifyParams(defaultUniverse, true);
   }
 
-  private static final String SIDECAR_VERSION = "2026.2.0.0-b5";
-  private static final String BELOW_SIDECAR_VERSION = "2026.1.2.0-b100";
-
-  private TaskInfo rollBackFromSidecarVersion(boolean sidecarKey) throws Exception {
-    return rollBack(sidecarKey, SIDECAR_VERSION, BELOW_SIDECAR_VERSION);
-  }
-
-  // Rolls a node-to-node universe with the node_exporter TLS key on back from one version to
-  // another.
-  private TaskInfo rollBack(boolean sidecarKey, String fromVersion, String toVersion)
-      throws Exception {
+  // Rolls a node-to-node universe with the node_exporter sidecar and TLS keys on back from one
+  // version to another.
+  private void rollBack(String fromVersion, String toVersion) throws Exception {
     setupUniverseSingleAZ(false, true);
     UUID rootCA = UUID.randomUUID();
     CertificateInfo.create(
@@ -446,8 +438,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           universe.setUniverseDetails(details);
         });
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.kubernetes.node_exporter.enabled", String.valueOf(sidecarKey));
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "true");
     RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
     UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
         new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
@@ -470,20 +461,33 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     TaskInfo taskInfo =
         waitForTask(commissioner.submit(TaskType.RollbackKubernetesUpgrade, taskParams));
     assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
-    return taskInfo;
+  }
+
+  // The sidecar and its TLS are on at the recorded version and off at the target.
+  @Test
+  public void testRollbackBelowNodeExporterVersionRendersSidecarOff() throws Exception {
+    rollBackAcrossSidecarGate("2026.2.0.0-b10");
+    assertRenderedNodeExporter(false);
   }
 
   @Test
-  public void testRollbackBelowNodeExporterTlsVersionRendersTlsOff() throws Exception {
-    String tlsStable = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE;
-    try {
-      // A TLS gate above the sidecar's: TLS is on at the recorded version, off at the target.
-      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE = "2026.2.0.0-b20";
-      rollBack(true /* sidecarKey */, "2026.2.0.0-b30", "2026.2.0.0-b10");
-    } finally {
-      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_TLS_STABLE = tlsStable;
-    }
+  public void testRollbackAboveNodeExporterVersionRendersSidecarTlsOn() throws Exception {
+    rollBackAcrossSidecarGate("2026.2.0.0-b25");
+    assertRenderedNodeExporter(true);
+  }
 
+  // Rolls back from 2026.2.0.0-b30 with the stable sidecar gate raised to b20.
+  private void rollBackAcrossSidecarGate(String toVersion) throws Exception {
+    String sidecarStable = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+    try {
+      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = "2026.2.0.0-b20";
+      rollBack("2026.2.0.0-b30", toVersion);
+    } finally {
+      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = sidecarStable;
+    }
+  }
+
+  private void assertRenderedNodeExporter(boolean on) throws Exception {
     ArgumentCaptor<String> overrideFiles = ArgumentCaptor.forClass(String.class);
     verify(mockKubernetesManager, atLeastOnce())
         .helmUpgrade(any(), any(), any(), any(), any(), overrideFiles.capture(), any());
@@ -491,39 +495,9 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
       try (InputStream is = new FileInputStream(overrideFile)) {
         Map<String, Object> nodeExporter =
             (Map<String, Object>) new Yaml().loadAs(is, Map.class).get("nodeExporter");
-        assertEquals(true, nodeExporter.get("enabled"));
-        assertEquals(Map.of("enabled", false), nodeExporter.get("tls"));
+        assertEquals(on, nodeExporter.get("enabled"));
+        assertEquals(Map.of("enabled", on), nodeExporter.get("tls"));
       }
     }
-  }
-
-  @Test
-  public void testRollbackRewritesTargetsAfterEachBatchWithSidecar() throws Exception {
-    TaskInfo taskInfo = rollBackFromSidecarVersion(true /* sidecarKey */);
-
-    long batches =
-        taskInfo.getSubTasks().stream()
-            .filter(t -> t.getTaskType() == TaskType.WaitForServerReady)
-            .map(TaskInfo::getPosition)
-            .distinct()
-            .count();
-    assertTrue(batches > 1);
-    assertEquals(batches, countTargetRewrites(taskInfo, true /* readPods */));
-    assertEquals(1, countTargetRewrites(taskInfo, false /* readPods */));
-  }
-
-  @Test
-  public void testRollbackDoesNotRewriteTargetsPerBatchWithoutSidecar() throws Exception {
-    TaskInfo taskInfo = rollBackFromSidecarVersion(false /* sidecarKey */);
-
-    assertEquals(0, countTargetRewrites(taskInfo, true /* readPods */));
-    assertEquals(1, countTargetRewrites(taskInfo, false /* readPods */));
-  }
-
-  private static long countTargetRewrites(TaskInfo taskInfo, boolean readPods) {
-    return taskInfo.getSubTasks().stream()
-        .filter(t -> t.getTaskType() == TaskType.SwamperTargetsFileUpdate)
-        .filter(t -> t.getTaskParams().path("readPods").asBoolean() == readPods)
-        .count();
   }
 }

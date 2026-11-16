@@ -18,12 +18,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.CustomerTask;
@@ -32,7 +30,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -118,9 +115,11 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
           TaskType.PromoteAutoFlags,
           TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
 
@@ -263,6 +262,8 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }
 
@@ -315,58 +316,6 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
-  }
-
-  // A tserver batch's target rewrite comes after its leader blacklist removal, so a failed write
-  // can't leave the batch blacklisted.
-  @Test
-  public void testSoftwareUpgradeRewritesTargetsAfterBlacklistRemoval() {
-    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
-    setupUniverseSingleAZ(false, true);
-    TestHelper.updateUniverseVersion(
-        defaultUniverse, NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue(UniverseConfKeys.k8sNodeExporterEnabled.getKey(), "true");
-    // The test's newer DB version would otherwise run the nodes-safe check against the mock.
-    factory
-        .forUniverse(defaultUniverse)
-        .setValue(UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(), "false");
-
-    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2026.2.0.0-b5";
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
-
-    Map<Integer, String> waits = new HashMap<>();
-    List<Integer> blacklists = new ArrayList<>();
-    List<Integer> rewrites = new ArrayList<>();
-    for (TaskInfo t : taskInfo.getSubTasks()) {
-      if (t.getTaskType() == TaskType.WaitForServerReady) {
-        waits.put(t.getPosition(), t.getTaskParams().path("serverType").asText());
-      } else if (t.getTaskType() == TaskType.ModifyBlackList) {
-        blacklists.add(t.getPosition());
-      } else if (t.getTaskType() == TaskType.SwamperTargetsFileUpdate
-          && t.getTaskParams().path("readPods").asBoolean()) {
-        rewrites.add(t.getPosition());
-      }
-    }
-    int tserverRewrites = 0;
-    for (int rewrite : rewrites) {
-      int batchWait =
-          waits.keySet().stream().filter(p -> p < rewrite).max(Integer::compare).orElseThrow();
-      if ("TSERVER".equals(waits.get(batchWait))) {
-        tserverRewrites++;
-        assertTrue(
-            "rewrite at " + rewrite + " precedes its batch's blacklist removal",
-            blacklists.stream().anyMatch(p -> p > batchWait && p < rewrite));
-      }
-    }
-    assertEquals(3, tserverRewrites);
   }
 
   @Test
