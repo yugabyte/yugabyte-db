@@ -100,7 +100,7 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
     ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, TSERVER_IDX);
     Set<String> serverIds = new HashSet<>();
     Pattern serverIdPattern =
-        Pattern.compile("\\[\\S+ (\\S+)\\] \\(yb auth passthrough\\)");
+        Pattern.compile("\\[\\S+ (\\S+) \\S+\\] \\(yb auth passthrough\\)");
 
     for (int iteration = 0; iteration < 5; iteration++) {
       tailer.skipToEnd();

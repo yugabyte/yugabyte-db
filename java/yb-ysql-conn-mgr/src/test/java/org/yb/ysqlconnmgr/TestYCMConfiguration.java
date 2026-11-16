@@ -208,4 +208,40 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
     noMatch = tailer.waitForLogRegex("debug", 0, TimeUnit.SECONDS);
     assertNull("Expected no debug log lines after disabling log settings", noMatch);
   }
+
+  // The log prefix is "[<client id> <server id> <backend pid>]"; the pid lets a conn mgr log line
+  // be matched to the postgres backend that served it.
+  @Test
+  public void testLogPrefixHasBackendPid() throws Exception {
+    String targetHost = getPgHost(TSERVER_IDX);
+    HostAndPort tserver = miniCluster.getTabletServers().keySet().stream()
+        .filter(hp -> hp.getHost().equals(targetHost)).findFirst()
+        .orElseThrow(() -> new IllegalStateException("No tserver found for host " + targetHost));
+
+    ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, TSERVER_IDX);
+    setServerFlag(tserver, "ysql_conn_mgr_log_settings", "log_debug");
+    try {
+      String reloaded = tailer.waitForLogRegex(
+          "routes created/deleted and scheduled for removal", 1, TimeUnit.SECONDS);
+      assertNotNull("Expected config reload to happen after changing flag", reloaded);
+      tailer.skipToEnd();
+
+      int backendPid;
+      try (
+          Connection conn =
+              getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                  .withTServer(TSERVER_IDX).connect();
+          Statement stmt = conn.createStatement();
+          ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()")) {
+        rs.next();
+        backendPid = rs.getInt(1);
+      }
+
+      String matched = tailer.waitForLogRegex(
+          "\\[\\S+ s\\S+ " + backendPid + "\\] \\(", 10, TimeUnit.SECONDS);
+      assertNotNull("Expected a log line carrying backend pid " + backendPid, matched);
+    } finally {
+      setServerFlag(tserver, "ysql_conn_mgr_log_settings", "");
+    }
+  }
 }
