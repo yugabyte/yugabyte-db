@@ -842,7 +842,7 @@ public class BackupHelper {
     }
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
-    precheckStorageConfig(storageConfig, universe);
+    precheckStorageConfig(storageConfig, universe, true /* forRestore */, true /* probeNodes */);
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     CustomerConfigData configData = storageConfig.getDataObject();
     Map<String, String> configLocationMap = storageUtil.getRegionLocationsMap(configData);
@@ -868,17 +868,15 @@ public class BackupHelper {
     }
   }
 
-  private void precheckStorageConfig(CustomerConfig storageConfig, Universe universe) {
-    precheckStorageConfig(storageConfig, universe, true /* probeNodes */);
-  }
-
   /**
+   * @param forRestore whether the read replicas' tservers are checked too. A restore reaches the
+   *     bucket from the tservers of every cluster, a backup only from the primary cluster's.
    * @param probeNodes whether an on-prem node whose cloud is not recorded may be probed. A request
    *     thread passes false: a probe is a few commands on each node in turn, and the task that
    *     follows the request runs this precheck again and probes there.
    */
   private void precheckStorageConfig(
-      CustomerConfig storageConfig, Universe universe, boolean probeNodes) {
+      CustomerConfig storageConfig, Universe universe, boolean forRestore, boolean probeNodes) {
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     if (storageUtil.isIamEnabled(storageConfig)
         && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
@@ -887,7 +885,7 @@ public class BackupHelper {
     if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
       validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
     }
-    validateCrossCloudFederationConfigured(storageConfig, universe, probeNodes);
+    validateCrossCloudFederationConfigured(storageConfig, universe, forRestore, probeNodes);
   }
 
   /**
@@ -897,7 +895,7 @@ public class BackupHelper {
    * on it would otherwise wait about 15 minutes and then fail with no error.
    */
   private void validateCrossCloudFederationConfigured(
-      CustomerConfig storageConfig, Universe universe, boolean probeNodes) {
+      CustomerConfig storageConfig, Universe universe, boolean forRestore, boolean probeNodes) {
     CustomerConfigData data = storageConfig.getDataObject();
     CloudType bucketCloud;
     if (data instanceof CustomerConfigStorageS3Data
@@ -911,40 +909,50 @@ public class BackupHelper {
       return;
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    // The API that enables federation on a universe refuses a multicloud cluster, so there is
-    // nothing to point such a cluster at.
+    // The API that enables federation on a universe refuses a multicloud primary cluster, so there
+    // is nothing to point such a universe at.
     if (primaryCluster == null
-        || primaryCluster.userIntent.isFederationConfigured()
         || primaryCluster.userIntent.isMulticloudSupport()
         || isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
-    if (CloudInfoInterface.getCrossCloudFederationTarget(provider, bucketCloud) == null) {
-      // The provider does not federate to this cloud, so the nodes use their own identity.
-      return;
-    }
-    for (NodeDetails node : universe.getRunningTserversInPrimaryCluster()) {
-      CloudType nodeCloud = nodeCloud(universe, primaryCluster, node, probeNodes);
-      // Only a VM on the other cloud can be federated; a node on the bucket's cloud reaches it
-      // natively, and one whose cloud is unknown is left to the YBC check.
-      if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp) && nodeCloud != bucketCloud) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "Universe %s cannot reach this %s bucket: node %s runs on %s and needs"
-                    + " cross-cloud federated IAM, which provider %s has enabled but which is not"
-                    + " enabled on this universe. Enable it with POST"
-                    + " /api/v2/customers/%s/universes/%s/cross-cloud-federation and body"
-                    + " {\"enabled\": true}, then retry.",
-                universe.getName(),
-                storageConfig.getName(),
-                node.nodeName,
-                nodeCloud,
-                provider.getName(),
-                storageConfig.getCustomerUUID(),
-                universe.getUniverseUUID()));
+    // The API configures every cluster, read replicas included, each from its own provider.
+    List<Cluster> clusters =
+        forRestore
+            ? universe.getUniverseDetails().clusters
+            : Collections.singletonList(primaryCluster);
+    for (Cluster cluster : clusters) {
+      // A multicloud read replica has no single provider to read the target from.
+      if (cluster.userIntent.isFederationConfigured() || cluster.userIntent.isMulticloudSupport()) {
+        continue;
+      }
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (CloudInfoInterface.getCrossCloudFederationTarget(provider, bucketCloud) == null) {
+        // The provider does not federate to this cloud, so the nodes use their own identity.
+        continue;
+      }
+      for (NodeDetails node : universe.getRunningTserversinCluster(cluster.uuid)) {
+        CloudType nodeCloud = nodeCloud(universe, cluster, node, probeNodes);
+        // Only a VM on the other cloud can be federated; a node on the bucket's cloud reaches it
+        // natively, and one whose cloud is unknown is left to the YBC check.
+        if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp)
+            && nodeCloud != bucketCloud) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Universe %s cannot reach this %s bucket: node %s runs on %s and needs"
+                      + " cross-cloud federated IAM, which provider %s has enabled but which is"
+                      + " not enabled on this universe. Enable it with POST"
+                      + " /api/v2/customers/%s/universes/%s/cross-cloud-federation and body"
+                      + " {\"enabled\": true}, then retry.",
+                  universe.getName(),
+                  storageConfig.getName(),
+                  node.nodeName,
+                  nodeCloud,
+                  provider.getName(),
+                  storageConfig.getCustomerUUID(),
+                  universe.getUniverseUUID()));
+        }
       }
     }
   }
@@ -1527,7 +1535,7 @@ public class BackupHelper {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     // The restore preflight API reaches this on a request thread. RestorePreflightValidate also
     // does, between its own prechecks, which probe.
-    precheckStorageConfig(storageConfig, universe, false /* probeNodes */);
+    precheckStorageConfig(storageConfig, universe, true /* forRestore */, false /* probeNodes */);
     Map<String, String> successMarkerStrs = new HashMap<>();
     try {
       storageLocationList.stream()
@@ -1659,7 +1667,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    precheckStorageConfig(config, universe);
+    precheckStorageConfig(config, universe, false /* forRestore */, true /* probeNodes */);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (NodeDetails node : nodeDetailsList) {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
@@ -1701,7 +1709,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    precheckStorageConfig(config, universe);
+    precheckStorageConfig(config, universe, true /* forRestore */, true /* probeNodes */);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (String successMarkerLoc : successMarkerLocations) {
       CloudStoreSpec successMarkerCSSpec =

@@ -1619,6 +1619,45 @@ public class BackupHelperTest extends FakeDBApplication {
     Mockito.verify(mockNodeCloudDetector, Mockito.never()).detect(any(), any(), any());
   }
 
+  /**
+   * A restore reaches the bucket from the tservers of every cluster, so a read replica's node needs
+   * federation too. A backup uses only the primary cluster's, so a read replica does not stop it.
+   */
+  @Test
+  public void testReadReplicaNodesAreCheckedOnlyForRestore() {
+    Universe universe = universeOnFederatingProvider(CloudType.onprem, true);
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrIntent.numNodes = 1;
+    Universe withRr =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, null /* placementInfo */));
+    UUID rrUuid = withRr.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
+    // The primary cluster's nodes run on the bucket's cloud, the read replica's node on AWS.
+    Universe recorded =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getNodes()
+                    .forEach(
+                        n ->
+                            n.cloudInfo.physicalCloud =
+                                (rrUuid.equals(n.placementUuid) ? CloudType.aws : CloudType.gcp)
+                                    .name()));
+    CustomerConfig config = gcsIamConfig();
+
+    spyBackupHelper.validateStorageConfigForBackupOnUniverse(config, recorded);
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.getYbcSuccessMarker(
+                    config, Collections.emptySet(), recorded.getUniverseUUID()));
+    assertTrue(e.getMessage(), e.getMessage().contains("runs on aws"));
+  }
+
   /** YBA on AWS -> S3 with federation on: the nodes may federate, YBA uses its native identity. */
   @Test
   public void testS3ConfigIsNotStampedWhenYbaRunsOnAws() {
