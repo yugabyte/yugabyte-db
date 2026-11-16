@@ -548,6 +548,37 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditConfigBeingValidated() {
+    // Created through the v2 API, whose storage check is still running.
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "validating");
+    config.setState(CustomerConfig.ConfigState.Validating);
+    config.update();
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("name", "S3");
+    bodyJson.set("data", config.getData());
+    bodyJson.put("type", STORAGE.toString());
+    bodyJson.put("configName", "renamed");
+    for (String suffix : List.of("", "/edit")) {
+      String url =
+          "/api/customers/"
+              + defaultCustomer.getUuid()
+              + "/configs/"
+              + config.getConfigUUID()
+              + suffix;
+      Result result =
+          assertPlatformException(
+              () ->
+                  doRequestWithAuthTokenAndBody(
+                      "PUT", url, defaultUser.createAuthToken(), bodyJson));
+      assertBadRequest(result, "Cannot edit config while its storage check is running");
+    }
+    config.refresh();
+    assertEquals("validating", config.getConfigName());
+    assertEquals(CustomerConfig.ConfigState.Validating, config.getState());
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
   public void testEditWithBackupLocation() {
     CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14");
     JsonNode newData =
