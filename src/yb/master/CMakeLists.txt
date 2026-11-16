@@ -84,6 +84,7 @@ set(MASTER_SRCS
   catalog_manager_bg_tasks.cc
   catalog_manager_cdc_bg_tasks.cc
   catalog_manager_ext.cc
+  catalog_manager_mutex.cc
   catalog_manager_util.cc
   cdcsdk_manager.cc
   clone/clone_state_entity.cc
@@ -269,6 +270,7 @@ ADD_YB_TEST(async_task_result_collector-test)
 ADD_YB_TEST(online_schema_change-test)
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
+ADD_YB_TEST(catalog_manager_mutex-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)
 ADD_YB_TEST(clone/clone_state_manager-test)
 ADD_YB_TEST(cluster_balance_activity_info-test)
