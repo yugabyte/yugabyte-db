@@ -25,7 +25,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
@@ -81,7 +80,7 @@ public class CloudQueryHelper extends DevopsBase {
    * an {@code {"error": ...}} object if ybops itself failed.
    */
   public JsonNode getCurrentHostInfo(Common.CloudType cloudType) {
-    if (!hostCloudDetector.getHostCloud().equals(Optional.of(cloudType))) {
+    if (!hostCloudDetector.isHostCloud(cloudType)) {
       // Running ybops would only wait out the metadata service timeouts to fail the same way.
       return Json.toJson(
           String.format(
