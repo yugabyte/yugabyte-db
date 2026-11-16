@@ -159,10 +159,10 @@ default, plans a 2-worker Parallel Append on these builds:
 is a property of the plan. Only the time each read takes varies.
 
 **The delay is linear in the relation count.** At a fixed worker count a
-straight line in R fits every environment with R² above 0.998. A table with
-100 partitions and the 600-partition table pruned to 100 took the same time,
-240 ms and 241 ms at 2 workers, so partitions pruned at plan time cost a
-worker nothing.
+straight line in R fits every environment with R-squared above 0.998. A table
+with 100 partitions and the 600-partition table pruned to 100 took the same
+time, 240 ms and 241 ms at 2 workers, so partitions pruned at plan time cost
+a worker nothing.
 
 **Catalog reads are the delay once a plan has many relations.** On the
 three-node cluster at one worker, the reads took 7.8 ms of 29.2 ms for one
@@ -222,8 +222,67 @@ faster than linearly past 8 workers.
 At 2 workers the two settings cross at about 70 relations on the AWS clusters
 and about 90 on the laptop. Below that, preloading makes a parallel plan slower
 to start. Serial times are from the first pass, and the second pass's were
-within 4 ms of them. The database held 1,819 `pg_class` rows, and the fixed
-delay was measured at that catalog size only.
+within 4 ms of them.
+
+The fixed delay is a property of the database and of what is preloaded, not of
+the plan. A backend preloads the catalog at startup when
+`ysql_catalog_preload_additional_tables` is true or
+`ysql_catalog_preload_additional_table_list` is not empty. The preload
+fetches 18 catalog tables whole, among them `pg_class`, `pg_attribute`,
+`pg_index`, `pg_constraint` and `pg_type`, together with the tables the list
+names. `YBLoadRelations()` then builds a relcache entry for every relation in
+the database. The boolean gflag stands for a list of eight tables, one of
+which is `pg_proc`. The sweep above ran in a database of 714 tables.
+
+A further run on the three-node cluster on 2026-11-16 measured a one-table
+parallel `count(*)` at one worker, from a node that does not host the master
+leader, under five settings of the two gflags. With only the scanned table in
+the database:
+
+| preload gflags | execution time |
+| --- | ---: |
+| neither | 25 to 26 ms |
+| list naming `pg_statistic` | 68 ms |
+| list naming `pg_proc` | 131 to 132 ms |
+| boolean | 136 ms |
+| boolean, and list naming `pg_statistic` | 133 to 136 ms |
+
+Other databases added one kind of object to the one-table database:
+
+| added to the database | added delay | under |
+| --- | ---: | --- |
+| 1,000 two-column tables, each with a primary key | 28 to 31 ms | all four preload settings |
+| 3,000 such tables | 90 to 94 ms | all four preload settings |
+| 500 tables of 41 columns | 48 to 49 ms | all four preload settings |
+| 3,000 schemas | under 4 ms | all four preload settings |
+| 8,159 `pg_statistic` rows, 3.8 MB, on top of the 41-column tables | 10 to 13 ms | both settings whose list names `pg_statistic` |
+| 1,000 SQL functions | 46 to 47 ms | list naming `pg_proc` |
+| 3,000 SQL functions | 200 to 206 ms | list naming `pg_proc`, and both settings with the boolean |
+| 6,000 SQL functions | 567 to 573 ms | list naming `pg_proc` |
+
+An addition changed nothing measurable where the setting does not preload the
+table the addition goes into: functions under the list naming `pg_statistic`,
+and statistics under the boolean alone or the list naming `pg_proc`. With
+neither gflag set, every database took 25 to 30 ms with the same 27 catalog
+reads, and so did a scan of one of the 41-column tables.
+
+The delay is linear in the tables and faster than linear in the functions.
+`YbPreloadCatalogCache()` groups the `pg_proc` rows into one list per function
+name, and finds the list for a row by comparing the row's name with the lists
+made so far, one after another. The comparisons therefore grow with the square
+of the number of distinct function names. Counted for `pg_proc` rows taken in
+OID order, a database with no user functions needs 4.5 million comparisons and
+the three additions need 3.2, 12.7 and 34.5 million more. If the comparisons
+are the whole of the functions' delay, one comparison takes 14 to 17 ns; the
+delay was not profiled. At 14 ns the 4.5 million comparisons take 63 ms, and
+in the one-table database the list naming `pg_proc` took 62 to 64 ms longer
+than the list naming `pg_statistic`.
+
+Both tables are at one worker. Repeat runs differed by up to 7 ms at one
+worker, 15 ms at four and 39 ms at eight, so the additions were not compared
+across worker counts. On the laptop, measured on 2026-11-14 with the boolean
+gflag, the one-table database took 79 ms, 1,000 tables added 19 ms and 3,000
+functions added 77 ms.
 
 ### Where the model departs from the measurements
 
@@ -247,9 +306,11 @@ per-relation figure is scan work.
   still lowers the cost of a plan whose launch gets slower.
 - **The flat part undercharges.** The 10-partition query above stays parallel
   with the charge and runs in 53 ms against 42 ms serial.
-- **With the preload flag on, the shape is wrong.** The per-relation charge
-  is above the delay it prices, and the flat part is a tenth of the measured
-  one. The model does not read the flag.
+- **With catalog preloading on, the shape is wrong.** The per-relation charge
+  is above the delay it prices. The flat part is a tenth of the fixed delay
+  measured in the sweep's database, and the fixed delay grows with the tables
+  in the database and, faster than linearly, with the functions. The model
+  reads neither preload gflag.
 - **Partitions pruned at executor startup are counted.** The count is taken
   after plan-time pruning only. What a worker reads for a plan that prunes at
   executor startup was not measured.
@@ -269,7 +330,7 @@ the defaults absorb:
   `ysql_catalog_preload_additional_table_list`,
   `ysql_minimal_catalog_caches_preload` and `ysql_enable_read_request_caching`
   gflags, or any change to which catalogs a backend loads at startup. Only the
-  first was measured.
+  first two were measured.
 - **How a relcache entry is built**, including any change that lets a worker
   reuse entries the leader already has.
 - **Worker startup or pggate initialization**, including how a worker attaches
@@ -317,6 +378,7 @@ launches, would remove the per-relation delay without the fixed delay that
 preloading adds.
 
 Until then, three additions would bring the model to the measured shape: a
-charge per worker, a charge per worker per relation, and a separate set of
-constants when catalog preloading is on. Each one changes plan choice broadly
-and needs its own validation.
+charge per worker, a charge per worker per relation, and a separate charge
+when catalog preloading is on. Constants cannot make up the last one, because
+under preloading the fixed delay follows the tables and functions in the
+database. Each one changes plan choice broadly and needs its own validation.
