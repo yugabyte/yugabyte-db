@@ -883,6 +883,9 @@ public class HealthChecker {
       int topKMemThresholdPercent =
           confGetter.getConfForScope(
               params.universe, UniverseConfKeys.healthCollectTopKOtherProcessesMemThreshold);
+      int postgresPssCollectionIntervalSecs =
+          confGetter.getConfForScope(
+              params.universe, UniverseConfKeys.healthPostgresPssCollectionIntervalSecs);
       Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params.universe);
       for (NodeDetails nodeDetails : sortedDetails) {
         Provider provider = providerGetter.apply(nodeDetails);
@@ -927,6 +930,7 @@ public class HealthChecker {
                 .setEarlyoomEnabled(earlyoomEnabled)
                 .setTopKOtherProcesses(topKOtherProcesses)
                 .setTopKMemThresholdPercent(topKMemThresholdPercent)
+                .setPostgresPssCollectionIntervalSecs(postgresPssCollectionIntervalSecs)
                 .setCheckTHP(checkTHP)
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
@@ -1636,6 +1640,7 @@ public class HealthChecker {
 
     private int topKOtherProcesses;
     private int topKMemThresholdPercent;
+    private int postgresPssCollectionIntervalSecs;
     private boolean checkTHP;
     private boolean ybdbInbuiltYbc = false;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;

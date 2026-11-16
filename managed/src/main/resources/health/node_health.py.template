@@ -59,6 +59,10 @@ NODE_INFO = '{{NODE_INFO}}'
 MASTER = "yb-master"
 TSERVER = "yb-tserver"
 POSTMASTER = "yb-postmaster"
+# Marks proportional_memory_kb that could not be read. Negative so it can't be mistaken for a
+# real value; _merge_proc_results keeps it through summation.
+PSS_UNAVAILABLE = -1
+PSS_INTERVAL_SLACK_SECS = 10
 POSTGRES = "postgres"
 OTEL_COLLECTOR = "otelcol-contrib"
 OTEL_COLLECTOR_HEALTH_ENDPOINT = "http://localhost:13133/health"
@@ -680,7 +684,8 @@ class NodeChecker():
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
                  enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
-                 ybdb_inbuilt_ybc, yba_ynp_version):
+                 ybdb_inbuilt_ybc, yba_ynp_version, pss_collection_interval_secs=0,
+                 collect_pss=True):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -724,6 +729,8 @@ class NodeChecker():
         self.check_thp = check_thp
         self.ybdb_inbuilt_ybc = ybdb_inbuilt_ybc
         self.yba_ynp_version = yba_ynp_version
+        self.pss_collection_interval_secs = pss_collection_interval_secs
+        self.collect_pss = collect_pss
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -2144,6 +2151,47 @@ class NodeChecker():
         msgs.append("%s ms" % drift_ms)
         return e.fill_and_return_entry(msgs, metrics=metrics)
 
+    def _is_pss_collection_due(self):
+        if not self.collect_pss or self.pss_collection_interval_secs < 0:
+            return False
+        if self.pss_collection_interval_secs == 0:
+            return True
+        last = self.prev_process_results.get(POSTMASTER, {}).get('pss_collected_at')
+        if last is None:
+            return True
+        elapsed = time.time() - last
+        # The slack keeps run-to-run jitter from pushing an interval equal to the health check
+        # period to every second run. A negative elapsed means the clock went back.
+        return not (0 <= elapsed < self.pss_collection_interval_secs - PSS_INTERVAL_SLACK_SECS)
+
+    def _get_pss_values(self, res):
+        """PSS values for the postgres tree, None where they could not be read."""
+        total = res['total_stat']['proportional_memory_kb']
+        backend_pss = []
+        unavailable = False
+        for pid_info in res['process_map'].values():
+            if not pid_info.get('is_root'):
+                pss = pid_info['stats']['proportional_memory_kb']
+                if pss < 0:
+                    unavailable = True
+                elif pss > 0:
+                    backend_pss.append(pss)
+        values = {
+            # Negative means PSS could not be read for at least one pid; a partial sum would
+            # under-report, so skip it.
+            'total': total if total >= 0 else None,
+            'backend_max': None,
+            'backend_p95': None
+        }
+        if backend_pss:
+            values['backend_max'] = max(backend_pss)
+            values['backend_p95'] = get_nearest_rank_percentile(backend_pss, 0.95)
+        elif not unavailable:
+            # No backends running, as opposed to PSS being unreadable.
+            values['backend_max'] = 0
+            values['backend_p95'] = 0
+        return values
+
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
                    Metric.from_definition(YB_PROCESS_MEMORY_KB),
@@ -2153,7 +2201,17 @@ class NodeChecker():
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
         try:
-            res = self._load_per_process_metrics(process_name)
+            with_pss = process_name == POSTMASTER and self._is_pss_collection_due()
+            res = self._load_per_process_metrics(process_name, with_pss)
+            pss = None
+            if process_name == POSTMASTER:
+                if with_pss:
+                    res['pss_collected_at'] = time.time()
+                    pss = self._get_pss_values(res)
+                else:
+                    # Keep the last collection time across runs that skip PSS.
+                    res['pss_collected_at'] = (
+                        self.prev_process_results.get(POSTMASTER, {}).get('pss_collected_at'))
             stat = res['total_stat']
             self.current_process_results[process_name] = res
             self._dump_per_process_results()
@@ -2164,8 +2222,8 @@ class NodeChecker():
                                  labels=[process, Label('type', 'system')])
             metrics[1].add_value(stat['resident_memory_kb'], labels=[process,
                                                                         Label('type', 'resident')])
-            if process_name == POSTMASTER:
-                metrics[1].add_value(stat['proportional_memory_kb'], labels=[
+            if pss and pss['total'] is not None:
+                metrics[1].add_value(pss['total'], labels=[
                     process, Label('type', 'proportional')])
             metrics[1].add_value(stat['virtual_memory_kb'], labels=[process,
                                                                        Label('type', 'virtual')])
@@ -2174,21 +2232,11 @@ class NodeChecker():
             metrics[2].add_value(stat['io_read_kb'], labels=[process,
                                                                 Label('type', 'read')])
             metrics[3].add_value(stat['open_files'], labels=[process])
-            if process_name == POSTMASTER:
-                backend_pss = []
-                for pid_info in res['process_map'].values():
-                    if not pid_info.get('is_root'):
-                        pss = pid_info['stats']['proportional_memory_kb']
-                        if pss > 0:
-                            backend_pss.append(pss)
+            if pss and pss['backend_max'] is not None:
                 metric_max = Metric.from_definition(YB_POSTGRES_BACKEND_PSS_MAX_KB)
                 metric_p95 = Metric.from_definition(YB_POSTGRES_BACKEND_PSS_P95_KB)
-                if backend_pss:
-                    metric_max.add_value(max(backend_pss))
-                    metric_p95.add_value(get_nearest_rank_percentile(backend_pss, 0.95))
-                else:
-                    metric_max.add_value(0)
-                    metric_p95.add_value(0)
+                metric_max.add_value(pss['backend_max'])
+                metric_p95.add_value(pss['backend_p95'])
                 metrics.extend([metric_max, metric_p95])
             return e.fill_and_return_entry([], has_error=False, metrics=metrics)
         except Exception as ex:
@@ -2474,7 +2522,7 @@ class NodeChecker():
         return result
 
 
-    def _load_per_process_metrics(self, process_name):
+    def _load_per_process_metrics(self, process_name, with_pss=False):
         root_pid = self.get_process_pid_by_name(process_name)
         if root_pid is None:
             return {
@@ -2489,7 +2537,7 @@ class NodeChecker():
                 pid_list.remove(postgre_pid)
                 pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
         return self._load_per_process_metrics_by_pids(
-            process_name, root_pid, pid_list, with_pss=(process_name == POSTMASTER))
+            process_name, root_pid, pid_list, with_pss=with_pss)
 
 
     def _load_per_process_metrics_by_pids(self, process_name, root_pid, pid_list,
@@ -2570,7 +2618,10 @@ class NodeChecker():
     def _merge_proc_results(self, stat1, stat2):
         res = {}
         for key in stat1.keys():
-            if key in stat2.keys():
+            if key == 'proportional_memory_kb' and (
+                    stat1[key] < 0 or stat2.get(key, 0) < 0):
+                res[key] = PSS_UNAVAILABLE
+            elif key in stat2.keys():
                 res[key] = stat1[key] + stat2[key]
             else:
                 res[key] = stat1[key]
@@ -2597,6 +2648,7 @@ class NodeChecker():
             rss_key, pss_key = 'VmRSS:', None
         stat = self._check_output(cmd).strip()
         rss_found = False
+        pss_found = False
         for line in stat.split('\n'):
             lst = line.split()
             if len(lst) < 3:
@@ -2606,6 +2658,12 @@ class NodeChecker():
                 rss_found = True
             elif lst[0] == pss_key:
                 res['proportional_memory_kb'] += int(lst[1])
+                pss_found = True
+        if with_pss and not pss_found:
+            # A backend that exited since we listed it is not a failure to read PSS.
+            alive = self._check_output('cat /proc/{}/stat'.format(pid)).strip()
+            if alive and 'no such' not in alive.lower():
+                res['proportional_memory_kb'] = PSS_UNAVAILABLE
         if not rss_found:
             # smaps_rollup is unreadable for processes of another user, and missing before
             # Linux 4.14. Less precise, but works for any process.
@@ -3289,6 +3347,7 @@ class NodeInfo:
         self.topk_mem_threshold_percent = data["topKMemThresholdPercent"]
         self.check_thp = data["checkTHP"]
         self.ybdb_inbuilt_ybc = data["ybdbInbuiltYbc"]
+        self.pss_collection_interval_secs = data.get("postgresPssCollectionIntervalSecs", 0)
 
 
 # Health check output says what failed, never why. The log goes to <yb_home>/metrics/logs, a
@@ -3452,7 +3511,10 @@ def main():
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
         n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
-        n.ybdb_inbuilt_ybc, args.yba_ynp_version)
+        n.ybdb_inbuilt_ybc, args.yba_ynp_version, n.pss_collection_interval_secs,
+        # The per-minute metrics-only run feeds the graphs, so the full run skips PSS. Kubernetes
+        # has no metrics-only run, so the full run is the only source there.
+        collect_pss=(args.metrics_only or n.is_k8s))
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
