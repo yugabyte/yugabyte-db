@@ -216,7 +216,8 @@ static void ExecMergeNotMatched(ModifyTableContext *context,
 static void YbPostProcessDml(CmdType cmd_type,
 							 Relation rel,
 							 TupleTableSlot *newslot);
-static void YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state);
+static void YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state,
+											 int batch_size);
 static void YbAddSlotToBatch(ModifyTableContext *context,
 							 ResultRelInfo *resultRelInfo,
 							 TupleTableSlot *planSlot,
@@ -981,7 +982,7 @@ ExecInsert(ModifyTableContext *context,
 						 blockInsertStmt);
 		/* When we've reached the desired batch size, enter flushing mode. */
 		if (mtstate->yb_ioc_state->num_slots ==
-			yb_insert_on_conflict_read_batch_size)
+			mtstate->yb_ioc_batch_size)
 		{
 			returnSlot = YbFlushSlotsFromBatch(context, blockInsertStmt);
 		}
@@ -5360,7 +5361,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		else
 			resultRelInfo->ri_BatchSize = 1;
 
-		YbInitIocStrategy(resultRelInfo, node);
+		/* YB: see ModifyTableState.yb_ioc_batch_size. */
+		mtstate->yb_ioc_batch_size = yb_insert_on_conflict_read_batch_size;
+		YbInitIocStrategy(resultRelInfo, node, mtstate->yb_ioc_batch_size);
 	}
 
 	/*
@@ -5486,13 +5489,13 @@ YbPostProcessDml(CmdType cmd_type,
 }
 
 static void
-YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state)
+YbInitInsertOnConflictBatchState(YbInsertOnConflictBatchState **state,
+								 int batch_size)
 {
+	Assert(batch_size > 0);
 	*state = palloc0(sizeof(YbInsertOnConflictBatchState));
-	(*state)->slots = palloc(sizeof(TupleTableSlot *) *
-							 yb_insert_on_conflict_read_batch_size);
-	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) *
-								 yb_insert_on_conflict_read_batch_size);
+	(*state)->slots = palloc(sizeof(TupleTableSlot *) * batch_size);
+	(*state)->planSlots = palloc(sizeof(TupleTableSlot *) * batch_size);
 }
 
 static void
@@ -5570,7 +5573,8 @@ YbAddSlotToBatch(ModifyTableContext *context,
 
 	Assert(resultRelInfo->ri_ybIocBatchingPossible);
 	if (!context->mtstate->yb_ioc_state)
-		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state);
+		YbInitInsertOnConflictBatchState(&context->mtstate->yb_ioc_state,
+										 context->mtstate->yb_ioc_batch_size);
 	YbInsertOnConflictBatchState *state = context->mtstate->yb_ioc_state;
 
 	/*
@@ -5585,6 +5589,8 @@ YbAddSlotToBatch(ModifyTableContext *context,
 	TupleDesc	tdesc = CreateTupleDescCopy(slot->tts_tupleDescriptor);
 	TupleDesc	plan_tdesc = CreateTupleDescCopy(planSlot->tts_tupleDescriptor);
 	int			slot_idx = state->num_slots;
+
+	Assert(slot_idx < context->mtstate->yb_ioc_batch_size);
 
 	state->slots[slot_idx] = MakeSingleTupleTableSlot(tdesc, slot->tts_ops);
 	/*
