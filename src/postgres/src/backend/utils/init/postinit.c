@@ -2364,11 +2364,16 @@ EmitConnectionWarnings(void)
 	list_free_deep(ConnectionWarningDetails);
 
 	/*
-	 * YB: an auth passthrough control backend queues and frees these lists
-	 * again after this.
+	 * YB: an auth passthrough control backend reuses these lists for every
+	 * client it authenticates after this, and frees them again in
+	 * YbResetAuthPassthroughConnectionWarnings(), so drop the pointers to the
+	 * lists freed above. Upstream never touches them again.
 	 */
-	ConnectionWarningMessages = NIL;
-	ConnectionWarningDetails = NIL;
+	if (YbIsAuthPassthroughControlBackend())
+	{
+		ConnectionWarningMessages = NIL;
+		ConnectionWarningDetails = NIL;
+	}
 }
 
 /*
