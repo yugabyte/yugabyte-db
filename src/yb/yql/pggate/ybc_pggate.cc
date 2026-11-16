@@ -408,15 +408,6 @@ std::string HumanReadableTableType(yb::TableType table_type) {
   FATAL_INVALID_ENUM_VALUE(yb::TableType, table_type);
 }
 
-const YbcPgTypeEntity* GetTypeEntity(
-    YbcPgOid pg_type_oid, int attr_num, YbcPgOid table_oid,
-    YbcTypeEntityProvider type_entity_provider) {
-
-  // TODO(23239): Optimize the lookup of type entities for dynamic types.
-  return pg_type_oid == kPgInvalidOid ? (*type_entity_provider)(attr_num, table_oid)
-                                      : pgapi->pg_types().Find(pg_type_oid);
-}
-
 Status YBCGetTableKeyRangesImpl(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
@@ -3064,7 +3055,7 @@ YbcStatus YBCPgDestroyVirtualWalForCDC() {
   return YBCStatusOK();
 }
 
-YbcPgRowMessageAction GetRowMessageAction(yb::cdc::RowMessage row_message_pb) {
+YbcPgRowMessageAction GetRowMessageAction(const yb::cdc::RowMessage& row_message_pb) {
   switch (row_message_pb.op()) {
     case cdc::RowMessage_Op_BEGIN:
       return YB_PG_ROW_MESSAGE_ACTION_BEGIN;
@@ -3086,18 +3077,17 @@ YbcPgRowMessageAction GetRowMessageAction(yb::cdc::RowMessage row_message_pb) {
 
 YbcStatus YBCPgGetCDCConsistentChanges(
     const char* stream_id,
-    YbcPgChangeRecordBatch** record_batch,
-    YbcTypeEntityProvider type_entity_provider) {
-  const auto result = pgapi->GetConsistentChangesForCDC(std::string(stream_id));
+    YbcPgChangeRecordBatch** record_batch) {
+  auto result = pgapi->GetConsistentChangesForCDC(std::string(stream_id));
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
 
   *DCHECK_NOTNULL(record_batch) = nullptr;
-  const auto resp = result.get();
-  VLOG(4) << "The GetConsistentChangesForCDC response: " << resp.DebugString();
-  auto response_to_pg_conversion_start = GetCurrentTimeMicros();
-  auto row_count = resp.cdc_sdk_proto_records_size();
+  auto resp = std::make_unique<cdc::GetConsistentChangesResponsePB>(std::move(*result));
+  VLOG(4) << "The GetConsistentChangesForCDC response: " << resp->DebugString();
+  auto batch_build_start = GetCurrentTimeMicros();
+  auto row_count = resp->cdc_sdk_proto_records_size();
 
   // Used for logging a summary of the response received from the CDC service.
   YbcPgXLogRecPtr min_resp_lsn = 0xFFFFFFFFFFFFFFFF;
@@ -3105,17 +3095,17 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   uint32_t min_txn_id = 0xFFFFFFFF;
   uint32_t max_txn_id = 0;
 
-  auto resp_rows_pb = resp.cdc_sdk_proto_records();
+  const auto& resp_rows_pb = resp->cdc_sdk_proto_records();
   auto resp_rows = static_cast<YbcPgRowMessage *>(YBCPAlloc(sizeof(YbcPgRowMessage) * row_count));
-  bool needs_publication_table_list_refresh = resp.needs_publication_table_list_refresh();
-  uint64_t publication_refresh_time = resp.publication_refresh_time();
-  bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
-  uint64_t publication_refresh_record_time = resp.publication_refresh_record_time();
-  const auto& publication_refresh_txn_id = resp.publication_refresh_txn_id();
+  bool needs_publication_table_list_refresh = resp->needs_publication_table_list_refresh();
+  uint64_t publication_refresh_time = resp->publication_refresh_time();
+  bool explicit_alter_publication_detected = resp->explicit_alter_publication_detected();
+  uint64_t publication_refresh_record_time = resp->publication_refresh_record_time();
+  const auto& publication_refresh_txn_id = resp->publication_refresh_txn_id();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
-    auto row_message_pb = row_pb.row_message();
+    const auto& row_message_pb = row_pb.row_message();
     auto commit_time_ht = HybridTime::FromPB(row_message_pb.commit_time());
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
@@ -3171,55 +3161,39 @@ YbcStatus YBCPgGetCDCConsistentChanges(
 
       int tuple_idx = 0;
       for (const auto& col_idxs : col_idx_map) {
-        YbcPgTypeAttrs type_attrs{-1 /* typmod */};
         const auto& [column_attr_num, column_name] = col_idxs.first;
+        DCHECK(table_oid != kPgInvalidOid);
 
         // Before Op value aka Before Image.
-        uint64 before_op_datum = 0;
-        bool before_op_is_null = true;
-        bool before_op_is_omitted = col_idxs.second.first == OMITTED_VALUE;
-        if (!before_op_is_omitted) {
-          const auto old_datum_pb =
-              &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
-          DCHECK(table_oid != kPgInvalidOid);
-          const auto* type_entity = GetTypeEntity(
-              narrow_cast<YbcPgOid>(old_datum_pb->column_type()), old_datum_pb->col_attr_num(),
-              table_oid, type_entity_provider);
-          auto s = PBToDatum(
-              type_entity, type_attrs, old_datum_pb->pg_ql_value(), &before_op_datum,
-              &before_op_is_null);
-          if (!s.ok()) {
-            return ToYBCStatus(s);
-          }
-        }
+        const bool before_op_is_omitted = col_idxs.second.first == OMITTED_VALUE;
+        const DatumMessagePB* old_datum_pb =
+            before_op_is_omitted
+                ? nullptr
+                : &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
 
         // After Op value.
-        uint64 after_op_datum = 0;
-        bool after_op_is_null = true;
-        bool after_op_is_omitted = col_idxs.second.second == OMITTED_VALUE;
-        if (!after_op_is_omitted) {
-          const auto new_datum_pb =
-              &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
-          DCHECK(table_oid != kPgInvalidOid);
-          const auto* type_entity = GetTypeEntity(
-              narrow_cast<YbcPgOid>(new_datum_pb->column_type()), new_datum_pb->col_attr_num(),
-              table_oid, type_entity_provider);
-          auto s = PBToDatum(
-              type_entity, type_attrs, new_datum_pb->pg_ql_value(), &after_op_datum,
-              &after_op_is_null);
-          if (!s.ok()) {
-            return ToYBCStatus(s);
-          }
-        }
+        const bool after_op_is_omitted = col_idxs.second.second == OMITTED_VALUE;
+        const DatumMessagePB* new_datum_pb =
+            after_op_is_omitted
+                ? nullptr
+                : &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
+
+        const auto* datum_pb = new_datum_pb ? new_datum_pb : old_datum_pb;
+        DCHECK(datum_pb);
+        DCHECK(!old_datum_pb || !new_datum_pb ||
+               old_datum_pb->column_type() == new_datum_pb->column_type());
+        const auto column_type = narrow_cast<YbcPgOid>(datum_pb->column_type());
 
         auto col = &cols[tuple_idx++];
         col->column_name = use_attr_num ? nullptr : YBCPAllocStdString(column_name);
         col->column_attr_num = column_attr_num;
-        col->after_op_datum = after_op_datum;
-        col->after_op_is_null = after_op_is_null;
+        col->type_entity =
+            column_type == kPgInvalidOid ? nullptr : pgapi->pg_types().Find(column_type);
+        col->after_op_ql_value = new_datum_pb ? &new_datum_pb->pg_ql_value() : nullptr;
+        col->after_op_is_null = !new_datum_pb || IsNull(new_datum_pb->pg_ql_value());
         col->after_op_is_omitted = after_op_is_omitted;
-        col->before_op_datum = before_op_datum;
-        col->before_op_is_null = before_op_is_null;
+        col->before_op_ql_value = old_datum_pb ? &old_datum_pb->pg_ql_value() : nullptr;
+        col->before_op_is_null = !old_datum_pb || IsNull(old_datum_pb->pg_ql_value());
         col->before_op_is_omitted = before_op_is_omitted;
       }
     }
@@ -3278,6 +3252,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .explicit_alter_publication_detected = explicit_alter_publication_detected,
       .publication_refresh_record_time = publication_refresh_record_time,
       .publication_refresh_txn_id = {},
+      .response = nullptr,
   };
   if (!publication_refresh_txn_id.empty()) {
     snprintf(
@@ -3294,11 +3269,24 @@ YbcStatus YBCPgGetCDCConsistentChanges(
     VLOG(1) << "Received 0 rows in GetConsistentChangesResponsePB response\n";
   }
 
-  auto time_in_conversion = GetCurrentTimeMicros() - response_to_pg_conversion_start;
-  VLOG(1) << "Time spent in converting from QLValuePB to PG datum in PgGate: "
-          << time_in_conversion << " us";
+  VLOG(1) << "Time spent in building the record batch in PgGate: "
+          << GetCurrentTimeMicros() - batch_build_start << " us";
 
+  // Released last, so that the error returns above free it by the virtue of unique pointer going
+  // out of scope.
+  (*record_batch)->response = resp.release();
   return YBCStatusOK();
+}
+
+void YBCPgFreeCDCConsistentChangesResponse(void* response) {
+  delete static_cast<cdc::GetConsistentChangesResponsePB*>(response);
+}
+
+YbcStatus YBCQLValueToDatum(
+    const YbcPgTypeEntity* type_entity, const void* ql_value, uint64_t* datum, bool* is_null) {
+  return ToYBCStatus(PBToDatum(
+      type_entity, YbcPgTypeAttrs{-1 /* typmod */}, *static_cast<const QLValuePB*>(ql_value),
+      datum, is_null));
 }
 
 YbcStatus YBCPgUpdateAndPersistLSN(
