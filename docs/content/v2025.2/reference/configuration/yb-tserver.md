@@ -754,6 +754,27 @@ When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/stat
 
 During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
 
+##### yb_password_validity
+
+{{% tags/wrap %}}
+
+Default: `0`
+{{% /tags/wrap %}}
+
+v2025.2.9.0 and later only. Sets how long, in minutes, a newly set or changed password remains valid. When non-zero, YugabyteDB sets the role's password expiration (`VALID UNTIL`) to the current time plus this duration. You can specify a unit, for example `90d`. The default value of `0` means passwords do not expire.
+
+This parameter applies only when a password is stored, that is, when you run `CREATE ROLE` or `ALTER ROLE ... PASSWORD`. It does not change the expiration of existing passwords. If the statement includes a `VALID UNTIL` clause, that clause takes precedence over this parameter.
+
+This parameter applies only to roles that authenticate using passwords stored in YugabyteDB. It has no effect on LDAP or OIDC users.
+
+This is a superuser-only parameter. Set it in one of the following ways:
+
+- Server-wide, using [ysql_pg_conf_csv](#ysql-pg-conf-csv).
+- For a specific role, using `ALTER ROLE <role> SET yb_password_validity = <value>`.
+- For all roles, using `ALTER ROLE ALL SET yb_password_validity = <value>`.
+
+You cannot set this parameter for a session, for a database (`ALTER DATABASE ... SET`), for a role in a specific database, or for a role that cannot log in.
+
 ## Networking
 
 ### RPC and binding addresses
