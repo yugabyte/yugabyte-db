@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -54,6 +55,11 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
 
   @Override
   public void validate(CustomerConfigData data) {
+    validate(data, null);
+  }
+
+  @Override
+  public void validate(CustomerConfigData data, @Nullable CustomerConfigData stored) {
     super.validate(data);
 
     CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) data;
@@ -65,13 +71,17 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     if (AWSUtil.isCrossCloudFederationConfig(s3data)) {
       // Keys alongside federation leave the credential ambiguous: the DB nodes always federate, but
       // YBA's own client falls back to the keys wherever the provider's role and audience are not
-      // resolved.
-      if (StringUtils.isNotEmpty(s3data.awsAccessKeyId)
-          || StringUtils.isNotEmpty(s3data.awsSecretAccessKey)) {
+      // resolved. Its fallback without keys is YBA's IAM role, so the message names that too. A
+      // config saved with keys and federation keeps taking edits such as a rename.
+      if (introduces(
+          CustomerConfigStorageS3Validator::hasKeysWithFederation,
+          s3data,
+          (CustomerConfigStorageS3Data) stored)) {
         throwBeanConfigDataValidatorError(
             AWSUtil.AWS_ACCESS_KEY_ID_FIELDNAME,
             "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY cannot be used together with"
-                + " USE_CROSS_CLOUD_FEDERATION.");
+                + " USE_CROSS_CLOUD_FEDERATION. Remove them and set IAM_INSTANCE_PROFILE to"
+                + " true, so YBA uses its IAM role where it does not federate.");
       }
       return;
     }
@@ -152,5 +162,11 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
         throwBeanConfigDataValidatorError(fieldName, e.getMessage(), e);
       }
     }
+  }
+
+  private static boolean hasKeysWithFederation(CustomerConfigStorageS3Data s3data) {
+    return AWSUtil.isCrossCloudFederationConfig(s3data)
+        && (StringUtils.isNotEmpty(s3data.awsAccessKeyId)
+            || StringUtils.isNotEmpty(s3data.awsSecretAccessKey));
   }
 }

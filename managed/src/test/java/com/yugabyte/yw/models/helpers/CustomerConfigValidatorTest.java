@@ -17,6 +17,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
@@ -704,7 +705,64 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             "errorJson: {\""
                 + fieldFullName(AWS_ACCESS_KEY_ID_FIELDNAME)
                 + "\":[\"AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY cannot be used together with"
-                + " USE_CROSS_CLOUD_FEDERATION.\"]}"));
+                + " USE_CROSS_CLOUD_FEDERATION. Remove them and set IAM_INSTANCE_PROFILE to true,"
+                + " so YBA uses its IAM role where it does not federate.\"]}"));
+  }
+
+  /** A config saved with keys and federation before the rule existed still takes a rename. */
+  @Test
+  public void testValidateDataContent_Storage_S3_SavedFederationWithKeysCanBeRenamed() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    customerConfigValidator.validateConfig(editOfSavedConfig(NAME_S3, data, data.deepCopy()));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_S3_EditAddingKeysToFederationIsRejected() {
+    ObjectNode saved = Json.newObject();
+    saved.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    saved.put("IAM_INSTANCE_PROFILE", true);
+    saved.put("USE_CROSS_CLOUD_FEDERATION", true);
+    ObjectNode edited = saved.deepCopy();
+    edited.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    edited.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    CustomerConfig config = editOfSavedConfig(NAME_S3, saved, edited);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(PlatformServiceException.class, containsString("cannot be used together with")));
+  }
+
+  /** A config saved with both a JSON key and USE_GCP_IAM still takes a rename. */
+  @Test
+  public void testValidateDataContent_Storage_GCS_SavedJsonWithGcpIamCanBeRenamed() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_GCP_IAM", true);
+    customerConfigValidator.validateConfig(editOfSavedConfig(NAME_GCS, data, data.deepCopy()));
+  }
+
+  /**
+   * Saves a storage config without validation, as an older YBA could have, and returns an edit of
+   * it that renames it and carries {@code editedData}.
+   */
+  private CustomerConfig editOfSavedConfig(
+      String name, ObjectNode savedData, ObjectNode editedData) {
+    Customer customer = ModelFactory.testCustomer();
+    ObjectNode formData = Json.newObject();
+    formData.put("configName", "saved-" + name);
+    formData.put("name", name);
+    formData.put("type", ConfigType.STORAGE.name());
+    formData.set("data", savedData);
+    CustomerConfig saved = CustomerConfig.createWithFormData(customer.getUuid(), formData);
+    CustomerConfig edited = createConfig(ConfigType.STORAGE, name, editedData);
+    edited.setCustomerUUID(customer.getUuid());
+    edited.setConfigUUID(saved.getConfigUUID());
+    edited.setConfigName("renamed-" + name);
+    return edited;
   }
 
   @Test

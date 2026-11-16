@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 
@@ -47,12 +48,24 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
 
   @Override
   public void validate(CustomerConfigData data) {
+    validate(data, null);
+  }
+
+  /**
+   * A config saved with both a JSON key and {@code USE_GCP_IAM}, or with federation and a JSON key,
+   * was accepted before these rules. It keeps taking edits such as a rename while it keeps that
+   * combination.
+   */
+  @Override
+  public void validate(CustomerConfigData data, @Nullable CustomerConfigData stored) {
     super.validate(data);
 
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
+    CustomerConfigStorageGCSData storedGcs = (CustomerConfigStorageGCSData) stored;
 
     // Should not contain neither or both json creds and use GCP IAM flag.
-    if (StringUtils.isBlank(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
+    if ((StringUtils.isBlank(gcsData.gcsCredentialsJson) && !gcsData.useGcpIam)
+        || introduces(CustomerConfigStorageGCSValidator::hasKeyWithGcpIam, gcsData, storedGcs)) {
       SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
       validationErrorsMap.put(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
@@ -65,7 +78,8 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
 
     // Federation only runs through USE_GCP_IAM. With a JSON key instead, the flag is ignored and a
     // config marked as federated would still use the key.
-    if (gcsData.useCrossCloudFederation && !gcsData.useGcpIam) {
+    if (introduces(
+        CustomerConfigStorageGCSValidator::hasFederationWithoutGcpIam, gcsData, storedGcs)) {
       throwBeanConfigDataValidatorError(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
           "USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of GCS_CREDENTIALS_JSON.");
@@ -129,5 +143,13 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
         throwBeanConfigDataValidatorError(fieldName, exp.getMessage(), exp);
       }
     }
+  }
+
+  private static boolean hasKeyWithGcpIam(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useGcpIam && StringUtils.isNotBlank(gcsData.gcsCredentialsJson);
+  }
+
+  private static boolean hasFederationWithoutGcpIam(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useCrossCloudFederation && !gcsData.useGcpIam;
   }
 }

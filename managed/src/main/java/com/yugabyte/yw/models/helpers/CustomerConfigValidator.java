@@ -168,8 +168,21 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     CustomerConfigData data = customerConfig.getDataObject();
     ConfigDataValidator validator = validators.get(data.getClass());
     if (validator != null) {
-      validator.validate(data);
+      validator.validate(data, savedData(customerConfig, data));
     }
+  }
+
+  /** The data saved for the config being edited, or null for a new config. */
+  private static CustomerConfigData savedData(CustomerConfig config, CustomerConfigData data) {
+    if (config.getConfigUUID() == null) {
+      return null;
+    }
+    CustomerConfig saved = CustomerConfig.get(config.getCustomerUUID(), config.getConfigUUID());
+    if (saved == null) {
+      return null;
+    }
+    CustomerConfigData savedData = saved.getDataObject();
+    return savedData.getClass() == data.getClass() ? savedData : null;
   }
 
   public void validateConfigRemoval(CustomerConfig customerConfig) {

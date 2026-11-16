@@ -8,6 +8,8 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import java.util.Map;
+import java.util.function.Predicate;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 
@@ -18,6 +20,22 @@ public abstract class ConfigDataValidator extends BaseBeanValidator {
   }
 
   public abstract void validate(CustomerConfigData data);
+
+  /**
+   * Validates {@code data} as an edit of a config whose saved data is {@code stored}, or as a new
+   * config when {@code stored} is null. A validator overrides this when a rule must not block an
+   * edit of a config saved before the rule existed. By default an edit is validated like a new
+   * config.
+   */
+  public void validate(CustomerConfigData data, @Nullable CustomerConfigData stored) {
+    validate(data);
+  }
+
+  /** Whether {@code data} breaks {@code rule}, unless the saved {@code stored} already did. */
+  protected static <T extends CustomerConfigData> boolean introduces(
+      Predicate<T> rule, T data, @Nullable T stored) {
+    return rule.test(data) && (stored == null || !rule.test(stored));
+  }
 
   protected void throwBeanConfigDataValidatorError(String fieldName, String exceptionMsg) {
     throwBeanValidatorError(fieldFullName(fieldName), exceptionMsg, null);
