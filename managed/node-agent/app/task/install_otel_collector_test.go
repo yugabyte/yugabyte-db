@@ -36,11 +36,8 @@ func newDisableCollectorHandler(t *testing.T, ybHome string) *InstallOtelCollect
 	return handler
 }
 
-// The disable path runs without the package setup, on nodes that may never have had the
-// collector: no unit to stop and no <yb_home>/otel-collector directory.
-func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
-	ybHome := t.TempDir()
-	handler := newDisableCollectorHandler(t, ybHome)
+// skipIfUserOtelCollectorUnit skips a test that runs the disable on this host.
+func skipIfUserOtelCollectorUnit(t *testing.T, handler *InstallOtelCollector) {
 	hasUser, _, err := module.IsUserSystemd(handler.username, OtelCollectorService)
 	if err != nil {
 		t.Fatalf("IsUserSystemd: %v", err)
@@ -48,17 +45,99 @@ func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
 	if hasUser {
 		t.Skip("this host has a user-level otel-collector unit")
 	}
+}
 
-	if err := handler.disableOtelCollector(context.Background(), ybHome); err != nil {
-		t.Fatalf("disableOtelCollector: %v", err)
-	}
+// The disable path runs without the package setup, on nodes that may never have had the
+// collector: no unit to stop and no <yb_home>/otel-collector directory. A yb_home with a space
+// or a quote must stay one shell argument.
+func TestDisableOtelCollectorWithoutUnitOrDir(t *testing.T) {
+	for _, name := range []string{"yugabyte", "yb home", "o'neil yb"} {
+		parent := t.TempDir()
+		ybHome := filepath.Join(parent, name)
+		// An unquoted "yb home" path splits, and "rm -rf <parent>/yb" removes this directory.
+		decoy := filepath.Join(parent, "yb")
+		if err := os.MkdirAll(decoy, 0755); err != nil {
+			t.Fatalf("mkdir decoy: %v", err)
+		}
+		handler := newDisableCollectorHandler(t, ybHome)
+		handler.stopRootUnit = func(context.Context) rootOtelCollectorStop {
+			return rootOtelCollectorNotRunning
+		}
+		skipIfUserOtelCollectorUnit(t, handler)
+		// The awk and mv steps that strip the managed block run only on an existing file.
+		creds := filepath.Join(ybHome, ".aws", "credentials")
+		if err := os.MkdirAll(filepath.Dir(creds), 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		block := "# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n[otel-collector]\n" +
+			"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
+		if err := os.WriteFile(creds, []byte("[default]\n"+block), 0600); err != nil {
+			t.Fatalf("write credentials: %v", err)
+		}
 
-	otelDir := filepath.Join(ybHome, "otel-collector")
-	if _, err := os.Stat(filepath.Join(otelDir, "log_cleanup_env")); err != nil {
-		t.Fatalf("log_cleanup_env was not written: %v", err)
+		if err := handler.disableOtelCollector(context.Background(), ybHome); err != nil {
+			t.Fatalf("%q: disableOtelCollector: %v", name, err)
+		}
+
+		otelDir := filepath.Join(ybHome, "otel-collector")
+		if _, err := os.Stat(filepath.Join(otelDir, "log_cleanup_env")); err != nil {
+			t.Fatalf("%q: log_cleanup_env was not written: %v", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(otelDir, "config.yml")); !os.IsNotExist(err) {
+			t.Fatalf("%q: config.yml should not exist, got err=%v", name, err)
+		}
+		if _, err := os.Stat(decoy); err != nil {
+			t.Fatalf("%q: the disable touched a path outside yb_home: %v", name, err)
+		}
+		if got, err := os.ReadFile(creds); err != nil || string(got) != "[default]\n" {
+			t.Fatalf("%q: want only the managed block removed, got %q, err=%v", name, got, err)
+		}
 	}
-	if _, err := os.Stat(filepath.Join(otelDir, "config.yml")); !os.IsNotExist(err) {
-		t.Fatalf("config.yml should not exist, got err=%v", err)
+}
+
+// A root stop failure never fails the disable, as gflags upgrades and node operations run it
+// too. The disable still removes the config and refreshes the purge script, and a root
+// collector that may still run gets one warning in the task output.
+func TestHandleDisableWithRootStopFailure(t *testing.T) {
+	for _, rootStop := range []rootOtelCollectorStop{
+		rootOtelCollectorStopFailed,
+		rootOtelCollectorStateUnknown,
+	} {
+		ybHome := t.TempDir()
+		handler := newDisableCollectorHandler(t, ybHome)
+		handler.stopRootUnit = func(context.Context) rootOtelCollectorStop { return rootStop }
+		refreshed := false
+		handler.refreshPurge = func(context.Context, string) error {
+			refreshed = true
+			return nil
+		}
+		skipIfUserOtelCollectorUnit(t, handler)
+		config := filepath.Join(ybHome, "otel-collector", "config.yml")
+		if err := os.MkdirAll(filepath.Dir(config), 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(config, []byte("receivers:\n"), 0644); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+
+		if _, err := handler.Handle(context.Background()); err != nil {
+			t.Fatalf("rootStop=%v: want a warning only, got %v", rootStop, err)
+		}
+		if !refreshed {
+			t.Fatalf("rootStop=%v: the purge script refresh did not run", rootStop)
+		}
+		if _, err := os.Stat(config); !os.IsNotExist(err) {
+			t.Fatalf("rootStop=%v: config.yml should be removed, got err=%v", rootStop, err)
+		}
+		want := map[rootOtelCollectorStop]string{
+			rootOtelCollectorStopFailed:   "Check its sudoers rules",
+			rootOtelCollectorStateUnknown: "could not be read",
+		}[rootStop]
+		out := handler.logOut.String()
+		if strings.Count(out, "keep running and exporting") != 1 ||
+			!strings.Contains(out, want) {
+			t.Fatalf("rootStop=%v: want one export warning with %q, got %q", rootStop, want, out)
+		}
 	}
 }
 
@@ -73,6 +152,59 @@ func TestHasRootOtelCollectorUnit(t *testing.T) {
 	}
 	if hasRoot, err := handler.hasRootOtelCollectorUnit(); err != nil || !hasRoot {
 		t.Fatalf("root unit not found: hasRoot=%v, err=%v", hasRoot, err)
+	}
+}
+
+func TestRootOtelCollectorRunning(t *testing.T) {
+	for _, active := range []string{
+		"active", "activating", "reloading", "deactivating", "refreshing",
+	} {
+		if !rootOtelCollectorRunning(active) {
+			t.Errorf("%q must count as running", active)
+		}
+	}
+	for _, active := range []string{"inactive", "failed", "unknown", ""} {
+		if rootOtelCollectorRunning(active) {
+			t.Errorf("%q must not count as running", active)
+		}
+	}
+}
+
+// After a failed root stop, a root unit that still runs or starts at boot counts as failed.
+func TestRootOtelCollectorStopOutcome(t *testing.T) {
+	tests := []struct {
+		active, enabled string
+		checkErr        error
+		want            rootOtelCollectorStop
+	}{
+		{"active", "enabled", nil, rootOtelCollectorStopFailed},
+		{"inactive", "enabled", nil, rootOtelCollectorStopFailed},
+		{"inactive", "disabled", nil, rootOtelCollectorNotRunning},
+		{"failed", "disabled", nil, rootOtelCollectorNotRunning},
+		{"", "", errors.New("no state"), rootOtelCollectorStateUnknown},
+		{"active", "", errors.New("no is-enabled state"), rootOtelCollectorStopFailed},
+	}
+	for _, tt := range tests {
+		got := rootOtelCollectorStopOutcome(tt.active, tt.enabled, tt.checkErr)
+		if got != tt.want {
+			t.Errorf("(%q, %q, %v) = %v, want %v", tt.active, tt.enabled, tt.checkErr, got, tt.want)
+		}
+	}
+}
+
+// The root stop must not wait for a password, and the YNP sudoers rules name the unit without
+// the .service suffix.
+func TestRootOtelCollectorStopSteps(t *testing.T) {
+	var got []string
+	for _, step := range rootOtelCollectorStopSteps() {
+		got = append(got, step.Cmd)
+	}
+	want := []string{
+		"sudo -n systemctl stop otel-collector",
+		"sudo -n systemctl disable otel-collector",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("want %q, got %q", want, got)
 	}
 }
 
@@ -98,26 +230,11 @@ func TestRootOtelCollectorInUse(t *testing.T) {
 	}
 }
 
-// Only a failed root stop may blame the sudoers rules; a failed state check never ran a stop.
 func TestOtelCollectorStillRunningError(t *testing.T) {
 	binary := "/home/yugabyte/otel-collector/otelcol-contrib"
-	tests := []struct {
-		rootStop  rootOtelCollectorStop
-		wantCause string
-	}{
-		{rootOtelCollectorStopFailed, "sudoers"},
-		{rootOtelCollectorStateUnknown, "could not be read"},
-		{rootOtelCollectorNotInUse, "user systemd manager"},
-	}
-	for _, tt := range tests {
-		msg := otelCollectorStillRunningError(binary, tt.rootStop).Error()
-		if !strings.Contains(msg, binary) || !strings.Contains(msg, tt.wantCause) {
-			t.Errorf("rootStop=%v: error %q must name %s and %q",
-				tt.rootStop, msg, binary, tt.wantCause)
-		}
-		if tt.rootStop != rootOtelCollectorStopFailed && strings.Contains(msg, "sudoers") {
-			t.Errorf("rootStop=%v: error %q must not blame the sudoers rules", tt.rootStop, msg)
-		}
+	msg := otelCollectorStillRunningError(binary).Error()
+	if !strings.Contains(msg, binary) || !strings.Contains(msg, "user systemd manager") {
+		t.Fatalf("error %q must name %s and the user systemd manager", msg, binary)
 	}
 }
 
@@ -210,38 +327,53 @@ func TestOtelCollectorRunningPollIntervalFindsShortLivedCollector(t *testing.T) 
 // fakePgrepEchoPattern makes the fake pgrep print the pattern it got, in place of a PID.
 const fakePgrepEchoPattern = "pattern"
 
-// runWithFakePgrep runs the process check with a pgrep that prints out and exits with rc.
-func runWithFakePgrep(t *testing.T, binary, out string, rc int) (string, error) {
+// runWithFakePgrep runs the process check with a pgrep that prints out and exits with rc. In echo
+// mode, the fake prints its pattern to stderr.
+func runWithFakePgrep(
+	t *testing.T,
+	binary, procDir, out string,
+	rc int,
+) (string, string, error) {
 	dir := t.TempDir()
 	script := `#!/bin/sh
-if [ "$FAKE_PGREP_OUT" = "` + fakePgrepEchoPattern + `" ]; then printf '%s' "$2"
+if [ "$FAKE_PGREP_OUT" = "` + fakePgrepEchoPattern + `" ]; then printf '%s' "$2" >&2
 else printf '%s' "$FAKE_PGREP_OUT"; fi
 exit "$FAKE_PGREP_RC"
 `
 	if err := os.WriteFile(filepath.Join(dir, "pgrep"), []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake pgrep: %v", err)
 	}
-	cmd := exec.Command("bash", "-c", otelCollectorProcessCheckCmd(binary))
+	cmd := exec.Command("bash", "-c", otelCollectorProcessCheckCmd(binary, procDir))
 	cmd.Env = append(os.Environ(),
 		"PATH="+dir+":"+os.Getenv("PATH"),
 		"FAKE_PGREP_OUT="+out,
 		fmt.Sprintf("FAKE_PGREP_RC=%d", rc),
 	)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	stdout, err := cmd.Output()
-	return string(stdout), err
+	return strings.TrimSpace(string(stdout)), stderr.String(), err
 }
 
 // Only pgrep exit 1 means "not running"; a pgrep error must fail the check.
 func TestOtelCollectorProcessCheckCmdExitCodes(t *testing.T) {
 	binary := "/home/yugabyte/otel-collector/otelcol-contrib"
-	if out, err := runWithFakePgrep(t, binary, "123", 0); err != nil || out != "123" {
+	procDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(procDir, "123"), 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	userCgroup := []byte("0::/user.slice/" + OtelCollectorService + "\n")
+	if err := os.WriteFile(filepath.Join(procDir, "123", "cgroup"), userCgroup, 0644); err != nil {
+		t.Fatalf("write cgroup: %v", err)
+	}
+	if out, _, err := runWithFakePgrep(t, binary, procDir, "123", 0); err != nil || out != "123" {
 		t.Fatalf("exit 0: want PID and no error, got out=%q err=%v", out, err)
 	}
-	if out, err := runWithFakePgrep(t, binary, "", 1); err != nil || out != "" {
+	if out, _, err := runWithFakePgrep(t, binary, procDir, "", 1); err != nil || out != "" {
 		t.Fatalf("exit 1: want no output and no error, got out=%q err=%v", out, err)
 	}
 	for _, rc := range []int{2, 3} {
-		_, err := runWithFakePgrep(t, binary, "", rc)
+		_, _, err := runWithFakePgrep(t, binary, procDir, "", rc)
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) || exitErr.ExitCode() != rc {
 			t.Fatalf("exit %d: want the same exit code as an error, got %v", rc, err)
@@ -249,13 +381,39 @@ func TestOtelCollectorProcessCheckCmdExitCodes(t *testing.T) {
 	}
 }
 
+// The root unit's collector gets its own warning, so the check must skip it and keep the others.
+// A PID that exited after pgrep is not running.
+func TestOtelCollectorProcessCheckCmdSkipsRootUnit(t *testing.T) {
+	procDir := t.TempDir()
+	cgroups := map[string]string{
+		"123": "0::" + otelCollectorRootCgroup + "\n",
+		"456": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/" +
+			OtelCollectorService + "\n",
+	}
+	for pid, cgroup := range cgroups {
+		if err := os.MkdirAll(filepath.Join(procDir, pid), 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		err := os.WriteFile(filepath.Join(procDir, pid, "cgroup"), []byte(cgroup), 0644)
+		if err != nil {
+			t.Fatalf("write cgroup: %v", err)
+		}
+	}
+	binary := "/home/yugabyte/otel-collector/otelcol-contrib"
+	// PID 789 exited after pgrep, so it has no /proc entry.
+	out, _, err := runWithFakePgrep(t, binary, procDir, "123\n456\n789", 0)
+	if err != nil || out != "456" {
+		t.Fatalf("want only the user collector PID 456, got out=%q err=%v", out, err)
+	}
+}
+
 // A path with a quote or a regex metacharacter must reach pgrep as a literal match.
 func TestOtelCollectorProcessCheckCmdEscapesPath(t *testing.T) {
 	binary := "/home/o'neil/yb.home/otel-collector/otelcol-contrib"
-	out, err := runWithFakePgrep(t, binary, fakePgrepEchoPattern, 0)
+	_, pattern, err := runWithFakePgrep(t, binary, t.TempDir(), fakePgrepEchoPattern, 0)
 	want := `^/home/o'neil/yb\.home/otel-collector/otelcol-contrib( |$)`
-	if err != nil || out != want {
-		t.Fatalf("want pattern %q, got %q (err %v)", want, out, err)
+	if err != nil || pattern != want {
+		t.Fatalf("want pattern %q, got %q (err %v)", want, pattern, err)
 	}
 	if _, err := exec.LookPath("pgrep"); err != nil {
 		t.Skip("no pgrep on this host")
@@ -276,7 +434,8 @@ func TestOtelCollectorProcessCheckCmdEscapesPath(t *testing.T) {
 	wantPID := fmt.Sprint(proc.Process.Pid)
 	var got string
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
-		stdout, err := exec.Command("bash", "-c", otelCollectorProcessCheckCmd(binary)).Output()
+		cmd := otelCollectorProcessCheckCmd(binary, "/proc")
+		stdout, err := exec.Command("bash", "-c", cmd).Output()
 		if err != nil {
 			t.Fatalf("process check: %v", err)
 		}
