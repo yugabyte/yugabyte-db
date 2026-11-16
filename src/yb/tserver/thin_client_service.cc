@@ -57,6 +57,7 @@
 
 using namespace std::literals;
 
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(rpc_max_message_size);
 
 DEFINE_test_flag(uint64, thin_client_perform_delay_ms, 0,
@@ -197,10 +198,18 @@ class ThinSession : public ClientSessionBase,
     SCHECK(
         !(has_staleness && !read_time_options.read_from_followers()), InvalidArgument,
         "follower_read_staleness_ms needs read_from_followers");
-    // A zero staleness reads at now, which no follower can serve.
+    // A zero staleness reads at now, which no follower can serve. Below twice the clock skew bound
+    // a follower usually cannot serve it either, so the read would move to another replica and the
+    // local one stay marked failed. YSQL refuses the same range (is_staleness_acceptable).
     SCHECK(
         !(has_staleness && read_time_options.follower_read_staleness_ms() == 0),
         InvalidArgument, "follower_read_staleness_ms must be positive");
+    SCHECK(
+        !(has_staleness && read_time_options.follower_read_staleness_ms() * 1000ULL <
+                               2 * FLAGS_max_clock_skew_usec),
+        InvalidArgument,
+        "follower_read_staleness_ms must be at least 2 * max_clock_skew_usec ($0 ms)",
+        2 * FLAGS_max_clock_skew_usec / 1000);
     // A follower read needs a read time it can judge against its safe time: the pinned one of a
     // continuation, or one derived from the staleness. Without either, a follower would serve
     // whatever its safe time is, however far behind.

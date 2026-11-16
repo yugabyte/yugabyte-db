@@ -40,8 +40,9 @@ hot read/write paths without embedding a full client.
   hash, then range, then value). Also the startup health check.
 - `ybthin_read_async` -- one page of each of N read ops, in one Perform; delivers
   each op's decoded rows + opaque `paging_state`, and the batch's
-  `used_read_time_ht`. `ybthin_read_options` pins the snapshot or asks for a
-  follower read at a server-computed staleness.
+  `used_read_time_ht`. `ybthin_read_options` pins the snapshot, or asks for a
+  follower read at a read time the tserver computes from a caller-supplied
+  staleness.
 - `ybthin_upsert_batch_async` -- N `PGSQL_UPSERT` rows as the ops of one Perform.
 - `ybthin_read_result_free` / `ybthin_string_free` -- free shim-owned buffers.
 
@@ -57,10 +58,11 @@ usage backward-compatible: only send request fields / rely on RPCs and semantics
 the oldest supported tserver understands, and tolerate responses that lack fields
 a newer server would set.
 
-The C ABI carries no such promise and may change between shim releases, a
-signature included. The library and its header are released together, and the one
-caller pins a release and ships the library in the same image as the binaries
-built against it. A caller that declares the functions by hand must update its
+The C ABI carries no such promise while the library has a single caller, and may
+change between shim releases, a signature included. The library and its header
+are released together, and that caller pins a release and ships the library in
+the same image as the binaries built against it. A second caller that cannot move
+in lockstep would need this policy revisited. A caller that declares the functions by hand must update its
 declarations with the header: a stale declaration of a changed signature still
 links.
 

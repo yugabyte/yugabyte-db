@@ -84,6 +84,7 @@ DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(enable_load_balancing);
 DECLARE_uint64(TEST_thin_client_perform_delay_ms);
 DECLARE_bool(TEST_thin_client_omit_session_lost_code);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(pg_client_heartbeat_interval_ms);
 DECLARE_uint64(pg_client_session_expiration_ms);
 DECLARE_bool(use_libunwind_for_stack_trace_collection);
@@ -2749,21 +2750,29 @@ TEST_F(PgThinClientFollowerReadTest, StalenessOutsideAFollowerReadIsRejected) {
   }
 }
 
-// A zero staleness would read at now, which no follower can serve, so every such read would be
-// handed to the leader. The service refuses it.
-TEST_F(PgThinClientFollowerReadTest, ZeroStalenessIsRejectedByTheService) {
+// A staleness below 2 * max_clock_skew_usec would usually read past what a follower can serve, so
+// the read would be handed to another replica. The service refuses it, as YSQL does, and a zero
+// staleness with it.
+TEST_F(PgThinClientFollowerReadTest, TooSmallStalenessIsRejectedByTheService) {
   const auto oids = ASSERT_RESULT(CreateSingleTabletKeyTable());
   tserver::ThinClientServiceProxy proxy(
       &client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_server(0)->bound_rpc_addr()));
-  tserver::ThinPerformRequestPB req;
-  req.set_session_id(ASSERT_RESULT(OpenRawSession(&proxy)));
-  req.mutable_read_time_options()->set_read_from_followers(true);
-  req.mutable_read_time_options()->set_follower_read_staleness_ms(0);
-  req.add_ops()->mutable_read()->set_table_id(GetPgsqlTableId(oids.db_oid, oids.table_oid));
-  const auto status = RawPerform(&proxy, req);
-  ASSERT_TRUE(status.IsInvalidArgument()) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "positive");
+  const auto session_id = ASSERT_RESULT(OpenRawSession(&proxy));
+  const auto bound_ms = static_cast<uint32_t>(2 * FLAGS_max_clock_skew_usec / 1000);
+  for (const auto& [staleness_ms, message] : {
+           std::pair<uint32_t, std::string>{0, "positive"},
+           {1, "at least 2 * max_clock_skew_usec"},
+           {bound_ms - 1, "at least 2 * max_clock_skew_usec"}}) {
+    tserver::ThinPerformRequestPB req;
+    req.set_session_id(session_id);
+    req.mutable_read_time_options()->set_read_from_followers(true);
+    req.mutable_read_time_options()->set_follower_read_staleness_ms(staleness_ms);
+    req.add_ops()->mutable_read()->set_table_id(GetPgsqlTableId(oids.db_oid, oids.table_oid));
+    const auto status = RawPerform(&proxy, req);
+    ASSERT_TRUE(status.IsInvalidArgument()) << staleness_ms << ": " << status;
+    ASSERT_STR_CONTAINS(status.ToString(), message);
+  }
 }
 
 // The shim refuses the same batch before it is sent; a pinned batch needs no staleness.

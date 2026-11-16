@@ -23,11 +23,13 @@
 // RPCs and semantics the OLDEST supported tserver understands, and tolerate responses missing
 // fields a newer server would set.
 //
-// The ABI below carries no such promise: it may change between shim releases, a signature
-// included. The library and its header are released together, and the one caller pins a release
-// and ships this library in the same image as the binaries built against it, so the two never
-// differ at run time. A caller that declares these functions by hand (an FFI binding) must update
-// its declarations with the header: a stale declaration of a changed signature still links.
+// The ABI below carries no such promise while the library has a single caller: it may change
+// between shim releases, a signature included. The library and its header are released together,
+// and that caller pins a release and ships this library in the same image as the binaries built
+// against it, so the two never differ at run time. A second caller that cannot move in lockstep
+// would need this policy revisited. A caller that declares these functions by hand (an FFI
+// binding) must update its declarations with the header: a stale declaration of a changed
+// signature still links.
 //
 // Ownership: every out-pointer the library fills is owned by it and freed with the matching _free
 // or _destroy call below. Input arrays and strings are borrowed for the duration of the call only.
@@ -258,8 +260,8 @@ typedef struct {
   // only to force a NEW batch onto an existing snapshot.
   uint64_t read_time_ht;
   // bool. Serve the batch's reads from the closest replica, a follower included, at a snapshot
-  // the tserver computes as its own clock minus `follower_read_staleness_ms` (which must then be
-  // positive, unless read_time_ht is set). When the replica the tserver picked is behind that
+  // the tserver computes as its own clock minus `follower_read_staleness_ms` (see below, unless
+  // read_time_ht is set). When the replica the tserver picked is behind that
   // snapshot, the tserver retries the read on another replica of the tablet, on another tserver,
   // still as one Perform -- but not for free: the tserver's client marks the first replica
   // failed in its shared meta cache until its next refresh (--lookup_cache_refresh_secs, 60 s by
@@ -267,11 +269,16 @@ typedef struct {
   // replica for up to that long. YSQL follower reads behave the same way. A scan keeps the
   // choice of its first page (it travels inside paging_state): the pages of a scan started this
   // way stay on followers at the first page's snapshot, and those of a scan started at the
-  // leader stay at the leader, so this field and the staleness are ignored on a continuation.
+  // leader stay at the leader. This field and the staleness are ignored for every op of a batch
+  // that holds a continuation, fresh ops included: one Perform carries one read time and one
+  // replica choice, so a fresh op runs at the continuation's snapshot and on its scan's replica
+  // choice. With NULL options next to a follower scan's continuation, a fresh op is a follower
+  // read at that scan's snapshot.
   int read_from_followers;
-  // Only read with read_from_followers and read_time_ht == 0, and then it must be > 0 (0 is
-  // YBTHIN_INVALID); ignored otherwise. Needs a tserver that understands it; an older one serves
-  // the batch at the leader, unpinned.
+  // Only read with read_from_followers and read_time_ht == 0; ignored otherwise. It must then be
+  // > 0 (0 is YBTHIN_INVALID) and at least 2 * the cluster's --max_clock_skew_usec (1000 ms by
+  // default), as YSQL requires; the tserver refuses a smaller one as YBTHIN_INVALID. Needs a
+  // tserver that understands it; an older one serves the batch at the leader, unpinned.
   uint32_t follower_read_staleness_ms;
 } ybthin_read_options;
 

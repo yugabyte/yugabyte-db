@@ -1298,14 +1298,9 @@ void ybthin_read_async(
   call->has_continuation = have_pinned;
   call->pinned_generation = pinned_generation;
   call->pinned_read_ht = pinned_read_ht;
-  // A scan keeps the replica choice of its first page, whatever the options of a later page say:
-  // a follower scan asks for a follower again, and a leader scan stays at the leader. A
-  // continuation whose paging state holds no read time is a leader read either way: no follower
-  // can serve a read without one, and the server refuses read_from_followers without one. A
-  // follower scan's paging state lacks a read time only when its first page came from a tserver
-  // that predates read_from_followers, which served it at the leader. The continuation may still
-  // reach a newer tserver: a restarted tserver issues session ids from 1 again, so the scan's
-  // session id can name a new session there.
+  // A continuation keeps its scan's replica choice over the options. Without a read time in its
+  // paging state it reads at the leader, since a follower read needs one. A follower scan's
+  // paging state has no read time only if an older tserver served its first page.
   if (have_pinned) {
     call->read_from_followers =
         ReadFromFollowers(pinned_read_from_followers && pinned_read_ht != 0);
