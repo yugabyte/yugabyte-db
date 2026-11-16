@@ -6311,8 +6311,8 @@ static struct config_int ConfigureNamesInt[] =
 		{"yb_update_num_cols_to_compare", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Maximum number of columns whose data is to be"
 						 " compared while seeking to optimize updates."
-						 " If set to 0, all applicable columns in the table"
-						 " will be compared."),
+						 " If set to 0, the update optimization is"
+						 " disabled."),
 			NULL
 		},
 		&yb_update_optimization_options.num_cols_to_compare,

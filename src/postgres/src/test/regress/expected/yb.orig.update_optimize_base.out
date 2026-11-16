@@ -2141,3 +2141,151 @@ SELECT * FROM gin_table ORDER BY k;
  20 | {2,4,112}
 (10 rows)
 
+--
+-- GH-33617: primary key is a stored generated column. Updating a source moves
+-- the DocKey, so every secondary index must refresh its ybctid. The plan-time
+-- skip list must stay empty, and the single-row path must be refused.
+--
+CREATE TABLE t33617 (id INT, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED,
+	v INT, PRIMARY KEY (g));
+CREATE INDEX NONCONCURRENTLY idx_v_33617 ON t33617 (v);
+INSERT INTO t33617 (id, c1, v) VALUES (1, 1, 10);
+-- Expression SET at default GUCs: Index Scan, no assert, index consistent.
+EXPLAIN (COSTS OFF) UPDATE t33617 SET c1 = c1 + 1 WHERE g = 2;
+                  QUERY PLAN                  
+----------------------------------------------
+ Update on t33617
+   ->  Index Scan using t33617_pkey on t33617
+         Index Cond: (g = 2)
+(3 rows)
+
+UPDATE t33617 SET c1 = c1 + 1 WHERE g = 2;
+SELECT * FROM t33617 ORDER BY id;
+ id | c1 | g | v  
+----+----+---+----
+  1 |  2 | 4 | 10
+(1 row)
+
+SELECT yb_index_check('idx_v_33617'::regclass);
+ yb_index_check 
+----------------
+(0 rows)
+
+-- Same with the runtime optimization disabled.
+SET yb_update_num_cols_to_compare TO 0;
+UPDATE t33617 SET c1 = c1 + 1 WHERE g = 4;
+SELECT * FROM t33617 ORDER BY id;
+ id | c1 | g | v  
+----+----+---+----
+  1 |  3 | 6 | 10
+(1 row)
+
+SELECT yb_index_check('idx_v_33617'::regclass);
+ yb_index_check 
+----------------
+(0 rows)
+
+SET yb_update_num_cols_to_compare TO 50;
+-- Constant SET: must not take the Result path; Index Scan fetches ybctid.
+EXPLAIN (COSTS OFF) UPDATE t33617 SET c1 = 5 WHERE g = 6;
+                  QUERY PLAN                  
+----------------------------------------------
+ Update on t33617
+   ->  Index Scan using t33617_pkey on t33617
+         Index Cond: (g = 6)
+(3 rows)
+
+UPDATE t33617 SET c1 = 5 WHERE g = 6;
+SELECT * FROM t33617 ORDER BY id;
+ id | c1 | g  | v  
+----+----+----+----
+  1 |  5 | 10 | 10
+(1 row)
+
+SELECT yb_index_check('idx_v_33617'::regclass);
+ yb_index_check 
+----------------
+(0 rows)
+
+-- Source in SET but the PK value does not change. The unrelated index is still
+-- written: when the PK may change, no secondary index is put on the skip list.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t33617 SET c1 = c1 WHERE g = 10;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Update on t33617 (actual rows=0 loops=1)
+   ->  Index Scan using t33617_pkey on t33617 (actual rows=1 loops=1)
+         Index Cond: (g = 10)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(13 rows)
+
+SELECT * FROM t33617 ORDER BY id;
+ id | c1 | g  | v  
+----+----+----+----
+  1 |  5 | 10 | 10
+(1 row)
+
+SELECT yb_index_check('idx_v_33617'::regclass);
+ yb_index_check 
+----------------
+(0 rows)
+
+-- ON CONFLICT DO UPDATE that moves the generated PK.
+INSERT INTO t33617 (id, c1, v) VALUES (2, 5, 20)
+	ON CONFLICT (g) DO UPDATE SET c1 = EXCLUDED.c1 + 1;
+SELECT * FROM t33617 ORDER BY id;
+ id | c1 | g  | v  
+----+----+----+----
+  1 |  6 | 12 | 10
+(1 row)
+
+SELECT yb_index_check('idx_v_33617'::regclass);
+ yb_index_check 
+----------------
+(0 rows)
+
+DROP TABLE t33617;
+-- Control: generated column is not the PK. An unrelated secondary index is
+-- still skipped when neither its key nor the PK moves.
+CREATE TABLE t33617_ctrl (id INT PRIMARY KEY, c1 INT,
+	g INT GENERATED ALWAYS AS (c1 * 2) STORED, v INT);
+CREATE INDEX NONCONCURRENTLY idx_v_33617_ctrl ON t33617_ctrl (v);
+INSERT INTO t33617_ctrl (id, c1, v) VALUES (1, 1, 10);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE t33617_ctrl SET c1 = c1 + 1 WHERE id = 1;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Update on t33617_ctrl (actual rows=0 loops=1)
+   ->  Index Scan using t33617_ctrl_pkey on t33617_ctrl (actual rows=1 loops=1)
+         Index Cond: (id = 1)
+         Storage Table Read Requests: 1
+         Storage Table Read Ops: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(12 rows)
+
+SELECT * FROM t33617_ctrl ORDER BY id;
+ id | c1 | g | v  
+----+----+---+----
+  1 |  2 | 4 | 10
+(1 row)
+
+SELECT yb_index_check('idx_v_33617_ctrl'::regclass);
+ yb_index_check 
+----------------
+(0 rows)
+
+DROP TABLE t33617_ctrl;
