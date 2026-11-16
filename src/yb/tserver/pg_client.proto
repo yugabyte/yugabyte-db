@@ -929,11 +929,9 @@ message PgPerformOptionsPB {
     // See the commit desc for more info.
     bool clamp_uncertainty_window = 7;
     OptionalUint32PB follower_read_staleness_ms = 8;
-    // While a statement is retried after a read restart, read points picked for it read no earlier
-    // than read_time_floor_ht and get a global limit no later than global_limit_cap_ht, so each
-    // restart shrinks the uncertainty window and the retry converges.
+    // While a statement is retried after a read restart, read points picked for it get a global
+    // limit no later than this, so the retry's uncertainty windows shrink and it converges.
     fixed64 global_limit_cap_ht = 9;
-    fixed64 read_time_floor_ht = 10;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -1058,9 +1056,8 @@ message PgRestartTransactionForRetryRequestPB {
 
 message PgRestartTransactionForRetryResponsePB {
   AppStatusPB status = 1;
-  // Global limit of the plain session's read point before the restart, and its read time after it.
+  // Global limit of the plain session's read point before the restart.
   fixed64 global_limit_ht = 2;
-  fixed64 restart_read_ht = 3;
 }
 
 message PgTabletServerCountRequestPB {
