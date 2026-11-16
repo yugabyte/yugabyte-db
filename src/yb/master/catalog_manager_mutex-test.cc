@@ -123,7 +123,8 @@ TEST_P(CatalogManagerMutexTest, Convoy) {
             << FLAGS_TEST_catalog_mutex_test_waiters << " waiters: holder work took "
             << held.ToSeconds() << " s (alone " << alone.ToSeconds() << " s, "
             << held.ToSeconds() / alone.ToSeconds() << "x), process CPU during the hold "
-            << cpu_during_hold << " s = " << cpu_during_hold / held.ToSeconds() << " cores" << std::endl;
+            << cpu_during_hold << " s = " << cpu_during_hold / held.ToSeconds() << " cores"
+            << std::endl;
 }
 
 // Steady state: many threads take the lock shared for a moment while one writer takes it
@@ -177,7 +178,8 @@ TEST_P(CatalogManagerMutexTest, Throughput) {
   std::cerr << (GetParam() ? "Blocking" : "Spinlock") << " throughput with " << kReaders
             << " readers: " << shared_ops / kDuration.ToSeconds() << " shared ops/s, "
             << writer_wait_us.size() << " exclusive acquisitions, writer wait p50 " << pct(0.5)
-            << " us p99 " << pct(0.99) << " us max " << pct(1.0) << " us, CPU " << cpu << " s" << std::endl;
+            << " us p99 " << pct(0.99) << " us max " << pct(1.0) << " us, CPU " << cpu << " s"
+            << std::endl;
 }
 
 } // namespace yb::master
