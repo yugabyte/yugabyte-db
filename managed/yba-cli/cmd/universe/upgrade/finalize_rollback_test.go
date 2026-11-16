@@ -64,4 +64,17 @@ func TestRollbackVersions(t *testing.T) {
 		t.Errorf("with prev config: got (%q, %q), want (%q, %q)",
 			current, previous, "2026.1.0.0-b10", "2025.2.3.0-b4")
 	}
+
+	// After a failed upgrade the user intent still has the old version; the target is stored.
+	userIntent.SetYbSoftwareVersion("2025.2.3.0-b4")
+	clusters[1].SetUserIntent(userIntent)
+	details.SetClusters(clusters)
+	prev.SetTargetUpgradeSoftwareVersion("2026.1.0.0-b10")
+	details.SetPrevYBSoftwareConfig(prev)
+	universe.SetUniverseDetails(details)
+	current, previous = rollbackVersions(universe)
+	if current != "2026.1.0.0-b10" || previous != "2025.2.3.0-b4" {
+		t.Errorf("failed upgrade: got (%q, %q), want (%q, %q)",
+			current, previous, "2026.1.0.0-b10", "2025.2.3.0-b4")
+	}
 }

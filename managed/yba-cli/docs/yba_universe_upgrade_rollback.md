@@ -4,7 +4,7 @@ Roll back the software upgrade of a YugabyteDB Anywhere Universe
 
 ### Synopsis
 
-Roll back the software upgrade of a YugabyteDB Anywhere Universe to the previous YugabyteDB version. Run it before the upgrade is finalized.
+Roll back the software upgrade of a YugabyteDB Anywhere Universe to the previous YugabyteDB version. Run it before the upgrade is finalized, when the universe is in PreFinalize, Ready, Paused, UpgradeFailed or RollbackFailed state.
 
 Software upgrade flow:
   1. "yba universe upgrade software" upgrades the nodes. If the target release needs a

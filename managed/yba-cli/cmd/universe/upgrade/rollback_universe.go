@@ -21,7 +21,9 @@ var upgradeRollbackCmd = &cobra.Command{
 	Use:   "rollback",
 	Short: "Roll back the software upgrade of a YugabyteDB Anywhere Universe",
 	Long: "Roll back the software upgrade of a YugabyteDB Anywhere Universe " +
-		"to the previous YugabyteDB version. Run it before the upgrade is finalized." +
+		"to the previous YugabyteDB version. Run it before the upgrade is finalized, " +
+		"when the universe is in PreFinalize, Ready, Paused, UpgradeFailed or RollbackFailed " +
+		"state." +
 		upgradeFlowHelp,
 	Example: `yba universe upgrade rollback --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
@@ -44,6 +46,13 @@ var upgradeRollbackCmd = &cobra.Command{
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			details := universe.GetUniverseDetails()
+			state := details.GetSoftwareUpgradeState()
+			if !rollbackStates[state] {
+				logrus.Fatal(formatter.Colorize(fmt.Sprintf(
+					"Cannot roll back: universe %s is in software upgrade state %s, expected "+
+						"PreFinalize, Ready, Paused, UpgradeFailed or RollbackFailed\n",
+					universeName, state), formatter.RedColor))
+			}
 			if !details.GetIsSoftwareRollbackAllowed() {
 				logrus.Fatal(formatter.Colorize(fmt.Sprintf(
 					"Cannot roll back: the last software upgrade of universe %s was finalized\n",
@@ -103,17 +112,27 @@ var upgradeRollbackCmd = &cobra.Command{
 	},
 }
 
-// rollbackVersions returns the current version and the version a rollback goes back to.
+// rollbackStates are the software upgrade states in which YBA accepts a rollback.
+var rollbackStates = map[string]bool{
+	preFinalizeState: true,
+	"Ready":          true,
+	"Paused":         true,
+	"UpgradeFailed":  true,
+	"RollbackFailed": true,
+}
+
+// rollbackVersions returns the upgrade target and the version a rollback goes back to.
+// The user intent gets the target only at the end of the upgrade, so prefer the stored target.
 func rollbackVersions(universe ybaclient.UniverseResp) (string, string) {
 	details := universe.GetUniverseDetails()
-	var current string
-	if clusters := details.GetClusters(); len(clusters) > 0 {
+	prev := details.GetPrevYBSoftwareConfig()
+	current := prev.GetTargetUpgradeSoftwareVersion()
+	if clusters := details.GetClusters(); current == "" && len(clusters) > 0 {
 		primary, _ := universeutil.MustFindPrimaryCluster(
 			clusters, universe.GetName(), universe.GetUniverseUUID())
 		userIntent := primary.GetUserIntent()
 		current = userIntent.GetYbSoftwareVersion()
 	}
-	prev := details.GetPrevYBSoftwareConfig()
 	return current, prev.GetSoftwareVersion()
 }
 
