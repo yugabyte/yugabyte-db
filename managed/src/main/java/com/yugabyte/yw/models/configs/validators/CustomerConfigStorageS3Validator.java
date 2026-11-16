@@ -69,10 +69,12 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     // GCP DB node, and there is no universe/provider context here to resolve the role/audience.
     // Skip the credential + bucket checks (URL already validated); the node/YBC do the real check.
     if (AWSUtil.isCrossCloudFederationConfig(s3data)) {
-      // Keys alongside federation leave the credential ambiguous: the DB nodes always federate, but
-      // YBA's own client falls back to the keys wherever the provider's role and audience are not
-      // resolved. Its fallback without keys is YBA's IAM role, so the message names that too. A
-      // config saved with keys and federation keeps taking edits such as a rename.
+      // Keys stored on a federated config are never what the DB nodes use, since they always
+      // federate. Without IAM_INSTANCE_PROFILE, YBA's own client falls back to the keys wherever
+      // the provider's role and audience are not resolved; with it, the keys are unused. Either
+      // way they are not the config's credential, so they are refused, and the message names the
+      // IAM role as YBA's fallback. A config saved with keys and federation keeps taking edits
+      // such as a rename.
       if (introduces(
           CustomerConfigStorageS3Validator::hasKeysWithFederation,
           s3data,

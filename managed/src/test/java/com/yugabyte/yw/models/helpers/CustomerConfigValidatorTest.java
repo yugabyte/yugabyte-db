@@ -767,6 +767,53 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
   }
 
+  @Test
+  public void testValidateDataContent_Storage_GCS_JsonWithGcpIamIsRejected() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_GCP_IAM", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            containsString("Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.")));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_FederationWithoutGcpIamIsRejected() {
+    // With a JSON key instead of USE_GCP_IAM, the federation flag would be silently ignored.
+    ObjectNode data = gcsFederationWithJson();
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\""
+                + fieldFullName("USE_GCP_IAM")
+                + "\":[\"USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of"
+                + " GCS_CREDENTIALS_JSON.\"]}"));
+  }
+
+  /** A config saved with federation and a JSON key before the rule existed still takes a rename. */
+  @Test
+  public void testValidateDataContent_Storage_GCS_SavedFederationWithJsonCanBeRenamed() {
+    ObjectNode data = gcsFederationWithJson();
+    CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
+    // The JSON key is then checked against the bucket, as for any key-based config.
+    allowedBuckets.add("gs://test");
+    customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
+  }
+
+  private static ObjectNode gcsFederationWithJson() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    return data;
+  }
+
   private static ObjectNode s3FederationWithKeys() {
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
