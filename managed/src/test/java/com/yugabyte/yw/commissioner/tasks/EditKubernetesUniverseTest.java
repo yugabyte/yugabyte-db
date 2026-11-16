@@ -3056,38 +3056,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testTserverAddAfterPartialMasterFullMoveRendersEachMasterSpec() {
-    setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
-    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
-    PlacementInfo pi = currentPlacement();
-    pi.azStream()
-        .filter(az -> az.name.equals("PlacementAZ 1"))
-        .forEach(
-            az -> {
-              az.masterStsIndex = 1;
-              az.numNodesInAZ = 2;
-            });
-    pi.azStream().filter(az -> az.name.equals("PlacementAZ 2")).forEach(az -> az.numNodesInAZ = 2);
-    newIntent.numNodes += 2;
-
-    List<TaskInfo> plan = planEdit(newIntent, pi);
-
-    // Only az-1's master StatefulSet was replaced with the new spec; az-2's runs the saved one.
-    List<TaskInfo> tserverAdds =
-        helmUpgrades(plan).stream()
-            .filter(t -> "TSERVER".equals(t.getTaskParams().path("serverType").asText()))
-            .filter(t -> helmAZ(t).path("numNodesInAZ").asInt() == 2)
-            .collect(Collectors.toList());
-    assertEquals(ImmutableSet.of("az-1", "az-2"), azCodes(tserverAdds));
-    for (TaskInfo t : tserverAdds) {
-      assertEquals(
-          t.getTaskParams().path("azCode").asText().equals("az-1"),
-          t.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
-    }
-  }
-
-  @Test
   public void testZoneReplaceWithMasterFullMoveWaitsForAllMasters() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
     String oldMasters = expectedMasterAddresses(currentPlacement());

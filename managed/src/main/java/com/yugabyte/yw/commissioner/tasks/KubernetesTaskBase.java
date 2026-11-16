@@ -532,9 +532,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         //    unchanged when only tservers are added).
         int tserverPartition = currNumTservers;
         int masterPartition = serverType == ServerType.MASTER ? currNumMasters : newNumMasters;
-        // Tservers are added after every master step. A master StatefulSet a full move replaced
-        // runs the target disk spec, which can differ from the saved one; the others run the saved
-        // one.
+        // Tservers are added after every master step, so the master StatefulSets already have the
+        // target disk spec, which can differ from the saved one after a full move of masters.
         helmInstalls.addSubTask(
             createKubernetesExecutorTaskForServerType(
                 universeName,
@@ -557,9 +556,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 null /* moveParams */,
                 null /* oldMasterDiskSize */,
                 null /* oldTserverDiskSize */,
-                /* useNewMasterDeviceInfo */
-                serverType == ServerType.TSERVER
-                    && masterStsReplaced(currPlacement, newPlacementAZ),
+                serverType == ServerType.TSERVER /* useNewMasterDeviceInfo */,
                 false /* useNewTserverDeviceInfo */));
 
         // When adding masters, the number of tservers will be still the same as before.
@@ -1686,17 +1683,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         false /* useNewMasterDeviceInfo */);
   }
 
-  /** Whether an edit replaces the AZ's master StatefulSet, which then has the edit's disk spec. */
-  private static boolean masterStsReplaced(
-      KubernetesPlacement currPlacement, PlacementAZ newPlacementAZ) {
-    PlacementAZ currPlacementAZ =
-        currPlacement == null
-            ? null
-            : currPlacement.placementInfo.findByAZUUID(newPlacementAZ.uuid);
-    return currPlacementAZ != null
-        && currPlacementAZ.masterStsIndex != newPlacementAZ.masterStsIndex;
-  }
-
   private static boolean tserversDrop(
       KubernetesPlacement currPlacement, KubernetesPlacement newPlacement, UUID azUUID) {
     return newPlacement.tservers.getOrDefault(azUUID, 0)
@@ -1709,8 +1695,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
    * @param skipAZs AZs this call does not touch.
    *     <p>Used by an edit that fully moves tservers in those AZs. The full move deletes their old
    *     StatefulSets itself.
-   * @param useNewMasterDeviceInfo true to render the master disk spec from the edit in the AZs
-   *     whose master StatefulSet a full move replaced, false to render the saved one everywhere.
+   * @param useNewMasterDeviceInfo true to render the master disk spec from the edit, false to
+   *     render the saved one.
    *     <p>Pass true when this runs after a full move of masters. The new master StatefulSets
    *     already have the edit's spec, and K8s rejects changing it back.
    *     <p>Example: an edit changes the master storage class and removes tservers.
@@ -1856,7 +1842,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 null /* moveParams */,
                 null /* oldMasterDiskSize */,
                 null /* oldTserverDiskSize */,
-                useNewMasterDeviceInfo && masterStsReplaced(currPlacement, newPlacementAZ),
+                useNewMasterDeviceInfo,
                 false /* useNewTserverDeviceInfo */));
 
         podsWait.addSubTask(
