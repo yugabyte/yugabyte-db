@@ -33,6 +33,7 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/async_util.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
@@ -612,7 +613,13 @@ Status YsqlInitDBAndMajorUpgradeHandler::PerformPgUpgrade(const LeaderEpoch& epo
   pg_upgrade_params.old_version_pg_port = closest_ts_hp.port();
 
   if (FLAGS_TEST_kill_master_before_ysql_pg_upgrade) {
-    LOG(INFO) << "TEST: Killing yb-master before running pg_upgrade";
+    // postgres sets its parent-death signal before it writes postmaster.pid, so waiting for the
+    // file ensures postgres exits with us, as it would after a real kill.
+    const auto pid_file = JoinPathSegments(pg_upgrade_data_dir, "postmaster.pid");
+    auto s = WaitFor(
+        [&pid_file]() -> Result<bool> { return Env::Default()->FileExists(pid_file); },
+        MonoDelta::FromSeconds(30), "postgres to write " + pid_file);
+    LOG(INFO) << "TEST: Killing yb-master before running pg_upgrade, postmaster.pid wait: " << s;
     kill(getpid(), SIGKILL);
   }
 

@@ -2070,11 +2070,9 @@ AlterPublicationOwner_oid(Oid subid, Oid newOwnerId)
 
 /*
  * YB: Returns whether 'node' is a "simple expression" as defined by
- * check_simple_rowfilter_expr_walker, without raising an error.  Also used to
+ * check_simple_rowfilter_expr_walker, without raising an error. Also used to
  * restrict which index expressions and predicates ALTER COLUMN TYPE may reuse
- * in place (see YbIndexReuseIsSafe); yb.orig.alter_table_rewrite pins the
- * outcome for each node type so that upstream changes to the walker show up
- * there.
+ * in place (see YbIndexReuseIsSafe).
  */
 bool
 YbIsSimpleRowFilterExpr(Node *node)

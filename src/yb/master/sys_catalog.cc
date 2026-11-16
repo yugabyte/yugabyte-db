@@ -487,7 +487,11 @@ void SysCatalogTable::SysCatalogStateChanged(
       (context->reason == StateChangeReason::NEW_LEADER_ELECTED ||
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeReason::TABLET_PEER_STARTED))) {
-    CHECK_OK(leader_cb_.Run());
+    // A single master can win its first election before TABLET_PEER_STARTED is reported, so both
+    // notifications see it as leader of the same term. Load the sys catalog only once per term.
+    if (leader_cb_term_.exchange(cstate.current_term()) != cstate.current_term()) {
+      CHECK_OK(leader_cb_.Run());
+    }
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
@@ -617,6 +621,7 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
       metric_registry_, /*tablet_splitter=*/nullptr, persistence_gate_.get(),
       master_->client_future());
 
+  leader_cb_term_ = -1;
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
 

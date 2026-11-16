@@ -239,6 +239,15 @@ Default: `true`
 
 Disable callhome diagnostics.
 
+##### --stack_trace_symbolize
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+
 ### Metric export flags
 
 YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
@@ -397,6 +406,23 @@ PostgreSQL parameter that sets how often a backend checks whether its client is 
 In YugabyteDB (on Linux), the check also applies while a new connection starts up, including while the backend waits for catalog preload requests. If the client disconnects during startup, for example because its connect timeout expires, the backend exits with `FATAL: connection to client lost` instead of waiting for the preload to finish.
 
 During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](#ysql-pg-conf-csv), because per-database and per-role settings are loaded after the preload.
+
+##### yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
+
+On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
+
+When set to `false`, every connection fetches the catalog from the YB-Master leader, and the read that a backend makes ahead of authentication takes the ordinary catalog prefetch admission priority.
+
+Set this parameter server-wide, for example using [ysql_pg_conf_csv](#ysql-pg-conf-csv). Changes take effect when the configuration is reloaded, and apply to connections that start after the reload.
+
+See also the [--ysql_yb_enable_stale_catalog_prefetch](#ysql-yb-enable-stale-catalog-prefetch) flag.
 
 ##### enable_bitmapscan
 
@@ -558,7 +584,7 @@ Batching is always disabled for the following:
 Default: `false`
 {{% /tags/wrap %}}
 
-Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/).
+Controls whether or not reading from followers is enabled. For more information, refer to [Follower reads](../../../additional-features/follower-reads/).
 
 ##### yb_follower_read_staleness_ms
 
@@ -568,7 +594,11 @@ Controls whether or not reading from followers is enabled. For more information,
 Default: `30000` (30 seconds)
 {{% /tags/wrap %}}
 
-Sets the maximum allowable staleness. Although the default is recommended, you can set the staleness to a shorter value. The tradeoff is the shorter the staleness, the more likely some reads may be redirected to the leader if the follower isn't sufficiently caught up. You shouldn't set `yb_follower_read_staleness_ms` to less than 2x the `raft_heartbeat_interval_ms` (which by default is 500 ms).
+The staleness of YSQL follower reads, in milliseconds. A follower read runs at the current time minus this value. Although the default is recommended, you can set a shorter value. A shorter value makes it more likely that a follower has not caught up to the read time. Such a read is retried at the leader, or waits for the follower to catch up, depending on [--ysql_follower_reads_avoid_waiting_for_safe_time](#ysql-follower-reads-avoid-waiting-for-safe-time).
+
+YugabyteDB rejects a value less than twice [--max_clock_skew_usec](#max-clock-skew-usec) (500 ms by default, so the minimum is 1000 ms). Also keep it at least twice [raft_heartbeat_interval_ms](#raft-heartbeat-interval-ms) (500 ms by default).
+
+For more information, see [Follower reads](../../../additional-features/follower-reads/#when-a-follower-can-serve-the-read).
 
 ##### default_transaction_read_only
 
@@ -578,7 +608,7 @@ Sets the maximum allowable staleness. Although the default is recommended, you c
 Default: `false`
 {{% /tags/wrap %}}
 
-Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/#read-only-transaction).
+Turn this setting `ON/TRUE/1` to make all the transactions in the current session read-only. This is helpful when you want to run reports or set up [follower reads](../../../additional-features/follower-reads/#read-only-transaction).
 
 ##### default_transaction_isolation
 
@@ -712,6 +742,17 @@ Default: `0`
 {{% /tags/wrap %}}
 
 Deprecated in v2025.2.3.0. Use [yb_max_merge_scan_streams](#yb-max-merge-scan-streams) instead.
+
+##### yb_refresh_matview_in_place
+
+{{% tags/wrap %}}
+
+Default: `false`
+{{% /tags/wrap %}}
+
+When `true`, [REFRESH MATERIALIZED VIEW](../../../api/ysql/the-sql-language/statements/ddl_refresh_matview/) deletes all rows from the [materialized view](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) and inserts the new query result into the same table. When `false`, refresh builds a new table and swaps it in.
+
+During a YSQL major upgrade, refresh always runs in place, regardless of this setting.
 
 ## Networking
 
@@ -1005,6 +1046,20 @@ Default: `9223372036854775807`
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
+### Disk space
+
+##### --reject_writes_min_disk_space_pct
+
+{{% tags/wrap %}}
+
+Default: `5`
+{{% /tags/wrap %}}
+
+Available in v2025.2.7.0 and later.
+
+Minimum free disk space, as a percentage of the total disk capacity, that must be available on the WAL or data directory. When free space falls below this percentage and [reject_writes_when_disk_full](../all-flags-yb-tserver/#reject-writes-when-disk-full) is enabled, the YB-TServer rejects writes to the tablet and aborts remote bootstrap transfers to that node.
+
+Because the threshold is a percentage, it scales automatically with disk size. If both this flag and [reject_writes_min_disk_space_mb](../all-flags-yb-tserver/#reject-writes-min-disk-space-mb) yield a threshold, the larger of the two is used. Set this flag to `0` to disable the percentage-based threshold.
 
 ### Sharding flags
 
@@ -1628,6 +1683,17 @@ Default: `true`
 
 Enables the YB-TServer catalog cache, which reduces YB-Master overhead for starting a connection and internal system catalog metadata refresh (for example, after executing a DDL), when there are many YSQL connections per node.
 
+##### --ysql_yb_enable_stale_catalog_prefetch
+
+{{% tags/wrap %}}
+
+Default: `true`
+{{% /tags/wrap %}}
+
+v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
+
+See also the [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) configuration parameter.
+
 ##### --ysql_minimal_catalog_caches_preload
 
 {{% tags/wrap %}}
@@ -1814,10 +1880,10 @@ Leader lease duration should be longer than the heartbeat interval, and less tha
 
 {{% tags/wrap %}}
 
-Default: `10000` (10 seconds)
+Default: `60000` (60 seconds)
 {{% /tags/wrap %}}
 
-Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+How far the follower's safe time may be behind now, in milliseconds, before the follower rejects the read and the client retries it at the leader.
 
 In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
 
@@ -2450,7 +2516,7 @@ Enable per table mutation (INSERT, UPDATE, DELETE) counting. The Auto Analyze se
 
 ### Explicit row locking flags
 
-To learn about explicit row locking, see [Row-level locks](../../../explore/transactions/explicit-locking/#row-level-locks) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
+To learn about explicit row locking, see [Row-level locks](../../../architecture/transactions/concurrency-control/#row-level-explicit-locking-clauses) and [Explicit row locking modes](../../../explore/transactions/explicit-locking/#explicit-row-locking-modes).
 
 ##### --ysql_yb_explicit_row_locking_batch_size
 
@@ -2817,9 +2883,7 @@ Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
 
-The `--ysql_hba_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_hba_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For details on using `--ysql_hba_conf_csv` to specify client authentication, refer to [Host-based authentication](../../../secure/authentication/host-based-authentication/).
 
@@ -2858,9 +2922,7 @@ Default: `""`
 
 Specifies a comma-separated list of PostgreSQL user name mapping rules that is written to the `ysql_ident.conf` file. These rules define mappings from external users to database roles. See [Authentication methods](../../../secure/authentication/) for details.
 
-The `--ysql_ident_conf_csv` flag is read on start-up of your cluster. If you edit the file on an active cluster, you need to restart your yb-tserver processes for changes to take effect.
-
-Changes to `--ysql_ident_conf_csv` should be applied to all yb-tserver servers in a rolling upgrade, making sure that all YB-TServers are not stopped at the same time.
+This flag can be updated at runtime without restarting the server. Changes take effect immediately. Set the flag on every YB-TServer, and save the new value in each YB-TServer configuration file or in YugabyteDB Anywhere so the change survives a restart.
 
 For example:
 
@@ -2948,7 +3010,7 @@ Specifies the default transaction isolation level.
 
 Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
+[Read Committed isolation](../../../architecture/transactions/read-committed/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`.
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
@@ -2961,11 +3023,11 @@ If `yb_enable_read_committed_isolation` is `false`, the Read Committed isolation
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed isolation.
+Enables [Read Committed isolation](../../../architecture/transactions/read-committed/).
 
 For new universes running v2025.2 or later, `yb_enable_read_committed_isolation` is set to `true` by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot isolation](../../../explore/transactions/isolation-levels/). See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+When set to false, Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter Snapshot isolation. See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
 
 ##### --pg_client_use_shared_memory
 
@@ -3087,6 +3149,23 @@ Specifies the database where pg_cron is to be installed. You can create the data
 The [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
+
+##### --pg_cron_leader_lease_sec
+
+{{% tags/wrap %}}
+
+Default: `60`
+{{% /tags/wrap %}}
+
+The time, in seconds, that the [pg_cron](../../../additional-features/pg-extensions/extension-pgcron/) leader holds its lease.
+
+In v2025.2.9.0 and later, when the pg_cron leader moves to another node, the old leader lets its running jobs continue for at least `pg_cron_leader_lease_sec` minus 15 seconds before canceling them, and the new leader waits about this long before it starts running jobs. Increase this value to give long-running jobs more time to complete during a planned leader change; a larger value also delays jobs after any leader change.
+
+In earlier releases, a leader change cancels running jobs immediately, and the new leader runs no jobs for the first minute.
+
+For more information, see [Failures and leader changes](../../../additional-features/pg-extensions/extension-pgcron/#failures-and-leader-changes).
+
+Set this flag on all YB-TServers. The value must be greater than `--pg_cron_leadership_refresh_sec` (default `10`).
 
 ##### --ysql_output_buffer_size
 

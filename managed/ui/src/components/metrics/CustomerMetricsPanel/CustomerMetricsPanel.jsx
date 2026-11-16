@@ -101,10 +101,6 @@ export const PanelBody = ({
   if (!(selectedUniverse === MetricConsts.ALL)) {
     if (isKubernetesUniverse) {
       invalidTabType.push(MetricTypes.PER_PROCESS);
-      // The node panels need the node_exporter sidecar, which YBA scrapes only on supported pods.
-      if (!selectedUniverse.nodeExporterSidecarScraped) {
-        invalidTabType.push(MetricTypes.SERVER, MetricTypes.DISK_IO);
-      }
     } else {
       invalidTabType.push(MetricTypes.CONTAINER);
     }
@@ -133,7 +129,12 @@ export const PanelBody = ({
     const metricTabs = MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
       const tabTitle = MetricTypesWithOperations[type].title;
       const metricContent = MetricTypesWithOperations[type];
-      const metricsKey = metricsForTab(type, isKubernetesUniverse, isMasterView);
+      const metricsKey = metricsForTab(
+        type,
+        isKubernetesUniverse,
+        isMasterView,
+        !!selectedUniverse?.nodeExporterSidecarScraped
+      );
       if (
         !_.includes(Object.keys(APIMetricToNodeFlag), type) ||
         selectedUniverse?.universeDetails?.nodeDetailsSet.some(

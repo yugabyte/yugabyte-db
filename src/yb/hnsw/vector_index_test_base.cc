@@ -13,9 +13,16 @@
 
 #include "yb/hnsw/vector_index_test_base.h"
 
+#include "yb/gutil/endian.h"
+
 #include "yb/rocksdb/cache.h"
 
+#include "yb/util/crc.h"
+
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 namespace yb::hnsw {
 
@@ -50,6 +57,48 @@ void VectorIndexTestBase::SetUp() {
       MemTracker::GetRootTracker()->FindOrCreateTracker(1ULL << 30, "block_cache"),
       metric_entity_,
       *rocksdb_cache_);
+}
+
+namespace {
+
+// Returns the offset of the footer, which starts with the flags.
+Result<size_t> YbHnswFooterOffset(const faststring& content, const std::string& path) {
+  SCHECK_GE(content.size(), sizeof(uint64_t), IllegalState, Format("$0 is too small", path));
+  const auto footer_size = LittleEndian::Load64(
+      content.data() + content.size() - sizeof(uint64_t));
+  SCHECK_LT(footer_size, content.size(), IllegalState, Format("Bad footer size in $0", path));
+  return content.size() - footer_size;
+}
+
+} // namespace
+
+Status VectorIndexTestBase::DamageYbHnswBlocks(const std::string& path, size_t stride) {
+  faststring content;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+  const auto footer_offset = VERIFY_RESULT(YbHnswFooterOffset(content, path));
+  for (size_t pos = 0; pos < footer_offset; pos += stride) {
+    content[pos] ^= 0xff;
+  }
+  return WriteStringToFile(env_.get(), content, path);
+}
+
+Result<uint8_t> VectorIndexTestBase::YbHnswFooterFlags(const std::string& path) {
+  faststring content;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+  return content[VERIFY_RESULT(YbHnswFooterOffset(content, path))];
+}
+
+Status VectorIndexTestBase::SetYbHnswFooterFlags(const std::string& path, uint8_t flags) {
+  faststring content;
+  RETURN_NOT_OK(ReadFileToString(env_.get(), path, &content));
+  const auto footer_offset = VERIFY_RESULT(YbHnswFooterOffset(content, path));
+  content[footer_offset] = flags;
+  // The footer ends with its CRC32C and its size.
+  const auto crc_offset = content.size() - sizeof(uint64_t) - sizeof(uint32_t);
+  LittleEndian::Store32(
+      content.data() + crc_offset,
+      crc::Crc32c(content.data() + footer_offset, crc_offset - footer_offset));
+  return WriteStringToFile(env_.get(), content, path);
 }
 
 size_t VectorIndexTestBase::BlockCacheCapacity() {

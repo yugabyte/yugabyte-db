@@ -363,13 +363,16 @@ DROP TABLEGROUP "default";
 
 -- The default tablegroup cannot be dropped
 DROP TABLEGROUP "default" CASCADE;
-DROP TABLE tbl;
-DROP TABLEGROUP "default";
 
 -- Cannot set privileges of an implicit tablegroup
 CREATE ROLE test_role;
 GRANT CREATE ON TABLEGROUP "default" TO test_role;
 REVOKE CREATE ON TABLEGROUP "default" FROM test_role;
+
+-- An implicit tablegroup is dropped along with its last table
+DROP TABLE tbl;
+SELECT * FROM pg_yb_tablegroup;
+DROP TABLEGROUP "default";
 
 -- Any user can create tables/indexes in an implicit tablegroup
 GRANT CREATE ON SCHEMA public TO test_role;

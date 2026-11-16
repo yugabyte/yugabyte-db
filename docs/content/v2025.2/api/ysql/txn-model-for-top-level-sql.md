@@ -47,7 +47,7 @@ Notice that _commit_ (or _end_) and _rollback_ (or _abort_) are meaningful only 
 The effects of ordinary non-transaction-control SQL statements that are issued during an ongoing transaction are essentially private to the current session and invisible to any other concurrent sessions. If the current session issues _rollback_, then from the point of view of other sessions, it's the same as if the current session had done nothing. Only if the current session issues _commit_ will the effects of its transaction become visible in other concurrent sessions.
 
 {{< tip title="See the dedicated YSQL documentation section on isolation levels." >}}
-The behavior of concurrent sessions, each of which has an ongoing transaction, needs very careful description—and it depends critically on which so-called _isolation level_ was specified when each transaction was started. See the section [Isolation levels](../../../explore/transactions/isolation-levels/). The isolation level of each session affects, for example:
+The behavior of concurrent sessions, each of which has an ongoing transaction, needs very careful description—and it depends critically on which so-called _isolation level_ was specified when each transaction was started. See the section [Isolation levels](../../../architecture/transactions/isolation-levels/). The isolation level of each session affects, for example:
 
 - how sessions might wait on each other in contention scenarios;
 - what kinds of conflict errors might occur, and when they occur;

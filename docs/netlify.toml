@@ -133,7 +133,7 @@
 
 [[redirects]]
   from = "/explore/tunable-reads/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/explore/*"
@@ -354,11 +354,11 @@
 
 [[redirects]]
   from = "/preview/explore/follower-reads/fr-ycql/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/high-performance/tunable-reads/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/linear-scalability/macos/"
@@ -370,7 +370,7 @@
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
-  to = "/stable/explore/going-beyond-sql/follower-reads-ycql/"
+  to = "/stable/explore/going-beyond-sql/follower-reads-ysql/"
 
 [[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ysql/"
@@ -956,7 +956,7 @@
   from = "/preview/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
   to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
   force = true
-  
+
 [[redirects]]
   from = "/stable/explore/change-data-capture/using-yugabytedb-grpc-replication/*"
   to = "/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/:splat"
@@ -1183,24 +1183,35 @@
         connect-src 'self'
             https://cdn.cookielaw.org/
             https://geolocation.onetrust.com/
+            https://yugabytedb-privacy.my.onetrust.com/
             https://80f647c7c1f545fc97ff43f8b602dc86.us-west-2.aws.found.io/
             https://api.rudderstack.com/
             https://app.clearbit.com/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://ka-f.fontawesome.com/releases/
-            https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app/
+            https://proxy.kapa.ai/
             https://metrics.kapa.ai/
             https://hcaptcha.com
             https://*.hcaptcha.com
             https://raw.githubusercontent.com/
             https://sessions.bugsnag.com/
-            https://stats.g.doubleclick.net/
+            https://*.g.doubleclick.net/
+            https://ad.doubleclick.net/
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
             https://umbcujcbe8-dsn.algolia.net/
-            https://www.google-analytics.com/
-            https://www.yugabyte.com
+            https://*.google-analytics.com/
+            https://*.analytics.google.com/
+            https://*.googletagmanager.com/
+            https://www.google.com/
+            https://analytics.google.com/
+            https://pagead2.googlesyndication.com/
+            https://www.googleadservices.com/
+            https://pixel-config.reddit.com/
+            https://alb.reddit.com/
+            https://www.yugabyte.com/
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
             https://cdnjs.cloudflare.com/
             https://cdn.jsdelivr.net/
@@ -1231,7 +1242,12 @@
             https://*.hcaptcha.com
             https://www.google-analytics.com/
             https://www.googletagmanager.com/
+            https://www.googleadservices.com/
+            https://googleads.g.doubleclick.net/
+            https://www.google.com/
+            https://www.redditstatic.com/
             https://x.clearbitjs.com/
+            https://www.youtube.com/
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1266,7 +1282,12 @@
             https://docs.yugabyte.com/images/favicon.ico
             https://portal.azure.com/
             https://raw.githubusercontent.com/
-            https://www.google-analytics.com/
+            https://*.google-analytics.com/
+            https://*.googletagmanager.com/
+            https://*.g.doubleclick.net/
+            https://www.google.com/
+            https://pagead2.googlesyndication.com/
+            https://www.googleadservices.com/
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
@@ -1275,12 +1296,15 @@
             https://t2.gstatic.com/faviconV2
             https://t3.gstatic.com/faviconV2
             https://b.6sc.co/
+            https://alb.reddit.com/
         ;
 
         child-src 'self' 'unsafe-inline'
             https://app.netlify.com/
             https://app.supademo.com/
             https://www.google.com/
+            https://www.googletagmanager.com/
+            https://td.doubleclick.net/
             https://hcaptcha.com
             https://*.hcaptcha.com
             https://www.youtube.com/

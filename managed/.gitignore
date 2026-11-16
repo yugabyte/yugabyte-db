@@ -68,6 +68,11 @@ devops/pex/pexEnv
 devops/pexvenv
 devops/pex/.cache
 
+# Support bundle helper binaries, built by devops/supportbundle/{logparse,serverconfredact,cdcstate}.
+devops/bin/yb-log-parse*
+devops/bin/yb-redact-server-conf*
+devops/bin/yb-dump-cdc-state*
+
 # This is for people using pyenv with a local version for YBA set.
 .python-version
 

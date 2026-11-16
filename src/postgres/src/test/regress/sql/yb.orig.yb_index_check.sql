@@ -426,3 +426,15 @@ RESET ROLE;
 SELECT yb_index_check('rls_part_body_idx'::regclass::oid, true);
 DROP TABLE rls_part;
 DROP ROLE rls_part_user;
+
+-- In multi-snapshot mode, yb_index_check() takes a new snapshot for each batch,
+-- which parallel mode does not allow, so the function is PARALLEL UNSAFE: with
+-- force_parallel_mode on, the plan has no Gather and the check succeeds.
+CREATE TABLE idxcheck_parallel (k int PRIMARY KEY, v int);
+CREATE INDEX idxcheck_parallel_v_idx ON idxcheck_parallel (v);
+INSERT INTO idxcheck_parallel SELECT i, i FROM generate_series(1, 10) i;
+SET force_parallel_mode = on;
+EXPLAIN (COSTS OFF) SELECT yb_index_check('idxcheck_parallel_v_idx'::regclass);
+SELECT yb_index_check('idxcheck_parallel_v_idx'::regclass);
+RESET force_parallel_mode;
+DROP TABLE idxcheck_parallel;

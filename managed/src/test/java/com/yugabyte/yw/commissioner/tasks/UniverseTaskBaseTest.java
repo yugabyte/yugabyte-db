@@ -556,6 +556,10 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
               u.setUniverseDetails(details);
             });
 
+    // Names come from the task's saved universe.
+    UniverseTaskParams params = new UniverseTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    universeTaskBase.setTaskParams(params);
     // n3 is being removed, so r2 keeps an entry without nodes and n3 is deregistered.
     Map<LoadBalancerPlacement, LoadBalancerConfig> lbMap =
         universeTaskBase.createLoadBalancerMap(
@@ -683,6 +687,22 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
       assertTrue(rollbackType.name(), taskTypes.contains(TaskType.ReinstallNodeAgent));
       assertTrue(rollbackType.name(), taskTypes.contains(TaskType.CreateSupportBundle));
     }
+  }
+
+  @Test
+  public void testReadReplicaDeleteAllowedAfterFailedReadReplicaCreate() {
+    // PLAT-23418: deleting the half-created read replica is the way out of a failed create.
+    UniverseTaskBase.AllowedTasks k8sAllowed =
+        allowedTasksForFailedTask(TaskType.ReadOnlyKubernetesClusterCreate);
+    assertTrue(k8sAllowed.isRestricted());
+    assertTrue(k8sAllowed.getTaskTypes().contains(TaskType.ReadOnlyKubernetesClusterDelete));
+    UniverseTaskBase.AllowedTasks vmAllowed =
+        allowedTasksForFailedTask(TaskType.ReadOnlyClusterCreate);
+    assertTrue(vmAllowed.isRestricted());
+    assertTrue(vmAllowed.getTaskTypes().contains(TaskType.ReadOnlyClusterDelete));
+    assertTrue(new AllowedUniverseTasksResp(vmAllowed).getTaskIds().contains("Delete_Cluster"));
+    // Only the matching delete: a failed VM create does not allow the K8s delete.
+    assertFalse(vmAllowed.getTaskTypes().contains(TaskType.ReadOnlyKubernetesClusterDelete));
   }
 
   @Test

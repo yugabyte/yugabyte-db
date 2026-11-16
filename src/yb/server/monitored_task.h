@@ -63,6 +63,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kBackendsCatalogVersion)
   (kBackendsCatalogVersionTs)
   (kBackfillDone)
+  (kOnlineSchemaChange)
+  (kTableBackfillChunk)
   (kBackfillTable)
   (kBackfillTabletChunk)
   (kChangeConfig)

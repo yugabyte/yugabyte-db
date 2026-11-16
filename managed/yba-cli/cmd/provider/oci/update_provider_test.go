@@ -58,6 +58,15 @@ func TestValidateOCIRegionAndZoneNames(t *testing.T) {
 			wantErr:     "region r1-typo not found",
 		},
 		{
+			name:        "edit-region clearing the instance template",
+			editRegions: []string{"region-name=r1::instance-template="},
+		},
+		{
+			name:        "unknown region in edit-region clearing the instance template",
+			editRegions: []string{"region-name=r1-typo::instance-template="},
+			wantErr:     "region r1-typo not found",
+		},
+		{
 			name:     "unknown region in add-zone",
 			addZones: []string{"zone-name=z::region-name=r1-typo::subnet=s"},
 			wantErr:  "region r1-typo in --add-zone",
@@ -96,6 +105,57 @@ func TestValidateOCIRegionAndZoneNames(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("got error %v, want one containing %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestEditOCIRegionsInstanceTemplate(t *testing.T) {
+	const oldTemplate = "ocid1.instanceconfiguration.oc1..old"
+	tests := []struct {
+		name       string
+		editRegion string
+		want       string
+	}{
+		{
+			name:       "empty value clears the template",
+			editRegion: "region-name=r1::instance-template=",
+			want:       "",
+		},
+		{
+			name:       "omitted key keeps the template",
+			editRegion: "region-name=r1::vnet=v2",
+			want:       oldTemplate,
+		},
+		{
+			name:       "new value replaces the template",
+			editRegion: "region-name=r1::instance-template=ocid1.instanceconfiguration.oc1..new",
+			want:       "ocid1.instanceconfiguration.oc1..new",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			providerRegions := []ybaclient.Region{{
+				Code: util.GetStringPointer("r1"),
+				Zones: []ybaclient.AvailabilityZone{
+					{Code: util.GetStringPointer("r1-z1"), Name: "r1-z1"},
+				},
+				Details: &ybaclient.RegionDetails{
+					CloudInfo: &ybaclient.RegionCloudInfo{
+						Oci: &ybaclient.OCIRegionCloudInfo{
+							Vnet:             util.GetStringPointer("v1"),
+							InstanceTemplate: util.GetStringPointer(oldTemplate),
+						},
+					},
+				},
+			}}
+
+			got := editOCIRegions([]string{tc.editRegion}, nil, nil, nil, providerRegions)
+
+			oci := got[0].GetDetails().CloudInfo.GetOci()
+			template, ok := oci.GetInstanceTemplateOk()
+			if !ok || *template != tc.want {
+				t.Fatalf("instance template = %v (set=%v), want %q", template, ok, tc.want)
 			}
 		})
 	}

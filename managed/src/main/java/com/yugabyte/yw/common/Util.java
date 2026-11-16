@@ -294,7 +294,14 @@ public class Util {
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    return getNodesAsInet(Universe.getOrBadRequest(universeUUID));
+  }
+
+  /**
+   * Returns a list of Inet address objects in the proxy tier of the given universe snapshot. This
+   * is needed by Cassandra clients.
+   */
+  public static List<InetSocketAddress> getNodesAsInet(Universe universe) {
     List<InetSocketAddress> inetAddrs = new ArrayList<>();
     for (String address : universe.getYQLServerAddresses().split(",")) {
       String[] splitAddress = address.split(":");
@@ -305,9 +312,18 @@ public class Util {
     return inetAddrs;
   }
 
+  // A '"'"'-escaped, doubled (inside format('...')) or plain password literal, ';' optional. The
+  // lookaheads keep a quote in the password from ending the match or making a plain one doubled.
+  private static final Pattern YSQL_PASSWORD_LITERAL =
+      Pattern.compile(
+          "(?i)"
+              + YSQL_PASSWORD_KEYWORD
+              + "\\s+(?:'\"'\"'.*?'\"'\"'(?=[;\\s\"]|$)"
+              + "|''(?=[^'])(?:[^']|'''')*''"
+              + "|'(?:[^']|'')*')");
+
   public static String redactYsqlQuery(String input) {
-    return input.replaceAll(
-        YSQL_PASSWORD_KEYWORD + " (.+?)';", String.format("%s %s;", YSQL_PASSWORD_KEYWORD, REDACT));
+    return YSQL_PASSWORD_LITERAL.matcher(input).replaceAll(YSQL_PASSWORD_KEYWORD + " " + REDACT);
   }
 
   /**
@@ -947,6 +963,30 @@ public class Util {
         .collect(Collectors.toSet());
   }
 
+  /**
+   * Maps each node's {@code secondary_private_ip} to its {@code private_ip}. Dual-NIC servers
+   * advertise their secondary IP, while YBA reaches them by their private IP. Nodes without a
+   * secondary IP, or with the same IP for both, are skipped.
+   */
+  public static Map<String, String> getSecondaryToPrivateIps(Collection<NodeDetails> nodes) {
+    Map<String, String> result = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      if (node == null || node.cloudInfo == null) {
+        continue;
+      }
+      String primaryIp = node.cloudInfo.private_ip;
+      String secondaryIp = node.cloudInfo.secondary_private_ip;
+      if (StringUtils.isNotBlank(primaryIp)
+          && !"null".equals(primaryIp)
+          && StringUtils.isNotBlank(secondaryIp)
+          && !"null".equals(secondaryIp)
+          && !secondaryIp.equals(primaryIp)) {
+        result.put(secondaryIp, primaryIp);
+      }
+    }
+    return result;
+  }
+
   // Generate a deterministic node UUID from the universe UUID and the node name.
   public static UUID generateNodeUUID(UUID universeUuid, String nodeName) {
     return UUID.nameUUIDFromBytes((universeUuid.toString() + nodeName).getBytes());
@@ -1327,7 +1367,7 @@ public class Util {
   /** Copies ProviderSpecification fields onto the legacy flat UserIntent fields. */
   private static void fillOldSchemaFieldsFromProviderSpecification(
       UserIntent userIntent, UniverseDefinitionTaskParams.ProviderSpecification spec) {
-    spec.validate(false);
+    spec.validate(userIntent.dedicatedNodes, false);
     UUID providerUUID = spec.getProviderUUID();
     userIntent.provider = providerUUID.toString();
     userIntent.providerType = spec.getProviderType();
@@ -2342,13 +2382,15 @@ public class Util {
   }
 
   public static void validateSpecificationsIfPresent(
-      List<UniverseDefinitionTaskParams.ProviderSpecification> specs, boolean isPartialUpdate) {
+      boolean isDedicatedNodes,
+      List<UniverseDefinitionTaskParams.ProviderSpecification> specs,
+      boolean isPartialUpdate) {
     if (specs != null) {
       for (UniverseDefinitionTaskParams.ProviderSpecification spec : specs) {
         if (spec == null) {
           throw new PlatformServiceException(BAD_REQUEST, "Found null specification");
         }
-        spec.validate(isPartialUpdate);
+        spec.validate(isDedicatedNodes, isPartialUpdate);
       }
     }
   }
@@ -2600,5 +2642,11 @@ public class Util {
       }
     }
     return null;
+  }
+
+  public static boolean isMulticloud(Universe universe) {
+    // Universe can't have both migrated and non-migrated so we can check any.
+    return universe.getUniverseDetails().clusters.stream()
+        .anyMatch(c -> c.userIntent.isMulticloudSupport());
   }
 }

@@ -198,9 +198,17 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
   return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
-bool CatalogManager::HasDdlVerificationState(const TransactionId& txn) const {
+bool CatalogManager::DeferObjectLockReleaseToDdlVerifier(
+    const TransactionId& txn, bool release_all) {
   LockGuard lock(ddl_txn_verifier_mutex_);
-  return ysql_ddl_txn_verfication_state_map_.contains(txn);
+  auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
+  if (!verifier_state) {
+    return false;
+  }
+  if (release_all) {
+    verifier_state->release_all_deferred = true;
+  }
+  return true;
 }
 
 Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
@@ -863,14 +871,23 @@ void CatalogManager::RemoveDdlTransactionStateUnlocked(
     }
 
     if (tables.empty()) {
-      LOG(INFO) << "Erasing DDL Verification state for " << txn_id;
+      // A rollback to savepoint can undo every DDL of a txn that is still running (txn_state is
+      // kUnknown until the verifier sees the txn finish; state is no signal, since a failed
+      // verification task can set kDdlPostProcessingFailed while the txn runs). Such a txn still
+      // holds its object locks and releases them itself when it finishes, unless a previous
+      // release-all from it was already dropped because this entry existed.
+      const bool release_locks =
+          iter->second.txn_state != TxnState::kUnknown || iter->second.release_all_deferred;
+      LOG(INFO) << "Erasing DDL Verification state for " << txn_id << ", "
+                << (release_locks ? "releasing its object locks"
+                                  : "txn is still running, deferring its object lock release");
       ysql_ddl_txn_verfication_state_map_.erase(iter);
       // At this point, we can be sure that the docdb schema changes have been applied.
       // For instance, consider the case of an ALTER.
       // 1. Either the alter waits inline successfully before issuing the commit,
       // 2. or when the above times out, this branch is involed by the multi step
       //    TableSchemaVerificationTask's callback post the schema changes have been applied.
-      if (!FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
+      if (release_locks && !FLAGS_TEST_disable_release_object_locks_on_ddl_verification) {
         WARN_NOT_OK(
             background_tasks_thread_pool_->SubmitFunc([this, txn_id]() {
               DoReleaseObjectLocksIfNecessary(txn_id);

@@ -34,6 +34,15 @@ class VectorIndexTestBase : public YBTest {
   Vector RandomVector();
   std::vector<Vector> RandomVectors(size_t num_vectors);
 
+  // Flips a byte every stride bytes of the blocks in the YbHnsw file at path. The footer stays
+  // intact, so the file still loads.
+  Status DamageYbHnswBlocks(const std::string& path, size_t stride);
+
+  Result<uint8_t> YbHnswFooterFlags(const std::string& path);
+
+  // Sets the flags of the YbHnsw file at path, keeping its footer checksum valid.
+  Status SetYbHnswFooterFlags(const std::string& path, uint8_t flags);
+
   size_t dimensions_ = 8;
   size_t max_vectors_ = 65536;
   std::mt19937_64 rng_{42};
