@@ -165,6 +165,17 @@ impl SnapshotCoordinator {
         )
     }
 
+    /// The state of `row` as replicated, without this term's in-memory progress: what the host's
+    /// coordinator checks when it applies RESTORE_SYS_CATALOG.
+    pub(crate) fn persisted(&self, row: &SnapshotRow) -> Result<State, Status> {
+        let tablets: Vec<_> = crate::state::snapshot_tablets(&row.pb).collect();
+        aggregated_state(
+            row.pb.state(),
+            &tablets,
+            (self.options.mark_snapshot_as_failed)(),
+        )
+    }
+
     /// `CreateSnapshot`.
     pub async fn create_snapshot(
         &self,

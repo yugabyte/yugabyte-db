@@ -688,6 +688,10 @@ impl Alterer {
         table_id: &[u8],
         row_version: u64,
     ) -> Result<(), Status> {
+        let delay = (self.lifecycle.options.delay_clearing_fully_applied)();
+        if !delay.is_zero() {
+            tokio::time::sleep(delay).await;
+        }
         let (finished, _) = self
             .lifecycle
             .writer

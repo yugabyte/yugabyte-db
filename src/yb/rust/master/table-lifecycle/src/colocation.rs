@@ -434,7 +434,10 @@ impl TableLifecycle {
             let txn_id = req.transaction.transaction_id().to_vec();
             for child in snapshot.children_of(&parent.key.id) {
                 let Some(hot) = child.table() else { continue };
-                if hot.state == TableState::DELETING as i32
+                // A dropped table leaves its tablegroup even when a snapshot schedule retains
+                // it hidden (`TryRemoveFromTablegroup`).
+                if hot.hidden
+                    || hot.state == TableState::DELETING as i32
                     || hot.state == TableState::DELETED as i32
                 {
                     continue;

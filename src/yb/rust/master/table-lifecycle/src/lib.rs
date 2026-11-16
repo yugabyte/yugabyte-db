@@ -163,6 +163,9 @@ pub struct LifecycleOptions {
     pub pause_ddl_rollback: fn() -> bool,
     /// `TEST_simulate_crash_after_table_marked_deleting`: DeleteTable fails after its write.
     pub simulate_crash_after_table_marked_deleting: fn() -> bool,
+    /// `TEST_delay_clearing_fully_applied_ms`: the wait before an alter or a backfill start clears
+    /// the fully applied schema, which keeps the table ALTERING that much longer.
+    pub delay_clearing_fully_applied: fn() -> std::time::Duration,
     /// `TEST_fail_table_creation_at_preparing_state`: a YSQL `CreateTable` fails after
     /// persisting the table, so the DDL transaction has to roll it back.
     pub fail_table_creation_at_preparing_state: fn() -> bool,
@@ -218,6 +221,7 @@ impl Default for LifecycleOptions {
             },
             pause_ddl_rollback: || false,
             simulate_crash_after_table_marked_deleting: || false,
+            delay_clearing_fully_applied: || std::time::Duration::ZERO,
             fail_table_creation_at_preparing_state: || false,
             pause_before_upsert_ysql_sys_table: || false,
             ysql_major_version: None,

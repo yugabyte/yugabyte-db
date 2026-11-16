@@ -655,6 +655,10 @@ async fn start(
     table_id: &[u8],
     chosen: Option<&[Vec<u8>]>,
 ) -> Result<Option<Job>, Status> {
+    let delay = (ctx.lifecycle.options.delay_clearing_fully_applied)();
+    if !delay.is_zero() {
+        tokio::time::sleep(delay).await;
+    }
     let (job, _) = ctx
         .lifecycle
         .writer

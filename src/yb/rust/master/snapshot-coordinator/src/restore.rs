@@ -258,11 +258,8 @@ impl SnapshotCoordinator {
                 "The snapshot has started deleting",
             ));
         }
-        if self
-            .aggregated(token.term(), &row)
-            .map_err(|s| unknown(&s))?
-            != State::COMPLETE
-        {
+        // The replicated state: the host's coordinator checks it when applying the restore.
+        if self.persisted(&row).map_err(|s| unknown(&s))? != State::COMPLETE {
             return Err(coded(
                 Code::SNAPSHOT_IS_NOT_READY,
                 StatusCode::IllegalState,
@@ -454,7 +451,7 @@ impl SnapshotCoordinator {
             };
             match found {
                 Ok(id) => {
-                    self.wait_for_complete(token.term(), &id, deadline).await?;
+                    self.wait_for_complete(&id, deadline).await?;
                     return Ok(id);
                 }
                 Err(e) if e.code() == Code::PARALLEL_SNAPSHOT_OPERATION => {
@@ -529,11 +526,11 @@ impl SnapshotCoordinator {
     /// `WaitForSnapshotToComplete`, for a caller outside the coordinator (xCluster failover).
     pub async fn wait_for_snapshot(
         &self,
-        token: &LeaderToken,
+        _token: &LeaderToken,
         id: &[u8],
         deadline: Instant,
     ) -> Result<(), MasterErrorPB> {
-        self.wait_for_complete(token.term(), id, deadline).await
+        self.wait_for_complete(id, deadline).await
     }
 
     /// `Restore` of a snapshot at `restore_at`: the restoration id.
@@ -548,16 +545,13 @@ impl SnapshotCoordinator {
     }
 
     /// `WaitForSnapshotToComplete`.
-    async fn wait_for_complete(
-        &self,
-        term: i64,
-        id: &[u8],
-        deadline: Instant,
-    ) -> Result<(), MasterErrorPB> {
+    async fn wait_for_complete(&self, id: &[u8], deadline: Instant) -> Result<(), MasterErrorPB> {
         while Instant::now() < deadline {
             let snapshot = self.catalog.snapshot();
             let row = Self::find_snapshot(&snapshot, id)?;
-            if self.aggregated(term, &row).map_err(|s| unknown(&s))? == State::COMPLETE {
+            // Not the in-memory progress: a restore proposed before the write that completes the
+            // snapshot blocks that write, and the host then fails to apply it.
+            if self.persisted(&row).map_err(|s| unknown(&s))? == State::COMPLETE {
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(100)).await;

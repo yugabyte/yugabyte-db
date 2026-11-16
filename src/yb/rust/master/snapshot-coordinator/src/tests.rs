@@ -698,8 +698,15 @@ async fn schedules_take_snapshots_and_are_one_per_namespace() {
 async fn a_restore_restores_every_tablet_and_completes() {
     let h = Harness::new().await;
     let id = h.create_keyspace_snapshot().await;
-    h.settle(|h| h.list(&id).snapshots[0].entry.state() == State::COMPLETE)
-        .await;
+    // Persisted: a restore is refused while only the in-memory progress is complete.
+    h.settle(|h| {
+        h.snapshot_row(&id).is_some_and(|pb| {
+            pb.tablet_snapshots
+                .iter()
+                .all(|t| t.state() == State::COMPLETE)
+        })
+    })
+    .await;
     let mut req = RestoreSnapshotRequestPB::new();
     req.set_snapshot_id(id.clone());
     let mut resp = RestoreSnapshotResponsePB::new();

@@ -225,6 +225,8 @@ static PAUSE_AT_START_OF_SETUP_MS: FlagRef<i32> =
 static EXIT_UNFINISHED_DELETING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_deleting");
 static DISABLE_UNIVERSE_GC: FlagRef<bool> = FlagRef::new("disable_universe_gc");
 static DISABLE_TABLET_DELETION: FlagRef<bool> = FlagRef::new("TEST_disable_tablet_deletion");
+static DELAY_CLEARING_FULLY_APPLIED_MS: FlagRef<i32> =
+    FlagRef::new("TEST_delay_clearing_fully_applied_ms");
 static EXIT_UNFINISHED_MERGING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_merging");
 static FAIL_UNIVERSE_REPLICATION_MERGE: FlagRef<bool> =
     FlagRef::new("TEST_fail_universe_replication_merge");
@@ -1130,6 +1132,7 @@ impl Core {
                 simulate_crash_after_table_marked_deleting: || {
                     SIMULATE_CRASH_AFTER_TABLE_MARKED_DELETING.get()
                 },
+                delay_clearing_fully_applied: || millis(DELAY_CLEARING_FULLY_APPLIED_MS.get()),
                 fail_table_creation_at_preparing_state: || FAIL_TABLE_CREATION_AT_PREPARING.get(),
                 pause_before_upsert_ysql_sys_table: || PAUSE_BEFORE_UPSERT_YSQL_SYS_TABLE.get(),
                 ysql_major_version: ENABLE_YSQL.get().then(|| defaults.ysql_major_version()),
