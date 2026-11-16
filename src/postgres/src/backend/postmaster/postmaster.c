@@ -2619,8 +2619,6 @@ retry1:
 	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
 		port->yb_is_auth_passthrough_req;
 
-	port->yb_ycm_internal_end_seen = yb_ycm_internal_end_seen;
-
 	/*
 	 * YB: Packets that carry the logical client's parameters must have the
 	 * end marker, otherwise those parameters can't be told apart from the

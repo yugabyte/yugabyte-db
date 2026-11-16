@@ -4713,9 +4713,9 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 					}
 
 					/*
-					 * YB: "options" always comes from the logical client, so
-					 * it must not set a parameter reserved for the
-					 * connection manager.
+					 * YB: In connection manager auth, "options" always comes
+					 * from the logical client, so it must not set a parameter
+					 * reserved for the connection manager.
 					 *
 					 * TODO(#29744): This runs after authentication, so in
 					 * auth passthrough the FATAL ends the shared control
@@ -4723,7 +4723,7 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 					 * instead, as the top-level check in
 					 * ProcessStartupPacket() does.
 					 */
-					if (MyProcPort && MyProcPort->yb_ycm_internal_end_seen &&
+					if (YbIsPerformingConnMgrAuth() &&
 						YbIsConnMgrReservedStartupParameter(name))
 						ereport(FATAL,
 								(errcode(ERRCODE_PROTOCOL_VIOLATION),
