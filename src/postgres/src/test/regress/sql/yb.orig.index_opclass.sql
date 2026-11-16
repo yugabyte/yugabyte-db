@@ -22,6 +22,10 @@ ALTER TABLE opc_alter ALTER COLUMN c TYPE text;
 SET yb_binary_restore = true;
 CREATE INDEX opc_t_restored ON opc_t (s bpchar_ops);
 RESET yb_binary_restore;
+-- Accepted when an xCluster target replays DDL that its source already ran.
+SET yb_xcluster_automatic_mode_target_ddl = true;
+CREATE INDEX opc_t_replayed ON opc_t (s bpchar_ops);
+RESET yb_xcluster_automatic_mode_target_ddl;
 
 -- Accepted: the operator class compares the same way as the column type.
 CREATE TYPE opc_enum AS ENUM ('b', 'a');

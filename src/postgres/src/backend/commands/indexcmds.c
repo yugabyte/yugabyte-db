@@ -3027,10 +3027,12 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 
 		/*
 		 * YB: binary upgrade and restore recreate indexes that already hold
-		 * data, so do not reject those.
+		 * data, and an xCluster target replays DDL its source already ran, so
+		 * do not reject those.
 		 */
 		if (IsYugaByteEnabled() && accessMethodId == LSM_AM_OID &&
-			!IsBinaryUpgrade && !yb_binary_restore)
+			!IsBinaryUpgrade && !yb_binary_restore &&
+			!yb_xcluster_automatic_mode_target_ddl)
 			YbCheckOpClassInputType(atttype, classOidP[attn]);
 
 		if (OidIsValid(ddl_userid))
