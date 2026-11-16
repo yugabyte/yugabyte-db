@@ -132,6 +132,10 @@ class IndexInfo {
     return birth_time_;
   }
 
+  IndexInfoPB::BirthTimeState birth_time_state() const {
+    return birth_time_state_;
+  }
+
   std::string ToString() const;
 
   // Same as "IsExprCovered" but only search the key columns.
@@ -174,6 +178,7 @@ class IndexInfo {
   const uint64_t num_rows_read_from_table_for_backfill_ = 0;
   const double num_rows_backfilled_in_index_ = 0;
   const uint64_t birth_time_ = 0;
+  const IndexInfoPB::BirthTimeState birth_time_state_ = IndexInfoPB::BIRTH_TIME_FINAL;
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId, boost::hash<ColumnIdRep>> covered_column_ids_;
