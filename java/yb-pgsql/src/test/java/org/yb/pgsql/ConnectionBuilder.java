@@ -66,6 +66,7 @@ public class ConnectionBuilder implements Cloneable {
   private AutoCommit autoCommit = AutoCommit.DEFAULT;
   private ConnectionEndpoint connectionEndpoint = ConnectionEndpoint.DEFAULT;
   private String options = null;
+  private String applicationName = null;
 
   public ConnectionBuilder(List<InetSocketAddress> postgresContactPoints,
                            List<InetSocketAddress> ysqlConnMgrContactPoints) {
@@ -160,6 +161,12 @@ public class ConnectionBuilder implements Cloneable {
     return copy;
   }
 
+  public ConnectionBuilder withApplicationName(String applicationName) {
+    ConnectionBuilder copy = clone();
+    copy.applicationName = applicationName;
+    return copy;
+  }
+
   @Override
   protected ConnectionBuilder clone() {
     try {
@@ -224,6 +231,12 @@ public class ConnectionBuilder implements Cloneable {
 
     if (options != null) {
       props.setProperty("options", options);
+    }
+
+    if (applicationName != null) {
+      PGProperty.APPLICATION_NAME.set(props, applicationName);
+      // version >= 9.0 makes the driver include application_name in the startup packet
+      PGProperty.ASSUME_MIN_SERVER_VERSION.set(props, "9.0");
     }
 
     if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
