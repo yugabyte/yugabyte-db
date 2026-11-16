@@ -550,8 +550,13 @@ static YbcPgTransactionSetting
 YBCFixTransactionSetting(Relation rel,
 						 YbcPgTransactionSetting transaction_setting)
 {
+	/*
+	 * yb_system relations (pg_yb_notifications) are exempt: their rows must
+	 * commit or abort with the statement that writes them.
+	 */
 	if ((transaction_setting == YB_TRANSACTIONAL) &&
-		!IsSystemRelation(rel) && yb_disable_transactional_writes)
+		!IsSystemRelation(rel) && !rel->belongs_to_yb_system_db &&
+		yb_disable_transactional_writes)
 		return YB_NON_TRANSACTIONAL;
 	return transaction_setting;
 }

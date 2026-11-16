@@ -3087,9 +3087,11 @@ ybInsertPendingNotifiesToTable(void)
 		ExecStoreVirtualTuple(slot);
 
 		/*
-		 * Transactional even outside a transaction block: a single-shard
-		 * INSERT commits at once, so an error later in this commit, or the
-		 * query layer retry that follows it, would leave the row committed.
+		 * Transactional in every mode, also outside a transaction block and
+		 * with yb_disable_transactional_writes on (YBCFixTransactionSetting
+		 * exempts this relation): a single-shard or non-transactional INSERT
+		 * commits at once, so an error later in this commit, or the query
+		 * layer retry that follows it, would leave the row committed.
 		 */
 		YBCExecuteInsertForDb(dboid, rel, slot, ONCONFLICT_NONE, NULL,
 							  YB_TRANSACTIONAL);

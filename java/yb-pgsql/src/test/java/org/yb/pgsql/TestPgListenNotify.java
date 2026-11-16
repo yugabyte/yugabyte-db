@@ -1339,33 +1339,51 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * An autocommit statement that reads a table and then calls pg_notify must deliver each
-   * notification once, and must succeed, under both query protocols.
+   * notification once, and must succeed, under both query protocols, also with
+   * yb_disable_transactional_writes on.
    */
   @Test
   public void testNotifyAfterTableReadInAutocommit() throws Exception {
     for (String queryMode : Arrays.asList("simple", "extended")) {
-      final String channel = "read_notify_" + queryMode;
-      final String table = channel + "_t";
+      for (boolean disableTxnWrites : Arrays.asList(false, true)) {
+        checkNotifyAfterTableReadInAutocommit(queryMode, disableTxnWrites);
+      }
+    }
+  }
 
-      try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
-           Statement listenerStmt = listenerConn.createStatement();
-           Connection notifierConn = getConnectionBuilder().withTServer(0)
-               .withPreferQueryMode(queryMode).connect();
-           Statement notifierStmt = notifierConn.createStatement()) {
-        notifierStmt.execute("CREATE TABLE " + table + " (k int PRIMARY KEY)");
-        notifierStmt.execute("INSERT INTO " + table + " VALUES (1), (2)");
-        listenerStmt.execute("LISTEN " + channel);
-        // The table read picks the read time that the statement's later operations use.
-        notifierStmt.execute("SELECT pg_notify('" + channel + "', 'k' || k) FROM " + table
-            + " ORDER BY k");
-        // Runs in a distributed transaction; the same payload sent twice is delivered once.
+  private void checkNotifyAfterTableReadInAutocommit(String queryMode, boolean disableTxnWrites)
+      throws Exception {
+    final String channel = "read_notify_" + queryMode + (disableTxnWrites ? "_nontxn" : "");
+    final String table = channel + "_t";
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection notifierConn = getConnectionBuilder().withTServer(0)
+             .withPreferQueryMode(queryMode).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      notifierStmt.execute("CREATE TABLE " + table + " (k int PRIMARY KEY)");
+      notifierStmt.execute("INSERT INTO " + table + " VALUES (1), (2)");
+      if (disableTxnWrites) {
+        notifierStmt.execute("SET yb_disable_transactional_writes = on");
+      }
+      listenerStmt.execute("LISTEN " + channel);
+      // The table read picks the read time that the statement's later operations use.
+      notifierStmt.execute("SELECT pg_notify('" + channel + "', 'k' || k) FROM " + table
+          + " ORDER BY k");
+      List<String> expected = new ArrayList<>(Arrays.asList("k1", "k2"));
+      // With yb_disable_transactional_writes on, a primary key UPDATE mixes transactional and
+      // non-transactional writes in one buffer, which pggate rejects, so it is skipped.
+      if (!disableTxnWrites) {
+        // Writes the table too; the same payload sent twice is delivered once.
         notifierStmt.execute("UPDATE " + table + " SET k = k + 10 RETURNING pg_notify('"
             + channel + "', 'upd')");
-        notifierStmt.execute("SELECT pg_notify('" + channel + "', 'bare')");
-        notifierStmt.execute("NOTIFY " + channel + ", 'end'");
-        assertEquals(queryMode, Arrays.asList("k1", "k2", "upd", "bare", "end"),
-            payloadsOf(waitForNotification(listenerConn, channel, "end")));
+        expected.add("upd");
       }
+      notifierStmt.execute("SELECT pg_notify('" + channel + "', 'bare')");
+      notifierStmt.execute("NOTIFY " + channel + ", 'end'");
+      expected.addAll(Arrays.asList("bare", "end"));
+      assertEquals(channel, expected,
+          payloadsOf(waitForNotification(listenerConn, channel, "end")));
     }
   }
 
