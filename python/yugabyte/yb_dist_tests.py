@@ -61,7 +61,8 @@ class TestConfig:
     archive_sha256sum: Optional[str]
     compiler_type: str
     # gs:// URL of archive_for_workers when the workers download it from GCS instead of receiving
-    # it through Spark. Set by the driver after it uploads the archive; None otherwise.
+    # it through Spark. Set by the driver once the archive is there (uploaded, or found from an
+    # earlier run); None otherwise.
     archive_gcs_url: Optional[str]
 
     def __init__(

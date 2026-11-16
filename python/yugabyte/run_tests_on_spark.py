@@ -50,6 +50,7 @@ Run Java tests satisfying a particular regex:
 """
 
 import argparse
+import contextlib
 import errno
 import functools
 import getpass
@@ -76,7 +77,7 @@ from datetime import datetime
 
 from collections import defaultdict
 
-from typing import List, Dict, Set, Tuple, Optional, Any, cast
+from typing import List, Dict, Iterator, Set, Tuple, Optional, Any, cast
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -212,20 +213,30 @@ THREAD_JOIN_TIMEOUT_SEC = 10
 
 ARCHIVE_SHA_FILE_NAME = 'extracted_from_archive.sha256'
 
-# An archive already in GCS is reused only while younger than this, so a bucket lifecycle rule that
-# deletes old objects cannot remove it in the middle of a run.
+# An archive already in GCS is reused only while younger than this. The bucket has to keep an
+# object for longer than this plus the longest run: a worker downloads the archive at its first
+# task on that tree, for the baseline tree hours into the run, and fails its tasks if a lifecycle
+# rule has deleted the object by then.
 ARCHIVE_GCS_MAX_REUSE_AGE_SEC = 24 * 3600
-GCE_METADATA_TOKEN_URL = (
+GCP_METADATA_TOKEN_URL = (
     'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token')
-GCE_METADATA_INSTANCE_ID_URL = 'http://metadata.google.internal/computeMetadata/v1/instance/id'
 GCS_DOWNLOAD_ATTEMPTS = 3
 GCS_DOWNLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
+# The untar script's first command: it waits for the lock on fd 200, which the script opens on the
+# lock file. A caller that already holds that lock (hold_archive_lock) puts the no-op in its place.
+UNTAR_SCRIPT_TAKE_LOCK_CMD = 'flock -w 180 200 || exit 5'
+UNTAR_SCRIPT_LOCK_HELD_CMD = ': # the caller holds the lock'
+# How long a task waits in hold_archive_lock: for another task's download and extraction, where the
+# untar script's own wait only has an extraction to sit out.
+ARCHIVE_LOCK_WAIT_SEC = 20 * 60
+ARCHIVE_LOCK_POLL_SEC = 0.2
 
 UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
 set -euo pipefail
 (
     PATH=/usr/local/bin:$PATH
-    flock -w 180 200 || exit 5
+    {take_lock}
     # Check existing workspace.
     if [[ -d '{remote_yb_src_root}' ]]; then
         previous_sha256_file_path='{remote_yb_src_root}/{archive_sha_file_name}'
@@ -419,30 +430,15 @@ def gcs_object_age_sec(gcs_url: str) -> Optional[float]:
     return time.time() - created_at.timestamp()
 
 
-# Whether this host is a GCE VM, from its metadata server. The archive goes through GCS only when
-# the driver runs on GCE, so it never crosses clouds: Spark workers outside GCP (the AWS clusters)
-# would pay for every download and have no metadata server to get credentials from.
-@functools.lru_cache(maxsize=1)
-def running_on_gce() -> bool:
-    import urllib.error
-    import urllib.request
-
-    request = urllib.request.Request(
-        GCE_METADATA_INSTANCE_ID_URL, headers={'Metadata-Flavor': 'Google'})
-    try:
-        with urllib.request.urlopen(request, timeout=1) as response:
-            return bool(response.headers.get('Metadata-Flavor') == 'Google')
-    except (urllib.error.URLError, OSError, ValueError):
-        return False
-
-
 def publish_archive_to_gcs(conf: yb_dist_tests.TestConfig, prefix: Optional[str]) -> None:
     """
     Uploads conf's worker archive under the gs:// prefix (--archive_gcs_prefix), named by its
     checksum, and records its URL in conf.archive_gcs_url, so that the workers download it from GCS
     instead of all fetching it from the driver through Spark's file server, where the driver's
-    network link is the limit. Best-effort: without the prefix, on macOS, off GCE, or if the
-    upload fails, the URL stays unset and the archive goes through Spark as before.
+    network link is the limit. Best-effort: without the prefix, on macOS, or if the upload fails,
+    the URL stays unset and the archive goes through Spark as before. The caller passes a prefix
+    only for a Spark cluster on GCP: the workers get their GCS credentials from the GCP metadata
+    server, and nothing on a worker falls back to Spark.
     """
     prefix = (prefix or '').strip()
     if not prefix or is_macos() or not conf.archive_for_workers or not conf.archive_sha256sum:
@@ -450,9 +446,6 @@ def publish_archive_to_gcs(conf: yb_dist_tests.TestConfig, prefix: Optional[str]
     if not prefix.startswith('gs://'):
         logging.warning("--archive_gcs_prefix %s is not a gs:// URL, sending the archive through "
                         "Spark", prefix)
-        return
-    if not running_on_gce():
-        logging.info("Not running on GCE, sending the archive through Spark instead of %s", prefix)
         return
     gcs_url = '%s/%s.tar.gz' % (prefix.rstrip('/'), conf.archive_sha256sum)
     start_time_sec = time.time()
@@ -480,7 +473,7 @@ def parse_gcs_url(gcs_url: str) -> Tuple[str, str]:
 
 
 # Runs on a Spark worker. Streams the object to dest_path with the worker VM's own service account
-# (from the GCE metadata server, so the worker needs no key file), hashing it on the way, and moves
+# (from the GCP metadata server, so the worker needs no key file), hashing it on the way, and moves
 # it into place only if the checksum matches. Retries a few times before giving up.
 def download_archive_from_gcs(gcs_url: str, dest_path: str, expected_sha256sum: str) -> None:
     import hashlib
@@ -496,7 +489,7 @@ def download_archive_from_gcs(gcs_url: str, dest_path: str, expected_sha256sum: 
         start_time_sec = time.time()
         try:
             token_request = urllib.request.Request(
-                GCE_METADATA_TOKEN_URL, headers={'Metadata-Flavor': 'Google'})
+                GCP_METADATA_TOKEN_URL, headers={'Metadata-Flavor': 'Google'})
             with urllib.request.urlopen(token_request, timeout=30) as token_response:
                 access_token = json.load(token_response)['access_token']
             media_request = urllib.request.Request(
@@ -528,28 +521,44 @@ def download_archive_from_gcs(gcs_url: str, dest_path: str, expected_sha256sum: 
     raise IOError("Could not download %s: %s" % (gcs_url, last_error))
 
 
-# Runs on a Spark worker, before the untar script. Downloads conf's archive from GCS to
-# archive_path, unless the tree extracted from it is already in place (the untar script then skips
-# extraction and never reads the archive) or another task already downloaded it. Holds the untar
-# script's lock (flock on the same file), so the two never overlap.
-def fetch_archive_from_gcs_if_needed(
-        conf: yb_dist_tests.TestConfig, archive_path: str, lock_path: str) -> None:
+# Runs on a Spark worker. Holds the untar script's lock (flock on the same file), waiting up to
+# ARCHIVE_LOCK_WAIT_SEC for it, and yields the locked file descriptor: a child process given it
+# (pass_fds) keeps the lock for as long as it runs, even if this process is killed first.
+@contextlib.contextmanager
+def hold_archive_lock(lock_path: str) -> Iterator[int]:
     import fcntl
 
-    assert conf.archive_gcs_url is not None and conf.archive_sha256sum is not None
+    deadline_sec = time.time() + ARCHIVE_LOCK_WAIT_SEC
     with open(lock_path, 'a') as lock_file:
-        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        while True:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.time() >= deadline_sec:
+                    raise IOError("Could not lock %s in %d sec" % (
+                        lock_path, ARCHIVE_LOCK_WAIT_SEC))
+                time.sleep(ARCHIVE_LOCK_POLL_SEC)
         try:
-            sha_file_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
-            if os.path.isfile(sha_file_path):
-                with open(sha_file_path) as sha_file:
-                    if sha_file.read().strip() == conf.archive_sha256sum:
-                        return
-            if os.path.exists(archive_path):
-                return
-            download_archive_from_gcs(conf.archive_gcs_url, archive_path, conf.archive_sha256sum)
+            yield lock_file.fileno()
         finally:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
+# Runs on a Spark worker, before the untar script and under the same hold of its lock (the caller's
+# hold_archive_lock), so no other task can change the tree or download in between. Downloads conf's
+# archive from GCS to archive_path, unless the tree extracted from it is already in place (the
+# untar script then skips extraction and never reads the archive) or the archive is already there.
+def fetch_archive_from_gcs_if_needed(conf: yb_dist_tests.TestConfig, archive_path: str) -> None:
+    assert conf.archive_gcs_url is not None and conf.archive_sha256sum is not None
+    sha_file_path = os.path.join(conf.yb_src_root, ARCHIVE_SHA_FILE_NAME)
+    if os.path.isfile(sha_file_path):
+        with open(sha_file_path) as sha_file:
+            if sha_file.read().strip() == conf.archive_sha256sum:
+                return
+    if os.path.exists(archive_path):
+        return
+    download_archive_from_gcs(conf.archive_gcs_url, archive_path, conf.archive_sha256sum)
 
 
 # Distributes every remembered archive to the current context. Called on each context creation, so a
@@ -934,12 +943,8 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig,
     archive_path = os.path.join(worker_tmp_dir, archive_name)
     lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
             conf.yb_src_root.replace('/', '__'))
-    if not os.path.exists(archive_path):
-        if conf.archive_gcs_url:
-            # Not sent through Spark: download it, unless the extracted tree is already in place.
-            fetch_archive_from_gcs_if_needed(conf, archive_path, lock_path)
-        else:
-            raise IOError("Archive not found: %s" % archive_path)
+    if not conf.archive_gcs_url and not os.path.exists(archive_path):
+        raise IOError("Archive not found: %s" % archive_path)
     # We install the code into the same path where it was installed on the main build node (Jenkins
     # worker or dev server), but put it in as separate variable to have flexibility to change it
     # later.
@@ -970,10 +975,21 @@ def initialize_remote_task(conf: yb_dist_tests.TestConfig,
                 lock_path=lock_path,
                 remote_yb_src_job_dir=remote_yb_src_job_dir,
                 remote_yb_src_root=remote_yb_src_root,
+                take_lock=(UNTAR_SCRIPT_LOCK_HELD_CMD if conf.archive_gcs_url
+                           else UNTAR_SCRIPT_TAKE_LOCK_CMD),
                 untar_script_path=untar_script_path,
                 untar_script_path_for_reference=untar_script_path_for_reference))
         os.chmod(untar_script_path, 0o755)
-        subprocess.check_call(untar_script_path)
+        if conf.archive_gcs_url:
+            # Not sent through Spark. One hold of the lock covers the download and the untar
+            # script: released in between, another task could replace the tree after it was found
+            # in place (the script would then look for an archive that was never downloaded), or
+            # start a second download of an archive that is about to be extracted.
+            with hold_archive_lock(lock_path) as lock_fd:
+                fetch_archive_from_gcs_if_needed(conf, archive_path)
+                subprocess.check_call(untar_script_path, pass_fds=(lock_fd,))
+        else:
+            subprocess.check_call(untar_script_path)
 
     except subprocess.CalledProcessError as e:
         logging.exception(f"Error initializing the remote task:\n"
@@ -2408,8 +2424,9 @@ def main() -> None:
     parser.add_argument('--archive_gcs_prefix',
                         help='A gs:// prefix. With --send_archive_to_workers, upload the archive '
                              'there and have the workers download it from GCS instead of '
-                             'receiving it through Spark from this host. Ignored on macOS and '
-                             'off GCE; if the upload fails, the archive goes through Spark.')
+                             'receiving it through Spark from this host. Only for a Spark cluster '
+                             'on GCP. Ignored on macOS; if the upload fails, the archive goes '
+                             'through Spark.')
     parser.add_argument('--max-num-test_failures', type=int, dest='max_num_test_failures',
                         default=None,
                         help='Maximum number of test failures before aborting the Spark test job.'

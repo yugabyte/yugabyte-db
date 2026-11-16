@@ -21,15 +21,18 @@ are patched, so no Spark cluster (or pyspark) is exercised. Only the driver-side
 logic is under test.
 """
 
+import fcntl
 import hashlib
 import io
 import os
+import shutil
 import subprocess
+import tarfile
 import sys
 import threading
 import time
 import types
-from typing import Any, List, Optional, Set
+from typing import Any, Iterator, List, Optional, Set
 
 import pytest
 
@@ -1922,10 +1925,9 @@ GCS_PREFIX = 'gs://a-bucket/spark-archives/'
 
 @pytest.fixture
 def gcs_publish(monkeypatch: pytest.MonkeyPatch) -> List[List[str]]:
-    """Linux on GCE, no object in GCS yet; returns the gcloud copy commands run."""
+    """Linux, no object in GCS yet; returns the gcloud copy commands run."""
     copies: List[List[str]] = []
     monkeypatch.setattr(rts, 'is_macos', lambda: False)
-    monkeypatch.setattr(rts, 'running_on_gce', lambda: True)
     monkeypatch.setattr(rts, 'gcs_object_age_sec', lambda url: None)
     monkeypatch.setattr(rts.subprocess, 'check_call', lambda args: copies.append(args))
     return copies
@@ -1991,46 +1993,6 @@ def test_macos_keeps_the_spark_path(
     assert gcs_publish == []
 
 
-def test_off_gce_keeps_the_spark_path(
-        monkeypatch: pytest.MonkeyPatch, gcs_publish: List[List[str]], tmp_path: Any) -> None:
-    """Workers outside GCP (the AWS clusters) never download from GCS: the archive stays local."""
-    monkeypatch.setattr(rts, 'running_on_gce', lambda: False)
-    conf = make_archive_conf(tmp_path)
-    rts.publish_archive_to_gcs(conf, GCS_PREFIX)
-    assert conf.archive_gcs_url is None
-    assert gcs_publish == []
-    assert rts.archive_sent_through_spark(conf)
-
-
-class FakeMetadataResponse(io.BytesIO):
-    def __init__(self, flavor: Optional[str]) -> None:
-        super().__init__(b'1234')
-        self.headers = {'Metadata-Flavor': flavor} if flavor else {}
-
-
-@pytest.mark.parametrize('answer,expected', [
-    (FakeMetadataResponse('Google'), True),
-    (FakeMetadataResponse(None), False),
-    (OSError('Name or service not known'), False),
-])
-def test_running_on_gce_asks_the_metadata_server(
-        monkeypatch: pytest.MonkeyPatch, answer: Any, expected: bool) -> None:
-    def fake_urlopen(request: Any, timeout: float) -> Any:
-        assert request.full_url == rts.GCE_METADATA_INSTANCE_ID_URL
-        assert timeout <= 1
-        if isinstance(answer, Exception):
-            raise answer
-        return answer
-
-    import urllib.request
-    monkeypatch.setattr(urllib.request, 'urlopen', fake_urlopen)
-    rts.running_on_gce.cache_clear()
-    try:
-        assert rts.running_on_gce() is expected
-    finally:
-        rts.running_on_gce.cache_clear()
-
-
 def test_parse_gcs_url() -> None:
     assert rts.parse_gcs_url('gs://a-bucket/a/b.tar.gz') == ('a-bucket', 'a/b.tar.gz')
     for bad in ['s3://a-bucket/b', 'gs://a-bucket', 'gs:///b', 'a-bucket/b']:
@@ -2044,7 +2006,7 @@ def fake_gcs(monkeypatch: pytest.MonkeyPatch, content: bytes) -> List[str]:
 
     def fake_urlopen(request: Any, timeout: float) -> io.BytesIO:
         requested.append(request.full_url)
-        if request.full_url == rts.GCE_METADATA_TOKEN_URL:
+        if request.full_url == rts.GCP_METADATA_TOKEN_URL:
             assert request.get_header('Metadata-flavor') == 'Google'
             return io.BytesIO(b'{"access_token": "a-token"}')
         assert request.get_header('Authorization') == 'Bearer a-token'
@@ -2092,8 +2054,7 @@ def test_an_extracted_tree_needs_no_download(
         raise AssertionError("must not download")
 
     monkeypatch.setattr(rts, 'download_archive_from_gcs', fail)
-    rts.fetch_archive_from_gcs_if_needed(
-        conf, str(tmp_path / 'fetched.tar.gz'), str(tmp_path / 'lock'))
+    rts.fetch_archive_from_gcs_if_needed(conf, str(tmp_path / 'fetched.tar.gz'))
 
 
 def test_a_different_tree_triggers_the_download(
@@ -2106,5 +2067,160 @@ def test_a_different_tree_triggers_the_download(
     downloads: List[Any] = []
     monkeypatch.setattr(rts, 'download_archive_from_gcs', lambda *args: downloads.append(args))
     dest = str(tmp_path / 'fetched.tar.gz')
-    rts.fetch_archive_from_gcs_if_needed(conf, dest, str(tmp_path / 'lock'))
+    rts.fetch_archive_from_gcs_if_needed(conf, dest)
     assert downloads == [('gs://a-bucket/x.tar.gz', dest, ARCHIVE_SHA)]
+
+
+def lock_is_held(lock_path: str) -> bool:
+    """Whether someone else holds the flock on lock_path (flock is per open file)."""
+    with open(lock_path, 'a') as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        return False
+
+
+def test_the_archive_lock_excludes_and_gives_up(
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    lock_path = str(tmp_path / 'lock')
+    with rts.hold_archive_lock(lock_path) as lock_fd:
+        assert os.path.samefile(lock_path, '/dev/fd/%d' % lock_fd)
+        assert lock_is_held(lock_path)
+        monkeypatch.setattr(rts, 'ARCHIVE_LOCK_WAIT_SEC', 0.05)
+        monkeypatch.setattr(rts, 'ARCHIVE_LOCK_POLL_SEC', 0.01)
+        with pytest.raises(IOError):
+            with rts.hold_archive_lock(lock_path):
+                pass
+    assert not lock_is_held(lock_path)
+    with rts.hold_archive_lock(lock_path):
+        pass
+
+
+class WorkerSide:
+    """A Spark worker about to set up a task: its Spark files directory, the conf of a one-file
+    tree, the archive of that tree (as the driver has it), and the untar scripts run."""
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+        tree = tmp_path / 'tree-on-the-driver'
+        tree.mkdir()
+        (tree / 'a-file').write_text('content')
+        self.driver_archive = str(tmp_path / 'driver' / 'archive.tar.gz.spark-no-extract')
+        os.makedirs(os.path.dirname(self.driver_archive))
+        with tarfile.open(self.driver_archive, 'w:gz') as archive:
+            archive.add(str(tree / 'a-file'), arcname='a-file')
+        with open(self.driver_archive, 'rb') as archive_file:
+            sha = hashlib.sha256(archive_file.read()).hexdigest()
+        self.conf = make_archive_conf(tmp_path, sha)
+        self.conf.archive_for_workers = self.driver_archive
+        self.files_dir = str(tmp_path / 'spark-files')
+        os.makedirs(self.files_dir)
+        self.archive_path = os.path.join(self.files_dir, os.path.basename(self.driver_archive))
+        self.lock_path = '/tmp/yb_dist_tests_update_archive%s.lock' % (
+            self.conf.yb_src_root.replace('/', '__'))
+        # (the script's text, whether the caller held the lock while it ran, the descriptors the
+        # caller passed to it)
+        self.scripts: List[Any] = []
+
+        files_dir = self.files_dir
+
+        class FakeSparkFiles:
+            @staticmethod
+            def get(path: str) -> str:
+                return os.path.join(files_dir, os.path.basename(path))
+
+            @staticmethod
+            def getRootDirectory() -> str:
+                return files_dir
+
+        monkeypatch.setitem(
+            sys.modules, 'pyspark', types.SimpleNamespace(SparkFiles=FakeSparkFiles))
+        # initialize_remote_task sets these; monkeypatch restores them.
+        monkeypatch.setenv('BUILD_ROOT', '')
+        monkeypatch.setenv('YB_COMPILER_TYPE', '')
+        real_check_call = subprocess.check_call
+
+        def check_call(args: Any, **kwargs: Any) -> None:
+            if isinstance(args, str) and 'untar_archive_once_' in args:
+                with open(args) as script_file:
+                    self.scripts.append((script_file.read(), lock_is_held(self.lock_path),
+                                         kwargs.get('pass_fds', ())))
+            real_check_call(args, **kwargs)
+
+        monkeypatch.setattr(rts.subprocess, 'check_call', check_call)
+
+    def tree_sha(self) -> Optional[str]:
+        sha_file_path = os.path.join(self.conf.yb_src_root, rts.ARCHIVE_SHA_FILE_NAME)
+        if not os.path.isfile(sha_file_path):
+            return None
+        with open(sha_file_path) as sha_file:
+            return sha_file.read().strip()
+
+
+@pytest.fixture
+def worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Iterator[WorkerSide]:
+    side = WorkerSide(monkeypatch, tmp_path)
+    yield side
+    if os.path.exists(side.lock_path):
+        os.remove(side.lock_path)
+
+
+def test_a_worker_downloads_and_extracts_under_one_hold_of_the_lock(
+        monkeypatch: pytest.MonkeyPatch, worker: WorkerSide) -> None:
+    worker.conf.archive_gcs_url = 'gs://a-bucket/x.tar.gz'
+    downloads: List[bool] = []
+
+    def download(gcs_url: str, dest_path: str, sha: str) -> None:
+        assert (gcs_url, dest_path, sha) == (
+            'gs://a-bucket/x.tar.gz', worker.archive_path, worker.conf.archive_sha256sum)
+        downloads.append(lock_is_held(worker.lock_path))
+        shutil.copyfile(worker.driver_archive, dest_path)
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', download)
+    rts.initialize_remote_task(worker.conf, {})
+
+    with open(os.path.join(worker.conf.yb_src_root, 'a-file')) as extracted_file:
+        assert extracted_file.read() == 'content'
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+    # The download and the untar script both ran while this task held the lock, and the script
+    # was given the locked descriptor and did not wait for the lock again.
+    assert downloads == [True]
+    [(script, lock_held, passed_fds)] = worker.scripts
+    assert lock_held
+    assert len(passed_fds) == 1
+    assert rts.UNTAR_SCRIPT_LOCK_HELD_CMD in script
+    assert rts.UNTAR_SCRIPT_TAKE_LOCK_CMD not in script
+    assert not lock_is_held(worker.lock_path)
+
+    # A second task, in another executor's files directory, finds the tree and downloads nothing.
+    worker.files_dir = worker.files_dir + '-of-another-executor'
+
+    def fail(*args: Any) -> None:
+        raise AssertionError("must not download")
+
+    monkeypatch.setattr(rts, 'download_archive_from_gcs', fail)
+    os.makedirs(worker.files_dir)
+    second = types.SimpleNamespace(
+        get=lambda path: os.path.join(worker.files_dir, os.path.basename(path)),
+        getRootDirectory=lambda: worker.files_dir)
+    monkeypatch.setitem(sys.modules, 'pyspark', types.SimpleNamespace(SparkFiles=second))
+    rts.initialize_remote_task(worker.conf, {})
+    assert len(worker.scripts) == 2
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+
+
+@pytest.mark.skipif(shutil.which('flock') is None, reason="the untar script needs flock")
+def test_an_archive_sent_through_spark_is_extracted_under_the_scripts_own_lock(
+        worker: WorkerSide) -> None:
+    shutil.copyfile(worker.driver_archive, worker.archive_path)
+    rts.initialize_remote_task(worker.conf, {})
+    assert worker.tree_sha() == worker.conf.archive_sha256sum
+    [(script, lock_held, passed_fds)] = worker.scripts
+    assert not lock_held
+    assert passed_fds == ()
+    assert rts.UNTAR_SCRIPT_TAKE_LOCK_CMD in script
+
+
+def test_an_archive_missing_on_the_spark_path_fails_the_task(worker: WorkerSide) -> None:
+    with pytest.raises(IOError, match="Archive not found"):
+        rts.initialize_remote_task(worker.conf, {})

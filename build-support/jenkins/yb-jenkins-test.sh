@@ -220,7 +220,10 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
       run_tests_extra_args+=( "--send_archive_to_workers" )
       # A gs:// prefix from the pipeline: the workers download the archive from there instead of
       # all fetching it from this host through Spark. Without it the archive goes through Spark.
-      if [[ -n "${YB_SPARK_ARCHIVE_GCS_PREFIX:-}" ]]; then
+      # The pipeline sets it only for lanes whose Spark cluster is on GCP: the workers get their
+      # GCS credentials from the GCP metadata server. The check of this host only guards against a
+      # prefix set for a lane that runs outside GCP.
+      if [[ -n "${YB_SPARK_ARCHIVE_GCS_PREFIX:-}" ]] && is_running_on_gcp; then
         run_tests_extra_args+=( "--archive_gcs_prefix" "$YB_SPARK_ARCHIVE_GCS_PREFIX" )
       fi
 
