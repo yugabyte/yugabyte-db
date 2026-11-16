@@ -12,8 +12,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/universeutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
-	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/ybatask"
 )
@@ -23,18 +23,27 @@ var resumeUniverseCmd = &cobra.Command{
 	Use:     "resume",
 	GroupID: "action",
 	Short:   "Resume a YugabyteDB Anywhere universe",
-	Long:    "Resume a universe in YugabyteDB Anywhere",
+	Long: "Resume a paused universe in YugabyteDB Anywhere. " +
+		"Fails if the universe is not paused or has a task in progress.",
 	Example: `yba universe resume --name <universe-name>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(universeName) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize("No universe name found to resume\n", formatter.RedColor))
+		}
+		_, universe, err := universeutil.Validations(cmd, "Resume")
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
+		}
+		err = checkPauseResumeState(universe, false)
+		if err != nil {
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		err = util.ConfirmCommand(
 			fmt.Sprintf("Are you sure you want to resume %s: %s", util.UniverseType, universeName),
@@ -44,32 +53,12 @@ var resumeUniverseCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
-
-		universeName, err := cmd.Flags().GetString("name")
+		authAPI, universe, err := universeutil.Validations(cmd, "Resume")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 		}
-		universeListRequest := authAPI.ListUniverses()
-		universeListRequest = universeListRequest.Name(universeName)
-
-		r, response, err := universeListRequest.Execute()
-		if err != nil {
-			util.FatalHTTPError(response, err, "Universe", "Resume - List Universes")
-		}
-
-		if len(r) < 1 {
-			logrus.Fatalf(
-				formatter.Colorize(
-					fmt.Sprintf("No universes with name: %s found\n", universeName),
-					formatter.RedColor,
-				))
-		}
-
-		var universeUUID string
-		if len(r) > 0 {
-			universeUUID = r[0].GetUniverseUUID()
-		}
+		universeName := universe.GetName()
+		universeUUID := universe.GetUniverseUUID()
 
 		rTask, response, err := authAPI.ResumeUniverse(universeUUID).Execute()
 		if err != nil {
@@ -87,7 +76,7 @@ var resumeUniverseCmd = &cobra.Command{
 					formatter.Colorize(universeName, formatter.GreenColor), universeUUID))
 				err = authAPI.WaitForTask(rTask.GetTaskUUID(), msg)
 				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+					logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 			}
 			logrus.Infof("The universe %s (%s) has been resumed\n",
