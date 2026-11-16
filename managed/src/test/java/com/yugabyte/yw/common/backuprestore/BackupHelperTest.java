@@ -1943,7 +1943,10 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
   }
 
-  /** The advice names what the config's IAM credential source needs on the host. */
+  /**
+   * The advice names what the config's IAM credential source needs on the host, with the IAM role
+   * flag set or, when it is not, once it is.
+   */
   @Test
   public void testRequireYbaIdentityNamesWhatTheSourceNeeds() {
     hostCloud(CloudType.gcp);
@@ -1954,16 +1957,23 @@ public class BackupHelperTest extends FakeDBApplication {
         Map.of(
             IAMCredentialSource.IAM_USER, "the AWS profile 'default'",
             IAMCredentialSource.WEB_TOKEN, "AWS_WEB_IDENTITY_TOKEN_FILE, with AWS_ROLE_ARN",
-            IAMCredentialSource.ASSUME_INSTANCE_ROLE, "AWS_CONTAINER_CREDENTIALS_FULL_URI");
-    for (Map.Entry<IAMCredentialSource, String> need : needs.entrySet()) {
-      CustomerConfigStorageS3Data s3Data = federatedS3();
-      s3Data.isIAMInstanceProfile = true;
-      s3Data.iamConfig.credentialSource = need.getKey();
-      PlatformServiceException e =
-          assertThrows(
-              PlatformServiceException.class,
-              () -> spyBackupHelper.requireYbaFederatedIdentity(config, s3Data));
-      assertTrue(e.getMessage(), e.getMessage().contains(need.getValue()));
+            IAMCredentialSource.ASSUME_INSTANCE_ROLE, "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+            IAMCredentialSource.EC2_INSTANCE, "switch its IAM credential source from EC2_INSTANCE");
+    for (boolean iamRoleFlag : new boolean[] {true, false}) {
+      for (Map.Entry<IAMCredentialSource, String> need : needs.entrySet()) {
+        CustomerConfigStorageS3Data s3Data = federatedS3();
+        s3Data.isIAMInstanceProfile = iamRoleFlag;
+        s3Data.iamConfig.credentialSource = need.getKey();
+        PlatformServiceException e =
+            assertThrows(
+                PlatformServiceException.class,
+                () -> spyBackupHelper.requireYbaFederatedIdentity(config, s3Data));
+        assertTrue(e.getMessage(), e.getMessage().contains(need.getValue()));
+        assertTrue(
+            e.getMessage(),
+            e.getMessage()
+                .contains(iamRoleFlag ? "clear the IAM role flag" : "set its IAM role flag and"));
+      }
     }
   }
 

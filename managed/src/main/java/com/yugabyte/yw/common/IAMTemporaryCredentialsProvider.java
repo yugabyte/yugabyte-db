@@ -2,18 +2,29 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.base.Throwables;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.IAMConfiguration;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import software.amazon.awssdk.auth.credentials.*;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkServiceException;
 import software.amazon.awssdk.regions.Region;
@@ -37,6 +48,10 @@ public class IAMTemporaryCredentialsProvider {
   public static final String STS_DEFAULT_ENDPOINT = "sts.amazonaws.com";
   private static final String NUM_RETRIES_CONFIG_PATH = "yb.aws.iam_credentials_num_retries";
   private static final int WAIT_EACH_RETRY_SECS = 5;
+  private static final String IDP_COMMUNICATION_ERROR = "IDPCommunicationError";
+
+  /** How long {@link #hasCredentialsOffAws} may take in all. */
+  static final Duration OFF_AWS_CHECK_TIMEOUT = Duration.ofSeconds(10);
 
   private final RuntimeConfGetter confGetter;
 
@@ -142,9 +157,22 @@ public class IAMTemporaryCredentialsProvider {
    * has nothing for it (no AWS_ROLE_ARN or web identity token file, no credentials in the profile,
    * no container credentials endpoint), or AWS rejects what it has, as for a role that does not
    * trust the host's token or a token that has expired. Neither does AWS instance metadata, which
-   * only AWS serves.
+   * only AWS serves. As this runs on request threads, it gives up after {@link
+   * #OFF_AWS_CHECK_TIMEOUT}; a source still waiting on AWS then counts, as for a timeout.
    */
   public boolean hasCredentialsOffAws(CustomerConfigStorageS3Data s3Data) {
+    Optional<Boolean> found = resultWithin(() -> resolveOffAws(s3Data), OFF_AWS_CHECK_TIMEOUT);
+    if (found.isEmpty()) {
+      log.warn(
+          "Resolving the IAM credential sources took over {}, leaving them to the client's"
+              + " retries",
+          OFF_AWS_CHECK_TIMEOUT);
+      return true;
+    }
+    return found.get();
+  }
+
+  private boolean resolveOffAws(CustomerConfigStorageS3Data s3Data) {
     List<String> absent = new ArrayList<>();
     for (CustomAWSCredentials source : credentialSources(s3Data)) {
       if (source instanceof InstanceProfileCredentials) {
@@ -171,15 +199,49 @@ public class IAMTemporaryCredentialsProvider {
   }
 
   /**
+   * The result of {@code work} run on a thread of its own, or empty if it takes longer than {@code
+   * timeout}, in which case it is interrupted. What {@code work} throws is thrown here.
+   */
+  static <T> Optional<T> resultWithin(Callable<T> work, Duration timeout) {
+    ExecutorService executor =
+        Executors.newSingleThreadExecutor(
+            runnable -> {
+              Thread thread = new Thread(runnable, "iam-credentials-check");
+              thread.setDaemon(true);
+              return thread;
+            });
+    Future<T> result = executor.submit(work);
+    try {
+      return Optional.of(result.get(timeout.toMillis(), TimeUnit.MILLISECONDS));
+    } catch (TimeoutException e) {
+      return Optional.empty();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException("Interrupted while resolving the IAM credential sources", e);
+    } catch (ExecutionException e) {
+      Throwables.throwIfUnchecked(e.getCause());
+      throw new RuntimeException(e.getCause());
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  /**
    * Whether {@code e} is an error that trying again can get past: a throttle or a server error in
-   * the reply from AWS, or an I/O error on the way. Any other reply, such as AccessDenied or
-   * InvalidIdentityToken, is a rejection that every retry gets again.
+   * the reply from AWS, STS failing to reach the token's identity provider (IDPCommunicationError,
+   * which AWS documents as often transient), or an I/O error on the way. Any other reply, such as
+   * AccessDenied or InvalidIdentityToken, is a rejection that every retry gets again.
    */
   static boolean isRetryableFailure(Throwable e) {
     for (Throwable t = e; t != null; t = t.getCause()) {
       if (t instanceof SdkServiceException) {
         SdkServiceException reply = (SdkServiceException) t;
-        return reply.isThrottlingException() || reply.statusCode() >= 500;
+        return reply.isThrottlingException()
+            || reply.statusCode() >= 500
+            || (reply instanceof AwsServiceException
+                && ((AwsServiceException) reply).awsErrorDetails() != null
+                && IDP_COMMUNICATION_ERROR.equals(
+                    ((AwsServiceException) reply).awsErrorDetails().errorCode()));
       }
       if (t instanceof IOException) {
         return true;
@@ -212,40 +274,50 @@ public class IAMTemporaryCredentialsProvider {
     public AwsCredentials getCredentialsOrFail() throws SdkClientException {
       int maxDuration = iamConfig.duration;
       String roleArn = null;
-      StsClient stsService =
-          getStsClientBuilderWithoutCredentials(stsRegion, iamConfig.regionalSTS)
-              .credentialsProvider(ContainerCredentialsProvider.create())
-              .build();
+      RuntimeException roleLookupFailure = null;
+      try (ContainerCredentialsProvider containerCredentials =
+              ContainerCredentialsProvider.create();
+          StsClient stsService =
+              getStsClientBuilderWithoutCredentials(stsRegion, iamConfig.regionalSTS)
+                  .credentialsProvider(containerCredentials)
+                  .build()) {
+        try {
+          // Fetch max session limit for the role.
+          GetCallerIdentityResponse gcResult =
+              stsService.getCallerIdentity(GetCallerIdentityRequest.builder().build());
+          String assumedRoleArn = gcResult.arn();
+          String[] arnSplit = assumedRoleArn.split("/", 0);
+          String role = arnSplit[arnSplit.length - 2];
+          try (IamClient iamClient =
+              IamClient.builder().credentialsProvider(containerCredentials).build()) {
+            Role iamRole =
+                iamClient.getRole(GetRoleRequest.builder().roleName(role).build()).role();
+            roleArn = iamRole.arn();
+            maxDuration = iamRole.maxSessionDuration();
+          }
+        } catch (RuntimeException e) {
+          roleLookupFailure = e;
+          log.debug(
+              "Could not get maximum duration for role arn: {}. Using default 1 hour instead.",
+              roleArn);
+        }
+        if (roleArn == null && roleLookupFailure != null) {
+          // AssumeRole needs the role ARN, so it could only fail: report why there is none.
+          throw roleLookupFailure;
+        }
+        // Generate temporary credentials valid until the max session duration.
+        AssumeRoleRequest roleRequest =
+            AssumeRoleRequest.builder()
+                .durationSeconds(maxDuration)
+                .roleArn(roleArn)
+                .roleSessionName("aws-java-sdk-" + System.currentTimeMillis())
+                .build();
 
-      try {
-        // Fetch max session limit for the role.
-        GetCallerIdentityResponse gcResult =
-            stsService.getCallerIdentity(GetCallerIdentityRequest.builder().build());
-        String assumedRoleArn = gcResult.arn();
-        String[] arnSplit = assumedRoleArn.split("/", 0);
-        String role = arnSplit[arnSplit.length - 2];
-        IamClient iamClient =
-            IamClient.builder().credentialsProvider(ContainerCredentialsProvider.create()).build();
-        Role iamRole = iamClient.getRole(GetRoleRequest.builder().roleName(role).build()).role();
-        roleArn = iamRole.arn();
-        maxDuration = iamRole.maxSessionDuration();
-      } catch (Exception e) {
-        log.debug(
-            "Could not get maximum duration for role arn: {}. Using default 1 hour instead.",
-            roleArn);
+        AssumeRoleResponse assumeRoleResponse = stsService.assumeRole(roleRequest);
+        Credentials credentials = assumeRoleResponse.credentials();
+        return AwsSessionCredentials.create(
+            credentials.accessKeyId(), credentials.secretAccessKey(), credentials.sessionToken());
       }
-      // Generate temporary credentials valid until the max session duration.
-      AssumeRoleRequest roleRequest =
-          AssumeRoleRequest.builder()
-              .durationSeconds(maxDuration)
-              .roleArn(roleArn)
-              .roleSessionName("aws-java-sdk-" + System.currentTimeMillis())
-              .build();
-
-      AssumeRoleResponse assumeRoleResponse = stsService.assumeRole(roleRequest);
-      Credentials credentials = assumeRoleResponse.credentials();
-      return AwsSessionCredentials.create(
-          credentials.accessKeyId(), credentials.secretAccessKey(), credentials.sessionToken());
     }
   }
 
@@ -265,15 +337,20 @@ public class IAMTemporaryCredentialsProvider {
 
     @Override
     public AwsCredentials getCredentialsOrFail() throws Exception {
-      String webIdentityRoleArn = null;
-      String webToken = null;
       int maxDuration = iamConfig.duration;
 
       // Create STS client to make subsequent calls.
-      StsClient stsService =
+      try (StsClient stsService =
           getStsClientBuilderWithoutCredentials(stsRegion, iamConfig.regionalSTS)
               .credentialsProvider(AnonymousCredentialsProvider.create())
-              .build();
+              .build()) {
+        return assumeRoleWithWebIdentity(stsService, maxDuration);
+      }
+    }
+
+    private AwsCredentials assumeRoleWithWebIdentity(StsClient stsService, int maxDuration) {
+      String webIdentityRoleArn = null;
+      String webToken = null;
 
       // Fetch AWS_ROLE_ARN from environment( Yugaware is required to have it if service account IAM
       // set).
@@ -296,14 +373,14 @@ public class IAMTemporaryCredentialsProvider {
         String[] arnSplit = webIdentityRoleArn.split("/", 0);
         String roleName = arnSplit[arnSplit.length - 1];
 
-        IamClient iamClient =
-            IamClient.builder()
-                .credentialsProvider(WebIdentityTokenFileCredentialsProvider.create())
-                .build();
-        ;
-        Role iamRole =
-            iamClient.getRole(GetRoleRequest.builder().roleName(roleName).build()).role();
-        maxDuration = iamRole.maxSessionDuration();
+        try (WebIdentityTokenFileCredentialsProvider tokenCredentials =
+                WebIdentityTokenFileCredentialsProvider.create();
+            IamClient iamClient =
+                IamClient.builder().credentialsProvider(tokenCredentials).build()) {
+          Role iamRole =
+              iamClient.getRole(GetRoleRequest.builder().roleName(roleName).build()).role();
+          maxDuration = iamRole.maxSessionDuration();
+        }
       } catch (Exception e) {
         log.debug(
             "Could not get maximum duration for role arn: {}. Using default 1 hour instead.",
@@ -337,7 +414,10 @@ public class IAMTemporaryCredentialsProvider {
 
     @Override
     public AwsCredentials getCredentialsOrFail() throws Exception {
-      return InstanceProfileCredentialsProvider.create().resolveCredentials();
+      try (InstanceProfileCredentialsProvider instanceCredentials =
+          InstanceProfileCredentialsProvider.create()) {
+        return instanceCredentials.resolveCredentials();
+      }
     }
   }
 
@@ -355,10 +435,10 @@ public class IAMTemporaryCredentialsProvider {
 
     @Override
     public AwsCredentials getCredentialsOrFail() throws Exception {
-      return ProfileCredentialsProvider.builder()
-          .profileName(profileName)
-          .build()
-          .resolveCredentials();
+      try (ProfileCredentialsProvider profileCredentials =
+          ProfileCredentialsProvider.builder().profileName(profileName).build()) {
+        return profileCredentials.resolveCredentials();
+      }
     }
   }
 

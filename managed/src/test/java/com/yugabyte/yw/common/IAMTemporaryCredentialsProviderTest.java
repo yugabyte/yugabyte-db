@@ -3,10 +3,15 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.isRetryableFailure;
+import static com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.resultWithin;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.net.SocketTimeoutException;
+import java.time.Duration;
+import java.util.Optional;
 import org.junit.Test;
 import software.amazon.awssdk.awscore.exception.AwsErrorDetails;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -33,6 +38,8 @@ public class IAMTemporaryCredentialsProviderTest {
     assertTrue(isRetryableFailure(stsReply(400, "Throttling")));
     assertTrue(isRetryableFailure(stsReply(429, "TooManyRequestsException")));
     assertTrue(isRetryableFailure(stsReply(503, "ServiceUnavailable")));
+    // STS could not reach the token's identity provider, which AWS documents as often transient.
+    assertTrue(isRetryableFailure(stsReply(400, "IDPCommunicationError")));
     assertTrue(
         isRetryableFailure(new RuntimeException("wrapped", stsReply(500, "InternalFailure"))));
     assertTrue(
@@ -50,6 +57,30 @@ public class IAMTemporaryCredentialsProviderTest {
     assertFalse(isRetryableFailure(stsReply(400, "InvalidIdentityToken")));
     assertFalse(isRetryableFailure(stsReply(400, "ExpiredTokenException")));
     assertFalse(isRetryableFailure(new RuntimeException("wrapped", stsReply(403, "AccessDenied"))));
+  }
+
+  /** The off-AWS check runs on request threads, so a check that hangs is given up on. */
+  @Test
+  public void testResultWithinGivesUpOnWorkThatTakesTooLong() {
+    assertEquals(Optional.of(true), resultWithin(() -> true, Duration.ofSeconds(5)));
+    long start = System.nanoTime();
+    assertEquals(
+        Optional.empty(),
+        resultWithin(
+            () -> {
+              Thread.sleep(60_000);
+              return true;
+            },
+            Duration.ofMillis(100)));
+    assertTrue(Duration.ofNanos(System.nanoTime() - start).compareTo(Duration.ofSeconds(5)) < 0);
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            resultWithin(
+                () -> {
+                  throw new IllegalStateException("failed");
+                },
+                Duration.ofSeconds(5)));
   }
 
   @Test

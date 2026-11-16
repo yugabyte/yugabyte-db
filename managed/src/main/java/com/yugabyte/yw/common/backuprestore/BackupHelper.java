@@ -672,49 +672,44 @@ public class BackupHelper {
         s3.iamConfig != null
             ? StringUtils.defaultIfBlank(s3.iamConfig.iamUserProfile, "default")
             : "default";
-    String ownWay;
-    if (!s3.isIAMInstanceProfile) {
-      ownWay =
-          "set access keys on the storage config, or set its IAM role flag and give this host"
-              + " AWS credentials (a profile with keys, a web identity token file with"
-              + " AWS_ROLE_ARN)";
-    } else {
-      String hostNeeds;
-      switch (source) {
-        case EC2_INSTANCE:
-          hostNeeds =
-              "switch its IAM credential source from EC2_INSTANCE, which needs AWS instance"
-                  + " metadata, to one this host can serve";
-          break;
-        case IAM_USER:
-          hostNeeds =
-              String.format(
-                  "give this host the AWS profile '%s' with keys, a credential process or a role",
-                  profile);
-          break;
-        case WEB_TOKEN:
-          hostNeeds =
-              "give this host a web identity token file named by AWS_WEB_IDENTITY_TOKEN_FILE,"
-                  + " with AWS_ROLE_ARN";
-          break;
-        case ASSUME_INSTANCE_ROLE:
-          hostNeeds =
-              "give this host container credentials (AWS_CONTAINER_CREDENTIALS_FULL_URI or"
-                  + " AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)";
-          break;
-        default:
-          hostNeeds =
-              String.format(
-                  "give this host AWS credentials its IAM role chain can use: the AWS profile"
-                      + " '%s' with keys, a credential process or a role, a web identity token"
-                      + " file with AWS_ROLE_ARN, or container credentials",
-                  profile);
-      }
-      ownWay =
-          "clear the IAM role flag on the storage config and set access keys (with the flag set,"
-              + " its keys are not used), or "
-              + hostNeeds;
+    // What the config's IAM credential source needs on this host, with the IAM role flag set.
+    String hostNeeds;
+    switch (source) {
+      case EC2_INSTANCE:
+        hostNeeds =
+            "switch its IAM credential source from EC2_INSTANCE, which needs AWS instance"
+                + " metadata, to one this host can serve";
+        break;
+      case IAM_USER:
+        hostNeeds =
+            String.format(
+                "give this host the AWS profile '%s' with keys, a credential process or a role",
+                profile);
+        break;
+      case WEB_TOKEN:
+        hostNeeds =
+            "give this host a web identity token file named by AWS_WEB_IDENTITY_TOKEN_FILE,"
+                + " with AWS_ROLE_ARN";
+        break;
+      case ASSUME_INSTANCE_ROLE:
+        hostNeeds =
+            "give this host container credentials (AWS_CONTAINER_CREDENTIALS_FULL_URI or"
+                + " AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)";
+        break;
+      default:
+        hostNeeds =
+            String.format(
+                "give this host AWS credentials its IAM role chain can use: the AWS profile"
+                    + " '%s' with keys, a credential process or a role, a web identity token"
+                    + " file with AWS_ROLE_ARN, or container credentials",
+                profile);
     }
+    String ownWay =
+        s3.isIAMInstanceProfile
+            ? "clear the IAM role flag on the storage config and set access keys (with the flag"
+                + " set, its keys are not used), or "
+                + hostNeeds
+            : "set access keys on the storage config, or set its IAM role flag and " + hostNeeds;
     return String.format(
         "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the config"
             + " has no credentials this host can use, and no provider has a usable aws entry in"
