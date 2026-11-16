@@ -20,10 +20,12 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 
@@ -197,6 +199,19 @@ public class RollbackResizeNode extends ResizeNode {
   @Override
   protected boolean mustRunChangeInstanceType(NodeDetails node) {
     return mayBeLeftStopped(node);
+  }
+
+  /**
+   * A disk-only resize sets every node Resizing before Disk_Update and keeps its processes up. A
+   * node whose disk the failed resize never changed matches {@code before} in YBA and the cloud, so
+   * no flow picks it up; without this it stays Resizing and blocks edits and upgrades. Nodes that
+   * may have been stopped are instance-changing nodes (see {@link #mayBeLeftStopped}), never here.
+   */
+  @Override
+  protected List<NodeDetails> untouchedNodesToSetLive(List<NodeDetails> untouchedNodes) {
+    return untouchedNodes.stream()
+        .filter(n -> n.state == NodeDetails.NodeState.Resizing)
+        .collect(Collectors.toList());
   }
 
   /**

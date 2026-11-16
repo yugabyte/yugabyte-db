@@ -358,6 +358,17 @@ public class ResizeNode extends UpgradeTaskBase {
                 justModifyDeviceNodes,
                 ServerType.EITHER,
                 DEFAULT_CONTEXT);
+            List<NodeDetails> untouchedNodesToSetLive =
+                untouchedNodesToSetLive(
+                    fetchNodesForCluster().stream()
+                        .filter(n -> n.isInPlacement(cluster.uuid))
+                        .filter(n -> !instanceChangingNodes.contains(n))
+                        .filter(n -> !justModifyDeviceNodes.contains(n))
+                        .collect(Collectors.toList()));
+            if (!untouchedNodesToSetLive.isEmpty()) {
+              createSetNodeStateTasks(untouchedNodesToSetLive, NodeDetails.NodeState.Live)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
             // Persist changes in the universe.
             createPersistResizeNodeTask(userIntent, cluster.uuid)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
@@ -618,6 +629,11 @@ public class ResizeNode extends UpgradeTaskBase {
   /** Whether to run ChangeInstanceType for the node even when its type already matches. */
   protected boolean mustRunChangeInstanceType(NodeDetails node) {
     return false;
+  }
+
+  /** Nodes that no resize flow touches but that must still be set Live, as they are. */
+  protected List<NodeDetails> untouchedNodesToSetLive(List<NodeDetails> untouchedNodes) {
+    return Collections.emptyList();
   }
 
   /**
