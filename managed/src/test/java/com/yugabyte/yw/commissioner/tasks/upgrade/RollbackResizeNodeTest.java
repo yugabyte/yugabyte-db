@@ -1072,6 +1072,59 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
     assertAllNodesLive();
   }
 
+  @Test
+  public void testRollbackStartsNodeLeftStoppedByGFlagsRestartBeforeSettingItLive() {
+    // The failed resize's rolling gflags restart stopped this node and left it Resizing. The
+    // rollback's own gflags restart must start it before it is set Live.
+    SpecificGFlags beforeFlags =
+        SpecificGFlags.construct(Map.of("master-before", "1"), Map.of("tserver-before", "2"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
+    seedFailedResize(/* changeInstance */ false, /* growVolume */ false, /* changeIops */ false);
+    seedFailedResizeTargetGFlags(
+        SpecificGFlags.construct(Map.of("master-before", "5"), Map.of("added-tserver", "y")));
+    String stoppedNode = firstNodeName();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getNode(stoppedNode).state = NodeDetails.NodeState.Resizing);
+    stubCloudState(
+        DEFAULT_INSTANCE_TYPE,
+        DEFAULT_DISK_IOPS,
+        DEFAULT_DISK_THROUGHPUT,
+        DEFAULT_VOLUME_SIZE,
+        Instant.now().minus(Duration.ofHours(48)));
+
+    ResizeNodeParams rollbackParams = createRollbackParams();
+    rollbackParams.getPrimaryCluster().userIntent.specificGFlags = beforeFlags;
+    rollbackParams.masterGFlags = new HashMap<>();
+    rollbackParams.tserverGFlags = new HashMap<>();
+    TaskInfo taskInfo = submitRollback(rollbackParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    int firstStart = -1;
+    int firstLive = -1;
+    for (int i = 0; i < subTasks.size(); i++) {
+      TaskInfo t = subTasks.get(i);
+      if (firstStart < 0 && isServerCtl(t, stoppedNode, "start")) {
+        firstStart = i;
+      }
+      if (firstLive < 0
+          && t.getTaskType() == TaskType.SetNodeState
+          && stoppedNode.equals(t.getTaskParams().path("nodeName").asText())
+          && "Live".equals(t.getTaskParams().path("state").asText())) {
+        firstLive = i;
+      }
+    }
+    assertTrue("no start for " + stoppedNode, firstStart >= 0);
+    assertTrue(stoppedNode + " set Live before it was started", firstLive > firstStart);
+    assertAllNodesLive();
+  }
+
   /**
    * PLAT-23888: an IOPS-only resize sets every node Resizing, then fails in Disk_Update before
    * persisting the new intent, so YBA still matches before. The cloud matches before too, except on

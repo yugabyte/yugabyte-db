@@ -364,6 +364,8 @@ public class ResizeNode extends UpgradeTaskBase {
                         .filter(n -> n.isInPlacement(cluster.uuid))
                         .filter(n -> !instanceChangingNodes.contains(n))
                         .filter(n -> !justModifyDeviceNodes.contains(n))
+                        .filter(n -> !nodesToApply.mastersToUpgradeGFlags.contains(n))
+                        .filter(n -> !nodesToApply.tserversToUpgradeGFlags.contains(n))
                         .collect(Collectors.toList()));
             if (!untouchedNodesToSetLive.isEmpty()) {
               createSetNodeStateTasks(untouchedNodesToSetLive, NodeDetails.NodeState.Live)
@@ -631,7 +633,10 @@ public class ResizeNode extends UpgradeTaskBase {
     return false;
   }
 
-  /** Nodes that no resize flow touches but that must still be set Live, as they are. */
+  /**
+   * Nodes that no flow of this task touches (instance change, disk update or gflags restart) but
+   * that must still be set Live, as they are.
+   */
   protected List<NodeDetails> untouchedNodesToSetLive(List<NodeDetails> untouchedNodes) {
     return Collections.emptyList();
   }

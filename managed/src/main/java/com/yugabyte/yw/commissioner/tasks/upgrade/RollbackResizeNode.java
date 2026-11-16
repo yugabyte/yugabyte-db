@@ -204,8 +204,10 @@ public class RollbackResizeNode extends ResizeNode {
   /**
    * A disk-only resize sets every node Resizing before Disk_Update and keeps its processes up. A
    * node whose disk the failed resize never changed matches {@code before} in YBA and the cloud, so
-   * no flow picks it up; without this it stays Resizing and blocks edits and upgrades. Nodes that
-   * may have been stopped are instance-changing nodes (see {@link #mayBeLeftStopped}), never here.
+   * no flow picks it up; without this it stays Resizing and blocks edits and upgrades. Nodes the
+   * failed resize may have stopped are not passed here: its instance flow's nodes are restarted as
+   * instance-changing nodes (see {@link #mayBeLeftStopped}), and its gflags restart's nodes are
+   * restarted by this rollback's gflags restart, which sets them Live after starting them.
    */
   @Override
   protected List<NodeDetails> untouchedNodesToSetLive(List<NodeDetails> untouchedNodes) {
