@@ -175,7 +175,7 @@ An equivalent async path exists via `AsyncConnection` and `AsyncConnectionPool`;
 
 ## xCluster failover
 
-xCluster failover lets an application keep running when a YugabyteDB universe becomes unavailable. It is for two universes that replicate to each other using [xCluster](../../../../deploy/multi-dc/async-replication/): a primary universe that the application normally uses, and a secondary universe.
+xCluster failover lets an application keep running when a YugabyteDB universe becomes unavailable. It is for two universes in a bidirectional [xCluster](../../../../deploy/multi-dc/async-replication/) setup, each replicating to the other: a primary universe that the application normally uses, and a secondary universe.
 
 - **Failover** - when the primary universe becomes unavailable, the driver sends new connections to the secondary universe.
 - **Failback** - when the primary universe is available again, the driver moves connections back to it.
@@ -452,3 +452,5 @@ When you're done experimenting, run the following commands to destroy the local 
 - Strict topology filter in this release. If `topology_keys` matches no live nodes, connect raises `OperationalError` (no cluster-wide fallback in this release).
 
 - xCluster failover decisions are made per process. In a pre-fork server (for example, gunicorn with `--preload`), the process that creates the failover group makes the decisions and forked workers follow it; call `trigger_failback()` in that process, not in a worker.
+
+- xCluster failover supports bidirectional xCluster only. It hasn't been designed or tested for [xCluster disaster recovery](../../../../yugabyte-platform/back-up-restore-universes/disaster-recovery/) (transactional, one-way replication). In particular, the sample circuit breakers check health with a read, which still succeeds on a DR replica, so they don't detect a DR switchover.
