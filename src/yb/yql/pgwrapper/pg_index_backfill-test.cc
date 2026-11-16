@@ -960,6 +960,34 @@ TEST_P(PgIndexBackfillTestDeadlines, YB_DISABLE_TEST(BackfillRespectsDeadline)) 
   ASSERT_LE(avg_rpc_latency_usec, kBackfillRpcDeadlineSmallMs * 1000);
 }
 
+class PgIndexBackfillStatementTimeoutTest : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        Format("--backfill_index_write_batch_size=$0", kBatchSize));
+    options->extra_tserver_flags.push_back(Format("--ysql_prefetch_limit=$0", kBatchSize));
+  }
+
+  const int kBatchSize = 10;
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillStatementTimeoutTest, ::testing::Bool());
+
+// A statement_timeout configured for the postgres role must not apply to BACKFILL INDEX.
+TEST_P(PgIndexBackfillStatementTimeoutTest, IgnoresConfiguredStatementTimeout) {
+  ASSERT_OK(conn_->Execute("ALTER ROLE postgres SET statement_timeout = 1000"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT generate_series(1, $1)", kTableName, 2 * kBatchSize));
+  // Each batch takes 2s.
+  ASSERT_OK(conn_->Execute(
+      "CREATE FUNCTION slow_id(x int) RETURNS int LANGUAGE plpgsql IMMUTABLE AS "
+      "$$ BEGIN PERFORM pg_sleep(0.2); RETURN x; END $$"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 ((slow_id(i)))", kIndexName, kTableName));
+  ASSERT_OK(CheckIndexConsistency(kIndexName));
+}
+
 // Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
 TEST_P(PgIndexBackfillTest, Nonconcurrent) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());

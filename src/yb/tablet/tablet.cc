@@ -4023,6 +4023,7 @@ Status Tablet::BackfillIndexesForYsql(
   // BACKFILL passes a read time and SERIALIZABLE is incompatible with fixed read time.
   auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
       std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
+  RETURN_NOT_OK(conn.Execute("SET statement_timeout = 0"));
 
   if (is_xcluster_target) {
     // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
