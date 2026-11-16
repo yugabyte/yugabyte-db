@@ -12,6 +12,7 @@ import (
 	"node-agent/util"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -451,7 +452,7 @@ func (h *InstallOtelCollector) disableUserOtelCollectorWithoutManager(
 	if err := h.removeOtelCollectorWantsLink(ctx, info.User.HomeDir); err != nil {
 		return err
 	}
-	binary := filepath.Join(h.param.GetYbHomeDir(), "otel-collector", otelCollectorInstalledBinary)
+	binary := otelCollectorUnitBinary(h.param.GetYbHomeDir())
 	// The unit restarts every RestartSec, so one check can miss a crash-looping collector.
 	running, err := otelCollectorRunsWithin(
 		ctx,
@@ -463,11 +464,11 @@ func (h *InstallOtelCollector) disableUserOtelCollectorWithoutManager(
 				ctx,
 				h.username,
 				"CheckOtelCollectorProcess",
-				fmt.Sprintf("pgrep -f '^%s( |$)' || true", binary),
+				otelCollectorProcessCheckCmd(binary),
 				nil,
 			)
 			if err != nil {
-				return false, err
+				return false, fmt.Errorf("check for a running %s: %w", binary, err)
 			}
 			return strings.TrimSpace(cmdInfo.StdOut.String()) != "", nil
 		},
@@ -503,6 +504,19 @@ func (h *InstallOtelCollector) removeOtelCollectorWantsLink(
 		h.logOut,
 	)
 	return err
+}
+
+// otelCollectorUnitBinary returns the binary path as the unit's ExecStart writes it.
+// filepath.Join would clean it, so pgrep would miss a yb_home_dir that ends in "/".
+func otelCollectorUnitBinary(ybHome string) string {
+	return ybHome + "/otel-collector/" + otelCollectorInstalledBinary
+}
+
+// otelCollectorProcessCheckCmd prints the PIDs of collectors that run binary. pgrep exits 1 when
+// nothing matches; a higher exit is a pgrep error and must fail, not read as "not running".
+func otelCollectorProcessCheckCmd(binary string) string {
+	pattern := shellSingleQuote("^" + regexp.QuoteMeta(binary) + "( |$)")
+	return fmt.Sprintf(`pgrep -f %s; rc=$?; [ "$rc" -le 1 ] || exit "$rc"`, pattern)
 }
 
 // otelCollectorRunsWithin calls isRunning until it reports true or the window ends.

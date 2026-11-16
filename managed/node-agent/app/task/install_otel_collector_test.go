@@ -4,9 +4,12 @@ package task
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"node-agent/app/task/module"
 	pb "node-agent/generated/service"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -182,5 +185,95 @@ func TestOtelCollectorRunningPollIntervalFindsShortLivedCollector(t *testing.T) 
 	if err != nil || !running {
 		t.Fatalf("collector alive for 250 ms not found with poll interval %v: running=%v, err=%v",
 			otelCollectorRunningPollInterval, running, err)
+	}
+}
+
+// fakePgrepEchoPattern makes the fake pgrep print the pattern it got, in place of a PID.
+const fakePgrepEchoPattern = "pattern"
+
+// runWithFakePgrep runs the process check with a pgrep that prints out and exits with rc.
+func runWithFakePgrep(t *testing.T, binary, out string, rc int) (string, error) {
+	dir := t.TempDir()
+	script := `#!/bin/sh
+if [ "$FAKE_PGREP_OUT" = "` + fakePgrepEchoPattern + `" ]; then printf '%s' "$2"
+else printf '%s' "$FAKE_PGREP_OUT"; fi
+exit "$FAKE_PGREP_RC"
+`
+	if err := os.WriteFile(filepath.Join(dir, "pgrep"), []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake pgrep: %v", err)
+	}
+	cmd := exec.Command("bash", "-c", otelCollectorProcessCheckCmd(binary))
+	cmd.Env = append(os.Environ(),
+		"PATH="+dir+":"+os.Getenv("PATH"),
+		"FAKE_PGREP_OUT="+out,
+		fmt.Sprintf("FAKE_PGREP_RC=%d", rc),
+	)
+	stdout, err := cmd.Output()
+	return string(stdout), err
+}
+
+// Only pgrep exit 1 means "not running"; a pgrep error must fail the check.
+func TestOtelCollectorProcessCheckCmdExitCodes(t *testing.T) {
+	binary := "/home/yugabyte/otel-collector/otelcol-contrib"
+	if out, err := runWithFakePgrep(t, binary, "123", 0); err != nil || out != "123" {
+		t.Fatalf("exit 0: want PID and no error, got out=%q err=%v", out, err)
+	}
+	if out, err := runWithFakePgrep(t, binary, "", 1); err != nil || out != "" {
+		t.Fatalf("exit 1: want no output and no error, got out=%q err=%v", out, err)
+	}
+	for _, rc := range []int{2, 3} {
+		_, err := runWithFakePgrep(t, binary, "", rc)
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != rc {
+			t.Fatalf("exit %d: want the same exit code as an error, got %v", rc, err)
+		}
+	}
+}
+
+// A path with a quote or a regex metacharacter must reach pgrep as a literal match.
+func TestOtelCollectorProcessCheckCmdEscapesPath(t *testing.T) {
+	binary := "/home/o'neil/yb.home/otel-collector/otelcol-contrib"
+	out, err := runWithFakePgrep(t, binary, fakePgrepEchoPattern, 0)
+	want := `^/home/o'neil/yb\.home/otel-collector/otelcol-contrib( |$)`
+	if err != nil || out != want {
+		t.Fatalf("want pattern %q, got %q (err %v)", want, out, err)
+	}
+	if _, err := exec.LookPath("pgrep"); err != nil {
+		t.Skip("no pgrep on this host")
+	}
+	// The real pgrep finds a process that runs the binary, and not a sibling that differs only
+	// where the unescaped "." would match.
+	proc := exec.Command("bash", "-c", fmt.Sprintf(`exec -a %s sleep 30`,
+		shellSingleQuote(binary+" --config=x")))
+	decoy := exec.Command("bash", "-c", fmt.Sprintf(`exec -a %s sleep 30`,
+		shellSingleQuote(strings.Replace(binary, "yb.home", "ybXhome", 1))))
+	for _, c := range []*exec.Cmd{proc, decoy} {
+		if err := c.Start(); err != nil {
+			t.Fatalf("start process: %v", err)
+		}
+		t.Cleanup(func() { c.Process.Kill(); c.Wait() })
+	}
+	// bash needs a moment to exec into sleep, so poll until the deadline.
+	wantPID := fmt.Sprint(proc.Process.Pid)
+	var got string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		stdout, err := exec.Command("bash", "-c", otelCollectorProcessCheckCmd(binary)).Output()
+		if err != nil {
+			t.Fatalf("process check: %v", err)
+		}
+		if got = strings.TrimSpace(string(stdout)); got == wantPID {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("want only PID %s, got %q", wantPID, got)
+}
+
+// pgrep matches the command line text, so the path must not be cleaned.
+func TestOtelCollectorUnitBinaryKeepsExecStartText(t *testing.T) {
+	got := otelCollectorUnitBinary("/home/yugabyte/")
+	want := "/home/yugabyte//otel-collector/" + otelCollectorInstalledBinary
+	if got != want {
+		t.Fatalf("want %q, got %q", want, got)
 	}
 }
