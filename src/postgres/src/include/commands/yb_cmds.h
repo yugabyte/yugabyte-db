@@ -130,7 +130,8 @@ extern void YBCCreateReplicationSlot(const char *slot_name,
 									 uint64_t *consistent_snapshot_time,
 									 YbCRSLsnType lsn_type,
 									 YbCRSOrderingMode yb_ordering_mode,
-									 Oid database_oid);
+									 Oid database_oid,
+									 const char *yb_publication_name);
 
 extern void YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
 							   size_t *num_slot_entries);

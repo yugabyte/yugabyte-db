@@ -41,11 +41,13 @@ export const GeoPartitionResilience = () => {
             activeStep: 1,
             resilienceAndRegionsSettings: geoPartitions[activeGeoPartitionIndex].resilience,
             generalSettings: {
-              providerConfiguration: {
-                uuid:
-                  getPrimaryCluster(universeData?.spec?.clusters ?? [])?.provider_spec
-                    ?.provider ?? ''
-              }
+              providerConfigurations: [
+                {
+                  uuid:
+                    getPrimaryCluster(universeData?.spec?.clusters ?? [])?.provider_spec
+                      ?.provider ?? ''
+                }
+              ]
             }
           },
           {

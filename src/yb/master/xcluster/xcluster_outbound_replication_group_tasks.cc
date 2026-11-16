@@ -57,10 +57,11 @@ XClusterCheckpointNamespaceTask::XClusterCheckpointNamespaceTask(
           std::move(validate_epoch_func), async_task_pool, messenger, outbound_replication_group,
           epoch),
       namespace_id_(namespace_id),
+      replication_group_id_(outbound_replication_group.Id()),
       outbound_replication_group_(outbound_replication_group) {}
 
 std::string XClusterCheckpointNamespaceTask::description() const {
-  return Format("XClusterCheckpointNamespaceTask [$0]", outbound_replication_group_.Id());
+  return Format("XClusterCheckpointNamespaceTask [$0]", replication_group_id_);
 }
 
 Status XClusterCheckpointNamespaceTask::FirstStep() {
@@ -168,6 +169,24 @@ Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
     ScheduleNextStepWithDelay(
         [this] { return CheckpointStreams(); }, "CheckpointStreams", GetDelayWithBackoff());
     return Status::OK();
+  }
+
+  if (result && result->first.empty()) {
+    // Every table is checkpointed.  A transaction whose provisional writes precede a tablet's
+    // checkpoint but commits after that checkpoint and the backup the caller takes next cannot be
+    // replicated; accordingly, checkpointing attempted to abort such transactions.  However, it
+    // does so in a best effort manner that can fail due to timeouts or other corner cases.  Example
+    // corner case: transactions in the middle of committing are not aborted but can still commit at
+    // a time stamp after the backup.
+    //
+    // In automatic mode setup (not switchover):
+    //
+    // To cover for those failures, we additionally use StartPersisting here, which provides a
+    // guarantee rather than best effort, to block these transactions from committing.  This must
+    // happen before the namespace is marked READY, since the caller backs it up once it is, and a
+    // commit after the backup's read time would then reach neither the backup nor the stream.
+    RETURN_NOT_OK(
+        outbound_replication_group_.MaybeBlockWritesStartedBeforeCheckpoint(namespace_id_, epoch_));
   }
 
   if (VERIFY_RESULT(outbound_replication_group_.MarkBootstrapTablesAsCheckpointed(

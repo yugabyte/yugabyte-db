@@ -10,6 +10,7 @@
 
 import datetime
 import functools
+import hashlib
 import logging
 import os
 import paramiko
@@ -45,6 +46,18 @@ CONNECTION_RETRY_DELAY_SEC = 15
 # Just having timeout in shell script, which we're running on the node,
 # does not seem to always help - as ssh client connection itself or command results read can hang.
 COMMAND_TIMEOUT_SEC = 600
+
+
+# paramiko calls get_fingerprint() only for its logs, but its plain md5() fails on a host whose
+# OpenSSL is in FIPS mode, which failed every connect.
+def _fips_safe_fingerprint(key):
+    try:
+        return hashlib.md5(key.asbytes(), usedforsecurity=False).digest()
+    except ValueError:
+        return hashlib.sha256(key.asbytes()).digest()
+
+
+paramiko.PKey.get_fingerprint = _fips_safe_fingerprint
 
 
 def ssh_retry_decorator(fn_to_call, exc_handler=None, retry_delay=None):

@@ -128,5 +128,5 @@ You could choose closer regions to avoid an increase in latency on failover.
 ## Learn more
 
 - [Build global applications](../../build-global-apps/)
-- [Global database failover](../../build-global-apps/global-database#failover)
-- [Improve latencies with closer regions](../../build-global-apps/global-database#improve-latencies-with-closer-regions)
+- [Global database failover](../../build-global-apps/global-database/#failover)
+- [Improve latencies with closer regions](../../build-global-apps/global-database/#improve-latencies-with-closer-regions)

@@ -528,16 +528,16 @@ public class Schedule extends Model {
 
   public static Schedule getOrCreateSchedule(
       UUID customerUUID, BackupRequestParams scheduleParams) {
+    // Saved as the schedule's task params, which each scheduled backup runs with.
+    scheduleParams.customerUUID = customerUUID;
     Schedule schedule = null;
     Optional<Schedule> optionalSchedule =
         Schedule.maybeGetScheduleByUniverseWithName(
-            scheduleParams.scheduleName,
-            scheduleParams.getUniverseUUID(),
-            scheduleParams.customerUUID);
+            scheduleParams.scheduleName, scheduleParams.getUniverseUUID(), customerUUID);
     if (!optionalSchedule.isPresent()) {
       schedule =
           Schedule.create(
-              scheduleParams.customerUUID,
+              customerUUID,
               scheduleParams.getUniverseUUID(),
               scheduleParams,
               TaskType.CreateBackup,

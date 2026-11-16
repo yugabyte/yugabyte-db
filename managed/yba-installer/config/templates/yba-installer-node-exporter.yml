@@ -13,6 +13,10 @@ services:
       Group={{ yamlPath "service_username" }}
       {{ end }}
       Type=simple
+      {{- if ne (yamlPath "fips.enabled") "true" }}
+      # node_exporter is a GOFIPS140 build, which defaults to FIPS mode and its strict TLS rules.
+      Environment="GODEBUG=fips140=off"
+      {{- end }}
       ExecStart=/bin/sh -c "{{ .BinDir }}/node_exporter \
       --web.listen-address=:{{ yamlPath "nodeExporter.port" }} \
       --web.config.file={{ .WebConfFile }} \

@@ -289,19 +289,19 @@ public class SwamperHelper {
     if (swamperFile == null) {
       return;
     }
+    // K8s pods are scraped only while the node_exporter sidecar is enabled.
+    boolean scrapeKubernetesPods =
+        Util.isKubernetesBasedUniverse(universe)
+            && KubernetesUtil.isNodeExporterSidecarEnabled(
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+                universe,
+                confGetter);
     universe
         .getNodes()
         .forEach(
             (node) -> {
-              // K8s pods are scraped only while the node_exporter sidecar is enabled.
               if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)
-                  && !(confGetter.getConfForScope(universe, UniverseConfKeys.k8sNodeExporterEnabled)
-                      && KubernetesUtil.isNodeExporterSidecarSupported(
-                          universe
-                              .getUniverseDetails()
-                              .getPrimaryCluster()
-                              .userIntent
-                              .ybSoftwareVersion))) {
+                  && !scrapeKubernetesPods) {
                 return;
               }
               nodeTargets.add(getIndividualConfig(universe, TargetType.NODE_EXPORT, node));

@@ -33,15 +33,15 @@ type: docs
 
 ## Consistency
 
-**YugabyteDB**: Provides strong consistency with distributed [ACID](../../../architecture/key-concepts#acid) transactions, ensuring data integrity across nodes. {{<product "ysql">}} only supports strong consistency, while {{<product "ycql">}} supports both strong and eventual consistency.
+**YugabyteDB**: Provides strong consistency with distributed [ACID](../../../architecture/key-concepts/#acid) transactions, ensuring data integrity across nodes. {{<product "ysql">}} only supports strong consistency, while {{<product "ycql">}} supports both strong and eventual consistency.
 
 **DynamoDB**: Uses eventual consistency by default, but offers the option for strong consistency on reads. It doesn't provide strong consistency across the board.
 
 ## Transactions
 
-**YugabyteDB**: Fully supports distributed [ACID](../../../architecture/key-concepts#acid) transactions across tables, rows, and columns, making it ideal for complex transactional operations. Transactions are consistent across regions and handled efficiently.
+**YugabyteDB**: Fully supports distributed [ACID](../../../architecture/key-concepts/#acid) transactions across tables, rows, and columns, making it ideal for complex transactional operations. Transactions are consistent across regions and handled efficiently.
 
-**DynamoDB**: Offers limited transaction support. Transactions are only available within a single partition key, making it less ideal for complex transactions. [ACID](../../../architecture/key-concepts#acid) guarantees apply only within the same region, and transactions are capped at 100 items.
+**DynamoDB**: Offers limited transaction support. Transactions are only available within a single partition key, making it less ideal for complex transactions. [ACID](../../../architecture/key-concepts/#acid) guarantees apply only within the same region, and transactions are capped at 100 items.
 
 ## Indexes
 

@@ -65,6 +65,8 @@ bool yb_enable_consistent_replication_from_hash_range = false;
 
 bool yb_enable_replication_slot_exclusive_lock = false;
 
+int yb_replication_slot_wait_max_retries = 0;
+
 bool yb_cdcsdk_stream_tables_without_primary_key = true;
 
 bool yb_cdcsdk_allow_dml_without_pk = false;
@@ -163,7 +165,7 @@ bool yb_ignore_read_time_in_walsender = false;
 
 bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 
-bool enable_object_locking_infra = true;
+bool yb_enable_object_locking_infra = true;
 
 bool yb_enable_ddl_savepoint_infra = true;
 

@@ -252,6 +252,8 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	// Fix the types in the parsed config after merging the extra_vars.
 	pArgs.YnpConfig = config.FixParsedConfigMap(ynpConfig)
+	// Before any call to YBA. A changed mode re-executes ynp, which then gets here again.
+	applyFipsMode(config.GetBool(pArgs.YnpConfig["ynp"], "is_fips_enabled", false))
 	// Setup logger now to use the custom logger with the final logging config.
 	config.SetupLogger(ctx, pArgs.YnpConfig)
 	return nil
@@ -450,8 +452,11 @@ func handleCommand(
 	return nil
 }
 
+// applyFipsMode is replaced in tests, where re-executing would restart the test binary.
+var applyFipsMode = util.ApplyFipsMode
+
 func main() {
-	util.VerifyFipsMode()
+	// FIPS mode follows the config, see processArguments.
 	setupCommand(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
 		// The console logger writes to stdout, and YBA reports only stderr for a failed remote

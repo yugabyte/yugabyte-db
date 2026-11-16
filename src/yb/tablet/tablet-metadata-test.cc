@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <set>
@@ -463,6 +464,45 @@ TEST_F(TestRaftGroupMetadata, NamespaceIdPreservedAcrossSchemaChanges) {
   meta->InsertPackedSchemaForXClusterTarget(
       initial_schema, index_map, initial_version + 3, OpId() /* op_id */, table_id);
   ASSERT_EQ(meta->primary_table_info()->namespace_id, kNamespaceId);
+}
+
+// A column dropped locally stays deleted when an xCluster target inserts an older source packing
+// that still has it, and is forgotten once a restore brings it back into the schema. See #35814.
+TEST_F(TestRaftGroupMetadata, DeletedColumnsAcrossPackedSchemaInsertAndRestore) {
+  auto* meta = harness_->tablet()->metadata();
+  auto initial_table_info = meta->primary_table_info();
+  const Schema initial_schema = initial_table_info->schema();
+  auto version = initial_table_info->schema_version;
+  const qlexpr::IndexMap& index_map = *initial_table_info->index_map;
+  const TableId& table_id = initial_table_info->table_id;
+
+  const auto dropped_idx = initial_schema.num_columns() - 1;
+  ASSERT_GE(dropped_idx, initial_schema.num_key_columns());
+  const auto dropped_id = initial_schema.column_id(dropped_idx);
+  SchemaBuilder builder(initial_schema);
+  ASSERT_OK(builder.RemoveColumn(initial_schema.column(dropped_idx).name()));
+  const auto dropped_schema = builder.Build();
+
+  auto is_deleted = [meta, dropped_id] {
+    const auto& deleted_cols = meta->primary_table_info()->deleted_cols;
+    return std::any_of(deleted_cols.begin(), deleted_cols.end(), [dropped_id](const auto& col) {
+      return col.id == dropped_id;
+    });
+  };
+
+  meta->SetSchema(
+      dropped_schema, index_map, {DeletedColumn(dropped_id, HybridTime(1000))}, ++version,
+      OpId() /* op_id */, table_id);
+  ASSERT_TRUE(is_deleted());
+
+  version += 2;
+  meta->InsertPackedSchemaForXClusterTarget(
+      initial_schema, index_map, version, OpId() /* op_id */, table_id);
+  ASSERT_TRUE(is_deleted());
+
+  meta->SetSchema(
+      initial_schema, index_map, /* deleted_cols */ {}, ++version, OpId() /* op_id */, table_id);
+  ASSERT_FALSE(is_deleted());
 }
 
 // Verify that index_map() returns NotFound for a nonexistent colocated table rather than crashing.

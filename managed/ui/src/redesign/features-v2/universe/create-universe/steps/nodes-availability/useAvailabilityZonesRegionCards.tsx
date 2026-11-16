@@ -9,7 +9,12 @@ import {
   getFaultToleranceNeeded,
   maxExpertRfOption
 } from '../../CreateUniverseUtils';
-import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { AVAILABILITY_ZONES_BY_PROVIDER, REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { ProviderType } from '../general-settings/dtos';
+import {
+  countZonesInByProvider,
+  type AvailabilityZonesByProvider
+} from '../../helpers/nodesByProvider';
 import { useRuntimeConfigValues } from '../../helpers/utils';
 
 type Args = {
@@ -18,6 +23,8 @@ type Args = {
   resilienceAndRegionsSettings?: ResilienceAndRegionsProps;
   baselineRegionCodes?: string[];
   baselineZoneUuidsByRegion?: Record<string, string[]>;
+  /** When set, cards are grouped by provider and read availabilityZonesByProvider. */
+  providers?: ProviderType[];
 };
 
 export function useAvailabilityZonesRegionCards({
@@ -25,7 +32,8 @@ export function useAvailabilityZonesRegionCards({
   showErrorsAfterSubmit,
   resilienceAndRegionsSettings,
   baselineRegionCodes,
-  baselineZoneUuidsByRegion
+  baselineZoneUuidsByRegion,
+  providers
 }: Args) {
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
@@ -33,12 +41,19 @@ export function useAvailabilityZonesRegionCards({
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const { enablePrimaryRf9 } = useRuntimeConfigValues();
 
+  const multiPlacement = (providers?.length ?? 0) >= 2;
   const availabilityZones = watch('availabilityZones');
+  const availabilityZonesByProvider = watch(
+    AVAILABILITY_ZONES_BY_PROVIDER
+  ) as AvailabilityZonesByProvider | undefined;
+
+  const azCount = multiPlacement
+    ? countZonesInByProvider(availabilityZonesByProvider)
+    : Object.keys(availabilityZones ?? {}).reduce(
+        (acc, regionCode) => acc + (availabilityZones?.[regionCode]?.length ?? 0),
+        0
+      );
   const watchedReplicationFactor = watch(REPLICATION_FACTOR);
-  const azCount = Object.keys(availabilityZones ?? {}).reduce(
-    (acc, regionCode) => acc + (availabilityZones?.[regionCode]?.length ?? 0),
-    0
-  );
   const resilienceFactor = resilienceAndRegionsSettings?.resilienceFactor ?? 1;
   const effectiveReplicationFactor =
     mode === ResilienceFormMode.EXPERT_MODE
@@ -53,93 +68,120 @@ export function useAvailabilityZonesRegionCards({
       : canSelectMultipleRegions(resilienceAndRegionsSettings?.resilienceType) &&
         ft === FaultToleranceType.AZ_LEVEL;
 
-  const regionCards = useMemo(
-    () => {
-      const regionCodes = Object.keys(availabilityZones ?? {});
-      const cards = regionCodes.map((regionCode, index) => {
-        const region = resilienceAndRegionsSettings?.regions.find((r) => r.code === regionCode);
-        if (!region) return null;
+  const buildCard = (
+    regionCode: string,
+    index: number,
+    providerUuid?: string,
+    providerCode?: string
+  ) => {
+    const region = resilienceAndRegionsSettings?.regions.find(
+      (r) =>
+        r.code === regionCode &&
+        (providerUuid == null || r.providerUuid === providerUuid || !r.providerUuid)
+    );
+    if (!region) return null;
 
-        const regionAzCount = availabilityZones?.[regionCode]?.length ?? 0;
-        const isRegionAzLimitReached = regionAzCount >= region.zones.length;
-        const maxTotalAzCount =
-          mode === ResilienceFormMode.EXPERT_MODE
-            ? effectiveReplicationFactor
-            : faultToleranceNeeded;
-        const isGuidedCappedMode =
-          mode === ResilienceFormMode.GUIDED && ft === FaultToleranceType.AZ_LEVEL;
-        const isTotalAzLimitReached =
-          mode === ResilienceFormMode.EXPERT_MODE
-            ? azCount >= maxTotalAzCount
-            : isGuidedCappedMode && azCount >= maxTotalAzCount;
-        const isAddAzDisabled = isRegionAzLimitReached || isTotalAzLimitReached;
-        const isAddAzDisabledByAzLevelCap =
-          isTotalAzLimitReached &&
-          (mode === ResilienceFormMode.EXPERT_MODE || ft !== FaultToleranceType.NODE_LEVEL);
-        const addAzTooltipKey = isAddAzDisabledByAzLevelCap
-          ? mode === ResilienceFormMode.EXPERT_MODE
-            ? effectiveReplicationFactor >=
-              maxExpertRfOption(enablePrimaryRf9, effectiveReplicationFactor)
-              ? 'tooltips.addAvailabilityZoneDisabledExpertMaxRf'
-              : 'tooltips.addAvailabilityZoneDisabledExpert'
-            : 'tooltips.addAvailabilityZoneDisabled'
-          : undefined;
-        const addAzTooltipValues = isAddAzDisabledByAzLevelCap
-          ? mode === ResilienceFormMode.EXPERT_MODE
-            ? { rf: effectiveReplicationFactor }
-            : { outage_count: effectiveReplicationFactor, az_count: maxTotalAzCount }
-          : undefined;
-        const addAzTooltip = isAddAzDisabled
-          ? isTotalAzLimitReached
-            ? ''
-            : t('tooltips.regionNoMoreAz', { count: region.zones.length })
-          : '';
-        const isNewRegion =
-          Array.isArray(baselineRegionCodes) && !baselineRegionCodes.includes(region.code);
-        const baselineZoneUuids =
-          baselineZoneUuidsByRegion !== undefined
-            ? baselineZoneUuidsByRegion[region.code] ?? []
-            : undefined;
+    const zonesForRegion = providerUuid
+      ? availabilityZonesByProvider?.[providerUuid]?.[regionCode]
+      : availabilityZones?.[regionCode];
+    const regionAzCount = zonesForRegion?.length ?? 0;
+    const isRegionAzLimitReached = regionAzCount >= region.zones.length;
+    const maxTotalAzCount =
+      mode === ResilienceFormMode.EXPERT_MODE
+        ? effectiveReplicationFactor
+        : faultToleranceNeeded;
+    const isGuidedCappedMode =
+      mode === ResilienceFormMode.GUIDED && ft === FaultToleranceType.AZ_LEVEL;
+    const isTotalAzLimitReached =
+      mode === ResilienceFormMode.EXPERT_MODE
+        ? azCount >= maxTotalAzCount
+        : isGuidedCappedMode && azCount >= maxTotalAzCount;
+    const isAddAzDisabled = isRegionAzLimitReached || isTotalAzLimitReached;
+    const isAddAzDisabledByAzLevelCap =
+      isTotalAzLimitReached &&
+      (mode === ResilienceFormMode.EXPERT_MODE || ft !== FaultToleranceType.NODE_LEVEL);
+    const addAzTooltipKey = isAddAzDisabledByAzLevelCap
+      ? mode === ResilienceFormMode.EXPERT_MODE
+        ? effectiveReplicationFactor >=
+          maxExpertRfOption(enablePrimaryRf9, effectiveReplicationFactor)
+          ? 'tooltips.addAvailabilityZoneDisabledExpertMaxRf'
+          : 'tooltips.addAvailabilityZoneDisabledExpert'
+        : 'tooltips.addAvailabilityZoneDisabled'
+      : undefined;
+    const addAzTooltipValues = isAddAzDisabledByAzLevelCap
+      ? mode === ResilienceFormMode.EXPERT_MODE
+        ? { rf: effectiveReplicationFactor }
+        : { outage_count: effectiveReplicationFactor, az_count: maxTotalAzCount }
+      : undefined;
+    const addAzTooltip = isAddAzDisabled
+      ? isTotalAzLimitReached
+        ? ''
+        : t('tooltips.regionNoMoreAz', { count: region.zones.length })
+      : '';
+    const isNewRegion =
+      Array.isArray(baselineRegionCodes) && !baselineRegionCodes.includes(region.code);
+    const baselineZoneUuids =
+      baselineZoneUuidsByRegion !== undefined
+        ? baselineZoneUuidsByRegion[region.code] ?? []
+        : undefined;
 
-        return (
-          <RegionCard
-            key={region.uuid}
-            region={region}
-            index={index}
-            mode={mode}
-            showErrorsAfterSubmit={showErrorsAfterSubmit}
-            showAddAzButton={showAddAzButton}
-            isAddAzDisabled={isAddAzDisabled}
-            isAddAzDisabledByAzLevelCap={isAddAzDisabledByAzLevelCap}
-            addAzTooltip={addAzTooltip}
-            addAzTooltipKey={addAzTooltipKey}
-            addAzTooltipValues={addAzTooltipValues}
-            isNewRegion={isNewRegion}
-            baselineZoneUuids={baselineZoneUuids}
-          />
-        );
+    return (
+      <RegionCard
+        key={providerUuid ? `${providerUuid}:${region.uuid}` : region.uuid}
+        region={region}
+        index={index}
+        mode={mode}
+        showErrorsAfterSubmit={showErrorsAfterSubmit}
+        showAddAzButton={showAddAzButton}
+        isAddAzDisabled={isAddAzDisabled}
+        isAddAzDisabledByAzLevelCap={isAddAzDisabledByAzLevelCap}
+        addAzTooltip={addAzTooltip}
+        addAzTooltipKey={addAzTooltipKey}
+        addAzTooltipValues={addAzTooltipValues}
+        isNewRegion={isNewRegion}
+        baselineZoneUuids={baselineZoneUuids}
+        providerUuid={providerUuid}
+        providerCode={providerCode}
+      />
+    );
+  };
+
+  const regionCards = useMemo(() => {
+    if (multiPlacement && providers) {
+      // Figma Multi-Provider Nodes: logo on each card, no provider section headings;
+      // "Region N" is numbered per provider.
+      return providers.flatMap((provider) => {
+        const regionCodes = Object.keys(availabilityZonesByProvider?.[provider.uuid] ?? {});
+        return regionCodes
+          .map((regionCode, index) =>
+            buildCard(regionCode, index, provider.uuid, provider.code)
+          )
+          .filter(Boolean);
       });
-      return cards;
-    },
-    [
-      availabilityZones,
-      resilienceAndRegionsSettings,
-      ft,
-      faultToleranceNeeded,
-      azCount,
-      mode,
-      resilienceFactor,
-      effectiveReplicationFactor,
-      watchedReplicationFactor,
-      showErrorsAfterSubmit,
-      showAddAzButton,
-      baselineRegionCodes,
-      baselineZoneUuidsByRegion,
-      enablePrimaryRf9,
-      t
-    ]
-  );
+    }
+
+    const regionCodes = Object.keys(availabilityZones ?? {});
+    return regionCodes.map((regionCode, index) => buildCard(regionCode, index));
+  }, [
+    multiPlacement,
+    providers,
+    availabilityZones,
+    availabilityZonesByProvider,
+    resilienceAndRegionsSettings,
+    ft,
+    faultToleranceNeeded,
+    azCount,
+    mode,
+    resilienceFactor,
+    effectiveReplicationFactor,
+    watchedReplicationFactor,
+    showErrorsAfterSubmit,
+    showAddAzButton,
+    baselineRegionCodes,
+    baselineZoneUuidsByRegion,
+    enablePrimaryRf9,
+    t
+  ]);
 
   return { azCount, faultToleranceNeeded, regionCards };
 }
-

@@ -32,18 +32,22 @@
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/catcache.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 static void YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record);
+static void YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
+									   XLogReaderState *record);
 static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static int	YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
+static int	YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
+											 const YbcPgDatumMessage *col);
 static void YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 static bool YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
 									  uint64_t *read_time,
@@ -134,6 +138,12 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 				break;
 			}
 
+		case YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH:
+			{
+				YBDecodePublicationRefresh(ctx, record);
+				break;
+			}
+
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			{
 				YBDecodeCommit(ctx, record);
@@ -181,6 +191,32 @@ YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record)
 	change->action = YB_REORDER_BUFFER_CHANGE_DDL;
 	change->origin_id = yb_record->xrepl_origin_id;
 	change->data.yb_ddl.table_oid = yb_record->table_oid;
+
+	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
+							ctx->reader->ReadRecPtr);
+	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
+							 ctx->reader->ReadRecPtr, change,
+							 false /* toast_insert */ );
+
+	/* Remember to invalidate caches before reorder-buffer replay. */
+	ctx->yb_inval_catalog_on_decode_commit = true;
+}
+
+/*
+ * Queue a publication invalidation marker, so that replay drops the output
+ * plugin's publication info at this point of the transaction and rebuilds it
+ * from the catalog as of the following changes.
+ */
+static void
+YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
+						   XLogReaderState *record)
+{
+	const YbVirtualWalRecord *yb_record = record->yb_virtual_wal_record;
+	ReorderBufferChange *change = ReorderBufferGetChange(ctx->reorder);
+
+	Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
+
+	change->action = YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION;
 
 	ReorderBufferProcessXid(ctx->reorder, yb_record->xid,
 							ctx->reader->ReadRecPtr);
@@ -304,25 +340,11 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		YbcPgDatumMessage *col = &yb_record->cols[col_idx];
+		int			attr_idx = YBFindAttributeIndexInDescriptor(relation, tupdesc,
+																col);
 
-		/*
-		 * Column name is null when both new and old values are omitted. If this
-		 * were to happen here, this would indicate that an empty column value
-		 * was sent from the CDC service which should have been caught in
-		 * ybc_pggate.
-		 */
-		Assert(col->column_name);
-
-		/*
-		 * 'ybrowid' is an internal primary key column added by DocDB for tables
-		 * without a primary key. Skip this column.
-		 */
-		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
-			strcmp(col->column_name, "ybrowid") == 0)
+		if (attr_idx < 0)
 			continue;
-
-		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
-																col->column_name);
 
 		if (should_handle_omitted_case)
 		{
@@ -503,14 +525,17 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 yb_record->xid, commit_lsn, end_lsn);
 
 	/*
-	 * If this transaction block contains a DDL, we need to invalidate the
-	 * caches so that the reorderbuffer replay doesn't read future catalog
-	 * entries.
+	 * If this transaction block contains a DDL or a publication refresh, we
+	 * need to invalidate the caches so that the reorderbuffer replay doesn't
+	 * read future catalog entries. Publication refresh reads, for example,
+	 * cache pg_publication rows as of a point later than the changes queued
+	 * before it.
 	 */
 	if (ctx->yb_inval_catalog_on_decode_commit)
 	{
 		Assert(*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 		YBCInvalidateCachesForHistoricalReadContext();
+		ResetCatalogCaches();
 	}
 
 	ReorderBufferCommit(ctx->reorder, yb_record->xid, commit_lsn, end_lsn,
@@ -558,15 +583,11 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
-		/*
-		 * 'ybrowid' is an internal primary key column added by DocDB for tables
-		 * without a primary key. Skip this column.
-		 */
-		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
-			strcmp(col->column_name, "ybrowid") == 0)
+		int			attr_idx = YBFindAttributeIndexInDescriptor(relation, tupdesc,
+																col);
+
+		if (attr_idx < 0)
 			continue;
-		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
-																col->column_name);
 
 		datums[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
 							col->after_op_datum :
@@ -597,15 +618,49 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 }
 
 /*
- * TODO(#20726): Optimize this lookup via a cache. We do not need to iterate
- * through all attributes everytime this function is called. This should be done
- * after we have landed support for schema evolution as this logic is highly
- * likely to change before that.
+ * Returns the index of the column in the descriptor, or -1 if the caller should
+ * skip it.
+ *
+ * TODO(#20726): Optimize the lookup by name via a cache. We do not need to
+ * iterate through all attributes everytime this function is called. This
+ * should be done after we have landed support for schema evolution as this
+ * logic is highly likely to change before that.
  */
 static int
-YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name)
+YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
+								 const YbcPgDatumMessage *col)
 {
+	const char *column_name = col->column_name;
 	int			attr_idx = 0;
+
+	/*
+	 * With transactional DDL, we use attr num to find column in the tuple
+	 * descriptor.
+	 */
+	if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+	{
+		int			attr_num = col->column_attr_num;
+
+		if (attr_num <= 0 || attr_num > tupdesc->natts ||
+			TupleDescAttr(tupdesc, attr_num - 1)->attisdropped)
+			return -1;
+		return attr_num - 1;
+	}
+
+	/*
+	 * Column name is null when both new and old values are omitted. If this
+	 * were to happen here, this would indicate that an empty column value was
+	 * sent from the CDC service which should have been caught in ybc_pggate.
+	 */
+	Assert(column_name);
+
+	/*
+	 * 'ybrowid' is an internal primary key column added by DocDB for tables
+	 * without a primary key. Skip this column.
+	 */
+	if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+		strcmp(column_name, "ybrowid") == 0)
+		return -1;
 
 	for (attr_idx = 0; attr_idx < tupdesc->natts; attr_idx++)
 	{
@@ -663,8 +718,14 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 											  &read_time, &in_txn_limit,
 											  &txn_id))
 				{
-					YBCSetHistoricalReadContext(read_time, in_txn_limit,
-												txn_id);
+					const uint32_t *aborted_subtxn_set;
+					int			aborted_subtxn_set_size;
+
+					aborted_subtxn_set =
+						YBCGetAbortedSubtxnSet(txn_id, &aborted_subtxn_set_size);
+					YBCSetHistoricalReadContext(read_time, in_txn_limit, txn_id,
+												aborted_subtxn_set,
+												aborted_subtxn_set_size);
 					break;
 				}
 
@@ -705,6 +766,8 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
 			yb_switch_fallthrough();
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
+			yb_switch_fallthrough();
+		case YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH:
 			return;
 	}
 }

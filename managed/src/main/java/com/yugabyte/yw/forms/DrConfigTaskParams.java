@@ -142,6 +142,17 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
     if (Objects.nonNull(oldXClusterConfig)) {
       oldXClusterConfig = XClusterConfig.maybeGet(oldXClusterConfig.getUuid()).orElse(null);
     }
+    // Each maybeGet above loads its own DrConfig instance. Subtasks update DR state through
+    // one xCluster config and read it through another (e.g., switchover), so they must share
+    // the same DrConfig instance as they do on the first run.
+    if (Objects.nonNull(drConfig)) {
+      if (Objects.nonNull(getXClusterConfig())) {
+        getXClusterConfig().setDrConfig(drConfig);
+      }
+      if (Objects.nonNull(oldXClusterConfig)) {
+        oldXClusterConfig.setDrConfig(drConfig);
+      }
+    }
   }
 
   public static class Converter extends BaseConverter<DrConfigTaskParams> {}

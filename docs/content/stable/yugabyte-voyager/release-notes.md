@@ -29,6 +29,21 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.10.2 - October 27, 2026
+
+### Enhancements
+
+- Improved schema drift diagnosis.
+  - [schema detect-drift](../reference/schema-migration/detect-drift/) now sets each change's severity, impact, and recommended action based on when the change occurred: before export data, during offline, live, or changes-only migration, or after cutover is initiated but not completed.
+  - schema detect-drift now reports changes that can go either way as separate types, such as NOT NULL set versus dropped, and a partition attached versus detached.
+- Live migration now skips columns whose type is built on an unsupported datatype, and lists them in the unsupported-columns output of export data. This covers domains, arrays, composites, and user-defined multiranges. Arrays of geometric types, pg_lsn[], txid_snapshot[], timetz[], and arrays of range types are now also skipped in live migration. See [Datatypes not supported by Voyager during live migration](../known-issues/postgresql/#unsupported-datatypes-by-voyager-during-live-migration).
+
+### Bug fixes
+
+- Fixed an issue where non-ASCII characters were written as `?` during live migration export when the host locale was not UTF-8, such as `LANG=C`.
+- Fixed an issue where a time value of `24:00:00` was migrated as `00:00:00` during live migration.
+- Fixed an issue where [assess-migration](../reference/assess-migration/) failed with a `UNIQUE constraint failed: column_statistics ...` error on schemas with inherited tables after `ANALYZE` was run on the source.
+
 ## v2026.10.1 - October 13, 2026
 
 ### Enhancements

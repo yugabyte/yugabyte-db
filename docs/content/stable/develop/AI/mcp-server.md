@@ -32,7 +32,7 @@ With the YugabyteDB MCP Server, developers can:
 
 ## YugabyteDB Agent Skills
 
-Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
+Complement the MCP server with [YugabyteDB Agent Skills](https://github.com/yugabyte/yugabytedb-skills). These are structured skill packages that give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows. The [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository lists the skills and what each one covers.
 
 Install all skills at once:
 
@@ -40,13 +40,11 @@ Install all skills at once:
 npx skills add yugabyte/yugabytedb-skills
 ```
 
-Or install individual skills (`ysql`, `ycql`, `yb-k8s-operator`, `yba-api`, `yb-rag-langchain`):
+Or install one skill. For example, `ysql`:
 
 ```sh
 npx skills add yugabyte/yugabytedb-skills -s ysql
 ```
-
-See the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository for the full skill list and descriptions.
 
 ## MCP tools
 

@@ -71,6 +71,7 @@ typedef enum ReorderBufferChangeType
 	REORDER_BUFFER_CHANGE_TRUNCATE,
 
 	YB_REORDER_BUFFER_CHANGE_DDL,
+	YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION,
 } ReorderBufferChangeType;
 
 /* forward declaration */

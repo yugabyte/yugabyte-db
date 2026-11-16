@@ -38,7 +38,7 @@ import {
   DEFAULT_ADVANCED_CONFIG,
   YBSoftwareMetadata
 } from '../../../../../features/universe/universe-form/utils/dto';
-import { PROVIDER_CONFIGURATION } from '../FieldNames';
+import { PROVIDER_CONFIGURATIONS } from '../FieldNames';
 
 const { Box, useTheme } = mui;
 
@@ -124,7 +124,10 @@ export const DatabaseVersionField = <T extends FieldValues>({
   disabled
 }: DatabaseVersionFieldProps<T>) => {
   const { control, getValues, setValue } = useFormContext<T>();
-  const provider = useWatch({ name: PROVIDER_CONFIGURATION });
+  const providerConfigurations = useWatch({ name: PROVIDER_CONFIGURATIONS });
+  const provider = Array.isArray(providerConfigurations)
+    ? providerConfigurations[0]
+    : providerConfigurations;
 
   const { data, isLoading } = useQuery(
     [DBReleasesQueryKey.provider(provider?.uuid), null],

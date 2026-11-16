@@ -290,9 +290,7 @@ public class EncryptionAtRestUtil {
   public static int getNumUniverseKeys(UUID universeUUID) {
     int numRotations = 0;
     try {
-      List<KmsHistory> keyRotations =
-          KmsHistory.getAllUniverseKeysWithActiveMasterKey(universeUUID);
-      numRotations = keyRotations.size();
+      numRotations = KmsHistory.countUniverseKeysWithActiveMasterKey(universeUUID);
     } catch (Exception e) {
       String errMsg =
           String.format(

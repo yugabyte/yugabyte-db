@@ -91,6 +91,7 @@ class CountingVectorIndex : public DocVectorIndex {
     LOG(FATAL) << "Unexpected call";
   }
   storage::FlushAbility GetFlushAbility() override { LOG(FATAL) << "Unexpected call"; }
+  Status GetFlushStatus() const override { LOG(FATAL) << "Unexpected call"; }
   Status CreateCheckpoint(const std::string&) override { LOG(FATAL) << "Unexpected call"; }
   const std::string& ToString() const override { LOG(FATAL) << "Unexpected call"; }
   Status Destroy() override { LOG(FATAL) << "Unexpected call"; }
@@ -125,13 +126,14 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
       const DocVectorIndexesPtr& vector_indexes = nullptr,
       const StorageSet& apply_to_storages = StorageSet::All(),
       TableType table_type = TableType::PGSQL_TABLE_TYPE,
-      std::atomic<bool>* can_advance_intents_flush_op_id = nullptr) {
+      std::atomic<bool>* can_advance_intents_flush_op_id = nullptr,
+      XClusterTargetApplied xcluster_target_applied = XClusterTargetApplied::kFalse) {
     ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
         vector_indexes, apply_to_storages, table_type, can_advance_intents_flush_op_id,
-        XClusterTargetApplied::kFalse);
+        xcluster_target_applied);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);
@@ -729,6 +731,60 @@ MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) 
     SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
 SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
     VECTOR_DATA(561000000020003000400000000000000111)
+  )#");
+}
+
+// GH#32556: xCluster direct (non-transactional) apply writes every row at the producer hybrid time
+// of its own record, while the request's write hybrid time is the time of the first record only.
+// The table-owned reverse mapping must be written at the row's hybrid time. Otherwise a read in
+// between sees the reverse mapping without the row version it points at, while a vector search
+// takes the mapping as proof that the row exists and holds the vector. The vector index feed must
+// be gated by the row's hybrid time too: a deactivated index must not get rows written after its
+// cutoff.
+TEST_F(NonTransactionalBatchWriterTest, ExternalWriteVectorReverseMappingHybridTime) {
+  const auto vector_id1 = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000001"));
+  const auto vector_id2 = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000002"));
+
+  const auto kFirstRecordHT = 6000_usec_ht;
+  const auto kSecondRecordHT = 6500_usec_ht;
+  const auto kBatchHT = 9000_usec_ht;
+  const auto kIndexDeactivatedHT = 6200_usec_ht;
+
+  auto index = MakeCountingIndex();
+  index->SetDeactivatedHybridTime(kIndexDeactivatedHT);
+  auto indexes = std::make_shared<DocVectorIndexes>();
+  indexes->push_back(index);
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto add_external_write = [&put_batch](
+      const std::string& row, const vector_index::VectorId& vector_id, HybridTime ht) {
+    const DocKey doc_key(MakeKeyEntryValues(row));
+    auto* write_pair = put_batch.add_write_pairs();
+    write_pair->dup_key(EncodeDocPathKey(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)))).AsSlice());
+    write_pair->dup_value(EncodeTableOwnedVectorColumnValue(vector_id));
+    write_pair->set_external_hybrid_time(ht.ToUint64());
+  };
+  add_external_write("row1", vector_id1, kFirstRecordHT);
+  add_external_write("row2", vector_id2, kSecondRecordHT);
+  ASSERT_OK(SendWriteBatch(
+      put_batch, kFirstRecordHT, kBatchHT, indexes, StorageSet::All(), TableType::PGSQL_TABLE_TYPE,
+      /* can_advance_intents_flush_op_id= */ nullptr, XClusterTargetApplied::kTrue));
+
+  // Only row1 is written before the index was deactivated.
+  EXPECT_EQ(index->inserted_entries(), 1);
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
+MetaKey(VectorId(10000000-2000-3000-4000-000000000002), [HT{ physical: 6500 w: 1 }]) -> \
+    SubDocKey(DocKey([], ["row2"]), [ColumnId(11)])
+SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000111)
+SubDocKey(DocKey([], ["row2"]), [ColumnId(11); HT{ physical: 6500 w: 1 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000211)
   )#");
 }
 

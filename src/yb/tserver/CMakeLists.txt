@@ -83,6 +83,7 @@ YRPC_GENERATE(
   PROTO_FILES remote_bootstrap.proto)
 set(REMOTE_BOOTSTRAP_YRPC_LIBS
   consensus_proto
+  log_proto
   yrpc
   protobuf
   rpc_header_proto
@@ -137,7 +138,7 @@ YRPC_GENERATE(
   TSERVER_ADMIN_YRPC_SRCS TSERVER_ADMIN_YRPC_HDRS TSERVER_ADMIN_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  MESSAGES_PROTO_FILES tserver_admin.proto)
+  PROTO_FILES tserver_admin.proto)
 set(TSERVER_ADMIN_YRPC_LIBS
   yrpc
   protobuf
@@ -289,6 +290,8 @@ set(TSERVER_SRCS
   remote_snapshot_transfer_client.cc
   service_util.cc
   session_registry.cc
+  snapshot_preflush.cc
+  tablet_flusher.cc
   tablet_limits.cc
   tablet_memory_manager.cc
   tablet_server.cc
@@ -450,6 +453,7 @@ set(YB_TEST_LINK_LIBS
   yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_response_cache-test)
 ADD_YB_TEST(remote_bootstrap_file_downloader-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)
 ADD_YB_TEST(remote_bootstrap_rocksdb_session-test)

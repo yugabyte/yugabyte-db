@@ -645,6 +645,20 @@ ColumnId Schema::first_column_id() {
   return kFirstColumnId;
 }
 
+size_t Schema::NumHashGroupAndRangeComponents(const SchemaPB& schema) {
+  size_t num_hash_key_columns = 0;
+  size_t num_range_key_columns = 0;
+  for (const auto& column : schema.columns()) {
+    if (column.is_hash_key()) {
+      ++num_hash_key_columns;
+    } else if (column.is_key()) {
+      ++num_range_key_columns;
+    }
+  }
+  return HashGroupAndRangeComponentIndex(
+      num_hash_key_columns + num_range_key_columns, num_hash_key_columns);
+}
+
 Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
   int idx = find_column_by_id(id);
   if (idx < 0) {

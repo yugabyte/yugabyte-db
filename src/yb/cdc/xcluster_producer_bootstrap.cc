@@ -28,9 +28,14 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");
+
+DEFINE_test_flag(bool, xcluster_fail_record_stream_bootstrap_info, false,
+    "Fail to record the checkpointed tablets in the master after BootstrapProducer writes the "
+    "checkpoints to cdc_state.");
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 
@@ -116,7 +121,10 @@ Result<bool> IsBootstrapRequiredForTablet(
 Status XClusterProducerBootstrap::RunBootstrapProducer() {
   LOG_WITH_FUNC(INFO) << "Initializing xCluster Streams";
   RETURN_NOT_OK(CreateAllBootstrapStreams());
+  TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
   RETURN_NOT_OK(ConstructServerToTabletsMapping());
+
+  TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds");
 
   LOG_WITH_FUNC(INFO) << "Retrieving Latest OpIDs for each tablet.";
   RETURN_NOT_OK(GetLatestOpIdsFromLocalPeers());
@@ -135,6 +143,10 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
     LOG_WITH_FUNC(INFO) << "Checking if bootstrap is required.";
     resp_->set_bootstrap_required(VERIFY_RESULT(IsBootstrapRequired()));
   }
+
+  // Last, so that a recorded checkpoint is never rolled back.
+  WARN_NOT_OK(
+      RecordStreamBootstrapInfo(), "Failed to record the xCluster stream bootstrap tablets");
 
   PrepareResponse();
 
@@ -393,8 +405,25 @@ Status XClusterProducerBootstrap::UpdateCdcStateTableWithCheckpoints() {
     entry.checkpoint = op_id;
     entries_to_insert.emplace_back(std::move(entry));
   }
-  RETURN_NOT_OK(cdc_state_table_->UpsertEntries(entries_to_insert));
-  return Status::OK();
+  if (req_.keep_existing_checkpoints()) {
+    return cdc_state_table_->InsertEntries(entries_to_insert);
+  }
+  return cdc_state_table_->UpsertEntries(entries_to_insert);
+}
+
+Status XClusterProducerBootstrap::RecordStreamBootstrapInfo() {
+  SCHECK(
+      !FLAGS_TEST_xcluster_fail_record_stream_bootstrap_info, IllegalState,
+      "Simulated failure to record the xCluster stream bootstrap info");
+
+  std::map<xrepl::StreamId, std::vector<TabletId>> stream_tablets;
+  for (const auto& [bootstrap_id_tablet_id_pair, _] : tablet_op_ids_) {
+    const auto& [bootstrap_id, tablet_id] = bootstrap_id_tablet_id_pair;
+    stream_tablets[bootstrap_id].push_back(tablet_id);
+  }
+
+  return client::XClusterClient(*cdc_service_->client())
+      .RecordXClusterStreamBootstrapInfo(stream_tablets);
 }
 
 void XClusterProducerBootstrap::PrepareResponse() {

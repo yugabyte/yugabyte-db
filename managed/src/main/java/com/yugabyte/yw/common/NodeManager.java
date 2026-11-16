@@ -1417,6 +1417,8 @@ public class NodeManager extends DevopsBase {
   public enum SkipCertValidationType {
     ALL,
     HOSTNAME,
+    // Nothing is skipped, but the hostname check accepts only a matching SAN, not the CN.
+    REQUIRE_SAN,
     NONE
   }
 

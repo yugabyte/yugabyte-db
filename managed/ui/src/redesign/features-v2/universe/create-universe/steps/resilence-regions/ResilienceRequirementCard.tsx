@@ -15,6 +15,7 @@ import QuestionIcon from '@app/redesign/assets/question_circled.svg?img';
 import { ReplicationFactorInfoModal } from '../nodes-availability';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
 
 const { Box, styled, Typography, Divider } = mui;
 
@@ -119,7 +120,7 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
   ) as unknown) as CreateUniverseContextMethods;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
   const [showReplicationFactorInfoModal, setShowReplicationFactorInfoModal] = useState(false);
   const prevTagSignaturesRef = useRef<string[] | null>(null);
   const tagPlayCountRef = useRef<number[]>([]);

@@ -22,6 +22,7 @@ od_rule_pool_t *od_rule_pool_alloc()
 	pool->smart_discard = 0;
 	pool->cancel = 1;
 	pool->rollback = 1;
+	pool->attach_check = 1;
 
 	return pool;
 }
@@ -84,6 +85,10 @@ int od_rule_pool_compare(od_rule_pool_t *a, od_rule_pool_t *b)
 
 	/* reserve_prepared_statement */
 	if (a->reserve_prepared_statement != b->reserve_prepared_statement) {
+		return 0;
+	}
+
+	if (a->attach_check != b->attach_check) {
 		return 0;
 	}
 

@@ -80,7 +80,8 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
             pauseRpcTimeout.toMillis(),
             pauseRpcTimeout.toMillis(),
             pauseRpcTimeout.toMillis());
-    try (YBClientApi client = ybService.getClientWithConfig(clientConfig)) {
+    try (YBClientApi client =
+        ybService.getClientWithConfig(clientConfig.withClientCertOf(targetUniverse))) {
       SetUniverseReplicationEnabledResponse resp =
           client.setUniverseReplicationEnabled(
               xClusterConfig.getReplicationGroupName(), !taskParams().pause /* active */);

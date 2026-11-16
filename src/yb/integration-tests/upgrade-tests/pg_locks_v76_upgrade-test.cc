@@ -13,6 +13,7 @@
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(ysql_yb_enable_advisory_locks);
@@ -38,10 +39,35 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   for (const auto& [flag, value] : flag_pairs) {
     ASSERT_OK(cluster_->AddAndSetExtraFlag(flag, value));
   }
+  // Node restarts during the upgrade trigger leader rebalancing, which may start only after the
+  // locks below are taken. A transactions/pg_advisory_locks tablet leader move while the locks are
+  // held can hide the transaction's locks from pg_locks.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
   ASSERT_OK(conn.Execute("CREATE TABLE foo (id INT PRIMARY KEY, value TEXT);"));
   ASSERT_OK(conn.Execute("INSERT INTO foo VALUES (1, 'test');"));
-  // Acquire advisory locks and a row lock.
+  // Cache the pre-V76 row type of yb_lock_status (21 columns), which pg_locks expands to, in
+  // conn's backend. The read in the transaction below after finalize then shows whether that
+  // transaction refreshes its catalog cache: without a cached copy, the read would load the new
+  // row type either way. Read before BEGIN: since #36572, a transaction that starts before
+  // finalize takes local object locks, so a read in that transaction locks the view across
+  // finalize, and V76 cannot replace the view.
+  // pg_locks fails while a transaction status tablet has no leader, and the tservers restarted
+  // just above, so retry that error until every status tablet has elected one.
+  ASSERT_OK(WaitFor([&conn, &kPgLocksQuery]() -> Result<bool> {
+    auto status = ResultToStatus(conn.Fetch(kPgLocksQuery));
+    if (status.ok()) {
+      return true;
+    }
+    if (status.message().ToString().find(
+            "Couldn't fetch old transactions for the following status tablets") ==
+        std::string::npos) {
+      return status;
+    }
+    LOG(WARNING) << "Retrying pg_locks read: " << status;
+    return false;
+  }, 15s * kTimeMultiplier, "pg_locks read after the tserver restarts"));
+  // Acquire advisory locks and a row lock, and hold them across the upgrade.
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_lock(1);"));
   ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
   ASSERT_OK(conn.Fetch("SELECT pg_advisory_xact_lock_shared(2,2);"));
@@ -51,12 +77,16 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
 
   // Check that the pg_locks view does not include the new columns,
-  // classid, objid, objsubid, during the upgrade.
-  auto pg_locks_result = ASSERT_RESULT(conn.FetchAllAsString(
+  // classid, objid, objsubid, during the upgrade. Read from another connection, outside any
+  // transaction: since #36572, a read in conn's transaction locks the view until that
+  // transaction ends, and V76 cannot replace the view.
+  auto observer = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(observer.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  auto pg_locks_result = ASSERT_RESULT(observer.FetchAllAsString(
       Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, ShareLock; "
                              "NULL, NULL, NULL, ExclusiveLock");
-  pg_locks_result = ASSERT_RESULT(conn.FetchAllAsString(
+  pg_locks_result = ASSERT_RESULT(observer.FetchAllAsString(
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
@@ -74,7 +104,7 @@ TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'row';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "NULL, NULL, NULL, STRONG_READ,STRONG_WRITE");
 
-  // conn's transaction was opened before FinalizeUpgrade(), and the enable_object_locking_infra
+  // conn's transaction was opened before FinalizeUpgrade(), and the yb_enable_object_locking_infra
   // auto flag is latched once per transaction in StartTransaction (c60f1cba1cd), so this
   // transaction keeps the pre-finalize value no matter how enable_object_locking_for_table_locks
   // is set. AcceptInvalidationMessages() therefore skips the full cache invalidation and the

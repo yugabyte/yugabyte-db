@@ -72,6 +72,16 @@ extern bool yb_ysql_conn_mgr_sticky_guc;
 extern bool yb_ysql_conn_mgr_sticky_locks;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_nontxn_object` denotes whether the session created
+ * state that a rollback does not undo. It is never cleared once set.
+ */
+extern bool yb_ysql_conn_mgr_sticky_nontxn_object;
+
+extern bool yb_ysql_conn_mgr_sticky_replication_origin;
+
+extern bool yb_conn_mgr_replication_origin_permanent_sticky;
+
+/*
  * The "local" component of Logical Client Version. It is only incremented
  * on SIGHUPs to handle changes to PGC_BACKEND GUC variables
  */
@@ -93,9 +103,22 @@ extern bool yb_conn_mgr_sighup_had_backend_guc_change;
  extern bool yb_conn_mgr_is_auth_passthrough_backend;
 
 /*
+ * Address and port of the logical client currently attached to this backend,
+ * forwarded by Ysql Connection Manager. "" and -1 when not set.
+ */
+extern char *yb_ycm_internal_client_addr;
+extern int	yb_ycm_internal_client_port;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();
+
+/*
+ * Check whether Ysql Connection Manager has forwarded the logical client's
+ * address, i.e. whether yb_ycm_internal_client_addr/port replace MyProcPort.
+ */
+extern bool YbHasConnMgrLogicalClientAddr(void);
 
 /*
  * Add/update the changed session parameters in the shared memory.

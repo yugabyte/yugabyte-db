@@ -1,9 +1,9 @@
 ---
-title: Manage account access
+title: Manage YugabyteDB Aeon account access
 headertitle: Manage account users
 linkTitle: Manage account users
-description: Manage access to your YugabyteDB Aeon account and your clusters.
-headcontent: Invite team members to your YugabyteDB Aeon account
+description: Manage access to your YugabyteDB Aeon accounts and their clusters.
+headcontent: Invite team members to your YugabyteDB Aeon accounts
 aliases:
   - /stable/yugabyte-cloud/cloud-admin/manage-access/
 menu:
@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Invite team members to your account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
+Invite team members to an account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
 
 Users can log in to YugabyteDB Aeon using an email-based account, a social login, or federated authentication via an external identity provider (IdP). For information on using social logins and federated authentication, refer to [Authentication](../managed-authentication/).
 
@@ -28,9 +28,9 @@ The **Users** tab displays a list of users that are either active or have been i
 
 You add users by sending them an invitation.
 
-To invite a user:
+To invite users:
 
-1. Navigate to **Security > Access Control > Users**, then click **Invite User** to display the **Invite User** dialog.
+1. Switch to the account and, on the **Security > Access Control > Users** tab, click **Invite User**.
 1. Enter one or more email addresses of people you're inviting.
 1. Choose a [role](../managed-roles/) for the new users.
 1. Click **Invite**.
@@ -41,21 +41,30 @@ For users that have not responded to their invitation (their status is Invited),
 
 ## Delete a user
 
-You cannot delete your own account.
+To delete a user from an account:
 
-To delete a user, in the row of the user you want to delete, click the trash icon, then click **Confirm**.
+1. Switch to the account and navigate to **Security > Access Control > Users**.
+1. In the row of the user you want to delete, click the trash icon, then click **Confirm**.
+
+This deletes the user from the current account only, not other accounts or the organization. Delete users from your organization in Organization settings; see [Manage organization users and authentication](../manage-accounts/#manage-organization-users-and-authentication).
+
+Note that:
+
+- You cannot delete your own user account.
+- Organization Super Admins are automatically granted Admin in every account, and cannot be deleted from an account.
+- You cannot delete users with a pending invitation.
 
 ## Change a user's role
 
-You cannot change your own role.
-
-To change a user's role, in the **User Role** column, select a role for the user.
+To change a user's role, in the **Account Role** column, select a role for the user.
 
 {{< warning title="Use caution when changing roles" >}}
 
 Changing user roles can impact account security. Use caution when assigning roles with permissions for changing and assigning roles, inviting users, or creating API keys. If you are unsure, review role details before assigning.
 
 {{< /warning >}}
+
+You cannot change your own role.
 
 To create and manage roles, refer to [Manage account roles](../managed-roles/).
 

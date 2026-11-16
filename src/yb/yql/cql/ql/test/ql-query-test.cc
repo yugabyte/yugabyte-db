@@ -39,6 +39,7 @@
 #include "yb/util/yb_partition.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
 
 using std::string;
 using std::shared_ptr;
@@ -1932,6 +1933,213 @@ TEST_F(TestQLQuery, TestUuidUnknownVersionClusteringKey) {
                 ASSERT_RESULT(select_ids(Format("WHERE p = 1 AND id > $0", kIds[i]))))
           << "id > " << kIds[i];
     }
+  }
+}
+
+namespace {
+
+const string kUuidV0 = "f2222222-2222-0222-8222-222222222222";
+const string kUuidV1 = "01111111-1111-1111-8111-111111111111";
+const string kUuidV4 = "9e107d9d-372b-4b6a-8d0a-2f5c7c8e1a3b";
+const string kUuidV6 = "f1111111-1111-6111-8111-111111111111";
+const string kUuidV7 = "0b9a2f3c-5d4e-7f60-9a1b-2c3d4e5f6a7b";
+const string kUuidV8 = "01111111-1111-8111-8111-111111111111";
+
+// Frozen set of UUIDs with the elements in the given order, as is.
+Result<QLValue> FrozenUuidSet(const std::vector<string>& uuids) {
+  QLValue result;
+  result.set_frozen_value();
+  for (const auto& uuid : uuids) {
+    QLValue::set_uuid_value(VERIFY_RESULT(Uuid::FromString(uuid)), result.add_frozen_elem());
+  }
+  return result;
+}
+
+string BlobAsUuid(const string& uuid) {
+  string blob = "0x" + uuid;
+  blob.erase(std::remove(blob.begin(), blob.end(), '-'), blob.end());
+  return Format("blobasuuid($0)", blob);
+}
+
+// Serializes the value as a CQL client sends a bind variable.
+void AddBindValue(
+    const QLValue& value, const std::shared_ptr<QLType>& type,
+    CQLMessage::QueryParameters* params) {
+  params->flags |= CQLMessage::QueryParameters::kWithValuesFlag;
+  WriteBuffer buffer(1024);
+  qlexpr::SerializeValue(type, YQL_CLIENT_CQL, value.value(), &buffer);
+  params->values.emplace_back().value = buffer.ToBuffer();
+}
+
+std::shared_ptr<QLType> FrozenUuidSetType() {
+  return QLType::CreateTypeFrozen(QLType::CreateTypeSet(DataType::UUID));
+}
+
+} // namespace
+
+// Elements of frozen sets and keys of frozen maps are stored sorted, and the stored order is part
+// of the key and its hash. It is the UUID order from before #28566, where versions 0 and 6..15 come
+// before versions 1..5, and every way of writing the value must produce it, at every nesting level.
+TEST_F(TestQLQuery, TestFrozenUuidElementOrder) {
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  TestQLProcessor *processor = GetQLProcessor();
+
+  using Elems = std::vector<std::pair<string, int>>;
+  using NestedElems = std::vector<std::vector<string>>;
+  // Versions 8, 7, 6 and 0 by raw bytes, then 1, then 4.
+  const Elems kStoredOrder = {
+      {kUuidV8, 8}, {kUuidV7, 7}, {kUuidV6, 6}, {kUuidV0, 0}, {kUuidV1, 1}, {kUuidV4, 4}};
+  const Elems kInsertOrder = {
+      {kUuidV4, 4}, {kUuidV1, 1}, {kUuidV0, 0}, {kUuidV6, 6}, {kUuidV7, 7}, {kUuidV8, 8}};
+  // [v7, v4] comes before [v6], because v7 does.
+  const NestedElems kStoredNested = {{kUuidV7, kUuidV4}, {kUuidV6}};
+  const NestedElems kInsertNested = {{kUuidV4, kUuidV7}, {kUuidV6}};
+
+  // Values of s, m and n below with elements in the given order, as is.
+  struct Values {
+    QLValue set;
+    QLValue map;
+    QLValue nested_set;
+  };
+  auto make_values = [](const Elems& elems, const NestedElems& nested) -> Result<Values> {
+    Values result;
+    std::vector<string> uuids;
+    result.map.set_frozen_value();
+    for (const auto& [uuid, value] : elems) {
+      uuids.push_back(uuid);
+      QLValue::set_uuid_value(VERIFY_RESULT(Uuid::FromString(uuid)), result.map.add_frozen_elem());
+      result.map.add_frozen_elem()->set_int32_value(value);
+    }
+    result.set = VERIFY_RESULT(FrozenUuidSet(uuids));
+    result.nested_set.set_frozen_value();
+    for (const auto& inner : nested) {
+      *result.nested_set.add_frozen_elem() = VERIFY_RESULT(FrozenUuidSet(inner)).value();
+    }
+    return result;
+  };
+
+  const auto stored = ASSERT_RESULT(make_values(kStoredOrder, kStoredNested));
+  string hash_key;
+  AppendToKey(stored.set, &hash_key);
+  AppendToKey(stored.map, &hash_key);
+  AppendToKey(stored.nested_set, &hash_key);
+  const int32_t kStoredHash = YBPartition::HashColumnCompoundValue(hash_key);
+
+  ASSERT_OK(processor->Run(
+      "CREATE TABLE t (s frozen<set<uuid>>, m frozen<map<uuid, int>>, "
+      "n frozen<set<frozen<set<uuid>>>>, v int, PRIMARY KEY ((s, m, n)))"));
+
+  auto check_row = [&](int v) {
+    ASSERT_OK(processor->Run("SELECT partition_hash(s, m, n), v FROM t"));
+    auto row_block = processor->row_block();
+    ASSERT_EQ(1, row_block->row_count());
+    EXPECT_EQ(kStoredHash, row_block->row(0).column(0).int32_value());
+    EXPECT_EQ(v, row_block->row(0).column(1).int32_value());
+  };
+
+  // Values of s, m and n in insert order, as CQL text.
+  auto to_cql = [&](const std::function<string(const string&)>& uuid_to_cql) {
+    string set, map, nested;
+    for (const auto& [uuid, value] : kInsertOrder) {
+      set += Format("$0$1", set.empty() ? "" : ", ", uuid_to_cql(uuid));
+      map += Format("$0$1: $2", map.empty() ? "" : ", ", uuid_to_cql(uuid), value);
+    }
+    for (const auto& inner : kInsertNested) {
+      string elems;
+      for (const auto& uuid : inner) {
+        elems += Format("$0$1", elems.empty() ? "" : ", ", uuid_to_cql(uuid));
+      }
+      nested += Format("$0{$1}", nested.empty() ? "" : ", ", elems);
+    }
+    return Format("{$0}, {$1}, {$2}", set, map, nested);
+  };
+
+  // Literal.
+  ASSERT_OK(processor->Run(Format(
+      "INSERT INTO t (s, m, n, v) VALUES ($0, 1)", to_cql([](const string& uuid) {
+        return uuid;
+      }))));
+  ASSERT_NO_FATALS(check_row(1));
+
+  // Set::Frozen and Map::Frozen, used when the elements are not literals.
+  ASSERT_OK(processor->Run(
+      Format("INSERT INTO t (s, m, n, v) VALUES ($0, 2)", to_cql(BlobAsUuid))));
+  ASSERT_NO_FATALS(check_row(2));
+
+  // Bind variables.
+  const auto bind = ASSERT_RESULT(make_values(kInsertOrder, kInsertNested));
+  CQLMessage::QueryParameters params;
+  AddBindValue(bind.set, FrozenUuidSetType(), &params);
+  AddBindValue(
+      bind.map, QLType::CreateTypeFrozen(QLType::CreateTypeMap(DataType::UUID, DataType::INT32)),
+      &params);
+  AddBindValue(
+      bind.nested_set, QLType::CreateTypeFrozen(QLType::CreateTypeSet(FrozenUuidSetType())),
+      &params);
+  ASSERT_OK(processor->Run("INSERT INTO t (s, m, n, v) VALUES (?, ?, ?, 3)", params));
+  ASSERT_NO_FATALS(check_row(3));
+}
+
+// Frozen sets of UUIDs as a clustering key: rows are ordered by the stored bytes, where
+// v4 < v6 < v7 < v8, and a set is found whichever way its value is written.
+TEST_F(TestQLQuery, TestFrozenUuidClusteringKey) {
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+  TestQLProcessor *processor = GetQLProcessor();
+
+  // Sets of one UUID each, in ascending clustering key order.
+  const std::vector<string> kIds = {kUuidV4, kUuidV6, kUuidV7, kUuidV8};
+
+  for (bool descending : {false, true}) {
+    const string table = descending ? "frozen_uuid_key_desc" : "frozen_uuid_key";
+    SCOPED_TRACE(table);
+    ASSERT_OK(processor->Run(Format(
+        "CREATE TABLE $0 (p int, s frozen<set<uuid>>, v int, PRIMARY KEY (p, s))$1",
+        table, descending ? " WITH CLUSTERING ORDER BY (s DESC)" : "")));
+    for (const auto& id : kIds) {
+      ASSERT_OK(processor->Run(Format("INSERT INTO $0 (p, s, v) VALUES (1, {$1}, 0)", table, id)));
+    }
+
+    auto select_ids = [processor, &table](const string& where) -> Result<std::vector<string>> {
+      RETURN_NOT_OK(processor->Run(Format("SELECT s FROM $0 WHERE p = 1 $1", table, where)));
+      std::vector<string> result;
+      for (const auto& row : processor->row_block()->rows()) {
+        const auto& elems = row.column(0).value().frozen_value().elems();
+        SCHECK_EQ(elems.size(), 1, IllegalState, "Unexpected set size");
+        result.push_back(QLValue::uuid_value(elems.Get(0)).ToString());
+      }
+      return result;
+    };
+    auto in_scan_order = [descending](std::vector<string> ids) {
+      if (descending) {
+        std::reverse(ids.begin(), ids.end());
+      }
+      return ids;
+    };
+
+    EXPECT_EQ(in_scan_order(kIds), ASSERT_RESULT(select_ids("")));
+    EXPECT_EQ(in_scan_order(kIds), ASSERT_RESULT(select_ids(Format(
+        "AND s IN ({$0}, {$1}, {$2}, {$3})", kIds[3], kIds[0], kIds[2], kIds[1]))));
+    EXPECT_EQ(in_scan_order({kIds.begin() + 1, kIds.end()}),
+              ASSERT_RESULT(select_ids(Format("AND s > {$0}", kIds[0]))));
+
+    // A set of several UUIDs, found by a literal, by blobasuuid() and by a bind variable.
+    ASSERT_OK(processor->Run(Format(
+        "INSERT INTO $0 (p, s, v) VALUES (2, {$1, $2}, 5)", table, kUuidV4, kUuidV7)));
+    auto check_lookup = [processor, &table](
+        const string& value, const StatementParameters& params = StatementParameters()) {
+      ASSERT_OK(processor->Run(
+          Format("SELECT v FROM $0 WHERE p = 2 AND s = $1", table, value), params));
+      auto row_block = processor->row_block();
+      ASSERT_EQ(1, row_block->row_count());
+      EXPECT_EQ(5, row_block->row(0).column(0).int32_value());
+    };
+    ASSERT_NO_FATALS(check_lookup(Format("{$0, $1}", kUuidV7, kUuidV4)));
+    ASSERT_NO_FATALS(check_lookup(
+        Format("{$0, $1}", BlobAsUuid(kUuidV4), BlobAsUuid(kUuidV7))));
+    CQLMessage::QueryParameters params;
+    AddBindValue(
+        ASSERT_RESULT(FrozenUuidSet({kUuidV4, kUuidV7})), FrozenUuidSetType(), &params);
+    ASSERT_NO_FATALS(check_lookup("?", params));
   }
 }
 

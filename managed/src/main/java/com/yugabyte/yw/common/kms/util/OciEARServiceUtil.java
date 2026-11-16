@@ -25,6 +25,7 @@ import com.oracle.bmc.keymanagement.model.*;
 import com.oracle.bmc.keymanagement.requests.*;
 import com.oracle.bmc.keymanagement.responses.*;
 import com.oracle.bmc.model.BmcException;
+import com.yugabyte.yw.cloud.oci.OCIErrorFormatter;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -317,16 +318,12 @@ public class OciEARServiceUtil {
       }
       if (e.getStatusCode() == 403) {
         throw new RuntimeException(
-            "Insufficient permissions to access OCI key '" + keyOcid + "'.", e);
+            OCIErrorFormatter.logAndShorten(
+                "Insufficient permissions to access OCI key '" + keyOcid + "'.", e),
+            e);
       }
       throw new RuntimeException(
-          "Error accessing OCI key '"
-              + keyOcid
-              + "': HTTP "
-              + e.getStatusCode()
-              + ": "
-              + e.getMessage(),
-          e);
+          OCIErrorFormatter.logAndShorten("Error accessing OCI key '" + keyOcid + "'", e), e);
     }
   }
 
@@ -470,9 +467,10 @@ public class OciEARServiceUtil {
                 : "Instance principal authentication failed. Ensure this YugabyteDB Anywhere "
                     + "host is an OCI compute instance in a dynamic group with IAM policies "
                     + "granting access to OCI services.";
-        throw new RuntimeException(message, e);
+        throw new RuntimeException(OCIErrorFormatter.logAndShorten(message, e), e);
       }
-      throw new RuntimeException("OCI credential validation failed: " + e.getMessage(), e);
+      throw new RuntimeException(
+          OCIErrorFormatter.logAndShorten("OCI credential validation failed", e), e);
     } catch (Exception e) {
       if (containsIgnoreCase(e.getMessage(), "private key")
           || containsIgnoreCase(e.getMessage(), "pkcs")
@@ -480,7 +478,8 @@ public class OciEARServiceUtil {
         throw new RuntimeException(
             "Invalid PRIVATE_KEY. Could not parse the OCI private key content.", e);
       }
-      throw new RuntimeException("OCI credential validation failed: " + e.getMessage(), e);
+      throw new RuntimeException(
+          OCIErrorFormatter.logAndShorten("OCI credential validation failed", e), e);
     }
 
     // Step 4: validate vault credentials are confirmed valid at this point, so a failure here
@@ -491,18 +490,22 @@ public class OciEARServiceUtil {
     } catch (BmcException e) {
       if (e.getStatusCode() == 404) {
         throw new RuntimeException(
-            String.format(
-                "OCI vault is not accessible. Verify that OCI_VAULT_OCID '%s' exists in region"
-                    + " OCI_REGION '%s'.",
-                vaultOcid, regionStr),
+            OCIErrorFormatter.logAndShorten(
+                String.format(
+                    "OCI vault is not accessible. Verify that OCI_VAULT_OCID '%s' exists in region"
+                        + " OCI_REGION '%s'.",
+                    vaultOcid, regionStr),
+                e),
             e);
       }
       if (e.getStatusCode() == 403) {
         throw new RuntimeException(
-            "Insufficient permissions to access OCI vault '" + vaultOcid + "'.", e);
+            OCIErrorFormatter.logAndShorten(
+                "Insufficient permissions to access OCI vault '" + vaultOcid + "'.", e),
+            e);
       }
       throw new RuntimeException(
-          "Failed to access OCI vault '" + vaultOcid + "': " + e.getMessage(), e);
+          OCIErrorFormatter.logAndShorten("Failed to access OCI vault '" + vaultOcid + "'", e), e);
     }
 
     // Step 5: validate the key by name (the single source of truth).

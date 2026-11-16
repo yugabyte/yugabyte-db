@@ -154,6 +154,14 @@ message TabletServerErrorPB {
     // xCluster-guarded information lease (ServiceUnavailable, retryable).  The op did not take
     // effect.
     PERSISTING_BLOCKED = 37;
+
+    // The tserver has no data directory labeled with the requested storage tier, so it cannot
+    // place or migrate the tablet there. Not retryable on this tserver: its tier set is fixed by
+    // --fs_data_dirs. Returned by AlterTabletTier only when the requested tier differs from the
+    // tablet's persisted target tier. Re-requesting the current target tier never returns it: if
+    // that tier has no disk on this node, ResolveTargetTierPathId leaves the tablet on its home
+    // disk (path_id 0) and the RPC succeeds.
+    STORAGE_TIER_NOT_AVAILABLE = 38;
   }
 
   // The error code.
