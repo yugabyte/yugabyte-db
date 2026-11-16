@@ -1572,7 +1572,7 @@ An example schema on the source database is as follows:
 CREATE INDEX idx_orders_created ON orders (created_at DESC);
 ```
 
-Suggested changes to the schema is as follows:
+Suggested changes to the schema are as follows:
 
 ```sql
 CREATE INDEX idx_orders_created ON orders ((yb_hash_code(created_at) % 3) ASC, created_at DESC)
@@ -1587,13 +1587,13 @@ An example schema on the source database is as follows:
 CREATE INDEX idx_orders_created ON orders (created_at DESC);
 ```
 
-Suggested changes to the schema is as follows:
+Suggested changes to the schema are as follows:
 
 ```sql
 CREATE INDEX idx_orders_created ON orders ((yb_hash_code(created_at) % 16) HASH, created_at DESC);
 ```
 
-Suggested changes to the query is as follows:
+Suggested changes to the query are as follows:
 
 ```sql
 SELECT * FROM orders
@@ -1640,7 +1640,7 @@ CREATE TABLE event_log (
 );
 ```
 
-Suggested changes to the schema is as follows:
+Suggested changes to the schema are as follows:
 
 ```sql
 CREATE TABLE event_log (
@@ -1663,7 +1663,7 @@ CREATE TABLE event_log (
 );
 ```
 
-Suggested changes to the schema is as follows:
+Suggested changes to the schema are as follows:
 
 ```sql
 CREATE TABLE event_log (
@@ -1674,7 +1674,7 @@ CREATE TABLE event_log (
 );
 ```
 
-Suggested changes to the query is as follows:
+Suggested changes to the query are as follows:
 
 ```sql
 SELECT * FROM event_log
