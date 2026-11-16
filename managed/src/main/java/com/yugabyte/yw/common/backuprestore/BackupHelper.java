@@ -775,10 +775,11 @@ public class BackupHelper {
   /**
    * Whether the config's IAM credential source has something on this host, which is not on AWS, to
    * get AWS credentials from, as {@link IAMTemporaryCredentialsProvider#hasCredentialsOffAws} finds
-   * by resolving each source once through the SDK. A source that is set up but fails on a reply
-   * from AWS or the network still counts, and is left to the S3 client's retries, so a transient
-   * failure does not switch YBA to another identity. Package-private so tests do not depend on the
-   * machine they run on.
+   * by resolving each source once through the SDK. A source that fails on an error the S3 client's
+   * retries can get past (an AWS throttle or server error, an I/O error) still counts and is left
+   * to them, so a transient failure does not switch YBA to another identity. One that AWS rejects,
+   * such as a role that does not trust the host's token, does not, so YBA can use the providers'
+   * entry instead. Package-private so tests do not depend on the machine they run on.
    */
   boolean hostHasAwsCredentials(CustomerConfigStorageS3Data s3) {
     if (s3.iamConfig == null || s3.iamConfig.credentialSource == null) {

@@ -137,11 +137,12 @@ public class IAMTemporaryCredentialsProvider {
    * Whether the config's credential sources have something to get AWS credentials from on a host
    * that is not on AWS, so whether {@link #getTemporaryCredentials} is worth leaving to its retries
    * there. Each source is resolved once, through the same SDK calls. One that gives credentials
-   * counts, and so does one that fails on a reply from AWS or on an I/O error, such as an STS
-   * throttle or a timeout, which those retries can get past. One that fails before that, because
-   * the host has nothing for it (no AWS_ROLE_ARN or web identity token file, no credentials in the
-   * profile, no container credentials endpoint), does not, and neither does AWS instance metadata,
-   * which only AWS serves.
+   * counts, and so does one that fails on an error those retries can get past: an AWS throttle or
+   * server error, or an I/O error such as a timeout. One that fails otherwise does not: the host
+   * has nothing for it (no AWS_ROLE_ARN or web identity token file, no credentials in the profile,
+   * no container credentials endpoint), or AWS rejects what it has, as for a role that does not
+   * trust the host's token or a token that has expired. Neither does AWS instance metadata, which
+   * only AWS serves.
    */
   public boolean hasCredentialsOffAws(CustomerConfigStorageS3Data s3Data) {
     List<String> absent = new ArrayList<>();
@@ -154,7 +155,7 @@ public class IAMTemporaryCredentialsProvider {
         source.getCredentialsOrFail();
         return true;
       } catch (Exception e) {
-        if (isRemoteFailure(e)) {
+        if (isRetryableFailure(e)) {
           log.warn(
               "IAM credential source {} is set up on this host but failed, leaving it to the"
                   + " client's retries: {}",
@@ -170,12 +171,17 @@ public class IAMTemporaryCredentialsProvider {
   }
 
   /**
-   * Whether {@code e} came from a reply from AWS or another endpoint, or from an I/O error on the
-   * way, rather than from the host having nothing for the source to use.
+   * Whether {@code e} is an error that trying again can get past: a throttle or a server error in
+   * the reply from AWS, or an I/O error on the way. Any other reply, such as AccessDenied or
+   * InvalidIdentityToken, is a rejection that every retry gets again.
    */
-  static boolean isRemoteFailure(Throwable e) {
+  static boolean isRetryableFailure(Throwable e) {
     for (Throwable t = e; t != null; t = t.getCause()) {
-      if (t instanceof SdkServiceException || t instanceof IOException) {
+      if (t instanceof SdkServiceException) {
+        SdkServiceException reply = (SdkServiceException) t;
+        return reply.isThrottlingException() || reply.statusCode() >= 500;
+      }
+      if (t instanceof IOException) {
         return true;
       }
     }
