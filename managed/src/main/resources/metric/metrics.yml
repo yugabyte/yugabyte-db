@@ -4193,25 +4193,17 @@ process_proportional_memory:
   range: true
   operator: "/ 1024"
   filters:
-    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total_count"
+    process: "yb-postmaster"
     type: "proportional"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
-    title: "PSS Memory"
+    title: "Postgres PSS Memory"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "yb-master": "Master"
-        "yb-tserver": "Tserver"
         "yb-postmaster": "Postgres"
-        "otelcol-contrib": "Otel Collector"
-        "yb-controller-server": "YB-Controller"
-        "node_exporter": "Node Exporter"
-        "odyssey": "Connection Pooling Manager"
-        "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
 postgres_worker_pss_max:

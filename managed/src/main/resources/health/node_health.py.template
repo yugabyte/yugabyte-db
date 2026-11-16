@@ -2164,8 +2164,9 @@ class NodeChecker():
                                  labels=[process, Label('type', 'system')])
             metrics[1].add_value(stat['resident_memory_kb'], labels=[process,
                                                                         Label('type', 'resident')])
-            metrics[1].add_value(stat['proportional_memory_kb'], labels=[
-                process, Label('type', 'proportional')])
+            if process_name == POSTMASTER:
+                metrics[1].add_value(stat['proportional_memory_kb'], labels=[
+                    process, Label('type', 'proportional')])
             metrics[1].add_value(stat['virtual_memory_kb'], labels=[process,
                                                                        Label('type', 'virtual')])
             metrics[2].add_value(stat['io_write_kb'], labels=[process,
@@ -2487,10 +2488,12 @@ class NodeChecker():
             if postgre_pid is not None:
                 pid_list.remove(postgre_pid)
                 pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
-        return self._load_per_process_metrics_by_pids(process_name, root_pid, pid_list)
+        return self._load_per_process_metrics_by_pids(
+            process_name, root_pid, pid_list, with_pss=(process_name == POSTMASTER))
 
 
-    def _load_per_process_metrics_by_pids(self, process_name, root_pid, pid_list):
+    def _load_per_process_metrics_by_pids(self, process_name, root_pid, pid_list,
+                                          with_pss=False):
         total_stat = self._get_empty_proc_results()
         prev_process_map = {}
         if process_name in self.prev_process_results.keys():
@@ -2504,7 +2507,7 @@ class NodeChecker():
             stat = self._get_empty_proc_results()
             start_time = None
             try:
-                stat = self._get_process_stats_by_pid(cur_pid)
+                stat = self._get_process_stats_by_pid(cur_pid, with_pss)
                 start_time = stat['start_time']
             except Exception as e:
                 logging.exception("Unexpected error in _load_per_process_metrics_by_pids")
@@ -2573,7 +2576,7 @@ class NodeChecker():
                 res[key] = stat1[key]
         return res
 
-    def _get_process_stats_by_pid(self, pid):
+    def _get_process_stats_by_pid(self, pid, with_pss=False):
         res = self._get_empty_proc_results()
         cmd = 'cat /proc/{}/stat'.format(pid)
         stat = self._check_output(cmd).strip()
@@ -2584,23 +2587,32 @@ class NodeChecker():
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
             res['start_time'] = int(stat_list[21])
 
-        cmd = 'cat /proc/{}/smaps'.format(pid)
+        # PSS needs a page table walk under the mmap lock, so only collect it when requested.
+        # Otherwise VmRSS from status is a plain counter read.
+        if with_pss:
+            cmd = 'cat /proc/{}/smaps_rollup'.format(pid)
+            rss_key, pss_key = 'Rss:', 'Pss:'
+        else:
+            cmd = 'cat /proc/{}/status'.format(pid)
+            rss_key, pss_key = 'VmRSS:', None
         stat = self._check_output(cmd).strip()
-        if "permission denied" in stat.lower():
-            # This is less precise, but we cannot use smaps for processes with diff user.
+        rss_found = False
+        for line in stat.split('\n'):
+            lst = line.split()
+            if len(lst) < 3:
+                continue
+            if lst[0] == rss_key:
+                res['resident_memory_kb'] += int(lst[1])
+                rss_found = True
+            elif lst[0] == pss_key:
+                res['proportional_memory_kb'] += int(lst[1])
+        if not rss_found:
+            # smaps_rollup is unreadable for processes of another user, and missing before
+            # Linux 4.14. Less precise, but works for any process.
             psstat = self._check_output("ps -o rss -p {} --no-headers".format(pid)).strip()
             lst = psstat.split(' ')
             if len(lst) > 0 and lst[0].isdigit():
                 res['resident_memory_kb'] += int(lst[0])
-        else:
-            stat_list = stat.split('\n')
-            for stat in stat_list:
-                lst = stat.split(' ')
-                if len(lst) > 0:
-                    if lst[0] == 'Pss:':
-                        res['proportional_memory_kb'] += int(lst[len(lst) - 2])
-                    if lst[0] == 'Rss:':
-                        res['resident_memory_kb'] += int(lst[len(lst) - 2])
 
         cmd = 'cat /proc/{}/io'.format(pid)
         stat = self._check_output(cmd).strip()

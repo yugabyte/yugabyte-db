@@ -11522,48 +11522,13 @@
       "align" : false,
       "alignLevel" : null
     },
-    "title" : "PSS Memory",
+    "title" : "Postgres PSS Memory",
     "id" : 130,
     "targets" : [ {
       "hide" : false,
-      "legendFormat" : "Total",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"total_count\"}[300s])) by (process) / 1024",
-      "refId" : "A"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Tserver",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"yb-tserver\"}[300s])) by (process) / 1024",
-      "refId" : "B"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Node Exporter",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"node_exporter\"}[300s])) by (process) / 1024",
-      "refId" : "C"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Master",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"yb-master\"}[300s])) by (process) / 1024",
-      "refId" : "D"
-    }, {
-      "hide" : false,
       "legendFormat" : "Postgres",
       "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"yb-postmaster\"}[300s])) by (process) / 1024",
-      "refId" : "E"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Otel Collector",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"otelcol-contrib\"}[300s])) by (process) / 1024",
-      "refId" : "F"
-    }, {
-      "hide" : false,
-      "legendFormat" : "Connection Pooling Manager",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"odyssey\"}[300s])) by (process) / 1024",
-      "refId" : "G"
-    }, {
-      "hide" : false,
-      "legendFormat" : "YB-Controller",
-      "expr" : "avg(avg_over_time(yb_process_memory_kb{type=\"proportional\", node_prefix=~\"$dbcluster\", process=\"yb-controller-server\"}[300s])) by (process) / 1024",
-      "refId" : "H"
+      "refId" : "A"
     } ],
     "gridPos" : {
       "w" : 12,
