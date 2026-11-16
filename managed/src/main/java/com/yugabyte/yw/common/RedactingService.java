@@ -1562,13 +1562,16 @@ public class RedactingService {
    */
   private static List<String> secretForms(Collection<String> secrets) {
     Set<String> forms = new HashSet<>();
-    for (String secret : secrets) {
-      if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
-        continue;
+    for (String value : secrets) {
+      // Also the stripped form, as telemetry credentials are rendered without trailing line breaks.
+      for (String secret : new String[] {value, StringUtils.stripEnd(value, "\r\n")}) {
+        if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
+          continue;
+        }
+        forms.add(secret);
+        forms.add(Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
+        forms.add(new String(JsonStringEncoder.getInstance().quoteAsString(secret)));
       }
-      forms.add(secret);
-      forms.add(Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
-      forms.add(new String(JsonStringEncoder.getInstance().quoteAsString(secret)));
     }
     return forms.stream()
         .sorted(Comparator.comparingInt(String::length).reversed())

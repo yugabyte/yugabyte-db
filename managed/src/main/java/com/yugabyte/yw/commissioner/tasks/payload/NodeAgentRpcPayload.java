@@ -55,9 +55,7 @@ import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
-import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
 import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
-import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.nodeagent.ConfigureCloudFederationInput;
 import com.yugabyte.yw.nodeagent.ConfigureNodeExporterInput;
 import com.yugabyte.yw.nodeagent.ConfigureServerInput;
@@ -567,9 +565,10 @@ public class NodeAgentRpcPayload {
       // Checked before any upload, so a failure leaves nothing on the node.
       Map<String, String> secretEnv = new HashMap<>();
       for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
-        secretEnv.putAll(
-            OtelCollectorConfigGenerator.getCredentialEnv(
-                telemetryProviderService.get(exporterUUID)));
+        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+        secretEnv.putAll(OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
+        // Fails on a line break in an AWS key.
+        OtelCollectorConfigGenerator.getAwsKeys(telemetryProvider);
       }
       checkNodeAgentReadsSecretEnv(nodeAgent, secretEnv);
     }
@@ -785,22 +784,13 @@ public class NodeAgentRpcPayload {
     TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
     installOtelCollectorInputBuilder.putAllOtelColSecretEnv(
         OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
+    Pair<String, String> awsKeys = OtelCollectorConfigGenerator.getAwsKeys(telemetryProvider);
+    if (awsKeys != null) {
+      log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
+      setAwsCredentialsInBuilder(
+          awsKeys.getFirst(), awsKeys.getSecond(), installOtelCollectorInputBuilder);
+    }
     switch (telemetryProvider.getConfig().getType()) {
-      case AWS_CLOUDWATCH -> {
-        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
-        AWSCloudWatchConfig awsCloudWatchConfig =
-            (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        setAwsCredentialsInBuilder(
-            awsCloudWatchConfig.getAccessKey(),
-            awsCloudWatchConfig.getSecretKey(),
-            installOtelCollectorInputBuilder);
-      }
-      case S3 -> {
-        log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
-        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
-        setAwsCredentialsInBuilder(
-            s3Config.getAccessKey(), s3Config.getSecretKey(), installOtelCollectorInputBuilder);
-      }
       case GCP_CLOUD_MONITORING -> {
         log.info("Setting GCP credentials in builder for exporter UUID: {}", exporterUUID);
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =

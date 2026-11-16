@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -2995,7 +2996,7 @@ public class OtelCollectorConfigGenerator {
     Map<String, OtelCollectorConfigFormat.Extension> extensions = collectorConfig.getExtensions();
     boolean setExtension = false;
     UUID providerUuid = telemetryProvider.getUuid();
-    Map<String, String> credentials = credentialFields(telemetryProvider.getConfig());
+    Map<String, String> credentials = checkedCredentialFields(telemetryProvider);
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -3390,17 +3391,11 @@ public class OtelCollectorConfigGenerator {
     if (!appendedProviderUuids.add(telemetryProvider.getUuid())) {
       return;
     }
+    Pair<String, String> awsKeys = getAwsKeys(telemetryProvider);
+    if (awsKeys != null) {
+      addAwsCredentialsToSecretEnv(awsKeys.getFirst(), awsKeys.getSecond(), secretEnv);
+    }
     switch (telemetryProvider.getConfig().getType()) {
-      case AWS_CLOUDWATCH:
-        AWSCloudWatchConfig awsCloudWatchConfig =
-            (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        addAwsCredentialsToSecretEnv(
-            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), secretEnv);
-        break;
-      case S3:
-        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
-        addAwsCredentialsToSecretEnv(s3Config.getAccessKey(), s3Config.getSecretKey(), secretEnv);
-        break;
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
@@ -3444,7 +3439,7 @@ public class OtelCollectorConfigGenerator {
    */
   public static Map<String, String> getCredentialEnv(TelemetryProvider telemetryProvider) {
     Map<String, String> env = new LinkedHashMap<>();
-    credentialFields(telemetryProvider.getConfig())
+    checkedCredentialFields(telemetryProvider)
         .forEach(
             (field, value) -> {
               if (StringUtils.isNotEmpty(value)) {
@@ -3452,6 +3447,56 @@ public class OtelCollectorConfigGenerator {
               }
             });
     return env;
+  }
+
+  /** The config and the env use these values, so they agree on which credentials are set. */
+  private static Map<String, String> checkedCredentialFields(TelemetryProvider telemetryProvider) {
+    Map<String, String> fields = new LinkedHashMap<>();
+    credentialFields(telemetryProvider.getConfig())
+        .forEach(
+            (field, value) ->
+                fields.put(field, checkedCredential(telemetryProvider, field, value)));
+    return fields;
+  }
+
+  /** Access key and secret key of an AWS or S3 provider, or null for other types. */
+  public static Pair<String, String> getAwsKeys(TelemetryProvider telemetryProvider) {
+    TelemetryProviderConfig config = telemetryProvider.getConfig();
+    String accessKey;
+    String secretKey;
+    switch (config.getType()) {
+      case AWS_CLOUDWATCH -> {
+        accessKey = ((AWSCloudWatchConfig) config).getAccessKey();
+        secretKey = ((AWSCloudWatchConfig) config).getSecretKey();
+      }
+      case S3 -> {
+        accessKey = ((S3Config) config).getAccessKey();
+        secretKey = ((S3Config) config).getSecretKey();
+      }
+      default -> {
+        return null;
+      }
+    }
+    return new Pair<>(
+        checkedCredential(telemetryProvider, "access key", accessKey),
+        checkedCredential(telemetryProvider, "secret key", secretKey));
+  }
+
+  /**
+   * Strips trailing line breaks, which a pasted value often has. Fails on any other line break: on
+   * VM nodes it would add a line to a credential file.
+   */
+  private static String checkedCredential(
+      TelemetryProvider telemetryProvider, String field, String value) {
+    String stripped = StringUtils.stripEnd(value, "\r\n");
+    if (StringUtils.containsAny(stripped, "\r\n")) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Credential %s of telemetry provider %s contains a line break."
+                  + " Replace the provider.",
+              field, telemetryProvider.getName()));
+    }
+    return stripped;
   }
 
   /**

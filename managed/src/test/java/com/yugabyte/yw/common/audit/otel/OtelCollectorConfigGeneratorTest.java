@@ -11,6 +11,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -64,6 +66,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -2440,5 +2443,63 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   public void re2ToPosixEreTranslatesPcreConstructs() {
     assertEquals("[0-9]+ [A-Za-z0-9_]+", OtelCollectorConfigGenerator.re2ToPosixEre("\\d{3} \\w+"));
     assertEquals("(x)", OtelCollectorConfigGenerator.re2ToPosixEre("(?P<foo>x)"));
+  }
+
+  @Test
+  public void credentialTrailingLineBreakIsStripped() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setApiKey("apikey123\r\n");
+    TelemetryProvider dd =
+        createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), ddConfig);
+    assertEquals(
+        List.of("apikey123"),
+        new ArrayList<>(OtelCollectorConfigGenerator.getCredentialEnv(dd).values()));
+
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setAccessKey("access\n");
+    s3Config.setSecretKey("secret");
+    TelemetryProvider s3 =
+        createTelemetryProvider(new UUID(0, 2), "s3", ImmutableMap.of(), s3Config);
+    Pair<String, String> keys = OtelCollectorConfigGenerator.getAwsKeys(s3);
+    assertEquals("access", keys.getFirst());
+    assertEquals("secret", keys.getSecond());
+  }
+
+  @Test
+  public void credentialOfOnlyLineBreakIsNotReferenced() throws IOException {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("\r\n");
+    TelemetryProvider dd = createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), config);
+    assertTrue(OtelCollectorConfigGenerator.getCredentialEnv(dd).isEmpty());
+    String vmConfig =
+        generateConfig(createAuditLogConfigWithYSQL(dd.getUuid(), ImmutableMap.of()), null, null);
+    assertThat(vmConfig, not(containsString("${env:")));
+  }
+
+  @Test
+  public void credentialInnerLineBreakFails() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setApiKey("apikey\ncredential_process=x\n");
+    TelemetryProvider dd =
+        createTelemetryProvider(new UUID(0, 1), "dd-bad", ImmutableMap.of(), ddConfig);
+    IllegalArgumentException e =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> OtelCollectorConfigGenerator.getCredentialEnv(dd));
+    assertThat(e.getMessage(), containsString("dd-bad"));
+
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("access");
+    awsConfig.setSecretKey("sec\rret");
+    TelemetryProvider aws =
+        createTelemetryProvider(new UUID(0, 2), "aws-bad", ImmutableMap.of(), awsConfig);
+    assertThrows(
+        IllegalArgumentException.class, () -> OtelCollectorConfigGenerator.getAwsKeys(aws));
   }
 }
