@@ -1898,7 +1898,14 @@ public class BackupHelperTest extends FakeDBApplication {
   @Test
   public void testDeletionWithoutSnapshotUsesTheUniversesEntryAheadOfKeys() {
     hostCloud(CloudType.gcp);
-    CrossCloudFederationTarget universeTarget = stubTarget(CloudType.aws);
+    // Only for the backup's own universe, so a lookup that lost the universe gets nothing.
+    CrossCloudFederationTarget universeTarget =
+        CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN);
+    doReturn(universeTarget)
+        .when(spyBackupHelper)
+        .resolveCrossCloudFederationTarget(
+            argThat(u -> u != null && testUniverse.getUniverseUUID().equals(u.getUniverseUUID())),
+            eq(CloudType.aws));
     Backup backup = backupWithSnapshot(null, null);
     when(backup.getCustomerUUID()).thenReturn(testCustomer.getUuid());
     when(backup.getUniverseUUID()).thenReturn(testUniverse.getUniverseUUID());
@@ -1957,5 +1964,8 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(e.getMessage(), e.getMessage().contains("YBA runs on GCP"));
     assertTrue(e.getMessage(), e.getMessage().contains("S3 bucket of storage config fed-s3"));
     assertTrue(e.getMessage(), e.getMessage().contains("usable aws entry"));
+    // Each way out: an entry, matching entries, or credentials on the config itself.
+    assertTrue(e.getMessage(), e.getMessage().contains("make the providers' aws entries match"));
+    assertTrue(e.getMessage(), e.getMessage().contains("set access keys on the storage config"));
   }
 }

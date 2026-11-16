@@ -582,7 +582,10 @@ public class BackupHelper {
    * its own host identity with that entry, so the entry's AWS role (S3) or workload identity pool
    * (GCS) must also admit YBA, not only the DB nodes. As on every other path, an entry is used
    * ahead of the config's own credentials; those (access keys, the IAM role chain, a GCS key or
-   * application default credentials) are what is left when there is no entry.
+   * application default credentials) are what is left when there is no entry. Only the
+   * customer-wide lookup is gated on the host: the universe's entry, like a backup's snapshot, is
+   * used on any host, as before that lookup existed, since detection can miss a GCP host on which
+   * the entry does work.
    *
    * @return false when YBA has no way to reach the bucket: it runs on GCP, found no entry for an S3
    *     bucket, and the config has neither access keys nor the IAM role flag. Known limit: on AWS
@@ -622,13 +625,20 @@ public class BackupHelper {
       return;
     }
     throw new PlatformServiceException(
-        BAD_REQUEST,
-        String.format(
-            "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the"
-                + " config has no access keys and does not use an IAM role, and no provider has a"
-                + " usable aws entry in its federated IAM targets, or providers have different"
-                + " ones. Add an aws entry whose AWS role also trusts this YBA's service account.",
-            config.getConfigName()));
+        BAD_REQUEST, noYbaCredentialsMessage(config.getConfigName()));
+  }
+
+  /** Why {@link #applyYbaFederatedIdentity} found no way to the bucket, and each way to fix it. */
+  private static String noYbaCredentialsMessage(String storageConfig) {
+    return String.format(
+        "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the config"
+            + " has neither access keys nor the IAM role flag, and no provider has a usable aws"
+            + " entry in its federated IAM targets, or the providers' aws entries differ. Add an"
+            + " aws entry whose AWS role also trusts this YBA's service account, or make the"
+            + " providers' aws entries match. Otherwise set access keys on the storage config (or"
+            + " the IAM role flag, if this host has AWS credentials of its own), which is also what"
+            + " a restore onto a new YBA, with no providers yet, needs.",
+        storageConfig);
   }
 
   /**
@@ -751,10 +761,16 @@ public class BackupHelper {
     }
     // No snapshot: the backup predates it, or its universe's provider has no entry for the bucket's
     // cloud, as for an AWS universe's S3 backup deleted by a YBA that HA promoted on GCP.
-    applyYbaFederatedIdentity(
+    if (!applyYbaFederatedIdentity(
         configData,
         backup.getCustomerUUID(),
-        Universe.maybeGet(backup.getUniverseUUID()).orElse(null));
+        Universe.maybeGet(backup.getUniverseUUID()).orElse(null))) {
+      // Logged, not thrown: an immutable-storage config is deleted without reaching the bucket.
+      log.warn(
+          "Deleting backup {}: {}",
+          backup.getBackupUUID(),
+          noYbaCredentialsMessage(String.valueOf(backup.getStorageConfigUUID())));
+    }
   }
 
   /**
