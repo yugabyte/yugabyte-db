@@ -730,13 +730,30 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         CustomerConfig.get(saved.getCustomerUUID(), saved.getConfigUUID()).getConfigName());
   }
 
+  /**
+   * Saved data that no longer parses, here with a field the current class does not have, does not
+   * fail the edit: the edit is validated like a new config.
+   */
+  @Test
+  public void testValidateDataContent_Storage_S3_EditOfUnparseableSavedDataIsValidatedAsNew() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put("IAM_INSTANCE_PROFILE", true);
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    ObjectNode savedData = data.deepCopy();
+    savedData.put("REMOVED_FIELD", "value");
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, savedData);
+    customerConfigValidator.validateConfig(renamed(saved, data), saved);
+  }
+
   /** A create is checked as a new config, even when its body carries a saved config's UUID. */
   @Test
   public void testValidateDataContent_Storage_S3_CreateWithSavedConfigUuidIsRejected() {
     ObjectNode data = s3FederationWithKeys();
     CustomerConfig created = renamed(saveWithoutValidation(NAME_S3, data), data.deepCopy());
+    CustomerConfigService service = app.injector().instanceOf(CustomerConfigService.class);
     assertThat(
-        () -> customerConfigValidator.validateConfig(created),
+        () -> service.create(created),
         thrown(PlatformServiceException.class, containsString("cannot be used together with")));
   }
 
@@ -801,8 +818,6 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   public void testValidateDataContent_Storage_GCS_SavedFederationWithJsonCanBeRenamed() {
     ObjectNode data = gcsFederationWithJson();
     CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
-    // The JSON key is then checked against the bucket, as for any key-based config.
-    allowedBuckets.add("gs://test");
     customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
   }
 

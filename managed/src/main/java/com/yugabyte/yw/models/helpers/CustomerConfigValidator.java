@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.OCIUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -184,9 +185,30 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     CustomerConfigData data = customerConfig.getDataObject();
     ConfigDataValidator validator = validators.get(data.getClass());
     if (validator != null) {
-      CustomerConfigData savedData = saved == null ? null : saved.getDataObject();
+      CustomerConfigData savedData = savedDataOrNull(saved);
       validator.validate(
           data, savedData != null && savedData.getClass() == data.getClass() ? savedData : null);
+    }
+  }
+
+  /**
+   * The saved data, as the baseline of an edit, or null. Data saved by an older YBA may not parse
+   * into the current class, for example when it carries a field that was removed since. That must
+   * not fail the edit, so the edit is then validated like a new config.
+   */
+  @Nullable
+  private static CustomerConfigData savedDataOrNull(@Nullable CustomerConfig saved) {
+    if (saved == null) {
+      return null;
+    }
+    try {
+      return saved.getDataObject();
+    } catch (PlatformServiceException e) {
+      log.warn(
+          "Validating the edit of config {} as a new config: its saved data does not parse: {}",
+          saved.getConfigUUID(),
+          e.getMessage());
+      return null;
     }
   }
 
