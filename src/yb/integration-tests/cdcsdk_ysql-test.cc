@@ -395,9 +395,20 @@ TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
   // Stop UpdateMetrics before this peer is leader again. Only the GetChanges below can publish
   // sent lag.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
-  // Let an UpdateMetrics pass that began before the flag flip finish while this peer is still a
-  // follower; otherwise it can see the peer as leader and set lag from cdc_state.
-  SleepFor(MonoDelta::FromSeconds(1) * kTimeMultiplier);
+  // The flag only stops new passes. Wait until this tserver's background loop gets past the
+  // metrics step, so a pass that began before the flip cannot see this peer as leader.
+  std::atomic<bool> metrics_pass_done{false};
+  SyncPointScope sync_point;
+  sync_point->SetCallBack("UpdatePeersAndMetrics::AfterUpdateMetrics", [&](void* arg) {
+    if (arg == cdc_service) {
+      metrics_pass_done = true;
+    }
+  });
+  sync_point->EnableProcessing();
+  ASSERT_OK(WaitFor(
+      [&] { return metrics_pass_done.load(); }, MonoDelta::FromSeconds(30) * kTimeMultiplier,
+      "In-flight UpdateMetrics pass done"));
+  sync_point->DisableProcessing();
 
   ASSERT_OK(StepDownLeader(leader_index, tablet_id));
   WaitUntilPeerLeaderState(
