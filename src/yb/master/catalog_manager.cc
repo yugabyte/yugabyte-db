@@ -266,6 +266,7 @@ TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DEFINE_RUNTIME_int32(qos_max_db_count, 0,
     "Maximum number of YSQL databases allowed per cluster when QoS is enabled "
     "(enable_qos=true). CREATE DATABASE is rejected when the non-template database "
@@ -698,6 +699,14 @@ DEFINE_test_flag(int32, system_table_num_tablets, -1,
 DEFINE_RUNTIME_AUTO_bool(enable_tablespace_based_transaction_placement, kLocalPersisted,
     false, true,
     "Enable support for tablespace-based transaction locality.");
+
+// AutoFlag so that no index is left pending forever: (1) an old master that becomes leader before
+// the CREATE INDEX transaction is verified does not finalize the index, and (2) after a rollback,
+// indexes that were still pending stay pending, and nothing finalizes them on re-upgrade.
+DEFINE_RUNTIME_AUTO_bool(enable_ysql_index_birth_time_state, kLocalPersisted, false, true,
+    "Track state for a YSQL index whether birth_time is set or pending "
+    "(IndexInfoPB.birth_time_state). This is required to decide if reads should throw a retryable "
+    "error if the birth time is not yet final to avoid inconsistent results.");
 
 DEFINE_test_flag(bool, fail_yugabyte_namespace_creation_on_second_attempt, false,
     "Fail CopyPgsqlSysTables for yugabyte database on the second creation attempt "
@@ -1483,7 +1492,8 @@ void CatalogManager::ValidateIndexTablesPostLoad(
         table_id, std::move(indexes),
         [this, tables_to_persist = DCHECK_NOTNULL(tables_to_persist)](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/,
+            IndexInfoPB::BirthTimeState /*birth_time_state*/) {
           DCHECK(status.ok());
           if (!status.ok()) {
             LOG(WARNING) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
@@ -1500,6 +1510,12 @@ void CatalogManager::ValidateIndexTablesPostLoad(
           auto index_table = CHECK_RESULT(GetTableById(index_id));
           auto index_table_wlock = index_table->LockForWrite();
           BackfillTable::UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
+          // Backfill is done, so the birth_time is final too (it is 0 if it was not persisted).
+          auto& index_pb = index_table_wlock.mutable_data()->pb;
+          if (index_pb.has_index_info() && index_pb.index_info().birth_time_state() ==
+                                               IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL) {
+            index_pb.mutable_index_info()->clear_birth_time_state();
+          }
           index_table_wlock.Commit();
           tables_to_persist->emplace(index_id);
         });
@@ -4724,6 +4740,26 @@ bool EnableTableOwnedVectorReverseMapping() {
       : FLAGS_enable_table_owned_vector_reverse_mapping;
 }
 
+// Returns the initial IndexInfoPB.birth_time_state of a new YSQL index: whether its birth_time is
+// not final yet, and which build path finalizes it. Vector indexes are not covered by the read
+// guard.
+IndexInfoPB::BirthTimeState InitialIndexBirthTimeState(
+    const CreateTableRequestPB& req, const IndexInfoPB& index_info, bool index_backfill_enabled) {
+  if (!FLAGS_enable_ysql_index_birth_time_state || index_info.has_vector_idx_options()) {
+    return IndexInfoPB::BIRTH_TIME_FINAL;
+  }
+  if (index_backfill_enabled && !req.skip_index_backfill()) {
+    // Finalized when backfill completes (BackfillTable::AllowCompactionsToGCDeleteMarkers).
+    return IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL;
+  }
+  if (req.skip_index_backfill() && req.has_transaction() && req.ysql_yb_ddl_rollback_enabled()) {
+    // Finalized when the CREATE INDEX transaction commits (HandleSuccessfulYsqlDdlTxn). That only
+    // runs for tables with DDL transaction verification, so without it the index stays FINAL.
+    return IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
+  }
+  return IndexInfoPB::BIRTH_TIME_FINAL;
+}
+
 } // namespace
 
 Status CatalogManager::PersistNewTable(
@@ -5037,6 +5073,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
       auto indexed_schema = VERIFY_RESULT(indexed_table->GetSchema());
       RETURN_NOT_OK(index_info_builder.ApplyColumnMapping(indexed_schema, schema));
+    }
+  }
+
+  if (req.has_index_info() && is_pg_table) {
+    const auto birth_time_state =
+        InitialIndexBirthTimeState(req, index_info, index_backfill_enabled);
+    if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
+      index_info.set_birth_time_state(birth_time_state);
     }
   }
 
@@ -5621,35 +5665,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 
     // Try allocating tservers for the replicas and see if we can place a quorum
     // number of replicas.
-    // Essentially, the logic is:
-    // 1. We satisfy whatever we can from the minimums.
-    // 2. We then satisfy whatever we can from the slack.
-    //    Slack replicas can go into any of the valid placement blocks, as long as the block
-    //    stays within its effective maximum number of replicas.
-    // Overall, if in this process we are able to place n/2 + 1 replicas
-    // then we succeed otherwise we fail.
-    size_t total_extra_replicas = num_replicas - minimum_sum;
-    size_t total_feasible_replicas = 0;
-    size_t total_extra_servers = 0;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      size_t allowed_ts_size = allowed_ts.size();
-      size_t min_num_replicas = pb.min_num_replicas();
-      size_t max_num_replicas =
-          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
-      // For every placement block, we can only satisfy upto the number of
-      // tservers present in that particular placement block.
-      total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
-      // Extra tablet servers beyond min_num_replicas will be used to place
-      // the extra replicas over and above the minimums.
-      size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
-      if (max_feasible_replicas > min_num_replicas) {
-        total_extra_servers += max_feasible_replicas - min_num_replicas;
-      }
-    }
-    // The total number of extra replicas that we can put cannot be more than
-    // the total tablet servers that are extra.
-    total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+    const size_t total_feasible_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
 
     // If we place the replicas in accordance with above, we should be able to place
     // at least replica_quorum_needed otherwise we fail.
@@ -5664,6 +5681,52 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   }
 
   return Status::OK();
+}
+
+// Without placement blocks every tserver can take a replica. With them, replica selection
+// satisfies each block's minimum from the tservers in that block, then places the slack replicas
+// on the tservers left in any block that stays within its effective maximum, so a tserver outside
+// every block takes no replica. Blocks can overlap (a zone's block next to its region's; the
+// tablespace parser rejects duplicates only). Each block is counted from all of its tservers,
+// while selection gives a tserver to the first block that takes it, so the sum is capped at the
+// distinct tservers in some block; with overlapping blocks it stays an upper bound, since the
+// tservers an earlier block takes can leave a later one short.
+Result<size_t> CatalogManager::CountPlaceableReplicas(
+    const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs) {
+  if (placement_info.placement_blocks().empty()) {
+    return ts_descs.size();
+  }
+  const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  size_t minimum_sum = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    minimum_sum += pb.min_num_replicas();
+  }
+  // CheckValidPlacementInfo rejects minimums above num_replicas; there is no slack then.
+  const size_t total_extra_replicas = num_replicas > minimum_sum ? num_replicas - minimum_sum : 0;
+  size_t total_feasible_replicas = 0;
+  size_t total_extra_servers = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    const auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+    const size_t allowed_ts_size = allowed_ts.size();
+    const size_t min_num_replicas = pb.min_num_replicas();
+    const size_t max_num_replicas =
+        GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
+    // For every placement block, we can only satisfy upto the number of
+    // tservers present in that particular placement block.
+    total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+    // Extra tablet servers beyond min_num_replicas will be used to place
+    // the extra replicas over and above the minimums.
+    const size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
+    if (max_feasible_replicas > min_num_replicas) {
+      total_extra_servers += max_feasible_replicas - min_num_replicas;
+    }
+  }
+  // The total number of extra replicas that we can put cannot be more than
+  // the total tablet servers that are extra.
+  const size_t total_placeable_replicas =
+      total_feasible_replicas + min(total_extra_replicas, total_extra_servers);
+  const auto in_some_block = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
+  return min(total_placeable_replicas, in_some_block.size());
 }
 
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
@@ -7156,7 +7219,8 @@ void CatalogManager::GetBackfillStatus(
   // Utility functor to respond with the provided error for the remaining indexes.
   auto callback_failure = [&callback, &indexes](const Status& status) {
     for (const auto& index : indexes) {
-      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0});
+      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0},
+               IndexInfoPB::BIRTH_TIME_FINAL);
     }
   };
 
@@ -7206,13 +7270,15 @@ void CatalogManager::GetBackfillStatus(
 
   for (const auto& [index_id, backfill_status] : indexes_for_callback) {
     uint64_t birth_time = 0;
+    auto birth_time_state = IndexInfoPB::BIRTH_TIME_FINAL;
     if (auto index_table = GetTableInfo(index_id)) {
       auto l = index_table->LockForRead();
-      if (l->pb.has_index_info() && l->pb.index_info().has_birth_time()) {
+      if (l->pb.has_index_info()) {
         birth_time = l->pb.index_info().birth_time();
+        birth_time_state = l->pb.index_info().birth_time_state();
       }
     }
-    callback(Status::OK(), index_id, backfill_status, birth_time);
+    callback(Status::OK(), index_id, backfill_status, birth_time, birth_time_state);
   }
 
   // Notify the caller with the remaining indexes. There's a chance some of the indexes
@@ -7283,7 +7349,8 @@ Status CatalogManager::GetBackfillStatus(
         table_id, std::move(indexes),
         [&index_to_identifier_map, &resp](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time,
+            IndexInfoPB::BirthTimeState birth_time_state) {
           auto identifier_it = index_to_identifier_map.find(index_id);
           CHECK(identifier_it != index_to_identifier_map.end());
           auto* index_status = resp->add_index_status();
@@ -7293,6 +7360,7 @@ Status CatalogManager::GetBackfillStatus(
             if (birth_time != 0) {
               index_status->set_birth_time(birth_time);
             }
+            index_status->set_birth_time_state(birth_time_state);
           } else {
              StatusToPB(status, index_status->mutable_error());
           }
@@ -12890,7 +12958,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
     } else {
-      LOG_WITH_FUNC(INFO)
+      VLOG_WITH_FUNC(1)
           << "Selected replicas for tablet " << tablet->id() << ": "
           << AsString(tablet->mutable_metadata()->mutable_dirty()->pb.committed_consensus_state());
       ok_status_tables.emplace(tablet->table().get());
@@ -13010,6 +13078,13 @@ namespace {
 // A tserver belongs to the placement that names its placement uuid; a placement without one is
 // the live placement, whose tservers have an empty placement uuid.
 bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  // A placement that names a storage tier needs a tserver with a disk on it. With tiered storage
+  // off the tier is not acted on: the tablespace refresh already drops it, and a placement that
+  // still carries one (built by a client directly) is placed as untiered.
+  if (FLAGS_enable_tiered_storage && !placement_info.storage_tier().empty() &&
+      !ts_desc.HasStorageTier(placement_info.storage_tier())) {
+    return false;
+  }
   if (placement_info.has_placement_uuid()) {
     return ts_desc.placement_uuid() == placement_info.placement_uuid();
   }
@@ -13106,7 +13181,7 @@ Status CatalogManager::SelectReplicasForTablet(
     RETURN_NOT_OK(SelectReplicasForPlacement(ts_descs, placement, config, per_table_state));
   }
 
-  LOG_WITH_FUNC(INFO)
+  VLOG_WITH_FUNC(1)
       << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
       << tablet->table()->id() << "]: "
       << CollectionToString(config->peers(), [](const auto& p) { return p.permanent_uuid(); });
@@ -13116,8 +13191,8 @@ Status CatalogManager::SelectReplicasForTablet(
   // initial leader after it receives a quorum of reports from bootstrapped replicas.
   RETURN_NOT_OK(SelectProtegeForTablet(tablet, config, global_state));
 
-  LOG(INFO) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
-            << tablet->InitiaLeaderElectionProtege();
+  VLOG(1) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
+          << tablet->InitiaLeaderElectionProtege();
 
   VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
@@ -14108,10 +14183,52 @@ Status CatalogManager::ValidateReplicationInfo(
   if (placement_info.placement_uuid().empty()) {
     placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
   }
-  GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+  // Validate the placement without its tier first, so a placement that is short of tservers
+  // whatever their tiers keeps the count messages below and the tier is blamed only when it is
+  // the reason.
+  {
+    PlacementInfoPB untiered_placement_info = placement_info;
+    untiered_placement_info.clear_storage_tier();
+    GetTsDescsFromPlacementInfo(untiered_placement_info, all_ts_descs, &ts_descs);
+  }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
+  // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
+  // but a tablet created on fewer tservers than its replication factor starts under-replicated,
+  // and the load balancer, which does not consider tiers, would add the missing replicas on
+  // tservers without the tier. So every replica needs a live tserver that registered a data
+  // directory on the tier, within the placement blocks and under their maximums as
+  // CountPlaceableReplicas bounds it, exactly unless the blocks overlap. Gated on
+  // catalog_manager_check_ts_count_for_create_table like the live tablet server count.
+  // "Registered" also covers tservers whose tiers are unknown, which create-time placement does
+  // not use.
+  const auto& storage_tier = placement_info.storage_tier();
+  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
+      !storage_tier.empty()) {
+    GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+    if (ts_descs.empty()) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "No live tablet server has registered a data directory on storage tier $0",
+              storage_tier));
+    }
+    const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+    const size_t placeable_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
+    if (placeable_replicas < num_replicas) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "The placement needs $0 replicas on storage tier $1, but only $2 can be placed on "
+              "live tablet servers that have registered a data directory on it",
+              num_replicas, storage_tier, placeable_replicas));
+    }
   }
 
   s = CatalogManagerUtil::CheckValidLeaderAffinity(replication_info);

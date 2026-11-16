@@ -93,7 +93,6 @@ using google::protobuf::MessageLite;
 using google::protobuf::Reflection;
 using google::protobuf::RepeatedPtrField;
 using google::protobuf::SimpleDescriptorDatabase;
-using yb::crc::Crc;
 using yb::pb_util::internal::SequentialFileFileInputStream;
 using yb::pb_util::internal::WritableFileOutputStream;
 using std::endl;
@@ -674,11 +673,10 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   }
 
   // Validate CRC32C checksum.
-  Crc* crc32c = crc::GetCrc32cInstance();
-  uint64_t actual_checksum = 0;
-  // Compute a rolling checksum over the two byte arrays (size, body).
-  crc32c->Compute(size.data(), size.size(), &actual_checksum);
-  crc32c->Compute(body.data(), body.size(), &actual_checksum);
+  crc::Crc32Accumulator crc;
+  crc.Feed(size);
+  crc.Feed(body);
+  auto actual_checksum = crc.result();
   if (PREDICT_FALSE(actual_checksum != expected_checksum)) {
     return STATUS(Corruption, Format("Incorrect checksum of file $0: actually $1, expected $2",
                                      reader_->filename(), actual_checksum, expected_checksum));

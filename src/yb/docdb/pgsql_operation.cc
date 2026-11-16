@@ -2039,7 +2039,8 @@ Status PgsqlWriteOperation::ApplyDelete(
     const bool is_persist_needed) {
   int num_deleted = 1;
   dockv::PgTableRow table_row(projection());
-  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
+  const bool row_found = VERIFY_RESULT(ReadRow(data, &table_row));
+  if (!row_found) {
     // Row not found.
     // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
     // nonexistent rows are expected to get written to the index when the index has the delete
@@ -2060,11 +2061,15 @@ Status PgsqlWriteOperation::ApplyDelete(
   RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(
       DocPath(encoded_doc_key_.as_slice()), data.read_operation_data));
 
-  if (doc_read_context_->schema().has_vectors()) {
+  // On the persist-missing-row path ReadRow found nothing, so table_row is unpopulated and there
+  // is no old vector id to remove.
+  if (row_found && doc_read_context_->schema().has_vectors()) {
     RETURN_NOT_OK(HandleDeletedVectorIds(data, table_row));
   }
 
-  RETURN_NOT_OK(PopulateResultSet(&table_row));
+  if (row_found) {
+    RETURN_NOT_OK(PopulateResultSet(&table_row));
+  }
 
   response_->set_rows_affected_count(num_deleted);
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);

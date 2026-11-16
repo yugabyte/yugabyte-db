@@ -451,8 +451,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // the callback for every index from the indexes argument. If the indexes argument is empty,
   // the result is provided for every index of the specified indexed table. The callback must have
   // the following signature:
-  // void (const Status&, const TableId&, IndexStatusPB::BackfillStatus, uint64_t birth_time).
-  // birth_time is the value persisted on the index table's IndexInfo (0 if unset).
+  // void (const Status&, const TableId&, IndexStatusPB::BackfillStatus, uint64_t birth_time,
+  //       IndexInfoPB::BirthTimeState birth_time_state).
+  // birth_time and birth_time_state are the values persisted on the index table's IndexInfo
+  // (birth_time is 0 if unset).
   void GetBackfillStatus(const TableId& indexed_table_id, TableIdSet&& indexes, auto&& callback);
 
   // Backfill the indexes for the specified table.
@@ -1120,6 +1122,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status CheckValidPlacementInfo(const PlacementInfoPB& placement_info,
                                  const TSDescriptorVector& ts_descs,
                                  ValidateReplicationInfoResponsePB* resp);
+
+  // How many replicas SelectReplicasForPlacement can put on ts_descs under placement_info:
+  // exact unless placement blocks overlap, then an upper bound.
+  Result<size_t> CountPlaceableReplicas(
+      const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs);
 
   // The tservers allowed to host a table's replicas under one PlacementInfoPB (live or read
   // replica). Built once per table and reused for every tablet of that table; the bool vectors
@@ -2422,7 +2429,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const AlterTableRequestPB* req = nullptr,
       std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr);
 
-  // The target and its existing indexes.
+  // The target and its indexes: the capture trigger writes tombstones into all of them. Indexes
+  // that have since been dropped are skipped.
   std::vector<scoped_refptr<TableInfo>> GetOnlineSchemaChangePinnedTables(
       const scoped_refptr<TableInfo>& target);
 

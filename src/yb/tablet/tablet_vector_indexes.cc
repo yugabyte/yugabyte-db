@@ -163,6 +163,10 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return tablet_.key_bounds();
   }
 
+  void WaitWalDurable(const OpId& op_id) const override {
+    tablet_.WaitWalDurable(op_id);
+  }
+
   Result<RequestScope> CreateRequestScope() const {
     return tablet_.CreateRequestScope();
   }

@@ -40,7 +40,9 @@ yba universe upgrade [flags]
 
 * [yba universe](yba_universe.md)	 - Manage YugabyteDB Anywhere universes
 * [yba universe upgrade export-telemetry-configs](yba_universe_upgrade_export-telemetry-configs.md)	 - Manage telemetry export configuration for a YugabyteDB Anywhere Universe
+* [yba universe upgrade finalize](yba_universe_upgrade_finalize.md)	 - Finalize the software upgrade of a YugabyteDB Anywhere Universe
 * [yba universe upgrade gflags](yba_universe_upgrade_gflags.md)	 - Gflags upgrade for a YugabyteDB Anywhere Universe
 * [yba universe upgrade os](yba_universe_upgrade_os.md)	 - VM Linux OS patch for a YugabyteDB Anywhere Universe
+* [yba universe upgrade rollback](yba_universe_upgrade_rollback.md)	 - Roll back the software upgrade of a YugabyteDB Anywhere Universe
 * [yba universe upgrade software](yba_universe_upgrade_software.md)	 - Software upgrade for a YugabyteDB Anywhere Universe
 
