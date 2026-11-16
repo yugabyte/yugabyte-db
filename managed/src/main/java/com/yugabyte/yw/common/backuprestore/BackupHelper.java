@@ -597,10 +597,10 @@ public class BackupHelper {
    * {@link #hasCredentialsOfItsOwn}), so a setup that reached the bucket before keeps doing so.
    *
    * @return false when YBA has no way to reach the bucket: it found no entry, and either runs on
-   *     GCP with an S3 config that has neither access keys nor the IAM role flag, or on confirmed
-   *     AWS with a GCP IAM GCS config and no Google credentials file on the host. Known limit: on
-   *     AWS that cannot be confirmed, a keyless S3 config without the flag is still built from
-   *     blank keys (see {@link #useYbaIamRole}).
+   *     GCP with an S3 config that has no access keys and no IAM credential source that can work
+   *     there, or on confirmed AWS with a GCP IAM GCS config and no Google credentials file on the
+   *     host. Known limit: on AWS that cannot be confirmed, a keyless S3 config without the flag is
+   *     still built from blank keys (see {@link #useYbaIamRole}).
    */
   public boolean applyYbaFederatedIdentity(
       CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
@@ -616,14 +616,20 @@ public class BackupHelper {
     }
     boolean canFederate = canPresentFederatedIdentity(bucketCloud);
     CrossCloudFederationTarget target = resolveCrossCloudFederationTarget(universe, bucketCloud);
-    if (target == null && canFederate && !hasCredentialsOfItsOwn(configData)) {
+    if (!canFederate) {
+      // The config's own credentials are all this host can use; nothing to judge them against.
+      stampFederationTarget(configData, target);
+      return true;
+    }
+    boolean ownCredentials = hasCredentialsOfItsOwn(configData);
+    if (target == null && !ownCredentials) {
       target = resolveCustomerFederationTarget(customerUUID, bucketCloud);
     }
     if (target != null) {
       stampFederationTarget(configData, target);
       return true;
     }
-    return !canFederate || hasCredentialChain(configData);
+    return ownCredentials;
   }
 
   /**
@@ -655,12 +661,14 @@ public class BackupHelper {
     }
     return String.format(
         "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the config"
-            + " has neither access keys nor the IAM role flag, and no provider has a usable aws"
-            + " entry in its federated IAM targets, or the providers' aws entries differ. Add an"
+            + " has no access keys, its IAM role chain has nothing to use on this host, and no"
+            + " provider has a usable aws entry in its federated IAM targets, or the providers' aws"
+            + " entries differ. Add an"
             + " aws entry whose AWS role also trusts this YBA's service account, or make the"
-            + " providers' aws entries match. Otherwise set access keys on the storage config (or"
-            + " the IAM role flag, if this host has AWS credentials of its own), which is also what"
-            + " a restore onto a new YBA, with no providers yet, needs.",
+            + " providers' aws entries match. Otherwise set access keys on the storage config, or"
+            + " give this host AWS credentials its IAM role chain can use (a profile with keys, a"
+            + " web identity token file); keys are also what a restore onto a new YBA, with no"
+            + " providers yet, needs.",
         storageConfig);
   }
 
@@ -691,11 +699,11 @@ public class BackupHelper {
   }
 
   /**
-   * Whether the config, or YBA's host, has credentials of its own for the bucket's cloud, which
-   * reached the bucket before YBA could federate and must not be replaced by a customer-wide guess:
-   * S3 access keys, or with the IAM role flag an explicitly chosen credential source or what the
-   * default chain reads on the host; a GCS service account key, or with GCP IAM a Google
-   * credentials file on the host. The IAM role flag alone does not count: the UI and v2 API set it
+   * Whether the config, with what YBA's host gives it, has credentials of its own for the bucket's
+   * cloud, which YBA keeps using over a customer-wide guess and falls back on when there is no
+   * entry: S3 access keys, or with the IAM role flag a credential source that can work on this
+   * host; a GCS service account key, or with GCP IAM a Google credentials file on the host. Only
+   * asked off the bucket's cloud. The IAM role flag alone does not count: the UI and v2 API set it
    * on every federated S3 config.
    */
   private boolean hasCredentialsOfItsOwn(CustomerConfigData configData) {
@@ -704,32 +712,53 @@ public class BackupHelper {
       if (StringUtils.isNotBlank(s3.awsAccessKeyId)) {
         return true;
       }
-      if (!s3.isIAMInstanceProfile) {
-        return false;
-      }
-      IAMConfiguration iam = s3.iamConfig != null ? s3.iamConfig : new IAMConfiguration();
-      return iam.credentialSource != IAMCredentialSource.DEFAULT
-          || hostHasAwsCredentials(StringUtils.defaultIfBlank(iam.iamUserProfile, "default"));
+      return s3.isIAMInstanceProfile
+          && hostHasAwsCredentials(s3.iamConfig != null ? s3.iamConfig : new IAMConfiguration());
     }
-    // For GCS, credentials of its own and a chain to fall back on are the same thing.
-    return hasCredentialChain(configData);
+    CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
+    return !gcs.useGcpIam || hostHasGcpCredentials();
   }
 
   /**
-   * Whether the host gives the default IAM chain ({@link IAMTemporaryCredentialsProvider})
-   * something to use off AWS: a web identity token file with its role, container credentials, or a
-   * profile the chain can get credentials from (keys, a credential process or a role). A profile
-   * with only settings in it, such as a region, does not count, nor does an SSO profile, as YBA
-   * does not ship the AWS SDK's SSO module. Package-private so tests do not depend on the machine
-   * they run on.
+   * Whether the config's IAM credential source ({@link IAMTemporaryCredentialsProvider}) can get
+   * credentials on this host, which is not on AWS: a web identity token file with its role
+   * (WEB_TOKEN), container credentials (ASSUME_INSTANCE_ROLE), a profile holding keys, a credential
+   * process or a role (IAM_USER), or any of those (DEFAULT). EC2_INSTANCE needs AWS instance
+   * metadata, so it never can. A profile with only settings in it, such as a region, does not
+   * count, nor does an SSO profile, as YBA does not ship the AWS SDK's SSO module. Package-private
+   * so tests do not depend on the machine they run on.
    */
-  boolean hostHasAwsCredentials(String profileName) {
-    if ((StringUtils.isNotBlank(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
-            && StringUtils.isNotBlank(System.getenv("AWS_ROLE_ARN")))
-        || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
-        || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"))) {
-      return true;
+  boolean hostHasAwsCredentials(IAMConfiguration iam) {
+    String profileName = StringUtils.defaultIfBlank(iam.iamUserProfile, "default");
+    IAMCredentialSource source =
+        iam.credentialSource != null ? iam.credentialSource : IAMCredentialSource.DEFAULT;
+    switch (source) {
+      case WEB_TOKEN:
+        return hasWebIdentityToken();
+      case ASSUME_INSTANCE_ROLE:
+        return hasContainerCredentials();
+      case IAM_USER:
+        return profileHasCredentials(profileName);
+      case EC2_INSTANCE:
+        return false;
+      default:
+        return hasWebIdentityToken()
+            || hasContainerCredentials()
+            || profileHasCredentials(profileName);
     }
+  }
+
+  private static boolean hasWebIdentityToken() {
+    return StringUtils.isNotBlank(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+        && StringUtils.isNotBlank(System.getenv("AWS_ROLE_ARN"));
+  }
+
+  private static boolean hasContainerCredentials() {
+    return StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
+        || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"));
+  }
+
+  private static boolean profileHasCredentials(String profileName) {
     try {
       return ProfileFile.defaultProfileFile()
           .profile(profileName)
@@ -764,21 +793,6 @@ public class BackupHelper {
     return Files.isRegularFile(dir.resolve("application_default_credentials.json"));
   }
 
-  /**
-   * Whether the config has credentials to fall back on, off the bucket's cloud: S3 access keys or
-   * the IAM role chain, which may work on the host (a profile, a mounted token); a GCS service
-   * account key, or with GCP IAM application default credentials, which off GCP need a Google
-   * credentials file on the host.
-   */
-  private boolean hasCredentialChain(CustomerConfigData configData) {
-    if (configData instanceof CustomerConfigStorageS3Data) {
-      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
-      return StringUtils.isNotBlank(s3.awsAccessKeyId) || s3.isIAMInstanceProfile;
-    }
-    CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) configData;
-    return !gcs.useGcpIam || hostHasGcpCredentials();
-  }
-
   /** Puts a provider's federation entry on the in-memory config; no-op when there is none. */
   private static void stampFederationTarget(
       CustomerConfigData configData, @Nullable CrossCloudFederationTarget target) {
@@ -808,6 +822,13 @@ public class BackupHelper {
         Provider.getAll(customerUUID).stream()
             .map(p -> CloudInfoInterface.getCrossCloudFederationTarget(p, targetCloud))
             .filter(Objects::nonNull)
+            // Compare only what is stamped: a gcp entry's role ARN is unused and may differ.
+            .map(
+                t ->
+                    CrossCloudFederationTarget.of(
+                        t.targetCloud,
+                        t.audience,
+                        t.targetCloud == CloudType.aws ? t.roleArn : null))
             .distinct()
             .collect(Collectors.toList());
     if (targets.size() > 1) {
