@@ -37,7 +37,7 @@ var setTelemetryConfigCmd = &cobra.Command{
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(universeName) == 0 {
 			cmd.Help()
@@ -52,21 +52,19 @@ var setTelemetryConfigCmd = &cobra.Command{
 				formatter.RedColor))
 		}
 		if cmd.Flags().Changed("upgrade-option") {
-			upgradeOption, _ := cmd.Flags().GetString("upgrade-option")
-			switch strings.ToLower(upgradeOption) {
-			case "rolling", "non-rolling":
-			default:
-				logrus.Fatalln(formatter.Colorize(
-					"Invalid upgrade-option specified. Allowed values (case insensitive): "+
-						"Rolling, Non-Rolling\n",
-					formatter.RedColor))
+			upgradeOption, err := cmd.Flags().GetString("upgrade-option")
+			if err != nil {
+				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if _, err := parseUpgradeOption(upgradeOption); err != nil {
+				logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI, universe, err := Validations(cmd)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		universeName := universe.GetName()
@@ -98,7 +96,7 @@ var setTelemetryConfigCmd = &cobra.Command{
 
 		dryRun, err := cmd.Flags().GetBool("dry-run")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		logExporterResolution(requested, resolved)
@@ -179,7 +177,7 @@ func parseTelemetryConfig(cmd *cobra.Command) *ybav2client.TelemetryConfig {
 		filePath := readConfigFilePathFlag(cmd)
 		fileBytes, err := os.ReadFile(filePath)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		content = string(fileBytes)
 	}
@@ -213,44 +211,36 @@ func logExporterResolution(
 	}
 }
 
-// buildUpgradeOptions sends only the flags the user set. A set upgrade-option stops YBA from
-// skipping the restart when only collector-handled export types change.
+// buildUpgradeOptions returns nil unless --upgrade-option is set. YBA treats any upgrade_options
+// object as an explicit choice (rolling_upgrade defaults to true) and then never skips the
+// restart for collector-only changes.
 func buildUpgradeOptions(cmd *cobra.Command) *ybav2client.ExportTelemetryUpgradeOptions {
-	options := ybav2client.ExportTelemetryUpgradeOptions{}
-	set := false
-
-	if cmd.Flags().Changed("upgrade-option") {
-		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
-		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		// PreRun has checked the value.
-		options.SetRollingUpgrade(strings.EqualFold(upgradeOption, "rolling"))
-		set = true
-	}
-
-	if cmd.Flags().Changed("delay-between-master-servers") {
-		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
-		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		options.SetDelayBetweenMasterServers(masterDelay)
-		set = true
-	}
-
-	if cmd.Flags().Changed("delay-between-tservers") {
-		tserverDelay, err := cmd.Flags().GetInt32("delay-between-tservers")
-		if err != nil {
-			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		options.SetDelayBetweenTserverServers(tserverDelay)
-		set = true
-	}
-
-	if !set {
+	if !cmd.Flags().Changed("upgrade-option") {
 		return nil
 	}
+	upgradeOption, err := cmd.Flags().GetString("upgrade-option")
+	if err != nil {
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	rolling, err := parseUpgradeOption(upgradeOption)
+	if err != nil {
+		logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	options := ybav2client.ExportTelemetryUpgradeOptions{}
+	options.SetRollingUpgrade(rolling)
 	return &options
+}
+
+// parseUpgradeOption returns whether upgradeOption asks for a rolling restart.
+func parseUpgradeOption(upgradeOption string) (bool, error) {
+	switch strings.ToLower(upgradeOption) {
+	case "rolling":
+		return true, nil
+	case "non-rolling":
+		return false, nil
+	}
+	return false, fmt.Errorf(
+		"Invalid upgrade-option specified. Allowed values (case insensitive): Rolling, Non-Rolling")
 }
 
 func init() {
@@ -277,14 +267,17 @@ func init() {
 	setTelemetryConfigCmd.Flags().String("upgrade-option", "",
 		"[Optional] Upgrade option. Allowed values (case insensitive): Rolling, "+
 			"Non-Rolling (involves DB downtime). When omitted, YBA picks: on a VM "+
-			"universe it skips the node restart if no changed export type needs "+
-			"one, and otherwise does a Rolling restart.")
+			"universe, a YBA build that supports it skips the node restart if no "+
+			"changed export type needs one; otherwise YBA does a Rolling restart.")
+	// YBA does not apply these delays to the telemetry restart.
 	setTelemetryConfigCmd.Flags().Int32("delay-between-master-servers", 0,
-		"[Optional] Upgrade delay between Master servers (in seconds). "+
-			"When omitted, YBA uses its default.")
+		"[Deprecated] Has no effect.")
 	setTelemetryConfigCmd.Flags().Int32("delay-between-tservers", 0,
-		"[Optional] Upgrade delay between Tservers (in seconds). "+
-			"When omitted, YBA uses its default.")
+		"[Deprecated] Has no effect.")
+	setTelemetryConfigCmd.Flags().MarkDeprecated("delay-between-master-servers",
+		"YBA does not apply it.")
+	setTelemetryConfigCmd.Flags().MarkDeprecated("delay-between-tservers",
+		"YBA does not apply it.")
 	setTelemetryConfigCmd.Flags().Bool("dry-run", false,
 		"[Optional] Only validate the input and report what would change.")
 }

@@ -158,16 +158,15 @@ func TestStaticSinkCapabilitiesCoverEveryProviderType(t *testing.T) {
 	}
 }
 
-// YBA skips the node restart for collector-only changes only when rolling_upgrade is absent.
+// YBA skips the restart for collector-only changes only when upgrade_options is absent: any
+// upgrade_options object counts as an explicit choice, so a deprecated delay flag sends nothing.
 func TestBuildUpgradeOptionsSendsOnlySetFlags(t *testing.T) {
 	cases := []struct {
-		args             []string
-		wantNil          bool
-		wantRolling      *bool
-		wantTserverDelay int32
+		args        []string
+		wantRolling *bool
 	}{
-		{args: nil, wantNil: true},
-		{args: []string{"--delay-between-tservers", "50"}, wantTserverDelay: 50},
+		{args: nil},
+		{args: []string{"--delay-between-tservers", "50"}},
 		{args: []string{"--upgrade-option", "Rolling"}, wantRolling: ybav2client.PtrBool(true)},
 		{
 			args:        []string{"--upgrade-option", "non-rolling"},
@@ -183,23 +182,16 @@ func TestBuildUpgradeOptionsSendsOnlySetFlags(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := buildUpgradeOptions(cmd)
-		if (got == nil) != tc.wantNil {
-			t.Fatalf("%v: options = %+v, want nil = %v", tc.args, got, tc.wantNil)
-		}
-		if got == nil {
+		if tc.wantRolling == nil {
+			if got != nil {
+				t.Errorf("%v: sent upgrade_options %+v", tc.args, got)
+			}
 			continue
 		}
-		if (got.RollingUpgrade == nil) != (tc.wantRolling == nil) ||
-			(got.RollingUpgrade != nil && *got.RollingUpgrade != *tc.wantRolling) {
-			t.Errorf("%v: rolling_upgrade = %v, want %v",
-				tc.args, got.RollingUpgrade, tc.wantRolling)
-		}
-		if got.DelayBetweenMasterServers != nil {
-			t.Errorf("%v: unset delay-between-master-servers was sent", tc.args)
-		}
-		if tc.wantTserverDelay != got.GetDelayBetweenTserverServers() {
-			t.Errorf("%v: delay_between_tserver_servers = %d, want %d",
-				tc.args, got.GetDelayBetweenTserverServers(), tc.wantTserverDelay)
+		if got == nil || got.RollingUpgrade == nil || *got.RollingUpgrade != *tc.wantRolling ||
+			got.DelayBetweenTserverServers != nil || got.DelayBetweenMasterServers != nil {
+			t.Errorf("%v: upgrade_options = %+v, want only rolling_upgrade = %v",
+				tc.args, got, *tc.wantRolling)
 		}
 	}
 }
