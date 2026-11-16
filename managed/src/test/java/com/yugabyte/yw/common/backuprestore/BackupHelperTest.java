@@ -91,6 +91,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.pekko.actor.CoordinatedShutdown;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
@@ -145,7 +146,8 @@ public class BackupHelperTest extends FakeDBApplication {
                 mockYbcBackupUtil,
                 mockSoftwareUpgradeHelper,
                 mockHostCloudDetector,
-                app.injector().instanceOf(PlatformExecutorFactory.class)));
+                app.injector().instanceOf(PlatformExecutorFactory.class),
+                app.injector().instanceOf(CoordinatedShutdown.class)));
     when(mockStorageUtilFactory.getStorageUtil(eq("S3"))).thenReturn(mockAWSUtil);
     when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
     // The host's own credentials depend on the machine the test runs on; none unless a test says.
@@ -2045,7 +2047,8 @@ public class BackupHelperTest extends FakeDBApplication {
             mockYbcBackupUtil,
             mockSoftwareUpgradeHelper,
             mockHostCloudDetector,
-            app.injector().instanceOf(PlatformExecutorFactory.class));
+            app.injector().instanceOf(PlatformExecutorFactory.class),
+            app.injector().instanceOf(CoordinatedShutdown.class));
     File config = File.createTempFile("aws-config", "");
     File credentials = File.createTempFile("aws-credentials", "");
     config.deleteOnExit();

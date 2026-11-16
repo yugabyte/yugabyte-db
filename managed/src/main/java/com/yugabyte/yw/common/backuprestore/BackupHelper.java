@@ -85,7 +85,6 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -97,6 +96,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -107,6 +107,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.pekko.Done;
+import org.apache.pekko.actor.CoordinatedShutdown;
 import org.slf4j.MDC;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
@@ -125,10 +127,9 @@ import play.libs.Json;
 public class BackupHelper {
   private static final String VALID_OWNER_REGEX = "^[\\pL_][\\pL\\pM_0-9]*$";
   private static final int maxRetryCount = 5;
-  // Checks of the host's AWS credentials that may be in flight at once. One more waits up to the
-  // pool's offer timeout (3 s) for a free thread, then is not run, and the config's own chain is
-  // kept.
-  private static final int IAM_CREDENTIALS_CHECK_THREADS = 4;
+  // Checks of the host's AWS credentials (yb.iam_credentials_check): one submitted while every
+  // thread is busy is rejected right away, not run, and the config's own chain is kept.
+  private static final String IAM_CREDENTIALS_CHECK_POOL = "iam_credentials_check";
   private static final String TABLESPACES_SQL_QUERY =
       "SELECT jsonb_agg(t) from (SELECT spcname, spcoptions"
           + " from pg_catalog.pg_tablespace where spcname not like 'pg_%') as t;";
@@ -161,7 +162,8 @@ public class BackupHelper {
       YbcBackupUtil ybcBackupUtil,
       SoftwareUpgradeHelper softwareUpgradeHelper,
       HostCloudDetector hostCloudDetector,
-      PlatformExecutorFactory executorFactory) {
+      PlatformExecutorFactory executorFactory,
+      CoordinatedShutdown coordinatedShutdown) {
     this.ybcManager = ybcManager;
     this.ybClientService = ybClientService;
     this.customerConfigService = customerConfigService;
@@ -174,16 +176,19 @@ public class BackupHelper {
     this.commissioner = commissioner;
     this.hostCloudDetector = hostCloudDetector;
     this.iamCredentialsCheckExecutor =
-        executorFactory.createExecutor(
-            "iam_credentials_check",
-            0 /* corePoolSize */,
-            IAM_CREDENTIALS_CHECK_THREADS,
-            Duration.ofMinutes(1) /* keepAliveTime */,
-            0 /* queueCapacity: hand each check straight to a thread */,
+        executorFactory.createNonBlockingExecutor(
+            IAM_CREDENTIALS_CHECK_POOL,
             new ThreadFactoryBuilder()
                 .setNameFormat("iam-credentials-check-%d")
                 .setDaemon(true)
                 .build());
+    coordinatedShutdown.addTask(
+        CoordinatedShutdown.PhaseServiceStop(),
+        "iam-credentials-check-shutdown",
+        () -> {
+          iamCredentialsCheckExecutor.shutdown();
+          return CompletableFuture.completedFuture(Done.done());
+        });
   }
 
   public String getValidOwnerRegex() {
@@ -613,12 +618,15 @@ public class BackupHelper {
    * it and neither the config nor the host has credentials of its own for the bucket's cloud (see
    * {@link #hasCredentialsOfItsOwn}), so a setup that reached the bucket before keeps doing so.
    *
-   * @return false when YBA has no way to reach the bucket: it found no entry, and either runs on
-   *     GCP with an S3 config that has no access keys without the IAM role flag, or with the flag
-   *     an IAM credential source that has nothing on the host to use (its keys are then ignored),
-   *     or runs on confirmed AWS with a GCP IAM GCS config and no application default credentials
-   *     on the host. Known limit: on AWS that cannot be confirmed, a keyless S3 config without the
-   *     flag is still built from blank keys (see {@link #useYbaIamRole}).
+   * @return false when YBA has no way to reach the bucket. With no entry from the universe, that is
+   *     when it runs on confirmed AWS with a GCS config that has neither GCP IAM nor a service
+   *     account key, whatever the providers' entries, as the client uses an entry only with GCP
+   *     IAM. With no entry from the providers either, it is also when it runs on GCP with an S3
+   *     config that has no access keys without the IAM role flag, or with the flag an IAM
+   *     credential source that has nothing on the host to use (its keys are then ignored), or runs
+   *     on confirmed AWS with a GCP IAM GCS config and no application default credentials on the
+   *     host. Known limit: on AWS that cannot be confirmed, a keyless S3 config without the flag is
+   *     still built from blank keys (see {@link #useYbaIamRole}).
    * @throws PlatformServiceException when the customer's providers cannot be read.
    */
   public boolean applyYbaFederatedIdentity(

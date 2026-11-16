@@ -51,10 +51,7 @@ public class IAMTemporaryCredentialsProvider {
   private static final int WAIT_EACH_RETRY_SECS = 5;
   private static final String IDP_COMMUNICATION_ERROR = "IDPCommunicationError";
 
-  /**
-   * How long {@link #hasCredentialsOffAws} waits for the check once it runs. Handing it to the pool
-   * can take the pool's offer timeout on top of that when all its threads are busy.
-   */
+  /** How long {@link #hasCredentialsOffAws} waits for the check. */
   static final Duration OFF_AWS_CHECK_TIMEOUT = Duration.ofSeconds(10);
 
   private final RuntimeConfGetter confGetter;
@@ -164,8 +161,8 @@ public class IAMTemporaryCredentialsProvider {
    * expired. Neither does AWS instance metadata, which only AWS serves. As this runs on request
    * threads, it runs on {@code executor}, a bounded shared pool, and gives up after {@link
    * #OFF_AWS_CHECK_TIMEOUT}, so a source still waiting on AWS counts, as for a timeout. When the
-   * pool has no room, which can take its offer timeout to find out, the check is not run and the
-   * config counts as having credentials, whatever its sources.
+   * pool rejects the check for want of room, the check is not run and the config counts as having
+   * credentials, whatever its sources.
    */
   public boolean hasCredentialsOffAws(
       CustomerConfigStorageS3Data s3Data, ExecutorService executor) {
@@ -333,9 +330,6 @@ public class IAMTemporaryCredentialsProvider {
           }
         } catch (RuntimeException e) {
           roleLookupFailure = e;
-          log.debug(
-              "Could not get maximum duration for role arn: {}. Using default 1 hour instead.",
-              roleArn);
         }
         if (roleArn == null && roleLookupFailure != null) {
           // AssumeRole needs the role ARN, so it could only fail: report why there is none.
