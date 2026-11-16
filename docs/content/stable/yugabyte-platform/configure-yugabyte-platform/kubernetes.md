@@ -457,7 +457,7 @@ To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](htt
 
 ### Prepare OpenShift clusters for MCS
 
-To prepare OpenShift clusters for MCS, follow [Prepare OpenShift clusters for MCS](../openshift/#prepare-openshift-clusters-for-mcs).
+For OpenShift (RHACM and Submariner) clusters, see [Prepare OpenShift clusters for MCS](../openshift/#prepare-openshift-clusters-for-mcs) on the OpenShift provider page.
 
 ### Prepare Kubernetes clusters for Istio multicluster
 
@@ -508,7 +508,7 @@ For example, if your cluster membership name is `yb-asia-south1`, then the **Add
 
 #### Configure region and zones for OpenShift MCS
 
-To configure regions and zones for OpenShift clusters connected via MCS, follow [Configure region and zones for OpenShift MCS](../openshift/#configure-region-and-zones-for-openshift-mcs).
+For OpenShift clusters connected using MCS (Submariner), see [Configure region and zones for OpenShift MCS](../openshift/#configure-region-and-zones-for-openshift-mcs) on the OpenShift provider page.
 
 #### Configure region and zones for Istio
 
