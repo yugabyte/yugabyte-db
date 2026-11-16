@@ -3,12 +3,14 @@ SET search_path TO public;
 CREATE EXTENSION pg_hint_plan;
 CREATE SCHEMA s0;
 
-CREATE TABLE t1 (id int PRIMARY KEY, val int);
-CREATE TABLE t2 (id int PRIMARY KEY, val int);
-CREATE TABLE t3 (id int PRIMARY KEY, val int);
-CREATE TABLE t4 (id int PRIMARY KEY, val int);
-CREATE TABLE t5 (id int PRIMARY KEY, val int);
-CREATE TABLE p1 (id int PRIMARY KEY, val int);
+-- YB: ASC primary keys keep each table ordered by id, as upstream's btree
+-- primary keys do; YB's default hash primary key is not ordered.
+CREATE TABLE t1 (id int, val int, PRIMARY KEY (id ASC));
+CREATE TABLE t2 (id int, val int, PRIMARY KEY (id ASC));
+CREATE TABLE t3 (id int, val int, PRIMARY KEY (id ASC));
+CREATE TABLE t4 (id int, val int, PRIMARY KEY (id ASC));
+CREATE TABLE t5 (id int, val int, PRIMARY KEY (id ASC));
+CREATE TABLE p1 (id int, val int, PRIMARY KEY (id ASC));
 -- TODOs INHERITANCE is unsupported
 /*
 CREATE TABLE p1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p1);
@@ -20,7 +22,7 @@ CREATE TABLE p1_c1_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 50 AND id <= 100)) INH
 CREATE TABLE p1_c3_c1 (LIKE p1 INCLUDING ALL, CHECK (id > 200 AND id <= 250)) INHERITS(p1_c3);
 CREATE TABLE p1_c3_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) INHERITS(p1_c3);
 */
-CREATE TABLE p2 (id int PRIMARY KEY, val text);
+CREATE TABLE p2 (id int, val text, PRIMARY KEY (id ASC));
 CREATE INDEX p2_id_val_idx ON p2 (id, val);
 CREATE UNIQUE INDEX p2_val_idx ON p2 (val);
 CREATE INDEX p2_ununi_id_val_idx ON p2 (val);
@@ -45,7 +47,7 @@ CREATE TABLE p2_c1_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 50 AND id <= 100)) INH
 CREATE TABLE p2_c3_c1 (LIKE p2 INCLUDING ALL, CHECK (id > 200 AND id <= 250)) INHERITS(p2_c3);
 CREATE TABLE p2_c3_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) INHERITS(p2_c3);
 */
-CREATE TABLE s0.t1 (id int PRIMARY KEY, val int);
+CREATE TABLE s0.t1 (id int, val int, PRIMARY KEY (id ASC));
 
 INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i % 10 FROM (SELECT generate_series(1, 1000) i) t;
