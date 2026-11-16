@@ -15,6 +15,9 @@ GET     /api                        api.controllers.ApiDocController.api
 + forceNoAudit
 {{/noAudit}}
 {{/vendorExtensions.x-yba-api-audit}}
+{{#vendorExtensions.x-yba-api-visibility}}
++ ybaApiVisibility={{{vendorExtensions.x-yba-api-visibility}}}
+{{/vendorExtensions.x-yba-api-visibility}}
 {{httpMethod}}     {{{contextPath}}}{{{path}}}                     {{apiPackage}}.{{classname}}Controller.{{operationId}}(request: Request{{#hasPathParams}}, {{/hasPathParams}}{{#pathParams}}{{paramName}}: {{#isUuid}}java.util.UUID{{/isUuid}}{{^isUuid}}{{{dataType}}}{{/isUuid}}{{^-last}}, {{/-last}}{{/pathParams}})
 {{/operation}}
 {{/operations}}

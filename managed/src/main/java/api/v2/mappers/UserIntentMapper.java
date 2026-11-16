@@ -44,6 +44,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -273,7 +274,10 @@ public interface UserIntentMapper {
   @Mapping(target = "imageBundleUuid", source = "imageBundleUUID")
   @Mapping(target = "helmOverrides", source = "universeOverrides")
   @Mapping(target = "azHelmOverrides", source = "azOverrides")
-  @Mapping(target = "provider", expression = "java(UUID.fromString(userIntent.provider))")
+  @Mapping(
+      target = "provider",
+      expression =
+          "java(userIntent.provider == null ? null : UUID.fromString(userIntent.provider))")
   ClusterProviderSpec userIntentToClusterProviderSpec(UserIntent userIntent);
 
   // v2 to v1 mappings begin here
@@ -942,6 +946,12 @@ public interface UserIntentMapper {
     if (clusterNetworkingEditSpec.getEnableExposingService() != null) {
       userIntent.enableExposingService =
           toV1ExposingServiceState(clusterNetworkingEditSpec.getEnableExposingService());
+    }
+    if (clusterNetworkingEditSpec.getManagedLoadBalancer() != null) {
+      userIntent.setManagedLoadBalancer(
+          ManagedLoadBalancerUtil.getEditedSetting(
+              userIntent.getManagedLoadBalancer(),
+              toV1ManagedLoadBalancerConfig(clusterNetworkingEditSpec.getManagedLoadBalancer())));
     }
     return userIntent;
   }

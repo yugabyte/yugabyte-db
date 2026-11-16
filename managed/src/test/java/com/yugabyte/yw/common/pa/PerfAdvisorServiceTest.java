@@ -11,11 +11,13 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
@@ -29,6 +31,7 @@ import junitparams.JUnitParamsRunner;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
@@ -180,6 +183,70 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
       PACollector fromDb = perfAdvisorService.get(platform.getCustomerUUID(), platform.getUuid());
       assertThat(fromDb, nullValue());
     }
+  }
+
+  @Test
+  public void testSyncActiveTableMetricsSendsTheUniversesSetting() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      Universe universe = registeredUniverse(server);
+      // PA has it on; the universe's runtime flag is at its default, off.
+      server.enqueue(new MockResponse().setBody(universeMetadataJson(universe, true)));
+      server.enqueue(new MockResponse().setBody(universeMetadataJson(universe, false)));
+
+      perfAdvisorService.syncActiveTableMetrics(universe);
+
+      server.takeRequest(); // registering the collector
+      assertThat(server.takeRequest().getMethod(), equalTo("GET"));
+      RecordedRequest put = server.takeRequest();
+      assertThat(put.getMethod(), equalTo("PUT"));
+      assertThat(
+          Json.parse(put.getBody().readUtf8()).get("active_table_metrics_enabled").asBoolean(),
+          equalTo(false));
+    }
+  }
+
+  @Test
+  public void testSyncActiveTableMetricsSkipsAnUnchangedSetting() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      server.start();
+      Universe universe = registeredUniverse(server);
+      server.enqueue(new MockResponse().setBody(universeMetadataJson(universe, false)));
+
+      perfAdvisorService.syncActiveTableMetrics(universe);
+
+      assertThat(server.getRequestCount(), equalTo(2));
+    }
+  }
+
+  @Test
+  public void testSyncActiveTableMetricsIgnoresUnregisteredUniverses() {
+    perfAdvisorService.syncActiveTableMetrics(ModelFactory.createUniverse());
+  }
+
+  /** A universe registered with a collector served by {@code server}. */
+  private Universe registeredUniverse(MockWebServer server) {
+    HttpUrl baseUrl = server.url("/");
+    PACollector platform =
+        createTestPlatform(baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
+    server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(platform)));
+    perfAdvisorService.save(platform, false);
+    Universe universe = ModelFactory.createUniverse(Customer.get(defaultCustomerUuid).getId());
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> u.getUniverseDetails().setPaCollectorUuid(platform.getUuid()));
+  }
+
+  /** PA's answer to a metadata lookup: a list with the universe's record. */
+  /** The universe as the collector's v2 API returns it. */
+  private String universeMetadataJson(Universe universe, boolean activeTableMetricsEnabled) {
+    ObjectNode universeJson = Json.newObject();
+    universeJson.putObject("info").put("universe_uuid", universe.getUniverseUUID().toString());
+    universeJson
+        .putObject("spec")
+        .put("customer_uuid", defaultCustomerUuid.toString())
+        .put("active_table_metrics_enabled", activeTableMetricsEnabled);
+    return Json.stringify(universeJson);
   }
 
   private PACollector createTestPlatform(String name) {

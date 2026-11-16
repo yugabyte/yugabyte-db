@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <map>
 #include <string>
 #include <google/protobuf/repeated_field.h>
 
@@ -36,6 +37,7 @@ class CDCStreamOptionsPB;
 class InsertHistoricalColocatedSchemaPackingResponsePB;
 class MasterReplicationProxy;
 class GetXClusterStreamsResponsePB;
+class SysPersistenceBlockMapEntryPB;
 }  // namespace master
 
 namespace rpc {
@@ -152,6 +154,12 @@ class XClusterClient {
   Status AddNamespaceToOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
 
+  // See XClusterManager::StopPersisting and StartPersisting.
+  Status StopPersisting(const std::vector<NamespaceId>& namespace_ids);
+  Status StartPersisting(const std::vector<NamespaceId>& namespace_ids);
+
+  Result<master::SysPersistenceBlockMapEntryPB> GetPersistenceBlockMap();
+
   // Starts the addition of namespace to inbound replication group.
   // IsAlterXClusterReplicationDone must be called in order to wait for the operation to complete.
   Status AddNamespaceToXClusterReplication(
@@ -183,6 +191,11 @@ class XClusterClient {
   Status DeleteXClusterWalAnchorStreams(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& source_table_ids);
+
+  // Records the tablets whose checkpoints were written to cdc_state for each stream. See
+  // master::XClusterStreamBootstrapInfoPB.
+  Status RecordXClusterStreamBootstrapInfo(
+      const std::map<xrepl::StreamId, std::vector<TabletId>>& stream_tablets);
 
   Result<xrepl::StreamId> CreateXClusterStream(
       const TableId& table_id, bool active, cdc::StreamModeTransactional transactional);

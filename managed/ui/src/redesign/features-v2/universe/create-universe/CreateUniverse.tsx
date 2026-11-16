@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useMethods } from 'react-use';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +20,7 @@ import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
 import {
   CreateUniverseContext,
+  CreateUniverseSteps,
   createUniverseFormMethods,
   createUniverseFormProps,
   initialCreateUniverseFormState,
@@ -32,12 +34,20 @@ import {
   fetchCreateUniverseDbVersions,
   fetchCreateUniverseProviders
 } from './helpers/generalSettingsDefaults';
+import { resolveCreateUniverseFormMode } from './helpers/createUniverseFormModePreference';
+import { RESILIENCE_FORM_MODE } from './fields/FieldNames';
 //style imports
 import './styles/override.css';
 
 import YBLogo from '../../../assets/yb_logo.svg';
 import Close from '../../../assets/close rounded.svg';
 import { CircularProgress } from '@material-ui/core';
+import {
+  ENABLE_MULTI_PROVIDER_CREATE,
+  getPrimaryProvider,
+  isMultiProvider
+} from './helpers/providerConfigurations';
+import { areAllProvidersInstanceConfigured } from './helpers/instanceByProvider';
 
 const { YBButton } = yba;
 
@@ -69,13 +79,48 @@ const CreateHeader = styled('div')(() => ({
   minWidth: '1200px'
 }));
 
+function buildInitialFormState(
+  settings?: Record<string, unknown> | null
+): createUniverseFormProps {
+  const resilienceFormMode = resolveCreateUniverseFormMode(settings);
+  return {
+    ...initialCreateUniverseFormState,
+    resilienceAndRegionsSettings: {
+      ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
+      [RESILIENCE_FORM_MODE]: resilienceFormMode
+    }
+  };
+}
+
 export function CreateUniverse() {
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.steps' });
-  const restoreContextData = useMethods(createUniverseFormMethods, initialCreateUniverseFormState);
-  const [{ activeStep, resilienceType, generalSettings }] = restoreContextData;
+  const userSettings = useSelector(
+    (state: any) => state.customer.currentUser?.data?.settings as Record<string, unknown> | null
+  );
+  // Seed once from profile available at mount; never late-overwrite if settings arrive later.
+  const [initialFormState] = useState(() => buildInitialFormState(userSettings));
+  const restoreContextData = useMethods(createUniverseFormMethods, initialFormState);
+  const [
+    {
+      activeStep,
+      resilienceType,
+      generalSettings,
+      instanceByProvider,
+      nodesAvailabilitySettings
+    }
+  ] = restoreContextData;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
+  const multiHardwareIncomplete =
+    activeStep === CreateUniverseSteps.INSTANCE &&
+    ENABLE_MULTI_PROVIDER_CREATE &&
+    isMultiProvider(generalSettings) &&
+    !areAllProvidersInstanceConfigured(
+      generalSettings?.providerConfigurations ?? [],
+      instanceByProvider,
+      !!nodesAvailabilitySettings?.useDedicatedNodes
+    );
   const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s, false), [
     t,
     resilienceType,
@@ -102,10 +147,7 @@ export function CreateUniverse() {
   }, [activeStep]);
 
   // Prefetch providers + DB versions in parallel so step 1 reuses the same cache.
-  const { isLoading } = useQuery(
-    CREATE_UNIVERSE_PROVIDERS_QUERY_KEY,
-    fetchCreateUniverseProviders
-  );
+  const { isLoading } = useQuery(CREATE_UNIVERSE_PROVIDERS_QUERY_KEY, fetchCreateUniverseProviders);
   useQuery(CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY, fetchCreateUniverseDbVersions);
 
   const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
@@ -195,7 +237,7 @@ export function CreateUniverse() {
                       minWidth: '856px',
                       width: '100%',
                       gap: 3,
-                      mr: 1,
+                      pr: '24px',
                       pb: 3
                     }}
                   >
@@ -234,7 +276,7 @@ export function CreateUniverse() {
                           onClick={() => {
                             void runStepNavigation(() => currentStepRef.current?.onNext());
                           }}
-                          disabled={isNavigating}
+                          disabled={isNavigating || multiHardwareIncomplete}
                           endIcon={isNavigating ? <CircularProgress size={12} /> : undefined}
                           variant="ybaPrimary"
                           size="large"

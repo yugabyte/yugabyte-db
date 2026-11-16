@@ -77,21 +77,22 @@ public class AlertTemplateService {
   /**
    * Environments where an alert template is applicable. Used to skip templates that depend on
    * metrics not available in the current YBA deployment type (for example container-only K8s
-   * metrics on a VM install, or node-exporter VM metrics on a K8s install).
+   * metrics on a VM install, or node-exporter VM metrics on a K8s install), or on the universe's
+   * type.
    */
   public enum ApplicableEnvironment {
     ANY,
     VM,
     K8S;
 
-    public boolean matches(boolean ybaRunningInK8s) {
+    public boolean matches(boolean isKubernetes) {
       switch (this) {
         case ANY:
           return true;
         case VM:
-          return !ybaRunningInK8s;
+          return !isKubernetes;
         case K8S:
-          return ybaRunningInK8s;
+          return isKubernetes;
       }
       return true;
     }
@@ -116,6 +117,7 @@ public class AlertTemplateService {
     boolean thresholdConditionReadOnly = true;
     String thresholdUnitName = "";
     ApplicableEnvironment applicableEnvironment = ApplicableEnvironment.ANY;
+    ApplicableEnvironment universeType = ApplicableEnvironment.ANY;
     TestAlertSettings testAlertSettings = new TestAlertSettings();
     Map<String, String> labels = new HashMap<>();
     Map<String, String> annotations = new HashMap<>();
@@ -144,6 +146,13 @@ public class AlertTemplateService {
           Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
           query =
               query.replaceAll("__mountPoints__", MetricQueryHelper.getDataMountPoints(universe));
+        }
+        if (query.contains("__k8sNamespaces__") || query.contains("__k8sPodNames__")) {
+          Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));
+          for (Map.Entry<String, String> selector :
+              MetricQueryHelper.getAlertKubernetesSelectors(universe).entrySet()) {
+            query = query.replace(selector.getKey(), selector.getValue());
+          }
         }
         if (query.contains("__systemMountPoints__")) {
           Universe universe = Universe.getOrBadRequest(UUID.fromString(universeUuid));

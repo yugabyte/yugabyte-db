@@ -1,5 +1,6 @@
 package redis.clients.jedis;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import redis.clients.jedis.tests.BaseYBClassForJedis;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class HostAndPortTest extends BaseYBClassForJedis {
   @Test
   public void checkExtractParts() throws Exception {

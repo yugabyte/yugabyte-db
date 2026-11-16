@@ -32,3 +32,17 @@ It expects a JSON file of the following format
 ]
 ```
 These creds should be used in the `auth.service_account` section of the app config.
+
+## Container image and Helm chart
+`docker/build-image.sh` builds the image from a release tarball, so the image runs the published
+jar. Configuration is the same environment variables as `src/main/resources/application.yaml`.
+
+```bash
+./release.sh -l
+./docker/build-image.sh -t build/releases/byoc_api_proxy-<version>.tar.gz -r byoc-api-proxy
+```
+
+`chart/` deploys it as a single-replica Deployment (a second poller would re-run requests that
+outlast the API server's 5 s claim lease). As a
+yugaware sub-chart it defaults to that release's YBA service; standalone, set `yba.baseUrl`.
+`chart/package.sh <version> <dir>` packages it with the chart version set to the proxy version.

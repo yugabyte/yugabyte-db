@@ -8,15 +8,17 @@ v_row                   record;
 v_sql                   text;
 v_tables_list_sql       text;
 
+yb_v_use_native_txn_ddl_and_locks boolean := pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks();
+
 BEGIN
 
-/* YB(GH#3642): advisory lock not supported
+IF yb_v_use_native_txn_ddl_and_locks THEN
 v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman run_maintenance'));
 IF v_adv_lock = false THEN
     RAISE NOTICE 'Partman maintenance already running or another session has not released its advisory lock.';
     RETURN;
 END IF;
-*/
+END IF; -- yb_v_use_native_txn_ddl_and_locks
 
 v_tables_list_sql := 'SELECT parent_table
             FROM @extschema@.part_config
@@ -50,9 +52,9 @@ LOOP
 
 END LOOP;
 
-/* YB(GH#3642): advisory lock not supported
+IF yb_v_use_native_txn_ddl_and_locks THEN
 PERFORM pg_advisory_unlock(hashtext('pg_partman run_maintenance'));
-*/
+END IF; -- yb_v_use_native_txn_ddl_and_locks
 END
 $$;
 

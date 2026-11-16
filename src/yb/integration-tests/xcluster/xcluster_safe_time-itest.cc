@@ -190,6 +190,16 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     return XClusterTestBase::WaitForSafeTime(namespace_id_, min_safe_time);
   }
 
+  Status VerifySafeTimeDoesNotAdvance(HybridTime min_safe_time) {
+    RETURN_NOT_OK(CorrectlyPollingAllTablets(kTabletCount));
+
+    return VerifyWaitTimesOut(
+        [this, min_safe_time] {
+          return XClusterTestBase::WaitForSafeTime(namespace_id_, min_safe_time);
+        },
+        kSafeTimeStuckCheckDuration);
+  }
+
   Status WaitForNotFoundSafeTime() {
     auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
     return WaitFor(
@@ -294,7 +304,7 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   auto ht_2 = GetProducerSafeTime();
 
   // 3. Make sure safe time has not progressed beyond the write.
-  ASSERT_NOK(WaitForSafeTime(ht_2));
+  ASSERT_OK(VerifySafeTimeDoesNotAdvance(ht_2));
 
   // 4. Make sure safe time has progressed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
@@ -326,7 +336,7 @@ TEST_F(XClusterSafeTimeTest, ConsumerHistoryCutoff) {
   auto ht_3 = GetProducerSafeTime();
 
   // 5. Make sure safe time has not progressed beyond the write.
-  ASSERT_NOK(WaitForSafeTime(ht_3));
+  ASSERT_OK(VerifySafeTimeDoesNotAdvance(ht_3));
 
   // Verify the history cutoff is adjusted based on the lag time.
   VerifyHistoryCutoffTime();

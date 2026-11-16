@@ -10,6 +10,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -49,6 +50,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
@@ -400,6 +402,72 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  @Parameters({"PreFinalize", "UpgradeFailed", "Paused"})
+  public void testRollbackAbortedBeforeReadyFailsRollbackAndRetryCompletes(String startState)
+      throws Exception {
+    // Rollback saves the old version before the Ready state, so an abort between the two leaves
+    // RollingBack, which the failure handler turns into RollbackFailed. Paused is a canary upgrade
+    // paused between AZs.
+    updatePrevYbSoftwareConfig("2.21.0.0-b1", "2.21.0.0-b2");
+    TestHelper.updateUniverseSoftwareUpgradeState(
+        defaultUniverse, SoftwareUpgradeState.valueOf(startState));
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.autoFlagUpdateSleepTimeInMilliSeconds.getKey(), "0ms");
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
+    int nodeCount = defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size();
+    mockDBServerVersion("2.21.0.0-b2", "2.21.0.0-b1", nodeCount);
+
+    UUID taskUuid;
+    TaskInfo taskInfo;
+    try {
+      setPausePosition(0);
+      taskUuid = commissioner.submit(TaskType.RollbackUpgrade, taskParams);
+      CustomerTask.create(
+          defaultCustomer,
+          taskParams.getUniverseUUID(),
+          taskUuid,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.RollbackUpgrade,
+          "fake-name");
+      waitForTaskPaused(taskUuid);
+      // The rollback subtasks are created only after the freeze runs.
+      setPausePosition(firstSubTaskPosition(taskUuid, TaskType.FreezeUniverse) + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      setAbortPosition(lastSubTaskPosition(taskUuid, TaskType.UpdateUniverseState));
+      commissioner.resumeTask(taskUuid);
+      taskInfo = waitForTask(taskUuid);
+    } finally {
+      clearAbortOrPausePositions();
+    }
+
+    assertEquals(Aborted, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.RollbackFailed,
+        defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertEquals(
+        "2.21.0.0-b1",
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+
+    mockDBServerVersion("2.21.0.0-b1", nodeCount);
+    CustomerTask retry = customerTaskManager.retryCustomerTask(defaultCustomer.getUuid(), taskUuid);
+    taskInfo = waitForTask(retry.getTaskUUID());
+
+    assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
   }
 
   @Test

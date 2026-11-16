@@ -443,6 +443,10 @@ Status PgDmlRead::HnswSetReadOptions(int ef_search) {
   return Status::OK();
 }
 
+void PgDmlRead::ANNAddPartitionKeyPrefix(Slice prefix) {
+  read_req_->mutable_vector_idx_options()->add_dup_partition_key_prefixes(prefix);
+}
+
 InPermutationGenerator PgDmlRead::MergeStreamPermutations() {
   DCHECK(merge_sort_keys_);
   DCHECK(bind_);

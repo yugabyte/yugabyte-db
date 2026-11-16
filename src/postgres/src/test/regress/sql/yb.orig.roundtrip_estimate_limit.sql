@@ -25,7 +25,10 @@ set client_min_messages to 'warning';
 --          LIMIT has no known bound: estimated == actual full pull.
 --   85xxx: trimmed -- DISTINCT resolved by a Unique over the scan's own
 --          ordering passes the bound through (#32804); the trim applies
---          when the bound's rows are expected to be all distinct.
+--          when the bound's rows are expected to be all distinct.  851xx: the
+--          scan is a distinct index scan, which returns one row per group, so
+--          the bound passes through whatever the column's duplication; 852xx
+--          are the 851xx scans without DISTINCT.
 --   86xxx: trimmed -- MIN/MAX optimized into an InitPlan runs under its own
 --          Limit 1, so its index scan is trimmed to one row with or
 --          without an outer LIMIT.
@@ -117,7 +120,7 @@ scan_nodes as (
         coalesce("First Fetch Limit", 0) pushed,
         case
             when "Index Name" not like '%_pkey'
-                and "Node Type" not like 'Index Only Scan%'
+                and "Node Type" not like '%Index Only Scan%'
                 and "Index Name" like 'rc_%' then
                 coalesce("Storage Table Read Requests", 0)
                 + coalesce("Storage Index Read Requests", 0)
@@ -125,12 +128,12 @@ scan_nodes as (
         end act_t,
         case
             when "Index Name" not like '%_pkey'
-                and "Node Type" not like 'Index Only Scan%'
+                and "Node Type" not like '%Index Only Scan%'
                 and "Index Name" like 'rc_%' then 0::float8
             else coalesce("Storage Index Read Requests", 0)
         end act_i
     from plan_rows
-    where "Node Type" like 'Index% Scan%' or "Node Type" = 'Seq Scan'
+    where "Node Type" like '%Index% Scan%' or "Node Type" = 'Seq Scan'
 )
 select
     qid,
@@ -229,6 +232,31 @@ insert into queries values
     (85002, $$select distinct b from ce.r where b between 1 and 12345 and b % 100 <= 33 limit 10$$),
     (85003, $$select distinct on (b) v, b from ce.r where b between 1 and 5000 order by b limit 7$$),
     (85011, $$select distinct b from ce.rC where b between 1 and 12345 limit 10$$);
+
+-- 851xx: DISTINCT resolved by a distinct index scan.  a repeats every value
+-- 10 times and g every 10 rows, but the scan returns one row per group, so
+-- the bound passes through the Unique above it; k below, at and above the
+-- default page.
+insert into queries values
+    (85101, $$select distinct a from ce.r where a between 1 and 1235 limit 7$$),
+    (85102, $$select distinct a from ce.r where a between 1 and 1235 limit 200$$),
+    (85103, $$select distinct a from ce.r where a between 1 and 1235 limit 1500$$),
+    (85104, $$select distinct a from ce.r where a between 1 and 1235 order by a desc limit 7$$),
+    (85105, $$select distinct g from sn.rp where g <= 1000 limit 10$$),
+    (85106, $$select distinct g from sn.rp where g <= 1000 limit 5000$$),
+    (85111, $$select distinct a from ce.rC where a between 1 and 1235 limit 7$$),
+    (85115, $$select distinct g from sn.rpC where g <= 1000 limit 10$$);
+
+-- 852xx: the 851xx scans without DISTINCT, for comparison.
+insert into queries values
+    (85201, $$select a from ce.r where a between 1 and 1235 limit 7$$),
+    (85202, $$select a from ce.r where a between 1 and 1235 limit 200$$),
+    (85203, $$select a from ce.r where a between 1 and 1235 limit 1500$$),
+    (85204, $$select a from ce.r where a between 1 and 1235 order by a desc limit 7$$),
+    (85205, $$select g from sn.rp where g <= 1000 limit 10$$),
+    (85206, $$select g from sn.rp where g <= 1000 limit 5000$$),
+    (85211, $$select a from ce.rC where a between 1 and 1235 limit 7$$),
+    (85215, $$select g from sn.rpC where g <= 1000 limit 10$$);
 
 -- 86xxx: MIN/MAX via MinMaxAggPath; the subquery runs under its own Limit 1,
 -- so its index scan is trimmed to one row whatever the outer query's LIMIT.

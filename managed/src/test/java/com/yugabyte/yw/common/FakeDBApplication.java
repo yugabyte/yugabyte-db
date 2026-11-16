@@ -68,9 +68,10 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public TemplateManager mockTemplateManager = mock(TemplateManager.class);
   public MetricQueryHelper mockMetricQueryHelper = spy(MetricQueryHelper.class);
   public CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
+  public HostCloudDetector mockHostCloudDetector = mock(HostCloudDetector.class);
   public CloudAPI.Factory mockCloudAPIFactory = mock(CloudAPI.Factory.class);
   public ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
-  public YBClientService mockService = mock(YBClientService.class);
+  public YBClientService mockService = TestHelper.mockYBClientService();
   public DnsManager mockDnsManager = mock(DnsManager.class);
   public NetworkManager mockNetworkManager = mock(NetworkManager.class);
   public YamlWrapper mockYamlWrapper = mock(YamlWrapper.class);
@@ -176,6 +177,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(TemplateManager.class).toInstance(mockTemplateManager))
                 .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
+                .overrides(bind(HostCloudDetector.class).toInstance(mockHostCloudDetector))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(bind(YBClientService.class).toInstance(mockService))
                 .overrides(bind(YBClientApi.class).toInstance(mockYBClient))

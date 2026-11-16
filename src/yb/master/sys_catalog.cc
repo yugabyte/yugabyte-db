@@ -80,6 +80,7 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 
 #include "yb/qlexpr/index.h"
@@ -88,6 +89,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/persistence_gate.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -142,6 +144,9 @@ METRIC_DEFINE_counter(
   "yb.master.SysCatalogTable Count of Writes",
   yb::MetricUnit::kRequests,
   "Number of writes to disk handled by the system catalog.");
+
+THREAD_POOL_METRICS_DEFINE(server, sys_catalog_full_compaction_pool,
+    "Thread pool for scheduled and statistics-based full compactions of the sys catalog tablet.");
 
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
@@ -217,6 +222,11 @@ Status SysCatalogTable::Start(ElectedLeaderCallback leader_cb) {
   RETURN_NOT_OK(ThreadPoolBuilder("append").set_min_threads(1).Build(&append_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("log-sync").set_min_threads(1).Build(&log_sync_pool_));
   RETURN_NOT_OK(ThreadPoolBuilder("log-alloc").set_min_threads(1).Build(&allocation_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("full-compaction")
+                    .set_max_threads(1)
+                    .set_metrics(THREAD_POOL_METRICS_INSTANCE(
+                        metric_entity_, sys_catalog_full_compaction_pool))
+                    .Build(&full_compaction_pool_));
 
   setup_config_dns_stats_ = METRIC_dns_resolve_latency_during_sys_catalog_setup.Instantiate(
       metric_entity_);
@@ -235,6 +245,9 @@ void SysCatalogTable::StartShutdown() {
 
   if (mem_manager_) {
     mem_manager_->Shutdown();
+  }
+  if (full_compaction_manager_) {
+    full_compaction_manager_->Shutdown();
   }
   auto peer = tablet_peer();
   if (peer) {
@@ -259,6 +272,7 @@ void SysCatalogTable::CompleteShutdown() {
   }
   inform_removed_master_pool_->Shutdown();
   snapshot_cleanup_pool_->Shutdown();
+  full_compaction_pool_->Shutdown();
   raft_pool_->Shutdown();
   tablet_prepare_pool_->Shutdown();
   if (multi_raft_manager_) {
@@ -485,7 +499,11 @@ void SysCatalogTable::SysCatalogStateChanged(
       (context->reason == StateChangeReason::NEW_LEADER_ELECTED ||
        (cstate.config().peers_size() == 1 &&
         context->reason == StateChangeReason::TABLET_PEER_STARTED))) {
-    CHECK_OK(leader_cb_.Run());
+    // A single master can win its first election before TABLET_PEER_STARTED is reported, so both
+    // notifications see it as leader of the same term. Load the sys catalog only once per term.
+    if (leader_cb_term_.exchange(cstate.current_term()) != cstate.current_term()) {
+      CHECK_OK(leader_cb_.Run());
+    }
   }
 
   if (context->reason == StateChangeReason::NEW_LEADER_ELECTED) {
@@ -594,14 +612,28 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
                                                                       &master_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
+  if (!persistence_gate_) {
+    // With the op's term: a catalog write admitted while this master was ready in an earlier term
+    // can be appended in a later one before that term's catalog load has refreshed the map.  Such
+    // a write gets LeaderNotReadyToServe, which the client retries.
+    persistence_gate_ = std::make_unique<tablet::PersistenceGate>(
+        [xcluster_manager = master_->catalog_manager_impl()->GetXClusterManagerImpl()](
+            int64_t op_term, uint32_t database_oid) {
+          return xcluster_manager->GetPersistenceBlockedThrough(op_term, database_oid);
+        },
+        metric_entity_);
+  }
+
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
   auto tablet_peer = std::make_shared<tablet::TabletPeer>(
       metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()),
-      metric_registry_, nullptr /* tablet_splitter */, master_->client_future());
+      metric_registry_, /*tablet_splitter=*/nullptr, persistence_gate_.get(),
+      master_->client_future());
 
+  leader_cb_term_ = -1;
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
 
@@ -628,10 +660,18 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
 
-  // Returns a vector that includes the tablet peer associated with master.
+  // Returns a vector that includes the tablet peer associated with master, or an empty vector if
+  // there is no tablet peer.
   const auto get_peers_lambda = [this]() -> std::vector<tablet::TabletPeerPtr> {
-    return { tablet_peer() };
+    auto peer = tablet_peer();
+    if (!peer) {
+      return {};
+    }
+    return { std::move(peer) };
   };
+
+  full_compaction_manager_ = std::make_unique<tserver::FullCompactionManager>(
+      get_peers_lambda, server::ClockPtr(master_->clock()));
 
   mem_manager_ = std::make_shared<tserver::TabletMemoryManager>(
       &tablet_options,
@@ -654,6 +694,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .tablet_options = tablet_options,
       .mutable_tablet_options = tablet::MutableTabletOptions{},
       .log_prefix_suffix = " P " + tablet_peer()->permanent_uuid(),
+      .tablet_context = tablet_peer().get(),
       .transaction_participant_context = tablet_peer().get(),
       .local_tablet_filter = client::LocalTabletFilter(),
       // This is only required if the sys catalog tablet is also acting as a transaction status
@@ -672,11 +713,12 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           std::placeholders::_1),
       .transaction_manager_provider = nullptr,
       .auto_flags_manager = master_->GetAutoFlagsManagerImpl(),
-      // We won't be doing full compactions on the catalog tablet.
-      .full_compaction_pool = nullptr,
+      .full_compaction_pool = full_compaction_pool_.get(),
       .admin_triggered_compaction_pool = nullptr,
+      .intent_cleanup_pool = raft_pool(),
       // We don't support splitting the catalog tablet, this field is unneeded.
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       // Metadata cache is not used on master.
       .metadata_cache = nullptr,
   };
@@ -723,7 +765,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   if (!tablet->schema()->Equals(doc_read_context_->schema())) {
     return STATUS(Corruption, "Unexpected schema", tablet->schema()->ToString());
   }
-  return mem_manager_->Init();
+  RETURN_NOT_OK(mem_manager_->Init());
+  return full_compaction_manager_->Init();
 }
 
 std::string SysCatalogTable::LogPrefix() const {

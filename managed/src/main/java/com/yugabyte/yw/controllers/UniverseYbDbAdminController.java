@@ -18,6 +18,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
@@ -58,6 +59,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
 
   @Inject private UniverseYbDbAdminHandler universeYbDbAdminHandler;
   @Inject private SoftwareUpgradeHelper softwareUpgradeHelper;
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   @ApiOperation(
       notes = "YbaApi Internal.",
@@ -353,7 +355,7 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
       Http.Request request, Universe universe) {
     ConfigureDBApiParams requestParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            request, ConfigureDBApiParams.class, universe);
+            request, ConfigureDBApiParams.class, universe.getUniverseUUID(), runtimeConfGetter);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
     requestParams.setUniverseUUID(universe.getUniverseUUID());

@@ -21,6 +21,7 @@ import (
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/template"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 /*
@@ -53,19 +54,29 @@ type postgresDirectories struct {
 	CACertFile string
 }
 
-func newPostgresDirectories() postgresDirectories {
+func newPostgresDirectories(version string) postgresDirectories {
 	return postgresDirectories{
 		SystemdFileLocation: common.SystemdDir + "/postgres.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/pgsql/conf",
 		templateFileName:    "yba-installer-postgres.yml",
 		MountPath:           common.GetBaseInstall() + "/data/pgsql/run/postgresql",
-		dataDir:             common.GetBaseInstall() + "/data/postgres",
+		dataDir:             postgresDataDir(version),
 		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
 		LogFile:             common.GetBaseInstall() + "/data/logs/postgresql",
 		OpenSSLConf:         common.GetSoftwareRoot() + "/pgsql/ssl/openssl-fips.cnf",
 		OpenSSLModules:      common.GetSoftwareRoot() + "/pgsql/lib/ossl-modules",
 		CACertFile:          common.SystemCABundle(),
 	}
+}
+
+// postgresDataDir returns the data directory for a postgres version. Version 14 clusters predate
+// major version upgrades and keep the unversioned directory.
+func postgresDataDir(version string) string {
+	dataDir := common.GetBaseInstall() + "/data/postgres"
+	if major := common.PostgresMajorVersion(version); major != 14 {
+		return fmt.Sprintf("%s-%d", dataDir, major)
+	}
+	return dataDir
 }
 
 // Component 1: Postgres
@@ -80,7 +91,7 @@ func NewPostgres(version string) Postgres {
 	return Postgres{
 		name:                "postgres",
 		version:             version,
-		postgresDirectories: newPostgresDirectories(),
+		postgresDirectories: newPostgresDirectories(version),
 	}
 }
 
@@ -160,8 +171,16 @@ func (pg Postgres) Initialize() error {
 	}
 
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createYugawareDatabase()
-		pg.createTSDatabase()
+		// Before createdb, which refuses to copy a template1 with a stale collation version.
+		if err := pg.refreshCollationVersions(); err != nil {
+			return err
+		}
+		if err := pg.createDatabase("yugaware"); err != nil {
+			return err
+		}
+		if err := pg.createDatabase(common.PerfAdvisorDBName); err != nil {
+			return err
+		}
 	}
 
 	log.Info("Finishing Postgres initialize")
@@ -305,32 +324,6 @@ func (pg Postgres) Uninstall(removeData bool) error {
 	return nil
 }
 
-func (pg Postgres) CreateBackup() {
-	log.Debug("starting postgres backup")
-	outFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
-	if _, err := os.Stat(outFile); !errors.Is(err, os.ErrNotExist) {
-		os.Remove(outFile)
-	}
-	file, err := os.Create(outFile)
-	if err != nil {
-		log.Fatal("failed to open file " + outFile + ": " + err.Error())
-	}
-	defer file.Close()
-
-	// We want the active install directory even during the upgrade workflow.
-	pg_dumpall := filepath.Join(common.GetActiveSymlink(), "/pgsql/bin/pg_dumpall")
-	args := []string{
-		"-p", viper.GetString("postgres.install.port"),
-		"-h", "localhost",
-		"-U", viper.GetString("service_username"),
-	}
-	out := shell.Run(pg_dumpall, args...)
-	if !out.SucceededOrLog() {
-		log.Fatal("postgres backup failed: " + out.Error.Error())
-	}
-	log.Debug("postgres backup comlete")
-}
-
 func (pg Postgres) CreateYugawareBackup(outFile string) {
 	log.Debug("Starting postgres yugaware database backup.")
 	pg_dump := filepath.Join(common.GetActiveSymlink(), "/pgsql/bin/pg_dump")
@@ -370,16 +363,11 @@ func (pg Postgres) RestoreBackup(backupPath string) {
 	log.Debug("postgres restore from backup complete")
 }
 
-// UpgradeMajorVersion will upgrade postgres and install it into the alt install directory.
-// Upgrade will NOT restart the service, the old version is expected to still be running
-// This function should be primarily used for major version changes for postgres.
-// TODO: we should gate this to only postgres.install.enabled = true
-func (pg Postgres) UpgradeMajorVersion() error {
-	log.Info("Starting Postgres major upgrade")
-	pg.CreateBackup()
-	pg.Stop()
-	pg.postgresDirectories = newPostgresDirectories()
-	template.GenerateTemplate(pg) // NOTE: This does not require systemd reload, start does it for us.
+// Upgrade installs the new postgres version. A major version change moves the data into a new
+// cluster with pg_upgrade; otherwise clusters left behind by earlier major upgrades are removed.
+func (pg Postgres) Upgrade() error {
+	log.Info("Starting Postgres upgrade")
+	pg.postgresDirectories = newPostgresDirectories(pg.version)
 	if err := pg.extractPostgresPackage(); err != nil {
 		return err
 	}
@@ -387,52 +375,184 @@ func (pg Postgres) UpgradeMajorVersion() error {
 		return err
 	}
 
-	if err := pg.createFilesAndDirs(); err != nil {
+	// Needs the installed postgres running, which a major upgrade stops.
+	if viper.GetBool("postgres.install.enabled") {
+		if err := pg.createDatabase(common.PerfAdvisorDBName); err != nil {
+			return err
+		}
+	}
+
+	oldDataDir, err := common.InstalledPostgresDataDir()
+	if err != nil {
+		return err
+	}
+	oldMajorVersion, err := common.PostgresClusterMajorVersion(oldDataDir)
+	if err != nil {
+		return err
+	}
+	if oldMajorVersion != common.PostgresMajorVersion(pg.version) {
+		if strings.Compare(oldDataDir, pg.dataDir) == 0 {
+			return fmt.Errorf("cannot upgrade postgres from %d to %d in existing data directory %s",
+				oldMajorVersion, common.PostgresMajorVersion(pg.version), pg.dataDir)
+		}
+		if err := pg.majorversionUpgradeDataDir(oldDataDir); err != nil {
+			return err
+		}
+	} else if err := pg.removeOldDataDirs(oldDataDir); err != nil {
 		return err
 	}
 
-	if err := pg.runInitDB(); err != nil {
-		return err
-	}
-	if err := pg.copyConfFiles(); err != nil {
-		return err
-	}
-	if err := pg.modifyPostgresConf(); err != nil {
-		return err
-	}
-	pg.Start()
-	backupFile := filepath.Join(common.GetBaseInstall(), "data", "postgres_backup")
-	pg.RestoreBackup(backupFile)
-
-	log.Info("Completed Postgres major upgrade")
-	return nil
-}
-
-// Upgrade will do a minor version upgrade of postgres
-func (pg Postgres) Upgrade() error {
-	log.Info("Starting Postgres upgrade")
-	pg.postgresDirectories = newPostgresDirectories()
 	if err := template.GenerateTemplate(pg); err != nil {
 		return err
 	}
-	if err := pg.extractPostgresPackage(); err != nil {
-		return err
-	}
-	if err := pg.setUpFipsProvider(); err != nil {
-		return err
-	}
 
 	if err := pg.copyConfFiles(); err != nil {
 		return err
 	}
 
-	if err := pg.modifyPostgresConf(); err != nil {
+	return pg.modifyPostgresConf()
+}
+
+// majorversionUpgradeDataDir creates a new cluster in pg.dataDir and runs pg_upgrade from the cluster in
+// oldDataDir into it, leaving the old cluster unmodified. It stops the running postgres and leaves
+// it stopped, so it has to be called before the systemd unit is regenerated; the new cluster first
+// starts with the service restart after all components are upgraded.
+func (pg Postgres) majorversionUpgradeDataDir(oldDataDir string) error {
+	log.Info(fmt.Sprintf("Upgrading postgres data from %s to %s", oldDataDir, pg.dataDir))
+	// Clear out a cluster left behind by a previous failed upgrade, which may still be running.
+	if _, err := os.Stat(pg.dataDir); err == nil {
+		if err := pg.Stop(); err != nil {
+			return err
+		}
+		if err := common.RemoveAll(pg.dataDir); err != nil {
+			return err
+		}
+	}
+	if err := pg.createFilesAndDirs(); err != nil {
+		return err
+	}
+	if err := pg.runInitDB(); err != nil {
 		return err
 	}
 
-	if viper.GetBool("postgres.install.enabled") {
-		pg.createTSDatabase()
+	oldBinDir := filepath.Join(common.GetActiveSymlink(), "pgsql/bin")
+	if err := pg.runPgUpgrade(oldBinDir, oldDataDir,
+		"--check", "--old-port", viper.GetString("postgres.install.port")); err != nil {
+		return err
 	}
+	if err := pg.Stop(); err != nil {
+		return err
+	}
+	if err := pg.runPgUpgrade(oldBinDir, oldDataDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+// runPgUpgrade runs pg_upgrade from the cluster in oldDataDir into the one in pg.dataDir.
+func (pg Postgres) runPgUpgrade(oldBinDir, oldDataDir string, extraArgs ...string) error {
+	// pg_upgrade needs write access to its working directory.
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if err := os.Chdir(common.GetDataRoot()); err != nil {
+		return err
+	}
+	defer os.Chdir(cwd)
+
+	cmdName := filepath.Join(pg.PgBin, "pg_upgrade")
+	args := append([]string{
+		"--old-bindir", oldBinDir,
+		"--new-bindir", pg.PgBin,
+		"--old-datadir", oldDataDir,
+		"--new-datadir", pg.dataDir,
+		"--username", pg.getPgUserName(),
+		"--socketdir", pg.MountPath,
+	}, extraArgs...)
+	var out *shell.Output
+	if common.HasSudoAccess() {
+		out = shell.RunAsUser(viper.GetString("service_username"), cmdName, args...)
+	} else {
+		out = shell.Run(cmdName, args...)
+	}
+	if !out.SucceededOrLog() {
+		return fmt.Errorf("pg_upgrade failed: %w", out.Error)
+	}
+	for _, script := range []string{"delete_old_cluster.sh", "update_extensions.sql"} {
+		if err := common.RemoveAll(filepath.Join(common.GetDataRoot(), script)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// removeOldDataDirs removes clusters left behind by earlier major version upgrades.
+func (pg Postgres) removeOldDataDirs(activeDataDir string) error {
+	dataRoot := common.GetDataRoot()
+	dataDirs, err := filepath.Glob(filepath.Join(dataRoot, "postgres-*"))
+	if err != nil {
+		return err
+	}
+	dataDirs = append(dataDirs, filepath.Join(dataRoot, "postgres"))
+	for _, dataDir := range dataDirs {
+		if dataDir == filepath.Clean(activeDataDir) || dataDir == filepath.Clean(pg.dataDir) {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dataDir, "PG_VERSION")); err != nil {
+			continue
+		}
+		log.Info("Removing old postgres data directory " + dataDir)
+		if err := common.RemoveAll(dataDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MaybeVacuumStats must be called before updating active symlink on upgrade
+func (pg Postgres) MaybeVacuumStats() error {
+	oldDataDir, err := common.InstalledPostgresDataDir()
+	if err != nil {
+		return err
+	}
+	oldMajorVersion, err := common.PostgresClusterMajorVersion(oldDataDir)
+	if err != nil {
+		return err
+	}
+	if oldMajorVersion == common.PostgresMajorVersion(pg.version) {
+		log.Debug("Skipping vacuumdb stats because major version did not change")
+		return nil
+	}
+	return pg.vacuumStats()
+}
+
+func (pg Postgres) vacuumStats() error {
+	log.Info("Starting vacuumdb stats for postgres")
+	rf := func(cmd string, args ...string) *shell.Output {
+		if common.HasSudoAccess() {
+			return shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
+		}
+		return shell.Run(cmd, args...)
+	}
+	if out := rf(
+		pg.PgBin+"/vacuumdb",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"--all", "--analyze-in-stages", "--missing-stats-only"); !out.SucceededOrLog() {
+		return out.Error
+	}
+	if out := rf(
+		pg.PgBin+"/vacuumdb",
+		"-h", "localhost",
+		"-p", viper.GetString("postgres.install.port"),
+		"-U", pg.getPgUserName(),
+		"--all", "--analyze-only"); !out.SucceededOrLog() {
+		return out.Error
+	}
+
+	log.Info("Finished vacuumdb stats for postgres")
 	return nil
 }
 
@@ -476,7 +596,9 @@ func (pg Postgres) replicatedMigrateStep2() error {
 	pg.Start()
 
 	if viper.GetBool("postgres.install.enabled") {
-		pg.createYugawareDatabase()
+		if err := pg.createDatabase("yugaware"); err != nil {
+			log.Fatal(err.Error())
+		}
 	}
 	return nil
 }
@@ -507,6 +629,18 @@ func (pg Postgres) runInitDB() error {
 		"-D",
 		pg.dataDir,
 		"--locale=" + viper.GetString("postgres.install.locale"),
+	}
+	// pg_upgrade requires matching data checksum settings, and initdb enables them by default from
+	// PostgreSQL 18. An install whose first cluster predates 18 has them off, and every cluster
+	// pg_upgrade later moves it into has to keep them off.
+	if common.PostgresMajorVersion(pg.version) >= 18 {
+		state, err := ybactlstate.LoadState()
+		if err != nil {
+			return fmt.Errorf("failed to load state to choose data checksums: %w", err)
+		}
+		if state.Postgres.InitialMajorVersion < 18 {
+			initDbArgs = append(initDbArgs, "--no-data-checksums")
+		}
 	}
 	if common.HasSudoAccess() {
 		// Need to give the yugabyte user ownership of the entire postgres
@@ -679,52 +813,85 @@ func (pg Postgres) copyConfFiles() error {
 	return nil
 }
 
-func (pg Postgres) createTSDatabase() {
-	cmd := pg.PgBin + "/createdb"
+// psql runs each statement in database db of the installed postgres, stopping at the first error.
+func (pg Postgres) psql(db string, statements ...string) *shell.Output {
 	args := []string{
-		"-h", pg.MountPath,
-		"-U", pg.getPgUserName(),
+		"-d", db,
+		"-h", "localhost",
 		"-p", viper.GetString("postgres.install.port"),
-		common.PerfAdvisorDBName,
+		"-U", pg.getPgUserName(),
+		"-qAtX", "-v", "ON_ERROR_STOP=1",
 	}
-	var out *shell.Output
-	if common.HasSudoAccess() {
-		// RUns as service user
-		// This is needed for the ts db to be created in the right location
-		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
-	} else {
-		out = shell.Run(cmd, args...)
+	for _, sql := range statements {
+		args = append(args, "-c", sql)
 	}
-	if !out.Succeeded() {
-		if strings.Contains(out.StderrString(), "already exists") {
-			// db already existing is fine because this may be a resumed failed install
-			return
-		}
-		log.Fatal(fmt.Sprintf("Could not create ts database: %s", out.Error.Error()))
-	}
+	return shell.Run(filepath.Join(pg.PgBin, "psql"), args...)
 }
 
-func (pg Postgres) createYugawareDatabase() {
+// createDatabase creates database name unless it already exists, as it does after a resumed
+// install, an upgrade, or a data volume moved over from another host. Letting createdb fail with
+// "already exists" is not enough: it checks template1's collation version first.
+func (pg Postgres) createDatabase(name string) error {
+	out := pg.psql("postgres", "SELECT 1 FROM pg_database WHERE datname = "+common.PgQuoteLiteral(name))
+	if !out.Succeeded() {
+		return fmt.Errorf("failed to check for postgres database %s: %w: %s",
+			name, out.Error, out.StderrString())
+	}
+	if strings.TrimSpace(out.StdoutString()) == "1" {
+		log.Debug("postgres database " + name + " already exists")
+		return nil
+	}
+
 	cmd := pg.PgBin + "/createdb"
 	args := []string{
 		"-h", pg.MountPath,
 		"-U", pg.getPgUserName(),
 		"-p", viper.GetString("postgres.install.port"),
-		"yugaware",
+		name,
 	}
-	var out *shell.Output
 	if common.HasSudoAccess() {
 		out = shell.RunAsUser(viper.GetString("service_username"), cmd, args...)
 	} else {
 		out = shell.Run(cmd, args...)
 	}
 	if !out.Succeeded() {
-		if strings.Contains(out.StderrString(), "already exists") {
-			// db already existing is fine because this may be a resumed failed install
-			return
-		}
-		log.Fatal(fmt.Sprintf("Could not create yugaware database: %s", out.Error.Error()))
+		return fmt.Errorf("could not create postgres database %s: %w: %s",
+			name, out.Error, out.StderrString())
 	}
+	return nil
+}
+
+// refreshCollationVersions rebuilds the indexes of each database whose recorded collation version
+// differs from the one the OS provides now, then records the new version. For a libc locale that
+// version is the glibc version, so it changes when the data directory moves to a host with a
+// different glibc (RHEL 8 to 9). Text indexes built under the old sort rules can silently miss rows
+// or admit duplicates until rebuilt, and postgres refuses to create a database from a template1
+// whose version is stale.
+func (pg Postgres) refreshCollationVersions() error {
+	// postgres records collation versions per database from 15 on.
+	if common.PostgresMajorVersion(pg.version) < 15 {
+		return nil
+	}
+	out := pg.psql("postgres", "SELECT datname FROM pg_database WHERE datallowconn AND "+
+		"datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)")
+	if !out.Succeeded() {
+		return fmt.Errorf("failed to check postgres database collation versions: %w: %s",
+			out.Error, out.StderrString())
+	}
+	for db := range strings.SplitSeq(strings.TrimSpace(out.StdoutString()), "\n") {
+		if db == "" {
+			continue
+		}
+		log.Info("Rebuilding the indexes of postgres database " + db + " because the OS collation " +
+			"version changed. This can take a while for a large database.")
+		quoted := common.PgQuoteIdent(db)
+		if out := pg.psql(db, "REINDEX DATABASE "+quoted,
+			"ALTER DATABASE "+quoted+" REFRESH COLLATION VERSION"); !out.Succeeded() {
+			return fmt.Errorf("failed to rebuild indexes of postgres database %s for its new collation "+
+				"version: %w: %s", db, out.Error, out.StderrString())
+		}
+	}
+	return nil
 }
 
 func (pg Postgres) createFilesAndDirs() error {

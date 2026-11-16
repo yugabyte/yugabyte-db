@@ -26,6 +26,9 @@
 /* Abstract type for lexer's internal state */
 typedef struct PsqlScanStateData *PsqlScanState;
 
+/* Abstract type for state save/restore */
+typedef struct PsqlScanStateSave PsqlScanStateSave;
+
 /* Termination states for psql_scan() */
 typedef enum
 {
@@ -84,6 +87,8 @@ extern PsqlScanResult psql_scan(PsqlScanState state,
 extern void psql_scan_reset(PsqlScanState state);
 
 extern void psql_scan_reselect_sql_lexer(PsqlScanState state);
+
+extern int	psql_scan_count_copy_from_stdin(PsqlScanState state);
 
 extern bool psql_scan_in_quote(PsqlScanState state);
 

@@ -29,6 +29,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Transient;
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -152,17 +153,56 @@ public class PitrConfig extends Model {
   }
 
   public static List<PitrConfig> getByUniverseUUID(UUID universeUUID) {
-    return find.query().where().eq("universe_uuid", universeUUID).findList();
+    return getByUniverseUUID(universeUUID, null);
+  }
+
+  /**
+   * @param scheduleUuids when non-null, only configs whose UUID is in this set are returned. An
+   *     empty collection yields an empty list (no {@code IN ()} clause).
+   */
+  public static List<PitrConfig> getByUniverseUUID(
+      UUID universeUUID, Collection<UUID> scheduleUuids) {
+    if (scheduleUuids != null && scheduleUuids.isEmpty()) {
+      return List.of();
+    }
+
+    ExpressionList<PitrConfig> query = find.query().where().eq("universe_uuid", universeUUID);
+    if (scheduleUuids != null) {
+      query = query.idIn(scheduleUuids);
+    }
+
+    return query.findList();
+  }
+
+  public static boolean existsForUniverse(UUID universeUUID) {
+    return find.query().where().eq("universe_uuid", universeUUID).exists();
   }
 
   public static PagedList<PitrConfig> getPagedListForUniverse(
       UUID universeUuid, NormalizedPaginationSpec normalized) {
-    return getPagedListForUniverse(universeUuid, null, normalized);
+    return getPagedListForUniverse(universeUuid, null, null, normalized);
   }
 
   public static PagedList<PitrConfig> getPagedListForUniverse(
       UUID universeUuid, UUID drConfigUuid, NormalizedPaginationSpec normalized) {
+    return getPagedListForUniverse(universeUuid, drConfigUuid, null, normalized);
+  }
+
+  public static PagedList<PitrConfig> getPagedListForUniverse(
+      UUID universeUuid,
+      UUID drConfigUuid,
+      Collection<UUID> scheduleUuids,
+      NormalizedPaginationSpec normalized) {
+    if (scheduleUuids != null && scheduleUuids.isEmpty()) {
+      return PagedList.emptyList();
+    }
+
     ExpressionList<PitrConfig> expr = find.query().where().eq("universe_uuid", universeUuid);
+
+    if (scheduleUuids != null) {
+      expr = expr.idIn(scheduleUuids);
+    }
+
     if (drConfigUuid != null) {
       expr =
           expr.raw(

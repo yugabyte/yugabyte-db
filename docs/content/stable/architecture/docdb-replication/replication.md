@@ -18,7 +18,7 @@ Using the [Raft distributed consensus protocol](../raft), DocDB automatically re
 
 ## Replication factor
 
-YugabyteDB replicates data across [fault domains](../../key-concepts#fault-domain) (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.
+YugabyteDB replicates data across [fault domains](../../key-concepts/#fault-domain) (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.
 
 ## Fault tolerance
 
@@ -61,7 +61,7 @@ After the Raft log is replicated to a majority of tablet-peers and successfully 
 
 ## Multi-zone deployment
 
-The replicas of data can be placed across multiple [fault domains](../../key-concepts#fault-domain). The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster.
+The replicas of data can be placed across multiple [fault domains](../../key-concepts/#fault-domain). The following examples of a multi-zone deployment with three zones and the replication factor assumed to be 3 demonstrate how replication across fault domains is performed in a cluster.
 
 In the case of a multi-zone deployment, the data in each of the tablets in a node is replicated across multiple zones using the Raft consensus algorithm. All the read and write queries for the rows that belong to a given tablet are handled by that tablet's leader, as per the following diagram:
 
@@ -90,6 +90,12 @@ Failure of **followers** has no impact on reads and writes. Only the tablet **le
 The recovery point objective (RPO) for each of these tablets is 0, meaning no data is lost in the failover to another zone. The recovery time objective (RTO) is 3 seconds, which is the time window for completing the failover and becoming operational out of the new zones, as per the following diagram:
 
 ![RPO vs RTO](/images/architecture/replication/rpo-vs-rto-zone-outage.png)
+
+## Partial failures
+
+A node can be unhealthy without being down. A slow leader keeps committing writes while it still has a quorum and can persist them. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its write-ahead log (WAL) is stalled keeps leadership. A failed WAL append crashes the process, and the heartbeats stop with it.
+
+Timelines for these cases are in [Handle gray failures](../../../explore/fault-tolerance/handling-gray-failures/).
 
 ## Follower reads
 

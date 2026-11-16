@@ -21,9 +21,12 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.http.conditional.ConditionalGets;
+import com.yugabyte.yw.common.http.conditional.ResourceRevision;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
@@ -64,9 +67,18 @@ public class PlatformResults {
   }
 
   /**
+   * Like {@link #withData(Object)}, and attaches conditional-GET cache headers from {@code
+   * revision} when present.
+   */
+  public static Result withData(Object data, Optional<ResourceRevision> revision) {
+    Result result = withData(data);
+    return revision.map(rev -> ConditionalGets.attachCacheHeaders(result, rev)).orElse(result);
+  }
+
+  /**
    * Like {@link #withData(Object)}, but lets the caller explicitly control whether
    * gflags-sensitive-data API redaction (HBA ldapbindpasswd, ycql_ldap_bind_passwd) is applied. Use
-   * when the response context makes redaction counterproductive — e.g. a CREATE configure response
+   * when the response context makes redaction counterproductive, e.g. a CREATE configure response
    * where there is no stored universe to merge the redacted values back from.
    */
   public static Result withData(Object data, boolean enableGFlagsSensitiveDataApiRedaction) {

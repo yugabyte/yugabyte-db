@@ -40,6 +40,9 @@ DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(TEST_ysql_ddl_fail_transaction_status_poll);
 DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
 DECLARE_double(TEST_ysql_ddl_verification_failure_probability);
+DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_int32(retrying_ts_rpc_max_delay_ms);
+DECLARE_int32(unresponsive_ts_rpc_retry_limit);
 DECLARE_int32(ysql_ddl_post_processing_failed_verification_retry_secs);
 
 namespace yb::pgwrapper {
@@ -380,6 +383,93 @@ TEST_F(PgDdlTransactionMiniClusterTest, TestPostProcessingFailedDueToFailedStatu
     },
     MonoDelta::FromSeconds(60),
     "DDL verification task should have been re-triggered"));
+}
+
+// A rollback AlterSchema that runs out of retries after the abort has been reported must be sent
+// again. Before the fix the txn stayed in kDdlPostProcessing, which none of the re-trigger paths
+// act on, and in the table's ddl_txns_waiting_for_schema_version_, which is only drained by a
+// tablet reporting the new schema version (#34514).
+TEST_F(PgDdlTransactionMiniClusterTest, TestRollbackAlterResentAfterRetriesExhausted) {
+  // Keep the periodic re-trigger off until the rollback alter has given up, so the txn stays in
+  // kDdlPostProcessingFailed.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = -1;
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+
+  const std::string kTable = "rollback_alter_gives_up";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS", kTable));
+  const auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, kTable));
+  auto table_info = catalog_manager.GetTableInfo(table_id);
+  ASSERT_NE(table_info, nullptr);
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c INT", kTable));
+  const auto txn_id_pb = table_info->LockForRead()->pb_transaction_id();
+  ASSERT_FALSE(txn_id_pb.empty());
+  const auto txn_id = ASSERT_RESULT(FullyDecodeTransactionId(txn_id_pb));
+  ASSERT_OK(WaitFor(
+      [&] { return !table_info->HasTasks(server::MonitoredTaskType::kAlterTable); },
+      MonoDelta::FromSeconds(30), "Forward ADD COLUMN alter to finish"));
+
+  // A held write permit makes PauseWritePermits in the tserver's AlterSchema time out, so every
+  // rollback AlterSchema attempt fails. This is what the long-running backfill write did in the
+  // colocated DDL/backfill stall.
+  std::vector<ScopedRWOperation> write_permits;
+  for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_id)) {
+    auto tablet = peer->shared_tablet_maybe_null();
+    ASSERT_NE(tablet, nullptr);
+    auto permit = tablet->GetPermitToWrite(CoarseMonoClock::Now() + MonoDelta::FromSeconds(10));
+    ASSERT_TRUE(permit.ok());
+    write_permits.push_back(std::move(permit));
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 2000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_unresponsive_ts_rpc_retry_limit) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retrying_ts_rpc_max_delay_ms) = 500;
+  // Verification can't finish while the permits are held. Don't wait for it in ROLLBACK; the
+  // master's object lock release still waits for it until the release RPC times out (~60s).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  // Only HandleAlterTableTaskFailed moves the txn out of kDdlPostProcessing here, and only after
+  // a rollback AlterSchema has given up.
+  ASSERT_OK(WaitFor(
+      [&] {
+        return catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id) ==
+               master::YsqlDdlVerificationState::kDdlPostProcessingFailed;
+      },
+      MonoDelta::FromSeconds(60), "Rollback alter to give up"));
+  ASSERT_FALSE(table_info->GetDdlTxnsWaitingForSchemaVersion().empty());
+  LOG(INFO) << "Rollback alter gave up. Waiting for schema version: "
+            << AsString(table_info->GetDdlTxnsWaitingForSchemaVersion());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_post_processing_failed_verification_retry_secs) = 1;
+  write_permits.clear();
+
+  // Nothing blocks AlterSchema anymore, so the alter that the periodic re-trigger resends every
+  // second succeeds.
+  ASSERT_OK(WaitFor(
+      [&] { return !catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id).has_value(); },
+      MonoDelta::FromSeconds(30),
+      "DDL verification to finish after the rollback alter is unblocked"));
+  ASSERT_TRUE(table_info->GetDdlTxnsWaitingForSchemaVersion().empty());
+
+  // Every replica, not just the leader that reported the version, has the rolled-back schema.
+  const auto table_schema_version = table_info->LockForRead()->pb.version();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& peer : ListTableTabletPeers(cluster_.get(), table_id)) {
+          const auto& metadata = peer->tablet_metadata();
+          if (metadata->primary_table_schema_version() != table_schema_version ||
+              metadata->schema()->find_column("c") != Schema::kColumnNotFound) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(30), "Tablets to apply the rolled-back schema"));
 }
 
 TEST_F(PgDdlTransactionTest, TestRenameIndexAndTruncateInTxn) {
@@ -1126,6 +1216,67 @@ TEST_F(PgMasterDDLReadRestartProbeTest,
   ASSERT_NO_FATALS(RestartClusterSetDDLMode(/* use_legacy = */ false));
 
   ASSERT_OK(RunRepro(false /* expect_error */));
+}
+
+// TODO(#32073): Also run with transactional DDL, once a retried statement restores the user in
+// that mode.
+class PgLegacyDdlUserContextTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+    for (auto* flags : {&options->extra_master_flags, &options->extra_tserver_flags}) {
+      ToggleDDLMode(*flags, /* use_legacy = */ true);
+      // Fail-on-Conflict, so that a conflicting write aborts the lower-priority transaction.
+      flags->push_back("--enable_wait_queues=false");
+    }
+  }
+
+  // The session is back to its own user and out of any security-restricted operation.
+  static void AssertSessionUserRestored(PGConn& conn) {
+    ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT current_user = session_user")));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT current_setting('role')")),
+              "none");
+    ASSERT_OK(conn.Execute("CREATE TEMP TABLE restored_check (a int)"));
+    ASSERT_OK(conn.Execute("DROP TABLE restored_check"));
+  }
+};
+
+// An ANALYZE run through SPI switches to the table owner under SECURITY_RESTRICTED_OPERATION.
+// When it fails and the query layer retries the enclosing SELECT, which does not abort the PG
+// transaction, the retry must run as the caller again.
+TEST_F(PgLegacyDdlUserContextTest, RetriedStatementRestoresAnalyzeUser) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE ROLE analyze_owner"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 10)"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t OWNER TO analyze_owner"));
+  // The GUC survives the retry, so only the first attempt runs the ANALYZE, and it fails.
+  ASSERT_OK(conn.Execute(R"#(
+      CREATE FUNCTION analyze_once() RETURNS text LANGUAGE plpgsql AS $$
+      BEGIN
+        IF current_setting('test.analyzed', true) = 'true' THEN
+          RETURN current_user;
+        END IF;
+        PERFORM set_config('test.analyzed', 'true', false);
+        ANALYZE t;
+        RAISE EXCEPTION 'ANALYZE did not fail';
+      END $$
+  )#"));
+  const auto session_user = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT session_user::text"));
+
+  // Holds a write intent on the pg_class row of t, which ANALYZE updates while it runs as the
+  // table owner. The ANALYZE of an auto-ANALYZE connection has the lowest priority, so it is the
+  // one that fails.
+  auto blocker = ASSERT_RESULT(Connect());
+  ASSERT_OK(blocker.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = on"));
+  ASSERT_OK(blocker.Execute("BEGIN"));
+  ASSERT_OK(blocker.Execute(
+      "UPDATE pg_class SET reltuples = reltuples WHERE oid = 't'::regclass"));
+  ASSERT_OK(conn.Execute("SET yb_use_internal_auto_analyze_service_conn = on"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT analyze_once()")), session_user);
+  ASSERT_OK(conn.Execute("RESET yb_use_internal_auto_analyze_service_conn"));
+  ASSERT_OK(blocker.Execute("ROLLBACK"));
+  ASSERT_NO_FATALS(AssertSessionUserRestored(conn));
 }
 
 } // namespace yb::pgwrapper

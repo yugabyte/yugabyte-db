@@ -10,6 +10,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/azu"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/gcp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/kubernetes"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/oci"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/onprem"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
@@ -34,6 +35,8 @@ func init() {
 	ProviderCmd.AddCommand(gcp.GCPProviderCmd)
 	ProviderCmd.AddCommand(kubernetes.K8sProviderCmd)
 	ProviderCmd.AddCommand(onprem.OnpremProviderCmd)
+
+	util.PreviewCommand(ProviderCmd, []*cobra.Command{oci.OCIProviderCmd})
 
 	ProviderCmd.AddGroup(&cobra.Group{
 		ID:    "action",

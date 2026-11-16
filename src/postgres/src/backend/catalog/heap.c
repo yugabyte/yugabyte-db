@@ -1997,29 +1997,9 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 		/*
 		 * Change the column name to something that isn't likely to conflict
 		 */
-		if (IsYugaByteEnabled())
-		{
-			/*
-			 * TODO: Should be changed to CatalogTupleUpdate() when we are
-			 * able to update a row's primary key
-			 */
-
-			CatalogTupleDelete(attr_rel, tuple);
-
-			snprintf(newattname, sizeof(newattname),
-					 "........pg.dropped.%d........", attnum);
-			namestrcpy(&(attStruct->attname), newattname);
-
-			CatalogTupleInsert(attr_rel, tuple);
-		}
-		else
-		{
-			snprintf(newattname, sizeof(newattname),
-					 "........pg.dropped.%d........", attnum);
-			namestrcpy(&(attStruct->attname), newattname);
-
-			CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
-		}
+		snprintf(newattname, sizeof(newattname),
+				 "........pg.dropped.%d........", attnum);
+		namestrcpy(&(attStruct->attname), newattname);
 
 		/* clear the missing value if any */
 		if (attStruct->atthasmissing)
@@ -2043,6 +2023,8 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 			tuple = heap_modify_tuple(tuple, RelationGetDescr(attr_rel),
 									  valuesAtt, nullsAtt, replacesAtt);
 		}
+
+		CatalogTupleUpdate(attr_rel, &tuple->t_self, tuple);
 	}
 
 	/*

@@ -98,6 +98,7 @@ class YQLStorageIf {
       const QLValuePB& ybctid) const = 0;
 
   // Create iterator for querying by partition and range key.
+  // skip_seek - the caller positions the iterator itself.
   virtual Status GetIterator(
       const PgsqlReadRequestMsg& request,
       const dockv::ReaderProjection& projection,
@@ -106,6 +107,7 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
+      SkipSeek skip_seek,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   // Create iterator for querying by ybctid.

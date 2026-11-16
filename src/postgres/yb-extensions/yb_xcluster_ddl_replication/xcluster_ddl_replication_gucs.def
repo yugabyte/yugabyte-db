@@ -18,6 +18,11 @@
  * These all need to be lowercase.
  */
 
+/*
+ * This affects how unqualified names in the DDL are resolved (types, functions,
+ * operator classes, tables, ...), not just which schema new objects land in.
+ */
+X("search_path")
 /* This affects what tablespace a table is created in. */
 X("default_tablespace")
 /* This affects whether a table is range or hash started. */
@@ -37,3 +42,9 @@ X("check_function_bodies")
  * view or updates it in place.
  */
 X("yb_refresh_matview_in_place")
+
+/*
+ * This affects whether a typmod-only ALTER COLUMN TYPE reuses expression and
+ * partial indexes or rebuilds them with new relfilenodes.
+ */
+X("yb_alter_type_reuse_expr_and_partial_indexes")

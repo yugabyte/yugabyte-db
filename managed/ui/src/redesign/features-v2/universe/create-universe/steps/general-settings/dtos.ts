@@ -11,7 +11,8 @@ import { CloudType } from '../../../../../features/universe/universe-form/utils/
 import {
   CLOUD,
   DATABASE_VERSION,
-  PROVIDER_CONFIGURATION,
+  PROVIDER_CONFIGURATIONS,
+  SPAN_ACROSS_PROVIDERS,
   UNIVERSE_NAME
 } from '../../fields/FieldNames';
 
@@ -23,7 +24,14 @@ export interface ProviderType extends Provider {
 }
 export interface GeneralSettingsProps {
   [UNIVERSE_NAME]: UniverseSpec['name'];
-  [PROVIDER_CONFIGURATION]: ProviderType | undefined;
+  /** Ordered unique provider configs (1–3). Selection order = cloud-card order. */
+  [PROVIDER_CONFIGURATIONS]: ProviderType[];
   [DATABASE_VERSION]: UniverseInfo['ybc_software_version'];
-  [CLOUD]: string;
+  /**
+   * Cloud-type selection via YBCloudSelect. `string` when Span is off;
+   * `string[]` when Span is on (max 3, one config per code).
+   */
+  [CLOUD]: string | string[];
+  /** Multi-provider General UI mode (ignored when ENABLE_MULTI_PROVIDER_CREATE is false). */
+  [SPAN_ACROSS_PROVIDERS]?: boolean;
 }

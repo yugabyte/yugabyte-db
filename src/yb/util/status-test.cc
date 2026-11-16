@@ -333,4 +333,14 @@ TEST(StatusTest, StatusFormat) {
   ASSERT_STR_CONTAINS(status.ToString(), "ENOTDIR 37 foo 37");
 }
 
+TEST(StatusTest, StatusHolderUpdateError) {
+  StatusHolder holder;
+  holder.UpdateError(Status::OK());
+  ASSERT_OK(holder.GetStatus());
+
+  holder.UpdateError(STATUS(IllegalState, "first"));
+  holder.UpdateError(STATUS(NotFound, "second"));
+  ASSERT_TRUE(holder.GetStatus().IsIllegalState()) << holder.GetStatus();
+}
+
 }  // namespace yb

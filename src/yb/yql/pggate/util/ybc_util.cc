@@ -25,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -269,6 +270,12 @@ bool YBCStatusIsSnapshotTooOld(YbcStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
+// The tserver response cache did not serve this read: either it was asked under lookup_only for
+// an entry it does not hold, or it sent the caller away from a fill already under way.
+bool YBCStatusIsResponseCacheMiss(YbcStatus s) {
+  return StatusWrapper(s)->IsIncomplete();
+}
+
 bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
@@ -277,12 +284,22 @@ bool YBCStatusIsTimedOut(YbcStatus s) {
   return StatusWrapper(s)->IsTimedOut();
 }
 
+bool YBCStatusIsRetryableRequestTooOld(YbcStatus s) {
+  StatusWrapper wrapper(s);
+  return wrapper->IsExpired() &&
+         MinRunningRequestIdStatusData::ValueFromStatus(*wrapper).has_value();
+}
+
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
 
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
+}
+
+bool YBCStatusIsNotSupported(YbcStatus s) {
+  return StatusWrapper(s)->IsNotSupported();
 }
 
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
@@ -943,23 +960,25 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
   return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
-// False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
-// StartTransaction. PgTxnManager reads it through IsTableLockingEnabledForCurrentTxn() from
-// BeginTransaction onwards, so the is_using_table_locks it sends to the tserver never comes from
-// the unset value. The PG side does read it earlier, at least from YBCIsLegacyModeForCatalogOps
-// during sys table prefetching, where YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
-static bool object_locking_infra_for_curr_txn = false;
+// False until PG makes the first YBCSetObjectLockingForCurrTxn() call of the backend from
+// StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
+// to the tserver never comes from the unset value: PgTxnManager reads it through
+// IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
+// only issued while a statement runs. The PG side does read it earlier, at least from
+// YBCIsLegacyModeForCatalogOps during sys table prefetching, where
+// YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
+static bool object_locking_for_curr_txn = false;
 
-void YBCSetObjectLockingInfraForCurrTxn() {
-  object_locking_infra_for_curr_txn = enable_object_locking_infra;
+void YBCSetObjectLockingForCurrTxn(bool enabled) {
+  object_locking_for_curr_txn = enabled;
 }
 
-bool YBCIsObjectLockingInfraEnabled() {
-  return object_locking_infra_for_curr_txn;
+bool YBCIsObjectLockingLatchedForCurrTxn() {
+  return object_locking_for_curr_txn;
 }
 
 bool YBCIsObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingInfraEnabled();
+  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingLatchedForCurrTxn();
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

@@ -11,17 +11,21 @@
 # under the License.
 #
 
+include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
+
 set(YSQL_CONN_MGR_WRAPPER_SRCS
     ysql_conn_mgr_wrapper.cc
     ysql_conn_mgr_conf.cc)
 
 set(YSQL_CONN_MGR_WRAPPER_LIBS
-    yb_util
-    yb_process_wrapper
-    server_process
-    tserver
-    yb_pggate
-    yb_pgwrapper)
+    PUBLIC yb_util
+    PUBLIC yb_process_wrapper
+    PUBLIC server_process
+    PUBLIC tserver
+    PUBLIC yb_pggate
+    PUBLIC yb_pgwrapper
+    PRIVATE yb_pgbackend)
 
 ADD_YB_LIBRARY(ysql_conn_mgr_wrapper
                SRCS ${YSQL_CONN_MGR_WRAPPER_SRCS}

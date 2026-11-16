@@ -42,6 +42,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.util.Pair;
 import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
 
 /**
@@ -70,7 +71,8 @@ import org.yb.ysqlconnmgr.PgWireProtocol.PgMessage;
  * boundaries: a step's expectation is read at the next boundary at or after it.
  * A pipeline whose trailing steps expect a response that no boundary reads
  * fails, unless it declares {@code allowUnreadTail()}. NoticeResponse and
- * ParameterStatus are skipped everywhere.
+ * ParameterStatus are skipped everywhere; the ParameterStatus ones are
+ * available afterwards from {@link PipelineResult#parameterStatuses()}.
  *
  * <pre>
  * try (WireConn c = rawConnBuilder().connect()) {
@@ -144,6 +146,7 @@ public class Pipeline {
   private final WireConn conn;
   private final List<Step> steps = new ArrayList<>();
   private final List<PgMessage> transcript = new ArrayList<>();
+  private final List<Pair<String, String>> parameterStatuses = new ArrayList<>();
   private boolean skipMode;
   private boolean allowUnreadTail;
   private PgMessage pushback;
@@ -626,6 +629,9 @@ public class Pipeline {
         }
         transcript.add(msg);
         LOG.debug("received {}", describe(msg));
+        if (msg.type == BE_PARAMETER_STATUS) {
+          parameterStatuses.add(PgWireProtocol.parseParameterStatus(msg.body));
+        }
       }
       if (currentStep != null) {
         currentStep.received.add(msg);
@@ -743,6 +749,8 @@ public class Pipeline {
         return msg.typeToString() + " \"" + PgWireProtocol.parseCommandComplete(msg.body) + "\"";
       case BE_DATA_ROW:
         return msg.typeToString() + " " + PgWireProtocol.parseDataRow(msg.body);
+      case BE_PARAMETER_STATUS:
+        return msg.typeToString() + " " + PgWireProtocol.parseParameterStatus(msg.body);
       default:
         return msg.typeToString();
     }
@@ -755,7 +763,7 @@ public class Pipeline {
         rowsByLabel.put(step.label, step.dataRows);
       }
     }
-    return new PipelineResult(rowsByLabel);
+    return new PipelineResult(rowsByLabel, parameterStatuses);
   }
 
   // ---- Building helpers -----------------------------------------------------

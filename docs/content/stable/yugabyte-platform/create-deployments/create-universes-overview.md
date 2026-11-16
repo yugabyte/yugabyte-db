@@ -193,6 +193,19 @@ Use **Expert** when **Guided** cannot represent the topology you need. For examp
 
 If you switch from **Expert** to **Guided** and the current placement is not a **Guided**-supported topology (for example, uneven node counts per zone), YugabyteDB Anywhere warns you and **resets** the placement configuration.
 
+{{< note title="Replication factor 9" >}}
+
+In v2026.1.3.0 and later, you can set RF to 9 when using Expert mode or the Classic UI. When using RF 9, ensure the number of availability zones _is equal to_ the RF.
+
+By default, the RF 9 option is not available. To enable the feature, set the **Enable primary replication factor 9** global runtime configuration option (config key `yb.universe.enable_primary_rf_9`) to true. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/). Only a Super Admin can change a global runtime configuration option. Any universe that you created or modified with RF 9 stays at RF 9 if you later set the option back to false.
+
+**Known issues**:
+
+- With an uneven number of nodes spread across fewer than 9 zones, YugabyteDB Anywhere can place fewer YB-Master processes than the replication factor and still report that universe creation succeeded. You may see an **Under-replicated master** alert. Using 9 availability zones avoids this. (PLAT-23267)
+- For on-premises universes with [dedicated YB-Master nodes](../dedicated-master/), when a zone has more free master instances than TServer nodes, YugabyteDB Anywhere can create fewer master nodes than the replication factor, with no error. Check the number of master nodes on the **Nodes** page after you create the universe. (PLAT-23296)
+
+{{< /note >}}
+
 #### Preferred region
 
 You can rank availability zones so [tablet leaders](../../../architecture/key-concepts/#tablet-leader) sit close to your application. Give every zone in a region the same rank to prefer that region. See [Preferred region](../../../architecture/key-concepts/#preferred-region) and [leader affinity](../../../architecture/key-concepts/#leader-affinity).
@@ -205,7 +218,7 @@ Ranks must be contiguous integers starting at 1. Zones with the same rank share 
 
 For example, a primary cluster in us-east, us-central, and us-west with the application in us-east: rank us-east 1, us-central 2, and us-west 3. If us-east fails, followers in us-central become leaders. See [Global database](/stable/develop/build-global-apps/global-database/).
 
-You can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) to serve reads from non-preferred regions. If a client connects to a [read replica](#multiple-region), reads are served from the replica; writes still go to tablet leaders in the preferred region.
+You can enable [follower reads](../../../additional-features/follower-reads/) to serve reads from non-preferred regions. If a client connects to a [read replica](#multiple-region), the replica serves the read when follower reads are on; writes still go to tablet leaders in the preferred region. With follower reads off, the read goes to the tablet leader in the primary cluster.
 
 #### Dedicated masters
 
@@ -219,7 +232,8 @@ After the universe is created, you can change placement (regions, zones, and nod
 
 The following limitations apply when editing an existing universe:
 
-- You can increase replication factor (or **Guided** resilience that increases RF), but you _cannot decrease_ it. Increasing RF may also require more nodes or availability zones. Contact {{% support-platform %}} for help with capacity planning.
+- You can increase replication factor (or resilience in Guided mode), but you _cannot decrease_ it. The universe needs at least as many nodes/pods as the new replication factor. Increasing RF may also require more availability zones. Contact {{% support-platform %}} for help with capacity planning.
+- You can increase replication factor only on VM-based universes and Kubernetes universes that YugabyteDB Anywhere manages directly. You cannot change replication factor after creation on a universe managed by the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/#limitations).
 - If the current placement is not a topology **Guided** supports, **Guided** mode is unavailable and you must use **Expert**.
 
 Read replicas and other advanced placement options are configured after the primary universe is created. Refer to [Add a read replica](../read-replicas/).

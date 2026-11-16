@@ -12,33 +12,46 @@
 //
 
 #include <future>
+#include <set>
 
 #include "google/protobuf/text_format.h"
 
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/value.pb.h"
+
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/metadata.pb.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
 
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
 DECLARE_int32(heartbeat_interval_ms);
+
+using namespace yb::size_literals;
 
 namespace yb::pb_util {
 
@@ -165,6 +178,87 @@ TEST_F(PBToolsTestWithMiniCluster, EncryptedBinaryToTextToEncryptedBinary) {
     ASSERT_OK(proxy.GetTabletStatus(status_req, &status_resp, &controller));
     ASSERT_EQ(status_resp.tablet_status().table_name(), "Foobarbaz");
   }
+}
+
+// yb-pbc-dump takes the schema from the file itself, so it checks the container headers of the
+// files that a cluster with a table writes.
+TEST_F(PBToolsTestWithMiniCluster, DumpContainerFiles) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const client::YBTableName table_name{YQL_DATABASE_CQL, "yugabyte", "t"};
+  ASSERT_OK(CreateYCQLTable(*client, table_name));
+  auto table_info = ASSERT_RESULT(client->GetYBTableInfo(table_name));
+  auto table_locations = ASSERT_RESULT(GetTableLocations(*client, table_info.table_id, 5s));
+  ASSERT_EQ(table_locations.tablet_locations_size(), 1);
+  const auto& tablet_id = table_locations.tablet_locations(0).tablet_id();
+
+  // A log rollover writes the bootstrap state file when it has a write to save.
+  client::TableHandle table;
+  ASSERT_OK(table.Open(table_name, client.get()));
+  auto session = client->NewSession(10s * kTimeMultiplier);
+  auto op = table.NewInsertOp(session->arena());
+  QLAddInt32HashValue(op->mutable_request(), 1);
+  ASSERT_OK(session->TEST_ApplyAndFlush(op));
+  ASSERT_OK(cluster_->LogGCOnSingleTServer(0, {tablet_id}, /* rollover= */ true));
+  const auto bootstrap_state_path = tablet::TabletBootstrapStateManager::FilePath(JoinPathSegments(
+      cluster_->tablet_server(0)->GetRootDir(), "yb-data", "tserver", "wals",
+      "table-" + table_info.table_id, "tablet-" + tablet_id));
+  ASSERT_OK(WaitFor(
+      [&bootstrap_state_path] { return Env::Default()->FileExists(bootstrap_state_path); },
+      30s * kTimeMultiplier, "Bootstrap state file"));
+
+  // Otherwise the walk could see a container file that is still being written.
+  cluster_->Shutdown();
+
+  std::set<std::string> types;
+  // Walk does not return the callback's status.
+  std::vector<std::string> failures;
+  for (auto* daemon : std::initializer_list<ExternalDaemon*>{
+           cluster_->master(0), cluster_->tablet_server(0)}) {
+    ASSERT_OK(Env::Default()->Walk(
+        daemon->GetRootDir(), Env::PRE_ORDER,
+        [&types, &failures](
+            Env::FileType type, const std::string& dir, const std::string& name) -> Status {
+          if (type != Env::FILE_TYPE) {
+            return Status::OK();
+          }
+          const auto path = JoinPathSegments(dir, name);
+          auto status = [&types, &path]() -> Status {
+            if (!VERIFY_RESULT(IsPBContainerFile(Env::Default(), path))) {
+              return Status::OK();
+            }
+            auto output = VERIFY_RESULT(CallPBDump(path));
+            types.insert(output.stdout.substr(0, output.stdout.find(' ')));
+            return Status::OK();
+          }();
+          if (!status.ok()) {
+            failures.push_back(Format("$0: $1", path, status));
+          }
+          return Status::OK();
+        }));
+  }
+  ASSERT_TRUE(failures.empty()) << AsString(failures);
+  for (const auto* type : {
+           "yb.AutoFlagsConfigPB", "yb.InstanceMetadataPB", "yb.consensus.ConsensusMetadataPB",
+           "yb.consensus.TabletBootstrapStatePB", "yb.tablet.RaftGroupReplicaSuperBlockPB"}) {
+    ASSERT_TRUE(types.contains(type)) << type << " is not among dumped types: " << AsString(types);
+  }
+}
+
+// Every tablet bootstrap reads these files, so a field type from a heavy proto file must not grow
+// their container headers back to tens of KB of descriptors.
+TEST_F(PBToolsTest, PerTabletContainerHeaderSize) {
+  auto header_size = [this](const google::protobuf::Message& msg) -> Result<uint64_t> {
+    const auto path = GetTestPath(msg.GetTypeName());
+    std::unique_ptr<WritableFile> file;
+    RETURN_NOT_OK(Env::Default()->NewWritableFile(path, &file));
+    WritablePBContainerFile writer(std::move(file));
+    RETURN_NOT_OK(writer.Init(msg));
+    RETURN_NOT_OK(writer.Close());
+    return Env::Default()->GetFileSize(path);
+  };
+  ASSERT_LT(ASSERT_RESULT(header_size(tablet::RaftGroupReplicaSuperBlockPB())), 16_KB);
+  ASSERT_LT(ASSERT_RESULT(header_size(consensus::ConsensusMetadataPB())), 2_KB);
+  ASSERT_LT(ASSERT_RESULT(header_size(consensus::TabletBootstrapStatePB())), 1_KB);
 }
 
 void PBToolsTestWithMiniCluster::SetUp() {

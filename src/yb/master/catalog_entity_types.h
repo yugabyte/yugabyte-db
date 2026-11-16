@@ -52,7 +52,8 @@ class SysRowEntry;
   ((CLONE_STATE, SysCloneStatePB)) \
   ((TSERVER_REGISTRATION, SysTabletServerEntryPB)) \
   ((OBJECT_LOCK_ENTRY, SysObjectLockEntryPB)) \
-  ((HISTORY_RETENTION_PIN, SysHistoryRetentionPinEntryPB))
+  ((HISTORY_RETENTION_PIN, SysHistoryRetentionPinEntryPB)) \
+  ((PERSISTENCE_BLOCK_MAP, SysPersistenceBlockMapEntryPB))
 
 // We should have an entry for each SysRowEntryType in the map except for UNKNOWN.
 static_assert(

@@ -516,6 +516,76 @@ const buildEditUniverseRollbackTaskFixture = (): Task => ({
   }
 });
 
+/**
+ * Aborted `Pause` / `Universe` customer task, matching `CustomerTaskFormData`.
+ *
+ * `title` is `getFriendlyDescription()` once `completionTime` is set: `Paused Universe : <name>`.
+ * `typeName` is `TaskType.Pause.getFriendlyName()` (`Pause`). `PauseUniverse` is `@Retryable`
+ * and `@Abortable`, not `@CanRollback`, so a finished abort is not abortable and cannot roll back.
+ * `taskDetails` are the user-task groups that task actually creates: freeze
+ * (`Validating configurations`), then `Stopping Node Processes`, then `Pause Universe`.
+ */
+export const PAUSE_UNIVERSE_TASK_ID = 'e0000001-0001-4000-8000-000000000001';
+
+export const PAUSE_UNIVERSE_TASK_UNIVERSE_UUID = 'e0000001-0001-4000-8000-000000000002';
+
+const buildPauseUniverseTaskFixture = (): Task => ({
+  id: PAUSE_UNIVERSE_TASK_ID,
+  title: 'Paused Universe : mock-universe',
+  percentComplete: 50,
+  createTime: '2026-10-14T01:29:53Z',
+  completionTime: '2026-10-14T01:30:04Z',
+  target: TargetType.UNIVERSE as Task['target'],
+  targetUUID: PAUSE_UNIVERSE_TASK_UNIVERSE_UUID,
+  type: 'Pause' as Task['type'],
+  typeName: 'Pause',
+  status: TaskState.ABORTED,
+  details: {
+    taskDetails: [
+      {
+        title: 'Validating configurations',
+        description: 'Validating configurations before proceeding',
+        state: TaskState.SUCCESS,
+        extraDetails: []
+      },
+      {
+        title: 'Stopping Node Processes',
+        description: 'Stopping tserver and master processes on the node.',
+        state: TaskState.ABORTED,
+        extraDetails: []
+      },
+      {
+        title: 'Pause Universe',
+        description: 'Pause the universe.',
+        state: TaskState.CREATED,
+        extraDetails: []
+      }
+    ]
+  },
+  abortable: false,
+  retryable: true,
+  canRollback: false,
+  correlationId: 'e0000001-0001-4000-8000-000000000003',
+  userEmail: 'admin',
+  subtaskInfos: [],
+  taskInfo: {
+    taskParams: {}
+  }
+});
+
+export const createPauseUniverseTaskMock = (overrides: Partial<Task> = {}): Task => {
+  const base = buildPauseUniverseTaskFixture();
+  return {
+    ...base,
+    ...overrides,
+    details: {
+      ...base.details,
+      ...(overrides.details ?? {}),
+      taskDetails: overrides.details?.taskDetails ?? base.details.taskDetails
+    }
+  };
+};
+
 export const createEditUniverseRollbackTaskMock = (overrides: Partial<Task> = {}): Task => {
   const base = buildEditUniverseRollbackTaskFixture();
   return {

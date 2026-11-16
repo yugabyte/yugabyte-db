@@ -52,7 +52,9 @@
 #include "pg_upgrade.h"
 
 /* YB includes */
+#include "common/pg_yb_common.h"
 #include "fe_utils/query_utils.h"
+#include <signal.h>
 
 static void prepare_new_cluster(void);
 static void prepare_new_globals(void);
@@ -62,6 +64,7 @@ static void set_frozenxids(bool minmxid_only);
 static void make_outputdirs(char *pgdata);
 static void setup(char *argv0, bool *live_check);
 static void yb_execute_extension_updates(void);
+static void yb_kill_process_group_on_sigterm(void);
 
 ClusterInfo old_cluster,
 			new_cluster;
@@ -84,6 +87,10 @@ main(int argc, char **argv)
 {
 	char	   *deletion_script_file_name = NULL;
 	bool		live_check = false;
+
+	/* YB: This should be done as the first thing after process start. */
+	YBSetParentDeathSignal();
+	yb_kill_process_group_on_sigterm();
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_upgrade"));
@@ -963,4 +970,28 @@ yb_execute_extension_updates()
 		PQfinish(conn);
 	}
 	check_ok();
+}
+
+/* Pass SIGTERM to the whole process group, then die by it. */
+static void
+yb_signal_process_group(SIGNAL_ARGS)
+{
+	pqsignal(SIGTERM, SIG_DFL);
+	kill(0, SIGTERM);
+}
+
+/* With YB_PG_PDEATHSIG set, lead own process group; SIGTERM kills it all. */
+static void
+yb_kill_process_group_on_sigterm(void)
+{
+	if (!getenv("YB_PG_PDEATHSIG"))
+		return;
+
+	if (setpgid(0, 0) != 0)
+	{
+		fprintf(stderr, "Error: could not create a process group: %s\n",
+				strerror(errno));
+		return;
+	}
+	pqsignal(SIGTERM, yb_signal_process_group);
 }

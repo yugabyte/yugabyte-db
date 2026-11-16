@@ -13,6 +13,7 @@
 
 #include "yb/dockv/value.h"
 
+#include <limits>
 #include <string>
 
 #include "yb/common/table_properties_constants.h"
@@ -21,9 +22,14 @@
 
 
 #include "yb/util/fast_varint.h"
+#include "yb/util/flags.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+
+DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_cdr_metadata, false,
+  "Whether to persist the replication origin and source write hybrid time of the last writer "
+  "alongside each row version, for conflict detection and resolution in logical replication.");
 
 namespace yb::dockv {
 
@@ -45,16 +51,20 @@ bool DecodeType(KeyEntryType expected_value_type, const T& default_value, Slice*
 
 namespace {
 
-Result<UserTimeMicros> DecodeTimestamp(Slice* slice) {
+Result<uint64_t> DecodeBigEndianUInt64(Slice* slice, const char* field_name) {
   static constexpr int kBytesPerInt64 = sizeof(int64_t);
   RSTATUS_DCHECK_GE(
       slice->size(), kBytesPerInt64, Corruption,
-      Format("Failed to decode TTL from value, size too small: $1, need $2",
-      slice->size(), kBytesPerInt64));
+      Format("Failed to decode $0 from value, size too small: $1, need $2",
+      field_name, slice->size(), kBytesPerInt64));
 
   auto result = BigEndian::Load64(slice->data());
   slice->remove_prefix(kBytesPerInt64);
   return result;
+}
+
+Result<UserTimeMicros> DecodeTimestamp(Slice* slice) {
+  return DecodeBigEndianUInt64(slice, "user timestamp");
 }
 
 KeyEntryType GetKeyEntryType(const Slice& slice) {
@@ -77,10 +87,10 @@ template <class IntentDocHt>
 Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_doc_ht) {
   Slice original = *slice;
   ValueControlFields result;
-  if (slice->empty()) {
+  auto entry_type = DecodeKeyEntryType(*slice);
+  if (!IsControlFieldMarker(entry_type)) {
     return result;
   }
-  auto entry_type = static_cast<KeyEntryType>((*slice)[0]);
   if (entry_type == KeyEntryType::kMergeFlags) {
     slice->consume_byte();
     result.merge_flags = VERIFY_RESULT_PREPEND(
@@ -109,14 +119,33 @@ Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_
         Format("Failed to decode user timestamp in $0", original.ToDebugHexString()));
     entry_type = GetKeyEntryType(*slice);
   }
+  if (entry_type == KeyEntryType::kCdrMetadata) {
+    slice->consume_byte();
+    auto origin = VERIFY_RESULT_PREPEND(
+        FastDecodeUnsignedVarInt(slice),
+        Format("Failed to decode source origin in $0", original.ToDebugHexString()));
+    SCHECK_LE(
+        origin, std::numeric_limits<uint32_t>::max(), Corruption,
+        Format("Source origin out of range in $0", original.ToDebugHexString()));
+    result.cdr_metadata.source_origin = narrow_cast<uint32_t>(origin);
+    result.cdr_metadata.source_write_ht = HybridTime(VERIFY_RESULT_PREPEND(
+        DecodeBigEndianUInt64(slice, "source write hybrid time"),
+        Format("Failed to decode source write hybrid time in $0", original.ToDebugHexString())));
+    entry_type = GetKeyEntryType(*slice);
+  }
   return result;
 }
 
 template <class Out>
-void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
+void DoAppendEncoded(const ValueControlFields& fields, Slice intent_doc_ht, Out* out) {
+  const auto initial_size = out->size();
   if (fields.merge_flags) {
     out->push_back(KeyEntryTypeAsChar::kMergeFlags);
     FastAppendUnsignedVarInt(fields.merge_flags, out);
+  }
+  if (!intent_doc_ht.empty()) {
+    out->push_back(KeyEntryTypeAsChar::kHybridTime);
+    out->append(intent_doc_ht.cdata(), intent_doc_ht.size());
   }
   if (!fields.ttl.Equals(ValueControlFields::kMaxTtl)) {
     out->push_back(KeyEntryTypeAsChar::kTtl);
@@ -126,6 +155,17 @@ void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
     out->push_back(KeyEntryTypeAsChar::kUserTimestamp);
     util::AppendBigEndianUInt64(fields.timestamp, out);
   }
+  if (fields.has_cdr_metadata()) {
+    out->push_back(KeyEntryTypeAsChar::kCdrMetadata);
+    FastAppendUnsignedVarInt(fields.cdr_metadata.source_origin, out);
+    util::AppendBigEndianUInt64(fields.cdr_metadata.source_write_ht.ToUint64(), out);
+  }
+
+  DCHECK(
+      out->size() == initial_size ||
+      IsControlFieldMarker(DecodeKeyEntryType(
+          Slice(out->data() + initial_size, out->size() - initial_size))))
+      << "Control field encoded with a marker IsControlFieldMarker does not recognise";
 }
 
 } // namespace
@@ -140,11 +180,15 @@ Result<ValueControlFields> ValueControlFields::DecodeWithIntentDocHt(
 }
 
 void ValueControlFields::AppendEncoded(std::string* out) const {
-  DoAppendEncoded(*this, out);
+  DoAppendEncoded(*this, Slice(), out);
 }
 
 void ValueControlFields::AppendEncoded(ValueBuffer* out) const {
-  DoAppendEncoded(*this, out);
+  DoAppendEncoded(*this, Slice(), out);
+}
+
+void ValueControlFields::AppendEncodedWithIntentDocHt(Slice intent_doc_ht, ValueBuffer* out) const {
+  DoAppendEncoded(*this, intent_doc_ht, out);
 }
 
 std::string ValueControlFields::ToString() const {
@@ -157,6 +201,11 @@ std::string ValueControlFields::ToString() const {
   }
   if (timestamp != kInvalidTimestamp) {
     result += Format("; timestamp: $0", timestamp);
+  }
+  if (has_cdr_metadata()) {
+    result += Format(
+        "; cdr source origin: $0; cdr source write ht: $1", cdr_metadata.source_origin,
+        cdr_metadata.source_write_ht);
   }
   return result;
 }

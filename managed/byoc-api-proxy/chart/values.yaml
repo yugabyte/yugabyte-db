@@ -1,0 +1,81 @@
+# Default values for byoc-api-proxy. Settings map to the environment variables in
+# managed/byoc-api-proxy/src/main/resources/application.yaml.
+
+image:
+  repository: quay.io/yugabyte/byoc-api-proxy
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+  # Names of existing image pull secrets.
+  pullSecrets: []
+
+yba:
+  # UUID of the YugabyteDB Anywhere instance, as registered in Aeon. Required.
+  uuid: ""
+  # YBA API base URL. Empty means the yugaware service of the same release,
+  # http://<release>-yugaware-ui/api, for use as a yugaware sub-chart.
+  baseUrl: ""
+
+proxiedApp:
+  # Aeon API base URL the proxy polls for queued requests. Required.
+  baseUrl: ""
+  readTimeout: PT30S
+  pollBatchSize: 10
+  auth:
+    # api_key or service_account.
+    type: api_key
+    # Secret holding the credentials: API_KEY for api_key, or SERVICE_ACCOUNT_EMAIL and
+    # SERVICE_ACCOUNT_PASSWORD for service_account. When empty, the chart creates one from the
+    # values below.
+    existingSecret: ""
+    apiKey: ""
+    serviceAccount:
+      email: ""
+      password: ""
+      jwtRefreshInterval: PT10H
+
+# Logs in JSON instead of plain text.
+jsonLogs: false
+
+# Extra environment variables, volumes and mounts. For example, to trust a private CA for YBA:
+#   extraEnv:
+#     - name: SPRING_SSL_BUNDLE_PEM_YBA_TRUSTSTORE_CERTIFICATE
+#       value: file:/etc/byoc-api-proxy/yba-ca/ca.crt
+#   extraVolumes:
+#     - name: yba-ca
+#       secret:
+#         secretName: yba-ca
+#   extraVolumeMounts:
+#     - name: yba-ca
+#       mountPath: /etc/byoc-api-proxy/yba-ca
+#       readOnly: true
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []
+
+serviceAccountName: ""
+commonLabels: {}
+podAnnotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

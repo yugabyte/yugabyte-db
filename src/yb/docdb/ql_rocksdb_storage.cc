@@ -198,6 +198,7 @@ Status QLRocksDBStorage::GetIterator(
     const ReadOperationData& read_operation_data,
     const DocKey& start_doc_key,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
+    SkipSeek skip_seek,
     YQLRowwiseIteratorIf::UniPtr* iter) const {
   const auto& schema = doc_read_context.get().schema();
   // Populate dockey from QL key columns.
@@ -258,7 +259,7 @@ Status QLRocksDBStorage::GetIterator(
           lower_doc_key,
           upper_doc_key,
           request.prefix_length()),
-      SkipSeek(request.has_index_request())));
+      skip_seek));
 
   *iter = std::move(doc_iter);
   return Status::OK();
@@ -301,10 +302,10 @@ Result<Slice> ExtractDocKey(Slice encoded_key) {
 // If encoded_key_prefix contains full encoded doc key - extract encoded doc key and return it.
 // Otherwise, return encoded_key itself.
 Slice TryExtractDocKey(Slice encoded_key) {
-  const auto doc_key_size_result =
-      dockv::DocKey::EncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey);
-  if (doc_key_size_result.ok()) {
-    return Slice(encoded_key.data(), doc_key_size_result.get());
+  const auto doc_key_size =
+      dockv::DocKey::TryGetEncodedSize(encoded_key, dockv::DocKeyPart::kWholeDocKey);
+  if (doc_key_size) {
+    return Slice(encoded_key.data(), *doc_key_size);
   }
   return encoded_key;
 }

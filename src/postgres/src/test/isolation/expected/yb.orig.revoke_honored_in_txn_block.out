@@ -1,0 +1,27 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rr s1_select s2_revoke s1_select s1_rollback
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT COUNT(*) FROM test;
+count
+-----
+   10
+(1 row)
+
+step s2_revoke: REVOKE SELECT ON test FROM regress_revoke_reader;
+step s1_select: SELECT COUNT(*) FROM test;
+ERROR:  permission denied for table test
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc s1_select s2_revoke s1_select s1_rollback
+step s1_begin_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_select: SELECT COUNT(*) FROM test;
+count
+-----
+   10
+(1 row)
+
+step s2_revoke: REVOKE SELECT ON test FROM regress_revoke_reader;
+step s1_select: SELECT COUNT(*) FROM test;
+ERROR:  permission denied for table test
+step s1_rollback: ROLLBACK;

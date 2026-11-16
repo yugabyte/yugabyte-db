@@ -219,7 +219,7 @@ public class PlatformReplicationHelper {
   }
 
   Duration getBackupFrequency() {
-    return runtimeConfigFactory.globalRuntimeConf().getDuration(REPLICATION_FREQUENCY_KEY);
+    return confGetter.getGlobalConf(GlobalConfKeys.replicationFrequency);
   }
 
   public void setReplicationFrequency(Duration duration) {

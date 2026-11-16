@@ -32,7 +32,9 @@ using namespace std::chrono_literals;
 DECLARE_bool(enable_pg_cron);
 
 DEFINE_RUNTIME_uint32(pg_cron_leader_lease_sec, 60,
-    "The time in seconds to hold the pg_cron leader lease.");
+    "The time in seconds to hold the pg_cron leader lease. A leader that steps down lets its "
+    "in-flight jobs run until its lease expires. A new leader waits this long before it starts "
+    "running jobs.");
 
 DEFINE_RUNTIME_uint32(pg_cron_leadership_refresh_sec, 10,
     "Frequency at which the leadership is revalidated. This should be less than "
@@ -55,14 +57,18 @@ namespace {
 constexpr uint32 kPgCronJsonVersion1 = 1;
 constexpr char kPgCronJsonVersion[] = "version";
 constexpr char kPgCronJsonLastMinute[] = "last_minute";
+// How long before the lease ends this node stops its in-flight pg_cron jobs.
+constexpr int64_t kJobStopMarginSec = 3;
 }  // namespace
 
 PgCronLeaderService::PgCronLeaderService(
-    std::function<void(MonoTime)> set_cron_leader_lease_fn,
+    std::function<void(MonoTime)> set_cron_lease_end_fn,
+    std::function<void(bool)> set_cron_can_start_jobs_fn,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_future<client::YBClient*>& client_future)
     : StatefulRpcServiceBase(StatefulServiceKind::PG_CRON_LEADER, metric_entity, client_future),
-      set_cron_leader_lease_fn_(std::move(set_cron_leader_lease_fn)) {}
+      set_cron_lease_end_fn_(std::move(set_cron_lease_end_fn)),
+      set_cron_can_start_jobs_fn_(std::move(set_cron_can_start_jobs_fn)) {}
 
 void PgCronLeaderService::Activate() {
   if (!FLAGS_enable_pg_cron) {
@@ -74,17 +80,17 @@ void PgCronLeaderService::Activate() {
   auto leader_term = GetLeaderTerm();
 
   std::lock_guard lock(mutex_);
-  DCHECK(!leader_activate_time_.Initialized());
+  DCHECK(!lease_start_allowed_time_.Initialized());
 
   if (leader_term.ok()) {
     if (*leader_term == 1) {
       VLOG_WITH_FUNC(1) << "Leader for term 1. Activating immediately";
-      leader_activate_time_ = MonoTime::Min();
+      lease_start_allowed_time_ = MonoTime::Min();
     } else {
-      leader_activate_time_ =
-          MonoTime::Now() + MonoDelta::FromMicroseconds(
-                                FLAGS_pg_cron_leader_lease_sec + 2 * FLAGS_max_clock_skew_usec);
-      LOG_WITH_FUNC(INFO) << "Waiting until " << leader_activate_time_.ToFormattedString()
+      lease_start_allowed_time_ = MonoTime::Now() +
+                              MonoDelta::FromSeconds(FLAGS_pg_cron_leader_lease_sec) +
+                              MonoDelta::FromMicroseconds(2 * FLAGS_max_clock_skew_usec);
+      LOG_WITH_FUNC(INFO) << "Waiting until " << lease_start_allowed_time_.ToFormattedString()
                           << " for lease of the old leader to expire";
     }
   } else {
@@ -94,10 +100,10 @@ void PgCronLeaderService::Activate() {
 
 void PgCronLeaderService::Deactivate() {
   std::lock_guard lock(mutex_);
-  // Break the lease immediately. This is best effort but still safe since new leader will not
-  // activate until the old leader lease has fully expired.
-  set_cron_leader_lease_fn_(MonoTime::kUninitialized);
-  leader_activate_time_ = MonoTime::kUninitialized;
+  // Stop starting new jobs but keep the lease, so that in-flight jobs can finish until it expires.
+  // The new leader waits for the lease to expire before it starts any job.
+  set_cron_can_start_jobs_fn_(false);
+  lease_start_allowed_time_ = MonoTime::kUninitialized;
 
   LOG_WITH_FUNC(INFO) << "Deactivated";
 }
@@ -126,20 +132,28 @@ void PgCronLeaderService::RefreshLeaderLease() {
   }
 
   SharedLock lock(mutex_);
-  if (!leader_activate_time_.Initialized()) {
+  if (!lease_start_allowed_time_.Initialized()) {
     LOG(DFATAL) << "Leader activate time not initialized.";
     return;
   }
 
-  if (now < leader_activate_time_) {
+  if (now < lease_start_allowed_time_) {
     // Not yet time to set the lease.
     return;
   }
 
-  // We are the leader. Renew the lease.
+  // We are the leader: renew the lease and mark ourselves active until it ends. The lease ends
+  // kJobStopMarginSec early, to leave time to stop running jobs before a new leader, which waits
+  // out the full lease, starts.
   const auto lease_end = now + MonoDelta::FromSeconds(FLAGS_pg_cron_leader_lease_sec);
-  VLOG_WITH_FUNC(1) << "Setting leader lease to " << lease_end.ToFormattedString();
-  set_cron_leader_lease_fn_(lease_end);
+  const auto stop_margin = std::clamp<int64_t>(
+      static_cast<int64_t>(FLAGS_pg_cron_leader_lease_sec) -
+          static_cast<int64_t>(FLAGS_pg_cron_leadership_refresh_sec) - 1,
+      0, kJobStopMarginSec);
+  VLOG_WITH_FUNC(1) << "Setting leader lease to " << lease_end.ToFormattedString()
+                    << " minus " << stop_margin << " s";
+  set_cron_lease_end_fn_(lease_end - MonoDelta::FromSeconds(stop_margin));
+  set_cron_can_start_jobs_fn_(true);
 }
 
 Status PgCronLeaderService::SetLastMinute(int64_t last_minute, CoarseTimePoint deadline) {

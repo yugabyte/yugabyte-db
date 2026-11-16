@@ -7,6 +7,7 @@
  * Scalable PostgreSQL connection pooler.
  */
 
+__attribute__((format(printf, 3, 0)))
 static inline int od_vsnprintf(char *buf, int size, char *fmt, va_list args)
 {
 	int rc;
@@ -16,6 +17,7 @@ static inline int od_vsnprintf(char *buf, int size, char *fmt, va_list args)
 	return rc;
 }
 
+__attribute__((format(printf, 2, 0)))
 static inline int od_vasprintf(char **__restrict bufp, char *fmt, va_list args)
 {
 	vasprintf(bufp, fmt, args);
@@ -27,6 +29,7 @@ static inline int od_vasprintf(char **__restrict bufp, char *fmt, va_list args)
 	return OK_RESPONSE;
 }
 
+__attribute__((format(printf, 2, 3)))
 static inline int od_asprintf(char **__restrict bufp, char *fmt, ...)
 {
 	va_list args;
@@ -44,6 +47,7 @@ static inline int od_asprintf(char **__restrict bufp, char *fmt, ...)
 	return OK_RESPONSE;
 }
 
+__attribute__((format(printf, 3, 4)))
 static inline int od_snprintf(char *buf, int size, char *fmt, ...)
 {
 	va_list args;

@@ -69,8 +69,10 @@ FOR yb_v_child_table IN
     SELECT child.relname
     FROM pg_inherits
     JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+    JOIN pg_namespace parent_ns ON parent.relnamespace = parent_ns.oid
     JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-    WHERE parent.relname = split_part(p_parent_table, '.', 2)
+    WHERE parent_ns.nspname = split_part(p_parent_table, '.', 1)
+    AND parent.relname = split_part(p_parent_table, '.', 2)
 LOOP
     -- Append each child table name to the array
     yb_v_child_tables := array_append(yb_v_child_tables, yb_v_child_table.relname::text);
@@ -190,10 +192,12 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     WHERE n.nspname = v_parent_schema::name 
     AND c.relname = v_partition_name::name;
 
-    /* YB: Don't continue whole loop iteration, there could be
-    case that child partition was created but not attached due to
-    previous create_partition_time failed as YB does not support
-    transactional DDL.
+    -- YB: Don't skip a child that already exists; it is attached below if it isn't attached. A run
+    -- that failed with transactional DDL off can leave a child created but not attached. This also
+    -- re-attaches a child that was detached on purpose, by drop_partition_* with
+    -- retention_keep_table or by DETACH PARTITION, once run_maintenance or partition_data_* reaches
+    -- its range again. Upstream leaves such a child detached.
+    /*
     IF v_exists > 0 THEN
         CONTINUE;
     END IF;

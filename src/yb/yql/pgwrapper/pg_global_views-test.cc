@@ -204,8 +204,11 @@ class PgGlobalViewsTest : public LibPqTestBase {
     // exact suffix of the log line, i.e. the complete pushed-down query.
     auto exact_wait_string = Format("$0\n", wait_string);
     for (int i = 0; i < GetNumTabletServers(); ++i) {
-      thread_holder->AddThreadFunctor([this, exact_wait_string, i]() {
-        ASSERT_OK(LogWaiter(cluster_->tablet_server(i), exact_wait_string).WaitFor(30s));
+      // Register the waiter before returning, so log lines emitted by the query the caller
+      // runs next are not missed.
+      auto waiter = std::make_shared<LogWaiter>(cluster_->tablet_server(i), exact_wait_string);
+      thread_holder->AddThreadFunctor([waiter]() {
+        ASSERT_OK(waiter->WaitFor(30s));
       });
     }
   }

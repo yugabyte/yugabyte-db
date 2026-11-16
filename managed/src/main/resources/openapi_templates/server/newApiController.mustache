@@ -56,6 +56,7 @@ import com.yugabyte.yw.controllers.AbstractPlatformController;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.http.conditional.ConditionalGet;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -110,6 +111,11 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
   {{/-last}}
   {{/noAuthz}}
   {{/vendorExtensions.x-yba-api-authz}}
+  {{#vendorExtensions.x-yba-api-conditional-get}}
+  @ConditionalGet(
+      value = {{provider}}.class{{#resourcePathSegment}},
+      resourcePathSegment = "{{resourcePathSegment}}"{{/resourcePathSegment}})
+  {{/vendorExtensions.x-yba-api-conditional-get}}
   {{#vendorExtensions.x-yba-api-block-operator-resource}}
   @BlockOperatorResource(
       resource =
@@ -137,7 +143,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     }
     {{/bodyParams}}
     {{#useInterfaces}}
-    return imp.{{operationId}}Http(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}});
+    return imp.{{operationId}}Http(request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{paramName}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}});
     {{/useInterfaces}}
     {{^useInterfaces}}
     {{>responseToResult}}
@@ -253,6 +259,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     {{/isFile}}
     {{/formParams}}
     {{#headerParams}}
+    {{^vendorExtensions.x-yba-api-idempotency-key}}
     {{#collectionFormat}}
     String[] {{paramName}}Array = request.getHeaders().getAll("{{baseName}}").toArray(new String[0]);
     {{#required}}
@@ -283,6 +290,7 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
       {{/required}}
     }
     {{/collectionFormat}}
+    {{/vendorExtensions.x-yba-api-idempotency-key}}
     {{/headerParams}}
     {{#useInterfaces}}
     {{#controllerOnly}}
@@ -290,10 +298,10 @@ public class {{classname}}Controller extends {{#operations.operation}}{{#-first}
     {{/controllerOnly}}
     {{^controllerOnly}}
     {{#supportAsync}}
-    return imp.{{operationId}}Http(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}});
+    return imp.{{operationId}}Http(request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{paramName}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}});
     {{/supportAsync}}
     {{^supportAsync}}
-    return imp.{{operationId}}Http(request{{#hasParams}}, {{/hasParams}}{{#allParams}}{{paramName}}{{^-last}}, {{/-last}}{{/allParams}});
+    return imp.{{operationId}}Http(request{{#allParams}}{{^vendorExtensions.x-yba-api-idempotency-key}}, {{paramName}}{{/vendorExtensions.x-yba-api-idempotency-key}}{{/allParams}});
     {{/supportAsync}}
     {{/controllerOnly}}
     {{/useInterfaces}}

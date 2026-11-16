@@ -18,6 +18,7 @@
 #include <functional>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "yb/gutil/callback_forward.h"
 #include "yb/gutil/map-util.h"
@@ -32,6 +33,8 @@
 
 namespace yb {
 
+static const char* const kTabletMetricEntityName = "tablet";
+static const char* const kTableMetricEntityName = "table";
 static const char* const kXClusterMetricEntityName = "xcluster";
 static const char* const kCdcsdkMetricEntityName = "cdcsdk";
 static const char* const kServerLevelAggregationId = "server_level";
@@ -112,6 +115,21 @@ struct MetricPrometheusOptions : public MetricOptions {
 
   std::string server_allowlist_string = ".*";
   std::string server_blocklist_string = "";
+
+  // The fields below control active-table filtering. They are only honored when version is equal
+  // to kFilterVersionTwo: under kFilterVersionOne a table-level metric has no server-level copy, so
+  // filtering it would make node totals undercount.
+
+  // Whether this scrape should use the active table IDs stored by the server.
+  bool apply_table_ids_filter = false;
+
+  // Missing means all tables. A present, possibly empty set limits table-level
+  // metrics to the listed table IDs.
+  std::shared_ptr<const std::unordered_set<std::string>> active_table_ids;
+
+  // Table-level metrics whose names match this regex are exported for every table, regardless of
+  // active_table_ids.
+  std::string table_always_allowlist_string = "";
 };
 
 struct MetricHelpAndType {

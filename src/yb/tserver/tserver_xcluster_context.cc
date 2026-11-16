@@ -21,6 +21,8 @@
 #include "yb/tserver/xcluster_safe_time_map.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
@@ -66,12 +68,61 @@ void TserverXClusterContext::UpdateOidCacheInvalidationsCount(
   }
 }
 
+Result<std::optional<HybridTime>> TserverXClusterContext::GetPersistenceBlockedThrough(
+    uint32_t database_oid) const {
+  SharedLock lock(mutex_);
+  SCHECK(
+      HasXClusterGuardedInfoUnlocked(), IllegalState,
+      "The persistence block map is unavailable because this TServer does not hold a current "
+      "xCluster-guarded information lease; retry later");
+  const auto& blocked_through_ht = persistence_block_map_->blocked_through_ht();
+  const auto it = blocked_through_ht.find(database_oid);
+  if (it == blocked_through_ht.end()) {
+    return std::nullopt;
+  }
+  return HybridTime::FromPB(it->second);
+}
+
+Result<std::shared_ptr<const PersistenceBlockMapPB>>
+TserverXClusterContext::TEST_GetPersistenceBlockMap() const {
+  SharedLock lock(mutex_);
+  SCHECK(
+      HasXClusterGuardedInfoUnlocked(), IllegalState,
+      "The persistence block map is unavailable because this TServer does not hold a current "
+      "xCluster-guarded information lease; retry later");
+  return persistence_block_map_;
+}
+
+void TserverXClusterContext::UpdatePersistenceBlockMap(
+    const PersistenceBlockMapPB& persistence_block_map) {
+  auto new_map = std::make_shared<const PersistenceBlockMapPB>(persistence_block_map);
+  std::lock_guard lock(mutex_);
+  if (!pb_util::ArePBsEqual(*persistence_block_map_, *new_map, /*diff_str=*/nullptr)) {
+    LOG(DETAIL) << "Received persistence block map " << new_map->ShortDebugString();
+  }
+  persistence_block_map_ = std::move(new_map);
+}
+
+bool TserverXClusterContext::HasXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasXClusterGuardedInfoUnlocked();
+}
+
+bool TserverXClusterContext::HasUnexpiredXClusterGuardedInfoLease() const {
+  SharedLock lock(mutex_);
+  return HasUnexpiredLeaseUnlocked();
+}
+
 bool TserverXClusterContext::HasXClusterGuardedInfoUnlocked() const {
   if (FLAGS_enforce_xcluster_guarded_lease) {
-    return xcluster_guarded_lease_expiration_ &&
-           MonoTime::Now() < xcluster_guarded_lease_expiration_;
+    return HasUnexpiredLeaseUnlocked();
   }
   return have_received_a_heartbeat_;
+}
+
+bool TserverXClusterContext::HasUnexpiredLeaseUnlocked() const {
+  return xcluster_guarded_lease_expiration_ &&
+         MonoTime::Now() < xcluster_guarded_lease_expiration_;
 }
 
 bool TserverXClusterContext::IsReadOnlyMode(NamespaceIdView namespace_id) const {

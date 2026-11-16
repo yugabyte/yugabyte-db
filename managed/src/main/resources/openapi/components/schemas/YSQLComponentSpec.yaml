@@ -18,6 +18,9 @@ properties:
       holding more than one statement are rejected, as are constructs that reach outside
       the database such as COPY ... TO PROGRAM or the pg_read_file family. The session
       additionally runs with default_transaction_read_only=on.
+      After these checks YBA runs the queries its support bundle manifest
+      lists for component_name instead, and rejects a component_name the
+      manifest doesn't list.
     type: array
     items:
       type: string
@@ -28,6 +31,9 @@ properties:
       Must be a single file name of up to 128 characters from [A-Za-z0-9._-].
     type: string
   timeout_secs:
-    description: Command timeout in seconds.
+    description: |
+      Command timeout in seconds.
+      YBA uses the timeout its support bundle manifest gives
+      component_name instead.
     type: integer
     format: int64

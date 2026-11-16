@@ -126,7 +126,8 @@ public class ChangeMasterConfig extends UniverseTaskBase {
     String ipToUse =
         shouldUseSecondary ? node.cloudInfo.secondary_private_ip : node.cloudInfo.private_ip;
     String certificate = universe.getCertificateNodetoNode();
-    YbClientConfig config = ybClientConfigFactory.create(masterAddresses, certificate);
+    YbClientConfig config =
+        ybClientConfigFactory.create(masterAddresses, certificate).withClientCertOf(universe);
     // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
     // for a long time until it gives up if the node is already added or removed.
     // This optional check ensures that changeMasterConfig is not invoked if the operation is

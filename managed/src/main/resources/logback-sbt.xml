@@ -22,13 +22,19 @@
         <sift>
           <appender name="FILE-${logType}" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}.log</file>
-            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-              <!-- Daily rollover with compression -->
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+              <!-- Rollover on the %d period or on maxFileSize, whichever comes first. The %i
+                   index is mandatory for this policy and distinguishes archives of one period;
+                   consumers that parse these names are listed in ApplicationLogsComponent. -->
               <fileNamePattern>
-                ${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.gz
+                ${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.%i.gz
               </fileNamePattern>
+              <maxFileSize>${${logType}LogMaxFileSize:-1024MB}</maxFileSize>
               <!-- keep 30 days worth of history -->
               <maxHistory>${${logType}LogMaxHistory:-30}</maxHistory>
+              <!-- Disk backstop. maxHistory bounds the number of periods, not bytes, so on a
+                   high-volume node this binds first and history is shorter than maxHistory. -->
+              <totalSizeCap>${${logType}LogTotalSizeCap:-20GB}</totalSizeCap>
             </rollingPolicy>
 
             <encoder>
@@ -79,13 +85,19 @@
         <sift>
           <appender name="FILE-${logType}" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}.log</file>
-            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-              <!-- Daily rollover with compression -->
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+              <!-- Rollover on the %d period or on maxFileSize, whichever comes first. The %i
+                   index is mandatory for this policy and distinguishes archives of one period;
+                   consumers that parse these names are listed in ApplicationLogsComponent. -->
               <fileNamePattern>
-                ${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.gz
+                ${log.override.path:-${application.home:-.}/logs}/${${logType}LogFileNamePrefix:-/}${logType}-log-%d{${${logType}LogRolloverPattern:-yyyy-MM-dd}}.%i.gz
               </fileNamePattern>
+              <maxFileSize>${${logType}LogMaxFileSize:-1024MB}</maxFileSize>
               <!-- keep 30 days worth of history -->
               <maxHistory>${${logType}LogMaxHistory:-30}</maxHistory>
+              <!-- Disk backstop. maxHistory bounds the number of periods, not bytes, so on a
+                   high-volume node this binds first and history is shorter than maxHistory. -->
+              <totalSizeCap>${${logType}LogTotalSizeCap:-20GB}</totalSizeCap>
             </rollingPolicy>
 
             <encoder>

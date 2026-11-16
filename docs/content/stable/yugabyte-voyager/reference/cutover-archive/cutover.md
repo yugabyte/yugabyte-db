@@ -24,6 +24,8 @@ The following page describes the following cutover commands:
 
 Initiate [cutover](../../../migrate/live-migrate/#cutover-to-the-target) to the target YugabyteDB database.
 
+Before cutting over a PostgreSQL source, the command checks the source for schema drift. Host, port, user, database, schemas, and SSL settings come from the migration. Provide the source password using `--source-db-password`, or skip the check using `--skip-pre-checks schema_drift`.
+
 ### Syntax
 
 ```text
@@ -55,7 +57,7 @@ When run at the same time, flags take precedence over configuration flag setting
 | --prepare-for-fall-back |
 
 ```yaml{.nocopy}
-cutover-to-target:
+initiate-cutover-to-target:
   prepare-for-fall-back:
 ```
 
@@ -63,12 +65,28 @@ cutover-to-target:
 | --use-yb-grpc-connector |
 
 ```yaml{.nocopy}
-cutover-to-target:
+initiate-cutover-to-target:
   use-yb-grpc-connector:
 ```
 
 |
 Applicable to fall-forward or fall-back workflows where you export changes from YugabyteDB during [export data from target](../../../reference/data-migration/export-data/#export-data-from-target). If set to true, [YugabyteDB gRPC Connector](../../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) is used. Otherwise, [YugabyteDB Connector](../../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is used.<br> .<br>Accepted parameters: true, false, yes, no, 0, 1. |
+| --source-db-password |
+
+```yaml{.nocopy}
+source:
+  db-password:
+```
+
+| Source database password, used by the schema drift pre-check. Host, port, user, database, schemas, and SSL settings come from the migration, so only the password is needed. You can also set the password using the `SOURCE_DB_PASSWORD` environment variable. If you don't provide a password, yb-voyager prompts you at runtime. If the password contains special characters that are interpreted by the shell (for example, # and $), enclose it in single quotes. |
+| --skip-pre-checks |
+
+```yaml{.nocopy}
+initiate-cutover-to-target:
+  skip-pre-checks:
+```
+
+| Comma-separated list of cutover pre-checks to skip. Supported value: `schema_drift`. <br>Default: none skipped. |
 | -e, --export-dir |
 
 ```yaml{.nocopy}

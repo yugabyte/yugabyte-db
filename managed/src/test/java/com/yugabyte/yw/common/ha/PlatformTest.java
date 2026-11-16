@@ -18,6 +18,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -27,6 +28,7 @@ import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApi;
@@ -255,13 +257,17 @@ public class PlatformTest extends FakeDBApplication {
     createHAConfig(remoteFakeApi, clusterKey);
     // The remote app runs non-FIPS, so a FIPS local instance is the mismatched pair.
     setupProxyingApiHelper(remoteFakeApi, clusterKey, true /* fipsEnabled */);
-    when(mockApiHelper.getRequest(anyString(), anyMap()))
+    // The remote instance's actual response: a 400 whose body names the FIPS mismatch.
+    when(mockApiHelper.getHttpRequest(anyString(), anyMap(), isNull(), isNull()))
         .thenAnswer(
             invocation -> {
               String uri = invocation.<String>getArgument(0).replaceFirst(REMOTE_ACME_ORG, "");
               Http.RequestBuilder requestBuilder = fakeRequest().method("GET").uri(uri);
               invocation.<Map<String, String>>getArgument(1).forEach(requestBuilder::header);
-              return Json.parse(contentAsString(remoteFakeApi.route(requestBuilder)));
+              Result result = remoteFakeApi.route(requestBuilder);
+              ApiHelper.HttpResponse response = mock(ApiHelper.HttpResponse.class);
+              when(response.getBody()).thenReturn(Json.parse(contentAsString(result)));
+              return response;
             });
     PlatformInstanceClient client =
         mockPlatformInstanceClientFactory.getClient(clusterKey, REMOTE_ACME_ORG, Map.of());

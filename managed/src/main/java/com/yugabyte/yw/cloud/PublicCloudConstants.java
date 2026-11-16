@@ -51,6 +51,7 @@ public class PublicCloudConstants {
   public static final String OCI_COMPUTE_OCPU_FORMAT = "oci.compute.%s.ocpu";
 
   public static final String OCI_COMPUTE_MEMORY_FORMAT = "oci.compute.%s.memory";
+  public static final String OCI_COMPUTE_NVME_FORMAT = "oci.compute.%s.nvme";
   public static final String OCI_BLOCK_STORAGE = "oci.block.storage";
   public static final String OCI_BLOCK_VPU = "oci.block.vpu";
 

@@ -61,3 +61,7 @@ YbgGetPgVersion
 # Ident Conf
 YbgLoadIdent
 YbgCheckUsermap
+
+# GUC Conf
+YbgResolveGucValue
+YbGetConfigFileValues

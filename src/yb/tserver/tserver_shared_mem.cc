@@ -696,10 +696,15 @@ uint64_t PgSessionSharedMemoryManager::session_id() const {
   return impl_->session_id();
 }
 
-bool TServerSharedData::IsCronLeader() const {
+bool TServerSharedData::HasCronLease() const {
   // We are the leader if we have a valid lease time that has not expired.
-  auto lease_end = cron_leader_lease_.load();
+  auto lease_end = cron_lease_end_.load();
   return lease_end.Initialized() && lease_end > MonoTime::Now();
+}
+
+bool TServerSharedData::CanCronStartJobs() const {
+  // We are the active leader only if we have not stepped down and still hold a valid lease.
+  return cron_can_start_jobs_.load() && HasCronLease();
 }
 
 std::string MakeSharedMemoryBigSegmentName(const std::string& instance_id, uint64_t id) {

@@ -284,6 +284,24 @@ public class NodeDetails {
   @ApiModelProperty(value = "Node exporter port")
   public int nodeExporterPort = 9300;
 
+  /** Systemd scope node_exporter runs in on a node. */
+  public enum NodeExporterSystemdLevel {
+    // Root-level unit running as prometheus, laid out by YBA versions before 2026.2.
+    ROOT,
+    // Unit in the DB user's systemd scope, the only layout that can serve TLS.
+    USER
+  }
+
+  // Unset on nodes laid out before this field existed. Only USER counts towards exporter TLS, so
+  // their universe stays on plain HTTP until the node is recorded as USER. Not cloned: a new node's
+  // layout is known only once it is provisioned.
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Systemd scope of node_exporter on this node: ROOT or USER. Unset if"
+              + " not known.")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0.0")
+  public NodeExporterSystemdLevel nodeExporterSystemdLevel;
+
   @ApiModelProperty(value = "Otel collector metrics port")
   public int otelCollectorMetricsPort = 8889;
 

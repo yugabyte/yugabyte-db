@@ -153,7 +153,7 @@ static char* pg_cron_cmdTuples(char *msg);
 static void bgw_generate_returned_message(StringInfoData *display_msg, ErrorData edata);
 
 static long YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime);
-static bool YbIsCronLeader();
+static bool YbCronAllowedForXClusterRole();
 static void YbCheckLeadership(List *taskList, TimestampTz currentTime);
 static TimestampTz YbGetLastPersistedMinute(TimestampTz currentTime);
 static void YbPersistLastMinute();
@@ -205,7 +205,14 @@ static const struct config_enum_entry cron_message_level_options[] = {
  * Once distributed scheduling(#22336) is implemented the leader will schedule
  * the job and other nodes will execute jobs that have been scheduled on them.
  */
-bool ybIsLeader = false;
+/*
+ * ybCanStartJobs: this node is the active leader and may start new runs.
+ * ybCanRunJobs: this node holds a valid lease and lets its in-flight runs
+ * continue. After a graceful step down ybCanStartJobs is false while
+ * ybCanRunJobs stays true until the lease expires.
+ */
+bool ybCanStartJobs = false;
+static bool ybCanRunJobs = false;
 
 static const char *cron_error_severity(int elevel);
 
@@ -711,7 +718,7 @@ PgCronLauncherMain(Datum arg)
 		 * YbJobListRefreshSeconds for change to the jobs to take effect.
 		 */
 		if (!CronJobCacheValid ||
-			(IsYugaByteEnabled() && ybIsLeader &&
+			(IsYugaByteEnabled() && ybCanStartJobs &&
 			 YbSecondsPassed(ybLastRefreshTime, currentTime) >=
 				 YbJobListRefreshSeconds))
 		{
@@ -768,7 +775,7 @@ StartAllPendingRuns(List *taskList, TimestampTz currentTime)
 	 * become the leader. Non Yugabyte pg_cron has the same behavior when pg
 	 * restarts.
 	 */
-	if (IsYugaByteEnabled() && !ybIsLeader)
+	if (IsYugaByteEnabled() && !ybCanStartJobs)
 	{
 		lastMinute = 0;
 		return;
@@ -1354,7 +1361,7 @@ PollForTasks(List *taskList)
 static bool
 CanStartTask(CronTask *task)
 {
-	if (IsYugaByteEnabled() && !ybIsLeader)
+	if (IsYugaByteEnabled() && !ybCanStartJobs)
 		return false;
 
 	return task->state == CRON_TASK_WAITING && task->pendingRunCount > 0 &&
@@ -2433,7 +2440,7 @@ ExecuteSqlString(const char *sql)
 static bool
 jobCanceled(CronTask *task)
 {
-	if (IsYugaByteEnabled() && !ybIsLeader)
+	if (IsYugaByteEnabled() && !ybCanRunJobs)
 	{
 		task->errorMessage = "pg_cron leader changed";
 		task->state = CRON_TASK_ERROR;
@@ -2502,12 +2509,10 @@ YbSecondsPassed(TimestampTz startTime, TimestampTz stopTime)
 	return secondsPassed;
 }
 
+/* Whether the xCluster role of the cron database allows running cron jobs. */
 static bool
-YbIsCronLeader()
+YbCronAllowedForXClusterRole()
 {
-	if (!YBCIsCronLeader())
-		return false;
-
 	if (YbEnableOnXClusterTarget)
 		return true;
 
@@ -2532,12 +2537,17 @@ YbCheckLeadership(List *taskList, TimestampTz currentTime)
 	if (!IsYugaByteEnabled())
 		return;
 
-	if (YbIsCronLeader())
+	/* Check the lease first: the xCluster role lookup is a call to the tserver. */
+	bool		canRunJobs = YBCHasCronLease() && YbCronAllowedForXClusterRole();
+
+	ybCanRunJobs = canRunJobs;
+
+	if (canRunJobs && YBCCanCronStartJobs())
 	{
-		if (!ybIsLeader)
+		if (!ybCanStartJobs)
 		{
-			ereport(LOG, (errmsg("pg_cron switching to leader mode")));
-			ybIsLeader = true;
+			ereport(LOG, (errmsg("pg_cron starting new runs")));
+			ybCanStartJobs = true;
 
 			/*
 			 * The first time we detect that we are a leader, mark any inflight
@@ -2562,10 +2572,14 @@ YbCheckLeadership(List *taskList, TimestampTz currentTime)
 			CronJobCacheValid = false;
 		}
 	}
-	else if (ybIsLeader)
+	else if (ybCanStartJobs)
 	{
-		ereport(LOG, (errmsg("pg_cron switching to idle mode")));
-		ybIsLeader = false;
+		/*
+		 * Stop starting new runs. In-flight runs continue until they finish
+		 * or until the lease expires, at which point jobCanceled aborts them.
+		 */
+		ereport(LOG, (errmsg("pg_cron stopped starting new runs")));
+		ybCanStartJobs = false;
 
 		/*
 		 * Reset the pending run counts so that we do not start tasks that we
@@ -2594,7 +2608,7 @@ YbGetLastPersistedMinute(TimestampTz currentTime)
 static void
 YbPersistLastMinute()
 {
-	if (ybIsLeader && YbLastMinuteToPersist != 0)
+	if (ybCanStartJobs && YbLastMinuteToPersist != 0)
 		HandleYBStatus(YBCSetCronLastMinute(YbLastMinuteToPersist));
 
 	YbLastMinuteToPersist = 0;

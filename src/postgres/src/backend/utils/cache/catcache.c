@@ -3269,6 +3269,107 @@ YbCatCListIteratorFree(YbCatCListIterator *iterator)
 	ReleaseCatCacheList(iterator->list);
 }
 
+/*
+ * Return true if SearchCatCache() with the given full key would be answered
+ * without reading the catalog: a live positive or negative entry exists, or
+ * the cache is fully loaded and a miss would become a negative entry.
+ */
+static bool
+YbCatCacheIsLookupLocal(CatCache *cache, Datum *arguments, uint32 hashValue)
+{
+	dlist_iter	iter;
+	dlist_head *bucket;
+
+	if (cache->yb_cc_is_fully_loaded &&
+		YbAllowNegativeCacheEntries(cache->id, DatumGetObjectId(arguments[1]),
+									true /* implicit negative entry */ ))
+		return true;
+
+	bucket = &cache->cc_bucket[HASH_INDEX(hashValue, cache->cc_nbuckets)];
+	dlist_foreach(iter, bucket)
+	{
+		CatCTup    *ct = dlist_container(CatCTup, cache_elem, iter.cur);
+
+		if (!ct->dead && ct->hash_value == hashValue &&
+			CatalogCacheCompareTuple(cache, cache->cc_nkeys, ct->keys,
+									 arguments))
+			return true;
+	}
+	return false;
+}
+
+/*
+ * YbCatCachePrefetchList
+ *
+ * Make lookups of the given full keys local with one list lookup on their
+ * shared leading key v1.  Does nothing if they are all local already.
+ * Otherwise the list lookup caches every row matching v1, and each full key
+ * it did not find gets a negative entry, as SearchCatCacheMiss() would add.
+ *
+ * full_keys holds nfull_keys keys of cc_nkeys Datums each, all starting
+ * with v1.
+ */
+void
+YbCatCachePrefetchList(CatCache *cache, Datum v1, int nfull_keys,
+					   const Datum *full_keys)
+{
+	Datum		arguments[CATCACHE_MAXKEYS];
+	uint32	   *hashValues;
+	bool		all_local = true;
+	CatCList   *list;
+	int			i;
+
+	if (unlikely(cache->cc_tupdesc == NULL))
+		CatalogCacheInitializeCache(cache);
+
+	hashValues = palloc(nfull_keys * sizeof(uint32));
+	memset(arguments, 0, sizeof(arguments));
+	for (i = 0; i < nfull_keys; i++)
+	{
+		memcpy(arguments, &full_keys[i * cache->cc_nkeys],
+			   cache->cc_nkeys * sizeof(Datum));
+		Assert(arguments[0] == v1);
+		hashValues[i] = CatalogCacheComputeHashValue(cache, cache->cc_nkeys,
+													 arguments[0],
+													 arguments[1],
+													 arguments[2],
+													 arguments[3]);
+		if (all_local)
+			all_local = YbCatCacheIsLookupLocal(cache, arguments,
+												hashValues[i]);
+	}
+
+	if (!all_local)
+	{
+		list = SearchCatCacheList(cache, 1, v1, 0, 0);
+		ReleaseCatCacheList(list);
+
+		/*
+		 * Nothing from the list lookup up to here may accept invalidation
+		 * messages: one that reports a new row for a missing key would leave
+		 * its negative entry below stale.
+		 */
+		if (!IsBootstrapProcessingMode())
+		{
+			for (i = 0; i < nfull_keys; i++)
+			{
+				memcpy(arguments, &full_keys[i * cache->cc_nkeys],
+					   cache->cc_nkeys * sizeof(Datum));
+				if (YbCatCacheIsLookupLocal(cache, arguments, hashValues[i]) ||
+					!YbAllowNegativeCacheEntries(cache->id,
+												 DatumGetObjectId(arguments[1]),
+												 false /* implicit negative entry */ ))
+					continue;
+				CatalogCacheCreateEntry(cache, NULL, arguments, hashValues[i],
+										HASH_INDEX(hashValues[i],
+												   cache->cc_nbuckets));
+			}
+		}
+	}
+
+	pfree(hashValues);
+}
+
 void
 YbHandleLogCatcacheStatsInterrupt(void)
 {

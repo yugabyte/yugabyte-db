@@ -66,13 +66,13 @@ For more information, see [Replication](../../../architecture/docdb-replication/
 
 ### Leader election and failover
 
-Every tablet has a single Raft leader that coordinates writes. If the leader becomes too slow, stops sending heartbeats, can no longer make durable write progress, or loses communication with a majority of replicas, followers can start an election and choose a new leader.
+Every tablet has a single Raft leader that coordinates writes. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its write-ahead log (WAL) is stalled keeps leadership.
 
 This is especially important when a gray failure affects the current leader:
 
 - If the leader is only slightly degraded, requests may succeed but take longer.
-- If the degradation becomes severe enough, heartbeats and RPCs begin to time out or write progress stalls.
-- Once followers determine that the leader is no longer healthy enough to lead, a new leader is elected.
+- If heartbeats stop arriving in time, followers start an election.
+- If the leader keeps heartbeating while write progress stalls, it keeps leadership.
 
 During the transition, some requests may fail and need to be retried by the client.
 
@@ -138,7 +138,7 @@ Typical outcome:
 
 - Writes to that tablet experience increased latency.
 - Follower replicas continue receiving heartbeats for some time, so failover may not be immediate.
-- Once heartbeat or RPC delays exceed failure-detection thresholds, a new election occurs.
+- Once heartbeats are missed, a new election occurs.
 - Clients retry failed or timed-out requests.
 
 This is one of the most visible gray-failure patterns because all writes for the tablet go through the leader.
@@ -151,8 +151,8 @@ Typical outcome:
 
 - If the affected replica is a follower, the tablet can usually continue making progress as long as a healthy quorum remains available.
 - If the affected replica is the leader, writes for tablets led by that node may fail, stall, or time out.
-- Because the node can still appear healthy at the network level, detection may take longer than in a clean node failure.
-- Once the failure is severe enough to affect Raft progress, leadership can move to a healthy replica.
+- If the leader keeps heartbeating, it keeps leadership.
+- Leadership moves when heartbeats are missed. A failed WAL append crashes the process, and heartbeats stop with it.
 
 This is a gray failure because the node is not fully down, but it cannot reliably perform its role in durable replication.
 
@@ -176,7 +176,7 @@ A node is alive, but pauses frequently because of disk contention, CPU starvatio
 Typical outcome:
 
 - Requests to tablets led by that node show higher tail latency.
-- Leadership may move away if stalls become severe enough.
+- Leadership moves if the stalls cause missed heartbeats.
 - If the condition persists, the node may eventually be treated as unavailable.
 
 ## Failure timeline: slow leader during a partial network partition
@@ -303,20 +303,17 @@ Effects:
 
 From the application perspective, this often appears as increased latency followed by transient write errors.
 
-### T2: Followers detect loss of healthy leadership
+### T2: Heartbeats decide whether leadership moves  
 
-As the storage problem persists, `R1` can no longer function effectively as leader.
+Followers start an election only when heartbeats are missed. The leader heartbeat timer does not wait on the local write-ahead log (WAL).  
 
-Effects:
+If `R1` keeps heartbeating while its WAL is stalled, it keeps leadership. Writes to `T2` stay on that leader. This tablet does not go through the leadership change below.  
 
-- Heartbeats may become delayed as the node stalls on storage activity.
-- Followers stop receiving timely leadership communication or cannot make forward progress with the leader.
-- A follower starts a Raft election.
-- `R2` or `R3` requests votes from the other replicas.
-
-At this point, the cluster treats the problem as a leadership failure for the affected tablet, even though node A may still be reachable.
+If heartbeats are missed, a follower starts a Raft election, and `R2` or `R3` requests votes from the other replicas. A failed WAL append crashes the process, which stops the heartbeats, so a failed append follows this same path.  
 
 ### T3: Leadership changes
+
+This step is the missed-heartbeat path.
 
 Suppose `R2` on node B becomes the new leader.
 
@@ -386,7 +383,7 @@ YugabyteDB mitigates gray failures through:
 - Topology-aware replica placement
 - Client retries for transient failures
 
-A degraded follower is usually tolerated with little impact. A degraded leader may temporarily increase latency, especially during a partial network partition or local storage write failure, but YugabyteDB can elect a healthier leader once the failure is severe enough to be detected.
+A degraded follower is usually tolerated with little impact. A degraded leader may temporarily increase latency. Followers elect a new leader when heartbeats are missed. A leader that keeps heartbeating while its WAL is stalled keeps leadership.
 
 ## Related content
 

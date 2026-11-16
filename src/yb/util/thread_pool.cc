@@ -23,6 +23,8 @@
 #include <boost/intrusive/list.hpp>
 
 #include "yb/util/cgroups.h"
+#include "yb/util/enum_parse.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/lockfree.h"
@@ -38,6 +40,23 @@ DEFINE_NON_RUNTIME_uint64(default_idle_timeout_ms, 15000,
     "Default idle timeout in milliseconds for thread pool workers. Applies to YBThreadPool and "
     "ThreadPoolBuilder pools that do not set an explicit idle timeout.");
 
+namespace yb {
+namespace {
+
+Result<WorkerWakeOrder> ParseWorkerWakeOrder(const std::string& value) {
+  return ParseEnumInsensitive<WorkerWakeOrder>("k" + value);
+}
+
+} // namespace
+} // namespace yb
+
+DEFINE_NON_RUNTIME_string(thread_pool_worker_wake_order, "mixed",
+    "Which parked worker a thread pool wakes for a new task: lifo wakes the most recently parked "
+    "worker, fifo the one parked longest, mixed wakes in fifo order but holds back up to 16 of the "
+    "longest parked workers, waking them last, so that idle ones are reclaimed.");
+DEFINE_validator(thread_pool_worker_wake_order,
+    FLAG_OK_VALIDATOR(yb::ParseWorkerWakeOrder(_value)));
+
 static bool detailed_logging = true;
 namespace yb {
 
@@ -51,7 +70,20 @@ class Worker;
 struct WorkerLink;
 
 using TaskQueue = SemiFairQueue<ThreadPoolTask>;
-using WaitingWorkers = LockFreeStack<WorkerLink>;
+
+// Parked workers, popped by Enqueue in the pool's WorkerWakeOrder.
+class WaitingWorkers {
+ public:
+  virtual ~WaitingWorkers() = default;
+
+  virtual void Push(WorkerLink* link) = 0;
+  virtual WorkerLink* Pop() = 0;
+
+  // The worker behind link stopped on idle timeout; its link stays until popped and discarded.
+  virtual void Abandon(WorkerLink* link) {}
+};
+
+std::unique_ptr<WaitingWorkers> CreateWaitingWorkers(WorkerWakeOrder order);
 
 constexpr size_t kStopCreatingWorkersFlag = 1ul << 48;
 
@@ -62,7 +94,7 @@ struct ThreadPoolShare {
 #endif
   TaskQueue task_queue;
   std::atomic<size_t> task_queue_size{0};
-  WaitingWorkers waiting_workers;
+  const std::unique_ptr<WaitingWorkers> waiting_workers;
   std::atomic<size_t> num_workers{0};
 
   explicit ThreadPoolShare(ThreadPoolOptions o)
@@ -70,6 +102,7 @@ struct ThreadPoolShare {
 #ifdef __linux__
         , cgroup(options.cgroup)
 #endif
+        , waiting_workers(CreateWaitingWorkers(options.wake_order))
   {}
 
   Cgroup* GetCgroup() const {
@@ -282,6 +315,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
         }
         --share_.num_workers;
         state_ = WorkerState::kIdleStop;
+        share_.waiting_workers->Abandon(link_);
         auto thread = std::move(thread_);
         return nullptr;
       }
@@ -303,7 +337,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
 
   void AddToWaitingWorkers() REQUIRES(mutex_) {
     if (!added_to_waiting_workers_) {
-      share_.waiting_workers.Push(link_);
+      share_.waiting_workers->Push(link_);
       added_to_waiting_workers_ = true;
     }
   }
@@ -325,6 +359,9 @@ class Worker : public boost::intrusive::list_base_hook<> {
 struct WorkerLink {
   Worker* worker = nullptr;
   std::atomic<WorkerLink*> next_link{nullptr};
+  // Whether MixedWaitingWorkers counts the link in its write stack size. A pop and an Abandon of
+  // the same link race to clear it, so the link is uncounted once.
+  std::atomic<bool> counted{false};
 };
 
 using Workers = boost::intrusive::list<Worker>;
@@ -335,6 +372,115 @@ void SetNext(WorkerLink& worker, WorkerLink* next) {
 
 WorkerLink* GetNext(WorkerLink& worker) {
   return worker.next_link.load(std::memory_order_acquire);
+}
+
+class LifoWaitingWorkers : public WaitingWorkers {
+ public:
+  void Push(WorkerLink* link) override {
+    stack_.Push(link);
+  }
+
+  WorkerLink* Pop() override {
+    return stack_.Pop();
+  }
+
+ private:
+  LockFreeStack<WorkerLink> stack_;
+};
+
+class FifoWaitingWorkers : public WaitingWorkers {
+ public:
+  void Push(WorkerLink* link) override {
+    queue_.Push(link);
+  }
+
+  WorkerLink* Pop() override {
+    return queue_.Pop();
+  }
+
+ private:
+  SemiFairQueue<WorkerLink> queue_;
+};
+
+// Two stacks like SemiFairQueue: Push goes to write_, and when read_ is empty Pop moves the newest
+// entries of write_ to read_, so that read_ pops in FIFO order. The move stops while the longest
+// parked entries remain, at most kMaxRetained and at most as many as were taken. They are popped
+// only when read_ is empty again, so under load wakes are FIFO while retained workers idle out.
+class MixedWaitingWorkers : public WaitingWorkers {
+ public:
+  void Push(WorkerLink* link) override {
+    write_.size.fetch_add(1, std::memory_order_relaxed);
+    link->counted.store(true, std::memory_order_relaxed);
+    write_.items.Push(link);
+  }
+
+  WorkerLink* Pop() override {
+    if (auto link = read_.Pop()) {
+      return link;
+    }
+    auto link = PopWrite();
+    // Read once: pushes during the move are not counted, so a few more of the longest parked are
+    // retained.
+    auto size = write_.size.load(std::memory_order_relaxed);
+    // Retains at most min(kMaxRetained, taken) links, where taken is the moved links plus the
+    // returned one. With fewer than 2 * kMaxRetained parked workers only about half are retained,
+    // so that wakes stay mostly FIFO; with two, one is.
+    int64_t moved = 0;
+    while (link && size > moved + std::min(kMaxRetained, moved + 1)) {
+      auto next = PopWrite();
+      if (!next) {
+        break;
+      }
+      read_.Push(link);
+      link = next;
+      ++moved;
+    }
+    return link;
+  }
+
+  // Dead links stay in write_ until popped. Counted, they would be retained in place of live
+  // workers, which would then all rotate through read_ and never idle out.
+  void Abandon(WorkerLink* link) override {
+    Uncount(link);
+  }
+
+ private:
+  // Up to this many workers idle out per idle timeout under load.
+  static constexpr int64_t kMaxRetained = 16;
+
+  WorkerLink* PopWrite() {
+    auto link = write_.items.Pop();
+    if (link) {
+      Uncount(link);
+    }
+    return link;
+  }
+
+  void Uncount(WorkerLink* link) {
+    if (link->counted.exchange(false, std::memory_order_acq_rel)) {
+      write_.size.fetch_sub(1, std::memory_order_relaxed);
+    }
+  }
+
+  struct alignas(CACHELINE_SIZE) WriteStack {
+    LockFreeStack<WorkerLink> items;
+    std::atomic<int64_t> size{0};
+  };
+
+  WriteStack write_;
+  alignas(CACHELINE_SIZE) LockFreeStack<WorkerLink> read_;
+};
+
+std::unique_ptr<WaitingWorkers> CreateWaitingWorkers(WorkerWakeOrder order) {
+  switch (order) {
+    case WorkerWakeOrder::kLifo:
+      return std::make_unique<LifoWaitingWorkers>();
+    case WorkerWakeOrder::kFifo:
+      return std::make_unique<FifoWaitingWorkers>();
+    case WorkerWakeOrder::kMixed:
+      return std::make_unique<MixedWaitingWorkers>();
+  }
+  FATAL_INVALID_ENUM_VALUE(WorkerWakeOrder, order);
 }
 
 class FreeWorkerLinks {
@@ -503,7 +649,7 @@ class YBThreadPool::Impl {
 
   // Returns true if we found worker that will pick up this task, false otherwise.
   bool NotifyWorker(ThreadPoolTask* task) {
-    while (auto link = share_.waiting_workers.Pop()) {
+    while (auto link = share_.waiting_workers->Pop()) {
       auto state = link->worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
@@ -744,6 +890,17 @@ bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
     task->Done(STATUS(Aborted, "Thread sub-pool closing"));
     return false;
   });
+}
+
+WorkerWakeOrder DefaultWorkerWakeOrder() {
+  // Not cached: some pools, such as the MetricRegistry cleanup pool, are created before flags are
+  // parsed, and a cached value would give every later pool the built-in default.
+  auto result = ParseWorkerWakeOrder(FLAGS_thread_pool_worker_wake_order);
+  if (!result.ok()) {
+    LOG(DFATAL) << "Bad --thread_pool_worker_wake_order: " << result.status();
+    return WorkerWakeOrder::kMixed;
+  }
+  return *result;
 }
 
 MonoDelta DefaultIdleTimeout() {

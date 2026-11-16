@@ -262,12 +262,13 @@ void InboundCall::SetCallProcessedListener(CallProcessedListener* call_processed
 }
 
 void InboundCall::Clear() {
-  {
-    std::lock_guard lock(mutex_);
-    cleared_ = true;
-  }
+  // Detach under mutex_ so that readers checking cleared_ (e.g. DumpPB) never see freed request
+  // data; the buffer itself is released after the lock.
+  CallData request_data;
+  std::lock_guard lock(mutex_);
+  cleared_ = true;
   serialized_request_.clear();
-  request_data_.Reset();
+  request_data = std::move(request_data_);
 }
 
 // Overrides OutboundData::DynamicMemoryUsage() to track response buffer memory.

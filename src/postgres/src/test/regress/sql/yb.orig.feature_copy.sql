@@ -39,9 +39,11 @@ SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
 
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
+\.
 
 -- too many columns in column list: should fail
 COPY x (a, b, c, d, e, d, c) from stdin;
+\.
 
 -- missing data: should fail
 COPY x from stdin;
@@ -182,10 +184,12 @@ ROLLBACK;
 -- should fail with "not referenced by COPY" error
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NOT_NULL(b));
+\.
 ROLLBACK;
 -- should fail with "not referenced by COPY" error
 BEGIN;
 COPY forcetest (d, e) FROM STDIN WITH (FORMAT csv, FORCE_NULL(b));
+\.
 ROLLBACK;
 
 -- Test NOT NULL constraint enforcement on columns omitted from the COPY column
@@ -399,6 +403,117 @@ copy v (b) from stdin;
 
 select * from v ORDER BY a,b;
 
+-- Row triggers whose function is declared with SET or SECURITY DEFINER (#34610):
+-- BEFORE ROW and AFTER ROW, with each kind of function, in two setups:
+--   copy_trig_*        a plain table, with the trigger on it; no partition
+--                      involved.
+--   copy_trig_*_part   a partitioned table; COPY loads this table.
+--   copy_trig_*_part1  copy_trig_*_part's only partition, with the trigger.
+-- Every COPY loads 3 rows with rows_per_transaction 2. In the plain setup, the
+-- table's own trigger turns batching off (hence the WARNING); in the
+-- partitioned setup, the 3 rows take 2 batches. Keep the 3 rows: the bug needs
+-- a trigger's function to run again after the per-row reset freed its cached
+-- state. That takes a second row for a BEFORE ROW trigger and a later batch for
+-- an AFTER ROW trigger.
+create or replace function copy_trig_set_fn() returns trigger
+  language plpgsql set work_mem = '64MB'
+  as $$begin raise notice '% %: a = %', tg_when, tg_table_name, new.a; return new; end$$;
+create or replace function copy_trig_secdef_fn() returns trigger
+  language plpgsql security definer
+  as $$begin raise notice '% %: a = %', tg_when, tg_table_name, new.a; return new; end$$;
+
+create table copy_trig_before_set (a int, b int);
+create trigger copy_trig_before_set_trig before insert on copy_trig_before_set
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_before_set from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_before_set ORDER BY a;
+
+create table copy_trig_before_set_part (a int, b int) partition by list (b);
+create table copy_trig_before_set_part1 partition of copy_trig_before_set_part for values in (1);
+create trigger copy_trig_before_set_part1_trig before insert on copy_trig_before_set_part1
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_before_set_part from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_before_set_part ORDER BY a;
+
+create table copy_trig_before_secdef (a int, b int);
+create trigger copy_trig_before_secdef_trig before insert on copy_trig_before_secdef
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_before_secdef from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_before_secdef ORDER BY a;
+
+create table copy_trig_before_secdef_part (a int, b int) partition by list (b);
+create table copy_trig_before_secdef_part1 partition of copy_trig_before_secdef_part for values in (1);
+create trigger copy_trig_before_secdef_part1_trig before insert on copy_trig_before_secdef_part1
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_before_secdef_part from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_before_secdef_part ORDER BY a;
+
+create table copy_trig_after_set (a int, b int);
+create trigger copy_trig_after_set_trig after insert on copy_trig_after_set
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_after_set from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_after_set ORDER BY a;
+
+create table copy_trig_after_set_part (a int, b int) partition by list (b);
+create table copy_trig_after_set_part1 partition of copy_trig_after_set_part for values in (1);
+create trigger copy_trig_after_set_part1_trig after insert on copy_trig_after_set_part1
+  for each row execute procedure copy_trig_set_fn();
+copy copy_trig_after_set_part from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_after_set_part ORDER BY a;
+
+create table copy_trig_after_secdef (a int, b int);
+create trigger copy_trig_after_secdef_trig after insert on copy_trig_after_secdef
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_after_secdef from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_after_secdef ORDER BY a;
+
+create table copy_trig_after_secdef_part (a int, b int) partition by list (b);
+create table copy_trig_after_secdef_part1 partition of copy_trig_after_secdef_part for values in (1);
+create trigger copy_trig_after_secdef_part1_trig after insert on copy_trig_after_secdef_part1
+  for each row execute procedure copy_trig_secdef_fn();
+copy copy_trig_after_secdef_part from stdin with (rows_per_transaction 2);
+1	1
+2	1
+3	1
+\.
+
+select * from copy_trig_after_secdef_part ORDER BY a;
+
 -- Test various copy options
 create table copy_options (a int primary key, b int);
 
@@ -513,9 +628,78 @@ select * from upsert_guard_test3 order by h;
 /*+IndexOnlyScan(upsert_guard_test3 upsert_guard_idx3)*/
 select v1 from upsert_guard_test3 where v1 > 0 order by v1;
 
+-- Test H: COPY into a partitioned table whose secondary index exists only
+-- on one partition. Each partition that rows are routed to is checked.
+create table upsert_guard_part8 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part8_a partition of upsert_guard_part8
+    for values from (1) to (100);
+create table upsert_guard_part8_b partition of upsert_guard_part8
+    for values from (100) to (200);
+create unique index upsert_guard_part8_a_v1 on upsert_guard_part8_a (v1);
+insert into upsert_guard_part8 values (1, 10), (2, 20), (101, 1010);
+
+-- COPY REPLACE routed only to the partition without the index: upsert works.
+copy upsert_guard_part8 from stdin with (format csv, replace);
+101,1011
+\.
+
+-- COPY REPLACE routed to the partition with the index: error.
+copy upsert_guard_part8 from stdin with (format csv, replace);
+102,1020
+1,11
+\.
+
+-- yb_enable_upsert_mode: one warning for the partition with the index, whose
+-- rows are inserted normally; the other partition still upserts.
+set yb_enable_upsert_mode = true;
+copy upsert_guard_part8 from stdin with (format csv);
+101,1012
+3,30
+102,1020
+4,40
+\.
+
+-- A conflicting row in the partition with the index is a duplicate key error.
+copy upsert_guard_part8 from stdin with (format csv);
+1,12
+\.
+set yb_enable_upsert_mode = false;
+
+select * from upsert_guard_part8 order by h;
+
+-- Index should be consistent with the partition.
+/*+IndexOnlyScan(upsert_guard_part8_a upsert_guard_part8_a_v1)*/
+select v1 from upsert_guard_part8_a where v1 > 0 order by v1;
+
+-- Test I: COPY REPLACE into a partitioned table whose trigger exists only on
+-- one partition.
+create table upsert_guard_part9 (h int primary key, v1 int)
+    partition by range (h);
+create table upsert_guard_part9_a partition of upsert_guard_part9
+    for values from (1) to (100);
+create function upsert_guard_part9_trig() returns trigger as $$
+begin
+    raise notice 'trigger fired for h = %', new.h;
+    return new;
+end;
+$$ language plpgsql;
+create trigger upsert_guard_part9_a_trig before insert on upsert_guard_part9_a
+    for each row execute function upsert_guard_part9_trig();
+insert into upsert_guard_part9 values (1, 10);
+
+copy upsert_guard_part9 from stdin with (format csv, replace);
+1,11
+\.
+
+select * from upsert_guard_part9 order by h;
+
 -- clean up
 DROP TABLE upsert_guard_test1;
 DROP TABLE upsert_guard_test3;
+DROP TABLE upsert_guard_part8;
+DROP TABLE upsert_guard_part9;
+DROP FUNCTION upsert_guard_part9_trig();
 DROP TABLE forcetest;
 DROP TABLE x;
 DROP TABLE y;
@@ -533,3 +717,11 @@ DROP TABLE v;
 DROP TABLE copy_options;
 DROP TABLE main_table;
 DROP TABLE ref_table;
+DROP TABLE copy_trig_before_set;
+DROP TABLE copy_trig_before_set_part;
+DROP TABLE copy_trig_before_secdef;
+DROP TABLE copy_trig_before_secdef_part;
+DROP TABLE copy_trig_after_set;
+DROP TABLE copy_trig_after_set_part;
+DROP TABLE copy_trig_after_secdef;
+DROP TABLE copy_trig_after_secdef_part;

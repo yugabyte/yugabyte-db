@@ -30,11 +30,17 @@
 // under the License.
 //
 
+#include <set>
+#include <string>
+
 #include "yb/common/constants.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-test_base.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/util/format.h"
+#include "yb/util/storage_tier.h"
 
 namespace yb {
 namespace master {
@@ -110,6 +116,37 @@ TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
     SleepFor(MonoDelta::FromSeconds(10));
     ASSERT_NEAR(0.891, ts.RecentReplicaCreations(), 0.05);
   }
+}
+
+// The tier set comes from the persisted registration alone. A tserver that registered none (a
+// binary from before the field) has an unknown, empty set, and its path metrics do not fill it in:
+// they cover WAL roots too, and they are lost on master failover.
+TEST(TestTSDescriptor, StorageTiersComeFromRegistrationOnly) {
+  TSDescriptor ts("test", RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier(kDefaultStorageTier));
+  ASSERT_FALSE(ts.HasStorageTier("hdd"));
+
+  TServerMetricsPB metrics;
+  auto* path_metric = metrics.add_path_metrics();
+  path_metric->set_path_id("/mnt/d0");
+  path_metric->set_storage_tier("hdd");
+  ts.UpdateMetrics(metrics);
+  ASSERT_TRUE(ts.GetStorageTiers().empty());
+  ASSERT_FALSE(ts.HasStorageTier("hdd"));
+
+  NodeInstancePB instance;
+  instance.set_permanent_uuid("test");
+  instance.set_instance_seqno(1);
+  TSRegistrationPB registration;
+  registration.mutable_common()->add_storage_tiers("ssd");
+  registration.mutable_common()->add_storage_tiers("hdd");
+  auto lock = ASSERT_RESULT(
+      ts.UpdateRegistration(instance, registration, RegisteredThroughHeartbeat::kTrue));
+  lock.Commit();
+  ASSERT_EQ(ts.GetStorageTiers(), (std::set<std::string>{"hdd", "ssd"}));
+  ASSERT_TRUE(ts.HasStorageTier("ssd"));
+  ASSERT_TRUE(ts.HasStorageTier("hdd"));
 }
 
 TEST(TestCatalogManager, TestLoadCountMultiAZ) {
@@ -332,6 +369,23 @@ TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
   for (const auto& source_tablet : pre_split_tablets) {
     ASSERT_OK(CatalogManagerUtil::CheckIfCanDeleteSingleTablet(source_tablet));
   }
+}
+
+// Adding the same tablet to a table twice should succeed. This happens when the table_ids list of
+// a tablet lists the same table id twice, see github issue 34672.
+TEST(TableInfoTest, AddSameTabletTwice) {
+  scoped_refptr<TableInfo> table(new TableInfo(CURRENT_TEST_NAME(), /* colocated */ false));
+  auto tablet = ASSERT_RESULT(CreateTablet(table, "tablet", "" /* start_key */, "" /* end_key */));
+  {
+    // TabletLoader::Visit holds the tablet's write lock while adding it to its tables.
+    auto l = tablet->LockForWrite();
+    ASSERT_OK(table->AddTablet(tablet));
+  }
+  ASSERT_EQ(table->TabletCount(), 1);
+  ASSERT_EQ(table->NumPartitions(), 1);
+  auto tablets = ASSERT_RESULT(table->GetTablets());
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_EQ(tablets[0], tablet);
 }
 
 TEST(TestCatalogManager, TestSetPreferredZones) {
@@ -599,6 +653,317 @@ TEST(TestCatalogManagerEnterprise, TestLoadBalancedReadOnlySameAz) {
   ts2->set_num_live_replicas(8);
   ts3->set_num_live_replicas(4);
   ASSERT_NOK(CatalogManagerUtil::IsLoadBalanced(ts_descs));
+}
+
+namespace {
+
+std::vector<TabletServerId> SortedUuids(
+    const CMPerTableLoadState& state, const TSDescriptorVector& ts_descs) {
+  std::vector<TabletServerId> result;
+  for (size_t idx : state.sorted_by_load()) {
+    result.push_back(ts_descs[idx]->permanent_uuid());
+  }
+  return result;
+}
+
+}  // namespace
+
+TEST(TestCatalogManager, PerTableLoadStateOrder) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 5}, {"1111", 3}, {"2222", 3}, {"3333", 9}};
+  CMPerTableLoadState state(&global_state);
+  ASSERT_OK(state.Init(ts_descs, {{"0000", 2}, {"1111", 2}, {"2222", 2}, {"3333", 0}}));
+
+  // Table load first, then global load, then uuid.
+  ASSERT_EQ(SortedUuids(state, ts_descs),
+            (std::vector<TabletServerId>{"3333", "1111", "2222", "0000"}));
+}
+
+TEST(TestCatalogManager, PerTableLoadStateAddReplica) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}, {"2222", 0}, {"3333", 0}};
+  CMPerTableLoadState state(&global_state);
+  ASSERT_OK(state.Init(ts_descs, {{"0000", 0}, {"1111", 0}, {"2222", 0}, {"3333", 0}}));
+  ASSERT_EQ(SortedUuids(state, ts_descs),
+            (std::vector<TabletServerId>{"0000", "1111", "2222", "3333"}));
+
+  // The tserver that gained a replica moves behind every tserver with equal load.
+  state.AddReplica(0);
+  ASSERT_EQ(SortedUuids(state, ts_descs),
+            (std::vector<TabletServerId>{"1111", "2222", "3333", "0000"}));
+  state.AddReplica(2);
+  ASSERT_EQ(SortedUuids(state, ts_descs),
+            (std::vector<TabletServerId>{"1111", "3333", "0000", "2222"}));
+  state.AddReplica(2);
+  ASSERT_EQ(SortedUuids(state, ts_descs),
+            (std::vector<TabletServerId>{"1111", "3333", "0000", "2222"}));
+  state.AddReplica(1);
+  state.AddReplica(3);
+  ASSERT_EQ(SortedUuids(state, ts_descs),
+            (std::vector<TabletServerId>{"0000", "1111", "3333", "2222"}));
+
+  // The global load follows the picks.
+  ASSERT_EQ(2, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("2222")));
+  ASSERT_EQ(1, ASSERT_RESULT(global_state.GetGlobalReplicaLoad("0000")));
+}
+
+TEST(TestCatalogManager, TabletInfoCountsReplicaLoad) {
+  TSDescriptorVector ts_descs = {SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a")};
+  auto replicas_on = [&ts_descs](std::initializer_list<size_t> indexes) {
+    auto replicas = std::make_shared<TabletReplicaMap>();
+    for (auto i : indexes) {
+      TabletReplica replica;
+      NewReplica(
+          ts_descs[i], tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER,
+          consensus::PeerMemberType::VOTER, &replica);
+      InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), replica);
+    }
+    return replicas;
+  };
+  auto loads = [&ts_descs]() {
+    std::vector<int64_t> result;
+    for (const auto& ts : ts_descs) {
+      result.push_back(ts->replica_load());
+    }
+    return result;
+  };
+
+  scoped_refptr<TableInfo> table(new TableInfo("table", /* colocated */ false));
+  auto tablet = std::make_shared<TabletInfo>(table, "tablet-1");
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 0}));
+  tablet->SetReplicaLocations(replicas_on({0, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 0, 1}));
+
+  auto other = std::make_shared<TabletInfo>(table, "tablet-2");
+  other->SetReplicaLocations(replicas_on({1, 2}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{1, 1, 2}));
+
+  // Stopping is idempotent and later map changes stay out of the count.
+  tablet->StopCountingReplicaLoad();
+  tablet->StopCountingReplicaLoad();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+  tablet->SetReplicaLocations(replicas_on({0, 1}));
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 1, 1}));
+
+  other.reset();
+  ASSERT_EQ(loads(), (std::vector<int64_t>{0, 0, 0}));
+}
+
+using consensus::PeerMemberType;
+
+namespace {
+
+PlacementInfoPB MakePlacement(int num_replicas, const std::string& placement_uuid = "") {
+  PlacementInfoPB placement;
+  placement.set_num_replicas(num_replicas);
+  if (!placement_uuid.empty()) {
+    placement.set_placement_uuid(placement_uuid);
+  }
+  return placement;
+}
+
+// An empty zone makes a region-level block, which matches every zone of the default region.
+void AddBlock(
+    PlacementInfoPB* placement, const std::string& zone, int min_num_replicas,
+    std::optional<int> max_num_replicas = std::nullopt) {
+  auto* block = placement->add_placement_blocks();
+  block->mutable_cloud_info()->set_placement_cloud(default_cloud);
+  block->mutable_cloud_info()->set_placement_region(default_region);
+  if (!zone.empty()) {
+    block->mutable_cloud_info()->set_placement_zone(zone);
+  }
+  block->set_min_num_replicas(min_num_replicas);
+  if (max_num_replicas) {
+    block->set_max_num_replicas(*max_num_replicas);
+  }
+}
+
+struct LoadState {
+  CMGlobalLoadState global;
+  CMPerTableLoadState table{&global};
+};
+
+// Zero global load, the given per-table load (default 0) for every tserver.
+Status InitLoadState(
+    const TSDescriptorVector& ts_descs,
+    const std::unordered_map<TabletServerId, uint32_t>& table_load, LoadState* state) {
+  std::unordered_map<TabletServerId, uint32_t> full_table_load;
+  for (const auto& ts : ts_descs) {
+    state->global.per_ts_replica_load_[ts->permanent_uuid()] = 0;
+    full_table_load[ts->permanent_uuid()] = FindWithDefault(table_load, ts->permanent_uuid(), 0);
+  }
+  return state->table.Init(ts_descs, full_table_load);
+}
+
+std::vector<TabletServerId> PeerUuids(const consensus::RaftConfigPB& config) {
+  std::vector<TabletServerId> result;
+  for (const auto& peer : config.peers()) {
+    result.push_back(peer.permanent_uuid());
+  }
+  return result;
+}
+
+}  // namespace
+
+TEST(TestCatalogManager, PlaceReplicasWithoutPlacementBlocks) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a"), SetupTS("1111", "a"), SetupTS("2222", "a"), SetupTS("3333", "a"),
+      SetupTS("4444", "a")};
+  LoadState load;
+  ASSERT_OK(InitLoadState(ts_descs, {{"0000", 2}, {"4444", 1}}, &load));
+  auto candidates = ASSERT_RESULT(
+      CatalogManager::BuildPlacementCandidates(MakePlacement(3), ts_descs, PeerMemberType::VOTER));
+  consensus::RaftConfigPB config;
+  ASSERT_OK(CatalogManager::SelectReplicasForPlacement(ts_descs, candidates, &config, &load.table));
+  // The three least loaded tservers of the placement.
+  ASSERT_EQ(PeerUuids(config), (std::vector<TabletServerId>{"1111", "2222", "3333"}));
+  for (const auto& peer : config.peers()) {
+    ASSERT_EQ(peer.member_type(), PeerMemberType::VOTER);
+  }
+}
+
+TEST(TestCatalogManager, PlaceReplicasPerBlockMinimums) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("a000", "a"), SetupTS("a111", "a"), SetupTS("b000", "b"), SetupTS("c000", "c")};
+  auto placement = MakePlacement(3);
+  AddBlock(&placement, "a", 1);
+  AddBlock(&placement, "b", 1);
+  AddBlock(&placement, "c", 1);
+  LoadState load;
+  ASSERT_OK(InitLoadState(ts_descs, {{"a000", 1}}, &load));
+  auto candidates = ASSERT_RESULT(
+      CatalogManager::BuildPlacementCandidates(placement, ts_descs, PeerMemberType::VOTER));
+  consensus::RaftConfigPB config;
+  ASSERT_OK(CatalogManager::SelectReplicasForPlacement(ts_descs, candidates, &config, &load.table));
+  // One replica per block, the least loaded tserver within the block.
+  ASSERT_EQ(PeerUuids(config), (std::vector<TabletServerId>{"a111", "b000", "c000"}));
+}
+
+TEST(TestCatalogManager, PlaceReplicasBlockMaximumCapsLeftovers) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("a000", "a"), SetupTS("a111", "a"), SetupTS("a222", "a"), SetupTS("b000", "b"),
+      SetupTS("b111", "b")};
+  auto placement = MakePlacement(3);
+  AddBlock(&placement, "a", 1, /* max_num_replicas = */ 1);
+  AddBlock(&placement, "b", 1);
+  LoadState load;
+  // Zone a is less loaded, so without the cap the leftover replica would go there.
+  ASSERT_OK(InitLoadState(ts_descs, {{"b000", 1}, {"b111", 1}}, &load));
+  auto candidates = ASSERT_RESULT(
+      CatalogManager::BuildPlacementCandidates(placement, ts_descs, PeerMemberType::VOTER));
+  consensus::RaftConfigPB config;
+  ASSERT_OK(CatalogManager::SelectReplicasForPlacement(ts_descs, candidates, &config, &load.table));
+  ASSERT_EQ(PeerUuids(config), (std::vector<TabletServerId>{"a000", "b000", "b111"}));
+}
+
+TEST(TestCatalogManager, PlaceReadReplicas) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a", "live"), SetupTS("1111", "a", "live"), SetupTS("r000", "a", "rr"),
+      SetupTS("r111", "b", "rr"), SetupTS("r222", "c", "rr")};
+  LoadState load;
+  ASSERT_OK(InitLoadState(ts_descs, {{"r000", 1}}, &load));
+  auto candidates = ASSERT_RESULT(CatalogManager::BuildPlacementCandidates(
+      MakePlacement(2, "rr"), ts_descs, PeerMemberType::OBSERVER));
+  consensus::RaftConfigPB config;
+  ASSERT_OK(CatalogManager::SelectReplicasForPlacement(ts_descs, candidates, &config, &load.table));
+  ASSERT_EQ(PeerUuids(config), (std::vector<TabletServerId>{"r111", "r222"}));
+  for (const auto& peer : config.peers()) {
+    ASSERT_EQ(peer.member_type(), PeerMemberType::OBSERVER);
+  }
+}
+
+TEST(TestCatalogManager, PlaceReplicasExcludesOtherPlacementUuids) {
+  TSDescriptorVector ts_descs = {
+      SetupTS("0000", "a", "live"), SetupTS("r000", "a", "rr"), SetupTS("r111", "a", "rr")};
+  LoadState load;
+  ASSERT_OK(InitLoadState(ts_descs, {}, &load));
+  auto candidates = ASSERT_RESULT(CatalogManager::BuildPlacementCandidates(
+      MakePlacement(3, "live"), ts_descs, PeerMemberType::VOTER));
+  ASSERT_EQ(candidates.num_allowed, 1u);
+  ASSERT_EQ(candidates.all_allowed, (std::vector<bool>{true, false, false}));
+  // Only the one live tserver is placed; the tablet starts under-replicated.
+  consensus::RaftConfigPB config;
+  ASSERT_OK(CatalogManager::SelectReplicasForPlacement(ts_descs, candidates, &config, &load.table));
+  ASSERT_EQ(PeerUuids(config), (std::vector<TabletServerId>{"0000"}));
+}
+
+TEST(TestCatalogManager, PlaceReplicasBlockWithTooFewTservers) {
+  TSDescriptorVector ts_descs = {SetupTS("a000", "a"), SetupTS("b000", "b")};
+  auto placement = MakePlacement(3);
+  AddBlock(&placement, "a", 2);
+  AddBlock(&placement, "b", 1);
+  LoadState load;
+  ASSERT_OK(InitLoadState(ts_descs, {}, &load));
+  auto candidates = ASSERT_RESULT(
+      CatalogManager::BuildPlacementCandidates(placement, ts_descs, PeerMemberType::VOTER));
+  consensus::RaftConfigPB config;
+  // A block short of its minimum takes what it has; the tablet starts under-replicated.
+  ASSERT_OK(CatalogManager::SelectReplicasForPlacement(ts_descs, candidates, &config, &load.table));
+  ASSERT_EQ(PeerUuids(config), (std::vector<TabletServerId>{"a000", "b000"}));
+}
+
+TEST(TestCatalogManager, PlaceReplicasOverlappingBlocksFail) {
+  TSDescriptorVector ts_descs = {SetupTS("a000", "a"), SetupTS("b000", "b")};
+  auto placement = MakePlacement(2);
+  // The region block comes first and takes the only tserver of zone a.
+  AddBlock(&placement, "", 1);
+  AddBlock(&placement, "a", 1);
+  LoadState load;
+  ASSERT_OK(InitLoadState(ts_descs, {{"b000", 1}}, &load));
+  auto candidates = ASSERT_RESULT(
+      CatalogManager::BuildPlacementCandidates(placement, ts_descs, PeerMemberType::VOTER));
+  consensus::RaftConfigPB config;
+  auto status =
+      CatalogManager::SelectReplicasForPlacement(ts_descs, candidates, &config, &load.table);
+  ASSERT_TRUE(status.IsIllegalState()) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "Not enough tablet servers");
+}
+
+TEST(TestCatalogManager, PerTableLoadStateInitRequiresEveryTs) {
+  TSDescriptorVector ts_descs = {SetupTS("0000", "a"), SetupTS("1111", "a")};
+  CMGlobalLoadState global_state;
+  global_state.per_ts_replica_load_ = {{"0000", 0}, {"1111", 0}};
+  {
+    CMPerTableLoadState state(&global_state);
+    ASSERT_NOK_STR_CONTAINS(
+        state.Init(ts_descs, {{"0000", 0}}), "table_load does not contain 1111");
+  }
+  {
+    CMGlobalLoadState partial_global_state;
+    partial_global_state.per_ts_replica_load_ = {{"0000", 0}};
+    CMPerTableLoadState state(&partial_global_state);
+    ASSERT_NOK_STR_CONTAINS(
+        state.Init(ts_descs, {{"0000", 0}, {"1111", 0}}), "Could not locate tablet server 1111");
+  }
+}
+
+TEST(TestCatalogManager, ValidateVectorIndexBackend) {
+  SysTablesEntryPB table;
+  table.set_name("vi");
+  ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
+
+  auto& options = *table.mutable_index_info()->mutable_vector_idx_options();
+  options.set_idx_type(PgVectorIndexType::HNSW);
+  for (auto backend : {HnswBackend::YB_HNSW_USEARCH, HnswBackend::YB_HNSW_HNSWLIB}) {
+    options.mutable_hnsw()->set_backend(backend);
+    ASSERT_OK(ValidateVectorIndexBackend("table_id", table));
+  }
+
+  // An unset backend reads as DEPRECATED_USEARCH: such indexes predate block-based backends.
+  options.mutable_hnsw()->clear_backend();
+  auto status = ValidateVectorIndexBackend("table_id", table);
+  ASSERT_TRUE(status.IsNotSupported()) << status;
+  for (auto backend : {HnswBackend::DEPRECATED_USEARCH, HnswBackend::DEPRECATED_HNSWLIB}) {
+    options.mutable_hnsw()->set_backend(backend);
+    status = ValidateVectorIndexBackend("table_id", table);
+    ASSERT_TRUE(status.IsNotSupported()) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "no longer supported");
+  }
 }
 
 }  // namespace master

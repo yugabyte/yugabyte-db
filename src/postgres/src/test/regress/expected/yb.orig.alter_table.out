@@ -413,6 +413,25 @@ ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+-- Verify that DROP COLUMN renames the column and clears its missing value.
+CREATE TABLE foo_missing(a int);
+INSERT INTO foo_missing VALUES (1), (2);
+ALTER TABLE foo_missing ADD COLUMN b int DEFAULT 42;
+SELECT attname, attisdropped, atthasmissing, attmissingval FROM pg_attribute
+	WHERE attrelid='foo_missing'::regclass AND attnum=2;
+ attname | attisdropped | atthasmissing | attmissingval 
+---------+--------------+---------------+---------------
+ b       | f            | t             | {42}
+(1 row)
+
+ALTER TABLE foo_missing DROP COLUMN b;
+SELECT attname, attisdropped, atthasmissing, attmissingval FROM pg_attribute
+	WHERE attrelid='foo_missing'::regclass AND attnum=2;
+           attname            | attisdropped | atthasmissing | attmissingval 
+------------------------------+--------------+---------------+---------------
+ ........pg.dropped.2........ | t            | f             | 
+(1 row)
+
 --
 -- Tests for ALTER TABLE ... ADD COLUMN ... UNIQUE
 --

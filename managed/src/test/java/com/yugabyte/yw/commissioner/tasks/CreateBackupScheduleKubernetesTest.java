@@ -8,6 +8,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
@@ -261,5 +262,33 @@ public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
 
     assertEquals(Success, taskInfo.getTaskState());
     assertTrue(getSubTaskTypes(taskInfo).contains(TaskType.InstallYbcSoftwareOnK8s));
+  }
+
+  @Test
+  public void testCreateScheduleBackupProceedsWhenScheduledYbcUpgradeInFlight() {
+    when(mockYbcManager.getStableYbcVersion()).thenReturn(STABLE_YBC_VERSION);
+    UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+          params.setYbcSoftwareVersion("1.0.0.0-b0");
+          universe.setUniverseDetails(params);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+
+    // Mark a background YBC upgrade as in flight and never clear it, so InstallYbcSoftwareOnK8s
+    // exhausts its wait budget. It must still finish rather than fail the backup (PLAT-21957).
+    YbcUpgrade ybcUpgrade = app.injector().instanceOf(YbcUpgrade.class);
+    ybcUpgrade.setYBCUpgradeProcessOnK8s(defaultUniverse.getUniverseUUID());
+    try {
+      BackupRequestParams params =
+          createScheduleBackupParams(
+              10000000L, TimeUnit.HOURS, 0L, null, null, false, "test-ybc-in-flight");
+      TaskInfo taskInfo = submitTask(params);
+
+      assertEquals(Success, taskInfo.getTaskState());
+      assertTrue(getSubTaskTypes(taskInfo).contains(TaskType.InstallYbcSoftwareOnK8s));
+    } finally {
+      ybcUpgrade.removeYBCUpgradeProcessOnK8s(defaultUniverse.getUniverseUUID());
+    }
   }
 }

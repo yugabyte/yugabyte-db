@@ -57,6 +57,7 @@ DECLARE_string(fs_data_dirs);
 DECLARE_string(fs_wal_dirs);
 DECLARE_bool(TEST_fail_write_pb_container);
 DECLARE_bool(export_drive_io_metrics);
+DECLARE_bool(enable_tiered_storage);
 
 namespace yb {
 
@@ -395,6 +396,7 @@ class StorageTierTest : public YBTest {
  public:
   void SetUp() override {
     YBTest::SetUp();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
   }
 
   // Build a FsManager directly from explicit paths + tiers without going
@@ -494,14 +496,35 @@ TEST_F(StorageTierTest, DuplicatePaths) {
   ASSERT_EQ(1u, dirs.size());
 }
 
-// Unknown root returns "ssd" (kDefaultStorageTier) from GetTierForDataRoot.
-TEST_F(StorageTierTest, UnknownRootReturnsDefault) {
-  auto path_e = GetTestPath("path_e");
-  ASSERT_OK(env_->CreateDir(path_e));
+// A WAL-only root is not a data root, so it has no tier: a node whose data dirs are all hdd must
+// not advertise its WAL disk as an ssd data disk.
+TEST_F(StorageTierTest, WalOnlyRootHasNoTier) {
+  auto data_path = GetTestPath("hdd0");
+  auto wal_path = GetTestPath("wal0");
+  ASSERT_OK(env_->CreateDir(data_path));
+  ASSERT_OK(env_->CreateDir(wal_path));
 
-  auto mgr = MakeFsManager({path_e}, {{path_e, "ssd"}});
+  auto mgr = MakeFsManager({data_path}, {{data_path, "hdd"}}, {wal_path});
 
-  ASSERT_EQ("ssd", mgr->GetTierForDataRoot("/nonexistent/root"));
+  const auto& by_tier = mgr->GetDataRootsByTier();
+  ASSERT_EQ(1u, by_tier.size());
+  ASSERT_EQ(1u, by_tier.count("hdd"));
+
+  size_t hdd_roots = 0;
+  size_t untiered_roots = 0;
+  for (const auto& fs_root : mgr->GetFsRootDirs()) {
+    const auto& tier = mgr->GetTierForDataRoot(fs_root);
+    if (tier == "hdd") {
+      ++hdd_roots;
+    } else if (tier.empty()) {
+      ++untiered_roots;
+    } else {
+      FAIL() << "Unexpected tier for root " << fs_root << ": " << tier;
+    }
+  }
+  ASSERT_EQ(1u, hdd_roots);
+  ASSERT_EQ(1u, untiered_roots);
+  ASSERT_EQ("", mgr->GetTierForDataRoot("/nonexistent/root"));
 }
 
 // A label outside the static set {ssd, hdd} is rejected at init time.
@@ -520,6 +543,40 @@ TEST_F(StorageTierTest, InvalidTierRejected) {
   ASSERT_NOK(s);
   ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
   ASSERT_STR_CONTAINS(s.ToString(), "Invalid storage tier");
+}
+
+// With tiered storage disabled (the default), a non-default tier label is rejected at init time.
+// An explicit default-tier label changes nothing and is still accepted.
+TEST_F(StorageTierTest, NonDefaultTierRejectedWhenTieredStorageDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = false;
+  auto hdd_path = GetTestPath("disabled_hdd");
+  auto ssd_path = GetTestPath("disabled_ssd");
+  ASSERT_OK(env_->CreateDir(hdd_path));
+  ASSERT_OK(env_->CreateDir(ssd_path));
+
+  {
+    FsManagerOpts opts;
+    opts.data_paths = {hdd_path};
+    opts.tier_by_path = {{hdd_path, "hdd"}};
+    opts.wal_paths = {hdd_path};
+    opts.server_type = kServerType;
+    auto mgr = std::make_unique<FsManager>(env_.get(), opts);
+    Status s = mgr->CreateInitialFileSystemLayout();
+    ASSERT_NOK(s);
+    ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
+    ASSERT_STR_CONTAINS(s.ToString(), "enable_tiered_storage");
+  }
+  {
+    FsManagerOpts opts;
+    opts.data_paths = {ssd_path};
+    opts.tier_by_path = {{ssd_path, kDefaultStorageTier}};
+    opts.wal_paths = {ssd_path};
+    opts.server_type = kServerType;
+    auto mgr = std::make_unique<FsManager>(env_.get(), opts);
+    ASSERT_OK(mgr->CreateInitialFileSystemLayout());
+    ASSERT_OK(mgr->CheckAndOpenFileSystemRoots());
+    ASSERT_EQ(1u, mgr->GetDataRootDirsForTier(kDefaultStorageTier).size());
+  }
 }
 
 // IsValidStorageTier / ValidStorageTiers reflect the static set.

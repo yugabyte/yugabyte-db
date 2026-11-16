@@ -453,6 +453,8 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
+  void DoSetTimedOut(Status status) EXCLUDES(mtx_);
+
   // See appropriate comments in CallResponse.
   virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
   virtual size_t GetSidecarsCount() const;

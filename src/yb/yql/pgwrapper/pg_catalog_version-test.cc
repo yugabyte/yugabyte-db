@@ -2048,16 +2048,27 @@ TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
 
   // Execute a DDL block that generates > 4096 messages, but < 8192.
   // Each CREATE TABLE generates ~24 messages. 200 * 24 = 4800 messages.
+  // Use a tablegroup: creating 600 tablet replicas overloads tservers in sanitizer builds.
+  // Heartbeat propagation timing varies; query until conn_other_node does a delta refresh.
+  auto wait_for_delta_refresh = [&](int64_t expected) {
+    return WaitFor([&]() -> Result<bool> {
+      result = VERIFY_RESULT(conn_other_node.FetchAllAsString(query));
+      return GetInt64MetricsHelper("CatCacheDeltaRefresh", 1) >= expected ||
+             GetInt64MetricsHelper("CatCacheRefresh", 1) > 0;
+    }, 60s * kTimeMultiplier, "Catalog cache refresh on other node");
+  };
+  // CREATE TABLEGROUP bumps the catalog version, so let it be applied separately first.
+  ASSERT_OK(conn_same_node.Execute("CREATE TABLEGROUP tg"));
+  ASSERT_OK(wait_for_delta_refresh(1));
   ASSERT_OK(conn_same_node.Execute(
       "DO $$ "
       "BEGIN "
       "  FOR i IN 1..200 LOOP "
-      "    EXECUTE 'CREATE TABLE foo_' || i || '(id INT)'; "
+      "    EXECUTE 'CREATE TABLE foo_' || i || '(id INT) TABLEGROUP tg'; "
       "  END LOOP; "
       "END $$;"));
 
-  WaitForCatalogVersionToPropagate();
-  result = ASSERT_RESULT(conn_other_node.FetchAllAsString(query));
+  ASSERT_OK(wait_for_delta_refresh(2));
   ASSERT_EQ(result, "1");
 
   auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_same_node, kYugabyteDatabase));
@@ -2075,9 +2086,10 @@ TEST_F(PgCatalogVersionTest, InvalMessageExceedPgMaxNumMessagesTest) {
   ASSERT_LT(msg_length_result, 8192 * kSharedInvalidationMessageSize);
 
   // Since the number of messages is > 4096 but < 8192, we should see an incremental refresh
-  // on conn_other_node (ts_idx = 1), NOT a full refresh.
+  // on conn_other_node (ts_idx = 1), NOT a full refresh. One more delta refresh is from
+  // CREATE TABLEGROUP.
   VerifyCatCacheRefreshMetricsHelper(
-      0 /* num_full_refreshes */, 1 /* num_delta_refreshes */, {false, false}, 1 /* ts_idx */);
+      0 /* num_full_refreshes */, 2 /* num_delta_refreshes */, {false, false}, 1 /* ts_idx */);
 
   // But on the same node (ts_idx = 0), we will see a full refresh because the local shared
   // memory buffer overflowed (it has a hardcoded limit of 4096 messages).
@@ -2428,11 +2440,11 @@ DROP TABLE tempTable2;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
   // (post-backfill WaitForBackendsCatalogVersion).
   if (IsObjectLockingEnabled()) {
-    ASSERT_EQ(result.size(), 80986U);
-    ASSERT_EQ(fingerprint, 16473784601673178567UL);
+    ASSERT_EQ(result.size(), 80746U);
+    ASSERT_EQ(fingerprint, 15353702351801463433UL);
   } else {
-    ASSERT_EQ(result.size(), 80932U);
-    ASSERT_EQ(fingerprint, 148605032842492807UL);
+    ASSERT_EQ(result.size(), 80692U);
+    ASSERT_EQ(fingerprint, 4661495031371014786UL);
   }
 }
 
@@ -3013,10 +3025,28 @@ TEST_F(PgCatalogVersionTest, InvalMessageMinimalRetention) {
     });
   }
   CoarseTimePoint start = CoarseMonoClock::Now();
-  while (start + RegularBuildVsSanitizers(60s, 20s) > CoarseMonoClock::Now()) {
+  // The race is timing dependent and may not occur within the minimal duration on TSAN, so keep
+  // running DDLs until a delta refresh is seen, up to a limit. ASAN is not extended: longer runs
+  // exceed the test timeout (#32059).
+  const auto deadline = start + ReleaseVsDebugVsAsanVsTsan(60s, 60s, 20s, 90s);
+  auto next_check = start + RegularBuildVsSanitizers(60s, 20s);
+  for (;;) {
     ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN c2 INT"));
     ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN c2"));
+    const auto now = CoarseMonoClock::Now();
+    if (now >= deadline) {
+      break;
+    }
+    if (now < next_check) {
+      continue;
+    }
+    // Throttled: each metrics fetch is costly under sanitizers and slows the DDL rate.
+    if (GetInt64MetricsHelper("CatCacheDeltaRefresh") > 0) {
+      break;
+    }
+    next_check = now + 5s;
   }
+  LOG(INFO) << "DDL loop ran for " << MonoDelta(CoarseMonoClock::Now() - start);
   thread_holder.Stop();
   // We expect to see 0 full refreshes, should see some incremental refreshes.
   VerifyCatCacheRefreshMetricsHelper(
@@ -3155,6 +3185,38 @@ TEST_F(PgCatalogVersionTest, TestAlterRoleSetGUCHasGlobalImpact) {
   ASSERT_EQ(row6, "off");
 }
 
+// Make sure GRANT/REVOKE SET ON PARAMETER has global impact.
+TEST_F(PgCatalogVersionTest, TestGrantSetOnParameterHasGlobalImpact) {
+  auto conn = ASSERT_RESULT(ConnectToDB("yugabyte"));
+  ASSERT_OK(conn.Execute("CREATE ROLE user1 WITH login"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE db1"));
+
+  auto conn_db1_user1 = ASSERT_RESULT(ConnectToDBAsUser("db1" /* db_name */, "user1"));
+  auto set_denied = [&]() -> Result<bool> {
+    auto s = conn_db1_user1.Execute("SET log_planner_stats = on");
+    if (s.ok()) {
+      return false;
+    }
+    if (s.ToString().find("permission denied to set parameter") == std::string::npos) {
+      return s;
+    }
+    return true;
+  };
+  ASSERT_TRUE(ASSERT_RESULT(set_denied()));
+  auto v1_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+
+  ASSERT_OK(conn.Execute("GRANT SET ON PARAMETER log_planner_stats TO user1"));
+  auto v2_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v2_db1, v1_db1 + 1);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> { return !VERIFY_RESULT(set_denied()); },
+                    60s * kTimeMultiplier, "GRANT to reach the db1 backend"));
+
+  ASSERT_OK(conn.Execute("REVOKE SET ON PARAMETER log_planner_stats FROM user1"));
+  auto v3_db1 = ASSERT_RESULT(GetCatalogVersion(&conn_db1_user1));
+  ASSERT_EQ(v3_db1, v2_db1 + 1);
+  ASSERT_OK(WaitFor(set_denied, 60s * kTimeMultiplier, "REVOKE to reach the db1 backend"));
+}
+
 TEST_F(PgCatalogVersionTest, InvalMessageDeltaTableLoad) {
   for (int i = 0; i < 2; i++) {
     // Disable auto analyze in this test because it introduce flakiness of metrics.
@@ -3271,8 +3333,21 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // for later auth backends to use.
   auto conn = ASSERT_RESULT(Connect());
 
-  const int num_logical_connections = 250;
-  auto master_read_count_before = ASSERT_RESULT(GetMasterReadRPCCount());
+  // Without conn mgr each connection is a separate backend with its own threads; keep the count
+  // low enough that parallel test runs don't exhaust the host's process/thread limit.
+  const int num_logical_connections = 100;
+  // Other tservers' postgres may still be starting and issuing master reads; wait until every
+  // postgres accepts connections and the master read count is stable.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(i)));
+  }
+  int64_t master_read_count_before = -1;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto prev = master_read_count_before;
+    master_read_count_before = VERIFY_RESULT(GetMasterReadRPCCount());
+    return prev == master_read_count_before;
+  }, 60s * kTimeMultiplier, "Wait for master read count to stabilize",
+     /* initial_delay= */ 2s, /* delay_multiplier= */ 1.0));
   LOG(INFO) << "Create " << num_logical_connections << " logical connections";
   std::vector<PGConn> conns;
   // Create additional logical connections. With
@@ -4391,7 +4466,7 @@ TEST_F(PgCatalogVersionMasterFailoverTest,
   // overlap. The refresh waiter cannot fire early: the old leader stops refreshing at the reset
   // and only starts again once it is the leader.
   {
-    auto reset_waiter = LogWaiter(old_leader, "ResetCachedCatalogVersions: cache reset");
+    auto reset_waiter = LogWaiter(old_leader, "PgCatalogVersionsCache: reset");
     ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
     ASSERT_OK(reset_waiter.WaitFor(30s * kTimeMultiplier));
   }

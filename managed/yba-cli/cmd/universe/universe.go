@@ -12,6 +12,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/readreplica"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/security"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/supportbundle"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/supportbundlev2"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/table"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/upgrade"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
@@ -54,6 +55,7 @@ func init() {
 			attachUniverseCmd,
 			filecollection.FileCollectionCmd,
 			runScriptCmd,
+			supportbundlev2.SupportBundleV2Cmd,
 		},
 	)
 

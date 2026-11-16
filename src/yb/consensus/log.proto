@@ -58,6 +58,8 @@ enum LogEntryTypePB {
   // Async roll over active log segment, and halve the cur_max_segment_size of the next segment
   // if it's greater than initial_max_segment_size.
   ASYNC_ROLLOVER_AT_FLUSH_MARKER = 1000;
+  // Close active log segment without starting a new one, if the last appended op is as expected.
+  CLOSE_SEGMENT_MARKER = 1001;
 };
 
 // An entry in the WAL/state machine log.
@@ -93,6 +95,22 @@ message LogSegmentHeaderPB {
   // Schema used when appending entries to this log, and its version.
   required SchemaPB DEPRECATED_schema = 7;
   optional uint32 DEPRECATED_schema_version = 8;
+}
+
+// Quiescent marker, stored in a file next to the WAL segments. Every op up to op_id is durable in
+// all tablet storages, so segments that contain only such ops may be absent.
+// The remaining fields carry what tablet bootstrap would otherwise take from those segments.
+message QuiescentMarkerPB {
+  optional bytes tablet_id = 1;
+  optional OpIdPB op_id = 2;
+  // Hybrid time of the op at op_id.
+  optional fixed64 hybrid_time = 3;
+  // Max monotonic counter of ops up to op_id.
+  optional int64 monotonic_counter = 4;
+  // Restart-safe time of the batch that contains the op at op_id.
+  optional uint64 entry_time = 5;
+  // Sequence number of the last segment that existed when the marker was written.
+  optional int64 last_segment_sequence_number = 6;
 }
 
 // A header for a log index block that are stored inside WAL segment file.

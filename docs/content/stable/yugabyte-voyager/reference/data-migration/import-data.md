@@ -212,7 +212,7 @@ import-data:
   use-partition-root:
 ```
 
-| For partitioned tables during live migration, controls whether CDC data is imported via the root table or child partitions only: <ul><li><code>true</code> (default): Import CDC data only via the root table.</li><li><code>false</code>: Import CDC data only via child partitions.</li></ul>**Note**: Supported only for YugabyteDB target {{<release "2025.2.3.0">}} and later.<br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
+| For partitioned tables during live migration, controls whether CDC data is imported via the root table or child partitions only: <ul><li><code>true</code> (default): Import CDC data only via the root table. Refused when the primary key is defined only on the partitions and not on the root; re-run with <code>false</code>.</li><li><code>false</code>: Import CDC data only via child partitions. Voyager reports an error when the leaf partitions have inconsistent primary keys.</li></ul>**Note**: Supported only for YugabyteDB target {{<release "2025.2.3.0">}} and later.<br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 
 | --cdc-partition-key |
 

@@ -243,6 +243,16 @@ public class AnsibleConfigureServers extends NodeTaskBase {
           nodeAgentRpcPayload.setUpConfigureServerBits(
               universe, nodeDetails, taskParams(), nodeAgent, taskParams().configureCgroupOverride),
           NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      if (taskParams().type == UpgradeTaskType.Everything
+          && !taskParams().updateMasterAddrsOnly
+          && universe.isNodeExporterHttps()) {
+        // Provisioning leaves node_exporter on plain HTTP; point its web.yml at the node certs the
+        // configure command above placed, so the node serves the universe's scheme.
+        nodeAgentClient.runConfigureNodeExporter(
+            nodeAgent,
+            nodeAgentRpcPayload.setUpConfigureNodeExporterBits(universe, nodeDetails, true),
+            NodeAgentRpcPayload.DEFAULT_CONFIGURE_USER);
+      }
       if (taskParams().type == UpgradeTaskType.Software) {
         if (taskSubType == null) {
           throw new RuntimeException("Invalid taskSubType property: " + taskSubType);

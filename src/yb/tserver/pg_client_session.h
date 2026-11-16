@@ -58,6 +58,7 @@ class PgSessionGuard;
     (AlterDatabase) \
     (AlterTable) \
     (BackfillIndex) \
+    (StartTableBackfill) \
     (CreateDatabase) \
     (CreateReplicationSlot) \
     (CreateTable) \
@@ -108,6 +109,7 @@ struct PgClientSessionMetrics {
   EventStatsPtr vector_index_fetch_us;
   EventStatsPtr vector_index_collect_us;
   EventStatsPtr vector_index_reduce_us;
+  EventStatsPtr vector_index_partitions_queried;
 };
 
 struct PgClientSessionDbHistoryRetentionPin {

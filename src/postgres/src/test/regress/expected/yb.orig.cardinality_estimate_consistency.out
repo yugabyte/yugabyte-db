@@ -58,7 +58,18 @@ insert into queries values
     (DEFAULT, $$/*+ BitmapScan(r) */
         select b from r where b <= 500 and b % 100 <= 33$$),
     (DEFAULT, $$/*+ BitmapScan(r) */
-        select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$)
+        select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+    -- a has 10 rows per value (i_r_a).  A distinct index scan returns one row
+    -- per group, so at every stage its estimate should be one tenth of the
+    -- plain scan's over the same predicates: the index condition on groups,
+    -- the storage filter on the prefix column passing or failing whole
+    -- groups, the local filter on the output.
+    (DEFAULT, $$select a from r where a <= 500$$),
+    (DEFAULT, $$select a from r where a <= 500 and a % 100 <= 33$$),
+    (DEFAULT, $$select a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$),
+    (DEFAULT, $$select distinct a from r where a <= 500$$),
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33$$),
+    (DEFAULT, $$select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500$$)
 ;
 drop type if exists index_plan_rows cascade;
 create type index_plan_rows as (
@@ -106,7 +117,13 @@ select * from queries order by qid;
      |         select b from r where b <= 500 and b % 100 <= 33
   21 | /*+ BitmapScan(r) */                                                                   +
      |         select b from r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
-(21 rows)
+  22 | select a from r where a <= 500
+  23 | select a from r where a <= 500 and a % 100 <= 33
+  24 | select a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500
+  25 | select distinct a from r where a <= 500
+  26 | select distinct a from r where a <= 500 and a % 100 <= 33
+  27 | select distinct a from r where a <= 500 and a % 100 <= 33 and non_pushable(a) <= 500
+(27 rows)
 
 -- Index Scan node estimates from each query's plan under the current
 -- settings.  workers = Gather's "Workers Planned", or 0 in a serial plan.
@@ -177,33 +194,39 @@ order by
     "Node Type",
     qid,
     nid;
- Index Cond  |    Index Filter    |               Filter                | Plan Rows | cost_rank |     Node Type     | Index Name | qid | nid 
--------------+--------------------+-------------------------------------+-----------+-----------+-------------------+------------+-----+-----
- (b <= 500)  | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 500)  |        56 |         1 | Index Only Scan   | i_r_b      |   9 |   1
- (pk <= 500) | ((pk % 100) <= 33) | (non_pushable((pk)::bigint) <= 500) |        56 |         1 | Index Scan        | r_pkey     |   3 |   1
- (b <= 500)  | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 500)  |        56 |         3 | Index Scan        | i_r_b      |   6 |   1
- (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         1 | Bitmap Index Scan | r_pkey     |  11 |   1
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         2 | Index Only Scan   | i_r_b      |   8 |   1
- (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         2 | Index Scan        | r_pkey     |   2 |   1
- (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         4 | Bitmap Index Scan | r_pkey     |  14 |   1
- (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         4 | Bitmap Index Scan | r_pkey     |  15 |   1
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  17 |   1
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  18 |   1
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  20 |   1
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan | i_r_b      |  21 |   1
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        10 | Bitmap Index Scan | i_r_b      |  11 |   2
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        10 | Bitmap Index Scan | i_r_b      |  12 |   2
- (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |        12 | Bitmap Index Scan | r_pkey     |  12 |   1
- (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        13 | Index Scan        | i_r_b      |   5 |   1
- (pk <= 500) |                    |                                     |       500 |         1 | Bitmap Index Scan | r_pkey     |  10 |   1
- (b <= 500)  |                    |                                     |       500 |         2 | Index Only Scan   | i_r_b      |   7 |   1
- (pk <= 500) |                    |                                     |       500 |         3 | Index Scan        | r_pkey     |   1 |   1
- (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  10 |   2
- (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  16 |   1
- (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan | i_r_b      |  19 |   1
- (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan | r_pkey     |  13 |   1
- (b <= 500)  |                    |                                     |       500 |         8 | Index Scan        | i_r_b      |   4 |   1
-(24 rows)
+ Index Cond  |    Index Filter    |               Filter                | Plan Rows | cost_rank |        Node Type         | Index Name | qid | nid 
+-------------+--------------------+-------------------------------------+-----------+-----------+--------------------------+------------+-----+-----
+ (a <= 500)  | ((a % 100) <= 33)  | (non_pushable((a)::bigint) <= 500)  |        56 |         1 | Distinct Index Only Scan | i_r_a      |  27 |   1
+ (a <= 500)  | ((a % 100) <= 33)  | (non_pushable((a)::bigint) <= 500)  |       556 |         2 | Index Only Scan          | i_r_a      |  24 |   1
+ (a <= 500)  | ((a % 100) <= 33)  |                                     |       167 |         1 | Distinct Index Only Scan | i_r_a      |  26 |   1
+ (a <= 500)  | ((a % 100) <= 33)  |                                     |      1667 |         2 | Index Only Scan          | i_r_a      |  23 |   1
+ (a <= 500)  |                    |                                     |       500 |         1 | Distinct Index Only Scan | i_r_a      |  25 |   1
+ (a <= 500)  |                    |                                     |      5000 |         2 | Index Only Scan          | i_r_a      |  22 |   1
+ (b <= 500)  | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 500)  |        56 |         1 | Index Only Scan          | i_r_b      |   9 |   1
+ (pk <= 500) | ((pk % 100) <= 33) | (non_pushable((pk)::bigint) <= 500) |        56 |         1 | Index Scan               | r_pkey     |   3 |   1
+ (b <= 500)  | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 500)  |        56 |         3 | Index Scan               | i_r_b      |   6 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         1 | Bitmap Index Scan        | r_pkey     |  11 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         2 | Index Only Scan          | i_r_b      |   8 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         2 | Index Scan               | r_pkey     |   2 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         4 | Bitmap Index Scan        | r_pkey     |  14 |   1
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |         4 | Bitmap Index Scan        | r_pkey     |  15 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan        | i_r_b      |  17 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan        | i_r_b      |  18 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan        | i_r_b      |  20 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |         6 | Bitmap Index Scan        | i_r_b      |  21 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        10 | Bitmap Index Scan        | i_r_b      |  11 |   2
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        10 | Bitmap Index Scan        | i_r_b      |  12 |   2
+ (pk <= 500) | ((pk % 100) <= 33) |                                     |       167 |        12 | Bitmap Index Scan        | r_pkey     |  12 |   1
+ (b <= 500)  | ((b % 100) <= 33)  |                                     |       167 |        13 | Index Scan               | i_r_b      |   5 |   1
+ (pk <= 500) |                    |                                     |       500 |         1 | Bitmap Index Scan        | r_pkey     |  10 |   1
+ (b <= 500)  |                    |                                     |       500 |         2 | Index Only Scan          | i_r_b      |   7 |   1
+ (pk <= 500) |                    |                                     |       500 |         3 | Index Scan               | r_pkey     |   1 |   1
+ (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan        | i_r_b      |  10 |   2
+ (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan        | i_r_b      |  16 |   1
+ (b <= 500)  |                    |                                     |       500 |         4 | Bitmap Index Scan        | i_r_b      |  19 |   1
+ (pk <= 500) |                    |                                     |       500 |         7 | Bitmap Index Scan        | r_pkey     |  13 |   1
+ (b <= 500)  |                    |                                     |       500 |         8 | Index Scan               | i_r_b      |   4 |   1
+(30 rows)
 
 -- Parallel scan shapes; also guards the comparison below from passing
 -- vacuously.
@@ -214,10 +237,11 @@ group by "Node Type", "Index Name", workers
 order by "Node Type", "Index Name", workers;
     Node Type    | Index Name | workers | scans 
 -----------------+------------+---------+-------
+ Index Only Scan | i_r_a      |       2 |     6
  Index Only Scan | i_r_b      |       2 |     3
  Index Scan      | i_r_b      |       2 |     9
  Index Scan      | r_pkey     |       2 |     6
-(3 rows)
+(4 rows)
 
 -- Parallel scan row estimates should be the serial estimates divided by the
 -- parallel divisor per get_parallel_divisor(), allowing 1 row of slack for

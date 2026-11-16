@@ -606,6 +606,68 @@ carefully, i.e. optimizing for the case when there are no deletions, using
 Bloom filters on the vector id, and checking for deletions on any given vector
 id no more than once.
 
+### Consistency check
+
+`CheckVectorIndex` (`src/yb/tablet/vector_index_checker.cc`) verifies one
+vector index of one tablet replica against its indexed table. The `VerifyVectorIndexes` tablet server
+RPC runs it for the replicas hosted by that server, and
+`yb-ts-cli verify_vector_indexes [<tablet_id> [<vector_index_id>...]]`
+exposes the RPC, exiting with an error when anything is inconsistent or
+could not be checked. Running it against every tablet server covers every
+replica. Replicas are checked independently because each one maintains its
+own Vector LSM, so a remote bootstrap or a restore can leave one replica
+inconsistent while the others are fine. A deactivated index lacks the rows
+committed after its drop by design, so it cannot be checked: the RPC skips
+it when no index is specified and reports an error for it otherwise.
+
+The check flushes each vector index it checks, see below, and reads the whole
+index and indexed table. It stops at the RPC deadline, so a large index needs
+a `--timeout_ms` above the 60 second default, e.g. one hour for every vector
+index on a server:
+
+```
+yb-ts-cli --server_address=<host>:9100 --timeout_ms=3600000 verify_vector_indexes
+```
+
+The check verifies two directions. Every live reverse mapping entry must
+point to a row which references the vector, and the stored vector must equal
+the row vector. Every row with a vector must have its vector in the index
+and, when the table writes the reverse mapping, a live entry pointing back
+to the row. Vectors without a live mapping entry are invisible, not
+inconsistencies: vectors of deleted or updated rows not yet compacted away,
+and vectors written after the read time. An index which stores payloads
+resolves vectors through the payload, as searches do, so a vector whose row
+is gone or references another vector is invisible there too. If the table
+also writes the reverse mapping, the mapping is then checked from the rows
+only.
+
+An index can hold billions of vectors, so the check does not keep their ids.
+Vector ids are random UUIDs, spread over buckets by their low bits. The
+number of buckets is the power of two closest to the square root of the
+number of vectors, so a bucket holds about as many vectors as there are
+buckets. Each bucket keeps the sum, as 128 bit integers, of the ids of its
+live vectors and of the ids of the vectors its rows reference. Each bucket
+where the two differ takes one more pass over the index and the rows,
+collecting the vector ids of that bucket to find the rows whose vector is
+missing, has several copies in the index, or has a payload referencing
+another row. Only one bucket of ids is kept at a time, and every such bucket
+has a reported inconsistency, so the limit on reported inconsistencies also
+bounds the number of extra passes.
+
+The rows and the reverse mapping are read at a single hybrid time below the
+start time of every transaction still running on the tablet, from the
+regular RocksDB only. No intent apply can add data at such a time, so the
+reads see the same applied state regardless of how they interleave with
+applies. The vector index carries no hybrid times, so the check then flushes
+it and waits for the flush and the pending inserts, after which the chunks
+in the manifest hold every vector of a visible row. Only those chunks are
+read: a chunk cannot be iterated while inserts into it run, so without the
+flush the rows whose vectors are still in the mutable chunk would be
+reported as missing. A vector inserted after the read time resolves to no
+row at it and counts as invisible.
+The read time is registered with the tablet retention policy, so the history
+it needs is not compacted away during the check.
+
 ## Conclusion
 
 In summary, the vector indexing architecture in YugabyteDB adds practical and

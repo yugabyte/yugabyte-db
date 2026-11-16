@@ -19,6 +19,9 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
@@ -54,6 +57,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -63,6 +67,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.LoggerFactory;
 import org.yb.CommonNet.PlacementBlockPB;
 import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.CommonNet.ReplicationInfoPB;
@@ -320,6 +325,8 @@ public class ImportUniverseTest extends CommissionerBaseTest {
   private void verifyUniverse(Universe universe) {
     assertEquals(masterIps.size() + tserverIps.size(), universe.getNodes().size());
     Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+    // The detector is not stubbed here, so no node has a recorded layout.
+    universe.getNodes().forEach(n -> assertNull(n.nodeExporterSystemdLevel));
     Map<String, String> masterSpecificGFlags =
         cluster.userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
     Map<String, String> tserverSpecificGFlags =
@@ -368,6 +375,35 @@ public class ImportUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testImportUniverseRecordsNodeExporterLayoutPerNode() {
+    String rootIp = tserverIps.get(0);
+    doAnswer(
+            i -> {
+              NodeAgent nodeAgent = i.getArgument(0);
+              return Optional.of(
+                  nodeAgent.getIp().equals(rootIp)
+                      ? NodeDetails.NodeExporterSystemdLevel.ROOT
+                      : NodeDetails.NodeExporterSystemdLevel.USER);
+            })
+        .when(mockNodeAgentClient)
+        .detectNodeExporterSystemdLevel(any());
+    ImportUniverseTaskParams taskParams = createTaskParams();
+    TaskInfo taskInfo = submitTask(taskParams);
+    // Nodes on both layouts are imported; exporter TLS waits until all of them are USER.
+    assertEquals(Success, taskInfo.getTaskState());
+    Universe universe =
+        Universe.maybeGetUniverseByName(defaultCustomer.getId(), taskParams.universeName)
+            .orElseThrow();
+    for (NodeDetails node : universe.getNodes()) {
+      assertEquals(
+          node.cloudInfo.private_ip.equals(rootIp)
+              ? NodeDetails.NodeExporterSystemdLevel.ROOT
+              : NodeDetails.NodeExporterSystemdLevel.USER,
+          node.nodeExporterSystemdLevel);
+    }
+  }
+
+  @Test
   public void testImportUniverseNonUniformFsDirs() {
     doAnswer(
             i -> {
@@ -395,5 +431,64 @@ public class ImportUniverseTest extends CommissionerBaseTest {
     assertFalse(
         Universe.maybeGetUniverseByName(defaultCustomer.getId(), taskParams.universeName)
             .isPresent());
+  }
+
+  private static final String YCQL_SECRET = "dummy-ycql-bind-secret";
+  private static final String HBA_SECRET = "dummy-hba-bind-secret";
+
+  private List<String> importWithSecretGFlags(
+      boolean nonUniformFsDirs, TaskInfo.State expectedState) {
+    doAnswer(
+            i -> {
+              NodeAgent nodeAgent = i.getArgument(0);
+              NodeInstance nodeInstance = nodeInstances.get(nodeAgent.getIp());
+              boolean differ = nonUniformFsDirs && nodeAgent.getIp().equals(tserverIps.get(0));
+              return ShellResponse.create(
+                  0,
+                  String.join(
+                      "\n",
+                      "--fs_data_dirs=" + (differ ? "/mnt/diff1" : tserverMountPaths),
+                      "--placement_region=" + nodeInstance.getDetails().region,
+                      "--placement_zone=" + nodeInstance.getDetails().zone,
+                      "--ycql_ldap_bind_passwd=" + YCQL_SECRET,
+                      "--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap ldapbindpasswd="
+                          + HBA_SECRET));
+            })
+        .when(mockNodeAgentClient)
+        .executeCommand(any(), argThat(cmd -> cmd.contains("cat /tserver/conf/tserver.conf")));
+    Logger ywLogger = (Logger) LoggerFactory.getLogger("com.yugabyte.yw");
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    ywLogger.addAppender(appender);
+    try {
+      assertEquals(expectedState, submitTask(createTaskParams()).getTaskState());
+    } finally {
+      ywLogger.detachAppender(appender);
+    }
+    List<String> logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+    logs.forEach(
+        m -> {
+          assertFalse(m, m.contains(YCQL_SECRET));
+          assertFalse(m, m.contains(HBA_SECRET));
+        });
+    return logs;
+  }
+
+  @Test
+  public void testImportUniverseLogsNoGFlagSecrets() {
+    List<String> logs = importWithSecretGFlags(false, Success);
+    assertTrue(
+        logs.stream()
+            .anyMatch(
+                m ->
+                    m.startsWith("Got server conf file from node")
+                        && m.contains("ycql_ldap_bind_passwd")));
+  }
+
+  @Test
+  public void testImportUniverseGFlagsMismatchLogsNoGFlagSecrets() {
+    List<String> logs = importWithSecretGFlags(true, Failure);
+    assertTrue(
+        logs.stream().anyMatch(m -> m.startsWith("Some servers have different common TSERVER")));
   }
 }

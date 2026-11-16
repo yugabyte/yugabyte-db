@@ -11,11 +11,13 @@
 // under the License.
 //
 
+#include <atomic>
 #include <optional>
 
 #include "yb/client/snapshot_test_util.h"
 
 #include "yb/common/ddl_mode-test-util.h"
+#include "yb/common/entity_ids.h"
 #include "yb/consensus/log.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -33,6 +35,8 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
@@ -611,6 +615,8 @@ void PgPackedRowTest::TestCompaction(size_t num_keys, const std::string& expr_su
     if (step == 1) {
       ASSERT_OK(cluster_->FlushTablets());
     } else if (step == 2) {
+      // Compacting a peer before it applies the last writes changes its record count.
+      ASSERT_OK(WaitAllPeersApplied(cluster_.get()));
       ASSERT_OK(cluster_->CompactTablets());
     }
 
@@ -665,6 +671,7 @@ TEST_P(PgPackedRowTest, ColocatedPackRowDisabled) {
 
   // Enable pack row for colocated table and trigger compaction.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+  ASSERT_OK(WaitAllPeersApplied(cluster_.get()));
   ASSERT_OK(cluster_->CompactTablets());
   CheckNumRecords(cluster_.get(), 1);
 }
@@ -743,7 +750,6 @@ TEST_P(PgPackedRowTest, Serial) {
 }
 
 TEST_P(PgPackedRowTest, PackDuringCompaction) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
 
   const auto kNumKeys = 10;
@@ -761,6 +767,7 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
+  ASSERT_OK(WaitAllPeersApplied(cluster_.get()));
   ASSERT_OK(cluster_->CompactTablets());
 
   ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), kNumKeys));
@@ -770,11 +777,50 @@ TEST_P(PgPackedRowTest, PackDuringCompaction) {
   ASSERT_EQ(rows, expected_rows);
 }
 
+// sequences_data.last_value is NOT NULL in the DocDB schema. Compacting below an earlier
+// compaction's cutoff could find a sequence row's liveness entry at or below the cutoff with no
+// last_value version at or below it, and packing the row failed with "Wrong encoded size: 0"
+// (#35445).
+TEST_P(PgPackedRowTest, PackSequenceAfterHistoryCutoffMovesBack) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  const auto kStep = 3s * kTimeMultiplier;
+  auto compact_sequences_data = [this]() -> Status {
+    for (const auto& peer : ListTableTabletPeers(cluster_.get(), kPgSequencesDataTableId)) {
+      RETURN_NOT_OK(VERIFY_RESULT(peer->shared_tablet())->ForceManualRocksDBCompact());
+    }
+    return Status::OK();
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE s"));
+  auto create_time = CoarseMonoClock::now();
+  std::this_thread::sleep_for(2 * kStep);
+  ASSERT_OK(conn.FetchRow<int64_t>("SELECT setval('s', 100)"));
+
+  // Drops the last_value written by CREATE SEQUENCE and keeps the liveness entry.
+  ASSERT_OK(compact_sequences_data());
+
+  // As in an upgrade, the second compaction runs after a restart, so the only record of the first
+  // compaction's cutoff is the flushed frontier.
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Restart(tserver::WaitTabletsBootstrapped::kTrue));
+  }
+
+  // Move the clock based cutoff between CREATE SEQUENCE and setval. Rounding up keeps the cutoff
+  // at or before create_time + kStep, leaving kStep for the compaction to start.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      narrow_cast<int32_t>(std::chrono::ceil<std::chrono::seconds>(
+          CoarseMonoClock::now() - create_time - kStep).count());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ASSERT_OK(compact_sequences_data());
+
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('s')")), 101);
+}
+
 // Check that we correctly interpret packed row size limit.
 TEST_P(PgPackedRowTest, BigValue) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_leader_failure_detection) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-
   constexpr size_t kValueLimit = 512;
   const std::string kBigValue(kValueLimit, 'B');
   const std::string kHalfBigValue(kValueLimit / 2, 'H');
@@ -786,6 +832,7 @@ TEST_P(PgPackedRowTest, BigValue) {
   std::array<std::string, 2> values = {kBigValue, kHalfBigValue};
 
   auto check_state = [this, &conn, &values](size_t expected_num_records) -> Status {
+    RETURN_NOT_OK(WaitAllPeersApplied(cluster_.get()));
     RETURN_NOT_OK(cluster_->CompactTablets());
     auto row = VERIFY_RESULT((conn.FetchRow<std::string, std::string>(
         "SELECT v1, v2 FROM t")));
@@ -1390,10 +1437,46 @@ TEST_P(PgPackedRowTestDisableTableLocks, DropColumnAfterReadStart) {
       42);
 }
 
+// An insert from a writer with a stale catalog omits both columns added by one ALTER TABLE.
+TEST_P(PgPackedRowTestDisableTableLocks, StaleWriterDuringMultiColumnAdd) {
+  constexpr auto kDdlDelay = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto writer = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(writer.Execute("INSERT INTO test VALUES (1, 1)"));
+
+  // Tablets get the new schema version before the catalog version is incremented.
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_delay_next_ddl = $0", ToMilliseconds(kDdlDelay)));
+  std::atomic<bool> ddl_done{false};
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&conn, &ddl_done] {
+    ASSERT_OK(conn.Execute(
+        "ALTER TABLE test ADD COLUMN c1 BOOL DEFAULT FALSE NOT NULL, ADD COLUMN c2 INT"));
+    ddl_done = true;
+  });
+
+  // In a transaction block, the mismatch only invalidates the table cache entry.
+  ASSERT_OK(LoggedWaitFor([&writer]() -> Result<bool> {
+    RETURN_NOT_OK(writer.Execute("BEGIN"));
+    auto status = writer.Execute("INSERT INTO test VALUES (2, 2)");
+    RETURN_NOT_OK(writer.Execute("ROLLBACK"));
+    return status.ToString().find("schema version mismatch") != std::string::npos;
+  }, kDdlDelay / 2, "Waiting for schema version mismatch"));
+  ASSERT_OK(writer.Execute("INSERT INTO test VALUES (2, 2)"));
+  // Otherwise the insert could have used the new catalog.
+  ASSERT_FALSE(ddl_done);
+  thread_holder.JoinAll();
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM test WHERE c1::text IS NULL")), 0);
+  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT c1 FROM test WHERE key = 2")));
+}
+
 namespace {
 
 std::optional<SchemaVersion> GetMinPrimarySchemaVersion(rocksdb::DB* db) {
-  std::unordered_map<Uuid, SchemaVersion> versions;
+  docdb::CotableSchemaVersionMap versions;
   {
     auto smallest = db->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
     if (smallest) {

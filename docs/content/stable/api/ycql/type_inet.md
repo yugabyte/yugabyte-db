@@ -63,4 +63,4 @@ example> SELECT * FROM dns_table;
 
 ## See also
 
-- [Data types](..#data-types)
+- [Data types](../#data-types)

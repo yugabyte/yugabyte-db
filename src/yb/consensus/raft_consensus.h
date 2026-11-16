@@ -85,8 +85,9 @@ struct ElectionResult;
 
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
-YB_STRONGLY_TYPED_BOOL(WriteEmpty);
+YB_STRONGLY_TYPED_BOOL(IgnorePeersInTransition);
 YB_STRONGLY_TYPED_BOOL(PreElected);
+YB_STRONGLY_TYPED_BOOL(WriteEmpty);
 
 YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
@@ -163,6 +164,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   Status StepDown(const LeaderStepDownRequestPB* req,
                   LeaderStepDownResponsePB* resp) override;
+
+  // With ignore_peers_in_transition, steps down even while a live PRE_VOTER or PRE_OBSERVER may
+  // still be in remote bootstrap.  That remote bootstrap must then be redone if the new leader has
+  // GCed the WAL its new peer needs to catch up.
+  Status StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp,
+                  IgnorePeersInTransition ignore_peers_in_transition);
 
   Status TEST_Replicate(const ConsensusRoundPtr& round) override;
   Status ReplicateBatch(const ConsensusRounds& rounds) override;
@@ -251,6 +258,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   OpId GetAllAppliedOpId();
 
+  // Index of the last op replicated to all peers, as known by the leader. On a follower it is the
+  // value most recently sent by a leader.
+  int64_t GetAllReplicatedIndex() const;
+
   struct WalGcRetentionOpIdInfo {
     OpId committed_op_id = OpId::Max();
     OpId majority_replicated_op_id = OpId::Max();
@@ -281,6 +292,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
+  // NotFound if the entry was GCed.
+  Result<OpId> LookupOpId(int64_t op_index) const;
+
   const scoped_refptr<log::Log>& log() { return log_; }
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
@@ -289,6 +303,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     reject_mode_.store(value, std::memory_order_release);
   }
 
+  // Delays each Update by duration. Setting it to zero also releases any hold in progress.
   void TEST_DelayUpdate(MonoDelta duration) {
     TEST_delay_update_.store(duration, std::memory_order_release);
   }
@@ -419,12 +434,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
         const ConsensusRounds& rounds, size_t* processed_rounds,
         std::vector<ReplicateMsgPtr>* replicate_msgs);
 
-  // Rejects a write whose WritePB::ignore_after_hybrid_time is not after the hybrid time the round
-  // was assigned, letting a client with a time-bounded lease stop its writes landing once the
-  // lease is gone. Must run after NotifyAddedToLeader and before the round is added as pending --
-  // see the call site. Returns false if the round was rejected; it is then already failed and
-  // unbound, and the caller must skip it.
-  [[nodiscard]] bool CheckWriteFenceUnlocked(const ConsensusRoundPtr& round);
+  // Fails a round that ConsensusContext::CheckReplicateAllowed rejected, i.e., after
+  // NotifyAddedToLeader and before the round was added as pending.  The round is then unbound, and
+  // the caller must skip it.
+  void RejectRoundUnlocked(const ConsensusRoundPtr& round, const Status& status);
 
   // Control whether printing of log messages should be done for a particular
   // function call.
@@ -739,6 +752,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Checked whether we should start step down when protege did not synchronize before timeout.
   void CheckDelayedStepDown(const Status& status);
 
+  void SignalDeferredRequest(const Status& status);
+
   // Whether the delayed step down protege has received every operation present in our log.
   bool ProtegeSynchronizedUnlocked() const;
 
@@ -768,6 +783,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // nodes from disturbing the healthy leader.
   std::atomic<MonoTime> withhold_votes_until_;
 
+  std::atomic<int64_t> all_replicated_index_from_leader_{0};
+
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;
 
@@ -790,6 +807,15 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   DelayedStepDown delayed_step_down_;
   rpc::ScheduledTaskTracker step_down_check_tracker_;
+
+  // Holds the signal deferred by raft_deferred_update_delay_ms.
+  rpc::ScheduledTaskTracker deferred_signal_tracker_;
+  // Last op index in the log when the pending deferred signal was armed.
+  std::atomic<int64_t> deferred_signal_op_index_{0};
+  // Set (under the replica lock) by whoever schedules the deferred signal and cleared when it runs
+  // or is aborted. At most one task is armed, so its deadline is fixed by the first arming and a
+  // run of deferrable appends cannot keep pushing the send out.
+  std::atomic<bool> deferred_signal_armed_{false};
 
   // The number of times this node has called and lost a leader election since
   // the last time it saw a stable leader (either itself or another node).

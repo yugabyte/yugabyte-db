@@ -14,11 +14,13 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <future>
 #include <memory>
-#include <unordered_set>
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/tserver/pg_cache_util.h"
 
 #include "yb/util/result.h"
 
@@ -44,20 +46,29 @@ class PgDbCache {
   explicit PgDbCache(std::shared_future<client::YBClient*> client_future);
   ~PgDbCache();
 
-  // Returns info for db oid from cache. If no cache entry is present, it is
-  // fetched from master and cached before returning.
-  // Concurrent uncached requests for same db are coalesced into a single fetch.
-  Result<ColocationInfo> GetColocationInfo(uint32_t db_oid);
+  using Callback = std::function<void(Result<ColocationInfo>)>;
+
+  // Looks up info for db_oid and passes it to callback. On a cache hit the callback runs before
+  // this returns; otherwise it runs on an RPC callback thread once the master has answered.
+  // Concurrent uncached requests for the same db are coalesced into a single fetch.
+  //
+  // This never waits for the master's reply. Callers run on RPC service threads, and that reply
+  // is delivered by the same thread pool, so a service thread that waited here could hold up the
+  // very reply it is waiting for. See issue #36104. A miss does still wait on the YBClient
+  // future, which is unresolved only until the tserver has finished starting up.
+  void GetColocationInfo(uint32_t db_oid, Callback callback);
 
   // Drops cached entries for the given db_oids
-  void Invalidate(const std::unordered_set<uint32_t>& db_oids_deleted);
+  void Invalidate(const PgTableCacheInvalidationFilter::DroppedDbs& dropped_dbs);
 
   // Drops all cached entries.
   void Clear();
 
  private:
   class Impl;
-  std::unique_ptr<Impl> impl_;
+  // Shared rather than unique because an in-flight master lookup holds a reference until its
+  // callback has run.
+  std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace yb::tserver

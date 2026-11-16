@@ -27,36 +27,7 @@
 #include "nodes/pathnodes.h"	/* TODO: is needed? */
 #include "nodes/ybbitmatrix.h"
 
-
-/*
- * YB: info used by YbMergeScanInfo.
- */
-typedef struct
-{
-	NodeTag		type;
-	int			numCols;		/* number of sort-key columns */
-	AttrNumber *sortColIdx;		/* their indexes in the target list */
-	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
-	Oid		   *collations;		/* OIDs of collations */
-	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
-} YbSortInfo;
-
-/*
- * YB: info used by IndexScan and IndexOnlyScan nodes.
- *
- * Holds info used for merge scans.  'stream_cols' lists the merge stream keys
- * in index column order (see yb_finalize_merge_scan_stream_cols).  The
- * executor must bind each of them per stream, and ybValidateMergeScanBinds
- * checks that it does.  pggate treats every key column before the last merge
- * sort column as a stream key (PgDmlRead::IsMergeSortColumn), including the
- * columns this list leaves out.
- */
-typedef struct
-{
-	NodeTag		type;
-	List	   *stream_cols;	/* List of YbMergeScanStreamColInfo */
-	YbSortInfo *sort_cols;
-} YbMergeScanInfo;
+#define YB_MERGE_OPTION_NAME "merge"
 
 /* ----------------------------------------------------------------
  *						node definitions
@@ -429,6 +400,7 @@ typedef struct ModifyTable
 	List	   *ybReturningColumns; /* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
+	bool		ybInsertOnConflictPushdownPossible; /* push conflict resolution to DocDB */
 	/*
 	 * YB: A collection of entities that are impacted by the ModifyTable query,
 	 * and their relationship to the columns that are modified by the query.
@@ -551,8 +523,9 @@ typedef struct Scan
 	Plan		plan;
 	Index		scanrelid;		/* relid is index into the range table */
 
-	/* YB */
+	/* YB declarations */
 	char	   *ybScannedObjectName;
+	List	   *ybOptions;
 } Scan;
 
 /* ----------------

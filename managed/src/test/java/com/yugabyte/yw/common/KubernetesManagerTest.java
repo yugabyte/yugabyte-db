@@ -44,6 +44,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,6 +52,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -367,17 +369,239 @@ public class KubernetesManagerTest extends FakeDBApplication {
     assertEquals(true, status);
   }
 
+  // PLAT-22918: zero replicas is ready only when zero are expected.
+  private Object[] statefulSetStatusParams() {
+    return new Object[] {
+      new Object[] {"replicas=0|readyReplicas=|availableReplicas=", 0, true},
+      new Object[] {"replicas=0|readyReplicas=|availableReplicas=3", 3, false},
+      new Object[] {"replicas=|readyReplicas=|availableReplicas=", 0, false},
+      new Object[] {"replicas=2|readyReplicas=2|availableReplicas=2", 1, false},
+      new Object[] {"replicas=1|readyReplicas=1|availableReplicas=1", 3, false},
+    };
+  }
+
   @Test
-  public void testCheckStatefulSetStatus_success_no_replicas() {
-    ShellResponse response1 = ShellResponse.create(0, "statefulset1");
-    ShellResponse response2 =
-        ShellResponse.create(0, "replicas=0|readyReplicas=|availableReplicas=3");
-    Map<String, String> testConfig = new HashMap<String, String>();
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response1);
-    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response2);
+  @Parameters(method = "statefulSetStatusParams")
+  public void testCheckStatefulSetStatus_expectedReplicaCount(
+      String kubectlStatus, int expectedReplicas, boolean expectedReady) {
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "statefulset1"))
+        .thenReturn(ShellResponse.create(0, kubectlStatus));
     boolean status =
-        kubernetesManager.checkStatefulSetStatus(testConfig, "test-ns", "test-release", 3);
-    assertEquals(true, status);
+        kubernetesManager.checkStatefulSetStatus(
+            new HashMap<>(), "test-ns", "test-release", expectedReplicas);
+    assertEquals(expectedReady, status);
+  }
+
+  private static final String TWO_MASTER_PVCS_JSON =
+      "{\"items\":[{\"metadata\":{\"name\":\"datadir0-yb-master-0\"}},"
+          + "{\"metadata\":{\"name\":\"datadir0-yb-master-1\"}}]}";
+  private static final String MASTER_0_PODS_JSON =
+      "{\"items\":[{\"metadata\":{\"name\":\"yb-master-0\"},\"spec\":{\"volumes\":"
+          + "[{\"name\":\"datadir0\",\"persistentVolumeClaim\":"
+          + "{\"claimName\":\"datadir0-yb-master-0\"}}]}}]}";
+  private static final String NO_PODS_JSON = "{\"items\":[]}";
+  private static final List<List<String>> DELETE_MASTER_1_PVC =
+      List.of(
+          List.of("kubectl", "--namespace", "test-ns", "delete", "pvc", "datadir0-yb-master-1"));
+
+  private void mockDeleteUnusedPVCsKubectl(String... stsStatuses) {
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(0, "yb-master")),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        stsStatuses);
+  }
+
+  // Answers the kubectl calls deleteUnusedPVCs makes. The StatefulSet listing and status calls
+  // take their answers in order, the last one repeated.
+  private void mockDeleteUnusedPVCsKubectl(
+      List<ShellResponse> stsListResponses,
+      String pvcsJson,
+      String podsJson,
+      String... stsStatuses) {
+    List<ShellResponse> stsLists = new ArrayList<>(stsListResponses);
+    List<String> statuses = new ArrayList<>(List.of(stsStatuses));
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenAnswer(
+            invocation -> {
+              List<String> cmd = invocation.getArgument(0);
+              if (cmd.contains("statefulsets")) {
+                return stsLists.size() > 1 ? stsLists.remove(0) : stsLists.get(0);
+              } else if (cmd.contains("statefulset")) {
+                return ShellResponse.create(
+                    0, statuses.size() > 1 ? statuses.remove(0) : statuses.get(0));
+              } else if (cmd.contains("delete")) {
+                return ShellResponse.create(0, "deleted");
+              } else if (cmd.contains("pvc")) {
+                return ShellResponse.create(0, pvcsJson);
+              } else if (cmd.contains("pods")) {
+                return ShellResponse.create(0, podsJson);
+              }
+              throw new AssertionError("Unexpected command " + cmd);
+            });
+  }
+
+  // The kubectl commands run so far that contain the given argument.
+  private List<List<String>> kubectlCommands(String arg) {
+    ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
+    Mockito.verify(shellProcessHandler, Mockito.atLeastOnce())
+        .run(captor.capture(), any(ShellProcessContext.class));
+    return captor.getAllValues().stream()
+        .filter(cmd -> cmd.contains(arg))
+        .collect(Collectors.toList());
+  }
+
+  // PLAT-22918: a master that is briefly not ready (e.g. waiting for its volume to detach) must
+  // not fail the shrink; GC waits for it and then deletes only the unused PVC.
+  @Test
+  public void testDeleteUnusedPVCs_waitsForStatefulSetReady() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        "replicas=1|readyReplicas=|availableReplicas=",
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    kubernetesManager.deleteUnusedPVCs(
+        new HashMap<>(), "test-ns", "test-release", "yb-master", true, 1, Duration.ofSeconds(120));
+    assertEquals(DELETE_MASTER_1_PVC, kubectlCommands("delete"));
+  }
+
+  // PLAT-22918: a StatefulSet that never becomes ready fails with a readable error, deleting
+  // nothing.
+  @Test
+  public void testDeleteUnusedPVCs_notReadyTimesOutWithoutDeleting() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl("replicas=1|readyReplicas=|availableReplicas=");
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.deleteUnusedPVCs(
+                    new HashMap<>(),
+                    "test-ns",
+                    "test-release",
+                    "yb-master",
+                    true,
+                    1,
+                    Duration.ofSeconds(0)));
+    String message = thrown.getMessage();
+    assertTrue(message, message.contains("Namespace: test-ns,"));
+    assertTrue(
+        message,
+        message.contains("label selector: app.kubernetes.io/name=yb-master,release=test-release,"));
+    assertTrue(message, message.contains("expected replicas: 1"));
+    assertTrue(message, message.contains("readyReplicas=-1"));
+    assertTrue(kubectlCommands("delete").isEmpty());
+  }
+
+  // PLAT-22918: an AZ with tservers but no masters has no master StatefulSet (the chart renders
+  // none for 0 replicas). GC must not look for one; it deletes the leftover master PVCs.
+  @Test
+  public void testDeleteUnusedPVCs_zeroMastersSkipsStatefulSetCheck() {
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(0, "")), TWO_MASTER_PVCS_JSON, NO_PODS_JSON);
+    kubernetesManager.deleteUnusedPVCs(
+        new HashMap<>(), "test-ns", "test-release", "yb-master", true, 0, Duration.ofSeconds(120));
+    assertTrue(kubectlCommands("statefulsets").isEmpty());
+    assertEquals(2, kubectlCommands("delete").size());
+  }
+
+  // PLAT-22918: a failing kubectl call, e.g. an API server that briefly times out, is retried
+  // within the wait.
+  @Test
+  public void testDeleteUnusedPVCs_retriesKubectlError() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        List.of(
+            ShellResponse.create(
+                1, "Unable to connect to the server: dial tcp 192.0.2.1:443: i/o timeout"),
+            ShellResponse.create(0, "yb-master")),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    kubernetesManager.deleteUnusedPVCs(
+        new HashMap<>(), "test-ns", "test-release", "yb-master", true, 1, Duration.ofSeconds(120));
+    assertEquals(2, kubectlCommands("statefulsets").size());
+    assertEquals(DELETE_MASTER_1_PVC, kubectlCommands("delete"));
+  }
+
+  // PLAT-22918: an error that keeps failing is retried for the whole wait, then reported.
+  @Test
+  public void testDeleteUnusedPVCs_kubectlErrorRetriedUntilTimeout() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    String kubectlError =
+        "Unable to connect to the server: getting credentials: exec: executable"
+            + " gke-gcloud-auth-plugin failed with exit code 1";
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(1, kubectlError)),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.deleteUnusedPVCs(
+                    new HashMap<>(),
+                    "test-ns",
+                    "test-release",
+                    "yb-master",
+                    true,
+                    1,
+                    Duration.ofSeconds(1)));
+    assertTrue(
+        thrown.getMessage(), thrown.getMessage().contains("StatefulSet not ready after 1 s"));
+    assertTrue(thrown.getMessage(), thrown.getMessage().contains(kubectlError));
+    assertTrue(kubectlCommands("statefulsets").size() > 1);
+    assertTrue(kubectlCommands("delete").isEmpty());
+  }
+
+  // PLAT-22918: an aborted task stops the wait at once instead of being retried.
+  @Test
+  public void testDeleteUnusedPVCs_abortNotRetried() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(ShellResponse.ERROR_CODE_EXECUTION_CANCELLED, "")),
+        TWO_MASTER_PVCS_JSON,
+        MASTER_0_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    assertThrows(
+        CancellationException.class,
+        () ->
+            kubernetesManager.deleteUnusedPVCs(
+                new HashMap<>(),
+                "test-ns",
+                "test-release",
+                "yb-master",
+                true,
+                1,
+                Duration.ofSeconds(1)));
+    assertEquals(1, kubectlCommands("statefulsets").size());
+    assertTrue(kubectlCommands("delete").isEmpty());
+  }
+
+  // PLAT-22918: a master pod missing from the listing must not have its live PVC deleted.
+  @Test
+  public void testDeleteUnusedPVCs_missingPodThrowsWithoutDeleting() {
+    kubernetesManager.statefulSetReadyPollSecs = 0;
+    mockDeleteUnusedPVCsKubectl(
+        List.of(ShellResponse.create(0, "yb-master")),
+        TWO_MASTER_PVCS_JSON,
+        NO_PODS_JSON,
+        "replicas=1|readyReplicas=1|availableReplicas=1");
+    RuntimeException thrown =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.deleteUnusedPVCs(
+                    new HashMap<>(),
+                    "test-ns",
+                    "test-release",
+                    "yb-master",
+                    true,
+                    1,
+                    Duration.ofSeconds(120)));
+    assertTrue(thrown.getMessage(), thrown.getMessage().contains("Found 0 of 1 pods"));
+    assertTrue(kubectlCommands("delete").isEmpty());
   }
 
   // PLAT-21834: When the label selector matches no StatefulSet (e.g. querying yb-master on a
@@ -564,7 +788,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
                 isMultiAZ,
                 universe.getUniverseDetails().nodePrefix,
                 universe.getName(),
-                az.getName(),
+                az.getCode(),
                 cluster.clusterType == ClusterType.ASYNC,
                 universe.getUniverseDetails().useNewHelmNamingStyle);
         helmReleaseNames.add(helmRelease);

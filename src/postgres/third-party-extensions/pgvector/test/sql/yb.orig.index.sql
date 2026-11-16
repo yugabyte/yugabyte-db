@@ -103,6 +103,37 @@ CREATE TABLE items (id serial PRIMARY KEY, embedding vector);
 CREATE INDEX ON items USING ybhnsw (embedding vector_l2_ops);
 DROP TABLE items;
 
+-- ALTER COLUMN TYPE is rejected on a column used by a ybhnsw index (#36753),
+-- whether or not it rewrites the table.
+CREATE TABLE items (id int PRIMARY KEY, embedding vector(3));
+-- Before the index exists, the ALTER works.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+-- Once the index exists, the ALTER is rejected, on the empty table...
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
+INSERT INTO items VALUES (1, '[1, 1, 1]'), (2, '[2, 2, 2]'), (3, '[3, 3, 3]');
+-- ...and with rows.
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(4);
+ALTER TABLE items ALTER COLUMN embedding TYPE vector(3);
+-- Nothing changed: the index column keeps its dimensions, the column still
+-- refuses wrong-size vectors, and searches work.
+SELECT atttypmod FROM pg_attribute WHERE attrelid = 'items_idx'::regclass;
+INSERT INTO items VALUES (4, '[1, 2]');
+SELECT id FROM items ORDER BY embedding <-> '[1, 1, 1]' LIMIT 2;
+-- Without the index, the ALTER works.
+DROP INDEX items_idx;
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+DROP TABLE items;
+-- The same on a partitioned table with the index on the parent.
+CREATE TABLE items (id int, embedding vector(3)) PARTITION BY RANGE (id);
+CREATE TABLE items_1 PARTITION OF items FOR VALUES FROM (0) TO (100);
+CREATE INDEX items_idx ON items USING ybhnsw (embedding vector_l2_ops);
+ALTER TABLE items ALTER COLUMN embedding TYPE vector;
+DROP TABLE items;
+
 -- Partial vector indexes are not supported (#31441).  The predicate is not
 -- pushed into the vector AM, so allowing them would silently produce wrong
 -- query results.  The CREATE INDEX should be rejected for both vector AMs.
@@ -150,3 +181,28 @@ CREATE INDEX ON vec_reltuples USING ybhnsw (embedding vector_l2_ops);
 SELECT reltuples FROM pg_class WHERE relname = 'vec_reltuples';
 RESET yb_enable_update_reltuples_after_create_index;
 DROP TABLE vec_reltuples;
+
+-- KNN queries with an equality on the primary key only search the tablets that
+-- can hold the matching rows. The results must match the unrouted ones.
+CREATE TABLE vec_tenant (tenant int, id int, embedding vector(3),
+                         PRIMARY KEY ((tenant) HASH, id)) SPLIT INTO 3 TABLETS;
+CREATE INDEX ON vec_tenant USING ybhnsw (embedding vector_l2_ops);
+INSERT INTO vec_tenant SELECT t, i, vector('[' || t || ', ' || i || ', 0]')
+  FROM generate_series(1, 6) t, generate_series(1, 4) i;
+EXPLAIN (COSTS OFF) SELECT * FROM vec_tenant WHERE tenant = 2 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant = 2 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant IN (1, 5) ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5;
+SELECT * FROM vec_tenant WHERE tenant = 3 AND id = 2 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant = NULL ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant WHERE tenant = ANY('{}'::int[]) ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+DROP TABLE vec_tenant;
+
+CREATE TABLE vec_tenant_range (tenant int, id int, embedding vector(3),
+                               PRIMARY KEY (tenant ASC, id ASC))
+  SPLIT AT VALUES ((3), (4, 2));
+CREATE INDEX ON vec_tenant_range USING ybhnsw (embedding vector_l2_ops);
+INSERT INTO vec_tenant_range SELECT t, i, vector('[' || t || ', ' || i || ', 0]')
+  FROM generate_series(1, 6) t, generate_series(1, 4) i;
+SELECT * FROM vec_tenant_range WHERE tenant = 4 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+SELECT * FROM vec_tenant_range WHERE tenant = 4 AND id = 3 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 3;
+DROP TABLE vec_tenant_range;

@@ -1,11 +1,14 @@
--- Create database objects used by the BNL cost parity tests.
+-- Create database objects used by the BNL cost parity tests and the BNL
+-- inner scan estimate test.
 --
--- These tests compare the planner's cost estimates for a 2-table join run
+-- The parity tests compare the planner's cost estimates for a 2-table join run
 -- with four join methods -- YB Batched Nested Loop (BNL), Hash Join (HJ),
 -- Merge Join (MJ) and (un-batched) Nested Loop (NL) -- and rank them by cost.
 -- They are written to expose known BNL cost-model defects (see the header of
 -- yb.orig.bnl_cost_parity.sql) where the cheapest/most-expensive plan by cost
 -- disagrees with the fastest/slowest plan by run time.
+-- yb.orig.bnl_inner_estimate checks the inputs of that model: the per-batch
+-- estimates of a BNL's inner index scan (see the end of this file).
 set client_min_messages to 'warning';
 
 drop database if exists bnl_cost_parity_test with (force);
@@ -14,10 +17,10 @@ drop database if exists bnl_cost_parity_test with (force);
 create database bnl_cost_parity_test with colocation = true;
 -- Turn the non-deterministic-field guard OFF so EXPLAIN (DEBUG, DIST) emits the
 -- storage read-request and rows-scanned counters we compare against the cost
--- ranking (plus the rocksdb seek/next counters join_costs keeps for manual
--- inspection).  The compared counters are deterministic; wall-clock timings
--- and the layout-sensitive rocksdb counters are not and are never printed
--- (see join_costs / the test for details).
+-- ranking, plus the rocksdb seek/next counters.  The compared counters are
+-- deterministic; wall-clock timings are not and are never printed, and the
+-- layout-sensitive rocksdb counters are printed only as the DISTINCT
+-- section's masked work key (see join_costs / the test for details).
 alter database bnl_cost_parity_test set yb_explain_hide_non_deterministic_fields = off;
 alter database bnl_cost_parity_test set yb_enable_cbo = on;
 -- 78ab6ade00d68e0919866b52292c1cd65b9b2d58 (#19494) moved BNL preference to
@@ -41,6 +44,7 @@ create schema ce;
 create table ce.r (
     pk int,
     a int,
+    a5 int,
     b int,
     c char(10),
     d int,
@@ -51,6 +55,7 @@ create table ce.r (
 ) with (colocation = off);
 
 create index nonconcurrently on ce.r (a asc);
+create index nonconcurrently on ce.r (a5 asc);
 create unique index nonconcurrently on ce.r (b asc);
 create index nonconcurrently on ce.r (c asc);
 create index nonconcurrently on ce.r (bl asc);
@@ -60,11 +65,14 @@ create index nonconcurrently on ce.r (bl asc);
 -- range -- a in [3886, 5120] rather than [1, 1235] -- so those tests can drive
 -- the outer with a forward ascending index scan ("s.y >= k order by s.y") and
 -- still meet the absent join values first (the low outer rows below 3886).
--- That keeps the leading mismatch without any backward index scan.  All other
--- columns mirror the cardinality_estimate / roundtrip_estimate tables.
+-- That keeps the leading mismatch without any backward index scan.  Column a5
+-- (5 rows per value, 1..2469) is the inner key of the DISTINCT family: with 5
+-- rows per group a distinct skip scan pays a seek and 3 nexts per group where
+-- the plain scan pays 5 nexts.  All other columns mirror the
+-- cardinality_estimate / roundtrip_estimate tables.
 insert into ce.r
     select
-        i, ((i - 1) / 10) + 3886, i,
+        i, ((i - 1) / 10) + 3886, ((i - 1) / 5) + 1, i,
         concat(chr((((i-1)/26/26) % 26) + ascii('a')),
                chr((((i-1)/26) % 26) + ascii('a')),
                chr(((i-1) % 26) + ascii('a'))),
@@ -74,6 +82,7 @@ insert into ce.r
     from generate_series(1, 12345) i;
 
 alter table ce.r alter column a set statistics 10000;
+alter table ce.r alter column a5 set statistics 10000;
 alter table ce.r alter column b set statistics 10000;
 alter table ce.r alter column e set statistics 10000;
 
@@ -144,18 +153,31 @@ analyze ce.s;
 --            comment is prepended per join method by explain_join_json().
 -- methods  : the four join methods, each pinned with a Leading((s r)) hint so
 --            s is always the outer and r (ce.r or ce.rC, aliased r) the inner,
---            plus the method hint (or Set hint) that disables the others.
+--            plus the method hint (or Set hint) that disables the others.  The
+--            '/p' rows repeat them with distinct pushdown off (plain inner
+--            scan, DISTINCT resolved above the join) and run only for the
+--            queries flagged distinct_inner.
 ------------------------------------------------------------------------------
 drop table if exists queries cascade;
-create table queries (qid int primary key, descr text, query text);
+create table queries (qid int primary key, descr text, query text,
+                      distinct_inner boolean not null default false);
 
 drop table if exists methods cascade;
-create table methods (mid int primary key, label text, hint text, expect text);
+create table methods (mid int primary key, label text, family text, hint text,
+                      expect text, plain_inner boolean not null default false);
 insert into methods values
-    (1, 'BNL', 'Leading((s r)) YbBatchedNL(s r)',                    'Batched Nested Loop'),
-    (2, 'HJ',  'Leading((s r)) HashJoin(s r)',                       'Hash Join'),
-    (3, 'MJ',  'Leading((s r)) MergeJoin(s r)',                      'Merge Join'),
-    (4, 'NL',  'Leading((s r)) NestLoop(s r)',                       'Nested Loop');
+    (1, 'BNL', 'BNL', 'Leading((s r)) YbBatchedNL(s r)',             'Batched Nested Loop', false),
+    (2, 'HJ',  'HJ',  'Leading((s r)) HashJoin(s r)',                'Hash Join',           false),
+    (3, 'MJ',  'MJ',  'Leading((s r)) MergeJoin(s r)',               'Merge Join',          false),
+    (4, 'NL',  'NL',  'Leading((s r)) NestLoop(s r)',                'Nested Loop',         false),
+    (11, 'BNL/p', 'BNL', 'Leading((s r)) YbBatchedNL(s r) Set(yb_enable_distinct_pushdown off)',
+                                                                     'Batched Nested Loop', true),
+    (12, 'HJ/p',  'HJ',  'Leading((s r)) HashJoin(s r) Set(yb_enable_distinct_pushdown off)',
+                                                                     'Hash Join',           true),
+    (13, 'MJ/p',  'MJ',  'Leading((s r)) MergeJoin(s r) Set(yb_enable_distinct_pushdown off)',
+                                                                     'Merge Join',          true),
+    (14, 'NL/p',  'NL',  'Leading((s r)) NestLoop(s r) Set(yb_enable_distinct_pushdown off)',
+                                                                     'Nested Loop',         true);
 
 -- Run a single base query with the supplied hint comment under
 -- EXPLAIN (FORMAT JSON) and return the plan tree.  With exec (the default)
@@ -239,6 +261,43 @@ begin
 end;
 $$;
 
+-- rank_consistent: whether two rankings of the same labels agree, a tie on
+-- either side counting as agreement: no pair of labels that one ranking puts
+-- one way and the other the other way.  Both arrays are ordered by label.
+drop function if exists rank_consistent cascade;
+create function rank_consistent(a bigint[], b bigint[]) returns boolean
+language sql immutable as
+$$
+    select not exists (
+        select 1
+        from generate_subscripts(a, 1) i, generate_subscripts(a, 1) j
+        where a[i] < a[j] and b[i] > b[j]);
+$$;
+
+-- Storage-work key of the DISTINCT section (see the test header): nexts and
+-- prevs count 1, a seek counts seek_weight() nexts.  3 is DocDB's own
+-- break-even (it probes 2 nexts before it seeks), the in-memory timing of
+-- #28635's scans (about 2.9 nexts per seek) and the cost model's 1.7-2.8.
+drop function if exists seek_weight cascade;
+create function seek_weight() returns float8
+language sql immutable as
+$$
+    select 3.0::float8;
+$$;
+
+-- Two methods tie on work when they differ by no more than this: 2% of the
+-- work, 24 units, or seek_weight() units per read request, whichever is
+-- largest.  A layout boundary trades a next for a seek (seek_weight() - 1
+-- units) and a plan crosses a handful at most; every request positions anew,
+-- and on a colocated tablet that positioning has cost a step more or less
+-- from run to run, so probe-per-row plans need the per-request term.
+drop function if exists work_slack cascade;
+create function work_slack(w float8, reqs float8) returns float8
+language sql immutable as
+$$
+    select greatest(0.02 * w, 24.0::float8, seek_weight() * reqs);
+$$;
+
 -- join_plans: plan shape and costs from a plain EXPLAIN -- nothing is
 -- executed.  Feeds the up-front plan validation (method_ok / leading_ok), so
 -- hint failures surface without paying a run of every (query, method) pair.
@@ -255,7 +314,7 @@ select
     (root->>'Startup Cost')::float8                      startup_cost,
     (root->>'Total Cost')::float8                        total_cost,
     (root->>'Plan Rows')::float8                         plan_rows,
-    join_family(join_node->>'Node Type') = m.label       method_ok,
+    join_family(join_node->>'Node Type') = m.family      method_ok,
     side_alias(join_node->'Plans'->0) = 's'
         and side_alias(join_node->'Plans'->1) = 'r'      leading_ok
 from
@@ -266,7 +325,8 @@ from
     lateral (
         select jsonb_path_query_first(
             plan, 'strict $.**{0 to last} ? (@."Node Type" like_regex "(Join|Nested Loop)")')
-    ) jn(join_node);
+    ) jn(join_node)
+where not m.plain_inner or q.distinct_inner;
 
 -- join_costs: for every (query, method) pair, run the hinted EXPLAIN ANALYZE,
 -- then surface
@@ -276,12 +336,15 @@ from
 --                       dominant latency factor and our execution-time proxy)
 --       rows_scanned -- query-level "Storage Rows Scanned"
 --       seeks, nexts -- query-level rocksdb seek / (next+prev) counters
+--       work         -- nexts + seek_weight() * seeks: the storage-work key of
+--                       the DISTINCT section (layout-sensitive, so it is
+--                       printed through cost_mask and tolerance-ranked)
 --       table_reads,
 --       index_reads  -- read requests split by side, summed over scan nodes as
 --                       (per-loop value * Actual Loops); these reconcile to
 --                       read_reqs.
 -- Wall-clock timings (Actual Total Time / Execution Time) are intentionally not
--- surfaced: they are non-deterministic and must not enter the golden output.
+-- surfaced: they are non-deterministic and must not enter the expected output.
 -- The plans are the same ones join_plans validated: planning is deterministic
 -- and both views issue the identically hinted statement.
 drop view if exists join_costs cascade;
@@ -297,11 +360,9 @@ select
     (root->>'Actual Rows')::float8                       actual_rows,
     coalesce((summary->>'Storage Read Requests')::float8, 0)        read_reqs,
     coalesce((summary->>'Storage Rows Scanned')::float8, 0)         rows_scanned,
-    coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_seek')::float8, 0)
-                                                         seeks,
-    coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_next')::float8, 0)
-        + coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_prev')::float8, 0)
-                                                         nexts,
+    rk.seeks,
+    rk.nexts,
+    rk.nexts + seek_weight() * rk.seeks                  work,
     reads.table_reads,
     reads.index_reads
 from
@@ -310,6 +371,14 @@ from
     lateral explain_join_json(m.hint, q.query) plan,
     lateral (select plan->0)         s0(summary),
     lateral (select plan->0->'Plan') r0(root),
+    lateral (
+        select
+            coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_seek')::float8, 0)
+                                                         seeks,
+            coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_next')::float8, 0)
+                + coalesce((summary->'Read Metrics'->>'Metric rocksdb_number_db_prev')::float8, 0)
+                                                         nexts
+    ) rk,
     lateral (
         -- Sum read requests over every scan node (those carry "Relation Name"),
         -- scaling each per-loop counter by its Actual Loops to get plan totals.
@@ -320,4 +389,242 @@ from
                 * coalesce((n->>'Actual Loops')::float8, 1)), 0)::float8 index_reads
         from jsonb_path_query(plan,
             'strict $.**{0 to last} ? (exists(@."Relation Name"))') n
-    ) reads;
+    ) reads
+where not m.plain_inner or q.distinct_inner;
+
+-- distinct_join_ranks: the DISTINCT section's rankings over join_costs.
+-- cost_rank as in the other sections; rt_rank by read_reqs, then by work
+-- with a tolerance: ordered by (read_reqs, work), a method starts a new rank
+-- when its read_reqs differ from the previous method's or its work exceeds
+-- the previous method's by more than work_slack(); ties chain.
+drop view if exists distinct_join_ranks cascade;
+create view distinct_join_ranks as
+with m as (
+    select c.*,
+           rank() over (partition by qid order by total_cost, startup_cost) cost_rank,
+           lag(read_reqs) over w prev_reqs,
+           lag(work) over w prev_work
+    from join_costs c
+    where qid in (select qid from queries where distinct_inner)
+    window w as (partition by qid order by read_reqs, work, label)
+)
+select *,
+       sum(case when prev_reqs is null
+                  or read_reqs <> prev_reqs
+                  or work > prev_work + work_slack(prev_work, read_reqs)
+                then 1 else 0 end)
+           over (partition by qid order by read_reqs, work, label
+                 rows between unbounded preceding and current row) rt_rank
+from m;
+
+-- join_choice: the join method the planner picks when the hint fixes only the
+-- join order (Leading((s r)), no method), from a plain EXPLAIN.  Printed beside
+-- the rankings, it asserts the planner's own choice on data whose fastest
+-- method is measured.  For the distinct_inner queries, '/p' marks a choice
+-- whose inner is not a distinct index scan, as the '/p' methods' inners are
+-- not.
+drop view if exists join_choice cascade;
+create view join_choice as
+select
+    q.qid,
+    join_family(jn.join_node->>'Node Type')
+        || case when q.distinct_inner
+                     and not jsonb_path_exists(jn.join_node->'Plans'->1,
+                         'strict $.** ? (@."Node Type" starts with "Distinct")')
+                then '/p' else '' end                    chosen
+from
+    queries q,
+    lateral explain_join_json('Leading((s r))', q.query, false) plan,
+    lateral (
+        select jsonb_path_query_first(
+            plan, 'strict $.**{0 to last} ? (@."Node Type" like_regex "(Join|Nested Loop)")')
+    ) jn(join_node);
+
+------------------------------------------------------------------------------
+-- Two-column keys.
+--
+-- ce.s2 and ce.r2 are the key of yb.orig.bnl_cost_parity's 6xx section:
+--   ce.s2 : ce.s's ids and z shuffle with the pair
+--           (g, h) = ((id - 1) / 10 + 1, (id - 1) % 10 + 1), one pair per id.
+--   ce.r2 : every (g, h) of the 128 x 128 grid, one row each, so g and h are
+--           independent and each has more distinct values than a batch of
+--           128 keys.  ce.r2C is its colocated twin and ce.r2H holds the same
+--           rows under a hash primary key.
+-- An outer row has its inner row iff its g <= 128, that is iff id <= 1280.
+--
+-- ce.s3 and ce.r3 are the key of yb.orig.bnl_inner_estimate:
+--   ce.r3 : h unique over 1..12345 and g = (h - 1) % 16 + 1, so the leading
+--           column has fewer values than any batch and the second column one
+--           row per value.  ce.r3C is its colocated twin and ce.r3H holds the
+--           same rows under a hash primary key.
+--   ce.s3 : ce.s's ids and z shuffle with the (g, h) of ce.r3's row h = id, so
+--           every outer row has its inner row.
+------------------------------------------------------------------------------
+drop table if exists ce.s2 cascade;
+create table ce.s2 (
+    id int,
+    g int,
+    h int,
+    z int,
+    primary key (id asc)
+) with (colocation = on);
+insert into ce.s2 select id, (id - 1) / 10 + 1, (id - 1) % 10 + 1, z from ce.s;
+analyze ce.s2;
+
+drop table if exists ce.r2 cascade;
+create table ce.r2 (
+    g int,
+    h int,
+    d int,
+    primary key (g asc, h asc)
+) with (colocation = off);
+insert into ce.r2
+    select g, h, g * 1000 + h
+    from generate_series(1, 128) g, generate_series(1, 128) h;
+
+create table ce.r2C (like ce.r2 including constraints including indexes)
+    with (colocation = on);
+insert into ce.r2C select * from ce.r2;
+
+drop table if exists ce.r2H cascade;
+create table ce.r2H (
+    g int,
+    h int,
+    d int,
+    primary key ((g, h) hash)
+) with (colocation = off);
+insert into ce.r2H select * from ce.r2;
+
+analyze ce.r2;
+analyze ce.r2C;
+analyze ce.r2H;
+
+drop table if exists ce.s3 cascade;
+create table ce.s3 (
+    id int,
+    g int,
+    h int,
+    z int,
+    primary key (id asc)
+) with (colocation = on);
+insert into ce.s3 select id, (id - 1) % 16 + 1, id, z from ce.s;
+create index nonconcurrently on ce.s3 (z asc);
+analyze ce.s3;
+
+drop table if exists ce.r3 cascade;
+create table ce.r3 (
+    g int,
+    h int,
+    d int,
+    primary key (g asc, h asc)
+) with (colocation = off);
+insert into ce.r3 select (h - 1) % 16 + 1, h, h from generate_series(1, 12345) h;
+
+create table ce.r3C (like ce.r3 including constraints including indexes)
+    with (colocation = on);
+insert into ce.r3C select * from ce.r3;
+
+drop table if exists ce.r3H cascade;
+create table ce.r3H (
+    g int,
+    h int,
+    d int,
+    primary key ((g, h) hash)
+) with (colocation = off);
+insert into ce.r3H select * from ce.r3;
+
+analyze ce.r3;
+analyze ce.r3C;
+analyze ce.r3H;
+
+-- bnl_inner_queries: each query joins outer s to inner r on the key under
+-- test and runs as a BNL at batch size bs.
+drop table if exists bnl_inner_queries cascade;
+create table bnl_inner_queries (qid int primary key, bs int not null,
+                                descr text, query text);
+
+-- Plan (and, with exec, run) a query as a BNL with s outer and r inner at
+-- batch size bs; return the BNL's inner child.  set_config(..., true) keeps
+-- the batch size to the current transaction, which covers both planning and
+-- execution here.
+drop function if exists bnl_inner_node cascade;
+create function bnl_inner_node(bs int, query_sql text, exec boolean default true)
+returns jsonb
+language plpgsql as
+$$
+declare
+    j jsonb;
+begin
+    perform set_config('yb_bnl_batch_size', bs::text, true);
+    execute '/*+ Leading((s r)) YbBatchedNL(s r) */ '
+        || 'explain (format json'
+        || case when exec then ', analyze, debug, dist' else '' end
+        || ') '
+        || query_sql
+    into j;
+    return jsonb_path_query_first(
+        j, 'strict $.**{0 to last} ? (@."Node Type" == "YB Batched Nested Loop")')
+        ->'Plans'->1;
+end;
+$$;
+
+-- An estimate fails when it is off from the measured value by more than 25%
+-- of it and by more than one.  The defects the test targets are factors (2 and
+-- more); 25% stays clear of the finer seek and next modeling that
+-- yb.orig.seeknext_estimate checks at 5%, which on dense keys overcharges
+-- seeks by 10% and nexts by 5%.
+drop function if exists bnl_inner_verdict cascade;
+create function bnl_inner_verdict(est float8, act float8) returns text
+language sql immutable as
+$$
+    select case when abs(est - act) > 0.25 * greatest(1, act)
+                     and abs(est - act) > 1
+                then 'failed' else 'passed' end;
+$$;
+
+-- check_bnl_inner_estimates runs every bnl_inner_queries query and compares
+-- its BNL inner scan's per-batch estimates with the measured per-batch values.
+-- EXPLAIN reports a rescanned node's actuals as averages over its loops, and
+-- the inner scan runs one loop per batch.  Compared: rows, read requests
+-- (table plus index side, as check_roundtrip_estimates in
+-- yb.orig.roundtrip_estimate_setup sums them), rocksdb seeks, and rocksdb
+-- nexts plus prevs.
+drop view if exists check_bnl_inner_estimates cascade;
+create view check_bnl_inner_estimates as
+select
+    qid,
+    bs,
+    descr,
+    batches,
+    est_rows, act_rows,
+    est_reqs, act_reqs,
+    est_seeks, act_seeks,
+    est_nexts, act_nexts,
+    bnl_inner_verdict(est_rows, act_rows)   "Row Estimates",
+    bnl_inner_verdict(est_reqs, act_reqs)   "Roundtrip Estimates",
+    bnl_inner_verdict(est_seeks, act_seeks) "Seek Estimates",
+    bnl_inner_verdict(est_nexts, act_nexts) "Next Estimates"
+from (
+    select
+        q.qid,
+        q.bs,
+        q.descr,
+        (n->>'Actual Loops')::float8                                     batches,
+        (n->>'Plan Rows')::float8                                        est_rows,
+        (n->>'Actual Rows')::float8                                      act_rows,
+        coalesce((n->>'Estimated Table Roundtrips')::float8, 0)
+            + coalesce((n->>'Estimated Index Roundtrips')::float8, 0)    est_reqs,
+        coalesce((n->>'Storage Table Read Requests')::float8, 0)
+            + coalesce((n->>'Storage Index Read Requests')::float8, 0)   act_reqs,
+        (n->>'Estimated Seeks')::float8                                  est_seeks,
+        coalesce((n->'Read Metrics'->>'Metric rocksdb_number_db_seek')::float8, 0)
+                                                                         act_seeks,
+        (n->>'Estimated Nexts')::float8
+            + coalesce((n->>'Estimated Prevs')::float8, 0)               est_nexts,
+        coalesce((n->'Read Metrics'->>'Metric rocksdb_number_db_next')::float8, 0)
+            + coalesce((n->'Read Metrics'->>'Metric rocksdb_number_db_prev')::float8, 0)
+                                                                         act_nexts
+    from
+        bnl_inner_queries q,
+        lateral bnl_inner_node(q.bs, q.query) n
+) v;

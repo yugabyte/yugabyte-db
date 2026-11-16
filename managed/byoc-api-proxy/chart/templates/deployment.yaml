@@ -1,0 +1,113 @@
+{{- include "byoc-api-proxy.validateAuthType" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "byoc-api-proxy.fullname" . }}
+  labels:
+    {{- include "byoc-api-proxy.labels" . | nindent 4 }}
+spec:
+  # The API server hands each queued request out once, then offers it again after a 5 s lease
+  # without a response, so a crashed poller's requests aren't lost. A poller skips the requests it
+  # is still running; a second poller would not, and would run any request slower than that twice.
+  # So there is exactly one, and an update stops the old pod before starting the new one.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "byoc-api-proxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "byoc-api-proxy.labels" . | nindent 8 }}
+      annotations:
+        # Restart the pod when credentials created by this chart change.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.serviceAccountName }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: byoc-api-proxy
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: YBA_UUID
+              value: {{ required "yba.uuid is required" .Values.yba.uuid | quote }}
+            - name: YBA_BASE_URL
+              value: {{ include "byoc-api-proxy.ybaBaseUrl" . | quote }}
+            - name: PROXIED_APP_BASE_URL
+              value: {{ required "proxiedApp.baseUrl is required" .Values.proxiedApp.baseUrl | quote }}
+            - name: PROXIED_APP_READ_TIMEOUT
+              value: {{ .Values.proxiedApp.readTimeout | quote }}
+            - name: PROXIED_APP_POLL_BATCH_SIZE
+              value: {{ .Values.proxiedApp.pollBatchSize | quote }}
+            - name: PROXIED_APP_AUTH_TYPE
+              value: {{ .Values.proxiedApp.auth.type | quote }}
+            {{- if eq .Values.proxiedApp.auth.type "api_key" }}
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "byoc-api-proxy.secretName" . }}
+                  key: API_KEY
+            {{- else }}
+            - name: SERVICE_ACCOUNT_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "byoc-api-proxy.secretName" . }}
+                  key: SERVICE_ACCOUNT_EMAIL
+            - name: SERVICE_ACCOUNT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "byoc-api-proxy.secretName" . }}
+                  key: SERVICE_ACCOUNT_PASSWORD
+            - name: SERVICE_ACCOUNT_JWT_REFRESH_INTERVAL
+              value: {{ .Values.proxiedApp.auth.serviceAccount.jwtRefreshInterval | quote }}
+            {{- end }}
+            {{- if .Values.jsonLogs }}
+            - name: YBCLOUD_CONF_ENVIRONMENT
+              value: PROD
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # Writable scratch for the JVM; the root filesystem is read-only.
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

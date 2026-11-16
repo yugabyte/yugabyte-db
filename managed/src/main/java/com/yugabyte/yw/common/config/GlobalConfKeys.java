@@ -304,6 +304,52 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " a support bundle.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> supportBundleEstimateScriptTimeout =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.estimate_script_timeout",
+          ScopeType.GLOBAL,
+          "Support bundle size estimate script timeout",
+          "Longest each support bundle size estimate script runs, on a node or the YBA host. A"
+              + " script still running then is stopped and its component counts as 0. Default: 2"
+              + " minutes.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleCgroupEnabled =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.enabled",
+          ScopeType.GLOBAL,
+          "Apply resource limits to support bundle commands on DB nodes",
+          "When true, support bundle commands on a VM DB node run under the CPU and memory"
+              + " limits below. Not applied on Kubernetes. Default: true.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleCgroupCpuPercent =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.cpu_percent",
+          ScopeType.GLOBAL,
+          "Support bundle CPU limit per node (percent of one core)",
+          "CPU cap shared by all support bundle commands on a node, in percent of one core"
+              + " (1-100). Default: 15.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleCgroupMemorySoftPercent =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.memory_soft_percent",
+          ScopeType.GLOBAL,
+          "Support bundle soft memory limit per node (percent of MemAvailable)",
+          "Soft memory limit (memory.high) shared by all support bundle commands on a node, in"
+              + " percent of its MemAvailable, at least 64 MiB; 0 disables it. Default: 3.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundleCgroupMemoryHardPercent =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.cgroup.memory_hard_percent",
+          ScopeType.GLOBAL,
+          "Support bundle hard memory limit per node (percent of MemAvailable)",
+          "Hard memory limit (memory.max) shared by all support bundle commands on a node, in"
+              + " percent of its MemAvailable, at least 128 MiB; 0 disables it. Default: 5.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> supportBundleApplicationLogsRegexPattern =
       new ConfKeyInfo<>(
           "yb.support_bundle.application_logs_regex_pattern",
@@ -1549,7 +1595,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Read GCP instance templates",
           "Read the instance template configured on a GCP region and carry its settings over to"
-              + " the nodes YBA creates, currently its CMEK disk encryption keys. Requires"
+              + " the nodes YBA creates, currently its CMEK disk encryption keys and its"
+              + " enable-oslogin metadata. With OS Login on, YBA imports its SSH key into the OS"
+              + " Login profile of its GCP principal, and the SSH user (from the universe's Linux"
+              + " version, or the provider if the Linux version does not set one) must be that"
+              + " profile's POSIX username. YBA never removes that key from the profile, so"
+              + " rotating or deleting the access key does not revoke it on OS Login nodes;"
+              + " remove it with gcloud compute os-login ssh-keys remove. Requires"
               + " compute.instanceTemplates.get, which is not needed to pass the template to"
               + " instance creation as a source.",
           ConfDataType.BooleanType,
@@ -1630,6 +1682,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow users to enable or disable connection pooling",
           "If this flag is enabled, user will be able to enable/disable connection pooling on"
               + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enablePrimaryRf9 =
+      new ConfKeyInfo<>(
+          "yb.universe.enable_primary_rf_9",
+          ScopeType.GLOBAL,
+          "Enable primary replication factor 9",
+          "When enabled, allows creating universes and increasing primary cluster replication"
+              + " factor to 9.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
@@ -2470,6 +2531,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " configs are unaffected.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> storageConfigValidationTimeout =
+      new ConfKeyInfo<>(
+          "yb.storage_config.validation_timeout",
+          ScopeType.GLOBAL,
+          "Storage config validation timeout",
+          "How long the v2 storage config API waits for the storage validators to reach the"
+              + " backup storage before it answers that validation timed out.",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> taskExecutorShutdownMaxWaitTime =
       new ConfKeyInfo<>(
           "yb.task_executor.shutdown_max_wait_time",
@@ -2495,5 +2565,33 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node Agent Health Checker Disabled",
           "Node agent checker offloaded to run asynchronously on its own schedule",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> multicloudEnabled =
+      new ConfKeyInfo<>(
+          "yb.multicloud.enabled",
+          ScopeType.GLOBAL,
+          "Enable multi-cloud schema (non-k8s)",
+          "When enabled, all internal logic will use multicloud schema."
+              + "V1 API still pretend to use old schema.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> conditionalGetEnabled =
+      new ConfKeyInfo<>(
+          "yb.api.conditional_get.enabled",
+          ScopeType.GLOBAL,
+          "HTTP conditional GET (ETag / 304)",
+          "When enabled, eligible single-resource GET endpoints may return 304 Not Modified when"
+              + " the client sends a matching If-None-Match ETag, skipping heavy response"
+              + " construction. When disabled, those endpoints always return a full 200 body.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC, ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Duration> idempotencyKeyRetention =
+      new ConfKeyInfo<>(
+          "yb.api.idempotency.retention",
+          ScopeType.GLOBAL,
+          "Idempotency key retention",
+          "How long the response of a request sent with an Idempotency-Key header is kept for"
+              + " replay. A retry with the same key after this period runs the operation again.",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

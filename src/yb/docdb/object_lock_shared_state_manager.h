@@ -75,13 +75,18 @@ class ObjectLockOwnerRegistry {
 
     ObjectLockSharedState* shared;
     TransactionId txn_id;
-    TabletId status_tablet;
+
+    mutable std::mutex status_tablet_mutex;
+    TabletId status_tablet GUARDED_BY(status_tablet_mutex);
   };
   ObjectLockOwnerRegistry();
   ~ObjectLockOwnerRegistry();
 
   RegistrationGuard Register(
       ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id);
+
+  void UpdateRegistrationStatusTablet(
+      const RegistrationGuard& guard, const TabletId& tablet_id);
 
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const;
 
@@ -130,6 +135,9 @@ class ObjectLockSharedStateManager {
   // guard object returned by AllocateShared).
   void Stop();
 
+  // Permanently fail AllocateShared, waking up callers blocked waiting for Start.
+  void Shutdown();
+
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
   // If txn_id is set, consumes only lock requests for that transaction. Otherwise, consumes all
@@ -169,6 +177,7 @@ class ObjectLockSharedStateManager {
 
   mutable std::mutex mutex_;
   bool stopped_ GUARDED_BY(mutex_) = true;
+  bool shutdown_ GUARDED_BY(mutex_) = false;
   std::condition_variable start_cond_;
   std::map<ObjectLockPrefix, SharedWriteLockState> write_locks_ GUARDED_BY(mutex_);
   ObjectLockExclusiveIntents exclusive_intents_ GUARDED_BY(mutex_);

@@ -26,6 +26,9 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -171,6 +174,21 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                   taskParams().tserverGFlags,
                   getPrimaryClusterSpecificGFlags())
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The helm upgrade renders the read replica from the task params, so its gflags must be
+          // saved too: later helm upgrades render from the universe and would revert them.
+          Map<UUID, Cluster> newClusters = taskParams().getNewVersionsOfClusters(universe);
+          for (Cluster curCluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+            Cluster newCluster = newClusters.get(curCluster.uuid);
+            if (!Objects.equals(
+                newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)) {
+              updateGFlagsPersistTasks(
+                      curCluster,
+                      newCluster.userIntent.masterGFlags,
+                      newCluster.userIntent.tserverGFlags,
+                      newCluster.userIntent.specificGFlags)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
+          }
         });
   }
 

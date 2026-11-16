@@ -82,5 +82,10 @@ DROP INDEX h3r2n_part_idx;
 \i :run_query
 
 -- Same thing with backwards scan.
+-- Third hint is to use merge scan as the second hint ends up using sort.
+-- Fourth and fifth hints are same as previous third and fourth hints, except Set(enable_sort off) is added to them.
 \set query ':explain :Q SELECT * FROM h3r2n WHERE h1 = 1 AND h2 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND h3 = 1 ORDER BY r1 DESC, r2 DESC;'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
+\set Q4 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 0)*/'
+\set Q5 '/*+Parallel(h3r2n 2) Set(yb_enable_parallel_scan_hash_sharded true) Set(yb_parallel_range_rows 1) Set(yb_test_force_parallel force) Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query

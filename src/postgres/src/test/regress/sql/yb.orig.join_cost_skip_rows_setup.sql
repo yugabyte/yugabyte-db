@@ -1,26 +1,30 @@
 -- Create database objects used by the join skip-rows cost tests.
 --
--- These tests check how a range bound on one join input's key changes the cost
--- of reading the other input, for both join methods that model it: the merge
--- join's scan clamp (mergejoinscansel) and the batched nested loop's
--- leading-mismatch skip (yb_bnl_outer_skip_selectivity).  Both build a
--- comparison against the other side's boundary key and condition it on the
--- scanned side's own restrictions, so the same mechanisms decide whether a
--- bound is usable: its collation, extended statistics over the conditioning
--- clauses, a binary-compatible relabeling of the join key, and whether the
--- bound falls on a value the boundary group includes.
+-- These tests check how a range bound on a join input's key changes the cost
+-- of reading that input or the other one, for both join methods that model
+-- it: the merge join's scan fractions (mergejoinscansel) and the batched
+-- nested loop's leading-mismatch skip (yb_bnl_outer_skip_selectivity).  Both
+-- build a comparison against the other side's boundary key and adjust it for
+-- both sides' range bounds with the same function, so the same mechanisms
+-- decide whether a bound is usable: its collation, a binary-compatible
+-- relabeling of the join key, and whether the bound falls on a value the
+-- boundary group includes.
 --
--- Every group joins an outer aliased `o` to an inner aliased `i`, and the
--- outer's key range extends BELOW the inner's.  That one layout carries both
--- directions of the bound:
+-- Every group joins an outer aliased `o` to an inner aliased `i`.  In groups
+-- 100-400 the outer's key range extends BELOW the inner's, a layout that
+-- carries both directions of the bound:
 --   * a bound on the inner lowers where the merge stops reading the outer;
 --   * a bound on the outer decides how many leading outer rows sort before the
 --     inner's first key -- rows read and discarded before the join emits
 --     anything, which both methods charge to startup cost.
--- Only the second direction reaches the batched nested loop, which takes the
--- inner's boundary from its full-column histogram and so cannot see an inner
--- bound at all.  Every inner carries an index on its join key so the batched
--- nested loop can probe it.
+-- Only the second direction reaches the batched nested loop, which probes
+-- every outer row and never stops early; a bound on the inner reaches it only
+-- by moving the inner's first key.  In groups 500 and 510 the outer's range
+-- extends past the inner's in the direction the merge reads, so a bound on
+-- the outer decides how much of it the merge reads; group 520 reads an outer
+-- that ends before the inner starts, and group 530 an outer with NULL keys.
+-- Every inner carries an index on its join key so the batched nested loop can
+-- probe it.
 set client_min_messages to 'warning';
 
 drop database if exists join_cost_skip_rows_test with (force);
@@ -66,14 +70,12 @@ analyze cln_o;
 analyze cln_i;
 
 ------------------------------------------------------------------------------
--- Extended statistics.  The estimate is a conditional fraction -- P(the
--- scanned key is within the other side's bound | the scanned side's own
--- restrictions) -- and a ratio of two estimates only means that if both come
--- from the same model.  Extended statistics apply to a list of two or more
--- RestrictInfos, which the two sides of the ratio are not both guaranteed to
--- be.  ext_o.g groups the key 52 rows at a time, so a restriction on g is a
--- restriction on the key; the statistics object created by the test covers g
--- and k together.  The inner starts at 131.
+-- Extended statistics.  ext_o.g groups the key 52 rows at a time, so a
+-- restriction on g is a restriction on the key, and the statistics object the
+-- test creates covers g and k together.  Both estimates condition only on the
+-- range bounds a relation enforces on the join key itself, computed from
+-- per-column selectivities, so a restriction on g does not enter them and the
+-- object has nothing to apply to.  The inner starts at 131.
 ------------------------------------------------------------------------------
 create table ext_o (k int, g int, primary key (k asc));
 create table ext_i (id int, k int, primary key (id asc));
@@ -85,12 +87,12 @@ analyze ext_i;
 
 ------------------------------------------------------------------------------
 -- Relabeling.  A varchar join key reaches the comparison through a
--- binary-compatible relabeling.  clauselist_selectivity() pairs a range clause
--- with a restriction on the same column by comparing the two operands, and a
--- bare Var does not match the restriction's relabeled one, so the comparison
--- the estimate builds has to carry the relabeling too.  The two pairs hold
--- identical values and differ only in the key's declared type, so they must be
--- costed identically.  Both inners start at '0251'.
+-- binary-compatible relabeling.  The estimates find a key's range bounds by
+-- matching each restriction's operand against the join key, and a varchar
+-- restriction compares a relabeled Var, so the matching has to look through
+-- the relabeling.  The two pairs hold identical values and differ only in the
+-- key's declared type, so they must be costed identically.  Both inners start
+-- at '0251'.
 ------------------------------------------------------------------------------
 create table rlbt_o (k text, primary key (k asc));
 create table rlbt_i (id int, k text, primary key (id asc));
@@ -121,6 +123,50 @@ insert into bnd_i select i, ((i - 1) / 26) + 11 from generate_series(1, 260) i;
 create index nonconcurrently on bnd_i (k asc);
 analyze bnd_o;
 analyze bnd_i;
+
+------------------------------------------------------------------------------
+-- Own restriction.  own_o.k runs 1..1040, four times the inner's 1..260, so
+-- the full-column fraction puts a merge's end at a quarter of the outer; a
+-- restriction cutting the outer at the inner's last key leaves a scan the
+-- merge reads in full.
+------------------------------------------------------------------------------
+create table own_o (k int, primary key (k asc));
+create table own_i (id int, k int, primary key (id asc));
+insert into own_o select i from generate_series(1, 1040) i;
+insert into own_i select i, i from generate_series(1, 260) i;
+create index nonconcurrently on own_i (k asc);
+analyze own_o;
+analyze own_i;
+
+------------------------------------------------------------------------------
+-- Own restriction, mirrored.  own_ih holds the top quarter of own_o's range,
+-- 781..1040, so read descending the outer extends below the inner as own_o
+-- extends above own_i read ascending; read ascending, the outer starts below
+-- the inner's first key.
+------------------------------------------------------------------------------
+create table own_ih (id int, k int, primary key (id asc));
+insert into own_ih select i, i + 780 from generate_series(1, 260) i;
+create index nonconcurrently on own_ih (k asc);
+analyze own_ih;
+
+------------------------------------------------------------------------------
+-- NULL join keys.  nul_o.k holds 1..624 and 416 NULLs; its twin nnl_o holds
+-- the same 1..624 and, in place of the NULLs, 416 keys above 2000.  The two
+-- have the same row count and the same keys at or below any bound under 624,
+-- so a scan restricted to such a bound reads the same rows from either at the
+-- same cost.
+------------------------------------------------------------------------------
+create table nul_o (id int, k int, primary key (id asc));
+create table nnl_o (id int, k int, primary key (id asc));
+insert into nul_o
+select i, case when i <= 624 then i end from generate_series(1, 1040) i;
+insert into nnl_o
+select i, case when i <= 624 then i else i + 1376 end
+from generate_series(1, 1040) i;
+create index nonconcurrently on nul_o (k asc);
+create index nonconcurrently on nnl_o (k asc);
+analyze nul_o;
+analyze nnl_o;
 
 ------------------------------------------------------------------------------
 -- Driver framework.  Mirrors yb.orig.bnl_cost_parity_setup.sql with the

@@ -21,6 +21,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.FetchServerConf;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -130,6 +132,9 @@ public class ImportUniverse extends UniverseTaskBase {
         new ConcurrentHashMap<>();
     private final Map<ServerType, InstanceType> serverInstanceTypes = new ConcurrentHashMap<>();
     private Architecture architecture;
+    // IP to the node_exporter layout found on that node; absent if no unit was found.
+    private final Map<String, NodeDetails.NodeExporterSystemdLevel> nodeExporterLevels =
+        new ConcurrentHashMap<>();
     private DBVersionInfo dbVersionInfo;
     private Set<String> masterHosts;
     private Set<String> tserverHosts;
@@ -301,8 +306,10 @@ public class ImportUniverse extends UniverseTaskBase {
                           log.error(
                               "Some servers have different common {} gflags - {} vs {}",
                               serverType,
-                              prev.gflags,
-                              curr.gflags);
+                              RedactingService.filterSecretFields(
+                                  Json.toJson(prev.gflags), RedactionTarget.LOGS),
+                              RedactingService.filterSecretFields(
+                                  Json.toJson(curr.gflags), RedactionTarget.LOGS));
                           throw new PlatformServiceException(
                               BAD_REQUEST,
                               "Some servers have different common gflags for " + serverType);
@@ -320,6 +327,7 @@ public class ImportUniverse extends UniverseTaskBase {
     }
     // Start further discovery.
     discoverServerArchitecture();
+    discoverNodeExporterLayout();
     discoverDBVersion();
     discoverInstanceTypes(provider);
   }
@@ -363,6 +371,18 @@ public class ImportUniverse extends UniverseTaskBase {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  // YBA did not provision these nodes, so record the node_exporter layout each one has. Nodes may
+  // differ; exporter TLS stays off until every node is USER.
+  private void discoverNodeExporterLayout() {
+    for (String ip : context.serverConfs.keySet()) {
+      NodeAgent nodeAgent = NodeAgent.maybeGetByIp(ip).orElseThrow();
+      nodeAgentClient
+          .detectNodeExporterSystemdLevel(nodeAgent)
+          .ifPresent(level -> context.nodeExporterLevels.put(ip, level));
+    }
+    log.info("Discovered node_exporter layouts: {}", context.nodeExporterLevels);
   }
 
   private void discoverServerArchitecture() {
@@ -754,6 +774,8 @@ public class ImportUniverse extends UniverseTaskBase {
                                   node.azUuid = z.zone.getUuid();
                                   node.state = NodeState.Live;
                                   node.nodeUuid = nodeInstance.getNodeUuid();
+                                  node.nodeExporterSystemdLevel =
+                                      context.nodeExporterLevels.get(ip);
                                   node.disksAreMountedByUUID = true;
                                   node.cronsActive = false;
                                   node.isMaster = false;

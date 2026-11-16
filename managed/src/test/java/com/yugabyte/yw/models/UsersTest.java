@@ -129,6 +129,21 @@ public class UsersTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUnconditionalUpsertFromStaleInstance() {
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
+    // Both loaded at the same version, as two concurrent logins would.
+    Users first = Users.getOrBadRequest(u.getUuid());
+    Users second = Users.getOrBadRequest(u.getUuid());
+    first.upsertApiToken();
+
+    String token = second.upsertApiToken();
+
+    // Not refused as a version change, and versioned from the stored row rather than the stale one.
+    assertEquals((Long) 2L, Users.getOrBadRequest(u.getUuid()).getApiTokenVersion());
+    assertEquals(u.getUuid(), Users.authWithApiToken(token).getUuid());
+  }
+
+  @Test
   public void testUpsertApiTokenWithVersion() {
     Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.getUuid(), false);
     assertNotNull(u.getUuid());

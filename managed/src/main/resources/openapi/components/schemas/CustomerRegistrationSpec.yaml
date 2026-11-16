@@ -1,0 +1,35 @@
+title: CustomerRegistrationSpec
+description: |
+  CustomerRegistrationSpec
+
+  Customer to register and its primary user. Part of CustomerRegistrationReq.
+type: object
+required:
+  - code
+  - name
+  - email
+  - password
+properties:
+  code:
+    description: Customer code
+    type: string
+    example: admin
+    maxLength: 15
+    minLength: 1
+  name:
+    description: Customer name
+    type: string
+    example: Example Customer
+    minLength: 3
+  email:
+    description: Email of the primary user. Must be unique on the YBA instance.
+    type: string
+    format: email
+    example: admin@example.com
+  password:
+    description: Password of the primary user. Must satisfy the YBA password policy.
+    type: string
+    format: password
+    writeOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

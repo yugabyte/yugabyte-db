@@ -61,6 +61,18 @@ public class FakeApiHelper {
     return route(app, request);
   }
 
+  public static Result doRequestWithAuthTokenAndHeaders(
+      Application app, String method, String url, String authToken, Map<String, String> headers) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url).header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken);
+
+    for (Map.Entry<String, String> headerEntry : headers.entrySet()) {
+      request.header(headerEntry.getKey(), headerEntry.getValue());
+    }
+
+    return route(app, request);
+  }
+
   public static Result doRequestWithApiToken(
       Application app, String method, String url, String apiToken) {
     Http.RequestBuilder request =
@@ -151,7 +163,7 @@ public class FakeApiHelper {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url)
             .header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken)
-            .bodyMultipart(data, Files.singletonTemporaryFileCreator(), mat);
+            .bodyRaw(data, Files.singletonTemporaryFileCreator(), mat);
     return route(app, request);
   }
 

@@ -13,7 +13,6 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertTrue;
 
 import java.sql.Statement;
 import java.util.ArrayList;
@@ -25,6 +24,7 @@ import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.client.TestUtils;
 import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -86,9 +86,6 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("SELECT pg_log_backend_memory_contexts(pg_backend_pid());");
 
-      assertTrue("pg_log_backend_memory_contexts should output logs",
-                !logBackendMemoryContextsResults.isEmpty());
-
       // With connection manager, getPgBackendPid can return the PID of any
       // backend process out of pool of physical connections it is maintaining.
       // Therefore running the test in NONE mode of connection manager to return
@@ -107,19 +104,24 @@ public class TestPgBackendMemoryContext extends BasePgSQLTest {
       expectedMessages.add("YB TCMalloc pageheap unmapped bytes: ");
       expectedMessages.add("YB PGGate bytes: ");
 
-      for (String result : logBackendMemoryContextsResults) {
-        if (expectedMessages.isEmpty()) {
-          // If we have already found all expected messages, we can skip further checks.
-          break;
+      // Log lines may still arrive after the query returns, and log printer threads append
+      // concurrently, so poll over a snapshot taken under the list's lock.
+      TestUtils.waitFor(() -> {
+        List<String> results;
+        synchronized (logBackendMemoryContextsResults) {
+          results = new ArrayList<>(logBackendMemoryContextsResults);
         }
-        if (result.contains(expectedMessages.get(0))) {
-          expectedMessages.remove(0);
+        int next = 0;
+        for (String result : results) {
+          if (next == expectedMessages.size()) {
+            break;
+          }
+          if (result.contains(expectedMessages.get(next))) {
+            next++;
+          }
         }
-      }
-
-      assertTrue(String.format("Expected to find all messages in pg_log_backend_memory_contexts %s",
-                               expectedMessages.toString()),
-                 expectedMessages.isEmpty());
+        return next == expectedMessages.size();
+      }, 1000 /* timeoutMs */);
     }
   }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/azu"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/gcp"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/kubernetes"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/oci"
 )
 
 const (
@@ -60,6 +61,7 @@ type regionContext struct {
 	AWSRegion   *aws.RegionContext
 	GCPRegion   *gcp.RegionContext
 	AzureRegion *azu.RegionContext
+	OCIRegion   *oci.RegionContext
 	KubeRegion  *kubernetes.RegionContext
 }
 
@@ -83,6 +85,9 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 	}
 	rc.AzureRegion = &azu.RegionContext{
 		Region: cloudInfo.GetAzu(),
+	}
+	rc.OCIRegion = &oci.RegionContext{
+		Region: cloudInfo.GetOci(),
 	}
 
 	// Section 1
@@ -137,6 +142,18 @@ func (r *RegionContext) Write(providerCode string, index int) error {
 			return err
 		}
 		r.PostFormat(tmpl, azu.NewRegionContext())
+	case util.OCIProviderType:
+		tmpl, err = r.startSubsection(oci.Region)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		r.subSection("OCI Region Details")
+		if err := r.ContextFormat(tmpl, rc.OCIRegion); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		r.PostFormat(tmpl, oci.NewRegionContext())
 	case util.K8sProviderType:
 		tmpl, err = r.startSubsection(kubernetes.Region1)
 		if err != nil {

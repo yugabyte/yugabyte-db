@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #include "yb/client/client.h"
@@ -26,12 +27,16 @@
 
 #include "yb/tserver/pg_client.pb.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb::tserver {
 namespace {
+
+YB_STRONGLY_TYPED_BOOL(NonBlockingCallsOnly);
 
 class TablesResultBuilder : public std::enable_shared_from_this<TablesResultBuilder> {
   using TableInfo = PgTablesQueryResult::TableInfo;
@@ -83,19 +88,24 @@ class TablesResultBuilder : public std::enable_shared_from_this<TablesResultBuil
 
 class Waiter {
   using TableInfo = PgTablesQueryResult::TableInfo;
+  using ListenerPtr = PgTableCache::ListenerPtr;
 
  public:
-  Waiter(size_t expected_tables_count, const PgTablesQueryListenerPtr& listener)
-      : builder_(TablesResultBuilder::Make(expected_tables_count)),
+  Waiter(size_t expected_tables_count, const ListenerPtr& listener, YBThreadPool& pool)
+      : pool_(pool), builder_(TablesResultBuilder::Make(expected_tables_count)),
         listener_(listener) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "pending tables: " << expected_tables_count;
   }
 
-  void TableReady(const Result<TableInfo>& table_info) {
+  void TableReady(
+      const Result<TableInfo>& table_info, NonBlockingCallsOnly non_blocking_only) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "info: " << AsString(table_info);
-    if (auto tables_result_ptr = builder_->CompleteResultOnce(table_info)) {
+    if (auto tables = builder_->CompleteResultOnce(table_info)) {
       VLOG_WITH_PREFIX(4) << "notify listener";
-      listener_->Ready(PgTablesQueryResult{std::move(tables_result_ptr)});
+      std::optional<PgTableCache::Listener::BlockingCallExecContext> ctx;
+      listener_->ResultReady(
+          PgTablesQueryResult{std::move(tables)},
+          non_blocking_only ? &ctx.emplace(listener_, pool_) : nullptr);
     }
   }
 
@@ -104,8 +114,9 @@ class Waiter {
     return builder_.get();
   }
 
+  YBThreadPool& pool_;
   const std::shared_ptr<TablesResultBuilder> builder_;
-  const PgTablesQueryListenerPtr listener_;
+  const ListenerPtr listener_;
 };
 
 class CacheEntry : public std::enable_shared_from_this<CacheEntry> {
@@ -127,7 +138,7 @@ class CacheEntry : public std::enable_shared_from_this<CacheEntry> {
     }
     auto table_info = MakeTableInfo(value);
     for (auto& waiter : waiters) {
-      waiter.TableReady(table_info);
+      waiter.TableReady(table_info, NonBlockingCallsOnly::kTrue);
     }
   }
 
@@ -139,7 +150,7 @@ class CacheEntry : public std::enable_shared_from_this<CacheEntry> {
         return;
       }
     }
-    waiter.TableReady(MakeTableInfo(future_.get()));
+    waiter.TableReady(MakeTableInfo(future_.get()), NonBlockingCallsOnly::kFalse);
   }
 
   const Result<client::YBTablePtr>& Get() const {
@@ -152,6 +163,15 @@ class CacheEntry : public std::enable_shared_from_this<CacheEntry> {
 
   bool Failed() const {
     return has_value_.load() && !future_.get().ok();
+  }
+
+  // Non-blocking: nullptr while the load is in flight or if it failed.
+  client::YBTablePtr GetIfReady() const {
+    if (!has_value_.load()) {
+      return nullptr;
+    }
+    const auto& value = future_.get();
+    return value.ok() ? *value : nullptr;
   }
 
  private:
@@ -184,6 +204,18 @@ Result<client::YBTablePtr> CheckTableType(const Result<client::YBTablePtr>& resu
 
 using CacheEntryPtr = std::shared_ptr<CacheEntry>;
 
+class PromiseListener : public PgTablesQueryListenerNonBlocking {
+ public:
+  auto future() { return promise_.get_future(); }
+
+  void ReadyNonBlocking(PgTablesQueryResult&& result) override {
+    promise_.set_value(std::move(result));
+  }
+
+ private:
+  std::promise<PgTablesQueryResult> promise_;
+};
+
 } // namespace
 
 std::string PgTablesQueryResult::TableInfo::ToString() const {
@@ -192,20 +224,34 @@ std::string PgTablesQueryResult::TableInfo::ToString() const {
 
 class PgTableCache::Impl {
  public:
-  explicit Impl(std::shared_future<client::YBClient*> client_future)
-      : client_future_(std::move(client_future)) {}
+  Impl(std::shared_future<client::YBClient*> client_future, YBThreadPool& pool)
+      : client_future_(std::move(client_future)), notification_pool_(pool) {}
 
   Result<client::YBTablePtr> Get(TableIdView table_id) {
     return GetEntry(table_id)->Get();
   }
 
-  void GetTables(
+  void GetIfCached(
       std::span<const TableId> table_ids,
-      const PgTablesQueryListenerPtr& listener,
+      boost::container::small_vector_base<client::YBTablePtr>& tables) {
+    boost::container::small_vector<CacheEntryPtr, 4> entries;
+    {
+      std::lock_guard lock(mutex_);
+      for (const auto& table_id : table_ids) {
+        entries.push_back(FindEntryUnlocked(table_id));
+      }
+    }
+    for (const auto& entry : entries) {
+      tables.push_back(entry ? entry->GetIfReady() : nullptr);
+    }
+  }
+
+  void GetTables(
+      std::span<const TableId> table_ids, const ListenerPtr& listener,
       const PgTableCacheGetOptions& options) {
     const auto tables_sz = table_ids.size();
     if (!tables_sz) [[unlikely]] {
-      listener->Ready({});
+      listener->ResultReady({}, nullptr);
       return;
     }
 
@@ -218,13 +264,30 @@ class PgTableCache::Impl {
         entries.emplace_back(need_load ? &table_id : nullptr, std::move(entry));
       }
     }
-    const Waiter waiter{table_ids.size(), listener};
-    for (const auto& [table_id, entry] : entries) {
-      entry->Wait(waiter);
-      if (table_id) {
-        LoadEntry(*table_id, options.include_hidden, entry);
+    // In case listener's code is slow or it makes blocking calls (like mutex lock) the loading of
+    // required entries might be triggered with significant delay or not called at all because
+    // of deadlocks.
+    // Make sure all the loadings are triggered prior to listener notification.
+    for (const auto& [load_entry_source_table, entry] : entries) {
+      if (load_entry_source_table) {
+        LoadEntry(*load_entry_source_table, options.include_hidden, entry);
       }
     }
+
+    const Waiter waiter{tables_sz, listener, notification_pool_};
+    for (const auto& [_, entry] : entries) {
+      entry->Wait(waiter);
+    }
+  }
+
+  Result<PgTablesQueryResult> GetTables(
+      std::span<const TableId> table_ids, CoarseTimePoint deadline,
+      const PgTableCacheGetOptions& options) {
+    auto listener = std::make_shared<PromiseListener>();
+    auto future = listener->future();
+    GetTables(table_ids, std::move(listener), options);
+    RETURN_NOT_OK(Wait(future, ToSteady(deadline)));
+    return future.get();
   }
 
   void Invalidate(const TableId& table_id) {
@@ -247,11 +310,9 @@ class PgTableCache::Impl {
     caches_.clear();
   }
 
-  void InvalidateDbTables(
-      const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-      const std::unordered_set<uint32_t>& db_oids_deleted) {
+  void InvalidateDbTables(const PgTableCacheInvalidationFilter& filter) {
     std::lock_guard lock(mutex_);
-    for (auto [db_oid, db_version] : db_oids_updated) {
+    for (auto [db_oid, db_version] : filter.updated_dbs) {
       auto iter = caches_.find(db_oid);
       if (iter == caches_.end()) {
         // No need to create an empty per-database cache for db_oid just to
@@ -271,8 +332,7 @@ class PgTableCache::Impl {
       iter->second.first.clear();
       iter->second.second = db_version;
     }
-    for (auto db_oid : db_oids_deleted) {
-      // The database db_oid is dropped.
+    for (auto db_oid : filter.dropped_dbs) {
       VLOG(2) << "Remove table cache of dropped database " << db_oid;
       caches_.erase(db_oid);
     }
@@ -291,6 +351,19 @@ class PgTableCache::Impl {
       LoadEntry(table_id, options.include_hidden, p.first);
     }
     return p.first;
+  }
+
+  CacheEntryPtr FindEntryUnlocked(TableIdView table_id) REQUIRES(mutex_) {
+    const auto db_oid = GetPgsqlDatabaseOid(table_id);
+    if (!db_oid.ok()) {
+      return nullptr;
+    }
+    auto iter = caches_.find(*db_oid);
+    if (iter == caches_.end()) {
+      return nullptr;
+    }
+    auto it = iter->second.first.find(table_id);
+    return it != iter->second.first.end() ? it->second : nullptr;
   }
 
   std::pair<CacheEntryPtr, bool> DoGetEntry(
@@ -360,6 +433,7 @@ class PgTableCache::Impl {
   }
 
   std::shared_future<client::YBClient*> client_future_;
+  YBThreadPool& notification_pool_;
   std::mutex mutex_;
   using PgTableMap = UnorderedStringMap<TableId, CacheEntryPtr>;
   // db_id -> (table_id -> table_cache_entry, catalog_version)
@@ -367,8 +441,8 @@ class PgTableCache::Impl {
   CoarseTimePoint last_cache_invalidation_ GUARDED_BY(mutex_);
 };
 
-PgTableCache::PgTableCache(std::shared_future<client::YBClient*> client_future)
-    : impl_(new Impl(std::move(client_future))) {
+PgTableCache::PgTableCache(std::shared_future<client::YBClient*> client_future, YBThreadPool& pool)
+    : impl_(new Impl(std::move(client_future), pool)) {
 }
 
 PgTableCache::~PgTableCache() = default;
@@ -377,11 +451,22 @@ Result<client::YBTablePtr> PgTableCache::Get(TableIdView table_id) {
   return impl_->Get(table_id);
 }
 
-void PgTableCache::GetTables(
+void PgTableCache::GetIfCached(
     std::span<const TableId> table_ids,
-    const PgTablesQueryListenerPtr& listener,
+    boost::container::small_vector_base<client::YBTablePtr>& tables) {
+  impl_->GetIfCached(table_ids, tables);
+}
+
+void PgTableCache::GetTables(
+    std::span<const TableId> table_ids, const ListenerPtr& listener,
     const PgTableCacheGetOptions& options) {
   return impl_->GetTables(table_ids, listener, options);
+}
+
+Result<PgTablesQueryResult> PgTableCache::GetTables(
+    std::span<const TableId> table_ids, CoarseTimePoint deadline,
+    const PgTableCacheGetOptions& options) {
+  return impl_->GetTables(table_ids, deadline, options);
 }
 
 void PgTableCache::Invalidate(const TableId& table_id) {
@@ -392,10 +477,8 @@ void PgTableCache::InvalidateAll(CoarseTimePoint invalidation_time) {
   impl_->InvalidateAll(invalidation_time);
 }
 
-void PgTableCache::InvalidateDbTables(
-    const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
-    const std::unordered_set<uint32_t>& db_oids_deleted) {
-  impl_->InvalidateDbTables(db_oids_updated, db_oids_deleted);
+void PgTableCache::InvalidateDbTables(const PgTableCacheInvalidationFilter& filter) {
+  impl_->InvalidateDbTables(filter);
 }
 
 Result<const client::YBTablePtr&> PgTablesQueryResult::Get(TableIdView table_id) const {
@@ -418,4 +501,28 @@ Result<const PgTablesQueryResult::TableInfo&> PgTablesQueryResult::GetInfo(
   return *result;
 }
 
-}  // namespace yb::tserver
+void PgTablesQueryListenerNonBlocking::ResultReady(
+    PgTablesQueryResult&& result, const BlockingCallExecContext*) {
+  ReadyNonBlocking(std::move(result));
+}
+
+void PgTablesQueryListener::Run() {
+  Ready(std::move(result_holder_));
+}
+
+void PgTablesQueryListener::Done(const Status& status) {
+  retained_self_ = nullptr;
+}
+
+void PgTablesQueryListener::ResultReady(
+    PgTablesQueryResult&& result, const BlockingCallExecContext* blocking_call_exec_ctx) {
+  if (!blocking_call_exec_ctx) {
+    Ready(std::move(result));
+    return;
+  }
+  result_holder_ = std::move(result);
+  retained_self_ = blocking_call_exec_ctx->self;
+  blocking_call_exec_ctx->pool.Enqueue(this);
+}
+
+} // namespace yb::tserver

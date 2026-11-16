@@ -3,12 +3,15 @@
 package com.yugabyte.yw.api.v2;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.NOT_FOUND;
@@ -41,6 +44,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -74,7 +78,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
             "Success",
             100.0,
             responseJson);
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -88,6 +92,34 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     assertThat(resp.getEntities().size(), greaterThanOrEqualTo(1));
     assertEquals(task.getTaskUUID(), resp.getEntities().get(0).getInfo().getUuid());
     assertEquals("Universe", resp.getEntities().get(0).getInfo().getTarget());
+  }
+
+  @Test
+  public void pageListTasks_passesRollbackBlockedUniversesToTaskStatus() {
+    ObjectNode responseJson = Json.newObject();
+    CustomerTask task =
+        createTaskWithStatus(
+            universe.getUniverseUUID(),
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.Update,
+            TaskType.EditKubernetesUniverse,
+            universe.getName(),
+            "Failure",
+            50.0,
+            responseJson);
+    Set<UUID> blocked = Set.of(universe.getUniverseUUID());
+    when(mockCommissioner.getRollbackBlockedUniverseUUIDs(any(), any())).thenReturn(blocked);
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    TaskPagedQuerySpec spec = new TaskPagedQuerySpec();
+    spec.offset(0).limit(10);
+    handler.pageListTasks(customer.getUuid(), spec);
+
+    // The list builds each task's status with the universes the commissioner reports as blocked.
+    verify(mockCommissioner).buildTaskStatus(eq(task), any(), any(), any(), eq(blocked), any());
   }
 
   @Test
@@ -105,7 +137,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
             "Running",
             10.0,
             responseJson);
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -135,7 +167,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
             50.0,
             responseJson);
     responseJson.set("details", softwareUpgradeProgressDetails(azUuid, clusterUuid));
-    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any(), any(), any()))
         .thenReturn(Optional.of(responseJson));
     when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
         .thenReturn(Collections.emptyMap());
@@ -470,6 +502,37 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     // The V2 rollback returns a task handle pointing at the submitted rollback task + universe.
     assertEquals(rollbackTaskUUID, result.getTaskUuid());
     assertEquals(universe.getUniverseUUID(), result.getResourceUuid());
+  }
+
+  @Test
+  public void rollbackTask_operatorOwnedUniverse_throwsForbidden() {
+    when(mockCommissioner.isRollbackBlockedByOperator(any(CustomerTask.class))).thenReturn(true);
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo failed = new TaskInfo(TaskType.EditKubernetesUniverse, null);
+    failed.setUuid(taskUUID);
+    failed.setTaskParams(Json.newObject());
+    failed.setOwner("");
+    failed.setYbaVersion(Util.getYbaVersion());
+    failed.setTaskState(TaskInfo.State.Failure);
+    failed.save();
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Update,
+        universe.getName());
+    // The task is eligible for rollback, so only the operator check can reject it.
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.rollbackTask(customer.getUuid(), taskUUID));
+
+    assertEquals(FORBIDDEN, ex.getHttpStatus());
+    assertThat(ex.getMessage(), containsString("controlled by kubernetes operator"));
+    verify(mockCommissioner, never()).submit(any(), any());
   }
 
   @Test

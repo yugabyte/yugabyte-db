@@ -445,10 +445,14 @@ class ObjectLockManagerImpl {
       std::unordered_map<ObjectLockOwner, std::vector<TransactionId>>& blockers_by_owner)
       EXCLUDES(global_mutex_);
 
+  void UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet)
+      EXCLUDES(global_mutex_);
+
   size_t TEST_LocksSize(LocksMapType locks_map);
   size_t TEST_GrantedLocksSize();
   size_t TEST_WaitingLocksSize();
-  LockStateMap TEST_GetLockStateMapForTxn(const TransactionId& txn) const;
+  LockStateMap TEST_GetLockStateMapForTxn(TransactionId txn) const;
+  TabletId TEST_GetStatusTabletForTxn(TransactionId txn) const;
 
  private:
   friend struct WaiterEntry;
@@ -463,7 +467,9 @@ class ObjectLockManagerImpl {
   void ReleaseExclusiveLockIntents(
       std::span<const LockBatchEntry<ObjectLockManager>> key_to_intent_type);
 
-  TrackedTxnLockEntryPtr GetTransactionEntryUnlocked(const TransactionId& txn_id)
+  TrackedTxnLockEntryPtr GetTransactionEntryIfExists(TransactionId txn_id)
+      const EXCLUDES(global_mutex_);
+  TrackedTxnLockEntryPtr GetTransactionEntryUnlocked(TransactionId txn_id)
       REQUIRES(global_mutex_);
 
   // Make sure the entries exist in the locks_ map and return pointers so we can access
@@ -485,7 +491,7 @@ class ObjectLockManagerImpl {
   // Performs necessary cleanup and checks whether the locks request needs to be processed.
   Status PrepareAcquire(
       std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
-      const LockData& data, size_t resume_it_offset, Status resume_with_status,
+      const LockData& data, size_t resume_it_offset, const Status& resume_with_status,
       IsLockRetry is_retry) REQUIRES(transaction_entry->mutex) EXCLUDES(global_mutex_);
 
   std::vector<LockState> FetchExistingStatesForBgTxn(const LockData& data) EXCLUDES(global_mutex_);
@@ -702,7 +708,9 @@ void ObjectLockManagerImpl::ConsumePendingSharedLockRequestUnlocked(
     return;
   }
   std::lock_guard lock(transaction_entry->mutex);
-  transaction_entry->status_tablet = std::move(request.status_tablet);
+  if (transaction_entry->status_tablet.empty()) {
+    transaction_entry->status_tablet = std::move(request.status_tablet);
+  }
   DoLockSingleEntryWithoutConflictCheck(lock_entry, transaction_entry, request.owner);
 }
 
@@ -755,8 +763,19 @@ void ObjectLockManagerImpl::ReleaseExclusiveLockIntents(
   }
 }
 
-TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryUnlocked(
-    const TransactionId& txn_id) {
+TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryIfExists(
+    TransactionId txn_id) const {
+  {
+    std::lock_guard lock(global_mutex_);
+    auto txn_it = txn_locks_.find(txn_id);
+    if (txn_it == txn_locks_.end()) {
+      return nullptr;
+    }
+    return txn_it->second;
+  }
+}
+
+TrackedTxnLockEntryPtr ObjectLockManagerImpl::GetTransactionEntryUnlocked(TransactionId txn_id) {
   // TODO: Should we switch similar logic of allocation and reuse as with lock entries?
   const auto& [it, _] = txn_locks_.emplace(txn_id, std::make_shared<TrackedTransactionLockEntry>());
   return it->second;
@@ -837,14 +856,15 @@ Status ObjectLockManagerImpl::MakePrepareAcquireResult(
 
 Status ObjectLockManagerImpl::PrepareAcquire(
     std::unique_lock<std::mutex>& txn_lock, TrackedTxnLockEntryPtr& transaction_entry,
-    const LockData& data, size_t resume_it_offset, Status resume_with_status,
+    const LockData& data, size_t resume_it_offset, const Status& resume_with_status,
     IsLockRetry is_retry) {
   auto it = data.key_to_lock.lock_batch.begin() + resume_it_offset;
   const auto& key_to_lock = data.key_to_lock;
   const auto& object_lock_owner = data.object_lock_owner;
+  const bool resumed_with_ok = is_retry && resume_with_status.ok();
   if (transaction_entry->ShouldSkipAcquireUnlocked(object_lock_owner.subtxn_id)) {
     // Release corresponding to this acquire has already been processed.
-    if (is_retry) {
+    if (resumed_with_ok) {
       it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
     }
     DoSignal(it->locked);
@@ -857,10 +877,12 @@ Status ObjectLockManagerImpl::PrepareAcquire(
   if (status.ok()) {
     return Status::OK();
   }
-  if (is_retry) {
+  // Don't signal queue when resuming timedout waiter, as the waiter can re-enter with earlier
+  // start time. Force signaling it in !resumed_with_ok case affects fairness.
+  if (resumed_with_ok) {
     it->locked->waiters_in_resuming_state.fetch_sub(IntentTypeSetAdd(it->intent_types));
+    DoSignal(it->locked);
   }
-  DoSignal(it->locked);
   while (it != key_to_lock.lock_batch.begin()) {
     --it;
     if (UnlockSingleEntry(*it)) {
@@ -1220,9 +1242,7 @@ void ObjectLockManagerImpl::Poll() {
       while (!index.empty() && (*index.begin())->deadline() <= now) {
         auto waiter_entry = *index.begin();
         index.erase(index.begin());
-        const auto delta = IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
-        entry->waiters_in_resuming_state.fetch_add(delta);
-        entry->waiting_state.fetch_sub(delta);
+        entry->waiting_state.fetch_sub(IntentTypeSetAdd(waiter_entry->resume_it()->intent_types));
         timed_out_waiters.push_back(std::move(waiter_entry));
       }
     }
@@ -1262,9 +1282,7 @@ void ObjectLockManagerImpl::Shutdown() {
       while (!index.empty()) {
         auto waiter_entry = *index.begin();
         index.erase(index.begin());
-        const auto delta = IntentTypeSetAdd(waiter_entry->resume_it()->intent_types);
-        entry->waiters_in_resuming_state.fetch_add(delta);
-        entry->waiting_state.fetch_sub(delta);
+        entry->waiting_state.fetch_sub(IntentTypeSetAdd(waiter_entry->resume_it()->intent_types));
         waiters.push_back(std::move(waiter_entry));
       }
     }
@@ -1592,6 +1610,15 @@ void ObjectLockManagerImpl::PopulateObjectLockWaiterBlockers(
   }
 }
 
+void ObjectLockManagerImpl::UpdateStatusTablet(
+    TransactionId txn_id, const TabletId& status_tablet) {
+  if (auto txn_entry = GetTransactionEntryIfExists(txn_id)) {
+    std::lock_guard txn_lock(txn_entry->mutex);
+    txn_entry->status_tablet = status_tablet;
+    VLOG_WITH_FUNC(1) << "Updated status tablet for " << txn_id << " to " << status_tablet;
+  }
+}
+
 void ObjectLockManagerImpl::DumpStoredObjectLocksMap(
     std::ostream& out, std::string_view caption, LocksMapType locks_map) {
   out << R"(
@@ -1645,18 +1672,20 @@ size_t ObjectLockManagerImpl::TEST_WaitingLocksSize() {
   return TEST_LocksSize(LocksMapType::kWaiting);
 }
 
-LockStateMap ObjectLockManagerImpl::TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
-  TrackedTxnLockEntryPtr txn_entry;
-  {
-    std::lock_guard lock(global_mutex_);
-    auto txn_it = txn_locks_.find(txn);
-    if (txn_it == txn_locks_.end()) {
-      return {};
-    }
-    txn_entry = txn_it->second;
+LockStateMap ObjectLockManagerImpl::TEST_GetLockStateMapForTxn(TransactionId txn) const {
+  if (auto txn_entry = GetTransactionEntryIfExists(txn)) {
+    std::lock_guard txn_lock(txn_entry->mutex);
+    return txn_entry->existing_states;
   }
-  std::lock_guard txn_lock(txn_entry->mutex);
-  return txn_entry->existing_states;
+  return {};
+}
+
+TabletId ObjectLockManagerImpl::TEST_GetStatusTabletForTxn(TransactionId txn) const {
+  if (auto txn_entry = GetTransactionEntryIfExists(txn)) {
+    std::lock_guard txn_lock(txn_entry->mutex);
+    return txn_entry->status_tablet;
+  }
+  return {};
 }
 
 ObjectLockManager::ObjectLockManager(
@@ -1721,6 +1750,10 @@ void ObjectLockManager::PopulateObjectLockWaiterBlockers(
   impl_->PopulateObjectLockWaiterBlockers(blockers_by_owner);
 }
 
+void ObjectLockManager::UpdateStatusTablet(TransactionId txn_id, const TabletId& status_tablet) {
+  impl_->UpdateStatusTablet(txn_id, status_tablet);
+}
+
 size_t ObjectLockManager::TEST_GrantedLocksSize() {
   return impl_->TEST_GrantedLocksSize();
 }
@@ -1729,8 +1762,12 @@ size_t ObjectLockManager::TEST_WaitingLocksSize() {
   return impl_->TEST_WaitingLocksSize();
 }
 
-LockStateMap ObjectLockManager::TEST_GetLockStateMapForTxn(const TransactionId& txn) const {
+LockStateMap ObjectLockManager::TEST_GetLockStateMapForTxn(TransactionId txn) const {
   return impl_->TEST_GetLockStateMapForTxn(txn);
+}
+
+TabletId ObjectLockManager::TEST_GetStatusTabletForTxn(TransactionId txn) const {
+  return impl_->TEST_GetStatusTabletForTxn(txn);
 }
 
 }  // namespace yb::docdb

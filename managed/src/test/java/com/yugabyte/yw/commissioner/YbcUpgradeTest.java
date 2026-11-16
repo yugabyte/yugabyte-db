@@ -41,6 +41,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -375,15 +376,15 @@ public class YbcUpgradeTest extends FakeDBApplication {
     when(mockYbcClient.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     List<NodeDetails> nodes = new ArrayList<>(defaultUniverse.getNodes());
     when(mockYbcClientService.getNewClient(
-            nodes.get(0).cloudInfo.private_ip,
-            defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
-            defaultUniverse.getCertificateNodetoNode()))
+            eq(nodes.get(0).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
         .thenReturn(mockYbcClient);
     when(mockYbcClient2.UpgradeResult(any())).thenReturn(upgradeResultResponseFail);
     when(mockYbcClientService.getNewClient(
-            nodes.get(1).cloudInfo.private_ip,
-            defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
-            defaultUniverse.getCertificateNodetoNode()))
+            eq(nodes.get(1).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
         .thenReturn(mockYbcClient2);
     String oldYbcVersion = defaultUniverse.getUniverseDetails().getYbcSoftwareVersion();
     ybcUpgrade.scheduleRunner();
@@ -394,9 +395,9 @@ public class YbcUpgradeTest extends FakeDBApplication {
             .getYbcSoftwareVersion());
     when(mockYbcClient2.UpgradeResult(any())).thenReturn(upgradeResultResponse);
     when(mockYbcClientService.getNewClient(
-            nodes.get(1).cloudInfo.private_ip,
-            defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort,
-            defaultUniverse.getCertificateNodetoNode()))
+            eq(nodes.get(1).cloudInfo.private_ip),
+            eq(defaultUniverse.getUniverseDetails().communicationPorts.ybControllerrRpcPort),
+            any()))
         .thenReturn(mockYbcClient2);
     ybcUpgrade.scheduleRunner();
     ybcUpgrade.scheduleRunner();
@@ -596,6 +597,77 @@ public class YbcUpgradeTest extends FakeDBApplication {
     assertFalse(upgraded.contains("yb-master-0"));
     // A stopped tserver has isTserver false too, but it must still be upgraded (PLAT-20970).
     assertTrue(upgraded.contains("yb-tserver-2"));
+  }
+
+  @Test
+  public void testCanUpgradeYbcOnK8sBlockedByCreateBackupLock() {
+    lockUniverse(TaskType.CreateBackup);
+    assertFalse(ybcUpgrade.canUpgradeYBCOnK8s(defaultUniverse, NEW_YBC_VERSION));
+  }
+
+  @Test
+  public void testCanUpgradeYbcOnK8sBlockedByCreateBackupScheduleKubernetesLock() {
+    lockUniverse(TaskType.CreateBackupScheduleKubernetes);
+    assertFalse(ybcUpgrade.canUpgradeYBCOnK8s(defaultUniverse, NEW_YBC_VERSION));
+  }
+
+  @Test
+  public void testCanUpgradeYbcOnK8sAllowedWhenUnlocked() {
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), ybcEnabledUpdater());
+    assertTrue(ybcUpgrade.canUpgradeYBCOnK8s(defaultUniverse, NEW_YBC_VERSION));
+  }
+
+  @Test
+  public void testUpgradeYbcOnK8sSkipsWhenUniverseLockedAfterScheduling() throws Exception {
+    // scheduleRunner selects universes before acting on them, so the lock can land in between.
+    lockUniverse(TaskType.CreateBackup);
+
+    ybcUpgrade.upgradeYbcOnK8s(
+        defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION, false /* force */);
+
+    verify(mockYbcManager, never()).copyYbcPackagesOnK8s(any(), any(), any(), any(), any());
+    assertFalse(ybcUpgrade.checkYBCUpgradeProcessExistsOnK8s(defaultUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testUpgradeYbcOnK8sDoesNotLeakInFlightFlagForInbuiltYbc() throws Exception {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          params.setEnableYbc(true);
+          params.setYbcInstalled(true);
+          params.setYbcSoftwareVersion("2.0.0-b0");
+          params.getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+
+    ybcUpgrade.upgradeYbcOnK8s(
+        defaultUniverse.getUniverseUUID(), NEW_YBC_VERSION, true /* force */);
+
+    // A flag stranded here would block every later InstallYbcSoftwareOnK8s on this universe.
+    assertFalse(ybcUpgrade.checkYBCUpgradeProcessExistsOnK8s(defaultUniverse.getUniverseUUID()));
+  }
+
+  private UniverseUpdater ybcEnabledUpdater() {
+    return u -> {
+      UniverseDefinitionTaskParams params = u.getUniverseDetails();
+      params.setEnableYbc(true);
+      params.setYbcInstalled(true);
+      params.setYbcSoftwareVersion("2.0.0-b0");
+    };
+  }
+
+  private void lockUniverse(TaskType updatingTask) {
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          params.setEnableYbc(true);
+          params.setYbcInstalled(true);
+          params.setYbcSoftwareVersion("2.0.0-b0");
+          params.updateInProgress = true;
+          params.updatingTask = updatingTask;
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
   }
 
   private void addNode(

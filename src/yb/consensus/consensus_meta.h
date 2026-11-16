@@ -139,6 +139,11 @@ class ConsensusMetadata {
                                const RaftConfigPB& config,
                                int64_t current_term);
 
+  // Same as Create, but does not touch disk.
+  static std::unique_ptr<ConsensusMetadata> CreateUnflushed(
+      FsManager* fs_manager, const std::string& tablet_id, const std::string& peer_uuid,
+      const RaftConfigPB& config, int64_t current_term);
+
   // Load a ConsensusMetadata object from disk.
   // Returns Status::NotFound if the file could not be found. May return other
   // Status codes if unable to read the file.
@@ -193,8 +198,6 @@ class ConsensusMetadata {
   void clear_leader_uuid();
 
   const TabletId& tablet_id() { return tablet_id_; }
-
-  void set_tablet_id(const TabletId& tablet_id) { tablet_id_ = tablet_id; }
 
   // Returns the currently active role of the current node.
   PeerRole active_role() const;

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <optional>
 #include <ostream>
 #include <vector>
 
@@ -21,6 +22,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 
+#include "yb/dockv/decode_policy.h"
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/key_entry_value.h"
@@ -211,8 +213,36 @@ class DocKey {
   static Result<size_t> EncodedSize(
       Slice slice, DocKeyPart part, AllowSpecial allow_special = AllowSpecial::kFalse);
 
+  // Same as EncodedSize, but for callers that treat a non-DocKey input as a normal outcome:
+  // returns nullopt on failure and does not build an error description.
+  static std::optional<size_t> TryGetEncodedSize(
+      Slice slice, DocKeyPart part, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  // Whether DecodeFrom would succeed, without describing a failure. Unlike TryGetEncodedSize it
+  // decodes the values, so it also runs the value checks that a size-only walk skips, e.g. that a
+  // uuid component is 16 bytes long.
+  static bool IsDecodable(
+      Slice slice, DocKeyPart part_to_decode = DocKeyPart::kWholeDocKey,
+      AllowSpecial allow_special = AllowSpecial::kFalse);
+
   // Returns size of the encoded `part` of DocKey and whether it has hash code present.
   static Result<std::pair<size_t, bool>> EncodedSizeAndHashPresent(Slice slice, DocKeyPart part);
+
+  // Probe counterpart of EncodedSizeAndHashPresent, see TryGetEncodedSize.
+  static std::optional<std::pair<size_t, bool>> TryGetEncodedSizeAndHashPresent(
+      Slice slice, DocKeyPart part);
+
+  // Returns the size of the first num_components components of slice, which is an encoded DocKey
+  // or its prefix without the closing range group end. Components are as in
+  // Schema::HashGroupAndRangeComponentIndex. The size covers the cotable or colocation id, but
+  // never the closing range group end. Returns nullopt when slice has fewer components.
+  static Result<std::optional<size_t>> EncodedHashGroupAndRangeComponentsSize(
+      Slice slice, size_t num_components);
+
+  // Like EncodedHashGroupAndRangeComponentsSize, but fails with Corruption when slice has fewer
+  // components.
+  static Result<size_t> EncodedHashGroupAndRangeComponentsSizeStrict(
+      Slice slice, size_t num_components);
 
   // Returns size of encoded hash part and whole part of DocKey.
   static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
@@ -298,11 +328,13 @@ class DocKey {
   class DecodeFromCallback;
   friend class DecodeFromCallback;
 
-  template<class Callback>
-  static Status DoDecode(DocKeyDecoder* decoder,
-                                 DocKeyPart part_to_decode,
-                                 AllowSpecial allow_special,
-                                 const Callback& callback);
+  // Reports failure according to DecodePolicy<kDescribeErrors>.
+  template<bool kDescribeErrors, class Callback>
+  static typename DecodePolicy<kDescribeErrors>::StatusType DoDecode(
+      DocKeyDecoder* decoder,
+      DocKeyPart part_to_decode,
+      AllowSpecial allow_special,
+      const Callback& callback);
 
   // Uuid of the non-primary table this DocKey belongs to co-located in a tablet. Nil for the
   // primary or single-tenant table.
@@ -421,12 +453,23 @@ class DocKeyDecoder {
  public:
   explicit DocKeyDecoder(const Slice& input) : input_(input) {}
 
+  // The template versions report failure according to DecodePolicy<kDescribeErrors>.
+  template <bool kDescribeErrors>
+  typename DecodePolicy<kDescribeErrors>::template ResultType<bool> DecodeCotableId(
+      Uuid* uuid = nullptr);
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
+
+  template <bool kDescribeErrors>
+  typename DecodePolicy<kDescribeErrors>::template ResultType<bool> DecodeColocationId(
+      ColocationId* colocation_id = nullptr);
   Result<bool> DecodeColocationId(ColocationId* colocation_id = nullptr);
 
   Status DecodeToKeys();
   Result<bool> HasPrimitiveValue(AllowSpecial allow_special = AllowSpecial::kFalse);
 
+  template <bool kDescribeErrors>
+  typename DecodePolicy<kDescribeErrors>::template ResultType<bool> DecodeHashCode(
+      uint16_t* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
   Result<bool> DecodeHashCode(
       uint16_t* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
 

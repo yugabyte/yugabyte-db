@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -146,7 +147,31 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testVerifyParamsRejectsOciPrimaryUniverse() {
+  public void testVerifyParamsAcceptsOciPrimaryUniverse() {
+    Universe ociUniverse = createOciUniverse();
+    UserIntent ociIntent = ociUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
+    Provider ociProvider = Provider.getOrBadRequest(UUID.fromString(ociIntent.provider));
+    ImageBundle ociBundle = createImageBundle(ociProvider, "oci-ib", "ashburn");
+    assertOciUpgradeAccepted(
+        ociUniverse, ociUniverse.getUniverseDetails().getPrimaryCluster().uuid, ociBundle);
+  }
+
+  @Test
+  public void testVerifyParamsRejectsOciMachineImages() {
+    Universe ociUniverse = createOciUniverse();
+    VMImageUpgradeParams params = new VMImageUpgradeParams();
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.clusters = ociUniverse.getUniverseDetails().clusters;
+    params.machineImages =
+        Map.of(
+            ociUniverse.getUniverseDetails().getPrimaryCluster().userIntent.regionList.get(0),
+            "oci-target-image");
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(ociUniverse, true));
+    assertTrue(ex.getMessage(), ex.getMessage().contains("Use imageBundles"));
+  }
+
+  private Universe createOciUniverse() {
     Provider ociProvider = ModelFactory.ociProvider(customer);
     Region ociRegion = Region.create(ociProvider, "ashburn", "Ashburn", "oci-image");
     AvailabilityZone ociAz =
@@ -166,37 +191,19 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(ociAz.getUuid(), placement, 1, 1, true);
 
     Universe ociUniverse = ModelFactory.createUniverse("oci-univ", customer.getId());
-    ociUniverse =
-        Universe.saveDetails(
-            ociUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(ociIntent, placement, true));
-
-    assertOciUpgradeForbidden(
-        ociUniverse, ociUniverse.getUniverseDetails().getPrimaryCluster().uuid);
+    return Universe.saveDetails(
+        ociUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(ociIntent, placement, true));
   }
 
   @Test
-  public void testVerifyParamsRejectsOciReadReplica() {
-    Provider ociProvider = ModelFactory.ociProvider(customer);
-    universe =
-        Universe.saveDetails(
-            universe.getUniverseUUID(),
-            u -> {
-              UserIntent rrIntent = u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
-              rrIntent.providerType = Common.CloudType.oci;
-              rrIntent.provider = ociProvider.getUuid().toString();
-            });
-    assertOciUpgradeForbidden(universe, readReplicaClusterUuid);
-  }
-
-  @Test
-  public void testVerifyParamsRejectsOciInMixedCloudPrimary() {
+  public void testVerifyParamsAcceptsOciInMixedCloudPrimary() {
     Provider ociProvider = ModelFactory.ociProvider(customer);
     Region ociRegion = Region.create(ociProvider, "ashburn", "Ashburn", "oci-image");
     AvailabilityZone ociAz =
         AvailabilityZone.createOrThrow(ociRegion, "ad-1", "AD 1", "subnet-oci");
     ImageBundle ociBundle = createImageBundle(ociProvider, "oci-ib", ociRegion.getCode());
     UUID primaryUuid = primaryClusterUuid;
+    UUID ociNodeUuid = UUID.randomUUID();
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -220,7 +227,7 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
               NodeDetails ociNode = new NodeDetails();
               ociNode.nodeIdx = intent.numNodes + 1;
               ociNode.nodeName = "host-n" + ociNode.nodeIdx;
-              ociNode.nodeUuid = UUID.randomUUID();
+              ociNode.nodeUuid = ociNodeUuid;
               ociNode.placementUuid = primaryUuid;
               ociNode.isMaster = true;
               ociNode.isTserver = true;
@@ -240,27 +247,21 @@ public class VMImageUpgradeParamsTest extends FakeDBApplication {
     params.imageBundles =
         Arrays.asList(
             new ImageBundleUpgradeInfo(primaryUuid, ociBundle.getUuid(), ociProvider.getUuid()));
-    PlatformServiceException ex =
-        assertThrows(PlatformServiceException.class, () -> params.verifyParams(universe, true));
-    assertTrue(
-        ex.getMessage(),
-        ex.getMessage()
-            .contains("VM image upgrade for OCI cloud based universe is not supported."));
+    params.verifyParams(universe, true);
+    assertEquals(Collections.singleton(ociNodeUuid), params.nodeToRegion.keySet());
   }
 
-  private void assertOciUpgradeForbidden(Universe target, UUID clusterUuid) {
+  private void assertOciUpgradeAccepted(Universe target, UUID clusterUuid, ImageBundle bundle) {
     VMImageUpgradeParams params = new VMImageUpgradeParams();
     params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
     params.clusters = target.getUniverseDetails().clusters;
     params.machineImages = null;
     params.imageBundles =
-        Arrays.asList(new ImageBundleUpgradeInfo(clusterUuid, UUID.randomUUID(), null));
-    PlatformServiceException ex =
-        assertThrows(PlatformServiceException.class, () -> params.verifyParams(target, true));
+        Arrays.asList(new ImageBundleUpgradeInfo(clusterUuid, bundle.getUuid(), null));
+    params.verifyParams(target, true);
     assertTrue(
-        ex.getMessage(),
-        ex.getMessage()
-            .contains("VM image upgrade for OCI cloud based universe is not supported."));
+        target.getUniverseDetails().getNodesInCluster(clusterUuid).stream()
+            .allMatch(n -> params.nodeToRegion.containsKey(n.nodeUuid)));
   }
 
   private ImageBundle createImageBundle(String name, String regionCode) {

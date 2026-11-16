@@ -8,6 +8,8 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.http.conditional.ConditionalGet;
+import com.yugabyte.yw.common.http.conditional.UniverseRevisionProvider;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -30,7 +32,6 @@ import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -75,7 +76,7 @@ public class UniverseController extends AuthenticatedController {
             user.getUser().getUuid(), ResourceType.UNIVERSE, Action.READ);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Verify the customer is present.
-    List<UniverseResp> universeRespList = new ArrayList<>();
+    List<UniverseResp> universeRespList;
     if (name != null) {
       LOG.info("Finding Universe with name {}.", name);
       universeRespList = universeCRUDHandler.findByName(customer, name);
@@ -90,7 +91,12 @@ public class UniverseController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "Available since YBA version 2.2.0.0.",
+      notes =
+          "Available since YBA version 2.2.0.0. Early access: when the runtime flag"
+              + " yb.api.conditional_get.enabled is set, this endpoint supports conditional"
+              + " requests. Send a previously returned ETag in If-None-Match to get 304 Not"
+              + " Modified if the universe is unchanged. Fields derived from related resources"
+              + " (for example DR configs or pricing) may be stale in that case.",
       value = "Get a universe",
       response = UniverseResp.class,
       nickname = "getUniverse")
@@ -101,6 +107,7 @@ public class UniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @ConditionalGet(UniverseRevisionProvider.class)
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);

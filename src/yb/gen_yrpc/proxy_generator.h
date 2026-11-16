@@ -20,8 +20,13 @@ namespace gen_yrpc {
 
 class ProxyGenerator {
  public:
+  explicit ProxyGenerator(bool need_messages);
+
   void Header(YBPrinter printer, const google::protobuf::FileDescriptor* file);
   void Source(YBPrinter printer, const google::protobuf::FileDescriptor* file);
+
+ private:
+  bool need_messages_;
 };
 
 } // namespace gen_yrpc

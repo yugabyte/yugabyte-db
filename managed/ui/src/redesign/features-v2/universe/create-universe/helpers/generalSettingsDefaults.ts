@@ -29,6 +29,7 @@ import { ReleaseState } from '@app/redesign/features/releases/components/dtos';
 import { isVersionStable } from '@app/utils/universeUtilsTyped';
 import { generateUniqueName } from '@app/redesign/helpers/utils';
 import { GeneralSettingsProps, ProviderType } from '../steps/general-settings/dtos';
+import { cloudCodes, normalizeProviderConfigurations } from './providerConfigurations';
 
 export const BASE_CLOUD_OPTIONS = [
   { ...AWS_CLOUD_OPTION, value: CloudType.aws },
@@ -130,6 +131,39 @@ export const resolveProviderOnCloudSync = ({
   return { shouldApply: false, provider: null };
 };
 
+/** Span off leaves one cloud code. Keep that cloud's config, else the first READY provider. */
+export const collapseProvidersToSingleCloud = (
+  cloud: string | undefined,
+  current: Array<ProviderType | null | undefined> | null | undefined,
+  providers: ProviderListItem[] | undefined
+): ProviderType[] => {
+  const existing = (current ?? []).find((provider) => provider?.code === cloud);
+  const chosen = isProviderValidForCloud(existing, cloud, providers)
+    ? (existing as ProviderType)
+    : getDefaultProviderForCloud(providers, cloud);
+  return normalizeProviderConfigurations(chosen ? [chosen] : []);
+};
+
+/** Sync providerConfigurations to match selected cloud codes (preserve valid, else first READY). */
+export const syncProvidersForClouds = (
+  clouds: string[],
+  current: Array<ProviderType | null | undefined> | null | undefined,
+  providers: ProviderListItem[] | undefined
+): ProviderType[] => {
+  const byCode = new Map<string, ProviderType>();
+  for (const provider of current ?? []) {
+    if (!provider?.code || byCode.has(provider.code)) continue;
+    byCode.set(provider.code, provider);
+  }
+  return normalizeProviderConfigurations(
+    clouds.map((code) => {
+      const existing = byCode.get(code);
+      if (isProviderValidForCloud(existing, code, providers)) return existing!;
+      return getDefaultProviderForCloud(providers, code);
+    })
+  );
+};
+
 export const transformDbVersionQueryData = (
   data: string[] | Record<string, YBSoftwareMetadata>
 ) => {
@@ -167,15 +201,22 @@ export const buildGeneralSettingsDefaults = (
   dbVersions: Record<string, any>[] | undefined,
   existing?: GeneralSettingsProps
 ): GeneralSettingsProps => {
-  const cloud = existing?.cloud || getDefaultCloudType(providers);
-  const provider = isProviderValidForCloud(existing?.providerConfiguration, cloud, providers)
-    ? existing?.providerConfiguration
-    : getDefaultProviderForCloud(providers, cloud) ?? undefined;
+  const defaultCloud = getDefaultCloudType(providers);
+  const cloud = existing?.cloud ?? defaultCloud;
+  const clouds = cloudCodes(cloud);
+  const spanAcrossProviders =
+    existing?.spanAcrossProviders ?? (existing?.providerConfigurations?.length ?? 0) >= 2;
+  const providerConfigurations = syncProvidersForClouds(
+    clouds.length ? clouds : [defaultCloud],
+    existing?.providerConfigurations,
+    providers
+  );
 
   return {
     universeName: existing?.universeName || generateUniqueName(),
-    cloud,
-    providerConfiguration: provider,
+    cloud: clouds.length ? cloud : defaultCloud,
+    spanAcrossProviders,
+    providerConfigurations,
     databaseVersion: existing?.databaseVersion || getLatestStableDbVersion(dbVersions)
   };
 };

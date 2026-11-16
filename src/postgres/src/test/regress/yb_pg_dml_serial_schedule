@@ -2,6 +2,9 @@
 
 # Dependency for yb.port.incremental_sort.
 test: yb.depd.tenk1
+# Dependency for yb.port.insert.
+test: yb.depd.part_test_int4_ops
 
+test: yb.port.insert
 test: yb.port.insert_conflict
 test: yb.port.incremental_sort

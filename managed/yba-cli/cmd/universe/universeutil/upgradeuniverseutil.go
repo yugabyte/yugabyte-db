@@ -453,20 +453,21 @@ func RemoveOrAddZones(
 	return cloudList, nil
 }
 
-// FindClusterByType finds the cluster by type
-func FindClusterByType(clusters []ybaclient.Cluster, clusterType string) ybaclient.Cluster {
-	for _, cluster := range clusters {
-		if strings.EqualFold(cluster.GetClusterType(), clusterType) {
-			return cluster
-		}
+// MustFindPrimaryCluster returns the primary cluster and its index in clusters,
+// or exits if the universe has none
+func MustFindPrimaryCluster(
+	clusters []ybaclient.Cluster,
+	universeName, universeUUID string,
+) (ybaclient.Cluster, int) {
+	cluster, idx := util.FindClusterByType(clusters, util.PrimaryClusterType)
+	if idx < 0 {
+		logrus.Fatal(
+			formatter.Colorize(
+				"No primary cluster found in universe "+universeName+" ("+universeUUID+")\n",
+				formatter.RedColor),
+		)
 	}
-	logrus.Debug("No cluster found with type: ", clusterType)
-	return ybaclient.Cluster{}
-}
-
-// IsClusterEmpty checks if a cluster is empty/not found
-func IsClusterEmpty(cluster ybaclient.Cluster) bool {
-	return cluster.GetClusterType() == ""
+	return cluster, idx
 }
 
 // IsDeviceInfoEmpty checks if a device info is empty/not found
@@ -487,7 +488,10 @@ func AddRollMaxBatchSizeFlags(cmd *cobra.Command) {
 }
 
 // RollMaxBatchSizeFromFlags builds RollMaxBatchSize from CLI flags when the upgrade is rolling.
-func RollMaxBatchSizeFromFlags(cmd *cobra.Command, upgradeOption string) *ybaclient.RollMaxBatchSize {
+func RollMaxBatchSizeFromFlags(
+	cmd *cobra.Command,
+	upgradeOption string,
+) *ybaclient.RollMaxBatchSize {
 	if !strings.EqualFold(upgradeOption, "Rolling") {
 		return nil
 	}

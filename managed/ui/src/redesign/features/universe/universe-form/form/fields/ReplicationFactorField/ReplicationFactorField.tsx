@@ -14,6 +14,7 @@ interface ReplicationFactorProps {
   disabled: boolean;
   isPrimary: boolean;
   isEditMode: boolean;
+  isPrimaryRf9Enabled: boolean;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -24,18 +25,17 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const PRIMARY_RF = [1, 3, 5, 7];
+const PRIMARY_RF_OPTIONS = [1, 3, 5, 7];
 const ASYNC_RF_MIN = 1;
 const ASYNC_RF_MAX = 15;
 
 export const ReplicationFactor = ({
   disabled,
   isPrimary,
-  isEditMode
+  isEditMode,
+  isPrimaryRf9Enabled
 }: ReplicationFactorProps): ReactElement => {
-  const { universeConfigureTemplate } = useContext(
-    UniverseFormContext
-  )[0];
+  const { universeConfigureTemplate } = useContext(UniverseFormContext)[0];
   const clusters = universeConfigureTemplate?.clusters;
   const primaryCluster = getPrimaryCluster(clusters);
   const replicationFactor = primaryCluster?.userIntent?.replicationFactor;
@@ -55,6 +55,11 @@ export const ReplicationFactor = ({
   useEffect(() => {
     setInitialRF(replicationFactor!);
   }, []);
+
+  const primaryReplicationFactorOptions =
+    isPrimaryRf9Enabled || (isEditMode && initialRF === 9)
+      ? [...PRIMARY_RF_OPTIONS, 9]
+      : PRIMARY_RF_OPTIONS;
 
   const handleSelect = (val: number) => {
     setValue(REPLICATION_FACTOR_FIELD, val);
@@ -92,7 +97,7 @@ export const ReplicationFactor = ({
             dataTestId={'ReplicationFactor'}
             variant={'contained'}
             color={'default'}
-            values={PRIMARY_RF}
+            values={primaryReplicationFactorOptions}
             selectedNum={value}
             disabled={disabled}
             handleSelect={handleSelect}

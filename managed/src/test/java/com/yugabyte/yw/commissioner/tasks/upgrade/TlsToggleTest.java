@@ -486,6 +486,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
     }
     position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
     if (nodeToNodeChange != 0) {
+      // Once the universe holds the new setting, the exporter scheme is decided for every node.
+      assertTaskType(subTasksByPosition.get(position++), TaskType.ConfigureNodeExporterTls);
+    }
+    if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
       position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());
       position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getSecond());
@@ -645,6 +649,10 @@ public class TlsToggleTest extends UpgradeTaskTest {
     }
     position = assertSequence(subTasksByPosition, TSERVER, position, upgrade.getFirst());
     position = assertCommonTasks(subTasksByPosition, position, upgrade.getFirst(), true);
+    if (nodeToNodeChange != 0) {
+      // Once the universe holds the new setting, the exporter scheme is decided for every node.
+      assertTaskType(subTasksByPosition.get(position++), TaskType.ConfigureNodeExporterTls);
+    }
     if (nodeToNodeChange != 0) {
       // Second round gflag update tasks
       position = assertSequence(subTasksByPosition, MASTER, position, upgrade.getSecond());

@@ -20,7 +20,7 @@ yba provider describe --name <provider-name>
 
 ```
   -n, --name string   [Required] The name of the provider to get details.
-  -c, --code string   [Optional] Code of the provider. Allowed values: aws, gcp, azu, onprem, kubernetes.
+  -c, --code string   [Optional] Code of the provider. Allowed values: aws, gcp, azu, oci, onprem, kubernetes.
   -h, --help          help for describe
 ```
 

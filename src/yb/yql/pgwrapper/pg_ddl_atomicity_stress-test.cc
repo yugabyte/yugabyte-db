@@ -237,6 +237,8 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(
     // Similar to the above, if the backend tries to read pg_index for an index it just created,
     // it will see 0 rows and fail with this error.
     "cache lookup failed for index"sv,
+    // Same race, hit when RelationReloadIndexInfo re-reads pg_class for the just-created index.
+    "could not find pg_class tuple for index"sv,
     // Same race, but seen as a torn read across two catalogs: building the relcache entry of a
     // just-created index reads relnatts from pg_class and indnatts from pg_index. If the rollback
     // of the aborted transaction lands between the two reads, they disagree and PG fails this

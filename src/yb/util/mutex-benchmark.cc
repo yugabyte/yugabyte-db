@@ -15,9 +15,10 @@
 // The critical section is a single increment, so this stresses lock handoff rather than modeling
 // any real workload.
 //
-// Build and run (use a release build for meaningful numbers):
-//   ./yb_build.sh release --target mutex-benchmark
-//   build/latest/benchmarks-util/mutex-benchmark --benchmark_filter=AbslMutex
+// Build and run (use a release build for meaningful numbers; add --full-lto to measure the
+// statically linked, LTO-optimized variant, as release servers are linked):
+//   ./yb_build.sh release --cxx-benchmark mutex-benchmark
+// Add --benchmark-args '--benchmark_filter=AbslMutex' to run a subset.
 //
 // ThreadRange() runs the loop body on 1, 2, 4, ... 64 threads at once. "Time" is the average time
 // per iteration as seen by one thread; items_per_second is the total across all threads.

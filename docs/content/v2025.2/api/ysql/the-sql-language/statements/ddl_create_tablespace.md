@@ -34,12 +34,13 @@ Use the `CREATE TABLESPACE` statement to create a tablespace in the cluster. It 
 - `num_replicas` is the replication factor. It is required and must be a positive integer.
 - `placement_blocks` is an array of placement blocks. Each block requires `cloud`, `region`, `zone`, and `min_num_replicas`.
   - `min_num_replicas` is the minimum number of replicas in that cloud, region, and zone. It must be greater than 0. The sum across blocks cannot exceed `num_replicas`.
-  - `region` and `zone` accept `*` for any region or any zone. A `*` region requires a `*` zone. `cloud` must name a cloud.
+  - `max_num_replicas` (v2025.2.8.1 and later) is an optional upper bound on the number of replicas in that cloud, region, and zone. When omitted, the upper bound is `num_replicas`. It must be at least `min_num_replicas`. The sum of the upper bounds across blocks (using `num_replicas` for blocks that omit it) must be at least `num_replicas`. For example, an RF5 policy across three zones can set each block to `"min_num_replicas":1,"max_num_replicas":2` so that no zone holds a majority of replicas. If any block sets `max_num_replicas`, every block must name a specific cloud, region, and zone — wildcard blocks cannot be combined with `max_num_replicas` — and no two blocks can be duplicates.
+  - `region` and `zone` accept `*` for any region or any zone, unless a block in the placement sets `max_num_replicas`. A `*` region requires a `*` zone. `cloud` must name a cloud.
   - `leader_preference` is an optional positive integer. `1` is the most preferred zone for tablet leaders. Values that are set must form a contiguous sequence starting at 1. Zones that share a value split leaders evenly. Zones that omit the field are least preferred.
 
 #### read_replica_placement
 
-{{<tags/feature/ea idea="2006">}}`read_replica_placement` is a JSON object for copies on a [read replica](../../../../../explore/multi-region-deployments/read-replicas-ysql/) cluster. It uses the same fields as `replica_placement`. A tablespace has one read-replica placement. `leader_preference` applies only to `replica_placement`.
+{{<tags/feature/ea idea="2006">}}`read_replica_placement` is a JSON object for copies on a [read replica](../../../../../architecture/docdb-replication/read-replicas/) cluster. It uses the same fields as `replica_placement`. A tablespace has one read-replica placement. `leader_preference` applies only to `replica_placement`.
 
 `placement_uuid` is the [placement ID of the read replica cluster](../../../../../admin/yb-admin/#add-read-replica-placement-info). Set `placement_uuid` to the cluster you want. Starting in v2025.2.4, when the cluster has one read-replica cluster, omit `placement_uuid` and that cluster's placement ID is used. If you omit it, CREATE TABLESPACE still succeeds, and tablets in the tablespace follow the cluster placement policy. Obtain the ID with [get-universe-config](../../../../../admin/yb-admin/#get-universe-config).
 

@@ -74,3 +74,23 @@ SET yb_enable_distinct_pushdown = true;
 
 RESET yb_enable_distinct_pushdown;
 DROP TABLE test_distinct_hash;
+
+-- A bitmap path whose entries are estimated to exceed work_mem is costed as a
+-- sequential scan fallback on choose_bitmap_and's dummy path, and under a
+-- DISTINCT with an ORDER BY and a LIMIT that costing reads the path's
+-- uniqkeys.  Fails if the dummy path's YB fields are left uninitialized, but
+-- only when the stack happens to hold a non-empty list in that slot.
+SET yb_enable_cbo = on;
+SET work_mem = '64kB';
+
+CREATE TABLE test_bitmap_limit (k INT, a INT, b INT, PRIMARY KEY (k ASC));
+CREATE INDEX ON test_bitmap_limit (a ASC);
+CREATE INDEX ON test_bitmap_limit (b ASC);
+INSERT INTO test_bitmap_limit SELECT g, g % 2, g % 3 FROM GENERATE_SERIES(1, 5000) g;
+
+SELECT DISTINCT k FROM test_bitmap_limit WHERE a = 1 AND b = 2 ORDER BY k LIMIT 10;
+
+DROP TABLE test_bitmap_limit;
+
+RESET work_mem;
+RESET yb_enable_cbo;

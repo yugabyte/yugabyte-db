@@ -13,7 +13,9 @@
 
 #pragma once
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/typedefs.h"
 
 #include "yb/dockv/primitive_value.h"
@@ -29,6 +31,9 @@ struct ValueControlFields {
   // kResetTtl is useful for CQL when zero TTL indicates no TTL.
   static const MonoDelta kResetTtl;
   static const int64_t kInvalidTimestamp;
+  // Matches PostgreSQL's InvalidRepOriginId, so a write with no replication origin set encodes
+  // nothing rather than encoding "origin 0".
+  static constexpr uint32_t kInvalidSourceOrigin = 0;
 
   static const uint64_t kTtlFlag = 0x1;
 
@@ -45,8 +50,15 @@ struct ValueControlFields {
   // The timestamp assigned to this value, if it was externally specified.
   UserTimeMicros timestamp = kInvalidTimestamp;
 
+  // Used for conflict detection and resolution (CDR) in logical replication. source_origin tells us
+  // which replication origin last wrote this row version, and source_write_ht tells us when that
+  // write committed on the source. They are encoded together under a single kCdrMetadata marker:
+  // both are set for a replication apply and both are absent for writes that originate locally.
+  CdrMetadata cdr_metadata = {};
+
   void AppendEncoded(ValueBuffer* out) const;
   void AppendEncoded(std::string* out) const;
+  void AppendEncodedWithIntentDocHt(Slice intent_doc_ht, ValueBuffer* out) const;
   std::string ToString() const;
 
   // Decode value control fields, w/o decrypting actual value.
@@ -59,6 +71,12 @@ struct ValueControlFields {
 
   bool has_timestamp() const {
     return timestamp != kInvalidTimestamp;
+  }
+
+  // True if this row version was written by a replication apply rather than locally.
+  bool has_cdr_metadata() const {
+    return cdr_metadata.source_origin != kInvalidSourceOrigin &&
+           cdr_metadata.source_write_ht.is_valid();
   }
 };
 

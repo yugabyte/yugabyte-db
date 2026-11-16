@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -30,6 +31,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 
 @RunWith(value=YBParameterizedTestRunner.class)
+@Ignore("YEDIS is deprecated")
 public class TestYBJedisCluster extends BaseJedisTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYBJedis.class);
 

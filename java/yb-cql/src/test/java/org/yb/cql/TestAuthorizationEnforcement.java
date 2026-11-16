@@ -14,16 +14,10 @@ package org.yb.cql;
 
 import static org.yb.AssertionWrappers.*;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,249 +27,12 @@ import org.yb.YBTestRunner;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.SyntaxError;
 import com.datastax.driver.core.exceptions.UnauthorizedException;
-import com.google.common.io.Closeables;
 
 @RunWith(value=YBTestRunner.class)
-public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(org.yb.cql.TestRoles.class);
-
-  private static final long PERMISSIONS_CACHE_TIME_MS = 100;
-
-  // Time to sleep. Used to give the clients enough time to update their permissions cache.
-  // Used only when revoking a permission or altering the role to remove superuser property.
-  private static final long TIME_SLEEP_MS = PERMISSIONS_CACHE_TIME_MS * 4;
-
-  // Value that we insert into the table.
-  private static final int VALUE = 5;
-
-   // Session using 'cassandra' role.
-  protected ClusterAndSession cs;
-
-  // Session using the created role.
-  protected ClusterAndSession cs2;
-
-  protected String username;
-  protected String anotherUsername;
-  protected String password;
-  protected String keyspace;
-  protected String anotherKeyspace;
-  protected String table;
-  protected String anotherTable;
-
-  @Rule
-  public TestName testName = new TestName();
-
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("update_permissions_cache_msecs", String.valueOf(PERMISSIONS_CACHE_TIME_MS));
-    return flagMap;
-  }
-
-  @Before
-  public void setupAuth() throws Exception {
-    cs = connectWithTestDefaults();
-
-    String methodName = testName.getMethodName();
-    String suffix = Integer.toString(Math.abs(methodName.hashCode()));
-
-    username = "role_" + suffix;
-    password = "password_"+ suffix;
-    createRole(cs.getSession(), username, password, true, false, false);
-
-    cs2 = connectWithCredentials(username, password);
-
-    keyspace = "keyspace_" + suffix;
-    table = "table_" + suffix;
-
-    cs.execute("CREATE KEYSPACE " + keyspace);
-
-    anotherUsername = username + "_2";
-    anotherKeyspace = keyspace + "_2";
-    anotherTable = table + "_2";
-
-    if (methodName.startsWith("testGrantPermission") ||
-        methodName.startsWith("testRevokePermission") ||
-        methodName.startsWith("testGrantRole") ||
-        methodName.startsWith("testRevokeRole")) {
-      createRole(cs.getSession(), anotherUsername, password, true, false, false);
-    }
-  }
-
-  @After
-  public void cleanupAuth() throws Exception {
-    Closeables.close(cs, false);
-    Closeables.close(cs2, false);
-  }
-
-  private List<String> getAllPermissionsExcept(List<String> exceptions) {
-    List<String> permissions = new ArrayList<String>(ALL_PERMISSIONS);
-    permissions.removeAll(exceptions);
-    return permissions;
-  }
-
-  private void revokePermissionNoSleep(String permission, String resourceType, String resource,
-                                       String role) throws Exception {
-    cs.execute(String.format("REVOKE %s ON %s %s FROM %s",
-        permission, resourceType, resource, role));
-  }
-
-  protected void revokePermission(String permission, String resourceType, String resource,
-                                  String role) throws Exception {
-    revokePermissionNoSleep(permission, resourceType, resource, role);
-    Thread.sleep(TIME_SLEEP_MS);
-  }
-
-  protected void grantPermission(String permission, String resourceType, String resource,
-                                 String role) throws Exception {
-    grantPermission(cs.getSession(), permission, resourceType, resource, role);
-  }
-
-  protected void grantAllPermissionsExcept(List<String> exceptions, String resourceType,
-                                           String resource, String role) throws Exception {
-    List<String> permissions = getAllPermissionsExcept(exceptions);
-    for (String permission : permissions) {
-      grantPermission(permission, resourceType, resource, role);
-    }
-  }
-
-  protected void grantAllPermission(String resourceType, String resource, String role)
-      throws Exception {
-    grantPermission(ALL, resourceType, resource, role);
-  }
-
-  private void grantPermissionOnAllKeyspaces(String permission, String role) throws Exception {
-    grantPermission(permission, ALL_KEYSPACES, "", role);
-  }
-
-  protected void revokePermissionOnAllKeyspaces(String permission, String role) throws Exception {
-    revokePermission(permission, ALL_KEYSPACES, "", role);
-  }
-
-  private void grantPermissionOnAllRoles(String permission, String role) throws Exception {
-    grantPermission(permission, ALL_ROLES, "", role);
-  }
-
-  private void verifySomePermissionsGranted(String role, String resource) {
-    ResultSet rs = cs.execute(String.format(
-        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
-        role, resource));
-    assert(!rs.all().isEmpty());
-  }
-
-  private void verifyPermissionsDeleted(String role, String resource) {
-    ResultSet rs = cs.execute(String.format(
-        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
-        role, resource));
-    assert(rs.all().isEmpty());
-  }
-
-  private void verifyKeyspaceExists(String keyspaceName) throws Exception {
-    ResultSet rs = cs.execute(String.format(
-        "SELECT * FROM system_schema.keyspaces WHERE keyspace_name = '%s'", keyspaceName));
-    List<Row> list = rs.all();
-    assertEquals(1, list.size());
-  }
-
-  protected void createKeyspaceAndVerify(Session session, String keyspaceName) throws Exception {
-    session.execute("CREATE KEYSPACE " + keyspaceName);
-    verifyKeyspaceExists(keyspaceName);
-  }
-
-  private void deleteKeyspaceAndVerify(Session session, String keyspaceName) throws Exception {
-    verifyKeyspaceExists(keyspaceName);
-
-    session.execute("DROP KEYSPACE " + keyspaceName);
-
-    ResultSet rs = cs.execute(String.format(
-        "SELECT * FROM system_schema.keyspaces WHERE keyspace_name = '%s'", keyspaceName));
-    List<Row> list = rs.all();
-    assertEquals(0, list.size());
-  }
-
-  private void verifyTableExists(String keyspaceName, String tableName) {
-    // Verify that the table was created.
-    ResultSet rs = cs.execute(String.format(
-        "SELECT * FROM system_schema.tables WHERE keyspace_name = '%s' AND table_name = '%s'",
-        keyspaceName, tableName));
-
-    List<Row> list = rs.all();
-    assertEquals(1, list.size());
-  }
-
-  protected void createTableAndVerify(Session session, String keyspaceName, String tableName)
-      throws Exception {
-    // Now, username should be able to create the table.
-    session.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h))",
-        keyspaceName, tableName));
-
-    cs.execute("USE " + keyspaceName);
-    verifyTableExists(keyspaceName, tableName);
-  }
-
-  private void deleteTableAndVerify(Session session, String keyspaceName, String tableName)
-    throws Exception {
-    verifyTableExists(keyspaceName, tableName);
-    session.execute(String.format("DROP TABLE %s.%s ", keyspaceName, tableName));
-
-    ResultSet rs = cs.execute(String.format(
-        "SELECT * FROM system_schema.tables WHERE keyspace_name = '%s' AND table_name = '%s'",
-        keyspaceName, tableName));
-
-    List<Row> list = rs.all();
-    assertEquals(0, list.size());
-  }
-
-  private void verifyRow(Session session, String keyspaceName, String tableName, int expectedValue)
-      throws Exception {
-
-    ResultSet rs = session.execute(String.format("SELECT * FROM %s.%s", keyspaceName, table));
-    List<Row> rows = rs.all();
-    assertEquals(1, rows.size());
-    assertEquals(VALUE, rows.get(0).getInt("h"));
-    assertEquals(expectedValue, rows.get(0).getInt("v"));
-  }
-
-  private void selectAndVerify(Session session, String keyspaceName, String tableName)
-    throws Exception {
-    verifyRow(session, keyspaceName, tableName, VALUE);
-  }
-
-  private void insertRow(Session session, String keyspaceName, String tableName)
-    throws Exception {
-
-    session.execute(String.format("INSERT INTO %s.%s (h, v) VALUES (%d, %d)",
-        keyspaceName, tableName, VALUE, VALUE));
-
-    // We always verify by using the cassandra role.
-    selectAndVerify(cs.getSession(), keyspaceName, tableName);
-  }
-
-  private void updateRowAndVerify(Session session, String keyspaceName, String tableName)
-    throws Exception {
-
-    session.execute(String.format("UPDATE %s.%s SET v = %d WHERE h = %d",
-        keyspace, table, VALUE + 1, VALUE));
-
-    verifyRow(cs.getSession(), keyspaceName, tableName, VALUE + 1);
-  }
-
-  protected void truncateTableAndVerify(Session session, String keyspaceName, String tableName)
-      throws Exception {
-    cs2.execute(String.format("TRUNCATE %s.%s", keyspaceName, tableName));
-
-    ResultSet rs = cs.execute(String.format("SELECT * FROM %s.%s", keyspaceName, tableName));
-    assertEquals(0, rs.all().size());
-  }
-
-  protected void createTableAndInsertRecord(Session session, String keyspaceName, String tableName)
-      throws Exception {
-    createTableAndVerify(session, keyspaceName, tableName);
-    insertRow(session, keyspaceName, tableName);
-  }
+public class TestAuthorizationEnforcement extends BaseAuthorizationEnforcementTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestAuthorizationEnforcement.class);
 
   @Test
   public void testCreateKeyspaceWithoutPermissions() throws Exception {
@@ -845,14 +602,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
    */
 
   @Test
-  public void testTruncateStatementWithNoPermissions() throws Exception {
-    createTableAndInsertRecord(cs.getSession(), keyspace, table);
-
-    thrown.expect(UnauthorizedException.class);
-    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
-  }
-
-  @Test
   public void testTruncateStatementWithWrongPermissionsOnTable() throws Exception {
     createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
@@ -867,51 +616,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     createTableAndInsertRecord(cs.getSession(), keyspace, table);
 
     grantAllPermissionsExcept(Arrays.asList(DESCRIBE, MODIFY), KEYSPACE, keyspace, username);
-
-    thrown.expect(UnauthorizedException.class);
-    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
-  }
-
-  @Test
-  public void testTruncateStatementWithModifyPermissionOnDifferentTable() throws Exception {
-    createTableAndInsertRecord(cs.getSession(), keyspace, table);
-
-    createTableAndInsertRecord(cs.getSession(), keyspace, anotherTable);
-    grantPermission(MODIFY, TABLE, anotherTable, username);
-
-    thrown.expect(UnauthorizedException.class);
-    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
-  }
-
-  @Test
-  public void testTruncateStatementWithModifyPermissionOnDifferentKeyspace() throws Exception {
-    createTableAndInsertRecord(cs.getSession(), keyspace, table);
-
-    createKeyspaceAndVerify(cs.getSession(), anotherKeyspace);
-    grantPermission(MODIFY, KEYSPACE, anotherKeyspace, username);
-
-    thrown.expect(UnauthorizedException.class);
-    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
-  }
-
-  @Test
-  public void testTruncateStamentWithModifyPermissionOnTableToDifferentRole() throws Exception {
-    createTableAndInsertRecord(cs.getSession(), keyspace, table);
-
-    createRole(cs.getSession(), anotherUsername, password, true, false, false);
-    grantPermission(MODIFY, TABLE, table, anotherUsername);
-
-    thrown.expect(UnauthorizedException.class);
-    cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
-  }
-
-  @Test
-  public void testTruncateStatementWithModifyPermissionOnKeyspaceToDifferentRole()
-      throws Exception {
-    createTableAndInsertRecord(cs.getSession(), keyspace, table);
-
-    createRole(cs.getSession(), anotherUsername, password, true, false, false);
-    grantPermission(MODIFY, KEYSPACE, keyspace, anotherUsername);
 
     thrown.expect(UnauthorizedException.class);
     cs2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
