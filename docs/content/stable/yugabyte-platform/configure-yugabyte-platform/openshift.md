@@ -153,7 +153,7 @@ Create the provider as described in [Create OpenShift provider](#create-openshif
 1. Specify fields such as Region, Zone, and so on as you would normally.
 1. Set the **Cluster DNS Domain** to `clusterset.local`.
 1. Upload the correct **Kube Config** of the cluster.
-1. Set the **Pod Address Template** to `{pod_name}.<cluster name>.{service_name}.{namespace}.svc.{cluster_domain}`, where the <cluster name>` (the name you noted in [Prepare OpenShift clusters for MCS](#prepare-openshift-clusters-for-mcs)).
+1. Set the **Pod Address Template** to `{pod_name}.<cluster name>.{service_name}.{namespace}.svc.{cluster_domain}`, where `<cluster name>` is the name you noted in [Prepare OpenShift clusters for MCS](#prepare-openshift-clusters-for-mcs).
 1. Set the **Overrides** as follows:
 
    ```yaml
