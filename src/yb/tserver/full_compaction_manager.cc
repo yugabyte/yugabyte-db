@@ -134,6 +134,9 @@ void FullCompactionManager::CollectDocDBStats(
     const auto& tablet_id = peer->tablet_id();
     const auto& shared_tablet = peer->shared_tablet_maybe_null();
     if (shared_tablet && shared_tablet->metrics() != nullptr) {
+      if (auto* retention_policy = shared_tablet->RetentionPolicy()) {
+        retention_policy->RefreshAllowedHistoryCutoff();
+      }
       auto window_iter = tablet_stats_window_.emplace(
           tablet_id, KeyStatsSlidingWindow(check_interval_sec_)).first;
       const auto last_compact_time = shared_tablet->metadata()->last_full_compaction_time();
