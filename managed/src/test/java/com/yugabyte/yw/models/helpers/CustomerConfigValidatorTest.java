@@ -732,18 +732,19 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
 
   /**
    * Saved data that no longer parses, here with a field the current class does not have, does not
-   * fail the edit: the edit is validated like a new config.
+   * fail the edit with a parse error. The edit is validated like a new config instead, so a stored
+   * combination is not exempt then.
    */
   @Test
   public void testValidateDataContent_Storage_S3_EditOfUnparseableSavedDataIsValidatedAsNew() {
-    ObjectNode data = Json.newObject();
-    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
-    data.put("IAM_INSTANCE_PROFILE", true);
-    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    ObjectNode data = s3FederationWithKeys();
     ObjectNode savedData = data.deepCopy();
     savedData.put("REMOVED_FIELD", "value");
     CustomerConfig saved = saveWithoutValidation(NAME_S3, savedData);
-    customerConfigValidator.validateConfig(renamed(saved, data), saved);
+    CustomerConfig config = renamed(saved, data);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config, saved),
+        thrown(PlatformServiceException.class, containsString("cannot be used together with")));
   }
 
   /** A create is checked as a new config, even when its body carries a saved config's UUID. */
