@@ -847,12 +847,6 @@ qpmProcess(QueryDesc *queryDesc)
 			InstrEndLoop(queryDesc->totaltime);
 
 		/*
-		 * Computing the plan id caches strings on the plan, so it must run in
-		 * the plan's context, not in qpmContext.
-		 */
-		(void) ybGetPlanId(queryDesc->plannedstmt);
-
-		/*
 		 * The caller's context can outlive many executions (e.g. statements
 		 * in a SQL function live until the outer statement ends), so keep
 		 * QPM's scratch allocations out of it.

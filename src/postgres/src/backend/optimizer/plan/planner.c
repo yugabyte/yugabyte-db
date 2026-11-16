@@ -9846,9 +9846,19 @@ ybCalculatePlanId(PlannedStmt *plannedStmt)
 	 * If the plan id has not been computed, call the function to calculate it.
 	 * E.g., even if QPM is on, we would need to calculate the plan id if an
 	 * EXPLAIN requests it.
+	 *
+	 * The calculation caches relation and schema names on the plan's range
+	 * table entries, so allocate in the plan's context: callers may run in a
+	 * shorter-lived one (e.g. a portal executing a cached plan).
 	 */
 	if (plannedStmt->ybPlanId == 0)
+	{
+		MemoryContext oldContext;
+
+		oldContext = MemoryContextSwitchTo(GetMemoryChunkContext(plannedStmt));
 		ybCalculatePlanId(plannedStmt);
+		MemoryContextSwitchTo(oldContext);
+	}
 
 	return plannedStmt->ybPlanId;
  }
