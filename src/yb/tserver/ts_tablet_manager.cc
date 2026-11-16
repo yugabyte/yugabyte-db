@@ -643,7 +643,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
 
-  full_compaction_manager_ = std::make_unique<FullCompactionManager>(this);
+  full_compaction_manager_ = std::make_unique<FullCompactionManager>(
+      [this] { return GetTabletPeers(); }, server::ClockPtr(server_->clock()));
 
   tablet_options_.priority_thread_pool_metrics =
       std::make_shared<rocksdb::RocksDBPriorityThreadPoolMetrics>(
