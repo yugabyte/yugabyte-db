@@ -5,6 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { getGcsIamOptions } from './iamOptionsByHost';
 import './StorageConfiguration.scss';
 
 const required = (value) => {
@@ -40,10 +41,12 @@ class GcsStorageConfiguration extends Component {
       gcsFederatedIamEnabled,
       showFederatedIam,
       useGcpIam,
+      ybaHost
     } = this.props;
     // Federation runs on top of an instance identity - the payload sets USE_GCP_IAM either way -
     // so a pasted credentials JSON is unusable under both modes, not just GCP IAM.
     const usesInstanceIdentity = useGcpIam || gcsFederatedIamEnabled;
+    const hostOptions = getGcsIamOptions(ybaHost, isEdited, gcsFederatedIamEnabled);
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -100,7 +103,7 @@ class GcsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
-          {showFederatedIam && (
+          {showFederatedIam && hostOptions.showFederatedIam && (
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">Federated IAM</div>
