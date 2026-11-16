@@ -283,6 +283,28 @@ pub trait XreplHooks: Send + Sync {
         Ok(())
     }
 
+    /// A YSQL DDL on the table committed (`ClearXClusterFieldsAfterYsqlDDL`): what xCluster put in
+    /// the row for it is dropped, and rows of its own go in the same write.
+    fn xcluster_after_ddl(
+        &self,
+        _snapshot: &master_catalog_state::CatalogSnapshot,
+        _table_id: &[u8],
+        _table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
+        mutation: master_catalog_state::Mutation,
+    ) -> Result<master_catalog_state::Mutation, Status> {
+        Ok(mutation)
+    }
+
+    /// `IsNamespaceInAutomaticDDLMode`: the database replicates in automatic DDL mode, so a DDL
+    /// transaction's abort must also restore its tables' next column id.
+    fn is_automatic_ddl_mode(
+        &self,
+        _snapshot: &master_catalog_state::CatalogSnapshot,
+        _namespace_id: &[u8],
+    ) -> bool {
+        false
+    }
+
     /// Work a new table's tablets wait for before it runs (`GetPostTabletCreateTasks`): its
     /// xCluster streams and its place in inbound replication groups. False while it runs; an
     /// error leaves the table PREPARING and fails `IsCreateTableDone`.

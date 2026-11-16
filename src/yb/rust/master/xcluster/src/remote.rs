@@ -176,7 +176,7 @@ impl XCluster {
             MASTER_SERVICE,
             method,
             req,
-            deadline,
+            self.remote_call_deadline(deadline),
         )
         .await
     }

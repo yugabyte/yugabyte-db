@@ -380,6 +380,25 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         }
     }
 
+    fn xcluster_after_ddl(
+        &self,
+        snapshot: &CatalogSnapshot,
+        table_id: &[u8],
+        table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
+        mutation: master_catalog_state::Mutation,
+    ) -> Result<master_catalog_state::Mutation, Status> {
+        match self.extension.get() {
+            Some(x) => x.xcluster_after_ddl(snapshot, table_id, table, mutation),
+            None => Ok(mutation),
+        }
+    }
+
+    fn is_automatic_ddl_mode(&self, snapshot: &CatalogSnapshot, namespace_id: &[u8]) -> bool {
+        self.extension
+            .get()
+            .is_some_and(|x| x.is_automatic_ddl_mode(snapshot, namespace_id))
+    }
+
     fn retains_hidden_tablet(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> bool {
         self.retains_tablet(snapshot, tablet_id)
             || self

@@ -74,13 +74,6 @@ type GroupStatuses = BTreeMap<String, (String, BTreeMap<String, TabletStatus>)>;
 /// (group, consumer table, producer tablet).
 pub(crate) type StatusKey = (String, String, String);
 
-fn missing(req: &impl std::fmt::Debug) -> MasterErrorPB {
-    unknown(status(
-        StatusCode::InvalidArgument,
-        format!("Missing required fields in request: {req:?}"),
-    ))
-}
-
 impl XCluster {
     /// `SetupUniverseReplication`: validates, then sets up in the background.
     pub async fn setup_universe_replication(
@@ -97,12 +90,17 @@ impl XCluster {
         if !config.universe_uuid().is_empty() {
             resp.set_universe_uuid(config.universe_uuid().to_string());
         }
-        if req.replication_group_id().is_empty()
-            || req.producer_master_addresses.is_empty()
-            || req.producer_table_ids.is_empty()
-        {
-            return Err(missing(req));
-        }
+        crate::required(&[
+            (
+                "replication_group_id",
+                req.replication_group_id().is_empty(),
+            ),
+            (
+                "producer_master_addresses",
+                req.producer_master_addresses.is_empty(),
+            ),
+            ("producer_table_ids", req.producer_table_ids.is_empty()),
+        ])?;
         let mut data = SetupData {
             group_id: req.replication_group_id().to_string(),
             source_masters: req.producer_master_addresses.clone(),
@@ -209,9 +207,7 @@ impl XCluster {
         resp: &mut IsSetupUniverseReplicationDoneResponsePB,
     ) -> Result<(), MasterErrorPB> {
         let id = req.replication_group_id();
-        if id.is_empty() {
-            return Err(missing(req));
-        }
+        crate::required(&[("replication_group_id", id.is_empty())])?;
         let outcome = self.setup_done(id, false).map_err(unknown)?;
         match outcome {
             None => resp.set_done(false),
@@ -336,9 +332,7 @@ impl XCluster {
         resp: &mut GetUniverseReplicationInfoResponsePB,
     ) -> Result<(), MasterErrorPB> {
         let id = req.replication_group_id();
-        if id.is_empty() {
-            return Err(missing(req));
-        }
+        crate::required(&[("replication_group_id", id.is_empty())])?;
         let snapshot = self.catalog.snapshot();
         let (_, pb) = universe(&snapshot, id).ok_or_else(|| {
             unknown(status(
@@ -405,9 +399,10 @@ impl XCluster {
     ) -> Result<(), MasterErrorPB> {
         tracing::info!("SetUniverseReplicationEnabled: {:?}", req);
         let id = req.replication_group_id();
-        if id.is_empty() || !req.has_is_enabled() {
-            return Err(missing(req));
-        }
+        crate::required(&[
+            ("replication_group_id", id.is_empty()),
+            ("is_enabled", !req.has_is_enabled()),
+        ])?;
         let enabled = req.is_enabled();
         self.update_cluster_config(token, |config| {
             let entry = config
@@ -489,9 +484,7 @@ impl XCluster {
     ) -> Result<(), MasterErrorPB> {
         tracing::info!("DeleteUniverseReplication: {:?}", req);
         let id = req.replication_group_id();
-        if id.is_empty() {
-            return Err(missing(req));
-        }
+        crate::required(&[("replication_group_id", id.is_empty())])?;
         self.validate_universe_uuid(req.universe_uuid())
             .map_err(unknown)?;
         let running = self.setups.lock().unwrap().remove(id);
@@ -618,7 +611,7 @@ impl XCluster {
                 MASTER_SERVICE,
                 "DeleteCDCStream",
                 &req,
-                deadline,
+                self.remote_call_deadline(deadline),
             )
             .await;
             let mut outcome = result.and_then(crate::remote::check);
@@ -658,6 +651,10 @@ impl XCluster {
                     .await?;
             }
         }
+        if (self.options.exit_unfinished_deleting)() {
+            // Leaves the group DELETING, for a new leader to clean up.
+            return Ok(());
+        }
         self.writer
             .mutate(token, |snapshot| {
                 let Some(entity) =
@@ -679,6 +676,55 @@ impl XCluster {
             .retain(|(g, _, _), _| g != &id);
         tracing::info!("Processed delete universe replication of {id}");
         Ok(())
+    }
+
+    /// `ClearFailedUniverse`: a group a failed setup, alter or delete left behind (FAILED,
+    /// DELETED_ERROR, DELETING or an `.ALTER` group) is deleted with `ignore_errors`, one per pass
+    /// and once per term, as C++ does for those it found when it loaded the catalog.
+    pub(crate) async fn clear_failed_universes(&self, token: &LeaderToken) {
+        if (self.options.disable_universe_gc)() {
+            return;
+        }
+        let next = {
+            let mut to_clear = self.universes_to_clear.lock().unwrap();
+            if to_clear.0 != token.term() {
+                // Only what this term found at its start: a delete running now passes through
+                // DELETING too.
+                let found = self
+                    .catalog
+                    .snapshot()
+                    .iter(SysRowEntryType::UNIVERSE_REPLICATION)
+                    .filter_map(|e| e.parse::<SysUniverseReplicationEntryPB>().ok())
+                    .filter(|pb| {
+                        matches!(
+                            pb.state(),
+                            UniverseState::FAILED
+                                | UniverseState::DELETED_ERROR
+                                | UniverseState::DELETING
+                        ) || pb
+                            .replication_group_id()
+                            .ends_with(crate::setup::ALTER_SUFFIX)
+                    })
+                    .map(|pb| pb.replication_group_id().to_string())
+                    .collect();
+                *to_clear = (token.term(), found);
+            }
+            to_clear.1.pop_front()
+        };
+        let Some(id) = next else {
+            return;
+        };
+        let mut req = DeleteUniverseReplicationRequestPB::new();
+        req.set_replication_group_id(id.clone());
+        req.set_ignore_errors(true);
+        let mut resp = DeleteUniverseReplicationResponsePB::new();
+        let deadline = Instant::now() + (self.options.remote_timeout)();
+        if let Err(e) = self
+            .delete_universe_replication(token, deadline, &req, &mut resp)
+            .await
+        {
+            tracing::warn!("Failed Clearing Failed Universe {id}: {:?}", e.status);
+        }
     }
 
     /// `HandleExtensionOnDropReplication`: a switchover makes the namespace a source; otherwise

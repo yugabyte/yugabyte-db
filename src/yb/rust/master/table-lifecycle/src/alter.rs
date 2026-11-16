@@ -195,7 +195,12 @@ impl TableLifecycle {
                 if !req.has_wal_retention_secs() {
                     new.set_version(pb.version() + 1);
                     new.set_updates_only_index_permissions(false);
-                    crate::ysql::record_alter_in_ddl_txn(&pb, &mut new, req, is_pg);
+                    let automatic = is_pg
+                        && self
+                            .xrepl_hooks
+                            .get()
+                            .is_some_and(|h| h.is_automatic_ddl_mode(snapshot, pb.namespace_id()));
+                    crate::ysql::record_alter_in_ddl_txn(&pb, &mut new, req, is_pg, automatic);
                 }
                 new.state = Some(EnumOrUnknown::new(TableState::ALTERING));
                 new.set_state_msg(

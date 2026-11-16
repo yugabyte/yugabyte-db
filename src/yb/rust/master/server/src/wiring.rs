@@ -222,6 +222,9 @@ static ALLOW_YCQL_TRANSACTIONAL_XCLUSTER: FlagRef<bool> =
     FlagRef::new("TEST_allow_ycql_transactional_xcluster");
 static PAUSE_AT_START_OF_SETUP_MS: FlagRef<i32> =
     FlagRef::new("TEST_pause_at_start_of_setup_replication_group_ms");
+static EXIT_UNFINISHED_DELETING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_deleting");
+static DISABLE_UNIVERSE_GC: FlagRef<bool> = FlagRef::new("disable_universe_gc");
+static EXIT_UNFINISHED_MERGING: FlagRef<bool> = FlagRef::new("TEST_exit_unfinished_merging");
 static FAIL_UNIVERSE_REPLICATION_MERGE: FlagRef<bool> =
     FlagRef::new("TEST_fail_universe_replication_merge");
 static XCLUSTER_DISABLE_NEW_TABLE_PROCESSING: FlagRef<bool> =
@@ -248,6 +251,9 @@ static CRASH_AFTER_SPLIT_REGISTRATION: FlagRef<f64> =
     FlagRef::new("TEST_fault_crash_after_registering_split_children");
 static PITR_SPLIT_DISABLE_CHECK_FREQ_MS: FlagRef<i32> =
     FlagRef::new("pitr_split_disable_check_freq_ms");
+static CLEANUP_TABLES_FREQUENCY_SECS: FlagRef<i32> =
+    FlagRef::new("xcluster_cleanup_tables_frequency_secs");
+static DDL_TABLES_RETENTION_SECS: FlagRef<u32> = FlagRef::new("xcluster_ddl_tables_retention_secs");
 static XCLUSTER_SKIP_HEALTH_CHECK: FlagRef<bool> =
     FlagRef::new("xcluster_skip_health_check_on_replication_setup");
 static RETURN_LEGACY_REPLICATION_INFO: FlagRef<bool> =
@@ -389,6 +395,7 @@ static PAUSE_BEFORE_UPSERT_YSQL_SYS_TABLE: FlagRef<bool> =
 static NUM_ADVISORY_LOCKS_TABLETS: FlagRef<u32> = FlagRef::new("num_advisory_locks_tablets");
 static YSQL_ENABLE_AUTO_ANALYZE_INFRA: FlagRef<bool> =
     FlagRef::new("ysql_enable_auto_analyze_infra");
+static ENABLE_PG_CRON: FlagRef<bool> = FlagRef::new("enable_pg_cron");
 static HEARTBEAT_INTERVAL_MS: FlagRef<i32> = FlagRef::new("heartbeat_interval_ms");
 static PG_CATALOG_VERSIONS_CACHE_RETRY_MS: FlagRef<i32> =
     FlagRef::new("pg_catalog_versions_cache_retry_ms");
@@ -970,7 +977,9 @@ impl master_xcluster::RemoteMasters for HostRemoteMasters {
         req.set_service(service.to_string());
         req.set_method(method.to_string());
         req.set_request(request);
-        req.set_timeout_ms(timeout.as_millis().min(i64::MAX as u128) as i64);
+        // The RPC layer narrows the timeout to 32-bit milliseconds; a call with no deadline of its
+        // own would overflow it.
+        req.set_timeout_ms(timeout.as_millis().min(u128::from(u32::MAX - 1)) as i64);
         req.set_refresh_leader(refresh_leader);
         let host = self.host.clone();
         Box::pin(async move {
@@ -1379,7 +1388,14 @@ impl Core {
                 allow_ycql_transactional: || ALLOW_YCQL_TRANSACTIONAL_XCLUSTER.get(),
                 pause_at_start_of_setup: || millis(PAUSE_AT_START_OF_SETUP_MS.get().max(0)),
                 fail_universe_replication_merge: || FAIL_UNIVERSE_REPLICATION_MERGE.get(),
+                exit_unfinished_merging: || EXIT_UNFINISHED_MERGING.get(),
+                exit_unfinished_deleting: || EXIT_UNFINISHED_DELETING.get(),
+                disable_universe_gc: || DISABLE_UNIVERSE_GC.get(),
                 skip_health_check: || XCLUSTER_SKIP_HEALTH_CHECK.get(),
+                cleanup_tables_frequency: || CLEANUP_TABLES_FREQUENCY_SECS.get(),
+                ddl_tables_retention: || {
+                    Duration::from_secs(DDL_TABLES_RETENTION_SECS.get().into())
+                },
                 failover_task_timeout: || {
                     Duration::from_secs(FAILOVER_TASK_TIMEOUT_SECS.get().into())
                 },
@@ -1713,6 +1729,7 @@ fn start_term(
             YsqlSystemTablesOptions {
                 num_advisory_locks_tablets: || NUM_ADVISORY_LOCKS_TABLETS.get(),
                 auto_analyze: || YSQL_ENABLE_AUTO_ANALYZE_INFRA.get(),
+                pg_cron: || ENABLE_PG_CRON.get(),
             },
             Arc::new(move |snapshot| {
                 master_ysql_manager::upgrade::major_upgrade_in_progress(

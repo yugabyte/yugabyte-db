@@ -85,7 +85,10 @@ checkpoint tasks, dropped target tables leaving their groups, streams of old hid
 parents the target has finished with (released to the hidden-objects cleanup), AutoFlags
 revalidation every 5s, and the safe time: each namespace's minimum over its producer tablets in
 `system.xcluster_safe_time` (read and cleaned up through host calls), written to the
-`XCLUSTER_SAFE_TIME` row.
+`XCLUSTER_SAFE_TIME` row. It also deletes, once per term, the groups an interrupted setup,
+alter or delete left behind (FAILED, DELETED_ERROR, DELETING or `.ALTER`; C++
+`ClearFailedUniverse`), and every `xcluster_cleanup_tables_frequency_secs` it deletes old rows of
+the DDL replication tables in automatic-mode databases.
 
 ## Failover
 

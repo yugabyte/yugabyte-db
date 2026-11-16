@@ -431,7 +431,7 @@ impl XCluster {
                 MASTER_SERVICE,
                 "DeleteCDCStream",
                 &req,
-                deadline,
+                self.remote_call_deadline(deadline),
             )
             .await
             .and_then(crate::remote::check)

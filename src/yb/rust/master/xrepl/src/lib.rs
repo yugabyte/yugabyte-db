@@ -193,6 +193,22 @@ pub trait XreplExtension: Send + Sync {
         table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
     ) -> Result<(), Status>;
 
+    /// A YSQL DDL on the table committed (`ClearXClusterFieldsAfterYsqlDDL`).
+    fn xcluster_after_ddl(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        table_id: &[u8],
+        table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
+        mutation: master_catalog_state::Mutation,
+    ) -> Result<master_catalog_state::Mutation, Status>;
+
+    /// `IsNamespaceInAutomaticDDLMode`.
+    fn is_automatic_ddl_mode(
+        &self,
+        snapshot: &master_catalog_state::CatalogSnapshot,
+        namespace_id: &[u8],
+    ) -> bool;
+
     /// Whether a dropped table is hidden, not deleted, for xCluster streams.
     fn retains_dropped_table(
         &self,

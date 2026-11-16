@@ -114,6 +114,12 @@ pub struct XClusterOptions {
     pub pause_at_start_of_setup: fn() -> Duration,
     /// `TEST_fail_universe_replication_merge`.
     pub fail_universe_replication_merge: fn() -> bool,
+    /// `TEST_exit_unfinished_merging`: an alter reports success without merging.
+    pub exit_unfinished_merging: fn() -> bool,
+    /// `TEST_exit_unfinished_deleting`: a delete leaves the group DELETING.
+    pub exit_unfinished_deleting: fn() -> bool,
+    /// `disable_universe_gc`.
+    pub disable_universe_gc: fn() -> bool,
     /// `xcluster_failover_task_timeout_secs`: the steps before the restorations.
     pub failover_task_timeout: fn() -> Duration,
     /// `xcluster_failover_restoration_wait_secs`, per namespace.
@@ -132,6 +138,11 @@ pub struct XClusterOptions {
     pub failover_fail_create_snapshot: fn() -> bool,
     /// `TEST_xcluster_failover_fail_delete_replication`.
     pub failover_fail_delete_replication: fn() -> bool,
+    /// `xcluster_cleanup_tables_frequency_secs`: how often old DDL replication rows are deleted;
+    /// zero or less disables it.
+    pub cleanup_tables_frequency: fn() -> i32,
+    /// `xcluster_ddl_tables_retention_secs`.
+    pub ddl_tables_retention: fn() -> Duration,
     /// `xcluster_skip_health_check_on_replication_setup`.
     pub skip_health_check: fn() -> bool,
     /// `disable_xcluster_db_scoped_new_table_processing`: new tables are neither checkpointed on
@@ -183,7 +194,12 @@ impl Default for XClusterOptions {
             allow_ycql_transactional: || false,
             pause_at_start_of_setup: || Duration::ZERO,
             fail_universe_replication_merge: || false,
+            exit_unfinished_merging: || false,
+            exit_unfinished_deleting: || false,
+            disable_universe_gc: || false,
             skip_health_check: || false,
+            cleanup_tables_frequency: || 30 * 60,
+            ddl_tables_retention: || Duration::from_secs(7 * 24 * 60 * 60),
             failover_task_timeout: || Duration::from_secs(600),
             failover_restoration_wait: || Duration::from_secs(120),
             failover_restoration_poll_interval: || Duration::from_millis(1000),
@@ -264,6 +280,8 @@ pub struct XCluster {
     /// The failover running for each group and the term it runs in.
     pub(crate) failovers: Mutex<HashMap<String, i64>>,
     pub(crate) failover_snapshots: OnceLock<Arc<dyn failover::FailoverSnapshots>>,
+    /// The left-behind groups this term still has to clear, and the term (`universes_to_clear_`).
+    pub(crate) universes_to_clear: Mutex<(i64, std::collections::VecDeque<String>)>,
     /// Serializes `XClusterStopPersisting` and `XClusterStartPersisting`.
     pub(crate) persisting: tokio::sync::Mutex<()>,
 }
@@ -302,6 +320,7 @@ impl XCluster {
             persisting: tokio::sync::Mutex::new(()),
             new_schema_tasks: Mutex::default(),
             failovers: Mutex::default(),
+            universes_to_clear: Mutex::new((-1, Default::default())),
             failover_snapshots: OnceLock::new(),
         })
     }
@@ -351,6 +370,18 @@ pub(crate) fn status_of(e: &MasterErrorPB) -> Status {
         StatusCode::from_i32(protobuf::Enum::value(&e.status.code())),
         e.status.message().to_string(),
     )
+}
+
+/// `SCHECK_PB_FIELDS_NOT_EMPTY`: the named fields that are empty, in C++'s words.
+pub(crate) fn required(fields: &[(&str, bool)]) -> Result<(), MasterErrorPB> {
+    let empty: Vec<&str> = fields.iter().filter(|(_, e)| *e).map(|(n, _)| *n).collect();
+    if empty.is_empty() {
+        return Ok(());
+    }
+    Err(unknown(status(
+        StatusCode::InvalidArgument,
+        format!("Empty required arguments: [{}]", empty.join(", ")),
+    )))
 }
 
 /// `StatusToPB`.

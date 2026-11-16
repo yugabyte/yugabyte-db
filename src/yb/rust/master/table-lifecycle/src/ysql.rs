@@ -91,6 +91,7 @@ pub(crate) fn record_alter_in_ddl_txn(
     new: &mut SysTablesEntryPB,
     req: &yb_proto::pb::master_ddl::AlterTableRequestPB,
     is_pg: bool,
+    automatic_ddl_mode: bool,
 ) {
     if !req.ysql_yb_ddl_rollback_enabled() {
         if !new.ysql_ddl_txn_verifier_state.is_empty() {
@@ -113,6 +114,11 @@ pub(crate) fn record_alter_in_ddl_txn(
         let mut state = YsqlDdlTxnVerifierStatePB::new();
         state.previous_schema = old.schema.clone();
         state.set_previous_table_name(String::from_utf8_lossy(old.name()).into_owned());
+        // An abort restores it, so a failed ADD COLUMN on an xCluster source leaves the next
+        // column id where the target's is: they must assign the same ids.
+        if automatic_ddl_mode {
+            state.set_previous_next_column_id(old.next_column_id());
+        }
         if req.has_sub_transaction_id() {
             state.set_sub_transaction_id(sub);
         }
@@ -314,11 +320,6 @@ impl TableLifecycle {
             .clone()
             .into_option()
             .ok_or_else(|| corrupt("The host did not build the table's row"))?;
-        if let Some(hooks) = self.xrepl_hooks.get() {
-            hooks
-                .xcluster_create_table(&snapshot, req, &mut table)
-                .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
-        }
         // An index starts at WRITE_AND_DELETE until PG asks for its backfill, and keeps delete
         // markers until the backfill is done; without a backfill it is ready at once.
         let backfill = indexed_table_id.is_some()
@@ -506,6 +507,13 @@ impl TableLifecycle {
                         )
                     })?;
                     join_colocation_group(snapshot, &self.options, req, parent, &mut table)?;
+                }
+                // `ProcessCreateTableReq`: after the table has its colocation id, which picks
+                // the historical packings of a colocated table on an automatic-mode target.
+                if let Some(hooks) = self.xrepl_hooks.get() {
+                    hooks
+                        .xcluster_create_table(snapshot, req, &mut table)
+                        .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
                 }
                 let mut mutation = Mutation::new().read(&namespace);
                 // A dropped table's DELETED row with this id is replaced.
@@ -713,7 +721,11 @@ impl TableLifecycle {
             }
             Ok((mutation, ()))
         })
-        .await
+        .await?;
+        // Where C++ stops a test after writing the drop and before its other steps.
+        self.sync_point("DeleteTableInternal::FailAfterTableMarkedInSysCatalog")
+            .await;
+        Ok(())
     }
 
     /// `ReportYsqlDdlTxnStatus`: the DDL transaction ended; each table it changed keeps or undoes
@@ -830,7 +842,16 @@ impl TableLifecycle {
                 }
                 pb.ysql_ddl_txn_verifier_state.clear();
                 pb.transaction = Default::default();
-                let mutation = Mutation::new()
+                let mut mutation = Mutation::new();
+                // Retries of a failed DDL still need what xCluster put in the row.
+                if committed {
+                    if let Some(hooks) = self.xrepl_hooks.get() {
+                        mutation = hooks
+                            .xcluster_after_ddl(snapshot, table_id, &mut pb, mutation)
+                            .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;
+                    }
+                }
+                let mutation = mutation
                     .read(table)
                     .upsert_message(SysRowEntryType::TABLE, table_id, &pb)
                     .map_err(|s| error(Code::UNKNOWN_ERROR, s.code, s.message))?;

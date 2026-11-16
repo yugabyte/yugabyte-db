@@ -25,7 +25,7 @@ use master_leadership::LeaderToken;
 use protobuf::MessageField;
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::catalog_entity_info::SysTablesEntryPB;
+use yb_proto::pb::catalog_entity_info::{SysTablesEntryPB, SysUniverseReplicationEntryPB};
 use yb_proto::pb::common::SchemaPB;
 use yb_proto::pb::master_replication::{
     HandleNewSchemaForAutomaticXClusterTargetRequestPB,
@@ -49,13 +49,6 @@ use crate::{corrupt, status, unknown, XCluster};
 /// `kColocationIdNotSet`.
 const NOT_COLOCATED: u32 = 0;
 const POLL: Duration = Duration::from_millis(200);
-
-fn missing(req: &impl std::fmt::Debug) -> MasterErrorPB {
-    unknown(status(
-        StatusCode::InvalidArgument,
-        format!("Missing required fields in request: {req:?}"),
-    ))
-}
 
 /// `GetTablegroupIdFromParentTableId`.
 fn tablegroup_of(parent: &str) -> &str {
@@ -226,9 +219,7 @@ impl XCluster {
         req: &InsertPackedSchemaForXClusterTargetRequestPB,
     ) -> Result<(), MasterErrorPB> {
         tracing::info!("InsertPackedSchemaForXClusterTarget: {:?}", req);
-        if req.table_id().is_empty() {
-            return Err(missing(req));
-        }
+        crate::required(&[("table_id", req.table_id().is_empty())])?;
         let mut table_id = String::from_utf8_lossy(req.table_id()).into_owned();
         if master_table_lifecycle::lookup::is_colocation_parent_table_id(table_id.as_bytes()) {
             if !req.has_colocation_id() {
@@ -273,14 +264,19 @@ impl XCluster {
         token: &LeaderToken,
         req: &HandleNewSchemaForAutomaticXClusterTargetRequestPB,
     ) -> Result<(), MasterErrorPB> {
-        if req.table_id().is_empty()
-            || req.replication_group_id().is_empty()
-            || req.stream_id().is_empty()
-            || !req.has_producer_schema_version()
-            || req.schema.is_none()
-        {
-            return Err(missing(req));
-        }
+        crate::required(&[
+            (
+                "replication_group_id",
+                req.replication_group_id().is_empty(),
+            ),
+            ("stream_id", req.stream_id().is_empty()),
+            ("table_id", req.table_id().is_empty()),
+            (
+                "producer_schema_version",
+                !req.has_producer_schema_version(),
+            ),
+            ("schema", req.schema.is_none()),
+        ])?;
         let group = req.replication_group_id().to_string();
         let stream_id = master_xrepl::parse_stream_id(req.stream_id().as_bytes())?;
         let mut table_id = String::from_utf8_lossy(req.table_id()).into_owned();
@@ -631,14 +627,19 @@ impl XCluster {
         resp: &mut InsertHistoricalColocatedSchemaPackingResponsePB,
     ) -> Result<(), MasterErrorPB> {
         tracing::info!("InsertHistoricalColocatedSchemaPacking: {:?}", req);
-        if req.replication_group_id().is_empty()
-            || req.target_parent_table_id().is_empty()
-            || !req.has_colocation_id()
-            || !req.has_source_schema_version()
-            || req.schema.is_none()
-        {
-            return Err(missing(req));
-        }
+        crate::required(&[
+            (
+                "replication_group_id",
+                req.replication_group_id().is_empty(),
+            ),
+            (
+                "target_parent_table_id",
+                req.target_parent_table_id().is_empty(),
+            ),
+            ("colocation_id", !req.has_colocation_id()),
+            ("source_schema_version", !req.has_source_schema_version()),
+            ("schema", req.schema.is_none()),
+        ])?;
         let parent = req.target_parent_table_id();
         if !master_table_lifecycle::lookup::is_colocation_parent_table_id(parent.as_bytes()) {
             return Err(unknown(status(
@@ -779,6 +780,139 @@ impl XCluster {
         Ok(())
     }
 
+    /// `ClearXClusterFieldsAfterYsqlDDL`: the table's `xcluster_table_info` goes (an index keeps
+    /// its backfill time until its backfill succeeds), and for a colocated table so do its
+    /// historical packings in the inbound group (`CleanupColocatedTableHistoricalSchemaPackings`).
+    /// C++ also marks the table's WAL anchor stream for deletion here; WAL anchors on a target
+    /// are not handled yet.
+    pub(crate) fn clear_after_ddl(
+        &self,
+        snapshot: &CatalogSnapshot,
+        table_id: &[u8],
+        table: &mut SysTablesEntryPB,
+        mut mutation: Mutation,
+    ) -> Result<Mutation, Status> {
+        if table.xcluster_table_info.is_none() {
+            return Ok(mutation);
+        }
+        let secondary = table.colocated()
+            && !master_table_lifecycle::lookup::is_colocation_parent_table_id(table_id);
+        if secondary {
+            let ns = String::from_utf8_lossy(table.namespace_id()).into_owned();
+            let colocation_id = table.schema.colocated_table_id.colocation_id();
+            for entity in snapshot.iter(SysRowEntryType::UNIVERSE_REPLICATION) {
+                let Ok(mut pb) = entity.parse::<SysUniverseReplicationEntryPB>() else {
+                    continue;
+                };
+                if !crate::setup::includes_consumer_namespace(&pb, &ns) {
+                    continue;
+                }
+                let erased = pb
+                    .db_scoped_info
+                    .mut_or_insert_default()
+                    .target_namespace_infos
+                    .get_mut(&ns)
+                    .and_then(|i| {
+                        i.colocated_historical_schema_packings
+                            .remove(&colocation_id)
+                    })
+                    .is_some();
+                if erased {
+                    mutation = mutation.read(entity).upsert_message(
+                        SysRowEntryType::UNIVERSE_REPLICATION,
+                        &entity.key.id,
+                        &pb,
+                    )?;
+                }
+                // Only one automatic-mode group has the namespace.
+                break;
+            }
+        }
+        let info = table.xcluster_table_info.mut_or_insert_default();
+        if !table.index_info.indexed_table_id().is_empty()
+            && info.has_xcluster_backfill_hybrid_time()
+        {
+            info.clear_xcluster_source_table_id();
+            info.xcluster_colocated_old_schema_packings.clear();
+        } else {
+            table.xcluster_table_info = protobuf::MessageField::none();
+        }
+        Ok(mutation)
+    }
+
+    /// `ProcessCleanupTablesPeriodically`: in each automatic-mode database, rows of `ddl_queue`
+    /// (on a source) and `replicated_ddls` older than `xcluster_ddl_tables_retention_secs` are
+    /// deleted, best effort and in the background.
+    pub(crate) fn clean_up_ddl_tables(&self) {
+        let snapshot = self.catalog.snapshot();
+        let Some(this) = self.me.upgrade() else {
+            return;
+        };
+        let outbound = crate::outbound::groups(&snapshot);
+        for ns in snapshot.iter(SysRowEntryType::NAMESPACE) {
+            let running = ns
+                .parse::<yb_proto::pb::catalog_entity_info::SysNamespaceEntryPB>()
+                .is_ok_and(|n| {
+                    n.state()
+                        == yb_proto::pb::catalog_entity_info::sys_namespace_entry_pb::State::RUNNING
+                });
+            if !running {
+                continue;
+            }
+            let id = String::from_utf8_lossy(&ns.key.id).into_owned();
+            let is_source = outbound
+                .iter()
+                .any(|(_, g)| g.automatic_ddl_mode() && g.namespace_infos.contains_key(&id));
+            let is_target = self.is_automatic_mode_target(&snapshot, &id);
+            if !(is_source || is_target) {
+                continue;
+            }
+            let Ok(name) = XCluster::namespace_name(&snapshot, &id) else {
+                continue;
+            };
+            // C++ prints the flags as 0 or 1; tests wait for this line.
+            tracing::info!(
+                "Attempting to clean up DDL replication tables for namespace {name}; is_source: \
+                 {} is_target: {}",
+                u8::from(is_source),
+                u8::from(is_target)
+            );
+            let retention = (self.options.ddl_tables_retention)();
+            let too_old = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .saturating_sub(retention)
+                .as_micros();
+            let mut statements = Vec::new();
+            if is_source {
+                // Fails if the database became a target since: the mode may switch first.
+                statements.push(format!(
+                    "DELETE FROM yb_xcluster_ddl_replication.ddl_queue WHERE ddl_end_time < \
+                     {too_old};"
+                ));
+            }
+            statements.push("SET yb_non_ddl_txn_for_sys_tables_allowed = 1;".to_string());
+            // The special row (query_id 1) and rows still in ddl_queue stay.
+            statements.push(format!(
+                "DELETE FROM yb_xcluster_ddl_replication.replicated_ddls WHERE \
+                 replicated_ddls.ddl_end_time < {too_old} AND \
+                 yb_xcluster_ddl_replication.replicated_ddls.query_id != 1 AND NOT EXISTS ( \
+                 SELECT 1 FROM yb_xcluster_ddl_replication.ddl_queue WHERE \
+                 ddl_queue.ddl_end_time = replicated_ddls.ddl_end_time AND \
+                 ddl_queue.query_id = replicated_ddls.query_id );"
+            ));
+            let this = this.clone();
+            tokio::spawn(async move {
+                if let Err(s) = this.execute_pgsql(&name, &statements).await {
+                    tracing::warn!(
+                        "Error cleaning up xCluster DDL replication tables for namespace {name}: \
+                         {s}"
+                    );
+                }
+            });
+        }
+    }
+
     /// `IsTableReplicated`: an xCluster stream out of the table or into it.
     fn is_table_replicated(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
         if !crate::controller::outbound_streams(snapshot, table_id).is_empty() {
@@ -796,7 +930,11 @@ impl XCluster {
 
     /// `IsNamespaceInAutomaticDDLMode`: every outbound group with the namespace, or every inbound
     /// one, is in automatic mode.
-    fn is_namespace_in_automatic_mode(&self, snapshot: &CatalogSnapshot, ns: &str) -> bool {
+    pub(crate) fn is_namespace_in_automatic_mode(
+        &self,
+        snapshot: &CatalogSnapshot,
+        ns: &str,
+    ) -> bool {
         let outbound: Vec<bool> = crate::outbound::groups(snapshot)
             .into_iter()
             .filter(|(_, g)| g.namespace_infos.contains_key(ns))

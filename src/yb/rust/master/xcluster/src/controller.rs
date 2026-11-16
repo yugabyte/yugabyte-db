@@ -108,6 +108,20 @@ impl XreplExtension for XCluster {
         self.process_create_table(snapshot, req, table)
     }
 
+    fn xcluster_after_ddl(
+        &self,
+        snapshot: &CatalogSnapshot,
+        table_id: &[u8],
+        table: &mut SysTablesEntryPB,
+        mutation: master_catalog_state::Mutation,
+    ) -> Result<master_catalog_state::Mutation, Status> {
+        self.clear_after_ddl(snapshot, table_id, table, mutation)
+    }
+
+    fn is_automatic_ddl_mode(&self, snapshot: &CatalogSnapshot, namespace_id: &[u8]) -> bool {
+        self.is_namespace_in_automatic_mode(snapshot, &String::from_utf8_lossy(namespace_id))
+    }
+
     /// `PopulateTabletDeleteRetainerInfoForTableDrop`: only a colocation parent of colocated
     /// tables is replicated.
     fn retains_dropped_table(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
@@ -167,6 +181,7 @@ pub struct XClusterController {
     xcluster: Arc<XCluster>,
     last_safe_time: std::sync::Mutex<Option<tokio::time::Instant>>,
     last_auto_flags_check: std::sync::Mutex<Option<tokio::time::Instant>>,
+    last_ddl_tables_cleanup: std::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 impl XClusterController {
@@ -176,6 +191,7 @@ impl XClusterController {
             xcluster,
             last_safe_time: Default::default(),
             last_auto_flags_check: Default::default(),
+            last_ddl_tables_cleanup: Default::default(),
         })
     }
 }
@@ -196,6 +212,7 @@ impl Controller for XClusterController {
                 return;
             };
             x.start_checkpoint_tasks(&token);
+            x.clear_failed_universes(&token).await;
             if let Err(status) = x.cleanup_stale_failovers(&token).await {
                 tracing::warn!("Failed to clean up stale in-progress failovers: {status}");
             }
@@ -217,6 +234,14 @@ impl Controller for XClusterController {
                 *self.last_auto_flags_check.lock().unwrap() = Some(tokio::time::Instant::now());
                 if let Err(status) = x.revalidate_local_auto_flags(&token).await {
                     tracing::warn!("Failed refreshing local AutoFlags config: {status}");
+                }
+            }
+            let frequency = (x.options.cleanup_tables_frequency)();
+            if frequency > 0 {
+                let mut last = self.last_ddl_tables_cleanup.lock().unwrap();
+                if last.is_none_or(|t| t.elapsed() >= Duration::from_secs(frequency as u64)) {
+                    *last = Some(tokio::time::Instant::now());
+                    x.clean_up_ddl_tables();
                 }
             }
             if let Err(status) = x.process_split_parents().await {

@@ -1084,6 +1084,27 @@ mod ysql {
         txn
     }
 
+    /// In automatic-mode xCluster an abort restores the next column id, so the alter's DDL state
+    /// records it; otherwise, as in C++, it does not.
+    #[test]
+    fn an_alter_records_the_next_column_id_only_in_automatic_mode() {
+        let mut old = SysTablesEntryPB::new();
+        old.set_next_column_id(5);
+        let mut req = AlterTableRequestPB::new();
+        req.transaction = Some(txn(1)).into();
+        req.set_ysql_yb_ddl_rollback_enabled(true);
+        for automatic in [true, false] {
+            let mut new = old.clone();
+            new.set_next_column_id(6);
+            crate::ysql::record_alter_in_ddl_txn(&old, &mut new, &req, true, automatic);
+            let state = &new.ysql_ddl_txn_verifier_state[0];
+            assert_eq!(state.has_previous_next_column_id(), automatic);
+            if automatic {
+                assert_eq!(state.previous_next_column_id(), 5);
+            }
+        }
+    }
+
     impl Harness {
         async fn create_ysql(
             &self,

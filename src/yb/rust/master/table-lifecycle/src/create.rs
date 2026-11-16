@@ -885,6 +885,8 @@ pub struct YsqlSystemTablesOptions {
     pub num_advisory_locks_tablets: fn() -> u32,
     /// `ysql_enable_auto_analyze_infra`.
     pub auto_analyze: fn() -> bool,
+    /// `enable_pg_cron`.
+    pub pg_cron: fn() -> bool,
 }
 
 /// `GetStatefulServiceTableName`: the table of a stateful service, in the system namespace.
@@ -962,6 +964,21 @@ impl YsqlSystemTablesController {
         req
     }
 
+    fn pg_cron_leader(&self) -> CreateTableRequestPB {
+        let kind = StatefulServiceKind::PG_CRON_LEADER;
+        let mut req = Self::system_table(&stateful_service_table_name(kind), 1);
+        req.hosted_stateful_services.push(EnumOrUnknown::new(kind));
+        // A generic schema, extended later by the service.
+        let schema = req.schema.mut_or_insert_default();
+        schema
+            .columns
+            .push(Self::column("id", PersistentDataType::INT64, true));
+        schema
+            .columns
+            .push(Self::column("data", PersistentDataType::JSONB, false));
+        req
+    }
+
     fn auto_analyze(&self) -> CreateTableRequestPB {
         let kind = StatefulServiceKind::PG_AUTO_ANALYZE;
         let mut req = Self::system_table(&stateful_service_table_name(kind), 1);
@@ -982,6 +999,16 @@ impl YsqlSystemTablesController {
         }
         req
     }
+}
+
+/// Whether pg_cron's `cron.job` table exists in some database.
+fn has_pg_cron_job_table(snapshot: &CatalogSnapshot) -> bool {
+    snapshot.iter(SysRowEntryType::TABLE).any(|t| {
+        t.table()
+            .is_some_and(|h| h.name == "job" && h.table_type == TableType::PGSQL_TABLE_TYPE.value())
+            && t.parse::<SysTablesEntryPB>()
+                .is_ok_and(|pb| pb.schema.DEPRECATED_pgschema_name() == "cron")
+    })
 }
 
 impl Controller for YsqlSystemTablesController {
@@ -1015,6 +1042,11 @@ impl Controller for YsqlSystemTablesController {
             let mut wanted = vec![self.advisory_locks()];
             if (self.options.auto_analyze)() {
                 wanted.push(self.auto_analyze());
+            }
+            // `CreatePgCronService`: C++ creates it when `cron.job` is created (IsPgCronJobTable,
+            // whose fallback matches the name and PG schema as here).
+            if (self.options.pg_cron)() && has_pg_cron_job_table(&snapshot) {
+                wanted.push(self.pg_cron_leader());
             }
             wanted.retain(|req| {
                 snapshot

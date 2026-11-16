@@ -68,6 +68,15 @@ impl XCluster {
             let mut result = this.add_new_table(&table_id).await;
             if result.is_ok() {
                 result = this.add_table_to_target(&token, &table_id).await;
+                // C++'s MultiStepMonitoredTask words; tests wait for these lines.
+                let task = String::from_utf8_lossy(&table_id);
+                if let Err(s) = &result {
+                    tracing::warn!("AddTableToXClusterTargetTask [{task}]: Task failed: {s}");
+                }
+                tracing::info!(
+                    "AddTableToXClusterTargetTask [{task}]: Task ended{}",
+                    if result.is_ok() { " successfully" } else { "" }
+                );
             }
             if let Some(entry) = this.post_create.lock().unwrap().get_mut(&table_id) {
                 if entry.0 == token.term() {
@@ -175,6 +184,19 @@ impl XCluster {
             let pb = table_pb(&snapshot, table_id)
                 .ok_or_else(|| status(StatusCode::NotFound, "Table not found"))?;
             let ns = String::from_utf8_lossy(pb.namespace_id()).into_owned();
+            // A test makes the task hang here (`abandon_task`).
+            if self
+                .xrepl
+                .fail_at("AddTableToXClusterTargetTask::RunInternal::BeforeBootstrap")
+                .await
+                .is_err()
+            {
+                tracing::warn!(
+                    "AddTableToXClusterTargetTask [{}]: Task will be stuck",
+                    String::from_utf8_lossy(table_id)
+                );
+                std::future::pending::<()>().await;
+            }
             if universe.db_scoped_info.namespace_infos.is_empty() {
                 self.add_index_to_table_group(token, &universe, table_id, &pb, &ns)
                     .await?;
@@ -287,10 +309,14 @@ impl XCluster {
                         result?;
                         break;
                     }
-                    None => tokio::time::sleep(POLL).await,
+                    None => {
+                        self.check_table_open(table_id)?;
+                        tokio::time::sleep(POLL).await
+                    }
                 }
             }
-            self.wait_for_safe_time_to_cover(token, &ns).await?;
+            self.wait_for_safe_time_to_cover(token, table_id, &ns)
+                .await?;
             tracing::info!(
                 "Table {} successfully added to xCluster universe replication",
                 String::from_utf8_lossy(table_id)
@@ -403,10 +429,13 @@ impl XCluster {
                     result?;
                     break;
                 }
-                None => tokio::time::sleep(POLL).await,
+                None => {
+                    self.check_table_open(table_id)?;
+                    tokio::time::sleep(POLL).await
+                }
             }
         }
-        self.wait_for_safe_time_past(token, ns, bootstrap_time)
+        self.wait_for_safe_time_past(token, table_id, ns, bootstrap_time)
             .await?;
         tracing::info!(
             "Table {} successfully added to xCluster universe replication",
@@ -420,9 +449,25 @@ impl XCluster {
     async fn wait_for_safe_time_to_cover(
         &self,
         token: &LeaderToken,
+        table_id: &[u8],
         ns: &str,
     ) -> Result<(), Status> {
-        self.wait_for_safe_time_past(token, ns, 0).await
+        self.wait_for_safe_time_past(token, table_id, ns, 0).await
+    }
+
+    /// The task ends once its table is dropped (C++ aborts a closing table's tasks).
+    fn check_table_open(&self, table_id: &[u8]) -> Result<(), Status> {
+        // A dropped table that xCluster retains is hidden rather than deleted.
+        let open = self
+            .catalog
+            .snapshot()
+            .get(SysRowEntryType::TABLE, table_id)
+            .is_some_and(|t| master_table_lifecycle::lookup::is_visible_to_client(t));
+        if open {
+            Ok(())
+        } else {
+            Err(status(StatusCode::Aborted, "Table closing"))
+        }
     }
 
     /// Waits until the namespace's safe time without `ddl_queue` passes both where it is now and
@@ -430,6 +475,7 @@ impl XCluster {
     async fn wait_for_safe_time_past(
         &self,
         token: &LeaderToken,
+        table_id: &[u8],
         ns: &str,
         at_least: u64,
     ) -> Result<(), Status> {
@@ -451,16 +497,25 @@ impl XCluster {
         } else {
             at_least
         };
+        let mut last_log: Option<Instant> = None;
         loop {
+            self.check_table_open(table_id)?;
             tokio::time::sleep(POLL).await;
             self.compute_safe_time(token).await?;
+            // Dropping the table takes it out of the safe time too, which then moves; the task
+            // must not report the dropped table added.
+            self.check_table_open(table_id)?;
             match get() {
                 None => return Ok(()),
                 Some(ht) if crate::safe_time::is_valid(ht) && ht > initial => return Ok(()),
                 Some(ht) => {
-                    tracing::debug!(
-                        "Waiting for xCluster safe time {ht} to advance beyond {initial}"
-                    );
+                    // At WARNING every 10s, as C++ logs it; tests wait for this line.
+                    if last_log.is_none_or(|t: Instant| t.elapsed() >= Duration::from_secs(10)) {
+                        last_log = Some(Instant::now());
+                        tracing::warn!(
+                            "Waiting for xCluster safe time {ht} to advance beyond {initial}"
+                        );
+                    }
                 }
             }
         }

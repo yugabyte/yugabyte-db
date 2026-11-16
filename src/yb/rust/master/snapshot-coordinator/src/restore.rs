@@ -759,6 +759,11 @@ impl SnapshotCoordinator {
         };
         let complete_time = self.host.now()?;
         let schedule_id = row.schedule_id().to_vec();
+        // C++'s words; tests wait for this line.
+        tracing::info!(
+            "Marking restoration {} as complete in sys catalog",
+            ids::to_string(&id)
+        );
         let (pb, _) = self
             .writer
             .mutate_with(

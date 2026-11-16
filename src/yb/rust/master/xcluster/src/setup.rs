@@ -463,13 +463,20 @@ impl XCluster {
             MASTER_SERVICE,
             method,
             req,
-            deadline,
+            self.remote_call_deadline(deadline),
         )
         .await
     }
 
     fn remote_deadline(&self) -> Instant {
         Instant::now() + (self.options.remote_timeout)()
+    }
+
+    /// A call to the other universe ends by `deadline` and, as the C++ remote client's calls
+    /// do, within `cdc_read_rpc_timeout_ms`: an unreachable universe fails it rather than
+    /// holding the RPC until its own deadline.
+    pub(crate) fn remote_call_deadline(&self, deadline: Instant) -> Instant {
+        deadline.min(self.remote_deadline())
     }
 
     /// `XClusterTableSetupTask`: the target table, the source stream and the tablet mapping.
@@ -1173,6 +1180,12 @@ impl XCluster {
                         "Merging xCluster ReplicationGroup: {} into {original}",
                         data.group_id
                     );
+                    if (self.options.exit_unfinished_merging)() {
+                        tracing::info!(
+                            "Completed successfully due to FLAGS_TEST_exit_unfinished_merging"
+                        );
+                        return Ok((Mutation::new(), ()));
+                    }
                 } else {
                     if producer_map.contains_key(&original) {
                         return Err(status(
