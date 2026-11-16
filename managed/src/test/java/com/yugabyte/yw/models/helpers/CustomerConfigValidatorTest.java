@@ -818,6 +818,29 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
   }
 
+  /**
+   * A config saved with a JSON key and USE_GCP_IAM is exempt from the key-with-IAM rule, but an
+   * edit that turns on federation is rejected: the DB nodes would still use the key.
+   */
+  @Test
+  public void testValidateDataContent_Storage_GCS_EditAddingFederationToJsonWithGcpIamIsRejected() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_GCP_IAM", true);
+    CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
+    ObjectNode edited = data.deepCopy();
+    edited.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig config = renamed(saved, edited);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config, saved),
+        thrown(
+            PlatformServiceException.class,
+            containsString(
+                "USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of"
+                    + " GCS_CREDENTIALS_JSON.")));
+  }
+
   private static ObjectNode gcsFederationWithJson() {
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, "gs://test");

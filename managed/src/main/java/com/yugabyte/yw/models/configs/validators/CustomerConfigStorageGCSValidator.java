@@ -54,7 +54,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
   /**
    * A config saved with both a JSON key and {@code USE_GCP_IAM}, or with federation and a JSON key,
    * was accepted before these rules. It keeps taking edits such as a rename while it keeps that
-   * combination.
+   * combination. Turning on federation for a config with a JSON key is not exempt.
    */
   @Override
   public void validate(CustomerConfigData data, @Nullable CustomerConfigData stored) {
@@ -76,10 +76,10 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
       throwMultipleBeanConfigDataValidatorError(validationErrorsMap, "storageConfigValidation");
     }
 
-    // Federation only runs through USE_GCP_IAM. With a JSON key instead, the flag is ignored and a
-    // config marked as federated would still use the key.
-    if (introduces(
-        CustomerConfigStorageGCSValidator::hasFederationWithoutGcpIam, gcsData, storedGcs)) {
+    // Federation only runs through USE_GCP_IAM, and a JSON key takes priority over it on the DB
+    // nodes, so a config marked as federated would still use the key. Checked on its own, so that
+    // a config saved with a key and USE_GCP_IAM cannot turn on federation and keep the key.
+    if (introduces(CustomerConfigStorageGCSValidator::hasFederationWithKey, gcsData, storedGcs)) {
       throwBeanConfigDataValidatorError(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
           "USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of GCS_CREDENTIALS_JSON.");
@@ -149,7 +149,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     return gcsData.useGcpIam && StringUtils.isNotBlank(gcsData.gcsCredentialsJson);
   }
 
-  private static boolean hasFederationWithoutGcpIam(CustomerConfigStorageGCSData gcsData) {
-    return gcsData.useCrossCloudFederation && !gcsData.useGcpIam;
+  private static boolean hasFederationWithKey(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useCrossCloudFederation && StringUtils.isNotBlank(gcsData.gcsCredentialsJson);
   }
 }
