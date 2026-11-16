@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
@@ -32,7 +33,9 @@ import com.yugabyte.yw.models.helpers.TimeUnit;
 import java.io.File;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -45,6 +48,7 @@ import org.mockito.ArgumentCaptor;
 public class CreateContinuousBackupTest extends FakeDBApplication {
 
   private static final String BACKUP_DIR = "test";
+  private static final String RELEASE_VERSION = "2.33.0.0-b1";
 
   private BackupHelper mockBackupHelper;
   private PlatformReplicationHelper mockReplicationHelper;
@@ -102,7 +106,14 @@ public class CreateContinuousBackupTest extends FakeDBApplication {
     when(mockStorageUtil.uploadYbaBackup(any(), any(), any())).thenReturn(true);
     when(mockStorageUtil.cleanupUploadedBackups(any(), any())).thenReturn(true);
     when(mockStorageUtil.getRemoteReleaseVersions(any(), any())).thenReturn(new HashSet<>());
-    when(mockReleaseManager.getAllLocalReleaseContainersByVersion()).thenReturn(new HashMap<>());
+    // One local release the bucket does not have yet, so it is uploaded too.
+    File release = File.createTempFile("yugabyte-2.33.0.0-b1", ".tar.gz");
+    release.deleteOnExit();
+    ReleaseContainer container = mock(ReleaseContainer.class);
+    when(container.getVersion()).thenReturn(RELEASE_VERSION);
+    when(container.getLocalReleasePathStrings()).thenReturn(Set.of(release.getPath()));
+    when(mockReleaseManager.getAllLocalReleaseContainersByVersion())
+        .thenReturn(new HashMap<>(Map.of(RELEASE_VERSION, container)));
 
     task.run();
 
@@ -111,5 +122,8 @@ public class CreateContinuousBackupTest extends FakeDBApplication {
     verify(mockStorageUtil).uploadYbaBackup(same(stamped.getValue()), eq(backup), eq(BACKUP_DIR));
     verify(mockStorageUtil).cleanupUploadedBackups(same(stamped.getValue()), eq(BACKUP_DIR));
     verify(mockStorageUtil).getRemoteReleaseVersions(same(stamped.getValue()), eq(BACKUP_DIR));
+    verify(mockStorageUtil)
+        .uploadYBDBRelease(
+            same(stamped.getValue()), eq(release), eq(BACKUP_DIR), eq(RELEASE_VERSION));
   }
 }

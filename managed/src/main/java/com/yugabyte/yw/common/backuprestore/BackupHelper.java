@@ -99,6 +99,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -118,6 +119,7 @@ import org.yb.ybc.NamespaceType;
 import org.yb.ybc.ProxyConfig;
 import play.libs.Json;
 import software.amazon.awssdk.profiles.ProfileFile;
+import software.amazon.awssdk.profiles.ProfileProperty;
 
 @Slf4j
 @Singleton
@@ -701,17 +703,31 @@ public class BackupHelper {
 
   /**
    * Whether the host gives the default IAM chain ({@link IAMTemporaryCredentialsProvider})
-   * something to use off AWS: a web identity token file, container credentials, or the profile.
-   * Package-private so tests do not depend on the machine they run on.
+   * something to use off AWS: a web identity token file with its role, container credentials, or a
+   * profile the chain can get credentials from (keys, a credential process, a role or SSO). A
+   * profile with only settings in it, such as a region, does not count. Package-private so tests do
+   * not depend on the machine they run on.
    */
   boolean hostHasAwsCredentials(String profileName) {
-    if (StringUtils.isNotBlank(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+    if ((StringUtils.isNotBlank(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+            && StringUtils.isNotBlank(System.getenv("AWS_ROLE_ARN")))
         || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI"))
         || StringUtils.isNotBlank(System.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"))) {
       return true;
     }
     try {
-      return ProfileFile.defaultProfileFile().profile(profileName).isPresent();
+      return ProfileFile.defaultProfileFile()
+          .profile(profileName)
+          .filter(
+              profile ->
+                  Stream.of(
+                          ProfileProperty.AWS_ACCESS_KEY_ID,
+                          ProfileProperty.CREDENTIAL_PROCESS,
+                          ProfileProperty.ROLE_ARN,
+                          ProfileProperty.SSO_START_URL,
+                          "sso_session")
+                      .anyMatch(key -> profile.property(key).isPresent()))
+          .isPresent();
     } catch (Exception e) {
       log.debug("Could not read the AWS profile file: {}", e.getMessage());
       return false;

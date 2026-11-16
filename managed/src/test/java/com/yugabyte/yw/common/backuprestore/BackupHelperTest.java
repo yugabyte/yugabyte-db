@@ -69,6 +69,8 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
+import java.io.File;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -83,6 +85,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -1874,6 +1877,60 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(
         spyBackupHelper.applyYbaFederatedIdentity(withHostProfile, testCustomer.getUuid(), null));
     assertFalse(AWSUtil.usesCrossCloudFederationCredentials(withHostProfile));
+  }
+
+  /**
+   * An AWS profile counts as the host's credentials only when the chain can get credentials from
+   * it: one with just a region, as `aws configure set region` writes, does not.
+   */
+  @Test
+  public void testHostAwsProfileCountsOnlyWithCredentials() throws Exception {
+    Assume.assumeTrue(
+        "the host has AWS credentials in its environment",
+        System.getenv("AWS_CONTAINER_CREDENTIALS_FULL_URI") == null
+            && System.getenv("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI") == null
+            && (System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE") == null
+                || System.getenv("AWS_ROLE_ARN") == null));
+    BackupHelper helper =
+        new BackupHelper(
+            mockYbcManager,
+            mockService,
+            mockConfigService,
+            mockRuntimeConfGetter,
+            mockStorageUtilFactory,
+            mockCommissioner,
+            mockValidateReplicationInfo,
+            mockNodeUniverseManager,
+            mockYbcBackupUtil,
+            mockSoftwareUpgradeHelper,
+            mockHostCloudDetector);
+    File config = File.createTempFile("aws-config", "");
+    File credentials = File.createTempFile("aws-credentials", "");
+    config.deleteOnExit();
+    credentials.deleteOnExit();
+    String oldConfig = System.setProperty("aws.configFile", config.getPath());
+    String oldCredentials = System.setProperty("aws.sharedCredentialsFile", credentials.getPath());
+    try {
+      Files.writeString(config.toPath(), "[default]\nregion = us-west-2\n");
+      assertFalse(helper.hostHasAwsCredentials("default"));
+
+      Files.writeString(
+          credentials.toPath(),
+          "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret\n");
+      assertTrue(helper.hostHasAwsCredentials("default"));
+      assertFalse(helper.hostHasAwsCredentials("other"));
+    } finally {
+      restoreProperty("aws.configFile", oldConfig);
+      restoreProperty("aws.sharedCredentialsFile", oldCredentials);
+    }
+  }
+
+  private static void restoreProperty(String key, String value) {
+    if (value == null) {
+      System.clearProperty(key);
+    } else {
+      System.setProperty(key, value);
+    }
   }
 
   /** YBA on AWS -> GCS with a Google credentials file on the host keeps using it. */

@@ -132,7 +132,8 @@ public class CreateContinuousBackup extends AbstractTaskBase {
     // One copy for every call below: the federated identity is set on it, not on the stored config.
     CustomerConfigData configData = customerConfig.getDataObject();
     try {
-      // Before the backup is created, so a bucket YBA cannot reach does not cost a backup per run.
+      // Before the backup is created, so a run with no credentials for the bucket at all fails
+      // without making one. Credentials the bucket refuses still fail only at the upload.
       backupHelper.requireYbaFederatedIdentity(customerConfig, configData);
     } catch (PlatformServiceException e) {
       CONT_BACKUP_FAILING_GAUGE.labelValues(cbConfig.getStorageLocation()).set(0);
