@@ -98,8 +98,9 @@ Build options:
   --skip-pg-parquet
     Skip pg_parquet extension build.
   --skip-extra-pg-extensions
-    Skip building extra (non-essential) PG extensions: documentdb (also skips its pgrx/Rust build)
-    and pg_parquet.
+    Skip building the extra (non-essential) PG extensions documentdb, pg_parquet,
+    and postgresql_anonymizer.  This also skips the shared pgrx (Rust) build,
+    which only these extensions use.
 
   --target, --targets
     Pass the given target or set of targets to make or ninja.

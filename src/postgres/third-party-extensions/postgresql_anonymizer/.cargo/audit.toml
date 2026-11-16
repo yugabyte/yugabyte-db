@@ -1,0 +1,13 @@
+
+[advisories]
+
+ignore = [
+  # The warning on the paste crate is pretty useless
+  # see https://crates.io/crates/paste-complete
+  "RUSTSEC-2024-0436", 
+
+  # The PGRX is aware of the serde_cbor warning
+  # not much we can do about it :/
+  # see https://github.com/pgcentralfoundation/pgrx/issues/524 
+  "RUSTSEC-2021-0127",
+] 

@@ -5,7 +5,6 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS anon CASCADE;
 
 BEGIN; -- YB: Workaround for read time error, check #25665
-SET yb_non_ddl_txn_for_sys_tables_allowed = true; -- YB: next statement updates pg_seclabel and is not a DDL
 SELECT anon.init();
 COMMIT; -- YB: Workaround for read time error, check #25665
 
@@ -47,12 +46,12 @@ ROLLBACK TO before_test_3;
 
 -- TEST 4
 SECURITY LABEL FOR anon ON COLUMN people.name
-IS 'MASKED WITH FUNCTION pg_catalog.lower(people.name) ';
+IS 'MASKED WITH FUNCTION anon.lower(people.name) ';
 
+-- TEST 5
 SECURITY LABEL FOR anon ON SCHEMA public
 IS 'TRUSTED';
 
--- TEST 5
 SECURITY LABEL FOR anon ON COLUMN people.name
 IS 'MASKED WITH FUNCTION public.lower(people.name) ';
 
@@ -63,5 +62,6 @@ IS 'MASKED WITH VALUE NULL';
 ROLLBACK;
 
 DROP TABLE people CASCADE; -- YB: workaround for lack of transactional DDL
+SECURITY LABEL FOR anon ON SCHEMA public IS NULL; -- YB: workaround for lack of transactional DDL
 DROP EXTENSION anon CASCADE; -- YB: workaround for lack of transactional DDL
 DROP FUNCTION public.lower(TEXT); -- YB: workaround for lack of transactional DDL

@@ -71,7 +71,6 @@ ROLLBACK TO shuffle_3;
 --
 
 -- returns a WARNING and FALSE
-SET yb_non_ddl_txn_for_sys_tables_allowed = true; -- YB: next statement updates pg_seclabel and is not a DDL
 SELECT anon.load('base/''; CREATE TABLE inject_via_load(i int);--') IS FALSE;
 
 SELECT COUNT(*) = 0
@@ -79,15 +78,13 @@ FROM pg_tables
 WHERE tablename='inject_via_load';
 
 --
--- Dynamic Masking
+-- Static Masking
 --
-
-SET anon.maskschema TO 'foo; CREATE TABLE inject_via_guc(i int);--';
-SELECT anon.start_dynamic_masking();
+SELECT anon.anonymize_database('anon''; CREATE TABLE inject_via_static_masking(i int);--');
 
 SELECT COUNT(*) = 0
 FROM pg_tables
-WHERE tablename='inject_via_guc';
+WHERE tablename='inject_via_static_masking';
 
 --
 -- Masking Rule Syntax

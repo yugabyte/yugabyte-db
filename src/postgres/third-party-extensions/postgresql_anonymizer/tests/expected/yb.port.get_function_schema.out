@@ -56,12 +56,6 @@ SELECT anon.get_function_schema('"a("(1,2,3)') = '';
  t
 (1 row)
 
-SELECT anon.get_function_schema('"(a)"."B(1)"(1,2,3)') = '(a)';
- ?column? 
-----------
- t
-(1 row)
-
 SELECT anon.get_function_schema('"..".".."($$..$$)') = '..';
  ?column? 
 ----------
@@ -83,15 +77,15 @@ SELECT anon.get_function_schema('a."......."()') = 'a';
 BEGIN; -- YB: workaround for lack of transactional DDL
 SAVEPOINT function_call_error_1;
 SELECT anon.get_function_schema('a');
-ERROR:  'a' is not a valid function call
+ERROR:  Anon: 'a' is not a valid function call
 ROLLBACK TO function_call_error_1;
 SAVEPOINT function_call_error_2;
 SELECT anon.get_function_schema('a,b,c');
-ERROR:  'a,b,c' is not a valid function call
+ERROR:  Anon: 'a,b,c' is not a valid function call
 ROLLBACK TO function_call_error_2;
 SAVEPOINT function_call_error_3;
 SELECT anon.get_function_schema('a;SELECT b');
-ERROR:  'a;SELECT b' is not a valid function call
+ERROR:  Anon: 'a;SELECT b' is not a valid function call
 ROLLBACK TO function_call_error_3;
 ROLLBACK;
 DROP EXTENSION anon CASCADE; -- YB: workaround for lack of transactional DDL

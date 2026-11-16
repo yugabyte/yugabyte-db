@@ -1,0 +1,3 @@
+[codespell]
+skip = data/*,images/*,tests/*,pg_dump_anon/tests/*,docs/how-to/*
+ignore-words-list = crate,udo,manuel,inh

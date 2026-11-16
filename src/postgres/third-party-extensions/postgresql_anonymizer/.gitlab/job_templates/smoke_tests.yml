@@ -1,0 +1,123 @@
+##
+## Smoke tests
+##
+## The goal of these tests is to validate the installation process on the main platforms.
+##
+## This is going to create **a lot** of jobs (basically a 6x6 matrix) so we can't afford
+## to run them automatically for every pipeline. Typically we'll run a single job manually
+## when a user complains that « install fails with Postgres X on distribution Y.»
+##
+
+variables:
+  DEBIAN_FRONTEND: noninteractive
+  PGDATA: /var/lib/postgresql/data
+  PGUSER: postgres
+  PGDATABASE: contrib_regression
+  PGPASSWORD: CHANGEME
+  PSQL: psql -v ON_ERROR_STOP=1
+
+
+smoketest_rhel:
+  image: rockylinux:$RH_MAJOR_VERSION
+  stage: test
+  needs: []
+  script:
+    - dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-$RH_MAJOR_VERSION-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    - dnf -qy module disable postgresql
+    - dnf install -y postgresql$PG_MAJOR_VERSION-server postgresql$PG_MAJOR_VERSION-contrib
+    - dnf install -y https://yum.dalibo.org/labs/dalibo-labs-4-1.noarch.rpm
+    - dnf install -y postgresql_anonymizer_$PG_MAJOR_VERSION
+    - mkdir -p $PGDATA
+    - chown $PGUSER $PGDATA
+    - su $PGUSER -c /usr/pgsql-$PG_MAJOR_VERSION/bin/initdb $PGDATA
+    - su $PGUSER -c "/usr/pgsql-$PG_MAJOR_VERSION/bin/pg_ctl start"
+    - createdb $PGDATABASE
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - psql -c "CREATE EXTENSION anon;"
+    - psql -c "SELECT anon.version();"
+  when: manual
+  parallel:
+    matrix:
+      - RH_MAJOR_VERSION:
+          - 8
+          - 9
+        PG_MAJOR_VERSION:
+          - '13'
+          - '14'
+          - '15'
+          - '16'
+          - '17'
+          - '18'
+
+smoketest_debian:
+  image: debian:$DEB_MAJOR_VERSION
+  stage: test
+  needs: []
+  script:
+    - apt-get update
+    - apt-get install -y postgresql-common gnupg
+    - /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+    - apt-get install -y curl lsb-release
+    - echo deb http://apt.dalibo.org/labs $(lsb_release -cs)-dalibo main > /etc/apt/sources.list.d/dalibo-labs.list
+    - curl -fsSL -o /etc/apt/trusted.gpg.d/dalibo-labs.gpg https://apt.dalibo.org/labs/debian-dalibo.gpg
+    - apt-get update
+    - apt-get install -y postgresql-$PG_MAJOR_VERSION postgresql_anonymizer_$PG_MAJOR_VERSION
+    - mkdir -p $PGDATA
+    - chown $PGUSER $PGDATA
+    - su $PGUSER -c "/usr/lib/postgresql/$PG_MAJOR_VERSION/bin/initdb $PGDATA"
+    - su $PGUSER -c "/usr/lib/postgresql/$PG_MAJOR_VERSION/bin/pg_ctl start"
+    - createdb $PGDATABASE
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - psql -c "CREATE EXTENSION anon;"
+    - psql -c "SELECT anon.version();"
+  when: manual
+  parallel:
+    matrix:
+      - DEB_MAJOR_VERSION:
+          - bullseye
+          - bookworm
+        PG_MAJOR_VERSION:
+          - '13'
+          - '14'
+          - '15'
+          - '16'
+          - '17'
+          - '18'
+
+smoketest_ubuntu:
+  image: ubuntu:$UBU_MAJOR_VERSION
+  stage: test
+  needs: []
+  script:
+    - apt-get update
+    - apt-get install -y postgresql-common gnupg
+    - /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+    - apt-get install -y curl lsb-release
+    - echo deb http://apt.dalibo.org/labs $(lsb_release -cs)-dalibo main > /etc/apt/sources.list.d/dalibo-labs.list
+    - curl -fsSL -o /etc/apt/trusted.gpg.d/dalibo-labs.gpg https://apt.dalibo.org/labs/debian-dalibo.gpg
+    - apt-get update
+    - apt-get install -y postgresql-$PG_MAJOR_VERSION postgresql_anonymizer_$PG_MAJOR_VERSION
+    - mkdir -p $PGDATA
+    - chown $PGUSER $PGDATA
+    - su $PGUSER -c "/usr/lib/postgresql/$PG_MAJOR_VERSION/bin/initdb $PGDATA"
+    - su $PGUSER -c "/usr/lib/postgresql/$PG_MAJOR_VERSION/bin/pg_ctl start"
+    - createdb $PGDATABASE
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - psql -c "CREATE EXTENSION anon;"
+    - psql -c "SELECT anon.version();"
+  when: manual
+  parallel:
+    matrix:
+      - UBU_MAJOR_VERSION:
+          - jammy
+          - noble
+        PG_MAJOR_VERSION:
+          - '13'
+          - '14'
+          - '15'
+          - '16'
+          - '17'
+          - '18'

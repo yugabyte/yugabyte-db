@@ -1,0 +1,19 @@
+---
+
+##
+## P A C K
+##
+
+pgxn:
+  stage: pack
+  image: alpine
+  script:
+    - apk add -U make git zip
+    - make pgxn
+  artifacts:
+    paths:
+      - anon*
+      - _pgxn/
+    expire_in: 1 day
+  only:
+    - master

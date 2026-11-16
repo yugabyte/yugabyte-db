@@ -13,7 +13,7 @@ DIRS = \
 	pgtap \
 	pgvector \
 	postgresql-hll \
-	postgresql_anonymizer \
+	$(if $(filter 1,$(YB_SKIP_EXTRA_PG_EXTENSIONS)),,postgresql_anonymizer) \
 	wal2json \
 
 # YB: Extensions built with the vendored pgrx framework. They share one
@@ -22,7 +22,7 @@ DIRS = \
 #
 # A new pgrx consumer must be registered here, or it falls back to building its
 # own cargo-pgrx and reintroduces the duplicate build this ordering prevents.
-YB_PGRX_CONSUMERS := $(strip $(filter pg_parquet,$(DIRS)) \
+YB_PGRX_CONSUMERS := $(strip $(filter pg_parquet postgresql_anonymizer,$(DIRS)) \
 	$(if $(findstring YB_ENABLE_YSQL_DOCUMENTDB_EXT,$(CXXFLAGS)),$(filter documentdb,$(DIRS)),))
 DIRS += $(if $(YB_PGRX_CONSUMERS),pgrx,)
 

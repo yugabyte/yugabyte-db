@@ -29,17 +29,6 @@ This is the hashing method used by pseudonymizing functions. Checkout the
 
 See `anon.salt` to learn why this parameter is a very sensitive information.
 
-anon.maskschema
---------------------------------------------------------------------------------
-
-|               |                                  |
-|---------------|----------------------------------|
-| Type          | Text |
-| Default value | 'mask' |
-| Visible       |  to all users |
-
-The schema (i.e. 'namespace') where the dynamic masking views will be stored.
-
 
 
 anon.restrict_to_trusted_schemas
@@ -92,31 +81,5 @@ retrieve the original data based on the 3 elements:
 The GDPR considered that the salt and the name of the hashing algorithm should
 be protected with the same level of security that the data itself. This is
 why you should store the salt directly within the database with `ALTER DATABASE`.
-
-
-
-anon.sourceshema
---------------------------------------------------------------------------------
-
-|               |                                  |
-|---------------|----------------------------------|
-| Type          | Text |
-| Default value | 'public' |
-| Visible       | to all users |
-
-The schema (i.e. 'namespace') where the tables are masked by the dynamic masking
-engine.
-
-Change this value before starting dynamic masking.
-
-```sql
-ALTER DATABASE foo SET anon.sourceschema TO 'my_app';
-```
-
-Then reconnect so that the change takes effect and start the engine.
-
-```sql
-SELECT start_dynamic_masking();
-```
 
 

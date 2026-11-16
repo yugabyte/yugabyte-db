@@ -1,0 +1,40 @@
+---
+name: "postgresql_anonymizer_${PG_MAJOR_VERSION}"
+arch: "${ARCH}"
+platform: "linux"
+version: "v${ANON_MINOR_VERSION}"
+section: "default"
+priority: "extra"
+maintainer: "DALIBO"
+description: |
+  Anonymization & Data Masking for PostgreSQL ${PG_MAJOR_VERSION}
+vendor: "DALIBO"
+homepage: "https://labs.dalibo.com/postgresql_anonymizer"
+license: "PostgreSQL"
+depends:
+  - postgresql-${PG_MAJOR_VERSION}
+contents:
+  - src: ${PG_PKGLIBDIR}/anon.so
+    dst: /usr/lib/postgresql/${PG_MAJOR_VERSION}/lib/anon.so
+  - src: ${PG_SHAREDIR}/extension/
+    dst: /usr/share/postgresql/${PG_MAJOR_VERSION}/extension/
+    type: tree
+
+overrides:
+  rpm:
+    # The postgres server package is named `postgresql-server` on the RHEL repo
+    # and it is named `postgresql16-server` in the PGDG repo.
+    # With this `depends` clause we're making sure that postgres itself is
+    # installed from the PGDG repo.
+    # This is ironic because the PostgreSQL Anonymizer package available in the
+    # PGDG is obsolete and we're forced to build our own package here and
+    # distribute it through the dalibo labs repo.
+    depends:
+      - postgresql${PG_MAJOR_VERSION}-server
+    # These locations are based on the PGDG packages, not the RedHat ones
+    contents:
+      - src: ${PG_PKGLIBDIR}/anon.so
+        dst: /usr/pgsql-${PG_MAJOR_VERSION}/lib/anon.so
+      - src: ${PG_SHAREDIR}/extension/
+        dst: /usr/pgsql-${PG_MAJOR_VERSION}/share/extension/
+        type: tree
