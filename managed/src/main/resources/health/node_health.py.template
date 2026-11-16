@@ -512,11 +512,13 @@ class Report:
             logging.info("Not writing metrics to a file.")
             return
 
-        # Write to the log file.
+        # node_exporter reads the file every scrape: replace it whole, so that a scrape never sees
+        # it half-written. It only reads *.prom files, so it skips the temporary one.
         path = file
-        file = open(file, 'w+')
-        file.write(self.to_prom_format())
-        file.close()
+        tmp_path = path + '.tmp'
+        with open(tmp_path, 'w') as tmp_file:
+            tmp_file.write(self.to_prom_format())
+        os.replace(tmp_path, path)
         logging.info("Wrote %d metric family(ies) to %s",
                      len([m for e in self.entries if e.metrics for m in e.metrics]), path)
 
