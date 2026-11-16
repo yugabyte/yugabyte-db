@@ -5133,7 +5133,7 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 		if (MyReplicationSlot != NULL)
 			ReplicationSlotRelease();
 
-		ReplicationSlotCleanup(false /* synced_only */);
+		ReplicationSlotCleanup(false /* synced_only */ );
 
 		if (doing_extended_query_message)
 			ignore_till_sync = true;
