@@ -162,8 +162,8 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
 
         Provider provider = providerGetter.apply(node);
         boolean bundleAdded = false;
-        // Old route.
-        if (machineImages != null) {
+        // Old route. The v2 API leaves machineImages as the default empty map.
+        if (machineImages != null && !machineImages.isEmpty()) {
           if (userIntent.isMulticloudSupport()) {
             throw new PlatformServiceException(
                 Status.FORBIDDEN, "Use list of ImageBundleUpgradeInfo for multicloud case");
