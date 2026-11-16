@@ -532,8 +532,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         //    unchanged when only tservers are added).
         int tserverPartition = currNumTservers;
         int masterPartition = serverType == ServerType.MASTER ? currNumMasters : newNumMasters;
-        // Tservers are added after every master step, so the master StatefulSets already have the
-        // target disk spec, which can differ from the saved one after a full move of masters.
+        // Tservers are added after every master step. A master StatefulSet a full move replaced
+        // runs the target disk spec, which can differ from the saved one; the others run the saved
+        // one.
         helmInstalls.addSubTask(
             createKubernetesExecutorTaskForServerType(
                 universeName,
@@ -556,7 +557,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 null /* moveParams */,
                 null /* oldMasterDiskSize */,
                 null /* oldTserverDiskSize */,
-                serverType == ServerType.TSERVER /* useNewMasterDeviceInfo */,
+                /* useNewMasterDeviceInfo */
+                serverType == ServerType.TSERVER
+                    && masterStsReplaced(currPlacement, newPlacementAZ),
                 false /* useNewTserverDeviceInfo */));
 
         // When adding masters, the number of tservers will be still the same as before.
@@ -1683,14 +1686,31 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         false /* useNewMasterDeviceInfo */);
   }
 
+  /** Whether an edit replaces the AZ's master StatefulSet, which then has the edit's disk spec. */
+  private static boolean masterStsReplaced(
+      KubernetesPlacement currPlacement, PlacementAZ newPlacementAZ) {
+    PlacementAZ currPlacementAZ =
+        currPlacement == null
+            ? null
+            : currPlacement.placementInfo.findByAZUUID(newPlacementAZ.uuid);
+    return currPlacementAZ != null
+        && currPlacementAZ.masterStsIndex != newPlacementAZ.masterStsIndex;
+  }
+
+  private static boolean tserversDrop(
+      KubernetesPlacement currPlacement, KubernetesPlacement newPlacement, UUID azUUID) {
+    return newPlacement.tservers.getOrDefault(azUUID, 0)
+        < currPlacement.tservers.getOrDefault(azUUID, 0);
+  }
+
   // Pod deletion subtasks for non-full move edit oprations
   // Note: Pods delete for K8s full move case is handled separately in its own set of subtasks
   /**
    * @param skipAZs AZs this call does not touch.
    *     <p>Used by an edit that fully moves tservers in those AZs. The full move deletes their old
    *     StatefulSets itself.
-   * @param useNewMasterDeviceInfo true to render the master disk spec from the edit, false to
-   *     render the saved one.
+   * @param useNewMasterDeviceInfo true to render the master disk spec from the edit in the AZs
+   *     whose master StatefulSet a full move replaced, false to render the saved one everywhere.
    *     <p>Pass true when this runs after a full move of masters. The new master StatefulSets
    *     already have the edit's spec, and K8s rejects changing it back.
    *     <p>Example: an edit changes the master storage class and removes tservers.
@@ -1774,17 +1794,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         if (keepDeployment && instanceTypeChanged) {
           // With a resource change, the rolling upgrade has already scaled this AZ down. Only the
           // PVC cleanup is left: K8s keeps the PVCs of the pods a scale-down removes (see below).
-          tserverPvcDeletes.addSubTask(
-              garbageCollectVolumes(
-                  universeName,
-                  taskParams().nodePrefix,
-                  azCode,
-                  config,
-                  ServerType.TSERVER,
-                  newPlacement.tservers.getOrDefault(azUUID, 0),
-                  isReadOnlyCluster,
-                  taskParams().useNewHelmNamingStyle,
-                  taskParams().getUniverseUUID()));
+          if (tserversDrop(currPlacement, newPlacement, azUUID)) {
+            tserverPvcDeletes.addSubTask(
+                garbageCollectVolumes(
+                    universeName,
+                    taskParams().nodePrefix,
+                    azCode,
+                    config,
+                    ServerType.TSERVER,
+                    newPlacement.tservers.getOrDefault(azUUID, 0),
+                    isReadOnlyCluster,
+                    taskParams().useNewHelmNamingStyle,
+                    taskParams().getUniverseUUID()));
+          }
           continue;
         }
       }
@@ -1834,7 +1856,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 null /* moveParams */,
                 null /* oldMasterDiskSize */,
                 null /* oldTserverDiskSize */,
-                useNewMasterDeviceInfo,
+                useNewMasterDeviceInfo && masterStsReplaced(currPlacement, newPlacementAZ),
                 false /* useNewTserverDeviceInfo */));
 
         podsWait.addSubTask(
@@ -1846,18 +1868,21 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                 newPlacement.tservers.get(azUUID) + newPlacement.masters.getOrDefault(azUUID, 0),
                 isReadOnlyCluster));
         // K8s keeps the PVCs of the pods a scale-down removes. Those tservers are drained, and a
-        // later scale-up would reattach the PVC with the removed tserver's data and UUID.
-        tserverPvcDeletes.addSubTask(
-            garbageCollectVolumes(
-                universeName,
-                taskParams().nodePrefix,
-                azCode,
-                config,
-                ServerType.TSERVER,
-                newPlacement.tservers.getOrDefault(azUUID, 0),
-                isReadOnlyCluster,
-                taskParams().useNewHelmNamingStyle,
-                taskParams().getUniverseUUID()));
+        // later scale-up would reattach the PVC with the removed tserver's data and UUID. The
+        // cleanup waits for the AZ's tservers to be ready, so it runs only where tservers drop.
+        if (tserversDrop(currPlacement, newPlacement, azUUID)) {
+          tserverPvcDeletes.addSubTask(
+              garbageCollectVolumes(
+                  universeName,
+                  taskParams().nodePrefix,
+                  azCode,
+                  config,
+                  ServerType.TSERVER,
+                  newPlacement.tservers.getOrDefault(azUUID, 0),
+                  isReadOnlyCluster,
+                  taskParams().useNewHelmNamingStyle,
+                  taskParams().getUniverseUUID()));
+        }
         // New Masters are up, garbage colllect the extra master volumes now.
         // Read-only clusters have no master StatefulSets/PVCs, so skip master volume GC there.
         if (!isReadOnlyCluster) {

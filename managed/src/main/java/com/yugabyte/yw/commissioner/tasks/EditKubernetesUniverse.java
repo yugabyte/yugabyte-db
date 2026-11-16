@@ -466,8 +466,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         canResizeDisk(
             curPlacement, newPlacement, newIntent, curIntent, taskParams().nodeDetailsSet);
     // The disk resize saves the new size for every AZ, including AZs it skips. Some AZs render
-    // later with the size they run with: AZs the edit removes, and tserver full-move AZs (see
-    // keepDiskSpecAZs). Save the original sizes first so those renders can still read them.
+    // later with the size they run with: AZs the edit removes, and full-move AZs (see
+    // keepDiskSpecAZs; createResizeDiskTask saves them for master full moves). Save the original
+    // sizes first so those renders can still read them.
     Set<UUID> leavingAZs =
         Sets.difference(
             curPlacement.placementInfo.getAllAZUUIDs(), newPlacement.placementInfo.getAllAZUUIDs());
@@ -691,35 +692,34 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         masterAddrRenderPlacement.masters.put(az, newPlacement.masters.getOrDefault(az, 0));
       }
     }
-    // AZs whose StatefulSets the edit has not resized or replaced when the stage renders
-    // run. Rendering them with the edit's new disk spec would change their volumeClaimTemplates,
-    // which K8s rejects, so they render with the spec they run with now. The value is the original
-    // size per server type, saved before the resize wrote the new one; empty when none was saved.
-    //   - AZs the edit removes: they are never resized or moved.
+    // A stage render changes only the master list, so every AZ it writes renders the disk spec its
+    // StatefulSets run with, not the edit's: K8s rejects a change to their volumeClaimTemplates.
+    // No StatefulSet of a rendered AZ has been replaced yet: the master full-move AZs are rendered
+    // only before their full move, and tservers change only after the master steps. Master
+    // StatefulSets an AZ gains in place were created with the saved spec, too. Storage class and
+    // volume count come from the universe, and so does the size, which a resize in place has
+    // already saved. Where the resize skipped a server type's StatefulSet, in AZs the edit removes
+    // and in that type's full-move AZs, the value holds the original size the resize overwrote.
     Cluster clusterInParams = taskParams().getClusterByUuid(newCluster.uuid);
     Map<UUID, Map<ServerType, Integer>> originalDiskSizes =
         MapUtils.emptyIfNull(
             clusterInParams == null ? null : clusterInParams.getOriginalDiskSize());
+    Map<ServerType, Set<UUID>> unresizedAZs =
+        Map.of(
+            ServerType.MASTER, Sets.union(leavingAZs, fullMoveMasterAZs),
+            ServerType.TSERVER, Sets.union(leavingAZs, fullMoveTserverAZs));
     Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs = new HashMap<>();
-    for (UUID az : leavingAZs) {
-      keepDiskSpecAZs.put(az, originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
-    }
-    //   - Master full-move AZs, rendered before their full move: it has not replaced the old
-    //     StatefulSets yet.
-    for (UUID az : fullMoveMasterAZs) {
-      keepDiskSpecAZs.put(az, originalDiskSizes.getOrDefault(az, Collections.emptyMap()));
-    }
-    //   - Tserver full-move AZs outside the master full move: the old tserver StatefulSet runs
-    //     until the full move replaces it. Their master is resized like in any other AZ, so only
-    //     the tserver size is kept.
-    for (UUID az : Sets.difference(fullMoveTserverAZs, fullMoveMasterAZs)) {
-      Integer tserverSize =
-          originalDiskSizes.getOrDefault(az, Collections.emptyMap()).get(ServerType.TSERVER);
-      keepDiskSpecAZs.put(
-          az,
-          tserverSize == null
-              ? Collections.emptyMap()
-              : Collections.singletonMap(ServerType.TSERVER, tserverSize));
+    for (UUID az : curPlacement.placementInfo.getAllAZUUIDs()) {
+      Map<ServerType, Integer> kept = new HashMap<>();
+      unresizedAZs.forEach(
+          (serverType, azs) -> {
+            Integer size =
+                originalDiskSizes.getOrDefault(az, Collections.emptyMap()).get(serverType);
+            if (azs.contains(az) && size != null) {
+              kept.put(serverType, size);
+            }
+          });
+      keepDiskSpecAZs.put(az, kept);
     }
     // Read replica tservers need the same master lists as the primary's. The read replica's own
     // pass in run() comes after the whole primary edit, too late for that, so the primary's
@@ -801,19 +801,23 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       Set<NodeDetails> newMasters = filterMastersToAdd(mastersToAdd, universe);
       // See newMasterPodAddrs. A new AZ's release is installed without a list; see createPodsTask.
-      startNewPods(
-          universe.getName(),
-          newMasters,
-          ServerType.MASTER,
-          activeZones,
-          isReadOnlyCluster,
-          newMasterPodAddrs,
-          newPlacement,
-          curPlacement,
-          false /* enableYbc */,
-          /* Use previous gflags checksum only if can use and no pod restart is required */
-          supportsNonRestartGflagsUpgrade && !restartAllPods /* usePreviousGflagsChecksum */,
-          fullMoveMasterAZs);
+      // At MASTERS_SETTLED every new master pod runs, and creating them again would render the
+      // pre-edit tserver counts, scaling back tservers added since.
+      if (stage != MasterMoveStage.MASTERS_SETTLED) {
+        startNewPods(
+            universe.getName(),
+            newMasters,
+            ServerType.MASTER,
+            activeZones,
+            isReadOnlyCluster,
+            newMasterPodAddrs,
+            newPlacement,
+            curPlacement,
+            false /* enableYbc */,
+            /* Use previous gflags checksum only if can use and no pod restart is required */
+            supportsNonRestartGflagsUpgrade && !restartAllPods /* usePreviousGflagsChecksum */,
+            fullMoveMasterAZs);
+      }
 
       // Update master addresses to the latest required ones,
       // We use the original unfiltered mastersToAdd which is determined from pi.

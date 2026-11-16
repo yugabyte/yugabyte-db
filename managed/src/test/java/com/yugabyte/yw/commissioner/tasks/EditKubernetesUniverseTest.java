@@ -33,6 +33,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -2639,15 +2640,16 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     List<TaskInfo> plan = planEdit(newIntent, zoneReplacePlacement());
 
-    // az-1 and az-2 are resized before the master move and render the new size. az-3 leaves the
-    // placement, so it is not resized and keeps rendering the size its volumes have.
+    // Every AZ renders the disk spec it runs with. az-1 and az-2 are resized before the master
+    // move, which saves their new size. az-3 leaves the placement, so it is not resized and keeps
+    // rendering the size its volumes have.
     List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
     assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
     for (TaskInfo t : earlySecretUpdate) {
       JsonNode params = t.getTaskParams();
       boolean leaving = params.path("azCode").asText().equals("az-3");
-      assertEquals(!leaving, params.path("useNewTserverDeviceInfo").asBoolean());
-      assertEquals(!leaving, params.path("useNewMasterDeviceInfo").asBoolean());
+      assertFalse(params.path("useNewTserverDeviceInfo").asBoolean());
+      assertFalse(params.path("useNewMasterDeviceInfo").asBoolean());
       if (leaving) {
         assertEquals(tserverSize, params.path("oldTsDiskSize").asInt());
       } else {
@@ -2707,6 +2709,38 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         assertEquals(masterSize, params.path("oldMasterDiskSize").asInt());
       } else {
         assertFalse(params.hasNonNull("oldMasterDiskSize"));
+      }
+    }
+  }
+
+  @Test
+  public void testZoneReplaceWithMasterFullMoveAndTserverResizeRendersResizedTservers() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    int tserverSize = newIntent.deviceInfo.volumeSize;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.volumeSize = tserverSize + 10);
+    PlacementInfo pi = zoneReplacePlacement();
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(az -> az.masterStsIndex = 1);
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // The render before the az-4 add writes az-1 before its master full move. The resize skips
+    // az-1's old master StatefulSet but grows its tservers in place, so az-1, like az-2, renders
+    // the saved, new tserver size. az-3 leaves the placement unresized and keeps its tserver size.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<List<TaskInfo>> beforeAz4Add = earlySecretUpdates(plan, -1, adds.get(0).getPosition());
+    List<TaskInfo> addedMastersRender = beforeAz4Add.get(beforeAz4Add.size() - 1);
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(addedMastersRender));
+    for (TaskInfo t : addedMastersRender) {
+      JsonNode params = t.getTaskParams();
+      assertFalse(params.path("useNewTserverDeviceInfo").asBoolean());
+      if (params.path("azCode").asText().equals("az-3")) {
+        assertEquals(tserverSize, params.path("oldTsDiskSize").asInt());
+      } else {
+        assertFalse(params.hasNonNull("oldTsDiskSize"));
       }
     }
   }
@@ -2967,6 +3001,90 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
                 t ->
                     "VOLUME_DELETE_SHELL_MODE_MASTER"
                         .equals(t.getTaskParams().path("commandType").asText())));
+  }
+
+  /** A zone that gains a master in place, with az-3 removed. */
+  private PlacementInfo zoneGainingMasterPlacement() {
+    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
+    PlacementInfo pi = currentPlacement();
+    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(
+            az -> {
+              az.numNodesInAZ = 2;
+              az.replicationFactor = 2;
+            });
+    return pi;
+  }
+
+  @Test
+  public void testMasterRetryAfterSettledKeepsAddedTservers() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    TaskInfo attempt = submitEdit(currentIntent(), zoneGainingMasterPlacement(), null);
+    attempt =
+        retryEdit(
+            attempt,
+            p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.MASTERS_SETTLED));
+
+    // The az-1 master already runs, so the retry does not create it again at az-1's pre-edit
+    // tserver count.
+    List<TaskInfo> az1Helm =
+        helmUpgradesInAZs(helmUpgrades(plan(attempt)), ImmutableSet.of("az-1"));
+    assertFalse(az1Helm.isEmpty());
+    for (TaskInfo t : az1Helm) {
+      assertEquals(2, helmAZ(t).path("numNodesInAZ").asInt());
+    }
+  }
+
+  @Test
+  public void testMasterStorageClassChangeInPlaceRendersCurrentMasterDisks() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+
+    List<TaskInfo> plan = planEdit(newIntent, zoneGainingMasterPlacement());
+
+    // No master StatefulSet is replaced: az-1 grows its master StatefulSet and az-3 shrinks it,
+    // so every render keeps the spec the StatefulSets run with.
+    List<TaskInfo> earlySecretUpdate = earlySecretUpdate(plan);
+    assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate));
+    for (TaskInfo t : earlySecretUpdate) {
+      assertFalse(t.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
+      assertFalse(t.getTaskParams().path("useNewTserverDeviceInfo").asBoolean());
+    }
+  }
+
+  @Test
+  public void testTserverAddAfterPartialMasterFullMoveRendersEachMasterSpec() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream()
+        .filter(az -> az.name.equals("PlacementAZ 1"))
+        .forEach(
+            az -> {
+              az.masterStsIndex = 1;
+              az.numNodesInAZ = 2;
+            });
+    pi.azStream().filter(az -> az.name.equals("PlacementAZ 2")).forEach(az -> az.numNodesInAZ = 2);
+    newIntent.numNodes += 2;
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // Only az-1's master StatefulSet was replaced with the new spec; az-2's runs the saved one.
+    List<TaskInfo> tserverAdds =
+        helmUpgrades(plan).stream()
+            .filter(t -> "TSERVER".equals(t.getTaskParams().path("serverType").asText()))
+            .filter(t -> helmAZ(t).path("numNodesInAZ").asInt() == 2)
+            .collect(Collectors.toList());
+    assertEquals(ImmutableSet.of("az-1", "az-2"), azCodes(tserverAdds));
+    for (TaskInfo t : tserverAdds) {
+      assertEquals(
+          t.getTaskParams().path("azCode").asText().equals("az-1"),
+          t.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
+    }
   }
 
   @Test
@@ -3340,12 +3458,41 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(ImmutableSet.of("az-1", "az-2"), azCodes(resize));
   }
 
+  /** Gives az-1 a second tserver. */
+  private void addSecondAz1Tserver() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              NodeDetails second = u.getNode("yb-tserver-0_az-1").clone();
+              second.nodeName = "yb-tserver-1_az-1";
+              second.nodeUuid = UUID.randomUUID();
+              second.isMaster = false;
+              second.isTserver = true;
+              second.cloudInfo.private_ip = "yb-tserver-1_az-1.svc.cluster.local";
+              u.getUniverseDetails().nodeDetailsSet.add(second);
+              Cluster primary = u.getUniverseDetails().getPrimaryCluster();
+              primary.userIntent.numNodes = 4;
+              primary
+                  .placementInfo
+                  .azStream()
+                  .filter(az -> az.name.equals("PlacementAZ 1"))
+                  .forEach(az -> az.numNodesInAZ = 2);
+            });
+  }
+
   @Test
   public void testZoneReplaceDeletesUnusedTserverVolumes() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    List<TaskInfo> plan = planEdit(currentIntent(), zoneReplacePlacement());
-    // az-1 and az-2 keep their releases. az-3's release and volumes are deleted with it.
-    assertEquals(ImmutableMap.of("az-1", 1, "az-2", 1), tserverVolumeDeletes(plan));
+    addSecondAz1Tserver();
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.numNodes = 3;
+    PlacementInfo pi = zoneReplacePlacement();
+    pi.azStream().filter(az -> az.name.equals("PlacementAZ 1")).forEach(az -> az.numNodesInAZ = 1);
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+    // az-1 drops a tserver and deletes its PVC. az-2 keeps its tservers, so its cleanup does not
+    // wait on them. az-3's release and volumes are deleted with it.
+    assertEquals(ImmutableMap.of("az-1", 1), tserverVolumeDeletes(plan));
   }
 
   @Test
@@ -3587,26 +3734,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testScaleDownWithResourceChangeDeletesUnusedTserverVolumes() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
-    // az-1 runs a second tserver.
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            u -> {
-              NodeDetails second = u.getNode("yb-tserver-0_az-1").clone();
-              second.nodeName = "yb-tserver-1_az-1";
-              second.nodeUuid = UUID.randomUUID();
-              second.isMaster = false;
-              second.isTserver = true;
-              second.cloudInfo.private_ip = "yb-tserver-1_az-1.svc.cluster.local";
-              u.getUniverseDetails().nodeDetailsSet.add(second);
-              Cluster primary = u.getUniverseDetails().getPrimaryCluster();
-              primary.userIntent.numNodes = 4;
-              primary
-                  .placementInfo
-                  .azStream()
-                  .filter(az -> az.name.equals("PlacementAZ 1"))
-                  .forEach(az -> az.numNodesInAZ = 2);
-            });
+    addSecondAz1Tserver();
     InstanceType.upsert(
         kubernetesProvider.getUuid(), "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
@@ -3875,7 +4003,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(
         MasterMoveStage.MASTERS_SETTLED, retryParams.getPrimaryCluster().getMasterMoveStage());
     retryParams.setPreviousTaskUUID(taskInfo.getUuid());
-    doThrow(new RuntimeException("stop after planning"))
+    // The retry creates no master pods, so it may stop before any helm upgrade.
+    lenient()
+        .doThrow(new RuntimeException("stop after planning"))
         .when(mockKubernetesManager)
         .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
     TaskInfo retryInfo =
