@@ -1,14 +1,16 @@
-# YSQL issues
-
-Read this after Step 2 of `SKILL.md` puts the issue in YSQL. It shapes the
-`Description` of `ysql.yml`. The routing, confidentiality, labels and
-confirmation steps in `SKILL.md` still apply.
+# Filing YSQL issues
 
 The goal is a **minimal reproducer** that a YSQL developer can run and
 understand quickly. This is a framework, not a form: include what this issue
 needs. Write for developer readability: open with the headline, what's wrong
 and where (the statement, feature or component, and the build), so a reader
 knows the problem before reaching the details.
+
+Where an issue is filed, how duplicates are handled and where internal links
+go are the same for every core DB component; see
+[filing-guidelines.md](filing-guidelines.md). When a YSQL issue turns out to
+be a duplicate with a materially different repro, the comment on the
+existing issue covers everything under "Always cover" below.
 
 ## Reduce first
 
@@ -18,21 +20,6 @@ the problem. Check that it still shows the problem after each cut.
 
 If you can't reduce it within reason, file it anyway and say so ("not yet
 minimized"). A bloated issue is better than an unfiled one.
-
-## Check for duplicates
-
-Before drafting, search existing issues (open and closed) for the same
-symptom.
-
-- **Same problem, same repro:** don't file. Report the existing issue to the
-  user.
-- **Same problem, materially different repro** (a different query shape,
-  setting, environment or trigger): don't file a new issue. Instead, draft a
-  comment for the existing one that covers everything below: where it was
-  found, the environment needed, the repro, actual vs expected output, how
-  often, and logs. Confirm the comment with the user before posting it.
-- **Not a duplicate:** file a new issue. Link any related issues the search
-  turned up.
 
 ## Always cover
 
@@ -92,9 +79,9 @@ Unicode, not emoji), and put the expected result next to the actual one.
 | 1 | `BEGIN;` | |
 | 2 | `UPDATE t1 SET v = 1 WHERE id = 1;` | |
 | 3 | | `BEGIN;` |
-| 4 | | `SELECT v FROM t1 WHERE id = 1;` ⋯ blocks |
+| 4 | | `UPDATE t1 SET v = v + 1 WHERE id = 1;` ⋯ blocks |
 | 5 | `COMMIT;` | |
-| 6 | | ↳ returns `0` (expected `1`) |
+| 6 | | ↳ `UPDATE 0` (expected `UPDATE 1`) |
 
 If the interleaving can be scripted, also attach an isolation-tester spec
 (the format of `src/postgres/src/test/isolation/specs/*.spec`) in a collapsed
@@ -109,7 +96,7 @@ State any locking-related flags.
   the build type)
 - a snippet of the error
 - a link to the full logs and to the test's stability history, if public (see
-  Links)
+  [filing-guidelines.md](filing-guidelines.md))
 
 **Bug (other).** Explain briefly why the behavior is wrong: which docs,
 upstream PostgreSQL behavior or invariant it contradicts.
@@ -120,11 +107,4 @@ behavior. The repro sections don't apply.
 ## Validating a SQL repro
 
 Run it before filing, in whatever environment makes sense for the issue.
-Paste the real output. If it doesn't reproduce,
-stop and ask the user.
-
-## Links
-
-Internal links (Jenkins, test-stability dashboards, internal JIRA or Slack,
-support tickets) don't belong in a public GitHub issue. Link only to public
-sources.
+Paste the real output. If it doesn't reproduce, stop (agents: ask the user).
