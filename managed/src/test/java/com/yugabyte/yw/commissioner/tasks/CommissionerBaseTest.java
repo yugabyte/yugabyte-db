@@ -411,6 +411,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .thenAnswer(
             inv -> {
               NodeAgent nodeAgent = new NodeAgent();
+              nodeAgent.setUuid(UUID.randomUUID());
               nodeAgent.setIp(inv.getArgument(0));
               nodeAgent.setVersion(Util.getYbaVersion());
               return nodeAgent;
