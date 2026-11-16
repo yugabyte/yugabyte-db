@@ -85,7 +85,8 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
 
   /*
    * Below test validates startup parameters passed via "options" flag to database
-   * are rejected.
+   * are rejected. In auth passthrough this fails only the logical connection; the shared
+   * control backend stays up.
    */
   @Test
   public void testRejectsConnectionManagerStartupParameters() throws Exception {
@@ -100,6 +101,8 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
             errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
       }
     }
+
+    assertControlBackendUp();
   }
 
   /*
@@ -159,12 +162,7 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
       assertReservedParameterRejected(parameter[0], parameter[1]);
     }
 
-    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1_000);
-    JsonObject pool = getPool("control_connection", "control_connection");
-    assertNotNull("Expected a control_connection pool", pool);
-    assertEquals("Control backend should stay up after rejecting reserved parameters", 1,
-        pool.get("active_physical_connections").getAsInt()
-            + pool.get("idle_physical_connections").getAsInt());
+    assertControlBackendUp();
   }
 
   // Send a NON-SSL request to connection manager by explictly setting the startup
@@ -172,6 +170,15 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
   @Test
   public void testCannotOverrideLogicalConnectionType() throws Exception {
     assertReservedParameterRejected("yb_ycm_internal_logical_conn_type", "E");
+  }
+
+  private void assertControlBackendUp() throws Exception {
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1_000);
+    JsonObject pool = getPool("control_connection", "control_connection");
+    assertNotNull("Expected a control_connection pool", pool);
+    assertEquals("Control backend should stay up after rejecting reserved parameters", 1,
+        pool.get("active_physical_connections").getAsInt()
+            + pool.get("idle_physical_connections").getAsInt());
   }
 
   private void assertReservedParameterRejected(String name, String value) throws Exception {
