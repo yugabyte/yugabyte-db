@@ -642,13 +642,13 @@ public class BackupHelper {
       return;
     }
     throw new PlatformServiceException(
-        BAD_REQUEST,
-        noYbaCredentialsMessage(config.getConfigName(), federatedBucketCloud(configData)));
+        BAD_REQUEST, noYbaCredentialsMessage(config.getConfigName(), configData));
   }
 
   /** Why {@link #applyYbaFederatedIdentity} found no way to the bucket, and each way to fix it. */
-  private static String noYbaCredentialsMessage(String storageConfig, CloudType bucketCloud) {
-    if (bucketCloud == CloudType.gcp) {
+  private static String noYbaCredentialsMessage(
+      String storageConfig, CustomerConfigData configData) {
+    if (federatedBucketCloud(configData) == CloudType.gcp) {
       return String.format(
           "YBA runs on AWS and has no credentials for the GCS bucket of storage config %s: the"
               + " config uses GCP IAM, this host has no Google credentials file, and no provider"
@@ -659,17 +659,36 @@ public class BackupHelper {
               + " YBA, with no providers yet, needs.",
           storageConfig);
     }
+    // The config's own way out depends on how it is set up: the host's credentials count only
+    // with the IAM role flag, and never for a source that needs AWS instance metadata.
+    CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+    IAMCredentialSource source =
+        s3.iamConfig != null && s3.iamConfig.credentialSource != null
+            ? s3.iamConfig.credentialSource
+            : IAMCredentialSource.DEFAULT;
+    String ownWay;
+    if (!s3.isIAMInstanceProfile) {
+      ownWay =
+          "set the IAM role flag on it and give this host AWS credentials (a profile with keys, a"
+              + " web identity token file)";
+    } else if (source == IAMCredentialSource.EC2_INSTANCE) {
+      ownWay =
+          "switch its IAM credential source from EC2_INSTANCE, which needs AWS instance metadata,"
+              + " to one this host can serve";
+    } else {
+      ownWay =
+          "give this host AWS credentials its IAM credential source can use (a profile with keys,"
+              + " a web identity token file)";
+    }
     return String.format(
         "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the config"
             + " has no access keys, its IAM role chain has nothing to use on this host, and no"
             + " provider has a usable aws entry in its federated IAM targets, or the providers' aws"
-            + " entries differ. Add an"
-            + " aws entry whose AWS role also trusts this YBA's service account, or make the"
-            + " providers' aws entries match. Otherwise set access keys on the storage config, or"
-            + " give this host AWS credentials its IAM role chain can use (a profile with keys, a"
-            + " web identity token file); keys are also what a restore onto a new YBA, with no"
+            + " entries differ. Add an aws entry whose AWS role also trusts this YBA's service"
+            + " account, or make the providers' aws entries match. Otherwise set access keys on"
+            + " the storage config, or %s. Keys are also what a restore onto a new YBA, with no"
             + " providers yet, needs.",
-        storageConfig);
+        storageConfig, ownWay);
   }
 
   /**
@@ -749,8 +768,13 @@ public class BackupHelper {
   }
 
   private static boolean hasWebIdentityToken() {
-    return StringUtils.isNotBlank(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
+    return isExistingFile(System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"))
         && StringUtils.isNotBlank(System.getenv("AWS_ROLE_ARN"));
+  }
+
+  /** Whether {@code path} names a regular file: a variable naming a stale path gives nothing. */
+  private static boolean isExistingFile(@Nullable String path) {
+    return StringUtils.isNotBlank(path) && Files.isRegularFile(Paths.get(path));
   }
 
   private static boolean hasContainerCredentials() {
@@ -771,7 +795,7 @@ public class BackupHelper {
                       .anyMatch(key -> profile.property(key).isPresent()))
           .isPresent();
     } catch (Exception e) {
-      log.debug("Could not read the AWS profile file: {}", e.getMessage());
+      log.warn("Could not read the AWS profile files for profile {}", profileName, e);
       return false;
     }
   }
@@ -782,7 +806,7 @@ public class BackupHelper {
    * Package-private so tests do not depend on the machine they run on.
    */
   boolean hostHasGcpCredentials() {
-    if (StringUtils.isNotBlank(System.getenv("GOOGLE_APPLICATION_CREDENTIALS"))) {
+    if (isExistingFile(System.getenv("GOOGLE_APPLICATION_CREDENTIALS"))) {
       return true;
     }
     String gcloudDir = System.getenv("CLOUDSDK_CONFIG");
@@ -889,8 +913,7 @@ public class BackupHelper {
       log.warn(
           "Deleting backup {}: {}",
           backup.getBackupUUID(),
-          noYbaCredentialsMessage(
-              String.valueOf(backup.getStorageConfigUUID()), federatedBucketCloud(configData)));
+          noYbaCredentialsMessage(String.valueOf(backup.getStorageConfigUUID()), configData));
     }
   }
 

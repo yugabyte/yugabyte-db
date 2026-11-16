@@ -2107,6 +2107,20 @@ public class BackupHelperTest extends FakeDBApplication {
     // Each way out: an entry, matching entries, or credentials on the config itself.
     assertTrue(e.getMessage(), e.getMessage().contains("make the providers' aws entries match"));
     assertTrue(e.getMessage(), e.getMessage().contains("set access keys on the storage config"));
+    // Without the IAM role flag, the host's credentials count only once the flag is set.
+    assertTrue(e.getMessage(), e.getMessage().contains("set the IAM role flag on it"));
+
+    // An EC2_INSTANCE source can never work off AWS: the advice is to switch it.
+    CustomerConfigStorageS3Data withEc2Instance = federatedS3();
+    withEc2Instance.isIAMInstanceProfile = true;
+    withEc2Instance.iamConfig.credentialSource = IAMCredentialSource.EC2_INSTANCE;
+    PlatformServiceException ec2 =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> spyBackupHelper.requireYbaFederatedIdentity(config, withEc2Instance));
+    assertTrue(
+        ec2.getMessage(),
+        ec2.getMessage().contains("switch its IAM credential source from EC2_INSTANCE"));
   }
 
   /** The GCS error names the GCS fixes: a gcp entry, or a service account key on the config. */
