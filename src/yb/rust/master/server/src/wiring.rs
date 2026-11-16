@@ -244,6 +244,8 @@ static FAILOVER_FAIL_CREATE_SNAPSHOT: FlagRef<bool> =
     FlagRef::new("TEST_xcluster_failover_fail_create_snapshot");
 static FAILOVER_FAIL_DELETE_REPLICATION: FlagRef<bool> =
     FlagRef::new("TEST_xcluster_failover_fail_delete_replication");
+static CRASH_AFTER_SPLIT_REGISTRATION: FlagRef<f64> =
+    FlagRef::new("TEST_fault_crash_after_registering_split_children");
 static PITR_SPLIT_DISABLE_CHECK_FREQ_MS: FlagRef<i32> =
     FlagRef::new("pitr_split_disable_check_freq_ms");
 static XCLUSTER_SKIP_HEALTH_CHECK: FlagRef<bool> =
@@ -1067,6 +1069,7 @@ impl Core {
                 enable_multi_way_split: || ENABLE_MULTI_WAY_SPLIT.get(),
                 rpc_timeout: || millis(MASTER_TS_RPC_TIMEOUT_MS.get()),
                 interval: || millis(BG_TASK_WAIT_MS.get().max(1)),
+                crash_after_registering_split_children: || CRASH_AFTER_SPLIT_REGISTRATION.get(),
                 auto: AutoSplitOptions {
                     split_uncommitted_ysql_tables: || SPLIT_UNCOMMITTED_YSQL_TABLES.get(),
                     split_tables_with_vector_index: || SPLIT_TABLES_WITH_VECTOR_INDEX.get(),

@@ -365,10 +365,14 @@ pub(crate) fn app_status(result: &Result<(), Status>) -> yb_proto::pb::wire_prot
     }
 }
 
-/// `TableInfo::is_running`: RUNNING or ALTERING, hidden or not.
+/// `TableInfo::is_running`: PREPARING, RUNNING or ALTERING, hidden or not. PREPARING counts, as
+/// in C++: a table that automatic-mode DDL replication creates must take the source's later
+/// schema changes (`InsertPackedSchemaForXClusterTarget`) before its post-create xCluster work,
+/// which waits for them to replicate, lets it run.
 pub(crate) fn is_running(table: &Entity) -> bool {
     table.table().is_some_and(|t| {
-        t.state == sys_tables_entry_pb::State::RUNNING as i32
+        t.state == sys_tables_entry_pb::State::PREPARING as i32
+            || t.state == sys_tables_entry_pb::State::RUNNING as i32
             || t.state == sys_tables_entry_pb::State::ALTERING as i32
     })
 }

@@ -21,7 +21,7 @@ use master_catalog_state::{CatalogSnapshot, Mutation};
 use master_leadership::LeaderToken;
 use tokio::time::Instant;
 use yb_host_api::{Status, StatusCode};
-use yb_proto::pb::catalog_entity_info::XClusterSafeTimePB;
+use yb_proto::pb::catalog_entity_info::{sys_tables_entry_pb, XClusterSafeTimePB};
 use yb_proto::pb::master_ddl::{CreateTableRequestPB, CreateTableResponsePB};
 use yb_proto::pb::master_replication::{
     get_xcluster_safe_time_response_pb::NamespaceSafeTimePB,
@@ -138,7 +138,11 @@ impl XCluster {
             t.table().is_some_and(|h| {
                 h.namespace_id.as_slice() == b"00000000000000000000000000000001"
                     && h.name == "xcluster_safe_time"
-            }) && crate::is_running(t)
+            }) && t.table().is_some_and(|h| {
+                // `WaitForCreateTableToFinish`: its tablets serve.
+                h.state == sys_tables_entry_pb::State::RUNNING as i32
+                    || h.state == sys_tables_entry_pb::State::ALTERING as i32
+            })
         })
     }
 

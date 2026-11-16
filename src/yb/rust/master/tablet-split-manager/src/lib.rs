@@ -76,6 +76,9 @@ pub struct SplitOptions {
     pub rpc_timeout: fn() -> Duration,
     /// `catalog_manager_bg_task_wait_ms`.
     pub interval: fn() -> Duration,
+    /// `TEST_fault_crash_after_registering_split_children`: the chance the process aborts once a
+    /// split's children are written.
+    pub crash_after_registering_split_children: fn() -> f64,
     /// Automatic splitting.
     pub auto: AutoSplitOptions,
 }
@@ -87,8 +90,23 @@ impl Default for SplitOptions {
             enable_multi_way_split: || false,
             rpc_timeout: || Duration::from_secs(15),
             interval: || Duration::from_secs(1),
+            crash_after_registering_split_children: || 0.0,
             auto: AutoSplitOptions::default(),
         }
+    }
+}
+
+/// `MAYBE_FAULT`: aborts the process with probability `fraction`.
+fn maybe_fault(name: &str, fraction: f64) {
+    if fraction <= 0.0 {
+        return;
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    if fraction >= 1.0 || f64::from(nanos % 1_000_000) / 1_000_000.0 < fraction {
+        tracing::error!("Injected fault: {name}");
+        std::process::abort();
     }
 }
 
@@ -848,29 +866,46 @@ impl TabletSplitManager {
                 Ok((mutation, ids))
             })
             .await?;
-        // `ProcessSplitTabletResult`: idempotent, as a resumed split calls it again.
-        if let Some(hooks) = self.xrepl_hooks.get() {
-            let table_id = snapshot
-                .get(SysRowEntryType::TABLET, tablet_id)
-                .and_then(|t| t.tablet().map(|t| t.table_id.clone()))
-                .unwrap_or_default();
-            hooks
-                .split_registered(table_id.clone(), tablet_id.to_vec(), children.clone())
-                .await
-                .map_err(|s| {
-                    Status::new(
-                        s.code,
-                        format!(
-                            "Encountered an error while updating the CDC producer metadata. Table \
-                             id: {}, Split Tablets: {}: {}",
-                            String::from_utf8_lossy(&table_id),
-                            String::from_utf8_lossy(tablet_id),
-                            s.message
-                        ),
-                    )
-                })?;
-        }
+        maybe_fault(
+            "TEST_fault_crash_after_registering_split_children",
+            (self.options.crash_after_registering_split_children)(),
+        );
+        self.process_split_result(&snapshot, tablet_id, &children)
+            .await?;
         Ok(children)
+    }
+
+    /// `ProcessSplitTabletResult`: the split's children reach the CDC streams of the table.
+    /// Idempotent: a new leader that resumes a registered split calls it again, because the one
+    /// that registered it may have stopped before it ran.
+    async fn process_split_result(
+        &self,
+        snapshot: &CatalogSnapshot,
+        tablet_id: &[u8],
+        children: &[Vec<u8>],
+    ) -> Result<(), Status> {
+        let Some(hooks) = self.xrepl_hooks.get() else {
+            return Ok(());
+        };
+        let table_id = snapshot
+            .get(SysRowEntryType::TABLET, tablet_id)
+            .and_then(|t| t.tablet().map(|t| t.table_id.clone()))
+            .unwrap_or_default();
+        hooks
+            .split_registered(table_id.clone(), tablet_id.to_vec(), children.to_vec())
+            .await
+            .map_err(|s| {
+                Status::new(
+                    s.code,
+                    format!(
+                        "Encountered an error while updating the CDC producer metadata. Table id: \
+                         {}, Split Tablets: {}: {}",
+                        String::from_utf8_lossy(&table_id),
+                        String::from_utf8_lossy(tablet_id),
+                        s.message
+                    ),
+                )
+            })
     }
 
     /// `MasterAdmin.DeleteNotServingTablet`: the tserver retires a split parent once its children
@@ -1510,7 +1545,17 @@ impl SplitController {
             let tablet = tablet.clone();
             let snapshot = snapshot.clone();
             scope.entity().spawn("split-tablet", async move {
-                if let Err(status) = send_split(&manager, token, &snapshot, &tablet).await {
+                let mut result = send_split(&manager, token, &snapshot, &tablet).await;
+                if result.is_ok() {
+                    let children = tablet
+                        .tablet()
+                        .map(|t| t.split_tablet_ids.clone())
+                        .unwrap_or_default();
+                    result = manager
+                        .process_split_result(&snapshot, &tablet.key.id, &children)
+                        .await;
+                }
+                if let Err(status) = result {
                     tracing::warn!(
                         "SplitTablet of {} failed: {status}",
                         String::from_utf8_lossy(&tablet.key.id)

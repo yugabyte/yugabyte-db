@@ -647,7 +647,7 @@ impl XCluster {
                 continue;
             }
             let pb: SysTablesEntryPB = table.parse().map_err(corrupt)?;
-            if ysql && pb.schema.DEPRECATED_pgschema_name() != source_schema_name {
+            if ysql && self.target_schema_name(&table.key.id, &pb).await != source_schema_name {
                 continue;
             }
             if !data.automatic_ddl_mode && ysql && pb.is_matview() {
@@ -931,6 +931,43 @@ impl XCluster {
     }
 
     /// `GetTableKeyRanges`: the target table's active tablets and their partitions.
+    /// A target YSQL table's schema name: from its row, or, when the row has none, from PG, as
+    /// `GetTableSchema` fills it in.
+    pub(crate) async fn target_schema_name(
+        &self,
+        table_id: &[u8],
+        pb: &SysTablesEntryPB,
+    ) -> String {
+        use yb_proto::pb::master_rust_peer::{
+            get_pg_schema_names_request_pb, GetPgSchemaNamesRequestPB, GetPgSchemaNamesResponsePB,
+        };
+        let name = pb.schema.DEPRECATED_pgschema_name();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+        let Some(oids) = master_table_lifecycle::pg_table_all_oids(table_id, pb) else {
+            return String::new();
+        };
+        let mut table = get_pg_schema_names_request_pb::Table::new();
+        table.set_database_oid(oids.database);
+        table.set_pg_table_oid(oids.pg_table);
+        let mut req = GetPgSchemaNamesRequestPB::new();
+        req.tables.push(table);
+        match self
+            .host_call::<_, GetPgSchemaNamesResponsePB>("GetPgSchemaNames", req)
+            .await
+        {
+            Ok(resp) => resp.names.into_iter().next().unwrap_or_default(),
+            Err(s) => {
+                tracing::warn!(
+                    "Unable to read the schema name of {}: {s}",
+                    String::from_utf8_lossy(table_id)
+                );
+                String::new()
+            }
+        }
+    }
+
     pub(crate) fn consumer_tablets(&self, target: &str) -> Result<Vec<ConsumerTabletPB>, Status> {
         let snapshot = self.catalog.snapshot();
         let stripped = strip_sequences_data_alias(target);

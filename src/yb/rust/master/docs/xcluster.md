@@ -75,7 +75,9 @@ leader forgets a running setup (the client retries) and rebuilds status from the
 
 On the target, a table created in a DB-scoped group's namespace joins the group in its post-create
 work: the source's stream for it (`GetXClusterStreams`), then an alter that adds it, then a wait for
-the safe time to cover it. `CreateTable` in automatic mode copies the source table's xCluster info
+the safe time to cover it. In a transactional table-level group, an index created on a replicated
+table joins instead through the source's `BootstrapProducer` for the index by name, and the safe
+time must pass the bootstrap time: the target's backfill covers rows written before it. `CreateTable` in automatic mode copies the source table's xCluster info
 and historical packings into the new table (`ProcessCreateTableReq`).
 
 The controller (`XClusterController`) runs on every catalog change and on the safe time interval:

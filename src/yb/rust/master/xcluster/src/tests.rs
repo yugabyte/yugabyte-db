@@ -1126,3 +1126,57 @@ async fn a_failover_cut_off_by_a_leader_change_is_reported_aborted() {
         "Master leader changed during failover operation"
     );
 }
+
+#[tokio::test]
+async fn a_table_level_transactional_group_takes_in_its_tables_indexes() {
+    use yb_proto::pb::catalog_entity_info::SysUniverseReplicationEntryPB;
+    use yb_proto::pb::cdc_consumer::{ProducerEntryPB, StreamEntryPB};
+    const INDEX: &str = "00004000000030008000000000004002";
+    let h = Harness::new().await;
+    let mut stream = StreamEntryPB::new();
+    stream.consumer_table_id = TABLE.into();
+    let mut entry = ProducerEntryPB::new();
+    entry.stream_map.insert("stream1".into(), stream);
+    let mut config = SysClusterConfigEntryPB::new();
+    config
+        .consumer_registry
+        .mut_or_insert_default()
+        .producer_map
+        .insert("tables".into(), entry);
+    let mut index = ysql_table("users_idx");
+    index
+        .index_info
+        .mut_or_insert_default()
+        .set_indexed_table_id(TABLE.as_bytes().to_vec());
+    index.set_indexed_table_id(TABLE.as_bytes().to_vec());
+    h.fake.apply(vec![
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::CLUSTER_CONFIG,
+            id: Vec::new(),
+            data: config.write_to_bytes().unwrap(),
+        },
+        RowChange::Upsert {
+            entry_type: SysRowEntryType::TABLE,
+            id: INDEX.as_bytes().to_vec(),
+            data: index.write_to_bytes().unwrap(),
+        },
+    ]);
+    h.catalog.barrier().await;
+    let mut group = SysUniverseReplicationEntryPB::new();
+    group.set_replication_group_id("tables".into());
+    group.set_transactional(true);
+    assert!(h
+        .xcluster
+        .should_add_to_group(&group, INDEX.as_bytes())
+        .unwrap());
+    // Not the replicated table itself, and not for a non-transactional group.
+    assert!(!h
+        .xcluster
+        .should_add_to_group(&group, TABLE.as_bytes())
+        .unwrap());
+    group.set_transactional(false);
+    assert!(!h
+        .xcluster
+        .should_add_to_group(&group, INDEX.as_bytes())
+        .unwrap());
+}
