@@ -575,22 +575,24 @@ public class BackupHelper {
    * Has YBA reach a federated bucket with its own identity, for the work YBA does on the bucket
    * itself: the continuous YBA backup and its restore, which have no universe, and backup deletion.
    * With YBA on the bucket's cloud that is its native identity. Otherwise YBA federates with the
-   * provider entry for the bucket's cloud: the universe's when it has one, else, once YBA is known
-   * to run on another cloud, the one entry the customer's providers agree on. The second is what
-   * lets a YBA that HA promoted on the other cloud reach a bucket the universe reaches natively,
-   * such as an AWS universe's S3 bucket from a YBA on GCP. YBA presents its own host identity with
-   * that entry, so the entry's AWS role (S3) or workload identity pool (GCS) must also admit YBA,
-   * not only the DB nodes. With the host cloud unknown the customer's providers are not consulted,
-   * as the config's own credential chain may be what works there.
+   * provider entry for the bucket's cloud: the universe's when it has one, else, when YBA's host
+   * can present a federated identity for that cloud, the one entry the customer's providers agree
+   * on. The second is what lets a YBA that HA promoted on the other cloud reach a bucket the
+   * universe reaches natively, such as an AWS universe's S3 bucket from a YBA on GCP. YBA presents
+   * its own host identity with that entry, so the entry's AWS role (S3) or workload identity pool
+   * (GCS) must also admit YBA, not only the DB nodes. As on every other path, an entry is used
+   * ahead of the config's own credentials; those (access keys, the IAM role chain, a GCS key or
+   * application default credentials) are what is left when there is no entry.
    *
-   * @return false when YBA has no way to reach the bucket: it runs on another cloud, found no entry
-   *     for the bucket's cloud, and the config has no credential chain to fall back on (a keyless
-   *     S3 config without the IAM role flag)
+   * @return false when YBA has no way to reach the bucket: it runs on GCP, found no entry for an S3
+   *     bucket, and the config has neither access keys nor the IAM role flag. Known limit: on AWS
+   *     that cannot be confirmed, such a config is still built from blank keys (see {@link
+   *     #useYbaIamRole}).
    */
   public boolean applyYbaFederatedIdentity(
       CustomerConfigData configData, @Nullable UUID customerUUID, @Nullable Universe universe) {
     CloudType bucketCloud = federatedBucketCloud(configData);
-    if (bucketCloud == null || hasOwnCredentials(configData)) {
+    if (bucketCloud == null) {
       return true;
     }
     if (ybaRunsOn(bucketCloud)) {
@@ -599,21 +601,16 @@ public class BackupHelper {
       }
       return true;
     }
-    boolean hostCloudKnown = hostCloudDetector.getHostCloud().isPresent();
+    boolean canFederate = canPresentFederatedIdentity(bucketCloud);
     CrossCloudFederationTarget target = resolveCrossCloudFederationTarget(universe, bucketCloud);
-    if (target == null && hostCloudKnown) {
+    if (target == null && canFederate) {
       target = resolveCustomerFederationTarget(customerUUID, bucketCloud);
     }
     if (target != null) {
       stampFederationTarget(configData, target);
       return true;
     }
-    // Left with the config's default credential chain: the AWS chain behind the IAM role flag, or
-    // GCP's application default credentials, which may work on the host (a profile, a mounted
-    // token). A keyless S3 config without the flag has nothing at all.
-    return !hostCloudKnown
-        || !(configData instanceof CustomerConfigStorageS3Data)
-        || ((CustomerConfigStorageS3Data) configData).isIAMInstanceProfile;
+    return !canFederate || hasCredentialChain(configData);
   }
 
   /**
@@ -627,12 +624,23 @@ public class BackupHelper {
     throw new PlatformServiceException(
         BAD_REQUEST,
         String.format(
-            "YBA runs on %s and has no credentials for the S3 bucket of storage config %s: the"
+            "YBA runs on GCP and has no credentials for the S3 bucket of storage config %s: the"
                 + " config has no access keys and does not use an IAM role, and no provider has a"
                 + " usable aws entry in its federated IAM targets, or providers have different"
-                + " ones. Add an aws entry whose AWS role also trusts this YBA.",
-            hostCloudDetector.getHostCloud().map(CloudType::name).orElse("another cloud"),
+                + " ones. Add an aws entry whose AWS role also trusts this YBA's service account.",
             config.getConfigName()));
+  }
+
+  /**
+   * Whether YBA's host can present the identity a stamped entry calls for: a GCE identity token for
+   * an S3 bucket (see {@link AWSUtil#createS3Client}), or the instance's AWS role for a GCS bucket
+   * (the external_account built in {@link GCPUtil#getStorageService}). Elsewhere, including on an
+   * EC2-compatible cloud taken for AWS, the config's own credentials are all YBA can use.
+   */
+  private boolean canPresentFederatedIdentity(CloudType bucketCloud) {
+    return bucketCloud == CloudType.aws
+        ? hostCloudDetector.isHostCloud(CloudType.gcp)
+        : hostCloudDetector.isConfirmedAws();
   }
 
   /** Cloud of the bucket when its config turns on cross-cloud federation, else null. */
@@ -650,15 +658,16 @@ public class BackupHelper {
   }
 
   /**
-   * Whether the config carries credentials of its own, which YBA keeps using wherever it runs: S3
-   * access keys, or a GCS service account key (no GCP IAM).
+   * Whether the config has credentials of its own to fall back on: S3 access keys or the IAM role
+   * chain, which may work on the host (a profile, a mounted token); a GCS config always has its key
+   * or application default credentials.
    */
-  private static boolean hasOwnCredentials(CustomerConfigData configData) {
+  private static boolean hasCredentialChain(CustomerConfigData configData) {
     if (configData instanceof CustomerConfigStorageS3Data) {
-      return StringUtils.isNotBlank(((CustomerConfigStorageS3Data) configData).awsAccessKeyId);
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) configData;
+      return StringUtils.isNotBlank(s3.awsAccessKeyId) || s3.isIAMInstanceProfile;
     }
-    return configData instanceof CustomerConfigStorageGCSData
-        && !((CustomerConfigStorageGCSData) configData).useGcpIam;
+    return true;
   }
 
   /** Puts a provider's federation entry on the in-memory config; no-op when there is none. */

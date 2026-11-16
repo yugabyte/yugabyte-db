@@ -1843,20 +1843,71 @@ public class BackupHelperTest extends FakeDBApplication {
     assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
   }
 
-  /** A federated config that carries its own keys keeps using them, with or without an entry. */
+  /**
+   * A federated config with keys falls back on them without an entry; with one, the entry is used
+   * ahead of the keys, as on every other path.
+   */
   @Test
-  public void testYbaIdentityKeepsTheConfigsOwnKeys() {
+  public void testYbaIdentityUsesTheEntryAheadOfKeys() {
     hostCloud(CloudType.gcp);
     CustomerConfigStorageS3Data s3Data = federatedS3();
     s3Data.awsAccessKeyId = "key";
 
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
+    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
 
     federatedOnPremProvider(
         "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(s3Data, testCustomer.getUuid(), null));
-    assertNull(s3Data.crossCloudFederationRoleArn);
-    assertFalse(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+    assertTrue(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
+  }
+
+  /**
+   * Only a host that can present the identity an entry calls for is given one: GCP for S3, a
+   * confirmed AWS host for GCS. Elsewhere the config keeps its own credentials and is not rejected.
+   */
+  @Test
+  public void testYbaIdentityFederatesOnlyFromAHostThatCanPresentIt() {
+    federatedOnPremProvider(
+        "onprem-gcp", CrossCloudFederationTarget.of(CloudType.aws, S3_AUDIENCE, S3_ROLE_ARN));
+    federatedAwsProvider(CrossCloudFederationTarget.of(CloudType.gcp, GCS_AUDIENCE, null));
+
+    hostCloud(CloudType.azu);
+    CustomerConfigStorageS3Data withIamRole = federatedS3();
+    withIamRole.isIAMInstanceProfile = true;
+    CustomerConfigStorageS3Data keyless = federatedS3();
+    CustomerConfigStorageGCSData gcsData = federatedGcs();
+    assertTrue(
+        spyBackupHelper.applyYbaFederatedIdentity(withIamRole, testCustomer.getUuid(), null));
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(keyless, testCustomer.getUuid(), null));
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
+    assertNull(withIamRole.crossCloudFederationRoleArn);
+    assertNull(keyless.crossCloudFederationRoleArn);
+    assertNull(gcsData.crossCloudFederationAudience);
+
+    // Detected as AWS from IMDSv1 alone, which EC2-compatible clouds also answer.
+    hostCloud(CloudType.aws);
+    when(mockHostCloudDetector.isConfirmedAws()).thenReturn(false);
+    CustomerConfigStorageGCSData unconfirmed = federatedGcs();
+    assertTrue(
+        spyBackupHelper.applyYbaFederatedIdentity(unconfirmed, testCustomer.getUuid(), null));
+    assertNull(unconfirmed.crossCloudFederationAudience);
+  }
+
+  /** Deleting a pre-snapshot backup uses the universe's entry ahead of the config's keys. */
+  @Test
+  public void testDeletionWithoutSnapshotUsesTheUniversesEntryAheadOfKeys() {
+    hostCloud(CloudType.gcp);
+    CrossCloudFederationTarget universeTarget = stubTarget(CloudType.aws);
+    Backup backup = backupWithSnapshot(null, null);
+    when(backup.getCustomerUUID()).thenReturn(testCustomer.getUuid());
+    when(backup.getUniverseUUID()).thenReturn(testUniverse.getUniverseUUID());
+    CustomerConfigStorageS3Data s3Data = federatedS3();
+    s3Data.awsAccessKeyId = "key";
+
+    spyBackupHelper.applyCrossCloudFederationFromBackup(s3Data, backup);
+
+    assertEquals(universeTarget.roleArn, s3Data.crossCloudFederationRoleArn);
   }
 
   /** A config that is not federated is left alone wherever YBA runs. */
@@ -1903,7 +1954,7 @@ public class BackupHelperTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> spyBackupHelper.requireYbaFederatedIdentity(config, federatedS3()));
 
-    assertTrue(e.getMessage(), e.getMessage().contains("YBA runs on gcp"));
+    assertTrue(e.getMessage(), e.getMessage().contains("YBA runs on GCP"));
     assertTrue(e.getMessage(), e.getMessage().contains("S3 bucket of storage config fed-s3"));
     assertTrue(e.getMessage(), e.getMessage().contains("usable aws entry"));
   }
