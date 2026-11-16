@@ -14,12 +14,6 @@ type: docs
 
 OIDC authentication is similar to the [password](../password-authentication/) method, except that instead of a user-configured password, YugabyteDB uses the JSON Web Token (JWT) received from an external identity provider (IdP).
 
-{{< note title="Signing key rotation" >}}
-
-YugabyteDB loads the JWKS once, when the YB-TServer starts. After the identity provider rotates signing keys, tokens signed with a new key fail until you restart the YB-TServers in a rolling restart. Providers such as Google rotate signing keys every couple of weeks. [YSQL](../oidc-authentication-ysql/) fetches the JWKS on each login, so a rotation takes effect on the next login.
-
-{{< /note >}}
-
 ## Prerequisites
 
 Before OIDC can be used for authentication:

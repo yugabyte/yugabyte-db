@@ -33,12 +33,12 @@ A `jwt` rule requires `jwt_audiences`, `jwt_issuers`, and either `jwt_jwks_url` 
 
 | Option | Required | Description |
 | :----- | :------- | :---------- |
-| `jwt_jwks_url` | One of URL or path | URL of the provider's JWKS. YugabyteDB fetches this URL on each login, so a signing-key rotation takes effect on the next login, without a YB-TServer restart. |
+| `jwt_jwks_url` | One of URL or path | URL of the provider's JWKS. YugabyteDB fetches this URL on each login, so a signing-key rotation takes effect on the next login. |
 | `jwt_jwks_path` | One of URL or path | Path of a file that contains the JWKS. Use this when the nodes cannot reach the provider. If you set both options, YugabyteDB uses `jwt_jwks_url`. |
 | `jwt_issuers` | Yes | Comma-separated list of accepted issuers. A token is accepted only when its issuer claim equals one of these values. Match the issuer string exactly, including the scheme and a trailing slash when the provider sends one. For more information, see the [issuer claim](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) in the OpenID Connect Core specification. |
-| `jwt_audiences` | Yes | Comma-separated list of accepted audiences. A token is accepted only when its audience claim equals one of these values. For more information, see the [audience claim](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) in the OpenID Connect Core specification. |
+| `jwt_audiences` | Yes | Comma-separated list of accepted audiences. A token is accepted only when its audience claim equals one of these values. |
 | `jwt_matching_claim_key` | No | Claim that carries the IdP identity (for example, `sub`, `email`, `groups`, or `roles`). The default is `sub`. |
-| `map` | No | Name of an [identity map](#identity-mapping). If you omit `map`, the claim value must equal the database role name. |
+| `map` | No | Name of an [identity map](#identity-mapping). If no `map` is set, the claim value from the JWT must exactly match the database role name for a successful login. |
 
 If an option value contains a comma, quote the value in the record and quote that record in the CSV flag. See the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag for the quoting rules.
 
@@ -55,19 +55,15 @@ hostssl all yugabyte all scram-sha-256
 hostssl all all all jwt jwt_jwks_url=https://www.googleapis.com/oauth2/v3/certs jwt_issuers=https://accounts.google.com jwt_audiences=<audience> jwt_matching_claim_key=email
 ```
 
-The password method (`scram-sha-256` or `md5`) must match the password stored for that role. See [Password authentication](../password-authentication/).
-
-On YCQL, use [`ycql_jwt_users_to_skip_csv`](../oidc-authentication-ycql/#configure-oidc) for the same kind of exception.
-
 ## Identity mapping
 
-If the `jwt` rule omits `map`, the value of `jwt_matching_claim_key` must equal the role name the client requests.
+If the `jwt` rule omits `map`, the value of `jwt_matching_claim_key` extracted from the provided token must equal the database role name the client is logging in to.
 
-To allow a different role name, or to match one value from a group or role claim, set `map` on the `jwt` rule and add rules to the [--ysql_ident_conf_csv](../../../reference/configuration/yb-tserver/#ysql-ident-conf-csv) flag. Each rule has the form `map-name idp-identity database-role`. Separate rules with commas. The map name must be the same as the `map` option on the `jwt` rule. YugabyteDB evaluates the rules in order and accepts the login when one claim value matches a rule for the requested role.
+To allow a different role name, or to match one value from a group or role claim, set `map` on the `jwt` rule and add rules to the [--ysql_ident_conf_csv](../../../reference/configuration/yb-tserver/#ysql-ident-conf-csv) flag. Each rule has the form `map-name idp-identity database-role`. Separate rules with commas. The map name must be the same as the `map` option on the `jwt` rule. YugabyteDB evaluates the rules in order and accepts the login when one claim value matches a rule for the database role the client is logging in to.
 
 If `idp-identity` starts with `/`, the remainder of the field is a regular expression. The expression can contain a single capture, which you reference in the database role as `\1` (backslash-one).
 
-The following are examples of possible rules:
+The following are examples of possible rules. To use them, add `map=oidc` to the `jwt` rule:
 
 * Map one user: `oidc user@example.com app_user`
 * Map a group or role claim: `oidc analysts analyst`
@@ -77,7 +73,7 @@ The following are examples of possible rules:
 --ysql_ident_conf_csv='oidc user@example.com app_user,oidc analysts analyst,oidc /^(.*)@example\.com$ \1'
 ```
 
-Add `map=oidc` to the `jwt` rule when you use these rules. For more information, see [User name maps](https://www.postgresql.org/docs/15/auth-username-maps.html) in the PostgreSQL documentation.
+For more information, see [User name maps](https://www.postgresql.org/docs/15/auth-username-maps.html) in the PostgreSQL documentation.
 
 ## Google ID tokens
 
