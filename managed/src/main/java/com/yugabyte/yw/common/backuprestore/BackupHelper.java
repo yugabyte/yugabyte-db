@@ -909,14 +909,19 @@ public class BackupHelper {
       return;
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    // The API that enables federation on a universe refuses a multicloud primary cluster, so there
-    // is nothing to point such a universe at.
+    // The API that enables federation on a universe refuses a universe whose primary cluster is
+    // multicloud or whose primary cluster's provider has no federation targets, so there is nothing
+    // to point such a universe at.
     if (primaryCluster == null
         || primaryCluster.userIntent.isMulticloudSupport()
-        || isSkipConfigBasedPreflightValidation(universe)) {
+        || isSkipConfigBasedPreflightValidation(universe)
+        || CloudInfoInterface.getCrossCloudFederationTargets(
+                Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider)))
+            .isEmpty()) {
       return;
     }
-    // The API configures every cluster, read replicas included, each from its own provider.
+    // Once the API accepts a universe, it configures every cluster, read replicas included, each
+    // from its own provider.
     List<Cluster> clusters =
         forRestore
             ? universe.getUniverseDetails().clusters

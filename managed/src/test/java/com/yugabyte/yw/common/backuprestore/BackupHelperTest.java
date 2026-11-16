@@ -1472,25 +1472,30 @@ public class BackupHelperTest extends FakeDBApplication {
         Provider.getOrBadRequest(
             UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     if (providerFederates) {
-      CrossCloudFederationTarget target = new CrossCloudFederationTarget();
-      target.targetCloud = CloudType.gcp;
-      target.audience = "//iam.googleapis.com/projects/1/test-audience";
-      if (providerCloud == CloudType.onprem) {
-        OnPremCloudInfo info = CloudInfoInterface.get(provider);
-        info.enableFederatedIam = true;
-        info.crossCloudFederationTargets = Collections.singletonList(target);
-      } else {
-        AWSCloudInfo info = CloudInfoInterface.get(provider);
-        info.enableFederatedIam = true;
-        info.crossCloudFederationTargets = Collections.singletonList(target);
-      }
-      provider.save();
+      federateToGcp(provider);
     }
     when(mockRuntimeConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.skipConfigBasedPreflightValidation)))
         .thenReturn(false);
     when(mockStorageUtilFactory.getStorageUtil(eq("GCS"))).thenReturn(mockGCPUtil);
     return universe;
+  }
+
+  /** Gives an on-prem or AWS provider a federation target for GCP. */
+  private static void federateToGcp(Provider provider) {
+    CrossCloudFederationTarget target = new CrossCloudFederationTarget();
+    target.targetCloud = CloudType.gcp;
+    target.audience = "//iam.googleapis.com/projects/1/test-audience";
+    if (provider.getCloudCode() == CloudType.onprem) {
+      OnPremCloudInfo info = CloudInfoInterface.get(provider);
+      info.enableFederatedIam = true;
+      info.crossCloudFederationTargets = Collections.singletonList(target);
+    } else {
+      AWSCloudInfo info = CloudInfoInterface.get(provider);
+      info.enableFederatedIam = true;
+      info.crossCloudFederationTargets = Collections.singletonList(target);
+    }
+    provider.save();
   }
 
   private CustomerConfig gcsIamConfig() {
@@ -1656,6 +1661,40 @@ public class BackupHelperTest extends FakeDBApplication {
                 spyBackupHelper.getYbcSuccessMarker(
                     config, Collections.emptySet(), recorded.getUniverseUUID()));
     assertTrue(e.getMessage(), e.getMessage().contains("runs on aws"));
+  }
+
+  /**
+   * The enable API refuses a universe whose primary cluster's provider has no federation targets,
+   * so a read replica on a provider that federates is not flagged: the message would point to an
+   * API call that fails.
+   */
+  @Test
+  public void testRestorePrecheckSkipsUniverseWhosePrimaryProviderDoesNotFederate() {
+    Universe universe = universeOnFederatingProvider(CloudType.onprem, false);
+    Provider rrProvider = ModelFactory.newProvider(testCustomer, CloudType.onprem, "rr-provider");
+    federateToGcp(rrProvider);
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrIntent.numNodes = 1;
+    rrIntent.provider = rrProvider.getUuid().toString();
+    Universe withRr =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, null /* placementInfo */));
+    UUID rrUuid = withRr.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
+    // Only the read replica's node is on the other cloud.
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u ->
+            u.getNodes()
+                .forEach(
+                    n ->
+                        n.cloudInfo.physicalCloud =
+                            (rrUuid.equals(n.placementUuid) ? CloudType.aws : CloudType.gcp)
+                                .name()));
+
+    spyBackupHelper.getYbcSuccessMarker(
+        gcsIamConfig(), Collections.emptySet(), universe.getUniverseUUID());
   }
 
   /** YBA on AWS -> S3 with federation on: the nodes may federate, YBA uses its native identity. */
