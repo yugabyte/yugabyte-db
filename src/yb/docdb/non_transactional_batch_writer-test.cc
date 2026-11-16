@@ -51,9 +51,11 @@ class CountingVectorIndex : public DocVectorIndex {
   Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) override {
     inserted_entries_ += entries.size();
+    ++insert_calls_;
     return Status::OK();
   }
   size_t inserted_entries() const { return inserted_entries_; }
+  size_t insert_calls() const { return insert_calls_; }
 
   // Unused on the external-apply vector-feed path, which decides the reverse mapping writes by
   // the table.
@@ -108,6 +110,7 @@ class CountingVectorIndex : public DocVectorIndex {
   const std::string table_key_prefix_;
   const ColumnId column_id_;
   size_t inserted_entries_ = 0;
+  size_t insert_calls_ = 0;
 };
 
 class NonTransactionalBatchWriterTest : public DocDBTestBase {
@@ -882,6 +885,60 @@ TEST_F(NonTransactionalBatchWriterTest, PackedRowSchemaVersionReachesFrontiers) 
   AddApplyExternalTxn(&put_batch, txn, kWriteHT);
   ASSERT_OK(send(put_batch));
   ASSERT_EQ(smallest_schema_versions(), expected(2));
+}
+
+// GH#37821: an op must insert all of its vectors into a vector index at once, so they land in one
+// chunk. Otherwise a chunk saved with part of them marks the op as flushed to the index, and
+// bootstrap does not replay the op into it. Here one op applies a transaction whose intents are in
+// the intents DB and a transaction whose intents come with the op, with a vector in every intents
+// record as an xCluster source sends them, and a plain write.
+TEST_F(NonTransactionalBatchWriterTest, ApplyInsertsOpVectorsAtOnce) {
+  const Uuid involved_tablet = ASSERT_RESULT(Uuid::FromString(kTabletUUID));
+  const auto txn1 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+  const auto txn2 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000002"));
+  const auto kBatchHT = 5000_usec_ht;
+  const auto kWriteHT = 6000_usec_ht;
+  constexpr int kRowsPerTxn = 3;
+
+  auto row_path = [](int row) {
+    const DocKey doc_key(static_cast<uint16_t>(row), MakeKeyEntryValues(Format("row$0", row)));
+    return DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
+  };
+  auto add_txn_rows = [&](
+      docdb::LWKeyValueWriteBatchPB* put_batch, const TransactionId& txn, int first_row) {
+    for (int row = first_row; row != first_row + kRowsPerTxn; ++row) {
+      AddExternalIntentsWritePair(
+          put_batch, txn, kMinSubTransactionId,
+          {{row_path(row), EncodeValue(QLValue::Primitive("vec"))}}, involved_tablet);
+    }
+  };
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  add_txn_rows(&put_batch, txn1, /* first_row= */ 0);
+  ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
+
+  put_batch.Clear();
+  add_txn_rows(&put_batch, txn2, /* first_row= */ kRowsPerTxn);
+  auto* write_pair = put_batch.add_write_pairs();
+  write_pair->dup_key(EncodeDocPathKey(row_path(2 * kRowsPerTxn)).AsSlice());
+  write_pair->dup_value(EncodeValue(QLValue::Primitive("vec")));
+  AddApplyExternalTxn(&put_batch, txn1, kWriteHT);
+  AddApplyExternalTxn(&put_batch, txn2, kWriteHT);
+
+  auto index = MakeCountingIndex();
+  auto indexes = std::make_shared<DocVectorIndexes>();
+  indexes->push_back(index);
+  // The regular bit is left clear, so the apply doesn't also write the regular-DB reverse mapping,
+  // which would need a real encoded vector value; only the vector feed is exercised.
+  StorageSet apply_to_storages;
+  apply_to_storages.Resize(1);
+  apply_to_storages.SetVectorIndex(0);
+  ASSERT_OK(SendWriteBatch(
+      put_batch, kWriteHT, kBatchHT, indexes, apply_to_storages, TableType::PGSQL_TABLE_TYPE,
+      /* can_advance_intents_flush_op_id= */ nullptr, XClusterTargetApplied::kTrue));
+
+  ASSERT_EQ(index->inserted_entries(), 2 * kRowsPerTxn + 1);
+  ASSERT_EQ(index->insert_calls(), 1);
 }
 
 }  // namespace yb::docdb
