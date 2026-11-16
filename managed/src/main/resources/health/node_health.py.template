@@ -55,6 +55,7 @@ from datetime import datetime, timedelta, timezone
 from collections import Counter, defaultdict
 
 NODE_INFO = '{{NODE_INFO}}'
+SCRIPT_FINGERPRINT = '{{SCRIPT_FINGERPRINT}}'
 
 MASTER = "yb-master"
 TSERVER = "yb-tserver"
@@ -554,6 +555,7 @@ class Report:
     def as_json(self):
         j = {
             "timestamp_iso": self.start_ts,
+            "script_fingerprint": SCRIPT_FINGERPRINT,
             "data": [entry.as_json() for entry in self.entries]
         }
         return json.dumps(j, indent=2)

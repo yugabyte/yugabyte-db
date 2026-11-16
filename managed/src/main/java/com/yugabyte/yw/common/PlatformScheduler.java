@@ -2,9 +2,22 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import javax.inject.Inject;
@@ -19,17 +32,25 @@ import scala.concurrent.ExecutionContext;
 @Singleton
 public class PlatformScheduler {
   public static final long SHUTDOWN_WAIT_TIMEOUT_MS = 60000L;
+  private static final String SCHEDULER_NAME_LABEL = "scheduler_name";
+  // Must outlast the "scheduler not running" alert. Cancelling the schedule deletes it.
+  private static final long SCHEDULER_METRIC_EXPIRY_SEC = TimeUnit.DAYS.toSeconds(365);
   private final ActorSystem actorSystem;
   private final ExecutionContext executionContext;
   private final ShutdownHookHandler shutdownHookHandler;
+  private final MetricService metricService;
+  // Names of the live periodic schedules, which key their liveness metrics.
+  private final Set<String> metricNames = ConcurrentHashMap.newKeySet();
 
   @Inject
   public PlatformScheduler(
       ActorSystem actorSystem,
       PlatformExecutorFactory executorFactory,
-      ShutdownHookHandler shutdownHookHandler) {
+      ShutdownHookHandler shutdownHookHandler,
+      MetricService metricService) {
     this.actorSystem = actorSystem;
     this.shutdownHookHandler = shutdownHookHandler;
+    this.metricService = metricService;
     // Create a separate execution context for scheduler to use its own thread pool.
     this.executionContext =
         ExecutionContext.fromExecutor(
@@ -43,14 +64,21 @@ public class PlatformScheduler {
 
   private Cancellable createShutdownAwareSchedule(
       String name, Runnable runnable, Function<Runnable, Cancellable> scheduleFactory) {
-    return createShutdownAwareSchedule(name, runnable, scheduleFactory, false);
+    return createShutdownAwareSchedule(name, runnable, scheduleFactory, false, null, null);
   }
 
+  /**
+   * A periodic schedule passes its initial delay and interval, and its runs are then reported for
+   * the "scheduler not running" alert. A one-off passes nulls.
+   */
   private Cancellable createShutdownAwareSchedule(
       String name,
       Runnable runnable,
       Function<Runnable, Cancellable> scheduleFactory,
-      boolean runOnFollower) {
+      boolean runOnFollower,
+      Duration initialDelay,
+      Duration interval) {
+    final String metricName = interval == null ? null : registerMetricName(name);
     final AtomicBoolean isRunning = new AtomicBoolean();
     final Object lock = new Object();
     Runnable wrappedRunnable =
@@ -72,6 +100,7 @@ public class PlatformScheduler {
             if (shouldRun) {
               try {
                 runnable.run();
+                setLastOkTime(metricName, Instant.now());
               } finally {
                 isRunning.set(false);
                 if (shutdownHookHandler.isShutdownInitiated()) {
@@ -81,6 +110,10 @@ public class PlatformScheduler {
                 }
               }
             } else {
+              if (!isRunning.get()) {
+                // Skipped as expected rather than stuck behind a run in progress.
+                setLastOkTime(metricName, Instant.now());
+              }
               log.warn(
                   "Previous run of scheduler {} is in progress, is being shut down, or YBA is in"
                       + " follower mode or a switchover.",
@@ -90,6 +123,13 @@ public class PlatformScheduler {
             log.error("Scheduler run '{}' failed; it will be retried on the next tick.", name, t);
           }
         };
+    if (metricName != null) {
+      // The first run is due after the initial delay.
+      setLastOkTime(metricName, Instant.now().plus(initialDelay));
+      metricService.setMetric(
+          schedulerMetric(PlatformMetrics.SCHEDULER_INTERVAL, metricName),
+          interval.toMillis() / 1000.0);
+    }
     Cancellable cancellable = scheduleFactory.apply(wrappedRunnable);
     shutdownHookHandler.addShutdownHook(
         cancellable,
@@ -111,7 +151,61 @@ public class PlatformScheduler {
             log.debug("Shutdown status for scheduler - {} is {}", name, isCancelled);
           }
         });
-    return cancellable;
+    if (metricName == null) {
+      return cancellable;
+    }
+    return new Cancellable() {
+      @Override
+      public boolean cancel() {
+        boolean cancelled = cancellable.cancel();
+        removeMetrics(metricName);
+        return cancelled;
+      }
+
+      @Override
+      public boolean isCancelled() {
+        return cancellable.isCancelled();
+      }
+    };
+  }
+
+  // Suffixes a name another live schedule already uses, so their metrics don't mix.
+  private String registerMetricName(String name) {
+    String metricName = name;
+    for (int i = 2; !metricNames.add(metricName); i++) {
+      metricName = name + "-" + i;
+    }
+    if (!metricName.equals(name)) {
+      log.warn("Scheduler name {} is already in use, reporting it as {}", name, metricName);
+    }
+    return metricName;
+  }
+
+  private void setLastOkTime(String metricName, Instant time) {
+    if (metricName != null) {
+      metricService.setMetric(
+          schedulerMetric(PlatformMetrics.SCHEDULER_LAST_OK_TIME, metricName),
+          time.getEpochSecond());
+    }
+  }
+
+  private void removeMetrics(String metricName) {
+    metricService.delete(
+        MetricFilter.builder()
+            .keys(
+                Arrays.asList(
+                    MetricKey.from(
+                        schedulerMetric(PlatformMetrics.SCHEDULER_LAST_OK_TIME, metricName)),
+                    MetricKey.from(
+                        schedulerMetric(PlatformMetrics.SCHEDULER_INTERVAL, metricName))))
+            .build());
+    metricNames.remove(metricName);
+  }
+
+  @VisibleForTesting
+  static Metric schedulerMetric(PlatformMetrics metric, String metricName) {
+    return buildMetricTemplate(metric, SCHEDULER_METRIC_EXPIRY_SEC)
+        .setKeyLabel(SCHEDULER_NAME_LABEL, metricName);
   }
 
   public Cancellable schedule(
@@ -122,7 +216,10 @@ public class PlatformScheduler {
         r ->
             actorSystem
                 .scheduler()
-                .scheduleWithFixedDelay(initialDelay, interval, r, executionContext));
+                .scheduleWithFixedDelay(initialDelay, interval, r, executionContext),
+        false,
+        initialDelay,
+        interval);
   }
 
   /**
@@ -139,7 +236,9 @@ public class PlatformScheduler {
             actorSystem
                 .scheduler()
                 .scheduleWithFixedDelay(initialDelay, interval, r, executionContext),
-        true);
+        true,
+        initialDelay,
+        interval);
   }
 
   public Cancellable scheduleOnce(String name, Duration initialDelay, Runnable runnable) {

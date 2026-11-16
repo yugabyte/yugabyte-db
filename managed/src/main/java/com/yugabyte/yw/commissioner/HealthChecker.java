@@ -17,6 +17,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.Sets;
@@ -52,6 +53,7 @@ import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Metric;
+import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
@@ -99,14 +101,18 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Value;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Environment;
@@ -123,6 +129,8 @@ public class HealthChecker {
   private static final String YB_TSERVER_PROCESS = "yb-tserver";
 
   static final String SCRIPT_PERMISSIONS = "755";
+  // Reported by node_health.py; the content hash of the scripts it was uploaded with.
+  @VisibleForTesting static final String SCRIPT_FINGERPRINT_FIELD = "script_fingerprint";
 
   private static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
 
@@ -131,6 +139,9 @@ public class HealthChecker {
 
   private static final String DDL_ATOMICITY_CHECK_RELEASE = "2.18.4.0-b23";
   private static final String DDL_ATOMICITY_CHECK_PREVIEW_RELEASE = "2.19.1.0-b301";
+
+  // Must outlast the "health check not running" alert. Removing the universe deletes it.
+  private static final long HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC = TimeUnit.DAYS.toSeconds(365);
 
   private final Environment environment;
 
@@ -162,8 +173,15 @@ public class HealthChecker {
   // A map of all running health checks.
   final Map<UUID, CompletableFuture<Void>> runningHealthChecks = new ConcurrentHashMap<>();
 
-  // We upload health check script to the node only when NodeInfo is updates
-  private final Map<Pair<UUID, String>, NodeInfo> uploadedNodeInfo = new ConcurrentHashMap<>();
+  // The scripts each node was last given. They are uploaded again when the generated content
+  // changes or the node reports scripts other than these.
+  private final Map<Pair<UUID, String>, UploadedScripts> uploadedScripts =
+      new ConcurrentHashMap<>();
+  private final AtomicLong uploadCounter = new AtomicLong();
+  private final Supplier<String> collectMetricsTemplate =
+      Suppliers.memoize(() -> readTemplate("metric/collect_metrics.sh.template"));
+  private final Supplier<String> nodeHealthTemplate =
+      Suppliers.memoize(() -> readTemplate("health/node_health.py.template"));
   private final Map<UUID, Instant> ddlAtomicitySuccessfulCheckTimestamp = new ConcurrentHashMap<>();
 
   // Names of the node health script metrics seen so far - what the next run cleans up before saving
@@ -459,6 +477,10 @@ public class HealthChecker {
         log.debug("Skipping health check scheduler for follower platform");
         return;
       }
+      metricService.setMetric(
+          buildMetricTemplate(
+              PlatformMetrics.HEALTH_CHECK_INTERVAL, HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC),
+          TimeUnit.MILLISECONDS.toSeconds(healthCheckIntervalMs()));
       // Read the universes and alert configs of all customers at once, rather than querying them
       // for each customer. Only the universe identities are read here: each check loads its
       // universe when it runs, so the details of all universes are never in memory at once.
@@ -648,20 +670,20 @@ public class HealthChecker {
 
   public void markUniverseForReUpload(UUID universeUUID) {
     List<Pair<UUID, String>> universeNodeInfos =
-        uploadedNodeInfo.keySet().stream()
+        uploadedScripts.keySet().stream()
             .filter(key -> key.getFirst().equals(universeUUID))
             .toList();
-    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+    universeNodeInfos.forEach(uploadedScripts::remove);
   }
 
   public void handleUniverseRemoval(UUID universeUUID) {
     cancelHealthCheck(universeUUID);
     runningHealthChecks.remove(universeUUID);
     List<Pair<UUID, String>> universeNodeInfos =
-        uploadedNodeInfo.keySet().stream()
+        uploadedScripts.keySet().stream()
             .filter(key -> key.getFirst().equals(universeUUID))
             .toList();
-    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+    universeNodeInfos.forEach(uploadedScripts::remove);
   }
 
   private boolean isShutdown() {
@@ -762,6 +784,12 @@ public class HealthChecker {
                 if (params == null) {
                   return;
                 }
+                // Start the clock for a universe with no completed check since YBA started, so that
+                // a first check that never completes is reported too.
+                Metric lastCompleted = lastCompletedTimeMetric(params);
+                if (metricService.get(MetricKey.from(lastCompleted)) == null) {
+                  metricService.setMetric(lastCompleted, Instant.now().getEpochSecond());
+                }
                 log.info("Running health check for universe: {}", universeName);
                 checkSingleUniverse(params);
               } catch (CancellationException | CompletionException e) {
@@ -775,6 +803,10 @@ public class HealthChecker {
                 }
               } finally {
                 runningHealthChecks.remove(universeUuid);
+                if (params != null) {
+                  metricService.setMetric(
+                      lastCompletedTimeMetric(params), Instant.now().getEpochSecond());
+                }
               }
             },
             this.universeExecutor);
@@ -1356,7 +1388,7 @@ public class HealthChecker {
               .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
               .processErrors();
 
-      return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
+      return parseNodeReport(universe, nodeInfo, response.extractRunCommandOutput());
     } else {
       HealthCheckInput.Builder healthCheckInputBldr = HealthCheckInput.newBuilder();
       healthCheckInputBldr.setYbHomeDir(nodeInfo.getYbHomeDir());
@@ -1373,7 +1405,8 @@ public class HealthChecker {
       if (ybaYnpVersion != null) {
         healthCheckInputBldr.setYbaYnpVersion(ybaYnpVersion);
       }
-      healthCheckInputBldr.setGenerationId(generateGenerationId(nodeInfo, nodeCheckContext));
+      healthCheckInputBldr.setGenerationId(
+          generateGenerationId(universe, nodeInfo, nodeCheckContext));
       NodeAgent nodeAgent = nodeAgentClient.getAndUpgradeOrThrow(nodeInfo.getNodeHost());
       HealthCheckOutput healthCheckOutput =
           nodeAgentClient.runOrGetHealthCheck(
@@ -1388,19 +1421,45 @@ public class HealthChecker {
                 + ": "
                 + healthCheckOutput.getError().getMessage());
       }
-      return Json.fromJson(Json.parse(healthCheckOutput.getReportJson()), Details.class);
+      return parseNodeReport(universe, nodeInfo, healthCheckOutput.getReportJson());
     }
+  }
+
+  private Details parseNodeReport(Universe universe, NodeInfo nodeInfo, String reportJson) {
+    JsonNode report = Json.parse(reportJson);
+    JsonNode fingerprint = report.path(SCRIPT_FINGERPRINT_FIELD);
+    if (report instanceof ObjectNode) {
+      ((ObjectNode) report).remove(SCRIPT_FINGERPRINT_FIELD);
+    }
+    Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
+    UploadedScripts uploaded = uploadedScripts.get(nodeKey);
+    // Scripts from a YBA without fingerprints don't report one; they were replaced when this YBA
+    // started.
+    if (uploaded != null
+        && fingerprint.isTextual()
+        && !fingerprint.asText().equals(uploaded.getFingerprint())) {
+      log.warn(
+          "Node {} of universe {} runs health scripts other than the ones uploaded, uploading"
+              + " them again",
+          nodeInfo.getNodeName(),
+          universe.getUniverseUUID());
+      uploadedScripts.remove(nodeKey, uploaded);
+    }
+    return Json.fromJson(report, Details.class);
   }
 
   // Stable generation from schedule-relevant params. A change forces reschedule;
   // identical params reuse the running schedule and its cache. On-demand trigger uses a
-  // fresh generation so the agent cannot return a previously cached report.
-  private String generateGenerationId(NodeInfo nodeInfo, NodeCheckContext nodeCheckContext) {
+  // fresh generation so the agent cannot return a previously cached report. Each upload
+  // changes it too, since the agent runs a copy of the script made when it reschedules.
+  private String generateGenerationId(
+      Universe universe, NodeInfo nodeInfo, NodeCheckContext nodeCheckContext) {
     if (nodeCheckContext.isRunImmediately()) {
       return UUID.randomUUID().toString();
     }
     return Integer.toString(
         Objects.hash(
+            uploadedScripts.get(new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName())),
             nodeInfo.hashCode(),
             nodeCheckContext.getTimeoutSec(),
             nodeCheckContext.getNodeAgentCheckerScheduleIntervalSecs(),
@@ -1418,40 +1477,54 @@ public class HealthChecker {
   private void maybeUploadNodeScripts(
       Universe universe, NodeInfo nodeInfo, ShellProcessContext context) {
     Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
-    NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
-    if (uploadedInfo != null && uploadedInfo.equals(nodeInfo)) {
-      // Node already has the scripts matching its current metadata.
+    // Skip the metrics-collection script for k8s as no one will call it on a k8s pod.
+    String collectMetricsScript =
+        nodeInfo.isK8s()
+            ? ""
+            : collectMetricsTemplate.get().replace("{{YB_HOME_DIR}}", nodeInfo.ybHomeDir);
+    String nodeHealthScript =
+        nodeHealthTemplate
+            .get()
+            .replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString())
+            .replace(
+                "{{TMP_DIR}}",
+                GFlagsUtil.getCustomTmpDirectory(confGetter, nodeInfo.nodeDetails, universe));
+    String fingerprint = DigestUtils.sha256Hex(collectMetricsScript + nodeHealthScript);
+    UploadedScripts uploaded = uploadedScripts.get(nodeKey);
+    if (uploaded != null && uploaded.getFingerprint().equals(fingerprint)) {
       return;
     }
-    // Skip the metrics-collection script for k8s as no one will call it on a k8s pod. A changed
-    // NodeInfo can also mean the node IP changed (node name reused for a fresh underlying node).
+    // A changed NodeInfo can also mean the node IP changed (node name reused for a fresh
+    // underlying node).
     if (!nodeInfo.isK8s()) {
-      String generatedScriptPath =
-          generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
       log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
-      String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
       nodeUniverseManager.uploadFileToNode(
           nodeInfo.nodeDetails,
           universe,
-          generatedScriptPath,
-          scriptPath,
+          writeScript(
+              "collect_metrics_" + universe.getUniverseUUID() + "_" + nodeInfo.nodeUuid,
+              ".sh",
+              collectMetricsScript),
+          nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh",
           SCRIPT_PERMISSIONS,
           context);
     }
 
     log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
-    String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
     nodeUniverseManager.uploadFileToNode(
         nodeInfo.nodeDetails,
         universe,
-        generatedScriptPath,
+        writeScript(
+            "node_health_" + universe.getUniverseUUID() + "_" + nodeInfo.nodeUuid,
+            ".py",
+            nodeHealthScript.replace("{{SCRIPT_FINGERPRINT}}", fingerprint)),
         getNodeHealthScriptPath(nodeInfo),
         SCRIPT_PERMISSIONS,
         context);
 
     // Only record the node as up to date after both uploads succeeded, so a failed upload is
     // retried on the next cycle.
-    uploadedNodeInfo.put(nodeKey, nodeInfo);
+    uploadedScripts.put(nodeKey, new UploadedScripts(fingerprint, uploadCounter.incrementAndGet()));
   }
 
   /**
@@ -1496,6 +1569,14 @@ public class HealthChecker {
     }
   }
 
+  private static Metric lastCompletedTimeMetric(CheckSingleUniverseParams params) {
+    return buildMetricTemplate(
+        PlatformMetrics.HEALTH_CHECK_LAST_COMPLETED_TIME,
+        params.customer,
+        params.universe,
+        HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC);
+  }
+
   private void setHealthCheckFailedMetric(Customer customer, Universe universe) {
     // Remove old metrics and create only health check failed.
     MetricFilter toClean =
@@ -1505,46 +1586,29 @@ public class HealthChecker {
     metricService.cleanAndSave(Collections.singletonList(healthCheckFailed), toClean);
   }
 
-  private String generateCollectMetricsScript(UUID universeUuid, NodeInfo nodeInfo) {
-    String template;
-    try (InputStream templateStream =
-        environment.resourceAsStream("metric/collect_metrics.sh.template")) {
-      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
-      String scriptContent = template.replace("{{YB_HOME_DIR}}", nodeInfo.ybHomeDir);
-      // For now it has no universe/cluster specific info. Add placeholder substitution here once
-      // they are added.
-      Path path =
-          fileHelperService.createTempFile(
-              "collect_metrics_" + universeUuid + "_" + nodeInfo.nodeUuid, ".sh");
-      Files.writeString(path, scriptContent);
-
-      return path.toString();
+  private String readTemplate(String resource) {
+    try (InputStream templateStream = environment.resourceAsStream(resource)) {
+      return IOUtils.toString(templateStream, StandardCharsets.UTF_8);
     } catch (IOException e) {
-      throw new RuntimeException("Failed to read alert definition rule template", e);
+      throw new RuntimeException("Failed to read " + resource, e);
     }
   }
 
-  private String generateNodeCheckScript(UUID universeUuid, NodeInfo nodeInfo) {
-    String template;
-    try (InputStream templateStream =
-        environment.resourceAsStream("health/node_health.py.template")) {
-      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
-      Universe universe = Universe.getOrBadRequest(universeUuid);
-      String customTmpDirectory =
-          GFlagsUtil.getCustomTmpDirectory(confGetter, nodeInfo.nodeDetails, universe);
-      String scriptContent = template.replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString());
-      scriptContent = scriptContent.replace("{{TMP_DIR}}", customTmpDirectory);
-      // For now it has no universe/cluster specific info. Add placeholder substitution here once
-      // they are added.
-      Path path =
-          fileHelperService.createTempFile(
-              "node_health_" + universeUuid + "_" + nodeInfo.nodeUuid, ".py");
-      Files.writeString(path, scriptContent);
-
+  private String writeScript(String prefix, String suffix, String content) {
+    try {
+      Path path = fileHelperService.createTempFile(prefix, suffix);
+      Files.writeString(path, content);
       return path.toString();
     } catch (IOException e) {
-      throw new RuntimeException("Failed to read alert definition rule template", e);
+      throw new RuntimeException("Failed to write " + prefix + suffix, e);
     }
+  }
+
+  /** The upload ID tells uploads of the same content apart, so each one reschedules the agent. */
+  @Value
+  private static class UploadedScripts {
+    String fingerprint;
+    long uploadId;
   }
 
   private MetricFilter metricSourceKeysFilterWithHealthScriptMetrics(

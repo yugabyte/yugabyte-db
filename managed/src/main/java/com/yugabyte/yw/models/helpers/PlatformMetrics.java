@@ -27,6 +27,9 @@ public enum PlatformMetrics {
   HEALTH_CHECK_NODES_WITH_ERRORS("Nodes with at least 1 error count", Unit.COUNT),
   HEALTH_CHECK_NODE_METRICS_STATUS("Health check node metrics status for universe", Unit.STATUS),
   HEALTH_CHECK_NOTIFICATION_STATUS("Health check notification status for universe", Unit.STATUS),
+  HEALTH_CHECK_LAST_COMPLETED_TIME(
+      "Time the last health check of the universe completed, in seconds since epoch", Unit.SECOND),
+  HEALTH_CHECK_INTERVAL("Interval between health checks, in seconds", Unit.SECOND),
   YB_UNIV_HEALTH_STATUS("Particular node check status", Unit.STATUS, true, "yb_univ_health_status"),
 
   // Health check error nodes count
@@ -61,6 +64,11 @@ public enum PlatformMetrics {
   UNIVERSE_INACTIVE_CRON_NODES("Count of nodes with inactive cronjob for universe", Unit.COUNT),
   SSH_KEY_ROTATION_STATUS("SSH Key rotation task status for universe", Unit.STATUS, false),
   PITR_CONFIG_STATUS("PITR Config Status for DB", Unit.STATUS),
+  // Schedulers
+  SCHEDULER_LAST_OK_TIME(
+      "Time the scheduler last completed a run or skipped one as expected, in seconds since epoch",
+      Unit.SECOND),
+  SCHEDULER_INTERVAL("Interval between scheduler runs, in seconds", Unit.SECOND),
   // Alert Subsystem
   ALERT_QUERY_STATUS("Alert query status", Unit.STATUS),
   ALERT_QUERY_TOTAL_ALERTS("Total number of alerts, returned by Prometheus", Unit.COUNT),
