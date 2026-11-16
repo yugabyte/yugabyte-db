@@ -135,7 +135,7 @@ public class CreateContinuousBackup extends AbstractTaskBase {
       // Before the backup is created, so a run with no credentials for the bucket at all fails
       // without making one. Credentials the bucket refuses still fail only at the upload.
       backupHelper.requireYbaFederatedIdentity(customerConfig, configData);
-    } catch (PlatformServiceException e) {
+    } catch (RuntimeException e) {
       CONT_BACKUP_FAILING_GAUGE.labelValues(cbConfig.getStorageLocation()).set(0);
       throw e;
     }

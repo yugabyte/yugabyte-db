@@ -1824,14 +1824,22 @@ public class BackupHelperTest extends FakeDBApplication {
     assertTrue(AWSUtil.usesCrossCloudFederationCredentials(s3Data));
   }
 
-  /** YBA on AWS -> GCS with no entry: application default credentials are left to try. */
+  /**
+   * YBA on AWS -> GCS with no entry: application default credentials are left to try only when the
+   * host has a Google credentials file, or the config a service account key.
+   */
   @Test
-  public void testYbaIdentityKeepsGcsDefaultCredentialsWithoutEntry() {
+  public void testYbaIdentityForGcsWithoutEntryNeedsCredentialsOfItsOwn() {
     hostCloud(CloudType.aws);
     CustomerConfigStorageGCSData gcsData = federatedGcs();
+    assertFalse(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
 
+    CustomerConfigStorageGCSData withKey = federatedGcs();
+    withKey.useGcpIam = false;
+    assertTrue(spyBackupHelper.applyYbaFederatedIdentity(withKey, testCustomer.getUuid(), null));
+
+    doReturn(true).when(spyBackupHelper).hostHasGcpCredentials();
     assertTrue(spyBackupHelper.applyYbaFederatedIdentity(gcsData, testCustomer.getUuid(), null));
-
     assertNull(gcsData.crossCloudFederationAudience);
   }
 
@@ -1919,6 +1927,14 @@ public class BackupHelperTest extends FakeDBApplication {
           "[default]\naws_access_key_id = AKIDEXAMPLE\naws_secret_access_key = secret\n");
       assertTrue(helper.hostHasAwsCredentials("default"));
       assertFalse(helper.hostHasAwsCredentials("other"));
+
+      // YBA does not ship the SSO module, so an SSO profile gives the chain nothing.
+      Files.writeString(credentials.toPath(), "");
+      Files.writeString(
+          config.toPath(),
+          "[default]\nsso_start_url = https://example.awsapps.com/start\nsso_region ="
+              + " us-east-1\nsso_account_id = 123456789012\nsso_role_name = r\n");
+      assertFalse(helper.hostHasAwsCredentials("default"));
     } finally {
       restoreProperty("aws.configFile", oldConfig);
       restoreProperty("aws.sharedCredentialsFile", oldCredentials);
@@ -2051,5 +2067,24 @@ public class BackupHelperTest extends FakeDBApplication {
     // Each way out: an entry, matching entries, or credentials on the config itself.
     assertTrue(e.getMessage(), e.getMessage().contains("make the providers' aws entries match"));
     assertTrue(e.getMessage(), e.getMessage().contains("set access keys on the storage config"));
+  }
+
+  /** The GCS error names the GCS fixes: a gcp entry, or a service account key on the config. */
+  @Test
+  public void testRequireYbaIdentityExplainsWhatIsMissingForGcs() {
+    hostCloud(CloudType.aws);
+    CustomerConfig config = new CustomerConfig();
+    config.setCustomerUUID(testCustomer.getUuid());
+    config.setConfigName("fed-gcs");
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> spyBackupHelper.requireYbaFederatedIdentity(config, federatedGcs()));
+
+    assertTrue(e.getMessage(), e.getMessage().contains("YBA runs on AWS"));
+    assertTrue(e.getMessage(), e.getMessage().contains("GCS bucket of storage config fed-gcs"));
+    assertTrue(e.getMessage(), e.getMessage().contains("usable gcp entry"));
+    assertTrue(e.getMessage(), e.getMessage().contains("service account key"));
   }
 }
