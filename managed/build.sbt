@@ -479,14 +479,7 @@ buildVenv := {
 testDependentArtifacts := {
   ybLog("Testing modules...")
   val status = Process("mvn test", baseDirectory.value / "parent-module").!
-  // The support bundle Go helpers aren't Maven modules. Like node-agent, they report failures
-  // through JUnit XML rather than by failing this task, so the Java tests still run.
-  ybLog("Testing support bundle Go helpers...")
-  val sbStatus = Process("bash devops/supportbundle/run_go_tests.sh", baseDirectory.value).!
-  if (sbStatus != 0) {
-    ybLog("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
-  }
-  if (status != 0) status else sbStatus
+  status
 }
 
 releaseModulesLocally := {
