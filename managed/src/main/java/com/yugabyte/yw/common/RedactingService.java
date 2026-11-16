@@ -1216,9 +1216,10 @@ public class RedactingService {
 
   /**
    * End of the line at start and of any following lines indented more than column, skipping blank
-   * lines, which a block scalar can hold. HbaConfRedactor.redactFreeText's fold rule differs on
-   * purpose: ldapbindpasswd sits inside a value, so it has no key column to measure from, and the
-   * HBA value Helm folds has no blank lines.
+   * lines, which a block scalar can hold. HbaConfRedactor.redactFreeText's fold rule differs:
+   * ldapbindpasswd sits inside a value, so it measures from the entry that value belongs to, or
+   * from the redacted line, and a blank line ends the fold, since the HBA value Helm folds has
+   * none.
    */
   private static int yamlIndentedLinesEnd(String s, int start, int column) {
     int n = s.length();
