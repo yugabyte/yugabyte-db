@@ -4,7 +4,17 @@ Software upgrade for a YugabyteDB Anywhere Universe
 
 ### Synopsis
 
-Software upgrade for a YugabyteDB Anywhere Universe
+Software upgrade for a YugabyteDB Anywhere Universe.
+
+Software upgrade flow:
+  1. "yba universe upgrade software" upgrades the nodes. If the target release needs a
+     finalize, the universe stays in PreFinalize state and the upgrade can be rolled back.
+  2. "yba universe describe" shows the Software Upgrade State and Rollback Allowed.
+  3. Do one of these:
+     - "yba universe upgrade finalize" completes the upgrade. After it, rollback is not
+       possible.
+     - "yba universe upgrade rollback" returns the universe to the previous version.
+Set --allow-rollback=false to finalize in the same task.
 
 ```
 yba universe upgrade software [flags]
@@ -25,6 +35,7 @@ yba universe upgrade software --name <universe-name> \
       --upgrade-system-catalog               [Optional] Upgrade System Catalog after software upgrade, defaults to true. (default true)
       --delay-between-master-servers int32   [Optional] Upgrade delay between Master servers (in miliseconds). (default 18000)
       --delay-between-tservers int32         [Optional] Upgrade delay between Tservers (in miliseconds). (default 18000)
+      --allow-rollback                       This is a preview flag (may change in future). [Optional] Keep the upgrade in PreFinalize state when the release needs a finalize, so that it can be rolled back. Then run "yba universe upgrade finalize" or "yba universe upgrade rollback". Defaults to true, same as the UI. Set to false to finalize in the same task. (default true)
   -h, --help                                 help for software
 ```
 

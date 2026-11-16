@@ -1530,12 +1530,15 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     VLOG_WITH_FUNC(2) << "Locked index table for Write";
     UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
 
-    // Persist the index birth time in the index table's index_info.
+    // Persist the index birth time in the index table's index_info, and mark it final.
     // TODO(#33155): read_time_for_backfill isn't set for xCluster automatic-mode target (where
     // backfill is replicated from the source).
-    if (index_table_wlock.mutable_data()->pb.has_index_info() && !idx_birth_time.is_special()) {
-      index_table_wlock.mutable_data()->pb.mutable_index_info()->set_birth_time(
-          idx_birth_time.ToUint64());
+    if (index_table_wlock.mutable_data()->pb.has_index_info()) {
+      auto* index_info = index_table_wlock.mutable_data()->pb.mutable_index_info();
+      if (!idx_birth_time.is_special()) {
+        index_info->set_birth_time(idx_birth_time.ToUint64());
+      }
+      index_info->clear_birth_time_state();
     }
 
     // Update sys-catalog with the new indexed table info.
@@ -1552,6 +1555,9 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
   }
   VLOG_WITH_FUNC(2) << "Unlocked index table for Read";
   VLOG(1) << "Sending backfill done requests to the Index table";
+  // TODO(#37622): the master does not resend this if a tablet misses it (e.g. on master
+  // failover). The tablet validator usually repairs that, but not if its single check ran
+  // while the index was still pending.
   RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(index_table_info));
   VLOG(1) << "DONE Sending backfill done requests to the Index table";
   return Status::OK();
