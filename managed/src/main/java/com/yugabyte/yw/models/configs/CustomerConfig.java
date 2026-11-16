@@ -462,6 +462,15 @@ public class CustomerConfig extends Model {
     return callhomeConfig;
   }
 
+  /**
+   * Whether the config can be used: not still being checked (Validating), which may yet be deleted,
+   * nor queued for deletion.
+   */
+  @JsonIgnore
+  public boolean isActive() {
+    return state == ConfigState.Active;
+  }
+
   public void updateState(ConfigState newState) {
     if (this.state == newState) {
       LOG.debug("Invalid State transition as no change requested");
