@@ -41,7 +41,8 @@ type CommandInfo struct {
 	Desc string
 	Cmd  string
 	Args []string
-	// Env is added to the user environment. It cannot override HOME, PWD or the user name vars.
+	// Env is added to the user environment by RunCmd only; RunSteps ignores it.
+	// It cannot override HOME, PWD or the user name vars.
 	Env    []string
 	StdOut util.Buffer
 	StdErr util.Buffer

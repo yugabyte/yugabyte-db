@@ -3,6 +3,7 @@
 package com.yugabyte.yw.commissioner.tasks.payload;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
@@ -560,6 +561,19 @@ public class NodeAgentRpcPayload {
       refreshScriptOnly = !params.otelCollectorEnabled;
     }
 
+    boolean installsConfig =
+        !refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig);
+    if (installsConfig) {
+      // Checked before any upload, so a failure leaves nothing on the node.
+      Map<String, String> secretEnv = new HashMap<>();
+      for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
+        secretEnv.putAll(
+            OtelCollectorConfigGenerator.getCredentialEnv(
+                telemetryProviderService.get(exporterUUID)));
+      }
+      checkNodeAgentReadsSecretEnv(nodeAgent, secretEnv);
+    }
+
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
     installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
@@ -625,7 +639,7 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.addAllMountPoints(
         getMountPoints(taskParams.deviceInfo, provider.getCloudCode()));
 
-    if (!refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
+    if (installsConfig) {
       String otelCollectorConfigFile =
           otelCollectorConfigGenerator
               .generateConfigFile(
@@ -663,6 +677,21 @@ public class NodeAgentRpcPayload {
     }
 
     return installOtelCollectorInputBuilder.build();
+  }
+
+  /**
+   * Fails when a node-agent that is not upgraded yet would get credentials. It would drop
+   * otelColSecretEnv but install the config that refers to it.
+   */
+  @VisibleForTesting
+  static void checkNodeAgentReadsSecretEnv(NodeAgent nodeAgent, Map<String, String> secretEnv) {
+    if (!secretEnv.isEmpty()
+        && !Util.areYbVersionsEqual(Util.getYbaVersion(), nodeAgent.getVersion(), true)) {
+      throw new IllegalStateException(
+          String.format(
+              "Node agent %s is at version %s, not %s. Retry after its upgrade completes.",
+              nodeAgent.getIp(), nodeAgent.getVersion(), Util.getYbaVersion()));
+    }
   }
 
   /**

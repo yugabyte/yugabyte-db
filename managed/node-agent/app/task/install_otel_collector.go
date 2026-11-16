@@ -322,35 +322,32 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	}{
 		{
 			"remove-otel-collector-config-file-if-exists",
-			fmt.Sprintf(
-				"rm -rf %s",
-				otelCollectorConfigFile,
-			),
+			fmt.Sprintf("rm -rf %s", shellSingleQuote(otelCollectorConfigFile)),
 		},
 		{
 			"create-aws-creds-dir",
-			fmt.Sprintf("mkdir -p %s/.aws", ybHome),
+			fmt.Sprintf("mkdir -p %s", shellSingleQuote(filepath.Join(ybHome, ".aws"))),
 		},
 		{
 			"remove-otel-collector-aws-block-if-exists",
 			fmt.Sprintf(`if [ -f %s ]; then \
 		awk '/# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=1} \
 		/# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=0; next} \
-		!inblock' %s > %s.tmp && mv %s.tmp %s; fi`,
-				awsCredsFile,
-				awsCredsFile,
-				awsCredsFile,
-				awsCredsFile,
-				awsCredsFile,
+		!inblock' %s > %s && mv %s %s; fi`,
+				shellSingleQuote(awsCredsFile),
+				shellSingleQuote(awsCredsFile),
+				shellSingleQuote(awsCredsFile+".tmp"),
+				shellSingleQuote(awsCredsFile+".tmp"),
+				shellSingleQuote(awsCredsFile),
 			),
 		},
 		{
 			"remove-gcp-credentials",
-			fmt.Sprintf("rm -rf %s", gcpCredsFile),
+			fmt.Sprintf("rm -rf %s", shellSingleQuote(gcpCredsFile)),
 		},
 		{
 			"remove-otel-collector-secret-env",
-			fmt.Sprintf("rm -f %s", secretEnvFile),
+			fmt.Sprintf("rm -f %s", shellSingleQuote(secretEnvFile)),
 		},
 	}
 	// log_cleanup_env carries the audit-log retention settings that the
@@ -370,8 +367,8 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 			"place-new-otel-collector-config-file",
 			fmt.Sprintf(
 				"mv %s %s",
-				h.param.GetOtelColConfigFile(),
-				otelCollectorConfigFile,
+				shellSingleQuote(h.param.GetOtelColConfigFile()),
+				shellSingleQuote(otelCollectorConfigFile),
 			),
 		})
 	}
@@ -382,7 +379,11 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 			Cmd  string
 		}{
 			"place-new-gcp-creds-file",
-			fmt.Sprintf("mv %s %s", h.param.GetOtelColGcpCredsFile(), gcpCredsFile),
+			fmt.Sprintf(
+				"mv %s %s",
+				shellSingleQuote(h.param.GetOtelColGcpCredsFile()),
+				shellSingleQuote(gcpCredsFile),
+			),
 		})
 	}
 
