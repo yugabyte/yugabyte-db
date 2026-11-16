@@ -467,12 +467,12 @@ Status PgTxnManager::CalculateIsolation(
 }
 
 Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
-  ConstrainRetryReadTimes(
+  CapRetryGlobalLimit(
       VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRestartKind::kRestartTransaction)));
   return Status::OK();
 }
 
-Result<PgClient::RetryReadTimes> PgTxnManager::RestartTransactionForRetry(
+Result<HybridTime> PgTxnManager::RestartTransactionForRetry(
     SetupPerformOptionsAccessorTag tag, RetryRestartKind kind) {
   tserver::PgPerformOptionsPB options;
   const auto read_point_only = kind == RetryRestartKind::kReadPointOnly;
@@ -487,19 +487,14 @@ Result<PgClient::RetryReadTimes> PgTxnManager::RestartTransactionForRetry(
   return client_->RestartTransactionForRetry(&options, read_point_only);
 }
 
-void PgTxnManager::ConstrainRetryReadTimes(const PgClient::RetryReadTimes& times) {
-  if (times.global_limit &&
-      (!retry_global_limit_cap_ || times.global_limit < retry_global_limit_cap_)) {
-    retry_global_limit_cap_ = times.global_limit;
-  }
-  if (times.restart_read) {
-    retry_read_time_floor_.MakeAtLeast(times.restart_read);
+void PgTxnManager::CapRetryGlobalLimit(HybridTime global_limit) {
+  if (global_limit && (!retry_global_limit_cap_ || global_limit < retry_global_limit_cap_)) {
+    retry_global_limit_cap_ = global_limit;
   }
 }
 
 void PgTxnManager::ResetRetryReadTimeConstraints() {
   retry_global_limit_cap_ = HybridTime::kInvalid;
-  retry_read_time_floor_ = HybridTime::kInvalid;
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
@@ -535,7 +530,7 @@ Status PgTxnManager::EnsureReadPoint() {
 }
 
 Status PgTxnManager::RestartReadPoint(SetupPerformOptionsAccessorTag tag) {
-  ConstrainRetryReadTimes(
+  CapRetryGlobalLimit(
       VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRestartKind::kReadPointOnly)));
   return Status::OK();
 }
@@ -842,9 +837,6 @@ Status PgTxnManager::SetupReadTimeOptions(
   read_time_options.set_read_time_serial_no(serial_no_.read_time());
   if (retry_global_limit_cap_) {
     read_time_options.set_global_limit_cap_ht(retry_global_limit_cap_.ToUint64());
-    if (retry_read_time_floor_) {
-      read_time_options.set_read_time_floor_ht(retry_read_time_floor_.ToUint64());
-    }
   }
 
   // read_time may be set by

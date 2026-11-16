@@ -2272,19 +2272,10 @@ class PgClientSession::Impl {
       }
     }
     if (req.read_point_only()) {
-      if (session && session->read_point()->IsRestartRequired()) {
-        session->read_point()->Restart();
-      }
-    } else {
-      RETURN_NOT_OK(
-          SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+      return Status::OK();
     }
-    if (session) {
-      if (const auto read = session->read_point()->GetReadTime().read; read.is_valid()) {
-        resp->set_restart_read_ht(read.ToUint64());
-      }
-    }
-    return Status::OK();
+    return ResultToStatus(
+        SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
   }
 
   Status RollbackToSubTransaction(
@@ -4255,12 +4246,11 @@ class PgClientSession::Impl {
       if (const auto cap = HybridTime::FromPB(read_time_options.global_limit_cap_ht());
           cap && kind == PgClientSessionKind::kPlain &&
           !(txn && txn->isolation() == SERIALIZABLE_ISOLATION)) {
-        // A read time picked by DocDB would get an unconstrained global limit.
+        // A read time picked by DocDB would get an uncapped global limit.
         if (!session.read_point()->GetReadTime()) {
           session.read_point()->SetCurrentReadTime();
         }
-        session.read_point()->ConstrainForRetry(
-            HybridTime::FromPB(read_time_options.read_time_floor_ht()), cap);
+        session.read_point()->CapGlobalLimit(cap);
       }
 
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.

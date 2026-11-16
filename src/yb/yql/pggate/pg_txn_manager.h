@@ -246,9 +246,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   void ResetTxnAndSession();
   void StartNewSession();
   enum class RetryRestartKind { kRestartTransaction, kRecreateTransaction, kReadPointOnly };
-  Result<PgClient::RetryReadTimes> RestartTransactionForRetry(
+  Result<HybridTime> RestartTransactionForRetry(
       SetupPerformOptionsAccessorTag tag, RetryRestartKind kind);
-  void ConstrainRetryReadTimes(const PgClient::RetryReadTimes& times);
+  void CapRetryGlobalLimit(HybridTime global_limit);
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
@@ -296,11 +296,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
-  // While a statement is retried after read restarts: the lowest global limit and the highest
-  // restart read time among the read points that faced them. Read points picked for the retry
-  // read no earlier than the floor and have a global limit no later than the cap.
+  // Lowest global limit among the read points that faced a read restart in the statement being
+  // retried; read points picked for the retry are capped at it.
   HybridTime retry_global_limit_cap_;
-  HybridTime retry_read_time_floor_;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;

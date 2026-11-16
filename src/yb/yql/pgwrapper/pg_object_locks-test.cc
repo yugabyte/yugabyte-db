@@ -2811,6 +2811,10 @@ TEST_F(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
   ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
   ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
   auto writer = ASSERT_RESULT(ConnectWriter());
+  // An injected restart lands no later than the current time, so every retry is restarted again
+  // until its window closes: enough retries to outlast max_clock_skew, which a retry whose window
+  // is not capped never does.
+  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000"));
 
   std::atomic<int> restarts{0};
   SyncPoint::GetInstance()->SetCallBack(
@@ -2821,7 +2825,6 @@ TEST_F(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
   auto status = writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
-  // The retry reads at the restarted read point, so the statement converges.
   ASSERT_OK(status);
   LOG(INFO) << "restarts: " << restarts.load();
   ASSERT_OK(writer.CommitTransaction());
@@ -2840,6 +2843,10 @@ TEST_F(PgObjectLocksReadCommittedRetryTest, ReadRestartRetryConvergesWithInjecti
   ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
   ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
   auto writer = ASSERT_RESULT(ConnectWriter());
+  // An injected restart lands no later than the current time, so every retry is restarted again
+  // until its window closes: enough retries to outlast max_clock_skew, which a retry whose window
+  // is not capped never does.
+  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000"));
 
   ASSERT_OK(writer.StartTransaction(IsolationLevel::READ_COMMITTED));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
