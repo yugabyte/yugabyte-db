@@ -135,8 +135,9 @@ func redactNoPanic(input string) (out string, recovered interface{}) {
 // its own.
 //
 // This is a parity contract, not a local invariant: a file is redacted on the node by this package
-// and, when that is skipped, on the YBA host by LdapBindPasswdHbaFormat. Java reaches its unquoted
-// branch for anything not starting with a literal '"', so the single-escaped form redacts there as
+// and, when that is skipped, on the YBA host by Java (LdapBindPasswdHbaFormat when this was
+// written, HbaConfRedactor now). LdapBindPasswdHbaFormat reached its unquoted
+// branch for anything not starting with a literal '"', so the single-escaped form redacted there as
 // unquoted. Excluding a leading backslash here made the node disagree, and since a clean node run
 // reports REDACTION_STATUS=NODE and suppresses the YBA pass, the disagreement shipped the password.
 func TestRedactHBAAllQuoteStyles(t *testing.T) {

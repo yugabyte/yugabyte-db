@@ -633,5 +633,21 @@ Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMaster(
   return change_resp;
 }
 
+Result<GetChangesResponsePB> CDCSDKTestBase::GetChangesFromMasterUntilRecordCount(
+    const xrepl::StreamId& stream_id, int expected_records,
+    const CDCSDKCheckpointPB* explicit_checkpoint, MonoDelta timeout) {
+  GetChangesResponsePB change_resp;
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        change_resp = VERIFY_RESULT(GetChangesFromMaster(stream_id, explicit_checkpoint));
+        if (change_resp.has_error()) {
+          return StatusFromPB(change_resp.error().status());
+        }
+        return change_resp.cdc_sdk_proto_records_size() >= expected_records;
+      },
+      timeout, Format("Waiting for $0 records from sys catalog tablet", expected_records)));
+  return change_resp;
+}
+
 }  // namespace cdc
 }  // namespace yb

@@ -138,21 +138,34 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       }
     }
 
-    CustomerConfigData data = customerConfig.getDataObject();
-    beanValidator.validate(data, "data");
+    validateConfigData(customerConfig);
+    validateConfigDataWithValidator(customerConfig);
+  }
 
-    // Scoped to storage configs, and placed after the checks above: only the storage validators
+  /** Checks the field constraints of the config's data, with field names prefixed by "data.". */
+  public void validateConfigData(CustomerConfig customerConfig) {
+    beanValidator.validate(customerConfig.getDataObject(), "data");
+  }
+
+  /**
+   * Runs the validator registered for the config's data type, if any. For a storage config, it
+   * checks the locations and reaches out to the storage with the config's credentials, unless
+   * {@link GlobalConfKeys#skipStorageConfigValidation} is set.
+   */
+  public void validateConfigDataWithValidator(CustomerConfig customerConfig) {
+    // Scoped to storage configs, and run after the checks above: only the storage validators
     // depend on anything outside YBA, so they are the only ones an unreachable-storage escape
     // hatch has any business disarming.
     if (customerConfig.getType() == ConfigType.STORAGE
         && runtimeConfGetter.getGlobalConf(GlobalConfKeys.skipStorageConfigValidation)) {
       log.warn(
           "Skipping validation of storage config {} as {} is set",
-          configName,
+          customerConfig.getConfigName(),
           GlobalConfKeys.skipStorageConfigValidation.getKey());
       return;
     }
 
+    CustomerConfigData data = customerConfig.getDataObject();
     ConfigDataValidator validator = validators.get(data.getClass());
     if (validator != null) {
       validator.validate(data);

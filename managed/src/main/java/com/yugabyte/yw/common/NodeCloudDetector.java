@@ -72,7 +72,9 @@ public class NodeCloudDetector {
    * Returns the cloud the node physically runs on:
    *
    * <ul>
-   *   <li>{@link CloudType#aws} or {@link CloudType#gcp} - that metadata service answered.
+   *   <li>{@link CloudType#aws} or {@link CloudType#gcp} - that metadata service answered. On AWS
+   *       an issued IMDSv2 token is enough: GCP has already been ruled out, and the token endpoint
+   *       is AWS-specific.
    *   <li>{@link CloudType#onprem} - every probe ran and none answered, so the node is not an AWS
    *       or GCP VM.
    *   <li>{@code null} - at least one probe could not be run (the node was unreachable, or {@code
@@ -114,7 +116,7 @@ public class NodeCloudDetector {
             curl("-X", "PUT", AWS_IMDSV2_TOKEN_URL, "-H", AWS_IMDSV2_TOKEN_TTL_HEADER + ":60"));
     if (tokenResponse == null) {
       allProbesRan = false;
-    } else {
+    } else if (tokenResponse.isSuccess()) {
       String token = extractImdsV2Token(tokenResponse);
       if (token != null) {
         ShellResponse response =
@@ -123,12 +125,17 @@ public class NodeCloudDetector {
                 node,
                 context,
                 curl("-H", "X-aws-ec2-metadata-token:" + token, AWS_INSTANCE_ID_URL));
-        if (response == null) {
-          allProbesRan = false;
-        } else if (response.isSuccess()) {
+        if (response != null && response.isSuccess()) {
           return CloudType.aws;
         }
       }
+      // Only AWS issues this token, so the node is on AWS even though the token did not get its
+      // instance ID. Federation needs only the cloud, and calling the node onprem would silently
+      // skip it.
+      log.warn(
+          "Node's AWS metadata service issued a token, but the instance ID could not be read with"
+              + " it; detecting the node as AWS anyway");
+      return CloudType.aws;
     }
 
     ShellResponse imdsV1Response = runProbe(universe, node, context, curl(AWS_INSTANCE_ID_URL));
@@ -151,7 +158,11 @@ public class NodeCloudDetector {
     if (!response.isSuccess() || StringUtils.isBlank(response.message)) {
       return null;
     }
-    String token = response.message.trim();
+    // A successful response starts with the "Command output:" prefix, which is not part of it.
+    String token = response.extractRunCommandOutput();
+    if (token.isEmpty()) {
+      return null;
+    }
     // The token is opaque, so refuse anything that would not survive being passed back as a single
     // shell argument instead of risking a malformed command.
     if (StringUtils.containsWhitespace(token)) {

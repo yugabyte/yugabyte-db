@@ -678,7 +678,7 @@ public class SupportBundleApiControllerTest extends FakeDBApplication {
   private static ObjectNode filesSpecJson(String componentName, String... params) {
     ObjectNode spec = Json.newObject();
     spec.put("component_name", componentName);
-    spec.put("script_path", "bin/node_utils.sh");
+    spec.put("script_path", "bin/support_bundle_utils.sh");
     spec.put("remote_tar_path", "/tmp/" + componentName + "-${nodeName}.tar.gz");
     spec.put("linux_user", "yugabyte");
     ArrayNode paramsArray = spec.putArray("params");

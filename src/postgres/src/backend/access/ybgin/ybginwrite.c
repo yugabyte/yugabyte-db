@@ -113,7 +113,7 @@ static int32
 ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 				Relation index, Datum value, bool isNull,
 				Datum ybctid, uint64_t *backfilltime,
-				bool isinsert)
+				bool isinsert, bool persist_missing_row)
 {
 	Datum	   *entries;
 	GinNullCategory *categories;
@@ -146,6 +146,7 @@ ybginTupleWrite(GinState *ginstate, OffsetNumber attnum,
 		{
 			Assert(!backfilltime);
 			YBCExecuteDeleteIndex(index, &entries[i], &isnull, ybctid,
+								  persist_missing_row,
 								  doBindsForIdxWrite, (void *) ginstate);
 		}
 	}
@@ -163,7 +164,8 @@ ybginTupleInsert(GinState *ginstate, OffsetNumber attnum,
 				 Datum ybctid, uint64_t *backfilltime)
 {
 	return ybginTupleWrite(ginstate, attnum, index, value, isNull, ybctid,
-						   backfilltime, true /* isinsert */ );
+						   backfilltime, true /* isinsert */ ,
+						   false /* persist_missing_row */ );
 }
 
 /*
@@ -173,10 +175,11 @@ ybginTupleInsert(GinState *ginstate, OffsetNumber attnum,
 static int32
 ybginTupleDelete(GinState *ginstate, OffsetNumber attnum,
 				 Relation index, Datum value, bool isNull,
-				 Datum ybctid)
+				 Datum ybctid, bool persist_missing_row)
 {
 	return ybginTupleWrite(ginstate, attnum, index, value, isNull, ybctid,
-						   NULL /* backfilltime */ , false /* isinsert */ );
+						   NULL /* backfilltime */ , false /* isinsert */ ,
+						   persist_missing_row);
 }
 
 /*
@@ -313,7 +316,8 @@ ybginvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
  */
 static void
 ybginWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
-		   Relation heap, struct IndexInfo *indexInfo, bool isinsert)
+		   Relation heap, struct IndexInfo *indexInfo, bool isinsert,
+		   bool persist_missing_row)
 {
 	GinState   *ginstate = (GinState *) indexInfo->ii_AmCache;
 	MemoryContext oldCtx;
@@ -348,7 +352,7 @@ ybginWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 		else
 			ybginTupleDelete(ginstate, (OffsetNumber) (i + 1),
 							 index, values[i], isnull[i],
-							 ybctid);
+							 ybctid, persist_missing_row);
 	}
 
 	MemoryContextSwitchTo(oldCtx);
@@ -360,7 +364,8 @@ ybgininsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
 			Relation heap, IndexUniqueCheck checkUnique,
 			struct IndexInfo *indexInfo, bool shared_insert)
 {
-	ybginWrite(index, values, isnull, ybctid, heap, indexInfo, true /* isinsert */ );
+	ybginWrite(index, values, isnull, ybctid, heap, indexInfo,
+			   true /* isinsert */ , false /* persist_missing_row */ );
 
 	/* index cannot be unique */
 	return false;
@@ -368,10 +373,11 @@ ybgininsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
 
 void
 ybgindelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
-			Relation heap, struct IndexInfo *indexInfo)
+			Relation heap, struct IndexInfo *indexInfo,
+			bool persist_missing_row)
 {
 	ybginWrite(index, values, isnull, ybctid, heap, indexInfo,
-			   false /* isinsert */ );
+			   false /* isinsert */ , persist_missing_row);
 }
 
 IndexBuildResult *

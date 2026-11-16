@@ -86,9 +86,10 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
   }
 };
 
-// Verify that the heartbeat carries a storage_tier label on every path_metric
-// entry.  In a default mini-cluster (no labeled --fs_data_dirs), all paths
-// should report "ssd" (kDefaultStorageTier).
+// Verify that the heartbeat carries a storage_tier label on every data root. A default
+// mini-cluster has no labeled --fs_data_dirs and uses the same roots for WAL and data, so every
+// path_metric entry is a data root on "ssd" (kDefaultStorageTier). A WAL-only root carries no
+// tier: see TsTabletManagerWalOnlyRootTest.HeartbeatPathMetricsSkipWalOnlyRoot.
 TEST_F(TServerMetricsHeartbeatDataProviderITest, PathMetricsCarryStorageTier) {
   ASSERT_TRUE(ASSERT_RESULT(AddDataSatisfies(
       [](const master::TSHeartbeatRequestPB& req) -> Result<bool> {
@@ -101,7 +102,7 @@ TEST_F(TServerMetricsHeartbeatDataProviderITest, PathMetricsCarryStorageTier) {
           return false;
         }
         for (const auto& pm : metrics.path_metrics()) {
-          // Every path metric must carry a storage_tier.
+          // Every root of this cluster is a data root, so each must carry a storage_tier.
           if (!pm.has_storage_tier()) {
             return false;
           }
