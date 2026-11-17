@@ -123,6 +123,13 @@ struct od_server {
 	 * number of RFQ == number of Sync is not sufficient for detaching.
 	 */
 	bool yb_has_unsynced_pending_packets;
+
+	/*
+	 * YB: Set on receipt of YbObjectDropped for this server's role. Applied
+	 * (the role's routes are marked inactive) at the next ReadyForQuery or
+	 * when the server is closed.
+	 */
+	bool yb_role_dropped;
 };
 
 static const size_t OD_SERVER_DEFAULT_HASHMAP_SZ = 420;
@@ -159,6 +166,7 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->yb_marked_for_close = false;
 	server->yb_expiry_time_us = UINT64_MAX;
 	server->yb_has_unsynced_pending_packets = false;
+	server->yb_role_dropped = false;
 
 #ifdef USE_SCRAM
 	od_scram_state_init(&server->scram_state);
