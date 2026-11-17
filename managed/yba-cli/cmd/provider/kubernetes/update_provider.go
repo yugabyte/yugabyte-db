@@ -210,6 +210,9 @@ var updateK8sProviderCmd = &cobra.Command{
 		)
 
 		providerRegions = addK8sRegions(addRegions, addZones, providerRegions)
+		if err := providerutil.ValidateZoneRemovalLeavesActiveZone(removeZones, providerRegions); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
@@ -327,7 +330,9 @@ func init() {
 			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
-			"Each zone needs to be removed using a separate --remove-zone flag.")
+			"Each zone needs to be removed using a separate --remove-zone flag. "+
+			"Removing every zone of a region is rejected; remove the region with "+
+			"--remove-region instead.")
 
 	updateK8sProviderCmd.Flags().Bool("airgap-install", false,
 		"[Optional] Do YugabyteDB nodes have access to public internet to download packages.")

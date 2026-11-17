@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
@@ -130,11 +131,12 @@ func TestValidateOCIZoneRemovalLeavesActiveZone(t *testing.T) {
 		addedZone  = "zone-name=us-sanjose-1-AD-3::region-name=us-sanjose-1::subnet=s"
 	)
 	tests := []struct {
-		name        string
-		regions     []ybaclient.Region
-		addZones    []string
-		removeZones []string
-		wantErr     string
+		name          string
+		regions       []ybaclient.Region
+		addZones      []string
+		removeZones   []string
+		removeRegions []string
+		wantErr       string
 	}{
 		{
 			name: "removing the only zone of a region",
@@ -175,15 +177,17 @@ func TestValidateOCIZoneRemovalLeavesActiveZone(t *testing.T) {
 		},
 		{
 			name: "removing every zone of a region that is itself removed",
-			regions: []ybaclient.Region{ociRegion(regionName, false,
+			regions: []ybaclient.Region{ociRegion(regionName, true,
 				ociZone("us-sanjose-1-AD-1", true))},
-			removeZones: []string{onlyZone},
+			removeRegions: []string{regionName},
+			removeZones:   []string{onlyZone},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			updated := editOCIRegions(nil, tc.addZones, nil, tc.removeZones, tc.regions)
-			err := validateOCIZoneRemovalLeavesActiveZone(tc.removeZones, updated)
+			updated := removeOCIRegions(tc.removeRegions, tc.regions)
+			updated = editOCIRegions(nil, tc.addZones, nil, tc.removeZones, updated)
+			err := providerutil.ValidateZoneRemovalLeavesActiveZone(tc.removeZones, updated)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)

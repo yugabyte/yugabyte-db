@@ -525,3 +525,45 @@ func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
 	}
 	return imageBundle
 }
+
+// ValidateZoneRemovalLeavesActiveZone rejects a --remove-zone that deactivates
+// every zone of a region that is still part of the provider. Call it after the
+// region and zone edits are applied, so an added zone and a removed region
+// count. An omitted active flag counts as active: the server defaults a zone
+// or region to active, and a newly added zone omits the flag.
+func ValidateZoneRemovalLeavesActiveZone(
+	removeZones []string,
+	providerRegions []ybaclient.Region,
+) error {
+	regionsWithRemoval := make(map[string]bool, len(removeZones))
+	for _, zoneString := range removeZones {
+		zone := BuildZoneMapFromString(zoneString, "remove")
+		regionsWithRemoval[zone["region-name"]] = true
+	}
+	if len(regionsWithRemoval) == 0 {
+		return nil
+	}
+	for _, region := range providerRegions {
+		if !regionsWithRemoval[region.GetCode()] || !recordedActive(region.GetActiveOk()) {
+			continue
+		}
+		if !regionHasActiveZone(region) {
+			return fmt.Errorf("region %s would have no active zone; "+
+				"remove the region with --remove-region instead", region.GetCode())
+		}
+	}
+	return nil
+}
+
+func recordedActive(active *bool, ok bool) bool {
+	return !ok || *active
+}
+
+func regionHasActiveZone(region ybaclient.Region) bool {
+	for _, zone := range region.GetZones() {
+		if recordedActive(zone.GetActiveOk()) {
+			return true
+		}
+	}
+	return false
+}

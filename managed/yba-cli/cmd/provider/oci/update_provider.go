@@ -250,7 +250,7 @@ var updateOCIProviderCmd = &cobra.Command{
 			providerRegions,
 		)
 		providerRegions = addOCIRegions(addRegions, addZones, providerRegions)
-		if err := validateOCIZoneRemovalLeavesActiveZone(removeZones, providerRegions); err != nil {
+		if err := providerutil.ValidateZoneRemovalLeavesActiveZone(removeZones, providerRegions); err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		provider.SetRegions(providerRegions)
@@ -570,48 +570,6 @@ func ociRegionHasZone(region *ybaclient.Region, zoneName string) bool {
 
 func regionNotFoundError(regionName string) error {
 	return fmt.Errorf("region %s not found in the provider", regionName)
-}
-
-// validateOCIZoneRemovalLeavesActiveZone rejects a --remove-zone that deactivates
-// every zone of a region that is still part of the provider. It must run after
-// the region and zone edits are applied, so added zones and removed regions count.
-func validateOCIZoneRemovalLeavesActiveZone(
-	removeZones []string,
-	providerRegions []ybaclient.Region,
-) error {
-	regionsWithRemoval := make(map[string]bool, len(removeZones))
-	for _, zoneString := range removeZones {
-		zone := providerutil.BuildZoneMapFromString(zoneString, "remove")
-		regionsWithRemoval[zone["region-name"]] = true
-	}
-	if len(regionsWithRemoval) == 0 {
-		return nil
-	}
-	for _, region := range providerRegions {
-		if !regionsWithRemoval[region.GetCode()] || !ociRecordedActive(region.GetActiveOk()) {
-			continue
-		}
-		if !ociRegionHasActiveZone(region) {
-			return fmt.Errorf("region %s would have no active zone; "+
-				"remove the region with --remove-region instead", region.GetCode())
-		}
-	}
-	return nil
-}
-
-// ociRecordedActive treats an omitted active flag as active. The server
-// defaults a zone or region to active, and a newly added zone omits the flag.
-func ociRecordedActive(active *bool, ok bool) bool {
-	return !ok || *active
-}
-
-func ociRegionHasActiveZone(region ybaclient.Region) bool {
-	for _, zone := range region.GetZones() {
-		if ociRecordedActive(zone.GetActiveOk()) {
-			return true
-		}
-	}
-	return false
 }
 
 func editOCIRegions(
