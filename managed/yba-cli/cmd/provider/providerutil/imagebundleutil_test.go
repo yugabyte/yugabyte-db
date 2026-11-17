@@ -69,3 +69,62 @@ func TestRemoveImageBundles(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateImageBundleEdits(t *testing.T) {
+	bundles := []ybaclient.ImageBundle{
+		{Uuid: util.GetStringPointer("u1")},
+		{Uuid: util.GetStringPointer("u2")},
+	}
+	tests := []struct {
+		name            string
+		remove          []string
+		edit            []string
+		editOverride    []string
+		wantErrContains string
+	}{
+		{name: "no edits"},
+		{
+			name:         "edits of known bundles",
+			remove:       []string{"u1"},
+			edit:         []string{"image-bundle-uuid=u2::ssh-user=opc"},
+			editOverride: []string{"image-bundle-uuid=u2::region-name=r::machine-image=img"},
+		},
+		{
+			name:            "unknown uuid in edit-image-bundle",
+			edit:            []string{"image-bundle-uuid=typo::ssh-user=opc"},
+			wantErrContains: "image bundle typo in --edit-image-bundle is not an image bundle of the provider",
+		},
+		{
+			name:         "unknown uuid in edit-image-bundle-region-override",
+			editOverride: []string{"image-bundle-uuid=typo::region-name=r::machine-image=img"},
+			wantErrContains: "image bundle typo in --edit-image-bundle-region-override " +
+				"is not an image bundle of the provider",
+		},
+		{
+			name:            "edit-image-bundle of a removed bundle",
+			remove:          []string{"u1"},
+			edit:            []string{"image-bundle-uuid=u1::ssh-user=opc"},
+			wantErrContains: "image bundle u1 is removed with --remove-image-bundle",
+		},
+		{
+			name:            "edit-image-bundle-region-override of a removed bundle",
+			remove:          []string{"u1"},
+			editOverride:    []string{"image-bundle-uuid=u1::region-name=r::machine-image=img"},
+			wantErrContains: "image bundle u1 is removed with --remove-image-bundle",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateImageBundleEdits(tc.remove, tc.edit, tc.editOverride, bundles)
+			if tc.wantErrContains == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErrContains) {
+				t.Fatalf("got error %v, want one containing %q", err, tc.wantErrContains)
+			}
+		})
+	}
+}

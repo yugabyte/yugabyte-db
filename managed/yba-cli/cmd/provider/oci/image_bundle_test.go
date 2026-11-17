@@ -225,24 +225,6 @@ func TestValidateOCIBundlesCoverAddedRegions(t *testing.T) {
 		"image-bundle-uuid=custom-uuid::region-name=b::machine-image=<image-ocid>")
 }
 
-func TestValidateOCIImageBundlesNotRemoved(t *testing.T) {
-	checkErr(t, validateOCIImageBundlesNotRemoved(
-		[]string{"u1"},
-		[]string{"image-bundle-uuid=u2::ssh-user=opc"},
-		[]string{"image-bundle-uuid=u3::region-name=r::machine-image=img"},
-	), "")
-	checkErr(t, validateOCIImageBundlesNotRemoved(
-		[]string{"u1"},
-		nil,
-		[]string{"image-bundle-uuid=u1::region-name=r::machine-image=img"},
-	), "image bundle u1 is removed")
-	checkErr(t, validateOCIImageBundlesNotRemoved(
-		[]string{"u1"},
-		[]string{"image-bundle-uuid=u1::ssh-user=opc"},
-		nil,
-	), "image bundle u1 is removed")
-}
-
 func checkErr(t *testing.T, err error, want string) {
 	t.Helper()
 	if want == "" {

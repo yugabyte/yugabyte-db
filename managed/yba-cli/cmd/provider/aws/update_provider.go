@@ -259,6 +259,13 @@ var updateAWSProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		if err := providerutil.ValidateImageBundleEdits(
+			removeImageBundles, editImageBundles, editImageBundleRegionOverride,
+			providerImageBundles,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		providerImageBundles, err = providerutil.RemoveImageBundles(
 			removeImageBundles, providerImageBundles)
 		if err != nil {
