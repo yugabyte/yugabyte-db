@@ -482,7 +482,8 @@ public class SupportBundleUtil {
 
     String fileErrorMessage =
         errorMessage + System.lineSeparator() + ExceptionUtils.getStackTrace(e);
-    writeStringToFile(fileErrorMessage, localFilePath);
+    // The exception message can quote the failed command's output.
+    writeKubectlOutputToFile(fileErrorMessage, localFilePath);
   }
 
   public enum KubernetesResourceType {
@@ -585,12 +586,10 @@ public class SupportBundleUtil {
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
     try {
       // Bundle files hold raw kubectl/helm output -- "helm get values" and the pod specs both
-      // inline the telemetry exporter credentials (PLAT-22613) and the universe gflags: the
-      // values always, the pod specs as container args with charts before PLAT-13974.
+      // inline the telemetry exporter credentials (PLAT-22613).
       FileUtils.writeStringToFile(
           new File(localFilePath),
-          RedactingService.redactSensitiveInfoInString(
-              RedactingService.redactTelemetryCredentials(message)),
+          RedactingService.redactTelemetryCredentials(message),
           Charset.forName("UTF-8"),
           append);
       return true;
@@ -602,6 +601,17 @@ public class SupportBundleUtil {
 
   public boolean writeStringToFile(String message, String localFilePath) {
     return writeStringToFile(message, localFilePath, false);
+  }
+
+  /**
+   * Writes raw kubectl/helm output, which carries the universe gflags: "helm get values" always,
+   * and the pod specs as container args with charts before PLAT-13974. The free-text redaction cuts
+   * an HBA line from ldapbindpasswd to its end, so it is not for the metadata JSON, which the tree
+   * redaction has already handled.
+   */
+  public boolean writeKubectlOutputToFile(String output, String localFilePath) {
+    return writeStringToFile(
+        RedactingService.redactSensitiveInfoInString(output), localFilePath, false);
   }
 
   /**
@@ -668,7 +678,7 @@ public class SupportBundleUtil {
 
         String resourceOutput =
             kubernetesManager.getServiceAccountPermissions(config, roleData, kubectlOutputFormat);
-        writeStringToFile(resourceOutput, localFilePath);
+        writeKubectlOutputToFile(resourceOutput, localFilePath);
       } catch (Exception e) {
         logK8sError(
             String.format(

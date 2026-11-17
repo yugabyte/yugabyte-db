@@ -674,7 +674,7 @@ public class SupportBundleUtilTest extends FakeDBApplication {
 
   private String writeAndRead(String content) throws IOException {
     String path = overriddenConfigTestDir.resolve("k8s_output.yaml").toString();
-    assertTrue(supportBundleUtil.writeStringToFile(content, path));
+    assertTrue(supportBundleUtil.writeKubectlOutputToFile(content, path));
     return Files.readString(Paths.get(path));
   }
 
@@ -684,8 +684,29 @@ public class SupportBundleUtilTest extends FakeDBApplication {
     }
   }
 
+  // The metadata JSON is tree-redacted before saveMetadata; the free-text pass would cut the HBA
+  // value, with its closing quote and comma, from ldapbindpasswd to the end of the line.
   @Test
-  public void testWriteStringToFileRedactsLdapGFlagsInHelmValues() throws IOException {
+  public void testSaveMetadataKeepsTreeRedactedHbaJsonParseable() throws IOException {
+    JsonNode metadata =
+        RedactingService.filterSecretFields(
+            Json.parse(
+                "{\"tserverGFlags\": {\"ysql_hba_conf_csv\": \"host all all 0.0.0.0/0 ldap"
+                    + " ldapserver=ldap.example.com ldapbindpasswd=hba-secret"
+                    + " ldapsearchattribute=uid\"}}"),
+            RedactingService.RedactionTarget.LOGS);
+    supportBundleUtil.saveMetadata(
+        ModelFactory.testCustomer(),
+        overriddenConfigTestDir.toString(),
+        metadata,
+        "universes.json");
+    String written = Files.readString(overriddenConfigTestDir.resolve("universes.json"));
+    assertEquals(metadata, Json.parse(written));
+    assertNoLdapSecrets(written);
+  }
+
+  @Test
+  public void testWriteKubectlOutputToFileRedactsLdapGFlagsInHelmValues() throws IOException {
     String helmValues =
         String.join(
             "\n",
@@ -712,7 +733,8 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   // Charts before PLAT-13974 pass the gflags as yb-tserver arguments in the container command,
   // which kubectl prints as a block scalar or as one double-quoted string.
   @Test
-  public void testWriteStringToFileRedactsLdapGFlagsInPodSpecBlockScalar() throws IOException {
+  public void testWriteKubectlOutputToFileRedactsLdapGFlagsInPodSpecBlockScalar()
+      throws IOException {
     String podSpec =
         String.join(
             "\n",
@@ -738,7 +760,8 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testWriteStringToFileRedactsLdapGFlagsInPodSpecQuotedString() throws IOException {
+  public void testWriteKubectlOutputToFileRedactsLdapGFlagsInPodSpecQuotedString()
+      throws IOException {
     String podSpec =
         "      - \"exec ${YB_HOME}/bin/yb-tserver \\\\\\n  --fs_data_dirs=/mnt/disk0 \\\\\\n"
             + "  --ycql_ldap_bind_passwd=\\\"tserver-secret\\\" \\\\\\n"

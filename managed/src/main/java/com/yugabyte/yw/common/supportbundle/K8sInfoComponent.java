@@ -109,7 +109,7 @@ class K8sInfoComponent implements SupportBundleComponent {
                       kubernetesResourceType.toString().toLowerCase(),
                       namespaceToAzName.getKey(),
                       SupportBundleUtil.kubectlOutputFormat);
-          supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
+          supportBundleUtil.writeKubectlOutputToFile(resourceOutput, localFilePath);
         } catch (Exception e) {
           supportBundleUtil.logK8sError(
               String.format(
@@ -136,7 +136,7 @@ class K8sInfoComponent implements SupportBundleComponent {
                     KubernetesResourceType.SECRETS.toString().toLowerCase(),
                     namespaceToAzName.getKey(),
                     null);
-        supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
+        supportBundleUtil.writeKubectlOutputToFile(resourceOutput, localFilePath);
       } catch (Exception e) {
         supportBundleUtil.logK8sError(
             String.format(
@@ -186,7 +186,7 @@ class K8sInfoComponent implements SupportBundleComponent {
                     namespaceToAzName.getKey(),
                     helmReleaseName,
                     SupportBundleUtil.kubectlOutputFormat);
-        supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
+        supportBundleUtil.writeKubectlOutputToFile(resourceOutput, localFilePath);
       } catch (Exception e) {
         supportBundleUtil.logK8sError(
             String.format(
@@ -235,7 +235,7 @@ class K8sInfoComponent implements SupportBundleComponent {
                     kubernetesResourceType.toString().toLowerCase(),
                     platformNamespace,
                     SupportBundleUtil.kubectlOutputFormat);
-        supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
+        supportBundleUtil.writeKubectlOutputToFile(resourceOutput, localFilePath);
       } catch (Exception e) {
         supportBundleUtil.logK8sError(
             String.format(
@@ -360,7 +360,7 @@ class K8sInfoComponent implements SupportBundleComponent {
             String resourceOutput =
                 kubernetesManager.getK8sVersion(
                     kubernetesCluster.config, SupportBundleUtil.kubectlOutputFormat);
-            supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
+            supportBundleUtil.writeKubectlOutputToFile(resourceOutput, localFilePath);
           } catch (Exception e) {
             supportBundleUtil.logK8sError(
                 String.format(
@@ -417,7 +417,7 @@ class K8sInfoComponent implements SupportBundleComponent {
                       kubernetesCluster.config,
                       storageClassName,
                       SupportBundleUtil.kubectlOutputFormat);
-              supportBundleUtil.writeStringToFile(resourceOutput, localFilePath);
+              supportBundleUtil.writeKubectlOutputToFile(resourceOutput, localFilePath);
             } catch (Exception e) {
               supportBundleUtil.logK8sError(
                   String.format(
