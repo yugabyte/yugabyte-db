@@ -682,7 +682,6 @@ Status CatalogManager::RepackSnapshotsForBackup(
         }
         TRACE("Looking up table");
         scoped_refptr<TableInfo> table_info = GetTableInfo(entry.id());
-        TEST_SYNC_POINT("CatalogManager::RepackSnapshotsForBackup:TableLookedUp");
         if (table_info == nullptr) {
           if (skip_missing_tables) {
             LOG(INFO) << Format(
