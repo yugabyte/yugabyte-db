@@ -184,10 +184,10 @@ public class OciEARServiceUtil {
   }
 
   /**
-   * Resolves the OCI key OCID from the auth config, treating OCI_KEY_NAME as the single source of
-   * truth. If a cached OCI_KEY_OCID is already present it is returned as-is. Otherwise the OCID is
-   * looked up from OCI_KEY_NAME via {@link #getKeyOcidByName}, the key is created if it does not
-   * yet exist, and the resolved OCID is cached back into the supplied auth config.
+   * Returns the key OCID of an existing config. OCI_KEY_OCID, recorded when the config was created,
+   * identifies the key: the key's display name can change in OCI. Configs without one fall back to
+   * a lookup by OCI_KEY_NAME, whose result is cached into the supplied auth config. Never creates a
+   * key.
    */
   public String resolveKeyOcid(UUID configUUID, ObjectNode authConfig) {
     String keyOcid = getSafeText(authConfig, OciKmsAuthConfigField.ociKeyOcid.fieldName);
@@ -202,11 +202,30 @@ public class OciEARServiceUtil {
 
     String foundOcid = getKeyOcidByName(configUUID, authConfig, keyName);
     if (StringUtils.isBlank(foundOcid)) {
-      CreateKeyResponse resp = createKey(configUUID, authConfig, keyName);
-      foundOcid = resp.getKey().getId();
+      throw new RuntimeException(
+          String.format("No OCI key with display name '%s' found in the compartment.", keyName));
     }
     authConfig.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, foundOcid);
     return foundOcid;
+  }
+
+  /**
+   * Config-create counterpart of {@link #resolveKeyOcid}: looks the key up by OCI_KEY_NAME, creates
+   * it if no key has that name, and caches the OCID into the supplied auth config.
+   */
+  public String resolveOrCreateKeyOcid(UUID configUUID, ObjectNode authConfig) {
+    String keyName = getSafeText(authConfig, OciKmsAuthConfigField.ociKeyName.fieldName);
+    if (StringUtils.isBlank(keyName)) {
+      throw new RuntimeException("OCI_KEY_NAME is required to resolve the OCI KMS key.");
+    }
+
+    String keyOcid = getKeyOcidByName(configUUID, authConfig, keyName);
+    if (StringUtils.isBlank(keyOcid)) {
+      CreateKeyResponse resp = createKey(configUUID, authConfig, keyName);
+      keyOcid = resp.getKey().getId();
+    }
+    authConfig.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, keyOcid);
+    return keyOcid;
   }
 
   public CreateKeyResponse createKey(UUID configUUID, ObjectNode authConfig, String displayName) {
@@ -508,11 +527,24 @@ public class OciEARServiceUtil {
           OCIErrorFormatter.logAndShorten("Failed to access OCI vault '" + vaultOcid + "'", e), e);
     }
 
-    // Step 5: validate the key by name (the single source of truth).
-    // OCI_KEY_NAME is required. If a key with this display name already exists, validate its
-    // settings (lifecycle state must be Enabled and algorithm must be AES). A non-existent name is
-    // allowed here; the key will be created at config-create time. getKeyOcidByName throws if
-    // multiple keys share the same display name.
+    // Step 5: validate the key. An existing config carries the OCI_KEY_OCID it was created with,
+    // and that key must still exist, be Enabled and use AES; its display name may have changed.
+    // Otherwise (create, or a config that predates the cached OCID) the key is found by
+    // OCI_KEY_NAME. A non-existent name is allowed here; the key will be created at config-create
+    // time. getKeyOcidByName throws if multiple keys share the same display name.
+    String storedKeyOcid = getSafeText(formData, OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    if (StringUtils.isNotBlank(storedKeyOcid)) {
+      if (!checkKeyExists(formData, storedKeyOcid)) {
+        throw new RuntimeException("OCI key '" + storedKeyOcid + "' does not exist.");
+      }
+      if (!validateKeySettings(formData, storedKeyOcid)) {
+        throw new RuntimeException(
+            "OCI key '"
+                + storedKeyOcid
+                + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
+      }
+      return;
+    }
     String keyName = getSafeText(formData, OciKmsAuthConfigField.ociKeyName.fieldName);
     if (StringUtils.isBlank(keyName)) {
       throw new RuntimeException("OCI_KEY_NAME is required");

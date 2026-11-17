@@ -13,13 +13,20 @@ package com.yugabyte.yw.common.kms.services;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,6 +34,7 @@ import com.oracle.bmc.keymanagement.model.Key;
 import com.oracle.bmc.keymanagement.responses.CreateKeyResponse;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
@@ -55,6 +63,7 @@ public class OciEARServiceTest extends FakeDBApplication {
   public UUID configUUID = UUID.randomUUID();
   public String authConfigName = "fake-oci-kms-config";
   public String keyOcid = "ocid1.key.oc1..fake";
+  public String otherKeyOcid = "ocid1.key.oc1..example-other";
   public String keyName = "fake-key-name";
   public int numBytes = 32;
   public byte[] randomBytes = RandomUtils.nextBytes(numBytes);
@@ -136,6 +145,177 @@ public class OciEARServiceTest extends FakeDBApplication {
     assertEquals(
         keyOcid, createdAuthConfig.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
     verify(mockOciEARServiceUtil, times(1)).createKey(eq(configUUID), any(), eq(keyName));
+  }
+
+  @Test
+  public void testCreateAuthConfigWithService_userSuppliedOcid_isIgnored() throws Exception {
+    ObjectNode fakeAuthConfigCopy = fakeAuthConfig.deepCopy();
+    fakeAuthConfigCopy.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, otherKeyOcid);
+    fakeAuthConfigCopy.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+
+    doReturn(keyOcid)
+        .when(mockOciEARServiceUtil)
+        .getKeyOcidByName(eq(configUUID), any(), eq(keyName));
+
+    ObjectNode createdAuthConfig =
+        mockOciEARService.createAuthConfigWithService(configUUID, fakeAuthConfigCopy);
+    assertNotNull(createdAuthConfig);
+    assertEquals(
+        keyOcid, createdAuthConfig.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+  }
+
+  @Test
+  public void testRefreshKmsWithService_storedOcid_usesStoredKeyWithoutNameLookup()
+      throws Exception {
+    // The key was renamed in OCI, so a lookup by the stored name finds nothing.
+    ObjectNode authConfig = fakeAuthConfig.deepCopy();
+    authConfig.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+    stubRenamedKey();
+    doNothing().when(mockOciEARServiceUtil).validateKMSProviderConfigFormData(any());
+    doNothing().when(mockOciEARServiceUtil).testWrapAndUnwrapKey(eq(configUUID), any());
+
+    mockOciEARService.refreshKmsWithService(configUUID, authConfig);
+
+    verify(mockOciEARServiceUtil, never()).getKeyOcidByName(any(), any(), any());
+    verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+    assertEquals(keyOcid, authConfig.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+  }
+
+  @Test
+  public void testRefreshKmsWithService_legacyConfigWithoutOcid_looksUpByNameWithoutCreating()
+      throws Exception {
+    ObjectNode authConfig = fakeAuthConfig.deepCopy();
+    authConfig.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    authConfig.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+    doReturn(keyOcid)
+        .when(mockOciEARServiceUtil)
+        .getKeyOcidByName(eq(configUUID), any(), eq(keyName));
+    doNothing().when(mockOciEARServiceUtil).validateKMSProviderConfigFormData(any());
+    doNothing().when(mockOciEARServiceUtil).testWrapAndUnwrapKey(eq(configUUID), any());
+
+    mockOciEARService.refreshKmsWithService(configUUID, authConfig);
+
+    verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+    assertEquals(keyOcid, authConfig.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+  }
+
+  @Test
+  public void testRefreshKmsWithService_legacyConfigKeyNameMissing_failsWithoutCreating()
+      throws Exception {
+    ObjectNode authConfig = fakeAuthConfig.deepCopy();
+    authConfig.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    authConfig.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+    stubRenamedKey();
+    doNothing().when(mockOciEARServiceUtil).validateKMSProviderConfigFormData(any());
+    lenient().doNothing().when(mockOciEARServiceUtil).testWrapAndUnwrapKey(eq(configUUID), any());
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> mockOciEARService.refreshKmsWithService(configUUID, authConfig));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertTrue(e.getMessage().contains(keyName));
+    verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+  }
+
+  @Test
+  public void testUpdateAuthConfig_keepsStoredKeyOcid() throws Exception {
+    saveKmsConfig(withKeyName(fakeAuthConfig));
+    stubRenamedKey();
+    doReturn(true).when(mockOciEARServiceUtil).validateKeySettings(any(), eq(keyOcid));
+
+    // The edit form carries the stored OCID, copied in by the controller.
+    ObjectNode editForm = withKeyName(fakeAuthConfig);
+    editForm.put(OciKmsAuthConfigField.ociFingerprint.fieldName, "new-fake-fingerprint");
+
+    KmsConfig updated = mockOciEARService.updateAuthConfig(configUUID, editForm);
+
+    assertNotNull(updated);
+    ObjectNode stored = mockOciEARService.getAuthConfig(configUUID);
+    assertEquals(keyOcid, stored.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+    assertEquals(
+        "new-fake-fingerprint",
+        stored.path(OciKmsAuthConfigField.ociFingerprint.fieldName).asText());
+    verify(mockOciEARServiceUtil, never()).getKeyOcidByName(any(), any(), any());
+    verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+  }
+
+  @Test
+  public void testUpdateAuthConfig_formWithoutOrWithOtherOcid_keepsStoredKeyOcid()
+      throws Exception {
+    saveKmsConfig(withKeyName(fakeAuthConfig));
+    stubRenamedKey();
+    doReturn(true).when(mockOciEARServiceUtil).validateKeySettings(any(), eq(keyOcid));
+
+    ObjectNode formWithoutOcid = withKeyName(fakeAuthConfig);
+    formWithoutOcid.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    assertNotNull(mockOciEARService.updateAuthConfig(configUUID, formWithoutOcid));
+    assertEquals(
+        keyOcid,
+        mockOciEARService
+            .getAuthConfig(configUUID)
+            .path(OciKmsAuthConfigField.ociKeyOcid.fieldName)
+            .asText());
+
+    ObjectNode formWithOtherOcid = withKeyName(fakeAuthConfig);
+    formWithOtherOcid.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, otherKeyOcid);
+    assertNotNull(mockOciEARService.updateAuthConfig(configUUID, formWithOtherOcid));
+    assertEquals(
+        keyOcid,
+        mockOciEARService
+            .getAuthConfig(configUUID)
+            .path(OciKmsAuthConfigField.ociKeyOcid.fieldName)
+            .asText());
+    verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+  }
+
+  @Test
+  public void testUpdateAuthConfig_storedKeyNotEnabled_failsAndKeepsStoredConfig()
+      throws Exception {
+    saveKmsConfig(withKeyName(fakeAuthConfig));
+    stubRenamedKey();
+    doReturn(false).when(mockOciEARServiceUtil).validateKeySettings(any(), eq(keyOcid));
+
+    ObjectNode editForm = withKeyName(fakeAuthConfig);
+    editForm.put(OciKmsAuthConfigField.ociFingerprint.fieldName, "new-fake-fingerprint");
+
+    assertNull(mockOciEARService.updateAuthConfig(configUUID, editForm));
+    ObjectNode stored = mockOciEARService.getAuthConfig(configUUID);
+    assertEquals(keyOcid, stored.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
+    assertEquals(
+        "fake-fingerprint", stored.path(OciKmsAuthConfigField.ociFingerprint.fieldName).asText());
+    verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+  }
+
+  private ObjectNode withKeyName(ObjectNode authConfig) {
+    ObjectNode copy = authConfig.deepCopy();
+    copy.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
+    return copy;
+  }
+
+  private void saveKmsConfig(ObjectNode authConfig) {
+    KmsConfig kmsConfig = new KmsConfig();
+    kmsConfig.setConfigUUID(configUUID);
+    kmsConfig.setCustomerUUID(customer.getUuid());
+    kmsConfig.setKeyProvider(KeyProvider.OCI);
+    kmsConfig.setAuthConfig(authConfig);
+    kmsConfig.setVersion(KmsConfig.SCHEMA_VERSION);
+    kmsConfig.setName(authConfigName);
+    kmsConfig.save();
+  }
+
+  // A name lookup misses and would create a new, not-yet-enabled key.
+  private void stubRenamedKey() {
+    lenient().doReturn(null).when(mockOciEARServiceUtil).getKeyOcidByName(any(), any(), any());
+    Key createdKey = mock(Key.class);
+    lenient().when(createdKey.getId()).thenReturn(otherKeyOcid);
+    CreateKeyResponse createKeyResponse = mock(CreateKeyResponse.class);
+    lenient().when(createKeyResponse.getKey()).thenReturn(createdKey);
+    lenient()
+        .doReturn(createKeyResponse)
+        .when(mockOciEARServiceUtil)
+        .createKey(any(), any(), any());
+    lenient().doReturn(true).when(mockOciEARServiceUtil).validateKeySettings(any(), any());
   }
 
   @Test

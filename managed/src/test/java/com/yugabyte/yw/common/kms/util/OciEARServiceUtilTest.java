@@ -16,11 +16,16 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,6 +38,10 @@ import com.oracle.bmc.keymanagement.KmsCryptoClient;
 import com.oracle.bmc.keymanagement.KmsManagementClient;
 import com.oracle.bmc.keymanagement.KmsVaultClient;
 import com.oracle.bmc.keymanagement.model.Key;
+import com.oracle.bmc.keymanagement.model.KeyShape;
+import com.oracle.bmc.keymanagement.model.Vault;
+import com.oracle.bmc.keymanagement.requests.GetKeyRequest;
+import com.oracle.bmc.keymanagement.responses.CreateKeyResponse;
 import com.oracle.bmc.keymanagement.responses.GetKeyResponse;
 import com.oracle.bmc.model.BmcException;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -66,6 +75,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   private String vaultOcid = "ocid1.vault.oc1..fake";
   private String region = "us-phoenix-1";
   private String keyOcid = "ocid1.key.oc1..fake";
+  private String otherKeyOcid = "ocid1.key.oc1..example-other";
   private String keyName = "fake-key-name";
   private Customer customer;
   private Universe universe;
@@ -251,6 +261,114 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
       assertTrue(e.getMessage().contains(vaultOcid));
       assertTrue(e.getMessage().contains("OCI_REGION"));
     }
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_keyOcidPresent_validatesOcidNotName() {
+    stubReachableVault(fakeAuthConfig);
+    lenient()
+        .doReturn(otherKeyOcid)
+        .when(mockOciEARServiceUtil)
+        .getKeyOcidByName(any(), any(), any());
+    stubGetKey(Key.LifecycleState.Enabled);
+
+    mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig);
+
+    verify(mockOciEARServiceUtil, never()).getKeyOcidByName(any(), any(), any());
+    verify(fakeKmsManagementClient, atLeastOnce())
+        .getKey(argThat((GetKeyRequest r) -> keyOcid.equals(r.getKeyId())));
+    verify(fakeKmsManagementClient, never())
+        .getKey(argThat((GetKeyRequest r) -> !keyOcid.equals(r.getKeyId())));
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_keyOcidNotEnabled_throwsNamingOcid() {
+    // The key was renamed in OCI, so a lookup by the stored name finds nothing.
+    stubReachableVault(fakeAuthConfig);
+    lenient().doReturn(null).when(mockOciEARServiceUtil).getKeyOcidByName(any(), any(), any());
+    stubGetKey(Key.LifecycleState.Disabled);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig));
+    assertTrue(e.getMessage().contains(keyOcid));
+    assertTrue(e.getMessage().contains("Enabled"));
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_keyOcidNotFound_throwsNamingOcid() {
+    stubReachableVault(fakeAuthConfig);
+    lenient().doReturn(null).when(mockOciEARServiceUtil).getKeyOcidByName(any(), any(), any());
+    BmcException notFound = mock(BmcException.class);
+    when(notFound.getStatusCode()).thenReturn(404);
+    doThrow(notFound).when(fakeKmsManagementClient).getKey(any());
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig));
+    assertTrue(e.getMessage().contains(keyOcid));
+    assertTrue(e.getMessage().contains("does not exist"));
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_noKeyOcid_validatesKeyFoundByName() {
+    ObjectNode createForm = fakeAuthConfig.deepCopy();
+    createForm.remove(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    stubReachableVault(createForm);
+    doReturn(keyOcid).when(mockOciEARServiceUtil).getKeyOcidByName(null, createForm, keyName);
+    stubGetKey(Key.LifecycleState.Disabled);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(createForm));
+    assertTrue(e.getMessage().contains(keyName));
+  }
+
+  @Test
+  public void testResolveKeyOcid_nameNotFound_throwsWithoutCreating() {
+    ObjectNode form = fakeAuthConfig.deepCopy();
+    form.remove(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    doReturn(null).when(mockOciEARServiceUtil).getKeyOcidByName(any(), any(), eq(keyName));
+    Key createdKey = mock(Key.class);
+    lenient().when(createdKey.getId()).thenReturn(otherKeyOcid);
+    CreateKeyResponse createKeyResponse = mock(CreateKeyResponse.class);
+    lenient().when(createKeyResponse.getKey()).thenReturn(createdKey);
+    lenient()
+        .doReturn(createKeyResponse)
+        .when(mockOciEARServiceUtil)
+        .createKey(any(), any(), any());
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class, () -> mockOciEARServiceUtil.resolveKeyOcid(configUUID, form));
+    assertTrue(e.getMessage().contains(keyName));
+    verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+  }
+
+  private void stubReachableVault(ObjectNode form) {
+    doNothing()
+        .when(mockOciEARServiceUtil)
+        .validateCredentialsWithIdentityService(
+            any(Region.class), any(SimpleAuthenticationDetailsProvider.class));
+    doReturn(fakeclient).when(mockOciEARServiceUtil).getKmsVaultClient(null, form);
+    doReturn(mock(Vault.class)).when(mockOciEARServiceUtil).getVaultFromId(fakeclient, vaultOcid);
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, form);
+  }
+
+  private void stubGetKey(Key.LifecycleState state) {
+    Key key = mock(Key.class);
+    lenient().when(key.getLifecycleState()).thenReturn(state);
+    lenient()
+        .when(key.getKeyShape())
+        .thenReturn(KeyShape.builder().algorithm(KeyShape.Algorithm.Aes).length(32).build());
+    GetKeyResponse response = mock(GetKeyResponse.class);
+    lenient().when(response.getKey()).thenReturn(key);
+    doReturn(response).when(fakeKmsManagementClient).getKey(any());
   }
 
   // ---- checkKeyExists tests ----

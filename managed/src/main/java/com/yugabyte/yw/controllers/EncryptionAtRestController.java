@@ -595,6 +595,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       // checks if a already KMS Config exists with the requested name
       checkIfKMSConfigExists(customerUUID, formData);
+      if (KeyProvider.OCI.name().equals(keyProvider)) {
+        // Create picks the key by name and ignores a supplied OCID, so validate the named key.
+        formData.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+      }
       // Validating the KMS Provider config details.
       validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
       YBPTask task =
