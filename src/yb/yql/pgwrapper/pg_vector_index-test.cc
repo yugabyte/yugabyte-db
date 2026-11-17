@@ -216,6 +216,7 @@ YB_STRONGLY_TYPED_BOOL(Backfill);
 YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
+YB_STRONGLY_TYPED_BOOL(Split);
 YB_STRONGLY_TYPED_BOOL(StorePayload);
 YB_STRONGLY_TYPED_BOOL(UseSharedMemory);
 YB_STRONGLY_TYPED_BOOL(WaitForIntents);
@@ -7221,6 +7222,7 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
 
   void TestFastPathVectorDeletion(const std::string& statement);
   void TestUnappliedVectorUpdates();
+  void TestCompactionDropsDeletedPayloadVectors(Split split);
   void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
 
@@ -8084,12 +8086,16 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
 }
 
-// An index which stores payloads on a table which writes the reverse mapping drops dead vectors on
-// compaction, as an index without payloads does. See #37974.
-TEST_F(PgVectorIndexUtilTest, CompactionDropsDeadPayloadVectors) {
-  // Lets regular compaction remove the reverse mapping entries of dead vectors.
+// An index which stores payloads on a table which writes the reverse mapping drops deleted vectors
+// on compaction, as an index without payloads does. See #37974. After a split each child also
+// drops the vectors of its sibling by the key bounds, before it checks the reverse mapping.
+void PgVectorIndexUtilTest::TestCompactionDropsDeletedPayloadVectors(Split split) {
+  // Lets regular compaction remove the reverse mapping entries of deleted vectors.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Keep the chunks inherited from the parent, so the children hold the vectors of the sibling.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_include_into_post_split_compaction) = false;
 
   constexpr size_t kNumRows = 10;
   constexpr size_t kNumBackfilledRows = kNumRows / 2;
@@ -8099,6 +8105,22 @@ TEST_F(PgVectorIndexUtilTest, CompactionDropsDeadPayloadVectors) {
   ASSERT_OK(CreateIndex(conn));
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
   ASSERT_OK(InsertRows(conn, kNumBackfilledRows + 1, kNumRows));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  if (split) {
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+    ASSERT_OK(cluster_->FlushTablets());
+    const auto parent_tablet_id = peers.front()->tablet_id();
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+    peers = ASSERT_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+    std::erase_if(peers, [&parent_tablet_id](const auto& peer) {
+      return peer->tablet_id() == parent_tablet_id;
+    });
+    ASSERT_EQ(peers.size(), 2);
+  }
 
   // Delete a backfilled and an inserted row, and replace the vectors of two others the same way.
   for (auto id : {size_t{1}, kNumRows}) {
@@ -8110,23 +8132,45 @@ TEST_F(PgVectorIndexUtilTest, CompactionDropsDeadPayloadVectors) {
   }
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
 
-  auto vector_indexes = ListVectorIndexes(cluster_.get());
-  ASSERT_EQ(vector_indexes.size(), 1);
-  auto& index = *vector_indexes.front();
-  ASSERT_TRUE(index.StoresPayload());
-  ASSERT_OK(index.Flush());
-  ASSERT_OK(index.WaitForFlush());
+  std::vector<docdb::DocVectorIndexPtr> indexes;
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto tablet_indexes = tablet->vector_indexes().List();
+    ASSERT_TRUE(tablet_indexes);
+    ASSERT_EQ(tablet_indexes->size(), 1);
+    auto& index = *tablet_indexes->front();
+    ASSERT_TRUE(index.StoresPayload());
+    if (split) {
+      // Each child still holds every vector of the parent.
+      ASSERT_GE(ASSERT_RESULT(index.TotalEntries()), kNumRows);
+    }
+    ASSERT_OK(index.Flush());
+    ASSERT_OK(index.WaitForFlush());
+    indexes.push_back(tablet_indexes->front());
+  }
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
-  ASSERT_OK(index.Compact());
-  ASSERT_OK(index.WaitForCompaction());
+  size_t num_entries = 0;
+  for (const auto& index : indexes) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+    num_entries += ASSERT_RESULT(index->TotalEntries());
+  }
 
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
-  ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows - 2);
+  ASSERT_EQ(num_entries, kNumRows - 2);
 }
 
-// Compaction relies on the reverse mapping to drop dead vectors of an index which stores payloads,
-// while a table which does not own the reverse mapping writes no entries for the vectors
+TEST_F(PgVectorIndexUtilTest, CompactionDropsDeletedPayloadVectors) {
+  TestCompactionDropsDeletedPayloadVectors(Split::kFalse);
+}
+
+TEST_F(PgVectorIndexUtilTest, CompactionDropsDeletedPayloadVectorsAfterSplit) {
+  TestCompactionDropsDeletedPayloadVectors(Split::kTrue);
+}
+
+// Compaction relies on the reverse mapping to drop deleted vectors of an index which stores
+// payloads, while a table which does not own the reverse mapping writes no entries for the vectors
 // backfilled into such an index. So such an index cannot be created on that table.
 TEST_F(PgVectorIndexUtilTest, NoPayloadIndexWithoutTableOwnedReverseMapping) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;

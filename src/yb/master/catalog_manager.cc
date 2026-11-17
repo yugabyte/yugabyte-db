@@ -4728,8 +4728,8 @@ bool EnableTableOwnedVectorReverseMapping() {
 }
 
 // An index on a table that does not write the reverse mapping must store the payload, it is the
-// only way for its search to resolve rows. Compaction drops dead vectors of an index which stores
-// payloads via the reverse mapping when the table writes it, and only a table which owns the
+// only way for its search to resolve rows. Compaction drops deleted vectors of an index which
+// stores payloads via the reverse mapping when the table writes it, and only a table which owns the
 // reverse mapping has entries for the vectors backfilled into such an index.
 Result<bool> VectorIndexStoresPayload(
     const TablePropertiesPB& indexed_table_properties, const std::string& index_name,
@@ -4742,7 +4742,9 @@ Result<bool> VectorIndexStoresPayload(
   }
   SCHECK(indexed_table_properties.owns_vector_reverse_mapping(), NotSupported, Format(
       "Vector index $0 cannot store payloads, see vector_index_store_payload: its table $1 "
-      "writes the vector reverse mapping without owning it", index_name, indexed_table_name));
+      "writes the vector reverse mapping without owning it. Turn off vector_index_store_payload, "
+      "or recreate the table with it off while enable_table_owned_vector_reverse_mapping is on",
+      index_name, indexed_table_name));
   return true;
 }
 
