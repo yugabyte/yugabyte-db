@@ -917,17 +917,11 @@ bool MemTracker::GcTcmallocIfNeeded() {
   if (extra <= 0) {
     return false;
   }
-  while (extra > 0) {
-    // Each call drops the page heap lock when it returns, but the lock is not fair: this thread
-    // usually takes it back before a waiting thread wakes up, so the whole loop blocks every
-    // thread that allocates from the page heap.
-#if YB_GOOGLE_TCMALLOC
-    tcmalloc::MallocExtension::ReleaseMemoryToSystem(1024 * 1024);
-#else
-    MallocExtension::instance()->ReleaseToSystem(1024 * 1024);
-#endif  // YB_GOOGLE_TCMALLOC
-    extra -= 1024 * 1024;
-  }
+  // Release in one call. Releasing in small steps does not let other threads in, because the page
+  // heap lock is not fair: this thread usually takes it back before a waiting thread wakes up.
+  // When TCMalloc's skip-subrelease check holds the free memory back, each step would also repeat
+  // that check under the lock, once per MiB of extra, while releasing nothing.
+  TCMallocReleaseMemoryToSystem(extra);
   return true;
 #else
   return false;
