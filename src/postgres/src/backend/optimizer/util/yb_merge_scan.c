@@ -635,12 +635,14 @@ ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
  * the same stream keys and merge sort columns.  The pathkeys are final only
  * after this call, which can truncate them on an embedded index.
  *
- * On an embedded index, pggate compares each merge sort value in the table
- * row, which has no value for an expression index column.  So when embedded,
- * *pathkeys is truncated before the first pathkey that resolves to an
- * expression column or has an expression gap column before it, and
+ * On an embedded index, a plain index scan compares each merge sort value in
+ * the table row, which has no value for an expression index column.  So when
+ * embedded, *pathkeys is truncated before the first pathkey that resolves to
+ * an expression column or has an expression gap column before it, and
  * *yb_distinct_nkeys is set to -1 if the truncation cuts into the pathkeys
  * that span the distinct prefix.
+ * TODO(#36017): an index-only scan compares the values in the index row, so it
+ * does not need the truncation.
  *
  * Each index column before the last merge sort column is one of:
  *
@@ -702,9 +704,10 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 	 *
 	 * No check here keeps two pathkeys from resolving to the same index
 	 * column, so count one merge sort column for each pathkey, as
-	 * prepare_sort_from_pathkeys does.  The gap columns are distinct key
-	 * columns, since each comes before the last merge sort column, so there
-	 * are at most index->nkeycolumns of them.
+	 * prepare_sort_from_pathkeys does.  The gap columns are distinct, since
+	 * each pathkey looks for them only after the previous merge sort column,
+	 * and they are key columns, since each comes before a merge sort column,
+	 * so there are at most index->nkeycolumns of them.
 	 */
 	max_sort_cols = list_length(*pathkeys) + index->nkeycolumns;
 	sort_info = makeNode(YbSortInfo);
