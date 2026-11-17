@@ -856,8 +856,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * In READ COMMITTED with the simple query protocol, retry automatically drops the failed 
-   * attempt's notification. This checks that rollback to the mark preserves the previous 
+   * In READ COMMITTED with the simple query protocol, retry automatically drops the failed
+   * attempt's notification. This checks that rollback to the mark preserves the previous
    * statement's notification until the retry starts.
    */
   @Test
