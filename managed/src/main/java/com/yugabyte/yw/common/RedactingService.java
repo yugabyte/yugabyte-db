@@ -444,8 +444,7 @@ public class RedactingService {
   }
 
   /** Names whose values are secrets, apart from ysql_hba_conf_csv, which keeps all but them. */
-  private static Set<String> sensitiveNames(
-      String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
+  static Set<String> sensitiveNames(String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     Set<String> names = new HashSet<>();
     names.add("ldapbindpasswd");
     names.add("ldapBindPassword");
