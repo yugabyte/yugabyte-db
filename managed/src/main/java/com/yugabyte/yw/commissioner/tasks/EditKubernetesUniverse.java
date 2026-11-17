@@ -65,6 +65,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -831,12 +832,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         // Creating the master pods also adds the AZs it installs to activeZones, which makes the
         // tserver add upgrade their releases instead of installing them. Their releases exist by
         // now, and an install would upgrade them without partitions, restarting their masters.
-        for (UUID az : newPlacement.configs.keySet()) {
-          if (!curPlacement.configs.containsKey(az)
-              && newPlacement.masters.getOrDefault(az, 0) > 0) {
-            PlacementInfoUtil.addPlacementZone(az, activeZones);
-          }
-        }
+        addNewMasterAZs(curPlacement, newPlacement, activeZones);
       }
 
       // Update master addresses to the latest required ones,
@@ -1252,7 +1248,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    *     <p>Example: an edit replaces az-3 because its node is down. The push to the az-3 tserver
    *     fails, and the edit goes on.
    * @param propagateMasterAddrs true to push the live master list to masterPushTargets and every
-   *     tserver, after the adds and again after the removes.
+   *     tserver: after the adds when there are removes, and once more at the end.
    *     <p>False on a retry after an earlier attempt finished the master steps, or when the params
    *     come from a YBA build without masterMoveStage. The pods it would push to may be gone by
    *     then.
@@ -1322,6 +1318,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     if (propagateMasterAddrs) {
       createMasterAddrsInMemoryUpdateTasks(
           universe, masterPushTargets, bestEffortTservers, raftConfig);
+    }
+  }
+
+  /** Adds to zones the AZs the edit adds with masters, which run once the master step has. */
+  private static void addNewMasterAZs(
+      KubernetesPlacement curPlacement, KubernetesPlacement newPlacement, PlacementInfo zones) {
+    for (UUID az : newPlacement.configs.keySet()) {
+      if (!curPlacement.configs.containsKey(az) && newPlacement.masters.getOrDefault(az, 0) > 0) {
+        PlacementInfoUtil.addPlacementZone(az, zones);
+      }
     }
   }
 
@@ -2162,12 +2168,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               }
               // POD_INFO rebuilds the cluster's nodes from these AZs only. AZs the edit adds with
               // masters have their pods by now, so leaving them out would drop their nodes.
-              for (UUID az : newPlacement.configs.keySet()) {
-                if (!curPlacement.configs.containsKey(az)
-                    && newPlacement.masters.getOrDefault(az, 0) > 0) {
-                  PlacementInfoUtil.addPlacementZone(az, activeZones);
-                }
-              }
+              addNewMasterAZs(curPlacement, newPlacement, activeZones);
               createSingleKubernetesExecutorTask(
                   universeName,
                   KubernetesCommandExecutor.CommandType.POD_INFO,
@@ -2199,6 +2200,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               () -> {
                 if (movingMasterAddrRenders.getSubTaskCount() > 0) {
                   getRunnableTask().addSubTaskGroup(movingMasterAddrRenders);
+                  // A tserver container that restarts before kubelet syncs the Secret reads the
+                  // old list, which may miss the leader once a new master is added.
+                  createWaitForDurationSubtask(
+                          taskParams().getUniverseUUID(),
+                          Duration.ofSeconds(
+                              confGetter.getGlobalConf(GlobalConfKeys.waitForK8sGFlagSyncSec)))
+                      .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
                 }
                 if (beforeMasterAdds != null) {
                   beforeMasterAdds.run();

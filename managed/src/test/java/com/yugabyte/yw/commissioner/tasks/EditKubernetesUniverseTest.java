@@ -2363,6 +2363,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         between(subtasks(plan, TaskType.WaitForServer, p -> true), 0, renderPosition);
     assertFalse(waitForMasters.isEmpty());
     assertTrue(lastPosition(createNewMasters) < firstPosition(waitForMasters));
+    // The adds wait for kubelet to sync the rendered Secrets, even with no stage render.
+    assertFalse(
+        between(
+                subtasks(plan, TaskType.WaitForDuration, p -> true),
+                renderPosition,
+                firstPosition(adds))
+            .isEmpty());
     for (TaskInfo t : afterMastersJoined) {
       // The pod delete and final render rewrite every gflags Secret in the release, tservers
       // included. The partitions hold every pod, so none rolls.

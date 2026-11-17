@@ -1109,13 +1109,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
     // An edit of the primary alone also renders the read replica's Secrets, and its task params
     // have no read replica cluster.
-    List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
-    if (readOnlyClusters.isEmpty()) {
-      readOnlyClusters =
-          Universe.getOrBadRequest(taskParams().getUniverseUUID())
-              .getUniverseDetails()
-              .getReadOnlyClusters();
-    }
+    List<Cluster> readOnlyClusters =
+        readOnlyClustersOrUniverse(Universe.getOrBadRequest(taskParams().getUniverseUUID()));
     Provider provider =
         isReadOnlyCluster
             ? Util.getSingleProvider(readOnlyClusters.get(0))
@@ -1185,6 +1180,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             taskParams().getUniverseUUID(),
             Duration.ofSeconds(confGetter.getGlobalConf(GlobalConfKeys.waitForK8sGFlagSyncSec)))
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /** The task params' read-only clusters, or the universe's when the params have none. */
+  private List<Cluster> readOnlyClustersOrUniverse(Universe universe) {
+    List<Cluster> readOnlyClusters = taskParams().getReadOnlyClusters();
+    return readOnlyClusters.isEmpty()
+        ? universe.getUniverseDetails().getReadOnlyClusters()
+        : readOnlyClusters;
   }
 
   private Map<UUID, ServerType> getServersToUpdateAzMap(
@@ -2507,10 +2510,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (primaryCluster == null) {
       primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     }
-    List<Cluster> readonlyClusters = taskParams().getReadOnlyClusters();
-    if (readonlyClusters.isEmpty()) {
-      readonlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
-    }
+    List<Cluster> readonlyClusters = readOnlyClustersOrUniverse(universe);
     params.providerUUID =
         isReadOnlyCluster
             ? Util.getSingleProviderUUID(readonlyClusters.get(0))
@@ -3128,10 +3128,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (primaryCluster == null) {
       primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     }
-    List<Cluster> readonlyClusters = taskParams().getReadOnlyClusters();
-    if (readonlyClusters.isEmpty()) {
-      readonlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
-    }
+    List<Cluster> readonlyClusters = readOnlyClustersOrUniverse(universe);
     params.providerUUID =
         isReadOnlyCluster
             ? Util.getSingleProviderUUID(readonlyClusters.get(0))
@@ -3292,10 +3289,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (primaryCluster == null) {
       primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     }
-    List<Cluster> readonlyClusters = taskParams().getReadOnlyClusters();
-    if (readonlyClusters.isEmpty()) {
-      readonlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
-    }
+    List<Cluster> readonlyClusters = readOnlyClustersOrUniverse(universe);
     params.providerUUID =
         isReadOnlyCluster
             ? Util.getSingleProviderUUID(readonlyClusters.get(0))
@@ -3425,10 +3419,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (primaryCluster == null) {
       primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     }
-    List<Cluster> readonlyClusters = taskParams().getReadOnlyClusters();
-    if (readonlyClusters.isEmpty()) {
-      readonlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
-    }
+    List<Cluster> readonlyClusters = readOnlyClustersOrUniverse(universe);
     params.providerUUID =
         isReadOnlyCluster
             ? Util.getSingleProviderUUID(readonlyClusters.get(0))

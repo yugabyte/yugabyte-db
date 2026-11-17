@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.Universe;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.CancellationException;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -75,9 +76,13 @@ public class SetFlagInMemory extends ServerSubTaskBase {
 
   @Override
   public void run() {
+    checkParams();
     try {
       setFlags();
+    } catch (CancellationException e) {
+      throw e;
     } catch (RuntimeException e) {
+      // Not the SubTaskGroup's ignoreErrors: it runs the later groups but still fails the task.
       if (!taskParams().ignoreErrors) {
         throw e;
       }
@@ -86,7 +91,6 @@ public class SetFlagInMemory extends ServerSubTaskBase {
   }
 
   private void setFlags() {
-    checkParams();
     // Check if secondary IP is present, and if so, use that for the gflag value.
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
     HostAndPort hp = getHostPort();
