@@ -5,8 +5,10 @@
 package instancetypeutil
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -96,18 +98,13 @@ func AddInstanceTypeUtil(
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 
-	// Look the type up by code: the list API hides AWS types whose arch differs from the
-	// default image bundle's, and types with unsupported prefixes.
-	existing, response, err := authAPI.InstanceTypeDetail(providerUUID, instanceTypeName).Execute()
-	if err != nil {
-		// The provider was found above, so a 400 here means it has no such instance type.
-		if response == nil || response.StatusCode != http.StatusBadRequest {
-			util.FatalHTTPError(response, err, callSite, "Add - Get Instance Type")
-		}
-		existing = nil
-	} else if !existing.GetActive() {
-		// The create API replaces an inactive type with a new one.
-		existing = nil
+	existing, cloudCodes := lookupInstanceType(authAPI, providerUUID, instanceTypeName, callSite)
+	if existing != nil && len(cloudCodes) > 0 {
+		logrus.Fatalln(formatter.Colorize(
+			fmt.Sprintf("Instance type %s maps to cloud instance types %s, which yba-cli "+
+				"cannot keep when it updates the type.\n",
+				instanceTypeName, strings.Join(cloudCodes, ", ")),
+			formatter.RedColor))
 	}
 
 	requestBody, err := buildInstanceTypeRequest(
@@ -158,6 +155,92 @@ func AddInstanceTypeUtil(
 	instanceTypeList := make([]ybaclient.InstanceTypeResp, 0)
 	instanceTypeList = append(instanceTypeList, *rCreate)
 	instancetype.Write(instanceTypesCtx, instanceTypeList)
+}
+
+// lookupInstanceType returns the active stored instance type, or nil if there is none,
+// and its cloudInstanceTypeCodes, which the Go client's InstanceTypeDetails does not
+// model and so cannot send back.
+func lookupInstanceType(
+	authAPI *ybaAuthClient.AuthAPIClient,
+	providerUUID, instanceTypeName, callSite string,
+) (*ybaclient.InstanceTypeResp, []string) {
+	// Look the type up by code: the list API hides AWS types whose arch differs from the
+	// default image bundle's, and types with unsupported prefixes.
+	existing, response, err := authAPI.InstanceTypeDetail(providerUUID, instanceTypeName).Execute()
+	if err == nil {
+		if !existing.GetActive() {
+			// The create API replaces an inactive type with a new one.
+			return nil, nil
+		}
+		return existing, cloudCodesFromDetail(readBody(response))
+	}
+	// The provider was found above, so a 400 here means it has no such instance type.
+	if response != nil && response.StatusCode == http.StatusBadRequest {
+		return nil, nil
+	}
+	if response == nil || response.StatusCode < http.StatusInternalServerError {
+		util.FatalHTTPError(response, err, callSite, "Add - Get Instance Type")
+	}
+	// The detail API fails with a 500 for a cloud type stored without details or volumes,
+	// which the list API returns as stored.
+	instanceTypes, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
+	if err != nil {
+		util.FatalHTTPError(response, err, callSite, "Add - List Instance Types")
+	}
+	for i := range instanceTypes {
+		if instanceTypes[i].IdKey.InstanceTypeCode == instanceTypeName {
+			return &instanceTypes[i], cloudCodesFromList(readBody(response), instanceTypeName)
+		}
+	}
+	return nil, nil
+}
+
+type storedInstanceType struct {
+	IdKey struct {
+		InstanceTypeCode string `json:"instanceTypeCode"`
+	} `json:"idKey"`
+	InstanceTypeDetails *struct {
+		CloudInstanceTypeCodes []string `json:"cloudInstanceTypeCodes"`
+	} `json:"instanceTypeDetails"`
+}
+
+func (s storedInstanceType) cloudCodes() []string {
+	if s.InstanceTypeDetails == nil {
+		return nil
+	}
+	return s.InstanceTypeDetails.CloudInstanceTypeCodes
+}
+
+func readBody(response *http.Response) []byte {
+	if response == nil || response.Body == nil {
+		return nil
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil
+	}
+	return body
+}
+
+func cloudCodesFromDetail(body []byte) []string {
+	var stored storedInstanceType
+	if err := json.Unmarshal(body, &stored); err != nil {
+		return nil
+	}
+	return stored.cloudCodes()
+}
+
+func cloudCodesFromList(body []byte, instanceTypeName string) []string {
+	var stored []storedInstanceType
+	if err := json.Unmarshal(body, &stored); err != nil {
+		return nil
+	}
+	for _, s := range stored {
+		if s.IdKey.InstanceTypeCode == instanceTypeName {
+			return s.cloudCodes()
+		}
+	}
+	return nil
 }
 
 type addInstanceTypeFlags struct {
