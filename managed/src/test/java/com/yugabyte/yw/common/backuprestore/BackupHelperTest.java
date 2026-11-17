@@ -1684,6 +1684,42 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /**
+   * Adding a read replica does not configure federation on it, so a read replica added after
+   * federation was enabled on the universe stops a restore, with a message that says so.
+   */
+  @Test
+  public void testRestorePrecheckNamesReadReplicaAddedAfterFederationWasEnabled() {
+    Universe universe = universeOnFederatingProvider(CloudType.onprem, true);
+    UniverseDefinitionTaskParams.UserIntent rrIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrIntent.numNodes = 1;
+    Universe withRr =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, null /* placementInfo */));
+    UUID rrUuid = withRr.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
+    // Federation is configured on the primary cluster only, and every node runs on AWS.
+    Universe configured =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.setFederationConfigured(true);
+              u.getNodes().forEach(n -> n.cloudInfo.physicalCloud = CloudType.aws.name());
+            });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                spyBackupHelper.getYbcSuccessMarker(
+                    gcsIamConfig(), Collections.emptySet(), configured.getUniverseUUID()));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage().contains("never configured on its read replica cluster " + rrUuid));
+    assertTrue(e.getMessage(), e.getMessage().contains("Enable it again"));
+  }
+
+  /**
    * The enable API refuses a universe whose primary cluster's provider has no federation targets,
    * so a read replica on a provider that federates is not flagged: the message would point to an
    * API call that fails.
