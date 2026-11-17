@@ -117,7 +117,13 @@ EXPLAIN (COSTS OFF)  SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 (2 rows)
 
 EXPLAIN (COSTS OFF) /*+BitmapScan(test_disable)*/ SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-(output identical to previous)
+               QUERY PLAN               
+----------------------------------------
+ Seq Scan on test_disable
+   Disabled: true
+   Storage Filter: ((a < 5) OR (b < 5))
+(3 rows)
+
 EXPLAIN (COSTS OFF)  SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
            QUERY PLAN           
 --------------------------------
@@ -151,7 +157,13 @@ EXPLAIN (COSTS OFF)  SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 (2 rows)
 
 EXPLAIN (COSTS OFF) /*+BitmapScan(test_disable)*/ SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-(output identical to previous)
+               QUERY PLAN               
+----------------------------------------
+ Seq Scan on test_disable
+   Disabled: true
+   Storage Filter: ((a < 5) OR (b < 5))
+(3 rows)
+
 EXPLAIN (COSTS OFF)  SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
            QUERY PLAN           
 --------------------------------

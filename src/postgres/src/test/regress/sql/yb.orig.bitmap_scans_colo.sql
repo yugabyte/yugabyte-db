@@ -182,7 +182,7 @@ SET yb_fetch_size_limit = 0;
 SET yb_fetch_row_limit = 0;
 SET yb_fetch_size_limit = '1kB';
 
-\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, BUFFERS OFF)'
 :query
 
 RESET yb_fetch_row_limit;
