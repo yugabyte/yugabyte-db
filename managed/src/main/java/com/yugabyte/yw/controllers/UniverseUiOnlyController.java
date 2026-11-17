@@ -136,7 +136,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, confGetter);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, customer, confGetter);
 
     universeCRUDHandler.configure(customer, taskParams);
     auditService()
@@ -179,7 +179,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, confGetter);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, customer, confGetter);
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> options =
         UniverseCRUDHandler.getUpdateOptions(taskParams, taskParams.clusterOperation);

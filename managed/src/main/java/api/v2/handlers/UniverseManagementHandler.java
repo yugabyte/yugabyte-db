@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
 
 import api.v2.mappers.ClusterMapper;
+import api.v2.mappers.CommunicationPortsMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseResourceDetailsMapper;
 import api.v2.mappers.UniverseRespMapper;
@@ -22,6 +23,7 @@ import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.CollectFilesRequest;
 import api.v2.models.CollectFilesResponse;
 import api.v2.models.CollectedFileResult;
+import api.v2.models.CommunicationPortsSpec;
 import api.v2.models.DetachUniverseSpec;
 import api.v2.models.ExecutionSummary;
 import api.v2.models.FileCollectionOptions;
@@ -37,6 +39,7 @@ import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseCrossCloudFederationSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
+import api.v2.models.UniverseNetworkingSpec;
 import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniversePagedQuerySpec;
 import api.v2.models.UniversePagedResp;
@@ -48,6 +51,7 @@ import api.v2.utils.ApiControllerUtils;
 import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -83,6 +87,7 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -325,6 +330,34 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return universeEditSpec;
   }
 
+  /**
+   * The V2 model gives each networking field a default, so a field that the edit leaves out would
+   * reset. Read the raw request JSON and keep the universe's value for each left-out field.
+   */
+  private static void keepUnsentNetworking(
+      Request request, UniverseEditSpec editSpec, UniverseDefinitionTaskParams current) {
+    JsonNode body = request.body().asJson();
+    UniverseNetworkingSpec networkingSpec = editSpec.getNetworkingSpec();
+    if (body == null || networkingSpec == null) {
+      return;
+    }
+    JsonNode sent = body.path("networking_spec");
+    if (networkingSpec.getCommunicationPorts() != null) {
+      ObjectNode merged =
+          UniverseControllerRequestBinder.mergePorts(
+              CommunicationPortsMapper.INSTANCE.toV2CommunicationPorts(current.communicationPorts),
+              sent.get("communication_ports"));
+      networkingSpec.setCommunicationPorts(Json.fromJson(merged, CommunicationPortsSpec.class));
+    }
+    UserIntent primary = current.getPrimaryCluster().userIntent;
+    if (!sent.hasNonNull("assign_public_ip")) {
+      networkingSpec.setAssignPublicIp(primary.assignPublicIP);
+    }
+    if (!sent.hasNonNull("assign_static_public_ip")) {
+      networkingSpec.setAssignStaticPublicIp(primary.assignStaticPublicIP);
+    }
+  }
+
   public YBATask editUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
     boolean isNewUI = isNewUI();
@@ -336,6 +369,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // persisted placement with the requested one. Anything read from dbUniverse after that point
     // reflects the request, not what is deployed.
     Map<UUID, Map<UUID, K8sStsIndices>> savedK8sStsIndices = captureK8sStsIndices(dbUniverse);
+    // Also before that mapping, so it reads the universe's networking, not the request's defaults.
+    keepUnsentNetworking(request, universeEditSpec, dbUniverse.getUniverseDetails());
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // Inherit unset RR properties from primary (excludes placement, partitions, nodeSpec).
