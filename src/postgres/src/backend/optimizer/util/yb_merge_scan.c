@@ -633,6 +633,13 @@ ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
  * the same stream keys and merge sort columns.  The pathkeys are final only
  * after this call, which can truncate them on an embedded index.
  *
+ * On an embedded index, pggate compares each merge sort value in the table
+ * row, which has no value for an expression index column.  So when embedded,
+ * *pathkeys is truncated before the first pathkey that resolves to an
+ * expression column or has an expression gap column before it, and
+ * *yb_distinct_nkeys is set to -1 if the truncation cuts into the pathkeys
+ * that span the distinct prefix.
+ *
  * Each index column before the last merge sort column is one of:
  *
  * - A SAOP column, a stream key with its SAOP.
