@@ -159,6 +159,7 @@ DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_unread_tbl, gap_desc_tbl,
 \i :gap_cells
 
 \c co
+\i :filename
 -- The same cells on embedded indexes.  For an embedded index scan, an
 -- expression column is not available for sort (see also #36017), so the merge
 -- stops before an expression gap column: the predicate gap scan has no merge,

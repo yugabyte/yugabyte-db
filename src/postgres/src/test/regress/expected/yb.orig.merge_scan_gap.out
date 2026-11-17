@@ -885,6 +885,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
 \c co
+\i :filename
+\set _echo_parameterized_query :ECHO
+\set ECHO none
 -- The same cells on embedded indexes.  For an embedded index scan, an
 -- expression column is not available for sort (see also #36017), so the merge
 -- stops before an expression gap column: the predicate gap scan has no merge,

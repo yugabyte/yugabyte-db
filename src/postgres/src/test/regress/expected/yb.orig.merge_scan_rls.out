@@ -208,8 +208,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 -- operator, which is not leakproof, so under RLS the planner cannot derive a
 -- constant for d from the query's t = 2020-01-02.  It still treats d as
 -- constant for the sort order, but d has no index condition, so it is not a
--- stream key, and the merge sorts on d as well.  The first row of each stream
--- is a decoy that fails d = t.
+-- stream key, and the merge sorts on d as well.  Here d = t and the query's t
+-- filter both run as storage filters within each stream, so the comparisons on
+-- d always tie.
 CREATE TABLE rls_ec_tbl (s int, d date, c int, t timestamp,
     PRIMARY KEY (s ASC, d ASC, c ASC));
 INSERT INTO rls_ec_tbl
@@ -346,7 +347,10 @@ RESET ROLE;
 -- A policy operator that cannot be pushed down.  rls_tz_tbl is rls_ec_tbl with
 -- d timestamp and t timestamptz.  timestamp = timestamptz is not leakproof, so
 -- under RLS it breaks the class like date = timestamp.  It is also stable, so
--- the policy's filter stays local with expression pushdown on.
+-- the policy's filter stays local with expression pushdown on, and runs after
+-- the merge.  The row (2, 2020-01-01, 1001, 2020-01-02) passes the query's t
+-- filter, fails d = t, and comes first in stream s = 2, so a merge that did not
+-- sort on d would return the rows out of order.
 SET TimeZone = 'UTC';
 CREATE TABLE rls_tz_tbl (s int, d timestamp, c int, t timestamptz,
     PRIMARY KEY (s ASC, d ASC, c ASC));
