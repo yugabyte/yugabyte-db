@@ -4337,14 +4337,14 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 					DropStmt   *stmt = castNode(DropStmt, parsetree);
 
 				/*
-				 * A permanent object can depend on a temp sequence, e.g. through
-				 * DEFAULT nextval(), so only a non-cascading drop of one is
-				 * temp-only.
+				 * A permanent object can depend on a temp sequence or view, e.g.
+				 * through DEFAULT nextval(), so only a non-cascading drop of one
+				 * is temp-only.
 				 */
 				if (stmt->removeType == OBJECT_INDEX ||
 					stmt->removeType == OBJECT_TABLE ||
-					stmt->removeType == OBJECT_VIEW ||
-					(stmt->removeType == OBJECT_SEQUENCE &&
+					((stmt->removeType == OBJECT_SEQUENCE ||
+					  stmt->removeType == OBJECT_VIEW) &&
 					 stmt->behavior != DROP_CASCADE))
 				{
 					ListCell   *cell;

@@ -1,5 +1,6 @@
 -- Test that relations that are temporary without the TEMP keyword do not
--- increment the catalog version
+-- increment the catalog version, and that DDLs on temp relations that can
+-- reach permanent objects do
 \set template1_db_oid 1
 \set db_oid 'CASE WHEN (select count(*) from pg_yb_catalog_version) = 1 THEN :template1_db_oid ELSE (SELECT oid FROM pg_database WHERE datname = \'yugabyte\') END'
 \set reset_baseline 'UPDATE baseline_version SET current_version = (SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = :db_oid)'
@@ -38,3 +39,19 @@ CREATE TEMP TABLE tmp_child () INHERITS (perm_parent);
 :version_unchanged;
 DROP TABLE tmp_child;
 DROP TABLE perm_parent;
+
+-- A permanent object can depend on a temp view or sequence, so a CASCADE drop
+-- of one increments the catalog version, and a plain drop does not
+CREATE TEMP VIEW tmp_drop_view AS SELECT 1 AS a;
+CREATE TEMP VIEW tmp_cascade_view AS SELECT 1 AS a;
+CREATE TEMP SEQUENCE tmp_drop_seq;
+CREATE TEMP SEQUENCE tmp_cascade_seq;
+:reset_baseline;
+DROP VIEW tmp_drop_view;
+DROP SEQUENCE tmp_drop_seq;
+:version_unchanged;
+DROP VIEW tmp_cascade_view CASCADE;
+:version_unchanged;
+:reset_baseline;
+DROP SEQUENCE tmp_cascade_seq CASCADE;
+:version_unchanged;
