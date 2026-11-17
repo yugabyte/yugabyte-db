@@ -7402,8 +7402,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (dockv::IsDeleteVectorIdsRecord(intent_iter->value())) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }

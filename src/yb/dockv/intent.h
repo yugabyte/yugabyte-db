@@ -121,9 +121,16 @@ IntentTypeSet ObsoleteIntentTypeSetToNew(uint8_t obsolete_intent_type_set);
 // Returns true if ch is value type of one of intent types, obsolete or not.
 bool IntentValueType(char ch);
 
-// Whether the value of a reverse index record of a transaction is the delete list of a batch, which
-// holds vector ids rather than an intent key.
-bool IsDeleteVectorIdsRecord(Slice reverse_index_value);
+// The kind of a kVectorIndexRecord value, the byte that follows its value type.
+enum class VectorIndexRecordType : uint8_t {
+  // The vector ids deleted by a batch: the big endian subtransaction id of the batch, then the ids.
+  // Replaces the kDeleteVectorIds value, which has no subtransaction id.
+  kDeleteVectorIds = 1,
+};
+
+// Whether the value of a reverse index record of a transaction is a vector index record, such as
+// the delete list of a batch, rather than an intent key.
+bool IsVectorIndexRecord(Slice reverse_index_value);
 
 YB_STRONGLY_TYPED_BOOL(LastKey);
 

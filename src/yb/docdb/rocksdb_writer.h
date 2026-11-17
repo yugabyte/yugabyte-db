@@ -170,7 +170,9 @@ class IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler& handler) = 0;
 
-  // ids are the vector ids deleted by a batch of subtransaction_id.
+  // ids are the vector ids deleted by a batch of subtransaction_id. A kDeleteVectorIds record has
+  // no subtransaction id and passes kMinSubTransactionId, so it is applied even when the
+  // subtransaction of its batch was rolled back.
   virtual Status DeleteVectorIds(
       Slice key, SubTransactionId subtransaction_id, Slice ids,
       rocksdb::DirectWriteHandler& handler) = 0;

@@ -279,9 +279,9 @@ bool IntentValueType(char ch) {
          ch == KeyEntryTypeAsChar::kObsoleteIntentType;
 }
 
-bool IsDeleteVectorIdsRecord(Slice reverse_index_value) {
+bool IsVectorIndexRecord(Slice reverse_index_value) {
   return reverse_index_value.starts_with(ValueEntryTypeAsChar::kDeleteVectorIds) ||
-         reverse_index_value.starts_with(ValueEntryTypeAsChar::kDeleteVectorIdsWithSubTransaction);
+         reverse_index_value.starts_with(ValueEntryTypeAsChar::kVectorIndexRecord);
 }
 
 namespace {

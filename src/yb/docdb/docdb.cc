@@ -419,7 +419,7 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
       // The delete list records correspond to the tombstones added for optimal vector indexing.
       // They do not contain a main intent data key in their value field and hence should be
       // skipped.
-      if (dockv::IsDeleteVectorIdsRecord(reverse_index_value)) {
+      if (dockv::IsVectorIndexRecord(reverse_index_value)) {
         VLOG_WITH_FUNC(3) << "Skipping a delete list record, with key: "
                           << key_slice.ToDebugHexString() << ", transactionId: " << transaction_id;
         reverse_index_iter.Next();

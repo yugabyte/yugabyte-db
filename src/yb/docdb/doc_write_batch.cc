@@ -64,12 +64,13 @@ DEFINE_RUNTIME_AUTO_bool(vector_index_delete_list_after_rows, kLocalPersisted, f
     "intents, so that the delete list is applied right after the rows of its batch.");
 TAG_FLAG(vector_index_delete_list_after_rows, hidden);
 
-// An AutoFlag for the same reasons as vector_index_delete_list_after_rows: the apply of an older
-// binary fails on the new record.
-DEFINE_RUNTIME_AUTO_bool(vector_index_delete_list_subtransaction, kLocalPersisted, false, true,
+// An AutoFlag because an older binary does not know the new record: its apply skips the record and
+// leaves the vectors of the deleted rows in the index. Hidden because turning it off brings back
+// the savepoint rollback bug.
+DEFINE_RUNTIME_AUTO_bool(vector_index_delete_list_with_subtransaction, kLocalPersisted, false, true,
     "Store the subtransaction id in the vector delete list record of a transaction, so that the "
     "delete list of a subtransaction rolled back to a savepoint is not applied.");
-TAG_FLAG(vector_index_delete_list_subtransaction, hidden);
+TAG_FLAG(vector_index_delete_list_with_subtransaction, hidden);
 
 DECLARE_bool(ysql_enable_cdr_metadata);
 
@@ -954,8 +955,8 @@ void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
     if (FLAGS_vector_index_delete_list_after_rows) {
       kv_pb->set_delete_vector_ids_after_rows(true);
     }
-    if (FLAGS_vector_index_delete_list_subtransaction) {
-      kv_pb->set_delete_vector_ids_subtransaction(true);
+    if (FLAGS_vector_index_delete_list_with_subtransaction) {
+      kv_pb->set_delete_vector_ids_with_subtransaction(true);
     }
   }
   MoveLocksToWriteBatchPB(kv_pb, /* is_lock= */ true);

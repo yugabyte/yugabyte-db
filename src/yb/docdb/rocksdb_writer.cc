@@ -290,22 +290,6 @@ Status TombstoneVectorReverseMappingIds(
   return Status::OK();
 }
 
-// The subtransaction id as intent values store it: the kSubTransactionId marker followed by the big
-// endian id, empty for kMinSubTransactionId.
-auto EncodeSubTransactionId(SubTransactionId id) {
-  DCHECK_GE(id, kMinSubTransactionId);
-  // The encoding takes 1 + sizeof(SubTransactionId) bytes, while a ByteBuffer holds at least
-  // sizeof(void*) bytes inline.
-  constexpr size_t kBufferSize = 8;
-  static_assert(1 + sizeof(SubTransactionId) <= kBufferSize);
-  ByteBuffer<kBufferSize> result;
-  if (id > kMinSubTransactionId) {
-    auto big_endian_id = BigEndian::FromHost32(id);
-    result.AppendWithPrefix(KeyEntryTypeAsChar::kSubTransactionId, Slice::FromPod(&big_endian_id));
-  }
-  return result;
-}
-
 [[nodiscard]] dockv::ReadIntentTypeSets GetIntentTypesForRead(
     IsolationLevel level, RowMarkType row_mark, bool read_is_for_write_op) {
   auto result = dockv::GetIntentTypesForRead(level, row_mark);
@@ -438,19 +422,22 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
       put_batch_.delete_vector_ids_after_rows()
           ? dockv::InvertEncodedDocHT(doc_ht, &inverted_doc_ht_buffer) : doc_ht,
     }};
-    // The value is kDeleteVectorIdsWithSubTransaction, the big endian subtransaction id of the
-    // batch and the vector ids. Or, before vector_index_delete_list_subtransaction,
-    // kDeleteVectorIds and the vector ids.
-    const auto with_subtransaction = put_batch_.delete_vector_ids_subtransaction();
-    const auto value_type = with_subtransaction
-        ? ValueEntryTypeAsChar::kDeleteVectorIdsWithSubTransaction
-        : ValueEntryTypeAsChar::kDeleteVectorIds;
-    const auto big_endian_subtransaction_id = BigEndian::FromHost32(subtransaction_id_);
-    std::array<Slice, 3> value = {{
-      Slice(&value_type, sizeof(value_type)),
-      with_subtransaction ? Slice::FromPod(&big_endian_subtransaction_id) : Slice(),
-      Slice(put_batch_.delete_vector_ids()),
-    }};
+    // The value is a header and the vector ids. Before vector_index_delete_list_with_subtransaction
+    // the header is just kDeleteVectorIds.
+    // The header takes up to 2 + sizeof(SubTransactionId) bytes, while a ByteBuffer holds at least
+    // sizeof(void*) bytes inline.
+    constexpr size_t kHeaderSize = 8;
+    static_assert(2 + sizeof(SubTransactionId) <= kHeaderSize);
+    ByteBuffer<kHeaderSize> header;
+    if (put_batch_.delete_vector_ids_with_subtransaction()) {
+      header.PushBack(ValueEntryTypeAsChar::kVectorIndexRecord);
+      header.PushBack(std::to_underlying(dockv::VectorIndexRecordType::kDeleteVectorIds));
+      auto big_endian_id = BigEndian::FromHost32(subtransaction_id_);
+      header.Append(Slice::FromPod(&big_endian_id));
+    } else {
+      header.PushBack(ValueEntryTypeAsChar::kDeleteVectorIds);
+    }
+    std::array<Slice, 2> value = {{header.AsSlice(), Slice(put_batch_.delete_vector_ids())}};
 
     handler.Put(key, value);
   }
@@ -766,8 +753,13 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
         RETURN_NOT_OK(context_.DeleteVectorIds(
             key_slice, kMinSubTransactionId, reverse_index_value, handler));
         continue;
-      } else if (reverse_index_value.TryConsumeByte(
-                     ValueEntryTypeAsChar::kDeleteVectorIdsWithSubTransaction)) {
+      } else if (reverse_index_value.TryConsumeByte(ValueEntryTypeAsChar::kVectorIndexRecord)) {
+        if (!reverse_index_value.TryConsumeByte(
+                std::to_underlying(dockv::VectorIndexRecordType::kDeleteVectorIds))) {
+          return STATUS_FORMAT(
+              Corruption, "Unknown vector index record: $0",
+              reverse_index_value.ToDebugHexString());
+        }
         auto subtransaction_id = VERIFY_RESULT((
             CheckedRead<SubTransactionId, BigEndian>(reverse_index_value)));
         RETURN_NOT_OK(context_.DeleteVectorIds(

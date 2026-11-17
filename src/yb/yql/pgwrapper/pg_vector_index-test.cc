@@ -36,6 +36,7 @@
 
 #include "yb/docdb/docdb_util.h"
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 #include "yb/fs/fs_manager.h"
@@ -117,7 +118,7 @@ DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_enable_pk_routing);
 DECLARE_bool(vector_index_include_into_post_split_compaction);
 DECLARE_bool(vector_index_delete_list_after_rows);
-DECLARE_bool(vector_index_delete_list_subtransaction);
+DECLARE_bool(vector_index_delete_list_with_subtransaction);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
@@ -7207,6 +7208,26 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
     }, 10s * kTimeMultiplier, "Transactions loaded");
   }
 
+  // The sorted value types of the delete list records in the intents DB of the test tablet.
+  Result<std::string> DeleteListRecordTypes() {
+    auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet");
+    auto tablet = VERIFY_RESULT(peers.front()->shared_tablet());
+    std::unique_ptr<rocksdb::Iterator> iter(
+        tablet->intents_db()->NewIterator(rocksdb::ReadOptions()));
+    std::string result;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (iter->key().starts_with(dockv::KeyEntryTypeAsChar::kTransactionId) &&
+          dockv::IsVectorIndexRecord(iter->value())) {
+        result.push_back(iter->value()[0]);
+      }
+    }
+    RETURN_NOT_OK(iter->status());
+    std::ranges::sort(result);
+    return result;
+  }
+
   // Ids of the rows nearest to the origin.
   Result<std::string> NearestIds(PGConn& conn, size_t limit) {
     return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
@@ -7683,11 +7704,12 @@ TEST_F(PgVectorIndexUtilTest, RolledBackSubtransactionKeepsVectors) {
 
   ASSERT_OK(conn.Execute("BEGIN"));
   // Written without the subtransaction id, so a delete list without one is applied too.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_subtransaction) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = false;
   ASSERT_OK(conn.Execute("SAVEPOINT a"));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 19"));
   ASSERT_OK(conn.Execute("RELEASE SAVEPOINT a"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_subtransaction) = true;
+  ASSERT_EQ(ASSERT_RESULT(DeleteListRecordTypes()), "W");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = true;
   ASSERT_OK(conn.Execute("SAVEPOINT b"));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 20"));
   ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
@@ -7697,16 +7719,29 @@ TEST_F(PgVectorIndexUtilTest, RolledBackSubtransactionKeepsVectors) {
   ASSERT_OK(conn.Execute("SAVEPOINT d"));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(conn.Execute("RELEASE SAVEPOINT d"));
+  // A row of the transaction, deleted in a savepoint released inside the rolled back one.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kQueryA));
+  ASSERT_OK(conn.Execute("SAVEPOINT e"));
+  ASSERT_OK(conn.Execute("SAVEPOINT f"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1000"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT f"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT e"));
+  // A PL/pgSQL block rolls back its statements when it handles an exception.
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN DELETE FROM test WHERE id = 3; RAISE EXCEPTION 'rollback'; "
+      "EXCEPTION WHEN OTHERS THEN NULL; END $$"));
+  ASSERT_EQ(ASSERT_RESULT(DeleteListRecordTypes()), "WYYYYY");
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   using Ids = std::vector<int64_t>;
   for (const auto& [query, expected] :
-           {std::pair(kQueryA, Ids{20, 18}), std::pair(kQueryB, Ids{1, 3})}) {
+           {std::pair(kQueryA, Ids{1000, 20, 18}), std::pair(kQueryB, Ids{1, 3, 4})}) {
     auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(
         "SELECT id FROM test" + IndexQuerySuffix(query, expected.size())));
     EXPECT_EQ(ids, expected) << "Query: " << query;
   }
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/30262.
