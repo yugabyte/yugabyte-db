@@ -69,7 +69,8 @@ public class K8sResourceSpecInitializerTest {
     try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
       stubInstanceType(instanceTypes, providerUUID, masterInstType, 3.0, 4.0);
       stubInstanceType(instanceTypes, providerUUID, tserverInstType, 1.0, 2.0);
-      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui), initMockConfig());
+      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
+          paramsWith(ui), initMockConfig());
     }
     assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
     assertResourceSpec(ui.getMasterK8SNodeResourceSpec(providerUUID), 3.0, 4.0);
@@ -84,7 +85,8 @@ public class K8sResourceSpecInitializerTest {
 
     try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
       stubInstanceType(instanceTypes, providerUUID, instType, 1.0, 2.0);
-      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(paramsWith(ui), initMockConfig());
+      KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
+          paramsWith(ui), initMockConfig());
     }
     assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
     assertResourceSpec(ui.getMasterK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
@@ -99,7 +101,8 @@ public class K8sResourceSpecInitializerTest {
 
     try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
       stubInstanceType(instanceTypes, providerUUID, instType, 1.0, 2.0);
-      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(paramsWith(ui),initMockConfig());
+      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
+          paramsWith(ui), initMockConfig());
     }
     // Explicit tserver spec is kept, missing master spec is derived from the instance type.
     assertSame(tserverSpec, ui.getTserverK8SNodeResourceSpec(providerUUID));
@@ -115,7 +118,8 @@ public class K8sResourceSpecInitializerTest {
 
     try (MockedStatic<InstanceType> instanceTypes = mockStatic(InstanceType.class)) {
       stubInstanceType(instanceTypes, providerUUID, instType, 1.0, 2.0);
-      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(ClusterType.ASYNC, ui, initMockConfig());
+      KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(
+          ClusterType.ASYNC, ui, initMockConfig());
     }
     assertResourceSpec(ui.getTserverK8SNodeResourceSpec(providerUUID), 1.0, 2.0);
     assertNull(ui.getMasterK8SNodeResourceSpec(providerUUID));
