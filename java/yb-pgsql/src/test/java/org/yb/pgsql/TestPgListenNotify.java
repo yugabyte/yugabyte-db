@@ -554,6 +554,139 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * A LISTEN that joins while the first listener on its node starts the notifications poller must
+   * fail if the first LISTEN fails before the poller comes up, rather than commit and never
+   * receive notifications.
+   *
+   * Scenario:
+   *   1. Poller initialization is delayed on tserver 0.
+   *   2. Session 1 listens and waits for its poller; session 2 listens on the same node.
+   *   3. Session 1 is cancelled. Both LISTENs fail.
+   *   4. A new LISTEN on the node starts a poller and receives notifications.
+   */
+  @Test
+  public void testListenJoiningCancelledFirstListenFails() throws Exception {
+    setPollerInitDelay(0, Timeouts.adjustTimeoutSecForBuildType(8000));
+    try {
+      SQLException[] errors = listenWhileFirstListenFails("joined_cancelled", (adminStmt) ->
+          adminStmt.execute("SELECT pg_cancel_backend(pid) FROM pg_stat_activity"
+              + " WHERE query = 'LISTEN joined_cancelled_1' AND state = 'active'"));
+      assertErrorContains(errors[0], "canceling statement due to user request");
+      assertErrorContains(errors[1],
+          "the LISTEN starting the notifications poller did not complete");
+      assertListenNotifyWorksOnTServer0("joined_cancelled");
+    } finally {
+      setPollerInitDelay(0, 0);
+    }
+  }
+
+  /**
+   * Like testListenJoiningCancelledFirstListenFails, but the first LISTEN fails because its
+   * poller fails to initialize (no virtual WAL can be created).
+   */
+  @Test
+  public void testListenJoiningFailedPollerInitFails() throws Exception {
+    setPollerInitDelay(0, Timeouts.adjustTimeoutSecForBuildType(8000));
+    setVirtualWalLimit("0");
+    try {
+      SQLException[] errors = listenWhileFirstListenFails("joined_init_failed", (adminStmt) -> {});
+      assertErrorContains(errors[0], "failed to initialize");
+      assertErrorContains(errors[1], "failed to initialize");
+    } finally {
+      setVirtualWalLimit("5");
+      setPollerInitDelay(0, 0);
+    }
+    assertListenNotifyWorksOnTServer0("joined_init_failed");
+  }
+
+  private interface AdminAction {
+    void run(Statement adminStmt) throws Exception;
+  }
+
+  /**
+   * On tserver 0, runs "LISTEN <prefix>_1", and once it has started a poller, "LISTEN <prefix>_2".
+   * Then runs failFirst, which with the test's setup makes the first LISTEN fail, and returns the
+   * errors of both LISTENs.
+   */
+  private SQLException[] listenWhileFirstListenFails(String prefix, AdminAction failFirst)
+      throws Exception {
+    final String firstQuery = "LISTEN " + prefix + "_1";
+    final String joinQuery = "LISTEN " + prefix + "_2";
+    final long timeoutMs = Timeouts.adjustTimeoutSecForBuildType(60_000);
+    AtomicReference<SQLException> firstError = new AtomicReference<>();
+    AtomicReference<SQLException> joinError = new AtomicReference<>();
+
+    try (Connection first = getConnectionBuilder().withTServer(0).connect();
+         Statement firstStmt = first.createStatement();
+         Connection joiner = getConnectionBuilder().withTServer(0).connect();
+         Statement joinStmt = joiner.createStatement();
+         Connection admin = getConnectionBuilder().withTServer(0).connect();
+         Statement adminStmt = admin.createStatement()) {
+      Thread firstThread = startListen(firstStmt, firstQuery, firstError);
+      TestUtils.waitFor(() -> getSingleRow(adminStmt,
+          "SELECT EXISTS (SELECT 1 FROM pg_stat_activity l, pg_stat_activity p"
+              + " WHERE l.query = '" + firstQuery + "' AND l.state = 'active'"
+              + " AND p.backend_type = 'notifications poller'"
+              + " AND p.backend_start > l.query_start)").getBoolean(0), timeoutMs);
+
+      Thread joinThread = startListen(joinStmt, joinQuery, joinError);
+      TestUtils.waitFor(() -> getSingleRow(adminStmt,
+          "SELECT EXISTS (SELECT 1 FROM pg_stat_activity"
+              + " WHERE query = '" + joinQuery + "' AND state = 'active')").getBoolean(0),
+          timeoutMs);
+      // The joining LISTEN registers as a listener as soon as it commits; give it time to.
+      Thread.sleep(2000);
+
+      failFirst.run(adminStmt);
+      firstThread.join(timeoutMs);
+      joinThread.join(timeoutMs);
+    }
+    return new SQLException[] {firstError.get(), joinError.get()};
+  }
+
+  private static Thread startListen(Statement stmt, String query,
+                                    AtomicReference<SQLException> error) {
+    Thread thread = new Thread(() -> {
+      try {
+        stmt.execute(query);
+      } catch (SQLException e) {
+        error.set(e);
+      }
+    });
+    thread.start();
+    return thread;
+  }
+
+  private static void assertErrorContains(SQLException error, String expected) {
+    assertTrue("Expected an error containing '" + expected + "'", error != null);
+    LOG.info("Expected LISTEN failure: {}", error.getMessage());
+    assertTrue("Error should contain '" + expected + "' but was: " + error.getMessage(),
+        error.getMessage().contains(expected));
+  }
+
+  /**
+   * A LISTEN on tserver 0 runs with exactly one poller, and receives a notification once.
+   */
+  private void assertListenNotifyWorksOnTServer0(String channel) throws Exception {
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = listener.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+
+      List<Row> pollers = getRowList(stmt,
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+      assertEquals("Expected exactly one notifications poller, got " + pollers,
+          1, pollers.size());
+
+      try (Connection notifier = getConnectionBuilder().connect();
+           Statement notifierStmt = notifier.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", '" + PAYLOAD + "'");
+      }
+      waitForNotification(listener, channel, PAYLOAD);
+      waitAndAssertNoNotifications(listener, "Expected the notification only once");
+    }
+  }
+
+  /**
    * A LISTEN that fails before it starts a notifications poller must not terminate other bg
    * workers. The poller handle in shared memory is zeroed once a poller stops, and a zeroed handle
    * names bg worker slot 0, which holds a static worker: the YSQL webserver.
