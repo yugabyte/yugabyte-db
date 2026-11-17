@@ -2711,18 +2711,34 @@ TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
   }
 }
 
-// GH #35007, #36262: a REPEATABLE READ txn whose first statement is transparently retried must
-// still hold its table locks afterwards, so a conflicting DDL waits for it. Applying the restart on
-// the tserver releases all of the session's fastpath locks, so it must happen before the retry
-// re-acquires them.
+// GH #35007, #36262: a statement that is transparently retried must still hold its table locks
+// afterwards, so a conflicting DDL waits for it. Applying a txn restart on the tserver releases all
+// of the session's fastpath locks, so it must happen before the retry re-acquires them.
 class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
  protected:
+  struct RetryCase {
+    IsolationLevel isolation;
+    bool in_txn_block;
+    bool after_first_statement = false;
+
+    std::string ToString() const {
+      return Format(
+          "{ isolation: $0 in_txn_block: $1 after_first_statement: $2 }",
+          IsolationLevel_Name(isolation), in_txn_block, after_first_statement);
+    }
+  };
+
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     PgObjectLocksFastpathTest::SetUp();
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE hot (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO hot VALUES (1, 0)"));
     ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, v INT)"));
+    // A fan-out read runs at a read time picked by the client, so an injected restart reaches
+    // postgres instead of being retried inside DocDB.
+    ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
+    ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
   }
 
   void DoTearDown() override {
@@ -2747,69 +2763,100 @@ class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
         ddl_conn.Execute("ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID"),
         "statement timeout");
   }
+
+  static Status WaitForWaitEvent(PGConn& conn, int writer_pid, const std::string& wait_event) {
+    return WaitFor(
+        [&conn, writer_pid, &wait_event]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<PGUint64>(Format(
+              "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND wait_event = '$1'",
+              writer_pid, wait_event))) == 1;
+        },
+        30s * kTimeMultiplier, Format("writer waiting on $0", wait_event));
+  }
+
+  // Runs stmt_format on the writer as retry_case dictates and asserts that the writer still holds
+  // its t2 lock afterwards. stmt_format's $0 is a filter that, outside a txn block, makes the
+  // statement sleep at its end, so the lock is checked while the statement still holds it.
+  // before_statement runs just before the statement, while_running while it runs.
+  void RunRetriedStatement(
+      PGConn& writer, const RetryCase& retry_case, const std::string& stmt_format,
+      const std::function<void()>& before_statement,
+      const std::function<void(PGConn&, int)>& while_running) {
+    SCOPED_TRACE(retry_case.ToString());
+    LOG(INFO) << "Case: " << retry_case.ToString();
+    auto conn = ASSERT_RESULT(Connect());
+    const auto writer_pid = ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    if (retry_case.in_txn_block) {
+      ASSERT_OK(writer.StartTransaction(retry_case.isolation));
+      if (retry_case.after_first_statement) {
+        ASSERT_OK(writer.Fetch("SELECT * FROM hot"));
+      }
+    } else {
+      ASSERT_OK(writer.ExecuteFormat(
+          "SET default_transaction_isolation = '$0'", PgIsolationName(retry_case.isolation)));
+    }
+    before_statement();
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([&writer, &retry_case, &stmt_format] {
+      ASSERT_OK(writer.ExecuteFormat(
+          stmt_format, retry_case.in_txn_block ? "true" : "pg_sleep(10) IS NOT NULL"));
+    });
+    while_running(conn, writer_pid);
+    if (!retry_case.in_txn_block) {
+      ASSERT_OK(WaitForWaitEvent(conn, writer_pid, "PgSleep"));
+      AssertDdlWaitsForWriter();
+    }
+    thread_holder.JoinAll();
+    if (retry_case.in_txn_block) {
+      AssertDdlWaitsForWriter();
+      ASSERT_OK(writer.CommitTransaction());
+    }
+    ASSERT_OK(writer.Execute("DELETE FROM t2"));
+  }
+
+  static std::string_view PgIsolationName(IsolationLevel isolation) {
+    switch (isolation) {
+      case IsolationLevel::READ_COMMITTED: return "read committed";
+      case IsolationLevel::SNAPSHOT_ISOLATION: return "repeatable read";
+      case IsolationLevel::SERIALIZABLE_ISOLATION: return "serializable";
+      default: break;
+    }
+    LOG(FATAL) << "Unexpected isolation level " << isolation;
+    return {};
+  }
 };
 
 TEST_F(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
-  auto conn = ASSERT_RESULT(Connect());
-  // A fan-out read runs at a read time picked by the client, so an injected restart reaches
-  // postgres instead of being retried inside DocDB.
-  ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
-  ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
   auto writer = ASSERT_RESULT(ConnectWriter());
-
   std::atomic<int> restarts{0};
-  SyncPoint::GetInstance()->SetCallBack("PgClientSession::RestartTransaction", [&](void*) {
+  SyncPoint::GetInstance()->SetCallBack("PgClientSession::RestartTransactionForRetry", [&](void*) {
     ++restarts;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
   });
   SyncPoint::GetInstance()->EnableProcessing();
 
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
-  ASSERT_OK(writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate"));
-  ASSERT_GE(restarts.load(), 1);
-
-  AssertDdlWaitsForWriter();
-  ASSERT_OK(writer.CommitTransaction());
+  for (const auto& retry_case : {
+           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ true},
+           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ false},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true,
+                     /* after_first_statement= */ true},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ false}}) {
+    restarts = 0;
+    RunRetriedStatement(
+        writer, retry_case,
+        "INSERT INTO t2 SELECT 1, n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0",
+        [] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0; },
+        [&restarts](PGConn&, int) {
+          ASSERT_OK(WaitFor(
+              [&restarts] { return restarts.load() >= 1; }, 30s * kTimeMultiplier,
+              "read restart retry"));
+        });
+  }
 }
 
-TEST_F(PgObjectLocksRetryTest, TableLocksSurviveAutocommitReadRestartRetry) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
-  ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
-  auto writer = ASSERT_RESULT(ConnectWriter());
-  const auto writer_pid = ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT pg_backend_pid()"));
-
-  std::atomic<int> restarts{0};
-  SyncPoint::GetInstance()->SetCallBack("PgClientSession::RestartTransaction", [&](void*) {
-    ++restarts;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
-  });
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
-  // The statement holds its t2 lock while it sleeps, after the retried read of gate.
-  std::jthread t([&writer] {
-    ASSERT_OK(writer.Execute(
-        "INSERT INTO t2 SELECT 1, n FROM (SELECT COUNT(*) AS n FROM gate) c "
-        "WHERE pg_sleep(10) IS NOT NULL"));
-  });
-  ASSERT_OK(WaitFor(
-      [&conn, writer_pid]() -> Result<bool> {
-        return VERIFY_RESULT(conn.FetchRow<PGUint64>(Format(
-            "SELECT COUNT(*) FROM pg_stat_activity WHERE pid = $0 AND wait_event = 'PgSleep'",
-            writer_pid))) == 1;
-      },
-      30s * kTimeMultiplier, "writer sleeping after the retried read"));
-  ASSERT_GE(restarts.load(), 1);
-
-  AssertDdlWaitsForWriter();
-}
-
+// The RC case retries just the statement, which only fetches the failed read point's limits.
 TEST_F(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
-  ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
   auto writer = ASSERT_RESULT(ConnectWriter());
   // An injected restart lands no later than the current time, so every retry is restarted again
   // until its window closes: enough retries to outlast max_clock_skew, which a retry whose window
@@ -2818,42 +2865,23 @@ TEST_F(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
 
   std::atomic<int> restarts{0};
   SyncPoint::GetInstance()->SetCallBack(
-      "PgClientSession::RestartTransaction", [&](void*) { ++restarts; });
+      "PgClientSession::RestartTransactionForRetry", [&](void*) { ++restarts; });
   SyncPoint::GetInstance()->EnableProcessing();
 
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
-  auto status = writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate");
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
-  ASSERT_OK(status);
-  LOG(INFO) << "restarts: " << restarts.load();
-  ASSERT_OK(writer.CommitTransaction());
-}
-
-class PgObjectLocksReadCommittedRetryTest : public PgObjectLocksRetryTest {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
-    PgObjectLocksRetryTest::SetUp();
+  for (const auto isolation :
+       {IsolationLevel::SNAPSHOT_ISOLATION, IsolationLevel::READ_COMMITTED}) {
+    SCOPED_TRACE(IsolationLevel_Name(isolation));
+    restarts = 0;
+    ASSERT_OK(writer.StartTransaction(isolation));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
+    auto status = writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+    ASSERT_OK(status);
+    ASSERT_OK(writer.CommitTransaction());
+    LOG(INFO) << IsolationLevel_Name(isolation) << " restarts: " << restarts.load();
+    ASSERT_GE(restarts.load(), 1);
+    ASSERT_OK(writer.Execute("DELETE FROM t2"));
   }
-};
-
-TEST_F(PgObjectLocksReadCommittedRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE gate (k INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
-  ASSERT_OK(conn.Execute("INSERT INTO gate SELECT generate_series(1, 10)"));
-  auto writer = ASSERT_RESULT(ConnectWriter());
-  // An injected restart lands no later than the current time, so every retry is restarted again
-  // until its window closes: enough retries to outlast max_clock_skew, which a retry whose window
-  // is not capped never does.
-  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000"));
-
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::READ_COMMITTED));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
-  auto status = writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate");
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
-  ASSERT_OK(status);
-  ASSERT_OK(writer.CommitTransaction());
 }
 
 class PgObjectLocksFailOnConflictRetryTest : public PgObjectLocksRetryTest {
@@ -2867,76 +2895,36 @@ class PgObjectLocksFailOnConflictRetryTest : public PgObjectLocksRetryTest {
 TEST_F(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveConflictRetry) {
   auto blocker = ASSERT_RESULT(Connect());
   ASSERT_OK(blocker.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
-  ASSERT_OK(blocker.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
-
   auto writer = ASSERT_RESULT(ConnectWriter());
   ASSERT_OK(writer.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
+  // Long enough to catch the writer backing off after its first failed attempt.
+  ASSERT_OK(writer.Execute("SET retry_min_backoff = 1000"));
+  ASSERT_OK(writer.Execute("SET retry_max_backoff = 2000"));
 
-  // The tserver replaces the writer's txn on the retry's first RPC. Hold it there until the
-  // blocker has committed, so that this first retry is the one that succeeds.
-  CountDownLatch replacing(1);
-  CountDownLatch blocker_committed(1);
-  std::atomic<bool> first_replace{true};
-  SyncPoint::GetInstance()->SetCallBack("PgClientSession::ReplaceTransaction", [&](void*) {
-    if (first_replace.exchange(false)) {
-      replacing.CountDown();
-      blocker_committed.Wait();
-    }
-  });
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  {
-    std::jthread t([&] {
-      ASSERT_OK(writer.Execute(
-          "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
-          "INSERT INTO t2 SELECT 1, v FROM u"));
-    });
-    auto release_tserver = ScopeExit([&] { blocker_committed.CountDown(); });
-    ASSERT_TRUE(replacing.WaitFor(30s * kTimeMultiplier));
-    ASSERT_OK(blocker.CommitTransaction());
+  for (const auto& retry_case : {
+           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ true},
+           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ false},
+           RetryCase{IsolationLevel::SERIALIZABLE_ISOLATION, /* in_txn_block= */ true},
+           RetryCase{IsolationLevel::SERIALIZABLE_ISOLATION, /* in_txn_block= */ false},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true,
+                     /* after_first_statement= */ true},
+           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ false}}) {
+    RunRetriedStatement(
+        writer, retry_case,
+        "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
+        "INSERT INTO t2 SELECT 1, v FROM u WHERE $0",
+        [&blocker, &retry_case] {
+          // READ COMMITTED txns all get the highest priority, so the writer loses only to another
+          // READ COMMITTED txn that wrote first.
+          ASSERT_OK(blocker.StartTransaction(retry_case.isolation));
+          ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
+        },
+        [&blocker](PGConn& conn, int writer_pid) {
+          ASSERT_OK(WaitForWaitEvent(conn, writer_pid, "YBTxnConflictBackoff"));
+          ASSERT_OK(blocker.CommitTransaction());
+        });
   }
-
-  AssertDdlWaitsForWriter();
-  ASSERT_OK(writer.CommitTransaction());
-  ASSERT_EQ(ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT v FROM t2 WHERE id = 1")), 2);
-}
-
-TEST_F(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveSerializableConflictRetry) {
-  auto blocker = ASSERT_RESULT(Connect());
-  ASSERT_OK(blocker.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
-  ASSERT_OK(blocker.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
-
-  auto writer = ASSERT_RESULT(ConnectWriter());
-  ASSERT_OK(writer.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-
-  CountDownLatch replacing(1);
-  CountDownLatch blocker_committed(1);
-  std::atomic<bool> first_replace{true};
-  SyncPoint::GetInstance()->SetCallBack("PgClientSession::ReplaceTransaction", [&](void*) {
-    if (first_replace.exchange(false)) {
-      replacing.CountDown();
-      blocker_committed.Wait();
-    }
-  });
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-  {
-    std::jthread t([&] {
-      ASSERT_OK(writer.Execute(
-          "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
-          "INSERT INTO t2 SELECT 1, v FROM u"));
-    });
-    auto release_tserver = ScopeExit([&] { blocker_committed.CountDown(); });
-    ASSERT_TRUE(replacing.WaitFor(30s * kTimeMultiplier));
-    ASSERT_OK(blocker.CommitTransaction());
-  }
-
-  AssertDdlWaitsForWriter();
-  ASSERT_OK(writer.CommitTransaction());
 }
 
 TEST_F(PgObjectLocksFailOnConflictRetryTest, AdvisoryLocksSurviveConflictRetry) {

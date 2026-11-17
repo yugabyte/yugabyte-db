@@ -2265,6 +2265,7 @@ class PgClientSession::Impl {
       const PgRestartTransactionForRetryRequestPB& req,
       PgRestartTransactionForRetryResponsePB* resp, rpc::RpcContext* context) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
+    TEST_SYNC_POINT("PgClientSession::RestartTransactionForRetry");
     const auto& session = Session(PgClientSessionKind::kPlain);
     if (session) {
       const auto& read_point = *session->read_point();
@@ -4497,7 +4498,6 @@ class PgClientSession::Impl {
   }
 
   Status RestartTransaction(PgClientSessionKind kind, CoarseTimePoint deadline) {
-    TEST_SYNC_POINT("PgClientSession::RestartTransaction");
     auto& session_data = GetSessionData(kind);
     auto& session = *session_data.session;
     auto& txn = session_data.transaction;
