@@ -702,10 +702,11 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 	 *
 	 * No check here keeps two pathkeys from resolving to the same index
 	 * column, so count one merge sort column for each pathkey, as
-	 * prepare_sort_from_pathkeys does.  The gap columns are distinct index
-	 * columns, so there are at most index->ncolumns of them.
+	 * prepare_sort_from_pathkeys does.  The gap columns are distinct key
+	 * columns, since each comes before the last merge sort column, so there
+	 * are at most index->nkeycolumns of them.
 	 */
-	max_sort_cols = list_length(*pathkeys) + index->ncolumns;
+	max_sort_cols = list_length(*pathkeys) + index->nkeycolumns;
 	sort_info = makeNode(YbSortInfo);
 	sort_info->sortColIdx = palloc(max_sort_cols * sizeof(AttrNumber));
 	sort_info->sortOperators = palloc(max_sort_cols * sizeof(Oid));
