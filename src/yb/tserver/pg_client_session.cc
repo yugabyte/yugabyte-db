@@ -2277,13 +2277,14 @@ class PgClientSession::Impl {
         }
       }
     }
-    if (req.kind() == PgRestartTransactionForRetryRequestPB::READ_POINT_ONLY) {
+    if (req.kind() == PgRestartTransactionForRetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY) {
       return Status::OK();
     }
     return ResultToStatus(SetupSession(
         req.options(), context->GetClientDeadline(), /* arena= */ nullptr,
         /* in_txn_limit= */ {}, TransactionFullLocality::RegionLocal(),
-        RestartTxn(req.kind() == PgRestartTransactionForRetryRequestPB::RESTART_TRANSACTION)));
+        RestartTxn(
+            req.kind() == PgRestartTransactionForRetryRequestPB::REPLACE_DIST_TRANSACTION_ONLY)));
   }
 
   Status RollbackToSubTransaction(

@@ -293,7 +293,7 @@ Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_t
 Status PgTxnManager::RecreateTransaction(SetupPerformOptionsAccessorTag tag) {
   VLOG_TXN_STATE(2);
   RETURN_NOT_OK(RecreateTransaction(SavePriority::kTrue));
-  return ResultToStatus(RestartTransactionForRetry(tag, RetryRequestPB::RECREATE_TRANSACTION));
+  return ResultToStatus(RestartTransactionForRetry(tag, RetryRequestPB::DEFAULT));
 }
 
 Status PgTxnManager::RecreateTransaction(SavePriority save_priority) {
@@ -466,15 +466,15 @@ Status PgTxnManager::CalculateIsolation(
 }
 
 Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
-  CapRetryReadLimits(
-      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRequestPB::RESTART_TRANSACTION)));
+  CapRetryReadLimits(VERIFY_RESULT(
+      RestartTransactionForRetry(tag, RetryRequestPB::REPLACE_DIST_TRANSACTION_ONLY)));
   return Status::OK();
 }
 
 Result<tserver::PgRestartTransactionForRetryResponsePB> PgTxnManager::RestartTransactionForRetry(
     SetupPerformOptionsAccessorTag tag, RetryRequestPB::Kind kind) {
   tserver::PgPerformOptionsPB options;
-  if (kind != RetryRequestPB::READ_POINT_ONLY) {
+  if (kind != RetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY) {
     RETURN_NOT_OK(SetupPerformOptions(
         tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
         SkipReadTimeOptions::kTrue));
@@ -536,8 +536,8 @@ Status PgTxnManager::EnsureReadPoint() {
 }
 
 Status PgTxnManager::RestartReadPoint(SetupPerformOptionsAccessorTag tag) {
-  CapRetryReadLimits(
-      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRequestPB::READ_POINT_ONLY)));
+  CapRetryReadLimits(VERIFY_RESULT(
+      RestartTransactionForRetry(tag, RetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY)));
   return Status::OK();
 }
 

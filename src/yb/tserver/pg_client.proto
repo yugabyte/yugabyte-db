@@ -1051,11 +1051,13 @@ message PgRollbackToSubTransactionResponsePB {
 
 message PgRestartTransactionForRetryRequestPB {
   enum Kind {
-    RECREATE_TRANSACTION = 0;
-    RESTART_TRANSACTION = 1;
-    // Only report the global limit of the read point that faced the restart; used by READ
-    // COMMITTED statement retries, which don't restart the transaction.
-    READ_POINT_ONLY = 2;
+    // Set up the session as the options dictate; a bumped txn_serial_no replaces the transaction.
+    DEFAULT = 0;
+    // Replace the distributed transaction with a restarted one, keeping the txn_serial_no.
+    REPLACE_DIST_TRANSACTION_ONLY = 1;
+    // Only return the limits of the read point that faced the restart; used by READ COMMITTED
+    // statement retries, which don't restart the transaction.
+    FETCH_GLOBAL_LOCAL_LIMITS_ONLY = 2;
   }
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
