@@ -1300,10 +1300,8 @@ public class BackupHelper {
   /**
    * Fails fast when cross-cloud federated IAM is not enabled on the universe but one of its nodes
    * needs it to reach this bucket, for example because federated IAM was enabled on the provider
-   * after the universe was created, or because a read replica was added after federation was
-   * enabled on the universe, so federation was never configured on that read replica. That node has
-   * no credentials for the bucket, so the YBC check on it would otherwise wait about 15 minutes and
-   * then fail with no error.
+   * after the universe was created. That node has no credentials for the bucket, so the YBC check
+   * on it would otherwise wait about 15 minutes and then fail with no error.
    */
   private void validateCrossCloudFederationConfigured(
       CustomerConfig storageConfig, Universe universe, boolean forRestore, boolean probeNodes) {
@@ -1331,6 +1329,14 @@ public class BackupHelper {
             .isEmpty()) {
       return;
     }
+    if (primaryCluster.userIntent.isFederationConfigured()) {
+      // Enabled on the universe. EditUniverse, AddNodeToUniverse and ReplaceNodeInUniverse then
+      // configure it on the nodes of every cluster they touch by this flag alone, and do not set a
+      // read replica's own, so a read replica's flag does not tell whether its nodes have it. A
+      // read replica added after it was enabled has none (ReadOnlyClusterCreate does not configure
+      // it), but cannot be told apart, so it is left to the YBC check.
+      return;
+    }
     // Once the API accepts a universe, it configures every cluster, read replicas included, each
     // from its own provider.
     List<Cluster> clusters =
@@ -1353,31 +1359,21 @@ public class BackupHelper {
         // natively, and one whose cloud is unknown is left to the YBC check.
         if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp)
             && nodeCloud != bucketCloud) {
-          // With the primary cluster configured, this is a read replica added after federation was
-          // enabled on the universe. ReadOnlyClusterCreate does not configure federation on the new
-          // cluster, but enabling federation on the universe again configures every cluster.
-          boolean enabledOnUniverse = primaryCluster.userIntent.isFederationConfigured();
           throw new PlatformServiceException(
               BAD_REQUEST,
               String.format(
                   "Universe %s cannot reach this %s bucket: node %s runs on %s and needs"
-                      + " cross-cloud federated IAM, which provider %s has enabled but %s. %s with"
-                      + " POST /api/v2/customers/%s/universes/%s/cross-cloud-federation and body"
-                      + " {\"enabled\": true}%s, then retry.",
+                      + " cross-cloud federated IAM, which provider %s has enabled but which is"
+                      + " not enabled on this universe. Enable it with POST"
+                      + " /api/v2/customers/%s/universes/%s/cross-cloud-federation and body"
+                      + " {\"enabled\": true}, then retry.",
                   universe.getName(),
                   storageConfig.getName(),
                   node.nodeName,
                   nodeCloud,
                   provider.getName(),
-                  enabledOnUniverse
-                      ? "which, though enabled on this universe, was never configured on its read"
-                          + " replica cluster "
-                          + cluster.uuid
-                      : "which is not enabled on this universe",
-                  enabledOnUniverse ? "Enable it again" : "Enable it",
                   storageConfig.getCustomerUUID(),
-                  universe.getUniverseUUID(),
-                  enabledOnUniverse ? " to configure that cluster" : ""));
+                  universe.getUniverseUUID()));
         }
       }
     }

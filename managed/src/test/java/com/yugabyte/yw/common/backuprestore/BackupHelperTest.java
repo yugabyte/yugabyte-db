@@ -1684,39 +1684,29 @@ public class BackupHelperTest extends FakeDBApplication {
   }
 
   /**
-   * Adding a read replica does not configure federation on it, so a read replica added after
-   * federation was enabled on the universe stops a restore, with a message that says so.
+   * With federation enabled on the universe, the tasks that configure it on nodes go by the primary
+   * cluster's flag for every cluster and do not set a read replica's own, so a read replica whose
+   * flag is false does not fail the restore precheck.
    */
   @Test
-  public void testRestorePrecheckNamesReadReplicaAddedAfterFederationWasEnabled() {
+  public void testRestorePrecheckTrustsTheUniverseFlagForReadReplicas() {
     Universe universe = universeOnFederatingProvider(CloudType.onprem, true);
     UniverseDefinitionTaskParams.UserIntent rrIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     rrIntent.numNodes = 1;
-    Universe withRr =
-        Universe.saveDetails(
-            universe.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, null /* placementInfo */));
-    UUID rrUuid = withRr.getUniverseDetails().getReadOnlyClusters().get(0).uuid;
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        ApiUtils.mockUniverseUpdaterWithReadReplica(rrIntent, null /* placementInfo */));
     // Federation is configured on the primary cluster only, and every node runs on AWS.
-    Universe configured =
-        Universe.saveDetails(
-            universe.getUniverseUUID(),
-            u -> {
-              u.getUniverseDetails().getPrimaryCluster().userIntent.setFederationConfigured(true);
-              u.getNodes().forEach(n -> n.cloudInfo.physicalCloud = CloudType.aws.name());
-            });
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().getPrimaryCluster().userIntent.setFederationConfigured(true);
+          u.getNodes().forEach(n -> n.cloudInfo.physicalCloud = CloudType.aws.name());
+        });
 
-    PlatformServiceException e =
-        assertThrows(
-            PlatformServiceException.class,
-            () ->
-                spyBackupHelper.getYbcSuccessMarker(
-                    gcsIamConfig(), Collections.emptySet(), configured.getUniverseUUID()));
-    assertTrue(
-        e.getMessage(),
-        e.getMessage().contains("never configured on its read replica cluster " + rrUuid));
-    assertTrue(e.getMessage(), e.getMessage().contains("Enable it again"));
+    spyBackupHelper.getYbcSuccessMarker(
+        gcsIamConfig(), Collections.emptySet(), universe.getUniverseUUID());
   }
 
   /**
