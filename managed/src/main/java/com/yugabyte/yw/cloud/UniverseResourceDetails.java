@@ -411,20 +411,27 @@ public class UniverseResourceDetails {
     if (CollectionUtils.isEmpty(nodes)) {
       return details;
     }
-    Set<UUID> clusterUUIDs = nodes.stream().map(n -> n.placementUuid).collect(Collectors.toSet());
-    for (Cluster cluster : params.clusters) {
-      if (!clusterUUIDs.contains(cluster.uuid)) {
-        continue;
+    if (!priceForAllNodes) {
+      Set<UUID> clusterUUIDs = nodes.stream().map(n -> n.placementUuid).collect(Collectors.toSet());
+      for (Cluster cluster : params.clusters) {
+        if (!clusterUUIDs.contains(cluster.uuid)) {
+          continue;
+        }
+        if (cluster.getOverallPlacement() != null) {
+          cluster
+              .getOverallPlacement()
+              .azInfoStream()
+              .filter(az -> providerUUID.isEmpty() || providerUUID.get().equals(az.cloud.uuid))
+              .mapToInt(az -> az.placementAZ.numNodesInAZ)
+              .forEach(num -> details.numNodes += num);
+        }
       }
-      if (cluster.getOverallPlacement() != null) {
-        cluster
-            .getOverallPlacement()
-            .azInfoStream()
-            .filter(az -> providerUUID.isEmpty() || providerUUID.get().equals(az.cloud.uuid))
-            .mapToInt(az -> az.placementAZ.numNodesInAZ)
-            .forEach(num -> details.numNodes += num);
+    } else {
+      for (Cluster cluster : params.clusters) {
+        details.addNumNodes(cluster.userIntent.numNodes);
       }
     }
+
     Collection<NodeDetails> providerNodes = new ArrayList<>();
     Map<UUID, UUID> providerUUIDByAZ = new HashMap<>();
     for (NodeDetails node : nodes) {

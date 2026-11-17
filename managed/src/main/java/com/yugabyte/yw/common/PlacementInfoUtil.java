@@ -2344,7 +2344,7 @@ public class PlacementInfoUtil {
    * @param cluster The current cluster.
    * @param index The placement index combination.
    * @param nodeIdx Node index to be used in node name.
-   * @param zoneMap
+   * @param zoneMap Per-AZ zone cache.
    * @return a NodeDetails object.
    */
   private static NodeDetails createNodeDetailsWithPlacementIndex(
@@ -2378,13 +2378,19 @@ public class PlacementInfoUtil {
     nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
     nodeDetails.cloudInfo.secondary_subnet_id = placementAZ.secondarySubnet;
     // In case placement lacks subnet/secondarySubnet information, we have to get it from zone.
-    if (placementAZ.subnet == null || placementAZ.secondarySubnet == null) {
+    if (placementAZ.subnet == null) {
       AvailabilityZone zone =
           zoneMap.computeIfAbsent(
               placementAZ.uuid, (uuid) -> AvailabilityZone.getOrBadRequest(uuid));
       nodeDetails.cloudInfo.subnet_id = zone.getSubnet();
+    }
+    if (placementAZ.secondarySubnet == null) {
+      AvailabilityZone zone =
+          zoneMap.computeIfAbsent(
+              placementAZ.uuid, (uuid) -> AvailabilityZone.getOrBadRequest(uuid));
       nodeDetails.cloudInfo.secondary_subnet_id = zone.getSecondarySubnet();
     }
+
     nodeDetails.cloudInfo.instance_type = cluster.userIntent.getInstanceTypeForNode(nodeDetails);
     nodeDetails.cloudInfo.assignPublicIP = cluster.userIntent.assignPublicIP;
     nodeDetails.cloudInfo.useTimeSync = cluster.userIntent.useTimeSync;
