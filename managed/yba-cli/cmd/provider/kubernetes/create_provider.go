@@ -28,7 +28,7 @@ var createK8sProviderCmd = &cobra.Command{
 	--pull-secret-file <pull-secret-file-path> \
 	--region region-name=us-west1 \
 	--zone zone-name=us-west1-b::region-name=us-west1::storage-class=<storage-class>::\
-	overrirdes-file-path=<overrirdes-file-path> \
+	overrides-file-path=<overrides-file-path> \
 	--zone zone-name=us-west1-a::region-name=us-west1::storage-class=<storage-class> \
 	--zone zone-name=us-west1-c::region-name=us-west1::storage-class=<storage-class>`,
 	PreRun: func(cmd *cobra.Command, args []string) {
