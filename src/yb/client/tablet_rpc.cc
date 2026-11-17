@@ -64,8 +64,9 @@ DEFINE_test_flag(bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDe
     "will always be refreshed when a successful Write/Read/TransactionStatus/GetChanges RPC "
     "responds.");
 DEFINE_RUNTIME_bool(abort_txn_on_unknown_pipelined_write_outcome, true,
-    "Abort the transaction instead of resending a pipelined write when the write was sent and "
-    "then failed with a network error or timed out, since the old leader may still apply it.");
+    "Abort the transaction when a pipelined write's call timed out, or failed with a network "
+    "error after the write was sent, instead of resending the write or failing only the "
+    "statement, since the old leader may still apply it.");
 
 DEFINE_RUNTIME_bool(enable_metacache_partial_refresh, true,
     "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
@@ -76,6 +77,21 @@ using namespace std::placeholders;
 namespace yb {
 namespace client {
 namespace internal {
+
+namespace {
+
+// Whether the server may have received the request even though the call failed without a reply.
+bool ServerMayHaveRequest(const Status& status, const rpc::RpcController& controller) {
+  if (status.IsTimedOut()) {
+    // The retrier also fails with TimedOut when the deadline passes between attempts, or during a
+    // tablet lookup, with no request outstanding. Only a timeout of the call itself counts, and it
+    // counts even if the request was not fully sent, since its transfer can still finish.
+    return controller.status().IsTimedOut();
+  }
+  return status.IsNetworkError() && controller.WasSent();
+}
+
+} // namespace
 
 TabletInvoker::TabletInvoker(const bool local_tserver_only,
                              const bool consistent_prefix,
@@ -420,14 +436,10 @@ bool TabletInvoker::Done(Status* status) {
         "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);
   }
 
-  // A call can time out while its request is still being transferred, so WasSent() is only
-  // conclusive for network errors.
   if (FLAGS_abort_txn_on_unknown_pipelined_write_outcome && rpc_->AppliedBeforeReplication() &&
-      (status->IsTimedOut() ||
-       (status->IsNetworkError() && retrier_->controller().WasSent()))) {
-    // The server may still apply this request after we give up on it, early-applying intents that
-    // end up in no log once it loses leadership. Resending it elsewhere, or letting the transaction
-    // go on past the failed statement, would let it commit with those intents.
+      ServerMayHaveRequest(*status, retrier_->controller())) {
+    // The server may still early-apply this request, leaving intents that no log entry backs once
+    // it loses leadership. The transaction must not commit with these, so abort the transaction.
     if (tablet_ && current_ts_) {
       tablet_->MarkReplicaFailed(current_ts_, *status);
     }

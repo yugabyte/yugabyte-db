@@ -208,6 +208,11 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const LWChildTransacti
 bool CanAbortTransaction(
     const Status& status, const TransactionMetadata& txn_metadata,
     const std::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+  // An unknown pipelined write outcome aborts even inside a subtransaction, since rolling it back
+  // does not undo a write the old leader may still apply.
+  if (ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown) {
+    return true;
+  }
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
   // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
@@ -547,12 +552,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     bool schedule_status_moved = false;
 
     CommitCallback commit_callback;
-    // Abort the whole transaction, even inside a subtransaction: intents left on the old leader
-    // fail the commit's write id check even when their subtransaction was rolled back.
-    const bool pipelined_write_outcome_unknown =
-        !status.ok() && ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown;
-    if (pipelined_write_outcome_unknown ||
-        (!status.ok() &&
+    if (!status.ok() &&
+        (ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown ||
          tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST)) {
       write_pipelining_abort_ = true;
     }
@@ -613,8 +614,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // Do not abort pg session level transaction despite failure on flush path, i.e attempt to
         // obtain advisory locks. If it was indeed aborted at the coordinator, the heartbeat would
         // realize it and set the status accordingly, failing subsequent Prepare(s).
-        if ((pipelined_write_outcome_unknown ||
-             CanAbortTransaction(status, metadata_, subtransaction_pb)) &&
+        if (CanAbortTransaction(status, metadata_, subtransaction_pb) &&
             !pg_session_req_version_) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);

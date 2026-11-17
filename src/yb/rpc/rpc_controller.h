@@ -164,6 +164,7 @@ class RpcController {
   std::string CallStateDebugString() const;
 
   // Whether the request of the current call was sent, i.e. the server may have received it.
+  // Not conclusive for a timed out call, see OutboundCall::WasSent.
   bool WasSent() const;
   // When call is present, marks the call as Failed by passing Forced timeout status.
   void MarkCallAsFailed();
