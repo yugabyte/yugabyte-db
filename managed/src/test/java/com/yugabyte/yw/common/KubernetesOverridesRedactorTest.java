@@ -8,6 +8,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.junit.Test;
@@ -226,8 +228,22 @@ public class KubernetesOverridesRedactorTest {
     assertEquals(submitted, KubernetesOverridesRedactor.restore(null, submitted, "overrides"));
   }
 
+  private static String base64(String text) {
+    return Base64.getEncoder().encodeToString(text.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static final String SECRET_NAME_BASE64 = base64("ycql_ldap_bind_passwd");
+
   private static final List<String> HIDDEN_WHOLE =
       List.of(
+          // A binary tag, which Helm decodes from base64, in each spelling.
+          "gflags:\n  tserver:\n    !!binary " + SECRET_NAME_BASE64 + ": master-secret\n",
+          "gflags:\n  tserver:\n    !<tag:yaml.org,2002:binary> "
+              + SECRET_NAME_BASE64
+              + ": master-secret\n",
+          "%TAG !e! tag:yaml.org,2002:\n---\ngflags:\n  tserver:\n    !e!binary "
+              + SECRET_NAME_BASE64
+              + ": master-secret\n",
           // Anchors, aliases and tags.
           "gflags:\n  master:\n    ycql_ldap_bind_passwd: &pw master-secret\n"
               + "  tserver:\n    ycql_ldap_bind_passwd: *pw\n",
@@ -269,6 +285,21 @@ public class KubernetesOverridesRedactorTest {
       assertTrue(e.getMessage(), e.getMessage().contains("stored overrides cannot be read"));
       assertNoSecrets(e.getMessage());
     }
+  }
+
+  @Test
+  public void redactHidesOverridesWithABinaryTag() {
+    String flag =
+        "tserver:\n  args: !!binary " + base64("--ycql_ldap_bind_passwd=master-secret") + "\n";
+    assertEquals("REDACTED", KubernetesOverridesRedactor.redact(flag));
+    String unparsable =
+        "gflags:\n  tserver:\n    !!binary "
+            + SECRET_NAME_BASE64
+            + ": tserver-secret\n\tbad: indent\n";
+    assertEquals("REDACTED", KubernetesOverridesRedactor.redact(unparsable));
+    // Other tags load the text as written, and a ! elsewhere is only text.
+    String str = "tserver:\n  podLabels:\n    env: !!str test\n    note: \"Hello!\"\n";
+    assertEquals(str, KubernetesOverridesRedactor.redact(str));
   }
 
   @Test
