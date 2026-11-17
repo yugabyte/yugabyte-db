@@ -3893,44 +3893,45 @@ YbHasActiveOrPendingListen(void)
 }
 
 /*
- * Number of pending notifications, including those under open
- * subtransactions: READ COMMITTED merges the previous statement's into the
- * top level when the next statement starts, so a count taken before an
- * attempt must include them or the retry's truncate would drop them.
+ * A mark of the pending notifications for YbRollbackPendingNotifiesTo. It
+ * counts those under open subtransactions too: READ COMMITTED merges the
+ * previous statement's into the top level when the next statement starts, so
+ * a mark taken before an attempt must include them or the rollback would drop
+ * them.
  */
 int
-YbNumPendingNotifies(void)
+YbPendingNotifiesMark(void)
 {
-	int			num_notifies = 0;
+	int			mark = 0;
 
 	for (NotificationList *notifies = pendingNotifies; notifies != NULL;
 		 notifies = notifies->upper)
-		num_notifies += list_length(notifies->events);
-	return num_notifies;
+		mark += list_length(notifies->events);
+	return mark;
 }
 
 /*
- * Keep only the first num_notifies top-level pending notifications. The query
- * layer calls this when it retries a statement: the attempt it discards may
- * have queued notifications that the retry queues again.
+ * Drop the top-level pending notifications queued after mark. The query layer
+ * calls this when it retries a statement: the attempt it discards may have
+ * queued notifications that the retry queues again.
  */
 void
-YbTruncatePendingNotifies(int num_notifies)
+YbRollbackPendingNotifiesTo(int mark)
 {
 	NotificationList **notifies = &pendingNotifies;
 
 	while (*notifies != NULL && (*notifies)->nestingLevel > 1)
 		notifies = &(*notifies)->upper;
-	if (*notifies == NULL || list_length((*notifies)->events) <= num_notifies)
+	if (*notifies == NULL || list_length((*notifies)->events) <= mark)
 		return;
 
-	if (num_notifies == 0)
+	if (mark == 0)
 	{
 		*notifies = NULL;
 		return;
 	}
 
-	(*notifies)->events = list_truncate((*notifies)->events, num_notifies);
+	(*notifies)->events = list_truncate((*notifies)->events, mark);
 	if ((*notifies)->hashtab != NULL)
 	{
 		hash_destroy((*notifies)->hashtab);

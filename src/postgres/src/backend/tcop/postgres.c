@@ -6387,7 +6387,7 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 								  int attempt,
 								  bool *retry)
 {
-	int			num_pending_notifies = YbNumPendingNotifies();
+	int			pending_notifies_mark = YbPendingNotifiesMark();
 
 	elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, retry_data->query.query_string);
 	YBSaveOutputBufferPosition(!yb_is_begin_transaction(retry_data->query.command_tag));
@@ -6407,7 +6407,7 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 			YbClearParallelContexts();
 		YBResetOperationTracking();
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);
-		YbTruncatePendingNotifies(num_pending_notifies);
+		YbRollbackPendingNotifiesTo(pending_notifies_mark);
 	}
 	PG_END_TRY();
 }

@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -801,6 +802,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           Timeouts.adjustTimeoutSecForBuildType(30_000));
       holderStmt.execute("COMMIT");
       thread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+      assertFalse("Notifier still blocked", thread.isAlive());
       assertTrue("Notifier failed: " + error.get(), error.get() == null);
 
       notifierStmt.execute("NOTIFY " + CHANNEL + ", 'sentinel'");
@@ -810,11 +812,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * A statement retried after a conflict delivers only its last attempt's notifications and keeps
-   * the ones queued earlier in its transaction.
+   * the ones queued earlier in its transaction. REPEATABLE READ, because under READ COMMITTED (the
+   * default in release builds) the retry rolls back the statement's internal subtransaction, which
+   * drops the attempt's notifications even without the fix.
    */
   @Test
   public void testNotifyFromRetriedStatementDeliveredOnce() throws Exception {
-    try (Connection notifierConn = getConnectionBuilder().connect();
+    try (Connection notifierConn =
+             getConnectionBuilder().withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
          Statement notifierStmt = notifierConn.createStatement()) {
       List<String> payloads = payloadsAfterRetriedUpdate(notifierStmt, () -> {
         notifierStmt.addBatch("NOTIFY " + CHANNEL + ", 'kept'");
@@ -827,8 +832,11 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Same in a READ COMMITTED block over the simple query protocol, where the previous statement's
-   * notifications leave its internal subtransaction only once the retried statement has started.
+   * In a READ COMMITTED block over the simple query protocol, the retry rolls back the statement's
+   * internal subtransaction, which drops the attempt's notifications by itself, so this passes
+   * without the fix. It checks that the rollback to the mark keeps the previous statement's
+   * notification, which leaves its internal subtransaction only once the retried statement has
+   * started.
    */
   @Test
   public void testNotifyFromRetriedStatementInReadCommittedBlock() throws Exception {
