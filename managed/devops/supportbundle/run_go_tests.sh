@@ -14,7 +14,8 @@
 #   bash managed/devops/supportbundle/run_go_tests.sh
 #
 # `sbt test` runs this after the Java tests and fails if it does. Every module runs even when an
-# earlier one fails; the exit code is non-zero if any failed.
+# earlier one fails. Exits 1 if any test failed, and 2 if the tests could not run: go is missing,
+# or go-junit-report cannot be installed (it needs the Go module proxy or a module cache).
 
 set -uo pipefail
 
@@ -23,14 +24,14 @@ MODULES=(cdcstate logparse serverconfredact)
 
 if ! command -v go >/dev/null; then
   echo "go not found in PATH" >&2
-  exit 1
+  exit 2
 fi
 
 # Same reporter and version as node-agent/build.sh, installed under the ignored target/ directory.
 REPORTER_BIN="$SCRIPT_DIR/target/bin"
 if ! GOBIN="$REPORTER_BIN" go install github.com/jstemmer/go-junit-report/v2@v2.1.0; then
   echo "failed to install go-junit-report" >&2
-  exit 1
+  exit 2
 fi
 
 failed=()

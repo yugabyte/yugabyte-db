@@ -417,8 +417,14 @@ externalResolvers := {
   ybLog("Testing support bundle Go helpers...")
   val goStatus = Process("bash devops/supportbundle/run_go_tests.sh", baseDirectory.value).!
   javaTests.toEither.left.foreach(incomplete => throw incomplete)
-  if (goStatus != 0) {
-    sys.error("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
+  goStatus match {
+    case 0 =>
+    case 2 =>
+      sys.error(
+        "Support bundle Go tests could not run: go or go-junit-report is unavailable, see the" +
+          " log above. This is a tooling failure, not a test failure.")
+    case _ =>
+      sys.error("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
   }
 }
 
