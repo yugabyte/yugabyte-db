@@ -1,4 +1,4 @@
--- Test cardinality estimates in different optimizer modes
+-- Test cardinality estimates under the YB cost model
 -- DEPENDENCY: yb.orig.cardinality_estimate_setup
 
 set client_min_messages to warning;
@@ -107,36 +107,18 @@ insert into queries values
 
 
 --
--- check estimates with different yb_enable_cbo values
+-- check estimates before and after analyze
 --
 
-drop table if exists off_before_analyze, off_after_analyze;
 drop table if exists on_before_analyze, on_after_analyze;
-drop table if exists legacy_before_analyze, legacy_after_analyze;
-drop table if exists legacy_stats_before_analyze, legacy_stats_after_analyze;
 drop table if exists cbo_estimates;
 
 -- save the estimates without stats
 select yb_reset_analyze_statistics('r'::regclass);
 select yb_reset_analyze_statistics('s'::regclass);
 
-set yb_enable_cbo = off;
-create temporary table off_before_analyze as
-  select id, query, get_estimated_rows(query) rows
-    from queries q;
-
 set yb_enable_cbo = on;
 create temporary table on_before_analyze as
-  select id, query, get_estimated_rows(query) rows
-    from queries q;
-
-set yb_enable_cbo = legacy_mode;
-create temporary table legacy_before_analyze as
-  select id, query, get_estimated_rows(query) rows
-    from queries q;
-
-set yb_enable_cbo = legacy_stats_mode;
-create temporary table legacy_stats_before_analyze as
   select id, query, get_estimated_rows(query) rows
     from queries q;
 
@@ -151,23 +133,7 @@ analyze s;
 
 -- save the estimates after analyze
 
-set yb_enable_cbo = off;
-create temporary table off_after_analyze as
-  select id, query, get_estimated_rows(query) rows
-    from queries q;
-
-set yb_enable_cbo = on;
 create temporary table on_after_analyze as
-  select id, query, get_estimated_rows(query) rows
-    from queries q;
-
-set yb_enable_cbo = legacy_mode;
-create temporary table legacy_after_analyze as
-  select id, query, get_estimated_rows(query) rows
-    from queries q;
-
-set yb_enable_cbo = legacy_stats_mode;
-create temporary table legacy_stats_after_analyze as
   select id, query, get_estimated_rows(query) rows
     from queries q;
 
@@ -175,110 +141,34 @@ create temporary table legacy_stats_after_analyze as
 -- see how the estimates change before vs. after analyze
 
 --- no predicate ---
--- off: default -> unchanged
-select b.id, b.query, b.rows before, a.rows after
-  from off_before_analyze b join off_after_analyze a using (id)
-  where id = 1 order by id;
-
--- on, legacy, legacy_stats: default -> accurate
+-- default -> accurate
 select b.id, b.query, b.rows before, a.rows after
   from on_before_analyze b join on_after_analyze a using (id)
   where id = 1 order by id;
 
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_before_analyze b join legacy_after_analyze a using (id)
-  where id = 1 order by id;
-
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_stats_before_analyze b join legacy_stats_after_analyze a using (id)
-  where id = 1 order by id;
-
 
 --- equality ---
--- off:
---   unique indexed: 1 -> unchanged
---   non-unique indexed: 1% (YBC_SINGLE_KEY_SELECTIVITY) of 1000 -> unchanged
---   unindexed: 1000 (predicate ignored) -> unchanged
-select b.id, b.query, b.rows before, a.rows after
-  from off_before_analyze b join off_after_analyze a using (id)
-  where b.query ~ 'p*[kabde] = 123' order by id;
-
--- on, legacy_stats:
 --   unique indexed: 1 -> 1 (unchanged, accurate)
 --   others (non-unique indexed & unindexed): 5% (DEFAULT_EQ_SEL) of 1000 -> accurate
 select b.id, b.query, b.rows before, a.rows after
   from on_before_analyze b join on_after_analyze a using (id)
   where b.query ~ 'p*[kabde] = 123' order by id;
 
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_stats_before_analyze b join legacy_stats_after_analyze a using (id)
-  where b.query ~ 'p*[kabde] = 123' order by id;
-
--- legacy:
---   unique indexed: 1 -> 1 (unchanged, accurate)
---   non-unique indexed: 1% of 1000 -> 1% of 12345 (predicate ignored)
---   unindexed: 1000 -> 12345 (predicate ignored)
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_before_analyze b join legacy_after_analyze a using (id)
-  where b.query ~ 'p*[kabde] = 123' order by id;
-
 
 --- group by ---
--- off:
---   unique indexed: 1000 -> unchanged
---   others: 200 (DEFAULT_NUM_DISTINCT) -> unchanged
-select b.id, b.query, b.rows before, a.rows after
-  from off_before_analyze b join off_after_analyze a using (id)
-  where b.query ~ 'group by p*[kabde]$' order by id;
-
--- on, legacy_stats, legacy:
 --   unique indexed: 1000 -> 1000 (unchanged, accurate)
 --   others: 200 -> accurate
 select b.id, b.query, b.rows before, a.rows after
   from on_before_analyze b join on_after_analyze a using (id)
   where b.query ~ 'group by p*[kabde]$' order by id;
 
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_stats_before_analyze b join legacy_stats_after_analyze a using (id)
-  where b.query ~ 'group by p*[kabde]$' order by id;
-
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_before_analyze b join legacy_after_analyze a using (id)
-  where b.query ~ 'group by p*[kabde]$' order by id;
-
 
 --- equi-join ---
--- off:
---   unique indexed: 1000 -> unchanged
---   others: 1000 * 1000 * (1/200) -> unchanged
-select b.id, b.query, b.rows before, a.rows after
-  from off_before_analyze b join off_after_analyze a using (id)
-  where b.query ~ 'where p*[kabde] = [xy]' order by id;
-
--- on, legacy_stats, legacy:
 --   unique indexed: 1000 -> 123 (accurate)
 --   others: 1000 * 1000 * (1/200) -> 123 or 1230 (accurate)
 select b.id, b.query, b.rows before, a.rows after
   from on_before_analyze b join on_after_analyze a using (id)
   where b.query ~ 'where p*[kabde] = [xy]' order by id;
-
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_stats_before_analyze b join legacy_stats_after_analyze a using (id)
-  where b.query ~ 'where p*[kabde] = [xy]' order by id;
-
-select b.id, b.query, b.rows before, a.rows after
-  from legacy_before_analyze b join legacy_after_analyze a using (id)
-  where b.query ~ 'where p*[kabde] = [xy]' order by id;
-
-
--- should return no row as the estimates match
-select *
-from legacy_before_analyze t1 join off_before_analyze t2 using (id)
-where t1.rows <> t2.rows;
-
-select *
-from off_before_analyze t1 join off_after_analyze t2 using (id)
-where t1.rows <> t2.rows;
 
 
 --
@@ -306,43 +196,8 @@ where abs(rows[1] - rows[2]) > 2
   and abs(rows[1] - rows[2])/least(rows[1], rows[2])::float > 0.005;
 
 
-drop table off_before_analyze, off_after_analyze;
 drop table on_before_analyze, on_after_analyze;
-drop table legacy_before_analyze, legacy_after_analyze;
-drop table legacy_stats_before_analyze, legacy_stats_after_analyze;
 drop table cbo_estimates;
 drop table queries;
 drop statistics r_a_e;
 drop statistics r_bmod5;
-
-
---
--- test yb_ignore_bool_cond_for_legacy_estimate
---
--- print the costs and row count estimates that should never change in
--- legacy modes.
---
-
-begin;
-set local yb_enable_cbo = off;
-
-set local yb_ignore_bool_cond_for_legacy_estimate = off;
-explain (costs on, summary off)
-select * from r where not bl;
-explain (costs on, summary off)
-select * from r where not bl and a = 1;
-explain (costs on, summary off)
-select * from r where not bl and b = 1;
-
-set local yb_ignore_bool_cond_for_legacy_estimate = on;
-explain (costs on, summary off)
-select * from r where not bl;
-explain (costs on, summary off)
-select * from r where not bl and a = 1;
-explain (costs on, summary off)
-select * from r where not bl and b = 1;
-
-set local enable_seqscan = off;
-explain (costs on, summary off)
-select * from r where not bl;
-rollback;
