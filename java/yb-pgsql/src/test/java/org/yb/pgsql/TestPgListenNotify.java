@@ -812,9 +812,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * A statement retried after a conflict delivers only its last attempt's notifications and keeps
-   * the ones queued earlier in its transaction. REPEATABLE READ, because under READ COMMITTED (the
-   * default in release builds) the retry rolls back the statement's internal subtransaction, which
-   * drops the attempt's notifications even without the fix.
+   * the ones queued earlier in its transaction. REPEATABLE READ, because READ COMMITTED retry
+   * rolls back internal subtransaction and passes even without the fix.
    */
   @Test
   public void testNotifyFromRetriedStatementDeliveredOnce() throws Exception {
@@ -832,11 +831,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * In a READ COMMITTED block over the simple query protocol, the retry rolls back the statement's
-   * internal subtransaction, which drops the attempt's notifications by itself, so this passes
-   * without the fix. It checks that the rollback to the mark keeps the previous statement's
-   * notification, which leaves its internal subtransaction only once the retried statement has
-   * started.
+   * In READ COMMITTED with the simple query protocol, retry automatically drops the failed 
+   * attempt's notification. This checks that rollback to the mark preserves the previous 
+   * statement's notification until the retry starts.
    */
   @Test
   public void testNotifyFromRetriedStatementInReadCommittedBlock() throws Exception {

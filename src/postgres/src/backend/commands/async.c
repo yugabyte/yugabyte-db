@@ -3893,11 +3893,10 @@ YbHasActiveOrPendingListen(void)
 }
 
 /*
- * A mark of the pending notifications for YbRollbackPendingNotifiesTo. It
- * counts those under open subtransactions too: READ COMMITTED merges the
- * previous statement's into the top level when the next statement starts, so
- * a mark taken before an attempt must include them or the rollback would drop
- * them.
+ * Mark of pending notifications, including those in open subtransactions.
+ * READ COMMITTED merges the previous statement's notifications into the top
+ * level when the next statement starts, so the mark must include them to
+ * prevent rollback from dropping them.
  */
 int
 YbPendingNotifiesMark(void)
