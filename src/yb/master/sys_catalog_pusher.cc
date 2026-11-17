@@ -637,6 +637,7 @@ Result<std::optional<SysCatalogPusher::CycleLeader>> SysCatalogPusher::PrepareCy
   const auto term = consensus->LeaderTerm();
   NoteLeaderTerm(ObservedLeaderTerm(*consensus, term, leader_term_));
   if (LeaseLapsed(*consensus, term)) {
+    metrics_->NotSkipped();
     return LeaseLapsedStatus();
   }
   if (term == OpId::kUnknownTerm) {
