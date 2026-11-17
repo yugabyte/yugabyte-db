@@ -3135,6 +3135,8 @@ ybInsertPendingNotifiesToTable(void)
 		ExecClearTuple(slot);
 		ResetPerTupleExprContext(estate);
 
+		/* Don't leave the INSERT phase's freed extra_options in the slot. */
+		memset(slot->tts_isnull, true, desc->natts * sizeof(bool));
 		slot->tts_isnull[yb_notif_uuid_att.attnum - 1] = false;
 		slot->tts_values[yb_notif_uuid_att.attnum - 1] = uuids[i];
 		ExecStoreVirtualTuple(slot);
@@ -3870,16 +3872,27 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 	Datum		extra_options = heap_getattr(tuple, yb_extra_options_att.attnum,
 											 desc, &isnull);
 
+	/*
+	 * The table also takes plain SQL writes, so don't trust the value's shape:
+	 * an ERROR here would terminate every listener on the node. Anything
+	 * unexpected falls back to arrival order.
+	 */
 	if (!isnull)
 	{
 		Jsonb	   *jb = DatumGetJsonbP(extra_options);
 		JsonbValue	v;
+		bool		error = false;
+		int32		val;
 
-		if (getKeyJsonValueFromContainer(&jb->root, YB_NOTIF_SEQ_KEY,
+		if (JsonContainerIsObject(&jb->root) &&
+			getKeyJsonValueFromContainer(&jb->root, YB_NOTIF_SEQ_KEY,
 										 strlen(YB_NOTIF_SEQ_KEY), &v) &&
 			v.type == jbvNumeric)
-			*seq = DatumGetInt64(DirectFunctionCall1(numeric_int8,
-													 NumericGetDatum(v.val.numeric)));
+		{
+			val = numeric_int4_opt_error(v.val.numeric, &error);
+			if (!error && val >= 0)
+				*seq = val;
+		}
 	}
 
 	pfree(desc);

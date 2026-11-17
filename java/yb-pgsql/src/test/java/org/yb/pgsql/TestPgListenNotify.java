@@ -1703,6 +1703,39 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  /**
+   * pg_yb_notifications also takes plain SQL writes. A malformed extra_options value must not
+   * break the poller (an error there terminates every listener on the node).
+   */
+  @Test
+  public void testPollerToleratesMalformedExtraOptions() throws Exception {
+    final String channel = "malformed_test";
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + channel);
+      }
+
+      try (Connection ybSystemConn =
+               getConnectionBuilder().withDatabase("yb_system").connect();
+           Statement stmt = ybSystemConn.createStatement()) {
+        for (String opts : Arrays.asList("'[1, 2]'", "'5'", "'{\"seq\": 1e30}'",
+                                         "'{\"seq\": -1}'", "'{\"seq\": \"x\"}'")) {
+          stmt.execute("INSERT INTO pg_yb_notifications"
+              + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data,"
+              + " extra_options) VALUES (gen_random_uuid(), gen_random_uuid(), 0, 0, false,"
+              + " '\\x00', " + opts + ")");
+        }
+      }
+
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + channel + ", 'after_malformed'");
+      }
+      waitForNotification(listenerConn, channel, "after_malformed");
+    }
+  }
+
   private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
     String v = value ? "true" : "false";
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
