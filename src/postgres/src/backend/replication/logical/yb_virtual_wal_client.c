@@ -508,7 +508,7 @@ InitVirtualWal(List *publication_names,
 	 * rather than from a catcache entry that may have been warmed earlier at a
 	 * different (latest) read time.
 	 */
-	CatalogCacheFlushCatalog(PublicationRelationId);
+	YbCatalogCacheFlushCatalogWithoutCallbacks(PublicationRelationId);
 
 	/*
 	 * We may encounter a failure prompting a retry in 2 cases:
