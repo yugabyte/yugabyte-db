@@ -420,7 +420,7 @@ YbSetObjectLockingForCurrTxn()
 {
 	yb_is_historical_catalog_read = (yb_read_time != 0 &&
 									 !yb_read_time_skip_catalog);
-	YBCSetObjectLockingForCurrTxn(yb_enable_global_object_locking_infra &&
+	YBCSetGlobalObjectLockingForCurrTxn(yb_enable_global_object_locking_infra &&
 								  !yb_is_historical_catalog_read);
 	YBCSetHistoricalCatalogReadForCurrTxn(yb_is_historical_catalog_read);
 }

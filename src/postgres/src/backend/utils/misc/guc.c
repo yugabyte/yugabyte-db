@@ -2818,7 +2818,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_enable_global_object_locking_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
-			gettext_noop("Allow enabling object-level locking for table locks."),
+			gettext_noop("Gates global object locking during upgrade."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},

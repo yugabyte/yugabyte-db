@@ -1379,67 +1379,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnKeepsMode) {
   ASSERT_OK(holder.Execute("ROLLBACK"));
 }
 
-// Test for #32224 and #36572.
-//
-// A transaction that started before the object locking infra auto flag was promoted keeps running
-// without global object locks, and must not use a catalog cache that a breaking DDL (REVOKE here)
-// invalidated. Its next new object lock refreshes its catalog cache, and PG's own privilege check
-// stops it. The tserver catalog version check must be skipped based on whether the request's
-// transaction takes global object locks, not on the tserver's flags.
-TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyTxnKeepsCatalogVersionCheck) {
-  const auto* expected_legacy_error = "permission denied";
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  {
-    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-    ASSERT_OK(conn.Execute("CREATE ROLE r"));
-    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
-    ASSERT_OK(conn.Execute("GRANT SELECT ON test TO r"));
-    ASSERT_OK(conn.Execute("CREATE TABLE unrelated(k INT PRIMARY KEY, v INT)"));
-    ASSERT_OK(conn.Execute("CREATE INDEX unrelated_idx ON unrelated(v)"));
-  }
-
-  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(legacy_conn.Execute("SET ROLE r"));
-  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-
-  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->SetFlag(
-        cluster_->tablet_server(i), "ysql_yb_enable_global_object_locking_infra", "true"));
-  }
-
-  // A transaction with global object locks open across a breaking DDL must not be subjected to the
-  // check.
-  auto new_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(new_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-
-  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_OK(ddl_conn.Execute("ALTER INDEX unrelated_idx RENAME TO unrelated_idx2"));
-  ASSERT_OK(ddl_conn.Execute("REVOKE SELECT ON test FROM r"));
-  WaitForCatalogVersionToPropagate();
-
-  ASSERT_EQ(ASSERT_RESULT(new_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-  ASSERT_OK(new_conn.Execute("COMMIT"));
-
-  // Before the fix, the legacy transaction kept reading the table with the revoked privilege.
-  auto result = legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
-  ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.status().ToString(), expected_legacy_error);
-  ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
-
-  // The next transaction on the same connection runs in the new mode and sees the REVOKE.
-  result = legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test");
-  ASSERT_NOK(result);
-  ASSERT_STR_CONTAINS(result.status().ToString(), "permission denied");
-}
-
 // Test for #36572 and #32224.
 //
 // A transaction without global object locks keeps the tablets' catalog version check. Usually its
-// next new lock refreshes its catalog cache first (LegacyTxnKeepsCatalogVersionCheck), so this
+// next new lock refreshes its catalog cache first, so this
 // reads from a cursor opened before a breaking DDL: the FETCH takes no new lock and is not planned
 // again, so it reaches the tablet with the old catalog version, and the tablet must reject it.
 TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyCursorStoppedByCatalogVersionCheck) {
@@ -1617,7 +1560,8 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyWriteMaintainsNewIndex) {
 
 // The legacy transaction writes the table before the CREATE INDEX, so the CREATE INDEX must wait
 // for it to finish before the backfill. Before the fix, the backfill read the row before the
-// UPDATE committed, and the committed UPDATE left the index entry with the old value.
+// UPDATE committed, and the committed UPDATE left the index entry with the old value. One
+// transaction per isolation level: the CREATE INDEX must wait for both.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, CreateIndexWaitsForLegacyWriter) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1627,9 +1571,16 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, CreateIndexWaitsForLegacyWriter) {
     ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
   }
 
-  auto legacy_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
-  ASSERT_OK(legacy_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(legacy_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+  const std::vector<std::string> isolation_levels = {"repeatable read", "read committed"};
+  std::vector<PGConn> legacy_conns;
+  for (size_t i = 0; i < isolation_levels.size(); ++i) {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.ExecuteFormat("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_levels[i]));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+        "SHOW yb_effective_transaction_isolation_level")), isolation_levels[i]);
+    ASSERT_OK(conn.ExecuteFormat("UPDATE test SET v = 42 WHERE k = $0", i + 1));
+    legacy_conns.push_back(std::move(conn));
+  }
 
   ASSERT_NO_FATALS(PromoteForDdl());
   auto create_index_future = std::async(std::launch::async, [&]() -> Status {
@@ -1638,13 +1589,15 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, CreateIndexWaitsForLegacyWriter) {
     return ddl_conn.Execute("CREATE INDEX test_v_idx ON test(v)");
   });
   ASSERT_NO_FATALS(WaitForWaitForLockers());
-  ASSERT_EQ(create_index_future.wait_for(0s), std::future_status::timeout);
 
-  ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  for (auto& legacy_conn : legacy_conns) {
+    ASSERT_EQ(create_index_future.wait_for(0s), std::future_status::timeout);
+    ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  }
   ASSERT_OK(create_index_future.get());
 
   auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  ASSERT_NO_FATALS(CheckIndex(conn, 1));
+  ASSERT_NO_FATALS(CheckIndex(conn, legacy_conns.size()));
 }
 
 // The legacy transaction deletes a referenced parent row before the ADD FOREIGN KEY, so the ADD

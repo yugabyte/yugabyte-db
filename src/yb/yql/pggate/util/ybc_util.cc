@@ -959,7 +959,7 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
   return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
-// False until PG makes the first YBCSetObjectLockingForCurrTxn() call of the backend from
+// False until PG makes the first YBCSetGlobalObjectLockingForCurrTxn() call of the backend from
 // StartTransaction. pggate only reads it inside a transaction, so the using_table_locks_globally
 // it sends to the tserver never comes from the unset value: PgTxnManager reads it through
 // UsingObjectLocksGloballyForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs
@@ -968,7 +968,7 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
 static bool object_locking_for_curr_txn = false;
 static bool historical_catalog_read_for_curr_txn = false;
 
-void YBCSetObjectLockingForCurrTxn(bool enabled) {
+void YBCSetGlobalObjectLockingForCurrTxn(bool enabled) {
   object_locking_for_curr_txn = enabled;
 }
 

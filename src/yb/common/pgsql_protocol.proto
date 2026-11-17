@@ -358,8 +358,7 @@ message PgsqlWriteRequestPB {
   optional PgsqlOnConflictAction on_conflict_action = 33 [default = PGSQL_ON_CONFLICT_NONE];
 
   // Set when the transaction runs with global object locking: its DDLs take global object locks.
-  // The transaction itself may hold only local locks, as a DML-only transaction does. Tablets skip
-  // the catalog version check for these requests (CatalogVersionChecker in service_util.h).
+  // The transaction itself may hold only local locks, as a DML-only transaction does.
   optional bool using_table_locks_globally = 34 [default = false];
 }
 
