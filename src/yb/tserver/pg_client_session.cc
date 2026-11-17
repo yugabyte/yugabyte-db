@@ -2267,9 +2267,14 @@ class PgClientSession::Impl {
     VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
     const auto& session = Session(PgClientSessionKind::kPlain);
     if (session) {
-      if (const auto global_limit = session->read_point()->GetReadTime().global_limit;
+      const auto& read_point = *session->read_point();
+      if (const auto global_limit = read_point.GetReadTime().global_limit;
           global_limit.is_valid()) {
         resp->set_global_limit_ht(global_limit.ToUint64());
+        auto& local_limits = *resp->mutable_local_limits();
+        for (const auto& [tablet, local_limit] : read_point.RestartLocalLimits()) {
+          local_limits[tablet] = local_limit.ToUint64();
+        }
       }
     }
     if (req.kind() == PgRestartTransactionForRetryRequestPB::READ_POINT_ONLY) {
@@ -4250,7 +4255,13 @@ class PgClientSession::Impl {
         if (!session.read_point()->GetReadTime()) {
           session.read_point()->SetCurrentReadTime();
         }
-        session.read_point()->CapGlobalLimit(cap);
+        auto& read_point = *session.read_point();
+        read_point.CapGlobalLimit(cap);
+        for (const auto& entry : read_time_options.local_limit_caps()) {
+          using rpc::map_util::ExtractKey;
+          using rpc::map_util::ExtractValue;
+          read_point.CapLocalLimit(ExtractKey(entry), HybridTime(ExtractValue(entry)));
+        }
       }
 
       // TODO(#30357): Measure the performance of picking time here instead of the storage layer.

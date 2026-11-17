@@ -2066,6 +2066,10 @@ void YBCPgResetRetryReadTimeConstraints() {
   pgapi->ResetRetryReadTimeConstraints();
 }
 
+bool YBCPgIsReadRestartRetryInProgress() {
+  return pgapi->IsReadRestartRetryInProgress();
+}
+
 YbcStatus YBCPgCommitPlainTransaction() {
   return ToYBCStatus(pgapi->CommitPlainTransaction());
 }

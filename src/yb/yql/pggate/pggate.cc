@@ -2246,6 +2246,10 @@ void PgApiImpl::ResetRetryReadTimeConstraints() {
   pg_txn_manager_->ResetRetryReadTimeConstraints();
 }
 
+bool PgApiImpl::IsReadRestartRetryInProgress() const {
+  return pg_txn_manager_->IsReadRestartRetryInProgress();
+}
+
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
   RSTATUS_DCHECK(
       !explicit_row_lock_buffer().HasPendingLocks(),

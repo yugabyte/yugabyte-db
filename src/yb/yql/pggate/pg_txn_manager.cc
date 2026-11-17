@@ -293,7 +293,7 @@ Status PgTxnManager::BeginTransaction(int64_t start_time, uint64_t origination_t
 Status PgTxnManager::RecreateTransaction(SetupPerformOptionsAccessorTag tag) {
   VLOG_TXN_STATE(2);
   RETURN_NOT_OK(RecreateTransaction(SavePriority::kTrue));
-  return ResultToStatus(RestartTransactionForRetry(tag, RetryKind::RECREATE_TRANSACTION));
+  return ResultToStatus(RestartTransactionForRetry(tag, RetryRequestPB::RECREATE_TRANSACTION));
 }
 
 Status PgTxnManager::RecreateTransaction(SavePriority save_priority) {
@@ -466,15 +466,15 @@ Status PgTxnManager::CalculateIsolation(
 }
 
 Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
-  CapRetryGlobalLimit(
-      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryKind::RESTART_TRANSACTION)));
+  CapRetryReadLimits(
+      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRequestPB::RESTART_TRANSACTION)));
   return Status::OK();
 }
 
-Result<HybridTime> PgTxnManager::RestartTransactionForRetry(
-    SetupPerformOptionsAccessorTag tag, RetryKind kind) {
+Result<tserver::PgRestartTransactionForRetryResponsePB> PgTxnManager::RestartTransactionForRetry(
+    SetupPerformOptionsAccessorTag tag, RetryRequestPB::Kind kind) {
   tserver::PgPerformOptionsPB options;
-  if (kind != RetryKind::READ_POINT_ONLY) {
+  if (kind != RetryRequestPB::READ_POINT_ONLY) {
     RETURN_NOT_OK(SetupPerformOptions(
         tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
         SkipReadTimeOptions::kTrue));
@@ -482,14 +482,25 @@ Result<HybridTime> PgTxnManager::RestartTransactionForRetry(
   return client_->RestartTransactionForRetry(&options, kind);
 }
 
-void PgTxnManager::CapRetryGlobalLimit(HybridTime global_limit) {
-  if (global_limit && (!retry_global_limit_cap_ || global_limit < retry_global_limit_cap_)) {
+void PgTxnManager::CapRetryReadLimits(const tserver::PgRestartTransactionForRetryResponsePB& resp) {
+  const auto global_limit = HybridTime::FromPB(resp.global_limit_ht());
+  if (!global_limit) {
+    return;
+  }
+  if (!retry_global_limit_cap_ || global_limit < retry_global_limit_cap_) {
     retry_global_limit_cap_ = global_limit;
+  }
+  for (const auto& [tablet, local_limit] : resp.local_limits()) {
+    auto [it, inserted] = retry_local_limit_caps_.insert({tablet, local_limit});
+    if (!inserted) {
+      it->second = std::min(it->second, local_limit);
+    }
   }
 }
 
 void PgTxnManager::ResetRetryReadTimeConstraints() {
   retry_global_limit_cap_ = HybridTime::kInvalid;
+  retry_local_limit_caps_.clear();
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
@@ -525,8 +536,8 @@ Status PgTxnManager::EnsureReadPoint() {
 }
 
 Status PgTxnManager::RestartReadPoint(SetupPerformOptionsAccessorTag tag) {
-  CapRetryGlobalLimit(
-      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryKind::READ_POINT_ONLY)));
+  CapRetryReadLimits(
+      VERIFY_RESULT(RestartTransactionForRetry(tag, RetryRequestPB::READ_POINT_ONLY)));
   return Status::OK();
 }
 
@@ -815,6 +826,7 @@ Status PgTxnManager::SetupReadTimeOptions(
   read_time_options.set_read_time_serial_no(serial_no_.read_time());
   if (retry_global_limit_cap_) {
     read_time_options.set_global_limit_cap_ht(retry_global_limit_cap_.ToUint64());
+    *read_time_options.mutable_local_limit_caps() = retry_local_limit_caps_;
   }
 
   // read_time may be set by

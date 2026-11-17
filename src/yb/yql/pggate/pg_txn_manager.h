@@ -90,6 +90,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status EnsureReadPoint();
   Status RestartReadPoint(SetupPerformOptionsAccessorTag tag);
   void ResetRetryReadTimeConstraints();
+  bool IsReadRestartRetryInProgress() const { return retry_global_limit_cap_.is_valid(); }
   void SetActiveSubTransactionId(SubTransactionId id);
   Status SetDdlStateInPlainTransaction();
   Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
@@ -245,9 +246,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void ResetTxnAndSession();
   void StartNewSession();
-  using RetryKind = tserver::PgRestartTransactionForRetryRequestPB::Kind;
-  Result<HybridTime> RestartTransactionForRetry(SetupPerformOptionsAccessorTag tag, RetryKind kind);
-  void CapRetryGlobalLimit(HybridTime global_limit);
+  using RetryRequestPB = tserver::PgRestartTransactionForRetryRequestPB;
+  Result<tserver::PgRestartTransactionForRetryResponsePB> RestartTransactionForRetry(
+      SetupPerformOptionsAccessorTag tag, RetryRequestPB::Kind kind);
+  void CapRetryReadLimits(const tserver::PgRestartTransactionForRetryResponsePB& resp);
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
@@ -294,9 +296,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
-  // Lowest global limit among the read points that faced a read restart in the statement being
-  // retried; read points picked for the retry are capped at it.
+  // Lowest global and per-tablet local limits among the read points that faced a read restart in
+  // the statement being retried; read points picked for the retry are capped at them.
   HybridTime retry_global_limit_cap_;
+  google::protobuf::Map<std::string, uint64_t> retry_local_limit_caps_;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;

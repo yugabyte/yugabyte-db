@@ -153,6 +153,20 @@ void ConsistentReadPoint::CapGlobalLimit(HybridTime cap) {
   }
 }
 
+void ConsistentReadPoint::CapLocalLimit(TabletIdView tablet, HybridTime cap) {
+  std::lock_guard lock(mutex_);
+  if (!read_time_) {
+    return;
+  }
+  UpdateLimitsMapUnlocked(
+      tablet, std::min(read_time_.global_limit, std::max(read_time_.read, cap)), &local_limits_);
+}
+
+ConsistentReadPoint::HybridTimeMap ConsistentReadPoint::RestartLocalLimits() const {
+  std::lock_guard lock(mutex_);
+  return IsRestartRequiredUnlocked() ? restarts_ : local_limits_;
+}
+
 void ConsistentReadPoint::Defer() {
   std::lock_guard lock(mutex_);
   read_time_.read = read_time_.global_limit;
