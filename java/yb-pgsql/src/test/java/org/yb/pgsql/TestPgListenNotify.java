@@ -798,6 +798,97 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * Splits pg_yb_notifications into two tablets. The table is created with one tablet, so splitting
+   * needs data: insert dummy rows (db_oid 0, so no listener receives them), flush, split, and
+   * delete the rows again.
+   */
+  private void splitNotificationsTable() throws Exception {
+    final String table = "pg_yb_notifications";
+    try (Connection ybSystemConn = getConnectionBuilder().withDatabase("yb_system").connect();
+         Statement stmt = ybSystemConn.createStatement()) {
+      stmt.execute("INSERT INTO " + table
+          + " (notif_uuid, sender_node_uuid, sender_pid, db_oid, is_listen, data)"
+          + " SELECT gen_random_uuid(), gen_random_uuid(), 0, 0, false, '\\x00'"
+          + " FROM generate_series(1, 1000)");
+
+      // getTableUUID() skips system tables, which include yb_system's.
+      YBClient client = miniCluster.getClient();
+      String tableId = client.getTablesList(table, false, null).getTableInfoList().stream()
+          .filter(t -> t.getName().equals(table)
+              && t.getNamespace().getName().equals("yb_system"))
+          .findFirst().get().getId().toStringUtf8();
+      client.flushTable(tableId);
+      List<String> tablets = getTabletsForYsqlTable("yb_system", table);
+      assertEquals(1, tablets.size());
+      client.splitTablet(tablets.get(0));
+      TestUtils.waitFor(() -> getTabletsForYsqlTable("yb_system", table).size() == 2,
+          Timeouts.adjustTimeoutSecForBuildType(60 * 1000));
+
+      stmt.execute("DELETE FROM " + table + " WHERE db_oid = 0");
+    }
+  }
+
+  private static void assertNotificationsInOrder(
+      List<PGNotification> notifs, String prefix, int count) {
+    List<String> payloads = new ArrayList<>();
+    for (PGNotification n : notifs) {
+      if (n.getParameter().startsWith(prefix)) {
+        payloads.add(n.getParameter());
+      }
+    }
+    List<String> expected = new ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      expected.add(String.format("%s%05d", prefix, i));
+    }
+    assertEquals(expected, payloads);
+  }
+
+  /**
+   * A transaction's notifications must be delivered in the order they were sent even when their
+   * rows land on different tablets of pg_yb_notifications (#35444).
+   */
+  @Test
+  public void testNotifyOrderAfterNotificationsTableSplit() throws Exception {
+    final int n = 200;
+    splitNotificationsTable();
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      try (Statement stmt = notifierConn.createStatement()) {
+        // One statement in a transaction block.
+        stmt.execute("BEGIN");
+        stmt.execute("SELECT pg_notify('" + CHANNEL + "', 'stmt_' || lpad(g::text, 5, '0'))"
+            + " FROM generate_series(0, " + (n - 1) + ") g");
+        stmt.execute("COMMIT");
+        assertNotificationsInOrder(
+            waitForNotification(listenerConn, CHANNEL, String.format("stmt_%05d", n - 1)),
+            "stmt_", n);
+
+        // Separate NOTIFY statements in a transaction block.
+        stmt.execute("BEGIN");
+        for (int i = 0; i < n; i++) {
+          stmt.execute(String.format("NOTIFY %s, 'multi_%05d'", CHANNEL, i));
+        }
+        stmt.execute("COMMIT");
+        assertNotificationsInOrder(
+            waitForNotification(listenerConn, CHANNEL, String.format("multi_%05d", n - 1)),
+            "multi_", n);
+
+        // One autocommit statement.
+        stmt.execute("SELECT pg_notify('" + CHANNEL + "', 'auto_' || lpad(g::text, 5, '0'))"
+            + " FROM generate_series(0, " + (n - 1) + ") g");
+        assertNotificationsInOrder(
+            waitForNotification(listenerConn, CHANNEL, String.format("auto_%05d", n - 1)),
+            "auto_", n);
+      }
+    }
+  }
+
+  /**
    * Verifies that a committed notification is still delivered to an active
    * listener even after the notifier's backend is killed with SIGKILL.
    */
