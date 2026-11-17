@@ -1741,9 +1741,11 @@ YbAttrDefaultFetch(Relation relation, AttrDefault *attrdef, int ndef,
  *
  * Like CheckConstraintFetch, it only warns when the CHECK rows don't match
  * relchecks, and installs the array only once it is fully valid, with
- * num_check set to the number of entries found; the executor refuses writes to
- * the relation (ExecRelCheck).  So, as with RelationBuildDesc, a mismatch
- * fails neither a connection's relcache preload nor a catalog cache refresh.
+ * num_check set to the number of entries found.  So, as with
+ * RelationBuildDesc, a mismatch fails neither a connection's relcache preload
+ * nor a catalog cache refresh.  When CHECK rows are missing, the executor
+ * refuses writes to the relation (ExecRelCheck); when there are more than
+ * relchecks, the ones that don't fit are not enforced, and writes succeed.
  */
 static void
 YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cache)
@@ -1781,11 +1783,6 @@ YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cach
 			break;
 		}
 
-		check[found].ccvalid = conform->convalidated;
-		check[found].ccnoinherit = conform->connoinherit;
-		check[found].ccname =
-			MemoryContextStrdup(CacheMemoryContext, NameStr(conform->conname));
-
 		bool		isnull = false;
 
 		/* Grab and test conbin is actually set */
@@ -1800,6 +1797,11 @@ YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cach
 			/* detoast and convert to cstring in caller's context */
 			char	   *s = TextDatumGetCString(val);
 
+			/* Fill the slot only for a kept row, so nothing leaks */
+			check[found].ccvalid = conform->convalidated;
+			check[found].ccnoinherit = conform->connoinherit;
+			check[found].ccname =
+				MemoryContextStrdup(CacheMemoryContext, NameStr(conform->conname));
 			check[found].ccbin = MemoryContextStrdup(CacheMemoryContext, s);
 			pfree(s);
 			found++;
