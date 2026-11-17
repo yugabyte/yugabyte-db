@@ -476,6 +476,11 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 			/* No need to wait for the Auth packet */
 			return YB_CLI_AUTH_FAILED;
 
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
+			machine_msg_free(msg);
+			continue;
+
 		case KIWI_BE_ERROR_RESPONSE:
 		default:
 			progress = YB_CLI_AUTH_FAILED;
@@ -658,6 +663,11 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 			yb_handle_fatalforlogicalconnection_pkt(client, server);
 			rc_auth = -1;
+			machine_msg_free(msg);
+			continue;
+
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
 			machine_msg_free(msg);
 			continue;
 
