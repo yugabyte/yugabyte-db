@@ -299,12 +299,11 @@ func (plat Platform) copyNodeAgentPackages() error {
 				plat.PlatformPackages, err.Error()))
 	}
 
+	// Overwrite existing files: an interrupted earlier upgrade to this version can leave a partial
+	// package, and YBA would serve it.
 	for _, f := range matches {
 		_, fileName := filepath.Split(f)
-		dest := filepath.Join(nodeAgentReleasesDir(), fileName)
-		if _, err := os.Stat(dest); errors.Is(err, os.ErrNotExist) {
-			common.CopyFile(f, dest)
-		}
+		common.CopyFile(f, filepath.Join(nodeAgentReleasesDir(), fileName))
 	}
 	return nil
 }
