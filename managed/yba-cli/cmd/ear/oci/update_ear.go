@@ -5,6 +5,8 @@
 package oci
 
 import (
+	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -22,8 +24,12 @@ var updateOCIEARCmd = &cobra.Command{
 	Short:   "Update a YugabyteDB Anywhere OCI encryption at rest (EAR) configuration",
 	Long: "Update an OCI encryption at rest (EAR) configuration in YugabyteDB Anywhere. " +
 		"API key credentials and compartment OCID can be updated. " +
+		"API key credentials that are not given keep their stored values. " +
 		"Auth type, vault, region, and key name cannot be changed.",
 	Example: `yba ear oci update --name <config-name> \
+    --fingerprint <fingerprint> --private-key-file-path <path-to-pem>
+
+yba ear oci update --name <config-name> \
     --tenancy-id <tenancy-ocid> --user-id <user-ocid> --fingerprint <fingerprint> \
     --private-key-file-path <path-to-pem>
 
@@ -48,22 +54,23 @@ yba ear oci update --name <config-name> --compartment-id <compartment-ocid>`,
 
 func init() {
 	updateOCIEARCmd.Flags().SortFlags = false
+	addUpdateOCIEARFlags(updateOCIEARCmd)
+}
 
-	updateOCIEARCmd.Flags().String("tenancy-id", "",
-		"[Optional] Update OCI tenancy OCID. Must be set with --user-id, "+
-			"--fingerprint, and --private-key-file-path.")
-	updateOCIEARCmd.Flags().String("user-id", "",
-		"[Optional] Update OCI user OCID. Must be set with --tenancy-id, "+
-			"--fingerprint, and --private-key-file-path.")
-	updateOCIEARCmd.Flags().String("fingerprint", "",
-		"[Optional] Update API signing key fingerprint. Must be set with --tenancy-id, "+
-			"--user-id, and --private-key-file-path.")
-	updateOCIEARCmd.Flags().String("private-key-file-path", "",
+func addUpdateOCIEARFlags(cmd *cobra.Command) {
+	cmd.Flags().String("tenancy-id", "",
+		"[Optional] Update OCI tenancy OCID.")
+	cmd.Flags().String("user-id", "",
+		"[Optional] Update OCI user OCID.")
+	cmd.Flags().String("fingerprint", "",
+		"[Optional] Update API signing key fingerprint. Must be set with "+
+			"--private-key-file-path.")
+	cmd.Flags().String("private-key-file-path", "",
 		"[Optional] Path to the updated API private key PEM file. Must be set with "+
-			"--tenancy-id, --user-id, and --fingerprint.")
-	updateOCIEARCmd.Flags().String("compartment-id", "",
+			"--fingerprint.")
+	cmd.Flags().String("compartment-id", "",
 		"[Optional] Update OCI compartment OCID.")
-	updateOCIEARCmd.MarkFlagsRequiredTogether(apiKeyFlagNames...)
+	cmd.MarkFlagsRequiredTogether("fingerprint", "private-key-file-path")
 }
 
 func runUpdateOCIEAR(cmd *cobra.Command) {
@@ -92,28 +99,13 @@ func runUpdateOCIEAR(cmd *cobra.Command) {
 			formatter.RedColor))
 	}
 
-	if apiKeyFlags == len(apiKeyFlagNames) {
+	apiKeyFields, err := apiKeyUpdateFields(cmd)
+	if err != nil {
+		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
+	if len(apiKeyFields) > 0 {
 		hasUpdates = true
-		tenancyID, err := cmd.Flags().GetString("tenancy-id")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		userID, err := cmd.Flags().GetString("user-id")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		fingerprint, err := cmd.Flags().GetString("fingerprint")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		requestBody[util.OCITenancyIDField] = tenancyID
-		requestBody[util.OCIUserIDField] = userID
-		privateKeyFilePath, err := cmd.Flags().GetString("private-key-file-path")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		requestBody[util.OCIFingerprintField] = fingerprint
-		requestBody[util.OCIPrivateKeyContentField] = readPrivateKey(privateKeyFilePath)
+		maps.Copy(requestBody, apiKeyFields)
 	}
 
 	if cmd.Flags().Changed("compartment-id") {
@@ -139,4 +131,37 @@ func runUpdateOCIEAR(cmd *cobra.Command) {
 		return
 	}
 	logrus.Fatal(formatter.Colorize("No fields found to update\n", formatter.RedColor))
+}
+
+// apiKeyUpdateFields returns the auth config fields for the API key flags that
+// are set. YBA keeps the stored value of every field left out of the edit.
+func apiKeyUpdateFields(cmd *cobra.Command) (map[string]interface{}, error) {
+	fields := map[string]interface{}{}
+	for _, name := range apiKeyFlagNames {
+		if !cmd.Flags().Changed(name) {
+			continue
+		}
+		value, err := cmd.Flags().GetString(name)
+		if err != nil {
+			return nil, err
+		}
+		if util.IsEmptyString(value) {
+			return nil, fmt.Errorf("--%s cannot be empty", name)
+		}
+		switch name {
+		case "tenancy-id":
+			fields[util.OCITenancyIDField] = value
+		case "user-id":
+			fields[util.OCIUserIDField] = value
+		case "fingerprint":
+			fields[util.OCIFingerprintField] = value
+		case "private-key-file-path":
+			content, err := util.ReadFileToString(value)
+			if err != nil {
+				return nil, err
+			}
+			fields[util.OCIPrivateKeyContentField] = strings.TrimSpace(*content)
+		}
+	}
+	return fields, nil
 }
