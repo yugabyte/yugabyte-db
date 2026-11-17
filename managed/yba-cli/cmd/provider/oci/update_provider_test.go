@@ -72,6 +72,15 @@ func TestValidateOCIRegionAndZoneNames(t *testing.T) {
 			wantErr:  "region r1-typo in --add-zone",
 		},
 		{
+			name: "every unknown region in add-zone is named once",
+			addZones: []string{
+				"zone-name=z1::region-name=r1-typo::subnet=s",
+				"zone-name=z2::region-name=r2-typo::subnet=s",
+				"zone-name=z3::region-name=r1-typo::subnet=s",
+			},
+			wantErr: "region r1-typo, r2-typo in --add-zone",
+		},
+		{
 			name:      "unknown region in edit-zone",
 			editZones: []string{"zone-name=r1-z1::region-name=r1-typo::subnet=s"},
 			wantErr:   "region r1-typo not found",

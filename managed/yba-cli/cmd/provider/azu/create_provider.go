@@ -43,6 +43,17 @@ var createAzureProviderCmd = &cobra.Command{
 			logrus.Fatalln(
 				formatter.Colorize("No provider name found to create\n", formatter.RedColor))
 		}
+		regions, err := cmd.Flags().GetStringArray("region")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		zones, err := cmd.Flags().GetStringArray("zone")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if err := providerutil.ValidateCreateZoneRegions(regions, zones); err != nil {
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()

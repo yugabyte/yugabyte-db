@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -78,4 +79,39 @@ func ValueNotFoundForKeyError(key string) {
 		formatter.Colorize(
 			fmt.Sprintf("Key \"%s\" specified but value is empty\n", key),
 			formatter.RedColor))
+}
+
+// ValidateCreateZoneRegions rejects a --zone whose region-name matches no
+// --region. The create commands skip unmatched zones, so a typo would otherwise
+// exit 0 and create the provider without that zone.
+func ValidateCreateZoneRegions(regionStrings, zoneStrings []string) error {
+	regionNames := make(map[string]bool, len(regionStrings))
+	for _, regionString := range regionStrings {
+		regionNames[BuildRegionMapFromString(regionString, "")["name"]] = true
+	}
+	unknown := UnknownZoneRegions(zoneStrings, "", regionNames)
+	if len(unknown) == 0 {
+		return nil
+	}
+	return fmt.Errorf("region %s in --zone matches no --region", strings.Join(unknown, ", "))
+}
+
+// UnknownZoneRegions returns the region-name of each zone string that is not in
+// regionNames, once each, in the order the zones were given.
+func UnknownZoneRegions(
+	zoneStrings []string,
+	operation string,
+	regionNames map[string]bool,
+) []string {
+	var unknown []string
+	seen := make(map[string]bool)
+	for _, zoneString := range zoneStrings {
+		regionName := BuildZoneMapFromString(zoneString, operation)["region-name"]
+		if regionNames[regionName] || seen[regionName] {
+			continue
+		}
+		seen[regionName] = true
+		unknown = append(unknown, regionName)
+	}
+	return unknown
 }

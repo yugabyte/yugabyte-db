@@ -53,7 +53,7 @@ var createOCIProviderCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if err := validateOCICreateZoneRegions(regions, zones); err != nil {
+		if err := providerutil.ValidateCreateZoneRegions(regions, zones); err != nil {
 			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 	},
@@ -375,30 +375,6 @@ func ociAPIKeyFlags(cmd *cobra.Command) (tenancyID, userID, fingerprint, keyPath
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 	return tenancyID, userID, fingerprint, keyPath
-}
-
-// validateOCICreateZoneRegions rejects a --zone whose region-name matches no
-// --region. buildOCIZones skips unmatched zones, so a typo would otherwise
-// exit 0 and create the provider without that zone.
-func validateOCICreateZoneRegions(regionStrings, zoneStrings []string) error {
-	regionNames := make(map[string]bool, len(regionStrings))
-	for _, regionString := range regionStrings {
-		regionNames[providerutil.BuildRegionMapFromString(regionString, "")["name"]] = true
-	}
-	var unknown []string
-	seen := make(map[string]bool)
-	for _, zoneString := range zoneStrings {
-		regionName := providerutil.BuildZoneMapFromString(zoneString, "")["region-name"]
-		if regionNames[regionName] || seen[regionName] {
-			continue
-		}
-		seen[regionName] = true
-		unknown = append(unknown, regionName)
-	}
-	if len(unknown) == 0 {
-		return nil
-	}
-	return fmt.Errorf("region %s in --zone matches no --region", strings.Join(unknown, ", "))
 }
 
 func buildOCIRegions(regionStrings, zoneStrings []string) (res []ybaclient.Region) {
