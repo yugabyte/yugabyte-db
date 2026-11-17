@@ -2024,6 +2024,7 @@ public class PlacementInfoUtil {
     int startIndex = getNextIndexToConfigure(nodesInCluster);
     int iter = 0;
     Map<UUID, Provider> providerMap = new HashMap<>();
+    Map<UUID, AvailabilityZone> zoneMap = new HashMap<>();
     for (PlacementIndexes index : indexes) {
       PlacementCloud placementCloud = placementInfo.cloudList.get(index.cloudIdx);
       PlacementRegion placementRegion = placementCloud.regionList.get(index.regionIdx);
@@ -2059,7 +2060,7 @@ public class PlacementInfoUtil {
         if (!added) {
           NodeDetails nodeDetails =
               createNodeDetailsWithPlacementIndex(
-                  cluster, nodesInCluster, index, startIndex + iter);
+                  cluster, nodesInCluster, index, startIndex + iter, zoneMap);
           deltaNodesSet.add(nodeDetails);
         }
       } else if (index.action == Action.REMOVE) {
@@ -2343,13 +2344,15 @@ public class PlacementInfoUtil {
    * @param cluster The current cluster.
    * @param index The placement index combination.
    * @param nodeIdx Node index to be used in node name.
+   * @param zoneMap
    * @return a NodeDetails object.
    */
   private static NodeDetails createNodeDetailsWithPlacementIndex(
       Cluster cluster,
       Collection<NodeDetails> nodeDetailsSet,
       PlacementIndexes index,
-      int nodeIdx) {
+      int nodeIdx,
+      Map<UUID, AvailabilityZone> zoneMap) {
     NodeDetails nodeDetails = new NodeDetails();
     // Note: node name is set during customer task run time.
     // Set the cluster.
@@ -2374,6 +2377,14 @@ public class PlacementInfoUtil {
     nodeDetails.cloudInfo.az = placementAZ.name;
     nodeDetails.cloudInfo.subnet_id = placementAZ.subnet;
     nodeDetails.cloudInfo.secondary_subnet_id = placementAZ.secondarySubnet;
+    // In case placement lacks subnet/secondarySubnet information, we have to get it from zone.
+    if (placementAZ.subnet == null || placementAZ.secondarySubnet == null) {
+      AvailabilityZone zone =
+          zoneMap.computeIfAbsent(
+              placementAZ.uuid, (uuid) -> AvailabilityZone.getOrBadRequest(uuid));
+      nodeDetails.cloudInfo.subnet_id = zone.getSubnet();
+      nodeDetails.cloudInfo.secondary_subnet_id = zone.getSecondarySubnet();
+    }
     nodeDetails.cloudInfo.instance_type = cluster.userIntent.getInstanceTypeForNode(nodeDetails);
     nodeDetails.cloudInfo.assignPublicIP = cluster.userIntent.assignPublicIP;
     nodeDetails.cloudInfo.useTimeSync = cluster.userIntent.useTimeSync;

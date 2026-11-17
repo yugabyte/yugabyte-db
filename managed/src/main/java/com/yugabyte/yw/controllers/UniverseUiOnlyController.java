@@ -79,9 +79,10 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             customerUUID.toString(),
             Audit.ActionType.GetUniverseResources,
             Json.toJson(taskParams));
+
     return PlatformResults.withData(
         universeInfoHandler.getUniverseResources(
-            customer, taskParams, taskParams.currentClusterType));
+            customer, taskParams, taskParams.currentClusterType, true));
   }
 
   /**

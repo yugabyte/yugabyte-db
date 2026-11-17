@@ -1142,7 +1142,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrNotFound(cUUID);
     UniverseDefinitionTaskParams v1DefnParams = configureUniverse(request, customer, universeSpec);
     UniverseResourceDetails v1UniverseResourceDetails =
-        universeInfoHandler.getUniverseResources(customer, v1DefnParams, null);
+        universeInfoHandler.getUniverseResources(customer, v1DefnParams);
     // map to v2 UniverseResourceDetails
     api.v2.models.UniverseResourceDetails v2Response =
         UniverseResourceDetailsMapper.INSTANCE.toV2UniverseResourceDetails(

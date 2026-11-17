@@ -50,7 +50,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -518,7 +517,8 @@ public class UniverseTest extends FakeDBApplication {
             Optional.of(Util.getDefaultProviderUUID(u)),
             u.getNodes(),
             u.getUniverseDetails(),
-            context);
+            context,
+            true);
     JsonNode universeJson = Json.toJson(UniverseResp.create(u, null, mockConfGetter));
     assertThat(
         universeJson.get("universeUUID").asText(),
@@ -565,13 +565,13 @@ public class UniverseTest extends FakeDBApplication {
                 u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
                     "2026.2.0.0-b1");
     assertTrue(
-        new UniverseResp(k8s, null, null, null, null, null, null, null, null, confGetter)
+        new UniverseResp(k8s, null, null, null, null, null, null, null, null, null, confGetter)
             .nodeExporterSidecarScraped);
     assertFalse(new UniverseResp(k8s).nodeExporterSidecarScraped);
 
     Universe vm = createUniverse("vm-resp", defaultCustomer.getId());
     assertFalse(
-        new UniverseResp(vm, null, null, null, null, null, null, null, null, confGetter)
+        new UniverseResp(vm, null, null, null, null, null, null, null, null, null, confGetter)
             .nodeExporterSidecarScraped);
   }
 
@@ -595,17 +595,19 @@ public class UniverseTest extends FakeDBApplication {
         .forUniverse(keyOff)
         .setValue(UniverseConfKeys.k8sNodeExporterEnabled.getKey(), "false");
     assertFalse(
-        new UniverseResp(keyOff, null, null, null, null, null, null, null, null, confGetter)
+        new UniverseResp(keyOff, null, null, null, null, null, null, null, null, null, confGetter)
             .nodeExporterSidecarScraped);
 
     Universe belowGate = k8sUniverseAtVersion("k8s-below-gate", "2026.1.2.0-b100");
     assertFalse(
-        new UniverseResp(belowGate, null, null, null, null, null, null, null, null, confGetter)
+        new UniverseResp(
+                belowGate, null, null, null, null, null, null, null, null, null, confGetter)
             .nodeExporterSidecarScraped);
 
     Universe noVersion = k8sUniverseAtVersion("k8s-no-version", null);
     assertFalse(
-        new UniverseResp(noVersion, null, null, null, null, null, null, null, null, confGetter)
+        new UniverseResp(
+                noVersion, null, null, null, null, null, null, null, null, null, confGetter)
             .nodeExporterSidecarScraped);
   }
 
