@@ -773,9 +773,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		 * For an embedded index scan, an expression column is not available
 		 * for sort (see also #36017).  That holds for the merge sort column of
 		 * this pathkey and for a gap column before it, which the merge sorts
-		 * on as well, even when the gap column needs no merge: the filters
-		 * that tie it run before the merge (see also #37785), or the index
-		 * predicate implies it (see also #37784).
+		 * on as well, even when the gap column needs no merge (see
+		 * ybIsMergeGapCol).
 		 */
 		if (embedded &&
 			(index->indexkeys[tle->resno - 1] == 0 || expression_gap))
