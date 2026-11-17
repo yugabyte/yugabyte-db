@@ -616,17 +616,14 @@ TEST_F(XClusterDBScopedAutomaticModeTest, OldLeaderCheckpointResolvesTabletsAfte
       "XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
 }
 
-// Tests that a checkpoint succeeds when a peer on the tserver running BootstrapProducer is
-// tombstoned after the run resolved the tablet locations, as when the load balancer removes it.
+// Tests that a checkpoint succeeds when a local peer is tombstoned during BootstrapProducer.
 TEST_F(XClusterDBScopedAutomaticModeTest, CheckpointWithTombstonedLocalPeer) {
   ASSERT_OK(SetUpClusters());
-  // The peer tombstoned below stays in the Raft config, unlike one the load balancer removed, so
-  // the leader would remote bootstrap it back and the run could read the restored peer.
+  // Stop the leader from remote bootstrapping the tombstoned peer back before the run reads it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_remote_bootstrap) = false;
 
-  // Once the run has resolved the tablet locations, tombstone a follower peer on its tserver, as
-  // the load balancer only removes followers. The balancer spreads the table's leaders one per
-  // tserver, so that tserver follows two tablets.
+  // After the run reads the tablet locations, tombstone a follower peer on its tserver, as the
+  // load balancer would.
   SyncPointScope sync_point;
   sync_point->SetCallBack(
       "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", [this](void* arg) {

@@ -251,7 +251,7 @@ Status XClusterProducerBootstrap::GetLatestOpIdsFromLocalPeers() {
   HybridTime ht;
   OpId op_id = yb::OpId::Invalid();
   for (const auto& [bootstrap_id, tablet_id] : local_tablets_) {
-    // The locations can list a local peer that is now tombstoned, deleted or remote bootstrapping.
+    // The peer may have been tombstoned since the locations were read, or may still be copying.
     auto tablet_peer_result = cdc_service_context_->GetServingTablet(tablet_id);
     if (!tablet_peer_result.ok()) {
       LOG(WARNING) << "Fetching the latest op id of tablet " << tablet_id
