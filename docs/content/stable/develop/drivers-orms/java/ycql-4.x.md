@@ -1,8 +1,8 @@
 ---
-title: Java Driver 4.15 for YCQL
+title: Java Driver 4.19 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Java application using YCQL 4.15 driver
+description: Connect a Java application using YCQL 4.19 driver
 tags:
   other: ycql
 menu:
@@ -39,18 +39,18 @@ type: docs
   <li >
     <a href="../ycql-4.x/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.15)
+      YCQL (4.19)
     </a>
   </li>
   <li >
     <a href="../ycql-ssl/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.15) with SSL
+      YCQL (4.19) with SSL
     </a>
   </li>
 </ul>
 
-[YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+[YugabyteDB Java Driver for YCQL (4.19)](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x) is based on [DataStax Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 
@@ -60,13 +60,13 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon 
 
 ## Maven
 
-To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x), add the following Maven dependency to your application:
+To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x), add the following Maven dependency to your application:
 
 ```xml
  <dependency>
    <groupId>com.yugabyte</groupId>
    <artifactId>java-driver-core</artifactId>
-   <version>4.15.0-yb-1</version>
+   <version>4.19.0-yb-1</version>
  </dependency>
 ```
 
@@ -105,7 +105,7 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.15.0-yb-1</version>
+      <version>4.19.0-yb-1</version>
     </dependency>
   </dependencies>
 

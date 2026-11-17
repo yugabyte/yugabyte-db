@@ -2,7 +2,7 @@
 title: Connect a YCQL Java application
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Java application using YCQL 4.15 driver and SSL.
+description: Connect a Java application using YCQL 4.19 driver and SSL.
 tags:
   other: ycql
 menu:
@@ -39,18 +39,18 @@ type: docs
   <li >
     <a href="../ycql-4.x/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL Driver 4.15
+      YCQL Driver 4.19
     </a>
   </li>
   <li >
     <a href="../ycql-ssl/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL Driver 4.15 with SSL
+      YCQL Driver 4.19 with SSL
     </a>
   </li>
 </ul>
 
-[YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) is based on [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+[YugabyteDB Java Driver for YCQL (4.19)](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x) is based on [DataStax Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 
@@ -68,7 +68,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
  <dependency>
    <groupId>com.yugabyte</groupId>
    <artifactId>java-driver-core</artifactId>
-   <version>4.15.0-yb-1</version>
+   <version>4.19.0-yb-1</version>
  </dependency>
 ```
 
@@ -111,7 +111,7 @@ Create a Project Object Model (POM) file, named `pom.xml`, and then copy the fol
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>java-driver-core</artifactId>
-      <version>4.15.0-yb-1</version>
+      <version>4.19.0-yb-1</version>
     </dependency>
   </dependencies>
 

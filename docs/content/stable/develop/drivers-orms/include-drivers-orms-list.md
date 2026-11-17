@@ -17,7 +17,7 @@ block_indexing = true
 | PostgreSQL JDBC Driver  | [42.7.3](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.7.3) | Full | [CRUD](/stable/develop/drivers-orms/java/postgres-jdbc/) |
 | Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/stable/develop/drivers-orms/java/ysql-vertx-pg-client/) |
 | YugabyteDB Java Driver for YCQL | [3.10.3-yb-3](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-3) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql/) |
-| YugabyteDB Java Driver for YCQL | [4.15.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x/) |
+| YugabyteDB Java Driver for YCQL | [4.19.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.19.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x/) |
 | **ORMs** | | | |
 | Ebean                   | 13.23.0 | Full | [CRUD](/stable/develop/drivers-orms/java/ebean/) |
 | Hibernate               | 5.4.19  | Full | [CRUD](/stable/develop/drivers-orms/java/hibernate/) |

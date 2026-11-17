@@ -23,7 +23,7 @@ Yugabyte has extended the upstream Cassandra drivers with specific changes to le
 | GitHub project | Based on | Learn more |
 | :--- | :--- | :--- |
 | [YugabyteDB Java Driver for YCQL (3.10)](https://github.com/yugabyte/cassandra-java-driver/tree/3.10.0-yb-x) | [DataStax Java Driver 3.10](https://docs.datastax.com/en/developer/java-driver/3.10/) | [Documentation](../java/ycql/) |
-| [YugabyteDB Java Driver for YCQL (4.15)](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x) | [DataStax Java Driver 4.15](https://docs.datastax.com/en/developer/java-driver/4.15/) | [Documentation](../java/ycql-4.x/) |
+| [YugabyteDB Java Driver for YCQL (4.19)](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x) | [DataStax Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) | [Documentation](../java/ycql-4.x/) |
 | [YugabyteDB Go Driver for YCQL](https://github.com/yugabyte/gocql) | [gocql](https://gocql.github.io/) | [Documentation](../go/ycql/) |
 | [YugabyteDB Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver) | [DataStax Python Driver](https://github.com/datastax/python-driver) | [Documentation](../python/ycql/) |
 | [YugabyteDB Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) | [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) | [Documentation](../nodejs/ycql/) |
@@ -51,7 +51,7 @@ YugabyteDB is a distributed, fault tolerant, and highly available database with 
 As with the upstream Cassandra drivers, YugabyteDB YCQL drivers can retry certain operations if they fail the first time. This is governed by a retry-policy. The default number of retries is one for a failed operation for certain cases, depending on the language driver. The retry may happen on the same node or the next available node as per the query's plan.
 
 Some drivers allow you to provide a custom retry policy.
-Refer to [Retries](https://docs.datastax.com/en/developer/java-driver/4.15/manual/core/retries/#retries) in DataStax documentation for information on built-in retry polices.
+Refer to [Retries](https://github.com/apache/cassandra-java-driver/blob/4.19.0/manual/core/retries/README.md#retries) in the Java Driver 4.19 documentation for information on built-in retry policies.
 
 ### Multiple contact points
 

@@ -80,11 +80,11 @@ To build Java applications with this driver, you must add the following Maven de
 
 For details, see the [Maven repository contents](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2).
 
-### YugabyteDB Java Driver for YCQL 4.15
+### YugabyteDB Java Driver for YCQL 4.19
 
-The [YugabyteDB Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.15.x/manual/core), version `4.15.0-yb-1`, is based on the [DataStax Java Driver for Apache Cassandra (v4.15)](https://github.com/datastax/java-driver) and requires the Maven dependency shown below.
+The [YugabyteDB Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x/manual/core), version `4.19.0-yb-1`, is based on the [DataStax Java Driver for Apache Cassandra (v4.19)](https://github.com/apache/cassandra-java-driver/tree/4.19.0) and requires the Maven dependency shown below.
 
-For details, see the [v4.15 README](https://github.com/yugabyte/cassandra-java-driver/blob/4.15.x/README.md) in our GitHub repository.
+For details, see the [v4.19 README](https://github.com/yugabyte/cassandra-java-driver/blob/4.19.0-yb-x/README.md) in our GitHub repository.
 
 For a tutorial on building a sample Java application with this driver, see [Connect an application](../java/ycql-4.x/).
 
@@ -94,11 +94,11 @@ To build Java applications with this driver, you must add the following Maven de
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>java-driver-core</artifactId>
-  <version>4.15.0-yb-1</version>
+  <version>4.19.0-yb-1</version>
 </dependency>
 ```
 
-For details, see the [Maven repository contents](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1).
+For details, see the [Maven repository contents](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.19.0-yb-1).
 
 ## Node.js
 
