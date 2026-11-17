@@ -25,8 +25,9 @@
  * YB: YB node support is generated from the headers, except for
  * YbUpdateAffectedEntities (YbBitMatrix) and YbBatchedNestLoop
  * (hashClauseInfos, an array of non-node structs holding Exprs).  Their
- * hand-written functions are here and in equalfuncs.c, outfuncs.c and
- * readfuncs.c.
+ * hand-written functions are here and in outfuncs.c and readfuncs.c;
+ * YbUpdateAffectedEntities also has one in equalfuncs.c (plan nodes are
+ * no_equal).
  */
 
 
