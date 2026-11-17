@@ -37,6 +37,8 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -195,6 +197,11 @@ public class RedactingService {
     fallback.put(REDACTED_PAYLOAD_KEY, redactedPayload);
     return fallback;
   }
+
+  // Used to redact root CA keys in the helm values
+  // Regex pattern to match "<Any_String>key: <Base64_encoded_string>"
+  private static final String KEY_REGEX = "(.*key):\\s+(\\S+)";
+  private static final Pattern KEY_SEARCH_PATTERN = Pattern.compile(KEY_REGEX);
 
   public static JsonNode filterSecretFields(JsonNode input, RedactionTarget target) {
     return filterSecretFields(input, target, null, null);
@@ -1473,41 +1480,21 @@ public class RedactingService {
     return output;
   }
 
-  /**
-   * Redacts a base64 value after "key:" in one line of helm values, such as the root CA's private
-   * key: the last "key:" on the line that whitespace and a value follow, as the regex {@code
-   * (.*key):\s+(\S+)} matched. That regex retried its greedy prefix from every position, which took
-   * 20 s for a 64 KB line holding many "key:" with no value after them.
-   */
-  public static String redactrootCAKeys(String line) {
-    for (int at = line.lastIndexOf("key:"); at >= 0; at = line.lastIndexOf("key:", at - 1)) {
-      int valueStart = at + "key:".length();
-      while (valueStart < line.length() && isRegexSpace(line.charAt(valueStart))) {
-        valueStart++;
-      }
-      if (valueStart == at + "key:".length()
-          || valueStart == line.length()
-          || isRegexSpace(line.charAt(valueStart))) {
-        continue;
-      }
-      int valueEnd = valueStart;
-      while (valueEnd < line.length() && !isRegexSpace(line.charAt(valueEnd))) {
-        valueEnd++;
-      }
-      if (!isBase64Encoded(line.substring(valueStart, valueEnd))) {
-        return line;
-      }
-      return line.substring(0, at + "key".length())
-          + ": "
-          + SECRET_REPLACEMENT
-          + line.substring(valueEnd);
+  public static String redactrootCAKeys(String input) {
+    // KEY_REGEX backtracks from every position of a line, so skip text it can't match.
+    if (!input.contains("key:")) {
+      return input;
     }
-    return line;
-  }
-
-  /** \s in a Java regex. */
-  private static boolean isRegexSpace(char c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\u000B' || c == '\f' || c == '\r';
+    String output = input;
+    Matcher matcher = KEY_SEARCH_PATTERN.matcher(input);
+    if (matcher.find()) {
+      String base64String = matcher.group(2);
+      if (isBase64Encoded(base64String)) {
+        String redactedString = "$1: " + SECRET_REPLACEMENT;
+        output = output.replaceAll(KEY_REGEX, redactedString);
+      }
+    }
+    return output;
   }
 
   /** Shorter values are too likely to occur by chance to replace everywhere. */
@@ -1602,9 +1589,6 @@ public class RedactingService {
 
   /** redactShellProcessOutput for a caller that must know when the redaction fails. */
   static String redactShellOutput(String input, RedactionTarget target) {
-    if (input == null) {
-      return null;
-    }
     String output = input;
     // Redact based on target
     switch (target) {
@@ -1614,7 +1598,9 @@ public class RedactingService {
         }
         break;
       case HELM_VALUES:
-        output = redactLinesContaining(output, List.of("key:"), RedactingService::redactrootCAKeys);
+        if (output.contains("key:")) {
+          output = redactEachLine(output, RedactingService::redactrootCAKeys);
+        }
         output = redactTelemetryCredentials(output);
         break;
       default:
@@ -1651,9 +1637,9 @@ public class RedactingService {
   }
 
   /**
-   * For a pass that must not run past a line end and may change any line: redactQueryParams runs to
-   * the end of its input when a value isn't closed. Passes that change only lines holding a marker
-   * use redactLinesContaining.
+   * For passes that must not run past a line end: redactrootCAKeys checks only its first match, and
+   * its regex and redactQueryParams run to the end of their input when a value isn't closed. Passes
+   * that change only lines holding a marker use redactLinesContaining.
    */
   private static String redactEachLine(String input, UnaryOperator<String> redact) {
     return Arrays.stream(input.split("\n", -1)).map(redact).collect(Collectors.joining("\n"));

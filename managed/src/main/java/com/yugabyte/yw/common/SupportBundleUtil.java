@@ -587,7 +587,7 @@ public class SupportBundleUtil {
   /**
    * For the metadata JSON, which the tree redaction has already handled; it can still carry the
    * telemetry exporter credentials (PLAT-22613). Raw kubectl/helm output goes through
-   * writeKubectlOutputToFile instead, which also redacts the gflags and the root CA key.
+   * writeKubectlOutputToFile instead, which also redacts the gflags.
    */
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
     return write(RedactingService.redactTelemetryCredentials(message), localFilePath, append);
@@ -610,18 +610,20 @@ public class SupportBundleUtil {
 
   /**
    * Writes raw kubectl/helm output, which carries the universe gflags ("helm get values" always,
-   * and the pod specs as container args with charts before PLAT-13974), the root CA private key and
-   * the telemetry credentials. Redacted as KubernetesManager redacts the same output for the log.
-   * The free-text redaction cuts an HBA line from ldapbindpasswd to its end, so it is not for the
-   * metadata JSON, which the tree redaction has already handled.
+   * and the pod specs as container args with charts before PLAT-13974) and the telemetry
+   * credentials. The gflags are redacted as KubernetesManager redacts kubectl output for the log,
+   * with the passes that can run past an unclosed value one line at a time. That redaction cuts an
+   * HBA line from ldapbindpasswd to its end, so it is not for the metadata JSON, which the tree
+   * redaction has already handled.
    */
   public boolean writeKubectlOutputToFile(String output, String localFilePath) {
     String redacted;
     try {
       // NativeKubernetesManager returns null for these commands; the file is left empty.
       redacted =
-          RedactingService.redactShellOutput(
-              Objects.toString(output, ""), RedactionTarget.HELM_VALUES);
+          RedactingService.redactTelemetryCredentials(
+              RedactingService.redactShellOutput(
+                  Objects.toString(output, ""), RedactionTarget.LOGS));
     } catch (RuntimeException e) {
       log.error(
           "Failed to redact the output for {}; leaving it out of the bundle.", localFilePath, e);

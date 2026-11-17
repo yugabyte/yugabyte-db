@@ -725,23 +725,6 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   }
 
   @Test
-  public void testWriteKubectlOutputToFileRedactsRootCaKey() throws IOException {
-    String cert = java.util.Base64.getEncoder().encodeToString("dummy cert".getBytes());
-    String key = java.util.Base64.getEncoder().encodeToString("dummy root CA key".getBytes());
-    String written =
-        writeAndRead(
-            "rootCA:\n  cert: "
-                + cert
-                + "\n  key: "
-                + key
-                + "\nistioCompatibility:\n  enabled: false\n");
-    assertFalse(written, written.contains(key));
-    assertTrue(written, written.contains("  key: REDACTED\n"));
-    assertTrue(written, written.contains("  cert: " + cert + "\n"));
-    assertTrue(written, written.contains("istioCompatibility:\n  enabled: false"));
-  }
-
-  @Test
   public void testWriteKubectlOutputToFileRedactsLdapGFlagsInHelmValues() throws IOException {
     String helmValues =
         String.join(
