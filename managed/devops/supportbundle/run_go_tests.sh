@@ -14,9 +14,10 @@
 #   bash managed/devops/supportbundle/run_go_tests.sh
 #
 # `sbt test` runs this after the Java tests and fails if it does. Every module runs even when an
-# earlier one fails. Exits 1 if any test failed, and 2 if the tests could not run: go is missing,
-# or go-junit-report, a module's dependencies or the Go toolchain its go.mod asks for cannot be
-# downloaded (they need the Go module proxy or a module cache).
+# earlier one fails. Exits 1 if any test failed, and 2 if the tests could not run: go is missing;
+# go-junit-report, a module's dependencies or the Go toolchain its go.mod asks for cannot be
+# downloaded (they need the Go module proxy or a module cache); or the report folders cannot be
+# cleared or created.
 
 set -uo pipefail
 

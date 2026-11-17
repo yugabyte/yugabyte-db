@@ -421,8 +421,9 @@ externalResolvers := {
     case 0 =>
     case 2 =>
       sys.error(
-        "Support bundle Go tests could not run: go is missing or a Go download failed, see the" +
-          " log above. This is a tooling failure, not a test failure.")
+        "Support bundle Go tests could not run: go is missing, a Go download failed, or the" +
+          " report folders could not be cleared or created; see the log above. This is a" +
+          " tooling failure, not a test failure.")
     case _ =>
       sys.error("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
   }
