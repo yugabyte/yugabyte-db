@@ -217,6 +217,9 @@ heapam_tuple_tid_valid(TableScanDesc scan, ItemPointer tid)
 {
 	HeapScanDesc hscan = (HeapScanDesc) scan;
 
+	/* YB: the scan of a YB relation is not a HeapScanDesc. */
+	YbRejectPageAccess(scan->rs_rd);
+
 	return ItemPointerIsValid(tid) &&
 		ItemPointerGetBlockNumber(tid) < hscan->rs_nblocks;
 }
@@ -713,6 +716,9 @@ heapam_relation_copy_for_cluster(Relation OldHeap, Relation NewHeap,
 	BufferHeapTupleTableSlot *hslot;
 	BlockNumber prev_cblock = InvalidBlockNumber;
 
+	/* YB: YB relations have no heap pages. */
+	YbRejectPageAccess(OldHeap);
+
 	/* Remember if it's a system catalog */
 	is_system_catalog = IsSystemRelation(OldHeap);
 
@@ -1005,6 +1011,9 @@ heapam_scan_analyze_next_block(TableScanDesc scan, BlockNumber blockno,
 							   BufferAccessStrategy bstrategy)
 {
 	HeapScanDesc hscan = (HeapScanDesc) scan;
+
+	/* YB: the scan of a YB relation is not a HeapScanDesc. */
+	YbRejectPageAccess(scan->rs_rd);
 
 	/*
 	 * We must maintain a pin on the target page's buffer to ensure that
@@ -1922,6 +1931,9 @@ heapam_index_validate_scan(Relation heapRelation,
 	ItemPointerData decoded;
 	bool		tuplesort_empty = false;
 
+	/* YB: YB relations have no heap pages. */
+	YbRejectPageAccess(heapRelation);
+
 	/*
 	 * sanity checks
 	 */
@@ -2286,6 +2298,9 @@ heapam_scan_bitmap_next_block(TableScanDesc scan,
 	Snapshot	snapshot;
 	int			ntup;
 
+	/* YB: the scan of a YB relation is not a HeapScanDesc. */
+	YbRejectPageAccess(scan->rs_rd);
+
 	hscan->rs_cindex = 0;
 	hscan->rs_ntuples = 0;
 
@@ -2438,6 +2453,9 @@ heapam_scan_sample_next_block(TableScanDesc scan, SampleScanState *scanstate)
 	HeapScanDesc hscan = (HeapScanDesc) scan;
 	TsmRoutine *tsm = scanstate->tsmroutine;
 	BlockNumber blockno;
+
+	/* YB: the scan of a YB relation is not a HeapScanDesc. */
+	YbRejectPageAccess(scan->rs_rd);
 
 	/* return false immediately if relation is empty */
 	if (hscan->rs_nblocks == 0)

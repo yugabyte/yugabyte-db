@@ -370,6 +370,9 @@ heap_setscanlimits(TableScanDesc sscan, BlockNumber startBlk, BlockNumber numBlk
 {
 	HeapScanDesc scan = (HeapScanDesc) sscan;
 
+	/* YB: the scan of a YB relation is not a HeapScanDesc. */
+	YbRejectPageAccess(sscan->rs_rd);
+
 	Assert(!scan->rs_inited);	/* else too late to change */
 	/* else rs_startblock is significant */
 	Assert(!(scan->rs_base.rs_flags & SO_ALLOW_SYNC));
@@ -1258,6 +1261,9 @@ heap_rescan(TableScanDesc sscan, ScanKey key, bool set_params,
 {
 	HeapScanDesc scan = (HeapScanDesc) sscan;
 
+	/* YB: the scan of a YB relation is not a HeapScanDesc. */
+	YbRejectPageAccess(sscan->rs_rd);
+
 	if (set_params)
 	{
 		if (allow_strat)
@@ -1423,6 +1429,9 @@ heap_set_tidrange(TableScanDesc sscan, ItemPointer mintid,
 	BlockNumber numBlks;
 	ItemPointerData highestItem;
 	ItemPointerData lowestItem;
+
+	/* YB: the scan of a YB relation is not a HeapScanDesc. */
+	YbRejectPageAccess(sscan->rs_rd);
 
 	/*
 	 * For relations without any pages, we can simply leave the TID range

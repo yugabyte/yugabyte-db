@@ -705,7 +705,11 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	{
 		BlockNumber relallvisible;
 
-		visibilitymap_count(onerel, &relallvisible, NULL);
+		/* YB: YB relations have no visibility map. */
+		if (IsYBRelation(onerel))
+			relallvisible = 0;
+		else
+			visibilitymap_count(onerel, &relallvisible, NULL);
 
 		/*
 		 * Update pg_class for table relation.  CCI first, in case acquirefunc

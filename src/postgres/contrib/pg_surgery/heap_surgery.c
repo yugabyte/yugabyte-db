@@ -22,6 +22,9 @@
 #include "utils/acl.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 /* Options to forcefully change the state of a heap tuple. */
@@ -115,6 +118,9 @@ heap_force_common(FunctionCallInfo fcinfo, HeapTupleForceOption heap_force_opt)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("only heap AM is supported")));
+
+	/* YB: YB relations have no heap pages. */
+	YbRejectPageAccess(rel);
 
 	/* Must be owner of the table or superuser. */
 	if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))

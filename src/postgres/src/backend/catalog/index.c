@@ -3035,7 +3035,8 @@ index_update_stats(Relation rel,
 	{
 		relpages = IsYBRelation(rel) ? 0 : RelationGetNumberOfBlocks(rel);
 
-		if (rel->rd_rel->relkind != RELKIND_INDEX)
+		/* YB: YB relations have no visibility map. */
+		if (rel->rd_rel->relkind != RELKIND_INDEX && !IsYBRelation(rel))
 			visibilitymap_count(rel, &relallvisible, NULL);
 	}
 

@@ -25,6 +25,9 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 PG_FUNCTION_INFO_V1(verify_heapam);
 
 /* The number of columns in tuples returned by verify_heapam */
@@ -305,6 +308,9 @@ verify_heapam(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("only heap AM is supported")));
+
+	/* YB: YB relations have no heap pages. */
+	YbRejectPageAccess(ctx.rel);
 
 	/*
 	 * Early exit for unlogged relations during recovery.  These will have no

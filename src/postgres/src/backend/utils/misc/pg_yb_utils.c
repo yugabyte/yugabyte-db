@@ -534,6 +534,22 @@ IsYBBackedRelation(Relation relation)
 			 relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP));
 }
 
+/*
+ * Raise an error if the relation is a YB relation.  Called by code that reads
+ * PostgreSQL pages or heap scan state, which YB relations do not have.
+ */
+void
+YbRejectPageAccess(Relation relation)
+{
+	if (IsYBRelation(relation))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot access pages of YugabyteDB relation \"%s\"",
+						RelationGetRelationName(relation)),
+				 errdetail("YugabyteDB relations are stored in DocDB, "
+						   "not in PostgreSQL pages.")));
+}
+
 bool
 YbIsTempRelation(Relation relation)
 {

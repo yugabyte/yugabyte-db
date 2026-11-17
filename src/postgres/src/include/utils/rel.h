@@ -601,6 +601,9 @@ typedef struct ViewOptions
 	 ((relation)->rd_rel->relfilenode == InvalidOid))
 
 #ifndef FRONTEND
+/* YB: declared here because RelationGetSmgr below uses it. */
+extern void YbRejectPageAccess(Relation relation);
+
 /*
  * RelationGetSmgr
  *		Returns smgr file handle for a relation, opening it if needed.
@@ -617,6 +620,12 @@ typedef struct ViewOptions
 static inline SMgrRelation
 RelationGetSmgr(Relation rel)
 {
+	/*
+	 * YB: YB relations have no smgr files.  Checking only before the first
+	 * open keeps the common path free of the check.
+	 */
+	if (unlikely(rel->rd_smgr == NULL))
+		YbRejectPageAccess(rel);
 	if (unlikely(rel->rd_smgr == NULL))
 		smgrsetowner(&(rel->rd_smgr), smgropen(rel->rd_node, rel->rd_backend));
 	return rel->rd_smgr;
