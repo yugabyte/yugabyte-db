@@ -105,8 +105,9 @@ DEFINE_RUNTIME_bool(cdc_send_null_before_image_if_not_exists,
                     false,
                     "When this flag is set to true, GetChanges will return a null before image if "
                     "it is not able to find one.");
+
 DEFINE_NON_RUNTIME_bool(cdc_enable_intra_transactional_before_image,
-                        false,
+                        true,
                         "If 'true', before image is populated for the intra-transactional DMLs.");
 
 DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
