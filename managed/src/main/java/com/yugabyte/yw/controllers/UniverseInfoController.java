@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TriggerHealthCheckResult;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
@@ -159,6 +160,11 @@ public class UniverseInfoController extends AuthenticatedController {
   public Result getUniverseResources(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    // Keeping current logic.
+    UniverseDefinitionTaskParams.ClusterType clusterType = universe.getUniverseDetails().currentClusterType;
+    if (clusterType == null) {
+      clusterType = UniverseDefinitionTaskParams.ClusterType.PRIMARY;
+    }
     return PlatformResults.withData(
         universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails(), null));
   }
