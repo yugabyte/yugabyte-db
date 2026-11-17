@@ -156,11 +156,11 @@ func apiKeyUpdateFields(cmd *cobra.Command) (map[string]interface{}, error) {
 		case "fingerprint":
 			fields[util.OCIFingerprintField] = value
 		case "private-key-file-path":
-			content, err := util.ReadFileToString(value)
+			privateKey, err := readPrivateKey(value)
 			if err != nil {
 				return nil, err
 			}
-			fields[util.OCIPrivateKeyContentField] = strings.TrimSpace(*content)
+			fields[util.OCIPrivateKeyContentField] = privateKey
 		}
 	}
 	return fields, nil
