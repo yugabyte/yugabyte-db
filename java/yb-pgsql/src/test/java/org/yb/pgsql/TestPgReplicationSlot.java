@@ -636,10 +636,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           add(PgOutputUpdateMessage.CreateForComparison(
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
-                // All columns for before image in FULL come out as null.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("ghij"),
+                new PgOutputMessageTupleColumnValue("t"))),
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("3"),
@@ -654,12 +653,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("4"),
               new PgOutputMessageTupleColumnValue("jklm"),
               new PgOutputMessageTupleColumnValue("t")))));
-          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          // The full old row is found within the transaction, so it is sent as 'O', not 'K'.
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("4"),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull()))));
+                new PgOutputMessageTupleColumnValue("jklm"),
+                new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/3B"), LogSequenceNumber.valueOf("0/3C")));
         }
@@ -809,10 +809,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           add(PgOutputUpdateMessage.CreateForComparison(
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
-                // All columns for before image in FULL come out as null.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+                // Before image in FULL is the row written by the INSERT earlier in the same
+                // transaction (cdc_enable_intra_transactional_before_image), same as in PG.
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("ghij"),
+                new PgOutputMessageTupleColumnValue("t"))),
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("3"),
@@ -827,12 +828,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("4"),
               new PgOutputMessageTupleColumnValue("jklm"),
               new PgOutputMessageTupleColumnValue("t")))));
-          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          // The full old row is found within the transaction, so it is sent as 'O', not 'K'.
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("4"),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull()))));
+                new PgOutputMessageTupleColumnValue("jklm"),
+                new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/29"), LogSequenceNumber.valueOf("0/2A")));
         }

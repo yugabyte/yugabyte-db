@@ -194,6 +194,41 @@ public class UniverseCRUDHandlerTest extends FakeDBApplication {
             .contains("Cannot have number of replicas 3 greater than the number of nodes 2"));
   }
 
+  // Only the cross-cloud federation API changes federationConfigured on an existing cluster. An
+  // edit whose request omits it must keep the stored value.
+  @Test
+  public void updateKeepsFederationConfiguredFromUniverse() {
+    Universe universe = ModelFactory.createFromConfig(provider, "fed-edit", "r1-az1-3-3");
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .setFederationConfigured(true));
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    // An edit that adds a node, as sent by a client that omits the field.
+    UniverseDefinitionTaskParams.Cluster primary = taskParams.getPrimaryCluster();
+    primary.userIntent.numNodes += 1;
+    primary.userIntent.setFederationConfigured(false);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams,
+        customer.getId(),
+        primary.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse));
+
+    universeCRUDHandler.update(
+        customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(any(TaskType.class), captor.capture());
+    assertTrue(captor.getValue().getPrimaryCluster().userIntent.isFederationConfigured());
+  }
+
   private UniverseDefinitionTaskParams.UserIntent testIntent() {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();

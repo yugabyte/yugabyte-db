@@ -25,6 +25,8 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/xcluster_util.h"
+
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
 #include "yb/master/master_ddl.pb.h"
@@ -51,6 +53,7 @@ DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(enable_load_balancing);
 DECLARE_uint32(xcluster_safe_time_log_outliers_interval_secs);
 DECLARE_uint32(xcluster_safe_time_slow_tablet_delta_secs);
+DECLARE_bool(xcluster_safe_time_table_include_stream_id);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 DECLARE_int32(ht_lease_duration_ms);
@@ -425,6 +428,61 @@ TEST_F(XClusterSafeTimeTest, LostMasterLeaderLease) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = old_leader_lease_duration_ms;
 
   ASSERT_OK(WaitForSafeTime(GetProducerSafeTime()));
+}
+
+// When xcluster_safe_time_table_include_stream_id is promoted, the tservers and the master switch
+// to keys with stream IDs. The safe time must keep advancing, and the old rows must be cleaned up.
+class XClusterSafeTimeStreamIdPromotionTest : public XClusterSafeTimeTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_table_include_stream_id) = false;
+    XClusterSafeTimeTest::SetUp();
+  }
+
+  struct RowCounts {
+    int with_stream_id = 0;
+    int without_stream_id = 0;
+  };
+
+  Result<RowCounts> CountSafeTimeTableRows() {
+    client::TableHandle table;
+    RETURN_NOT_OK(table.Open(kSafeTimeTableName, consumer_client()));
+
+    Status scan_status;
+    client::TableIteratorOptions options;
+    options.error_handler = [&scan_status](const Status& status) { scan_status = status; };
+
+    RowCounts counts;
+    for (const auto& row : client::TableRange(table, options)) {
+      const auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromSafeTimeTableRow(
+          xcluster::ReplicationGroupId(row.column(master::kXCReplicationGroupIdIdx).string_value()),
+          row.column(master::kXCProducerTabletIdIdx).string_value()));
+      if (key.stream_id().IsNil()) {
+        ++counts.without_stream_id;
+      } else {
+        ++counts.with_stream_id;
+      }
+    }
+    RETURN_NOT_OK(scan_status);
+    return counts;
+  }
+};
+
+TEST_F(XClusterSafeTimeStreamIdPromotionTest, SafeTimeAdvancesAcrossPromotion) {
+  ASSERT_OK(WaitForSafeTime(GetProducerSafeTime()));
+  const auto initial_counts = ASSERT_RESULT(CountSafeTimeTableRows());
+  ASSERT_EQ(initial_counts.with_stream_id, 0);
+  ASSERT_EQ(initial_counts.without_stream_id, kTabletCount);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_table_include_stream_id) = true;
+  ASSERT_OK(WaitForSafeTime(GetProducerSafeTime()));
+
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        const auto counts = VERIFY_RESULT(CountSafeTimeTableRows());
+        return counts.with_stream_id == kTabletCount && counts.without_stream_id == 0;
+      },
+      propagation_timeout_, "Wait for the safe time table to hold only rows keyed by stream"));
 }
 
 }  // namespace yb
