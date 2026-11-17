@@ -185,7 +185,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     ObjectNode form = fakeAuthConfig.deepCopy();
     form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociCompartmentId.fieldName, "");
     try {
-      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form, true);
     } catch (RuntimeException e) {
       assertTrue(e.getMessage().contains("OCI_COMPARTMENT_OCID"));
     }
@@ -196,7 +196,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     ObjectNode form = fakeAuthConfig.deepCopy();
     form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociVaultId.fieldName, "");
     try {
-      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form, true);
     } catch (RuntimeException e) {
       assertTrue(e.getMessage().contains("OCI_VAULT_OCID"));
     }
@@ -207,7 +207,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     ObjectNode form = fakeAuthConfig.deepCopy();
     form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, "");
     try {
-      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form, true);
     } catch (RuntimeException e) {
       assertTrue(e.getMessage().contains("OCI_REGION"));
     }
@@ -218,7 +218,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     ObjectNode form = fakeAuthConfig.deepCopy();
     form.put(OciEARServiceUtil.OciKmsAuthConfigField.ociRegion.fieldName, "not-a-real-region");
     try {
-      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form);
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(form, true);
     } catch (RuntimeException e) {
       assertTrue(e.getMessage().contains("not-a-real-region"));
       assertTrue(e.getMessage().contains("OCI_REGION"));
@@ -236,7 +236,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
             any(Region.class), any(SimpleAuthenticationDetailsProvider.class));
 
     try {
-      mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig);
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig, false);
     } catch (RuntimeException e) {
       assertTrue(e.getMessage().contains("TENANCY_OCID, USER_OCID, FINGERPRINT, and PRIVATE_KEY"));
     }
@@ -255,7 +255,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     doThrow(notFound).when(mockOciEARServiceUtil).getVaultFromId(fakeclient, vaultOcid);
 
     try {
-      mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig);
+      mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig, false);
     } catch (RuntimeException e) {
       assertTrue(e.getMessage().contains("OCI_VAULT_OCID"));
       assertTrue(e.getMessage().contains(vaultOcid));
@@ -272,7 +272,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
         .getKeyOcidByName(any(), any(), any());
     stubGetKey(Key.LifecycleState.Enabled);
 
-    mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig);
+    mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig, false);
 
     verify(mockOciEARServiceUtil, never()).getKeyOcidByName(any(), any(), any());
     verify(fakeKmsManagementClient, atLeastOnce())
@@ -291,7 +291,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     RuntimeException e =
         assertThrows(
             RuntimeException.class,
-            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig));
+            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig, false));
     assertTrue(e.getMessage().contains(keyOcid));
     assertTrue(e.getMessage().contains("Enabled"));
   }
@@ -307,7 +307,7 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     RuntimeException e =
         assertThrows(
             RuntimeException.class,
-            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig));
+            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(fakeAuthConfig, false));
     assertTrue(e.getMessage().contains(keyOcid));
     assertTrue(e.getMessage().contains("does not exist"));
   }
@@ -323,7 +323,23 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
     RuntimeException e =
         assertThrows(
             RuntimeException.class,
-            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(createForm));
+            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(createForm, true));
+    assertTrue(e.getMessage().contains(keyName));
+  }
+
+  @Test
+  public void testValidateKMSProviderConfigFormData_noKeyOcidNameMissing_allowedOnlyOnCreate() {
+    ObjectNode form = fakeAuthConfig.deepCopy();
+    form.remove(OciEARServiceUtil.OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    stubReachableVault(form);
+    doReturn(null).when(mockOciEARServiceUtil).getKeyOcidByName(null, form, keyName);
+
+    mockOciEARServiceUtil.validateKMSProviderConfigFormData(form, true);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARServiceUtil.validateKMSProviderConfigFormData(form, false));
     assertTrue(e.getMessage().contains(keyName));
   }
 

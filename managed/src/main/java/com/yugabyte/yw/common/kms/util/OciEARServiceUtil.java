@@ -450,7 +450,11 @@ public class OciEARServiceUtil {
     return null;
   }
 
-  public void validateKMSProviderConfigFormData(ObjectNode formData) {
+  /**
+   * Validates OCI KMS config form data. {@code isCreate} is true for a config being created, the
+   * only case where a key named OCI_KEY_NAME may be missing: create makes it.
+   */
+  public void validateKMSProviderConfigFormData(ObjectNode formData, boolean isCreate) {
     // Step 1: fail fast on blank fields not already covered by getCredentials().
     // Credential fields (TENANCY_OCID, USER_OCID, FINGERPRINT, PRIVATE_KEY) are checked inside
     // getCredentials() via StringUtils.isAnyBlank, so we only need the three below here.
@@ -530,8 +534,9 @@ public class OciEARServiceUtil {
     // Step 5: validate the key. An existing config carries the OCI_KEY_OCID it was created with,
     // and that key must still exist, be Enabled and use AES; its display name may have changed.
     // Otherwise (create, or a config that predates the cached OCID) the key is found by
-    // OCI_KEY_NAME. A non-existent name is allowed here; the key will be created at config-create
-    // time. getKeyOcidByName throws if multiple keys share the same display name.
+    // OCI_KEY_NAME. Only create may name a key that does not exist yet, because it creates the
+    // key; edit and refresh never do. getKeyOcidByName throws if multiple keys share the same
+    // display name.
     String storedKeyOcid = getSafeText(formData, OciKmsAuthConfigField.ociKeyOcid.fieldName);
     if (StringUtils.isNotBlank(storedKeyOcid)) {
       if (!checkKeyExists(formData, storedKeyOcid)) {
@@ -550,7 +555,14 @@ public class OciEARServiceUtil {
       throw new RuntimeException("OCI_KEY_NAME is required");
     }
     String keyOcid = getKeyOcidByName(null, formData, keyName);
-    if (StringUtils.isNotBlank(keyOcid) && !validateKeySettings(formData, keyOcid)) {
+    if (StringUtils.isBlank(keyOcid)) {
+      if (isCreate) {
+        return;
+      }
+      throw new RuntimeException(
+          String.format("No OCI key with display name '%s' found in the compartment.", keyName));
+    }
+    if (!validateKeySettings(formData, keyOcid)) {
       throw new RuntimeException(
           "OCI key '"
               + keyName

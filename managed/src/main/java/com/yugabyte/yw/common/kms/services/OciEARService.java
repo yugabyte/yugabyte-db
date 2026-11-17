@@ -67,17 +67,8 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
   @Override
   public KmsConfig updateAuthConfig(UUID configUUID, ObjectNode config) {
     this.ociEARServiceUtil = getOciEarServiceUtil();
+    ObjectNode updatedConfig = withStoredKeyOcid(configUUID, config);
     try {
-      // Universe keys are wrapped with the stored key, so an edit must not switch to another one.
-      ObjectNode updatedConfig = config.deepCopy();
-      String storedKeyOcid =
-          ociEARServiceUtil.getSafeText(
-              getAuthConfig(configUUID), OciKmsAuthConfigField.ociKeyOcid.fieldName);
-      if (StringUtils.isBlank(storedKeyOcid)) {
-        updatedConfig.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
-      } else {
-        updatedConfig.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, storedKeyOcid);
-      }
       String keyOcid = ociEARServiceUtil.resolveKeyOcid(configUUID, updatedConfig);
       if (!ociEARServiceUtil.validateKeySettings(updatedConfig, keyOcid)) {
         throw new RuntimeException(
@@ -86,11 +77,35 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
                     + " algorithm.",
                 keyOcid));
       }
-      return KmsConfig.updateKMSConfig(configUUID, updatedConfig);
     } catch (Exception e) {
-      LOG.error("Error updating OCI KMS config", e);
-      return null;
+      String context = "Error updating OCI KMS config";
+      LOG.error(context, e);
+      throw new RuntimeException(
+          OCIErrorFormatter.isOciError(e)
+              ? OCIErrorFormatter.userMessage(context, e)
+              : context + ": " + e.getMessage(),
+          e);
     }
+    return KmsConfig.updateKMSConfig(configUUID, updatedConfig);
+  }
+
+  /**
+   * Copy of {@code authConfig} with the key OCID stored for the config. Universe keys are wrapped
+   * with that key, so an edit, and the validation before it, must not switch to another one
+   * whatever OCID the form carries. The operator builds its edit form from the CR, not from the
+   * stored config.
+   */
+  private ObjectNode withStoredKeyOcid(UUID configUUID, ObjectNode authConfig) {
+    ObjectNode copy = authConfig.deepCopy();
+    String storedKeyOcid =
+        ociEARServiceUtil.getSafeText(
+            getAuthConfig(configUUID), OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    if (StringUtils.isBlank(storedKeyOcid)) {
+      copy.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    } else {
+      copy.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, storedKeyOcid);
+    }
+    return copy;
   }
 
   @Override
@@ -142,7 +157,8 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
       UUID configUUID, byte[] keyRef, ObjectNode encryptionContext, ObjectNode authConfig) {
     this.ociEARServiceUtil = getOciEarServiceUtil();
     try {
-      return ociEARServiceUtil.decryptUniverseKey(configUUID, keyRef, authConfig);
+      return ociEARServiceUtil.decryptUniverseKey(
+          configUUID, keyRef, withStoredKeyOcid(configUUID, authConfig));
     } catch (Exception e) {
       LOG.error("Error validating key retrieval from OCI KMS", e);
       return null;
@@ -173,13 +189,16 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
   public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
     this.ociEARServiceUtil = getOciEarServiceUtil();
     // Validates the stored key OCID, or for a config without one the key found by name.
-    ociEARServiceUtil.validateKMSProviderConfigFormData(authConfig);
     try {
-      // Fails only for a config without a stored OCID whose named key is gone.
-      ociEARServiceUtil.resolveKeyOcid(configUUID, authConfig);
+      ociEARServiceUtil.validateKMSProviderConfigFormData(authConfig, false /* isCreate */);
     } catch (RuntimeException e) {
+      // An OCI error keeps its BmcException cause, which YWErrorHandler maps to a status.
+      if (OCIErrorFormatter.isOciError(e)) {
+        throw e;
+      }
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
+    ociEARServiceUtil.resolveKeyOcid(configUUID, authConfig);
     ociEARServiceUtil.testWrapAndUnwrapKey(configUUID, authConfig);
   }
 
