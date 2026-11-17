@@ -1016,9 +1016,9 @@ public class GCPUtil implements CloudUtil {
       }
       return true;
     } catch (StorageException e) {
-      log.error("Error uploading YBA backup");
+      log.error("Error uploading YBA backup", e);
     } catch (IOException e) {
-      log.error("Error creating GCS client");
+      log.error("Error creating GCS client", e);
     }
     return false;
   }
@@ -1149,10 +1149,10 @@ public class GCPUtil implements CloudUtil {
           durationInSeconds);
 
     } catch (StorageException e) {
-      log.error("Error uploading YBDB release {}: {}", release.getName(), e);
+      log.error("Error uploading YBDB release {}", release.getName(), e);
       return false;
     } catch (IOException e) {
-      log.error("Error accessing file for upload {}: {}", release.getName(), e);
+      log.error("Error accessing file for upload {}", release.getName(), e);
       return false;
     }
     return true;
