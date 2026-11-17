@@ -3135,8 +3135,6 @@ ybInsertPendingNotifiesToTable(void)
 		ExecClearTuple(slot);
 		ResetPerTupleExprContext(estate);
 
-		/* Don't leave the INSERT phase's freed extra_options in the slot. */
-		memset(slot->tts_isnull, true, desc->natts * sizeof(bool));
 		slot->tts_isnull[yb_notif_uuid_att.attnum - 1] = false;
 		slot->tts_values[yb_notif_uuid_att.attnum - 1] = uuids[i];
 		ExecStoreVirtualTuple(slot);
