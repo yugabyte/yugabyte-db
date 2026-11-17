@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
+import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
@@ -157,9 +158,10 @@ public class UpgradeUniverseHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe, true);
-    ReleaseManager.checkActiveForNewUse(
-        releaseManager.getReleaseByVersion(requestParams.ybSoftwareVersion),
-        requestParams.ybSoftwareVersion);
+    ReleaseContainer release = releaseManager.getReleaseByVersion(requestParams.ybSoftwareVersion);
+    if (release != null) {
+      release.raiseIfDisabledOrDeleted();
+    }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;

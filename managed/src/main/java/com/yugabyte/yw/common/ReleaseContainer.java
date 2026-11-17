@@ -563,6 +563,22 @@ public class ReleaseContainer {
     }
   }
 
+  /**
+   * Rejects choosing this release for a new universe or a software upgrade. INCOMPLETE is allowed:
+   * a helm-only release stays INCOMPLETE but is enough for a Kubernetes universe. Only call it
+   * where the request picks the version: operations on a universe already running that version
+   * (node ops, gflags, rollback) must keep working after it's disabled.
+   */
+  public void raiseIfDisabledOrDeleted() {
+    if (isDisabledOrDeleted()) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Release "
+              + getVersion()
+              + " is not ACTIVE and cannot be used for new universes or upgrades");
+    }
+  }
+
   public static class ImportExportRelease {
     public ReleaseMetadata releaseMetadata;
     public Release release;

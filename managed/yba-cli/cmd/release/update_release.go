@@ -114,17 +114,17 @@ var updateReleaseCmd = &cobra.Command{
 			requestedRelease.SetReleaseNotes(notes)
 		}
 
-		req := ybaclient.UpdateRelease{
+		req := util.UpdateReleaseRequest{
+			Artifacts:    util.KeepReleaseArtifacts(requestedRelease.GetArtifacts()),
 			State:        requestedRelease.GetState(),
 			ReleaseTag:   requestedRelease.GetReleaseTag(),
 			ReleaseDate:  requestedRelease.GetReleaseDateMsecs() / 1000,
 			ReleaseNotes: requestedRelease.GetReleaseNotes(),
 		}
 
-		rUpdate, response, err := authAPI.UpdateNewRelease(
-			requestedRelease.GetReleaseUuid()).Release(req).Execute()
+		rUpdate, err := authAPI.UpdateNewReleaseRest(requestedRelease.GetReleaseUuid(), req)
 		if err != nil {
-			util.FatalHTTPError(response, err, "Release", "Update")
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		if !rUpdate.GetSuccess() {

@@ -910,7 +910,10 @@ public class UniverseCRUDHandler {
     for (Cluster c : taskParams.clusters) {
       String version = c.userIntent.ybSoftwareVersion;
       if (StringUtils.isNotBlank(version)) {
-        ReleaseManager.checkActiveForNewUse(releaseManager.getReleaseByVersion(version), version);
+        ReleaseContainer release = releaseManager.getReleaseByVersion(version);
+        if (release != null) {
+          release.raiseIfDisabledOrDeleted();
+        }
       }
     }
     List<GroupName> gflagGroups = new ArrayList<>();
