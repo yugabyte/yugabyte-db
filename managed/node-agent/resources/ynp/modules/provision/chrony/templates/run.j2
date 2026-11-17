@@ -1,13 +1,14 @@
-# RHEL keeps chrony.conf in /etc, Debian/Ubuntu in /etc/chrony.
-CHRONY_CONF=/etc/chrony.conf
-if [[ ! -f "${CHRONY_CONF}" && -f /etc/chrony/chrony.conf ]]; then
+{% if (chrony_servers is defined and chrony_servers | trim != '') or (is_cloud == 'True' and cloud_type != 'onprem') %}
+# Debian/Ubuntu read /etc/chrony/chrony.conf (a stray /etc/chrony.conf left by older
+# YNP runs is ignored by chronyd there). RHEL reads /etc/chrony.conf.
+if [[ -f /etc/chrony/chrony.conf ]]; then
     CHRONY_CONF=/etc/chrony/chrony.conf
-elif [[ ! -f "${CHRONY_CONF}" ]]; then
-    echo "chrony.conf not found in /etc/chrony.conf or /etc/chrony/chrony.conf" >&2
+elif [[ -f /etc/chrony.conf ]]; then
+    CHRONY_CONF=/etc/chrony.conf
+else
+    echo "chrony.conf not found in /etc/chrony/chrony.conf or /etc/chrony.conf" >&2
     exit 1
 fi
-
-{% if (chrony_servers is defined and chrony_servers | trim != '') or (is_cloud == 'True' and cloud_type != 'onprem') %}
 # Ubuntu 25.10+ ships NTS pools here. chrony requires one of them to be reachable
 # before it uses any plain NTP source, so the servers set below would be ignored
 # when the node cannot reach ntp.ubuntu.com (e.g. airgap).

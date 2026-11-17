@@ -273,6 +273,9 @@ func TestChronyTemplate(t *testing.T) {
 			if strings.Contains(output, ntsRm) != tc.wantRm {
 				t.Fatalf("Expected NTS pool removal=%v in output:\n%s", tc.wantRm, output)
 			}
+			if strings.Contains(output, "exit 1") != tc.wantRm {
+				t.Fatalf("Expected chrony.conf check only when it is edited:\n%s", output)
+			}
 		})
 	}
 }
