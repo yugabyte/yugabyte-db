@@ -11,13 +11,6 @@
 
 SET enable_sort = off;
 
--- These tables are of no use to other tests, so they are defined here rather
--- than in yb.orig.merge_scan_setup.  Unless a section says otherwise, ord1 =
--- gap makes gap redundant for ORDER BY ord1, ord2 on the index (bkt, ord1, gap,
--- ord2), and the first row is a decoy that fails ord1 = gap, sorts first within
--- its stream, and sorts last by (ord1, ord2), so that a merge that does not
--- sort on gap misorders the survivors.
-
 -- Local filter: non-C collation
 CREATE TABLE gap_coll_tbl (bkt int, ord1 text COLLATE "en_US", gap text COLLATE "en_US",
     ord2 int, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
