@@ -185,6 +185,8 @@ DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_unread_tbl, gap_desc_tbl,
 \i :gap_cells
 
 \c co
+-- TODO(#38185): drop this include once TestPgRegressMergeScan sets
+-- yb_fetch_row_limit for every session.
 \set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
 \i :filename
 -- The same cells on embedded indexes.  For an embedded index scan, an

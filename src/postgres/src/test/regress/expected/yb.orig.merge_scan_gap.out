@@ -953,6 +953,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 RESET yb_enable_expression_pushdown;
 DROP TABLE gap_expr_tbl;
 \c co
+-- TODO(#38185): drop this include once TestPgRegressMergeScan sets
+-- yb_fetch_row_limit for every session.
 \set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
 \i :filename
 \getenv abs_srcdir PG_ABS_SRCDIR
