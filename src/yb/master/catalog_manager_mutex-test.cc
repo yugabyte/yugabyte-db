@@ -182,4 +182,85 @@ TEST_P(CatalogManagerMutexTest, Throughput) {
             << std::endl;
 }
 
+// Cost of releasing the lock to many waiters: N threads wait for a shared lock behind an exclusive
+// holder, then the holder unlocks. Measures how long unlock() itself takes, how long until the
+// first and the last waiter get the lock, and the process CPU used during the handoff.
+TEST_P(CatalogManagerMutexTest, ReleaseToWaiters) {
+  for (int waiters : {1, 10, 100, 1000, 4000}) {
+    for (int rep = 0; rep < 3; ++rep) {
+      CatalogManagerMutex mutex;
+      mutex.lock();
+      std::atomic<int> started{0};
+      std::vector<MonoTime> acquired(waiters);
+      std::vector<std::thread> threads;
+      threads.reserve(waiters);
+      for (int i = 0; i < waiters; ++i) {
+        threads.emplace_back([&, i] {
+          ++started;
+          SharedLock<CatalogManagerMutex> lock(mutex);
+          acquired[i] = MonoTime::Now();
+        });
+      }
+      while (started < waiters) {
+        std::this_thread::yield();
+      }
+      // Give every waiter time to block (or start polling).
+      SleepFor(MonoDelta::FromMilliseconds(300 + waiters / 4));
+
+      auto cpu_start = ProcessCpuSeconds();
+      auto t0 = MonoTime::Now();
+      mutex.unlock();
+      auto unlock_us = (MonoTime::Now() - t0).ToMicroseconds();
+      for (auto& t : threads) {
+        t.join();
+      }
+      auto cpu = ProcessCpuSeconds() - cpu_start;
+      std::sort(acquired.begin(), acquired.end());
+      std::cerr << (GetParam() ? "Blocking" : "Spinlock") << " release to " << waiters
+                << " waiters: unlock() " << unlock_us << " us, first waiter in "
+                << (acquired.front() - t0).ToMicroseconds() << " us, median "
+                << (acquired[waiters / 2] - t0).ToMicroseconds() << " us, last "
+                << (acquired.back() - t0).ToMicroseconds() << " us, CPU " << cpu * 1000
+                << " ms" << std::endl;
+    }
+  }
+}
+
+// Last reader handing the lock to a queued writer while many readers queue behind that writer
+// (the repack finishing while the bg task and RPCs wait).
+TEST_P(CatalogManagerMutexTest, ReaderHandoffToWriter) {
+  for (int waiters : {0, 100, 1000, 4000}) {
+    for (int rep = 0; rep < 3; ++rep) {
+      CatalogManagerMutex mutex;
+      mutex.lock_shared();
+      MonoTime writer_in;
+      std::thread writer([&] {
+        std::lock_guard lock(mutex);
+        writer_in = MonoTime::Now();
+      });
+      SleepFor(MonoDelta::FromMilliseconds(100));
+      std::vector<std::thread> threads;
+      for (int i = 0; i < waiters; ++i) {
+        threads.emplace_back([&] { SharedLock<CatalogManagerMutex> lock(mutex); });
+      }
+      SleepFor(MonoDelta::FromMilliseconds(300 + waiters / 4));
+      auto cpu_start = ProcessCpuSeconds();
+      auto t0 = MonoTime::Now();
+      mutex.unlock_shared();
+      auto unlock_us = (MonoTime::Now() - t0).ToMicroseconds();
+      writer.join();
+      auto writer_us = (writer_in - t0).ToMicroseconds();
+      for (auto& t : threads) {
+        t.join();
+      }
+      auto all_us = (MonoTime::Now() - t0).ToMicroseconds();
+      auto cpu = ProcessCpuSeconds() - cpu_start;
+      std::cerr << (GetParam() ? "Blocking" : "Spinlock") << " reader->writer handoff with "
+                << waiters << " queued readers: unlock_shared() " << unlock_us
+                << " us, writer in " << writer_us << " us, all done " << all_us << " us, CPU "
+                << cpu * 1000 << " ms" << std::endl;
+    }
+  }
+}
+
 } // namespace yb::master
