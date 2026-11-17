@@ -168,3 +168,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [Rylan12](https://github.com/Rylan12)
 * [SrivastavaAnubhav](https://github.com/SrivastavaAnubhav)
 * [neera-mital](https://github.com/neera-mital)
+* [ajotaops](https://github.com/ajotaops)
