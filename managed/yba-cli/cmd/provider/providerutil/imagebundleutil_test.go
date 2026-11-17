@@ -45,6 +45,11 @@ func TestRemoveImageBundles(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			in := bundles()
 			got, err := RemoveImageBundles(tc.remove, in)
+			for i, ib := range in {
+				if ib.GetUuid() != []string{uuidA, uuidB, uuidC}[i] {
+					t.Fatalf("input slice modified: %v", in)
+				}
+			}
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Fatalf("err = %v, want error naming %s", err, tc.wantErr)
@@ -60,11 +65,6 @@ func TestRemoveImageBundles(t *testing.T) {
 			}
 			if !slices.Equal(gotUUIDs, tc.want) {
 				t.Fatalf("remaining = %v, want %v", gotUUIDs, tc.want)
-			}
-			for i, ib := range in {
-				if ib.GetUuid() != []string{uuidA, uuidB, uuidC}[i] {
-					t.Fatalf("input slice modified: %v", in)
-				}
 			}
 		})
 	}
