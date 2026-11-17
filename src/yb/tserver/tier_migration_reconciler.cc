@@ -13,6 +13,8 @@
 
 #include "yb/tserver/tier_migration_reconciler.h"
 
+#include <vector>
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -31,6 +33,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
+#include "yb/util/tostring.h"
 
 DECLARE_bool(enable_tiered_storage);
 
@@ -59,6 +62,13 @@ METRIC_DEFINE_gauge_uint32(server, ts_tier_migration_tablets_failed,
     "Number of tablets on this tserver the reconciler gave up on after "
     "tier_migration_max_consecutive_failed_passes failed passes. A new AlterTabletTier resets "
     "them.");
+
+METRIC_DEFINE_gauge_uint32(server, ts_tier_migration_tablets_awaiting_post_split_compaction,
+    "Tablets Whose Storage Tier Migration Waits on Post-Split Compaction", yb::MetricUnit::kUnits,
+    "Number of tablets on this tserver with a target storage tier whose migration the reconciler "
+    "deferred in its last pass because they are split children whose post-split compaction has "
+    "not run yet. Each is also counted in the gauge for its migration state, normally "
+    "ts_tier_migration_tablets_in_progress.");
 
 METRIC_DEFINE_counter(server, ts_tier_migration_moves_scheduled,
     "Storage Tier SST Moves Scheduled", yb::MetricUnit::kFiles,
@@ -91,6 +101,8 @@ TierMigrationReconciler::TierMigrationReconciler(TSTabletManager* ts_tablet_mana
   tablets_in_progress_ = METRIC_ts_tier_migration_tablets_in_progress.Instantiate(entity, 0);
   tablets_done_ = METRIC_ts_tier_migration_tablets_done.Instantiate(entity, 0);
   tablets_failed_ = METRIC_ts_tier_migration_tablets_failed.Instantiate(entity, 0);
+  tablets_awaiting_post_split_compaction_ =
+      METRIC_ts_tier_migration_tablets_awaiting_post_split_compaction.Instantiate(entity, 0);
   moves_scheduled_ = METRIC_ts_tier_migration_moves_scheduled.Instantiate(entity);
 }
 
@@ -156,6 +168,10 @@ TierReconcilePassStats TierMigrationReconciler::RunPass() {
           ANNOTATE_UNPROTECTED_READ(FLAGS_tier_migration_max_consecutive_failed_passes),
   };
 
+  // Named in the throttled log below so an operator can tell which tablets are held.
+  constexpr size_t kMaxAwaitingTabletIdsLogged = 5;
+  std::vector<TabletId> awaiting_tablet_ids;
+
   const auto count_state = [&stats](TierMigrationStatus::State state) {
     switch (state) {
       case TierMigrationStatus::State::kDone:
@@ -205,12 +221,19 @@ TierReconcilePassStats TierMigrationReconciler::RunPass() {
     if (result->state_changed) {
       ++stats.state_changes;
     }
+    if (result->awaiting_post_split_compaction) {
+      ++stats.tablets_awaiting_post_split_compaction;
+      if (awaiting_tablet_ids.size() < kMaxAwaitingTabletIdsLogged) {
+        awaiting_tablet_ids.push_back(peer->tablet_id());
+      }
+    }
     count_state(result->status.state);
   }
 
   tablets_in_progress_->set_value(stats.tablets_in_progress);
   tablets_done_->set_value(stats.tablets_done);
   tablets_failed_->set_value(stats.tablets_failed);
+  tablets_awaiting_post_split_compaction_->set_value(stats.tablets_awaiting_post_split_compaction);
   moves_scheduled_->IncrementBy(stats.moves_scheduled);
 
   if (stats.moves_scheduled > 0 || stats.state_changes > 0) {
@@ -218,7 +241,16 @@ TierReconcilePassStats TierMigrationReconciler::RunPass() {
               << " SST move(s) across " << stats.tablets_visited << " of "
               << stats.tablets_with_target << " tablet(s) with a target tier; in_progress="
               << stats.tablets_in_progress << " done=" << stats.tablets_done
-              << " failed=" << stats.tablets_failed;
+              << " failed=" << stats.tablets_failed << " awaiting_post_split_compaction="
+              << stats.tablets_awaiting_post_split_compaction;
+  }
+  if (stats.tablets_awaiting_post_split_compaction > 0) {
+    // Such a tablet is in progress with no pass in flight and no error, so nothing else says why
+    // its files are still on the old disk. If the post-split compaction stalls, this is the trace.
+    YB_LOG_EVERY_N_SECS(INFO, 300)
+        << "Tier migration reconciler: " << stats.tablets_awaiting_post_split_compaction
+        << " split child tablet(s) wait for their post-split compaction before their SST files "
+           "can be moved to the target tier, e.g. " << AsString(awaiting_tablet_ids);
   }
   return stats;
 }

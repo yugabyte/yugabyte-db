@@ -57,18 +57,24 @@
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 
 DECLARE_bool(enable_tiered_storage);
+DECLARE_bool(vector_index_include_into_post_split_compaction);
 
 namespace yb::tablet {
+
+// Defined in tablet_vector_indexes.cc.
+extern bool TEST_vector_index_force_parent_data_not_compacted;
 
 class TierMigrationTest : public YBTabletTest {
  public:
@@ -972,6 +978,34 @@ TEST_F(TierMigrationTest, SplitChildWaitsForPostSplitCompaction) {
   ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
   // The parent's own link to the file is untouched.
   ASSERT_EQ(SstCountOnPath(ASSERT_RESULT(tablet()->GetTierInfo()), kHomePathId), 1u);
+}
+
+// Only RocksDB parent data holds a pass. A vector-index post-split compaction that is still
+// pending does not: it never changes RocksDB file numbers, so NeedPostSplitCompaction() being true
+// is not enough to defer the move.
+TEST_F(TierMigrationTest, SplitChildIgnoresPendingVectorIndexPostSplitCompaction) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_include_into_post_split_compaction) = true;
+  WriteFileWithKey(1);
+  auto child = ASSERT_RESULT(CreateAndOpenSplitChild());
+  ASSERT_OK(child->SetTierMigrationTarget("hdd", kTargetPathId));
+
+  // Stands in for the RocksDB post-split compaction having run while the vector index's has not.
+  child->metadata()->set_rocksdb_parent_data_compacted(true);
+  ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_force_parent_data_not_compacted) = true;
+  auto reset_force = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(TEST_vector_index_force_parent_data_not_compacted) = false;
+  });
+  ASSERT_TRUE(child->vector_indexes().PostSplitCompactionRequired());
+
+  auto result = ASSERT_RESULT(child->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_FALSE(result.awaiting_post_split_compaction);
+  ASSERT_EQ(result.scheduled, 1u);
+  auto info = ASSERT_RESULT(WaitForPassToFinish(child));
+  ASSERT_EQ(info.migration.files_moved, 1u);
+  ASSERT_EQ(SstCountOnPath(info, kTargetPathId), 1u);
+  ASSERT_EQ(SstCountOnPath(info, kHomePathId), 0u);
+  result = ASSERT_RESULT(child->RunTierReconcilePass(TierReconcileOptions()));
+  ASSERT_EQ(result.status.state, TierMigrationStatus::State::kDone);
 }
 
 // Only a pass that AlterTabletTier started, and only one that ends with nothing left to retry,

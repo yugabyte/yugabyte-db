@@ -5390,16 +5390,16 @@ Result<bool> Tablet::StillHasOrphanedPostSplitData() {
   return StillHasOrphanedPostSplitDataAbortable();
 }
 
+bool Tablet::HasUncompactedRocksDbParentData() const {
+  return key_bounds().IsInitialized() && !metadata()->rocksdb_parent_data_compacted();
+}
+
 bool Tablet::NeedPostSplitCompaction() {
   if (!key_bounds().IsInitialized()) {
     return false;
   }
 
-  if (!metadata()->rocksdb_parent_data_compacted()) {
-    return true;
-  }
-
-  return vector_indexes().PostSplitCompactionRequired();
+  return HasUncompactedRocksDbParentData() || vector_indexes().PostSplitCompactionRequired();
 }
 
 bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
@@ -5414,7 +5414,7 @@ bool Tablet::StillHasOrphanedPostSplitDataAbortable() {
   }
 
   VLOG_WITH_PREFIX(1) << "Vector index parent data compaction is not required before split";
-  return !metadata()->rocksdb_parent_data_compacted();
+  return HasUncompactedRocksDbParentData();
 }
 
 bool Tablet::MayHaveOrphanedPostSplitData() {
@@ -5696,7 +5696,13 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     target_path_id = metadata()->target_tier_path_id();
     target_dir = VERIFY_RESULT(LookupTierDir(target_path_id));
 
-    if (NeedPostSplitCompaction()) {
+    // A move writes the copy under a new file number, above
+    // post_split_compaction_file_number_upper_bound, so the post-split compaction, which only
+    // takes files below that bound, would skip it and its parent data would never be compacted
+    // away. Only RocksDB parent data holds the pass: a pending vector-index post-split compaction
+    // does not touch RocksDB file numbers, which is why this is narrower than
+    // NeedPostSplitCompaction().
+    if (HasUncompactedRocksDbParentData()) {
       result.awaiting_post_split_compaction = true;
       result.status = tier_migration_status();
       VLOG_WITH_PREFIX(1) << "Tier migration pass deferred until the post-split compaction has run";

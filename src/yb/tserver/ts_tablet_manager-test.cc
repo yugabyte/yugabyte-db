@@ -49,6 +49,8 @@
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 
+#include "yb/dockv/doc_key.h"
+
 #include "yb/fs/fs_manager.h"
 
 #include "yb/gutil/bits.h"
@@ -81,7 +83,9 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
@@ -94,6 +98,7 @@ using std::string;
   ASSERT_NO_FATALS(AssertMonotonicReportSeqno(report_seqno, tablet_report))
 
 DECLARE_bool(TEST_pretend_memory_exceeded_enforce_flush);
+DECLARE_bool(TEST_skip_post_split_compaction);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
@@ -111,6 +116,8 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_int32(history_retention_pins_persist_interval_sec);
 DECLARE_int32(tier_migration_reconcile_interval_sec);
+
+METRIC_DECLARE_gauge_uint32(ts_tier_migration_tablets_awaiting_post_split_compaction);
 
 namespace yb::tserver {
 
@@ -1397,6 +1404,86 @@ TEST_F(TierMigrationReconcilerTest, CleanPassWakesReconcilerForVerdict) {
   ASSERT_EQ(status.state, tablet::TierMigrationStatus::State::kInProgress);
   ASSERT_FALSE(status.migration_pass_in_flight);
   ASSERT_OK(WaitForMigrationState(tablet, tablet::TierMigrationStatus::State::kDone));
+}
+
+// A split child whose post-split compaction has not run is in progress with no pass in flight and
+// no error, so the pass has to say so itself: the stat and the gauge count it, and both drop back
+// to zero once the compaction is done and the move goes through.
+TEST_F(TierMigrationReconcilerTest, PassReportsSplitChildAwaitingPostSplitCompaction) {
+  // No thread: its open-time wake-up could otherwise move the file before the tablet is turned
+  // into a split child below. RunPass is called directly.
+  reconcile_interval_sec_ = 0;
+  ASSERT_NO_FATALS(Reload());
+  ASSERT_FALSE(tablet_manager_->tier_migration_reconciler()->TEST_thread_running());
+  // Keeps the tserver from compacting the parent data away at open.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = true;
+  auto reset_skip = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_post_split_compaction) = false;
+  });
+
+  auto peer = ASSERT_RESULT(CreateTabletWithFiles(kTabletId, 1));
+  auto tablet = ASSERT_RESULT(peer->shared_tablet());
+  const auto hdd_pid = ASSERT_RESULT(HddPathId(peer->tablet_metadata()));
+  ASSERT_OK(tablet->SetTierMigrationTarget("hdd", hdd_pid));
+
+  // Turns the tablet into what a split child looks like in its superblock: key bounds, parent
+  // data not compacted and the file number bound the post-split compaction works below. The
+  // tablet reads its key bounds at open, hence the restart.
+  {
+    const auto split_hash_code = std::numeric_limits<docdb::DocKeyHash>::max() / 2;
+    dockv::KeyBytes encoded_doc_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+        split_hash_code, dockv::KeyEntryValues());
+    tablet::RaftGroupReplicaSuperBlockPB superblock;
+    peer->tablet_metadata()->ToSuperBlock(&superblock);
+    auto& kv_store = *superblock.mutable_kv_store();
+    kv_store.set_upper_bound_key(encoded_doc_key.ToStringBuffer());
+    kv_store.set_rocksdb_parent_data_compacted(false);
+    kv_store.set_post_split_compaction_file_number_upper_bound(
+        tablet->regular_db()->GetNextFileNumber());
+    ASSERT_OK(peer->tablet_metadata()->ReplaceSuperBlock(superblock));
+  }
+  tablet.reset();
+  peer.reset();
+  ASSERT_NO_FATALS(Reload());
+  peer = ASSERT_RESULT(tablet_manager_->GetTablet(kTabletId));
+  // The restart opens tablets asynchronously; the pass only looks at RUNNING ones.
+  ASSERT_OK(WaitFor([&peer]() { return peer->state() == tablet::RaftGroupStatePB::RUNNING; },
+                    MonoDelta::FromSeconds(30), "tablet to be running after the restart"));
+  tablet = ASSERT_RESULT(peer->shared_tablet());
+  ASSERT_TRUE(tablet->key_bounds().IsInitialized());
+  ASSERT_FALSE(tablet->metadata()->rocksdb_parent_data_compacted());
+
+  auto* reconciler = tablet_manager_->tier_migration_reconciler();
+  const auto awaiting_gauge =
+      mini_server_->server()->metric_entity()->FindOrNull<AtomicGauge<uint32_t>>(
+          METRIC_ts_tier_migration_tablets_awaiting_post_split_compaction);
+  ASSERT_TRUE(awaiting_gauge);
+
+  auto stats = reconciler->RunPass();
+  ASSERT_EQ(stats.tablets_with_target, 1u);
+  ASSERT_EQ(stats.tablets_visited, 1u);
+  ASSERT_EQ(stats.tablets_awaiting_post_split_compaction, 1u);
+  ASSERT_EQ(stats.tablets_in_progress, 1u);
+  ASSERT_EQ(stats.moves_scheduled, 0u);
+  ASSERT_EQ(awaiting_gauge->value(), 1u);
+  auto info = ASSERT_RESULT(tablet->GetTierInfo());
+  ASSERT_EQ(SstCountOnPath(info, hdd_pid), 0u);
+
+  // Stands in for the post-split compaction having run.
+  tablet->metadata()->set_rocksdb_parent_data_compacted(true);
+  stats = reconciler->RunPass();
+  ASSERT_EQ(stats.tablets_awaiting_post_split_compaction, 0u);
+  ASSERT_EQ(stats.moves_scheduled, 1u);
+  ASSERT_EQ(awaiting_gauge->value(), 0u);
+  ASSERT_OK(WaitForPassToFinish(tablet));
+  info = ASSERT_RESULT(tablet->GetTierInfo());
+  ASSERT_EQ(info.migration.files_moved, 1u);
+  ASSERT_EQ(SstCountOnPath(info, hdd_pid), 1u);
+  stats = reconciler->RunPass();
+  ASSERT_EQ(stats.tablets_done, 1u);
+  ASSERT_EQ(stats.tablets_awaiting_post_split_compaction, 0u);
+  ASSERT_EQ(awaiting_gauge->value(), 0u);
 }
 
 // tier_migration_reconcile_interval_sec = 0 at startup means no thread at all; waking is a no-op.
