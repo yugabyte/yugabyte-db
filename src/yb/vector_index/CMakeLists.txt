@@ -34,6 +34,7 @@ set(VECTOR_INDEX_SRCS
   index_wrapper_base.cc
   vector_id.cc
   vector_lsm.cc
+  vector_lsm_deletions.cc
   vector_lsm_metadata.cc
   vector_lsm_metrics.cc
   vector_payload_map.cc
@@ -59,3 +60,4 @@ set(YB_TEST_LINK_LIBS
     vector_index yb_common_test_util ${YB_MIN_TEST_LIBS})
 
 ADD_YB_TEST(hnsw_util-test)
+ADD_YB_TEST(vector_lsm_deletions-test)
