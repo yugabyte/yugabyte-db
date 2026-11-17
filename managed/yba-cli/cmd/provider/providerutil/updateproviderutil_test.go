@@ -45,6 +45,19 @@ func TestBuildRegionMapInstanceTemplate(t *testing.T) {
 			operation: "edit",
 			wantFatal: true,
 		},
+		{
+			name:       "edit rejects an unknown key",
+			allowClear: true,
+			region:     "region-name=r1::vnet=v1::instance_template=t1",
+			operation:  "edit",
+			wantFatal:  true,
+		},
+		{
+			name:      "add rejects an unknown key",
+			region:    "region-name=r1::vnet=v1::instance_template=t1",
+			operation: "add",
+			wantFatal: true,
+		},
 	}
 
 	build := func(allowClear bool, region, operation string) map[string]string {
@@ -81,5 +94,13 @@ func TestBuildRegionMapInstanceTemplate(t *testing.T) {
 					got, ok, c.wantValue, c.wantPresent)
 			}
 		})
+	}
+}
+
+func TestBuildRegionMapCoordinates(t *testing.T) {
+	region := BuildRegionMapFromString("region-name=r1::latitude=37.7::longitude=-122.4", "edit")
+	if region["latitude"] != "37.7" || region["longitude"] != "-122.4" {
+		t.Fatalf("latitude = %q, longitude = %q, want 37.7 and -122.4",
+			region["latitude"], region["longitude"])
 	}
 }

@@ -293,6 +293,12 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		case "longitude":
+			if !util.IsEmptyString(val) {
+				region["longitude"] = val
+			} else {
+				ValueNotFoundForKeyError(key)
+			}
 		case "config-file-path":
 			if !util.IsEmptyString(val) {
 				region["config-file-path"] = val
@@ -341,6 +347,11 @@ func buildRegionMapFromString(
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
+		default:
+			logrus.Fatalln(
+				formatter.Colorize(
+					fmt.Sprintf("Unknown key \"%s\" in region description\n", key),
+					formatter.RedColor))
 		}
 	}
 	if _, ok := region["name"]; !ok {
