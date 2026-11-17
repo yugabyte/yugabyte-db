@@ -430,6 +430,9 @@ def gcs_object_age_sec(gcs_url: str) -> Optional[float]:
     return time.time() - created_at.timestamp()
 
 
+# TODO(DEVOPS-4059): the archive reaches the workers in two ways, from GCS on a GCP cluster and
+# through Spark's file server everywhere else. Make object storage the one way on AWS clusters too:
+# an S3 prefix, with the upload, the reuse check and the download handling s3:// as they do gs://.
 def publish_archive_to_gcs(conf: yb_dist_tests.TestConfig, prefix: Optional[str]) -> None:
     """
     Uploads conf's worker archive under the gs:// prefix (--archive_gcs_prefix), named by its
