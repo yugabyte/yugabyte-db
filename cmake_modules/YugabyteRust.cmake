@@ -83,7 +83,20 @@ endif()
 # openssl-sys builds against the OpenSSL the C++ code uses; CMake links it into the executables.
 get_filename_component(YB_RUST_OPENSSL_LIB_DIR "${OPENSSL_SSL_LIBRARY}" DIRECTORY)
 
+# master-web embeds the web UI from YB_MASTER_UI_DIR, which `yb_build.sh --build-master-ui` builds
+# into ${YB_BUILD_ROOT}/master-ui. The check runs with Cargo, not here, since the UI may be built
+# after CMake ran. The variable is set only when the UI exists: its build script watches that
+# directory, and Cargo reruns a build script on every build while a watched path is missing.
+set(YB_MASTER_UI_DIR "${YB_BUILD_ROOT}/master-ui")
+set(YB_RUST_WITH_MASTER_UI "${YB_BUILD_ROOT}/rust/with-master-ui.sh")
+file(WRITE "${YB_RUST_WITH_MASTER_UI}"
+     "if [ -f '${YB_MASTER_UI_DIR}/index.html' ]; then\n"
+     "  export YB_MASTER_UI_DIR='${YB_MASTER_UI_DIR}'\n"
+     "fi\n"
+     "exec \"$@\"\n")
+
 set(YB_RUST_CARGO_ENV
+    /bin/sh "${YB_RUST_WITH_MASTER_UI}"
     env -u CFLAGS -u CXXFLAGS -u LDFLAGS -u CPPFLAGS -u RUSTFLAGS -u PKG_CONFIG_PATH
     "CC=${_yb_rust_cc}"
     "CXX=${_yb_rust_cxx}"

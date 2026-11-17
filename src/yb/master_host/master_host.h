@@ -224,6 +224,9 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   rust::String WebPrivateKeyFile() const;
   rust::Vec<uint8_t> WebPrivateKeyPassword() const;
   rust::String WebSslCiphers() const;
+  bool WebRedirectHttpToHttps() const;
+  rust::String WebPasswordFile() const;
+  rust::String WebAuthenticationDomain() const;
   // The addresses the Rust web server bound, and the source of the master list the web pages
   // show. Must be called before StartHost(), which advertises the addresses.
   void SetWebServer(

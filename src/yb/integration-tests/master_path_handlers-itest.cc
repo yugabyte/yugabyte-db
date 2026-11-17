@@ -12,6 +12,7 @@
 //
 
 #include <chrono>
+#include <map>
 #include <memory>
 #include <ranges>
 #include <regex>
@@ -156,14 +157,111 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
   Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
       const std::string& url, const std::string& html_table_tag_id) {
+    if (VERIFY_RESULT(LeaderIsRust())) {
+      return RustTableRows(url, html_table_tag_id);
+    }
     return path_handlers_util::GetHtmlTableRows(master_http_url_ + url, html_table_tag_id);
   }
 
   Result<std::vector<std::string>> GetHtmlTableColumn(
       const std::string& url, const std::string& html_table_tag_id,
       const std::string& column_header) {
+    if (VERIFY_RESULT(LeaderIsRust())) {
+      return RustTableColumn(url, html_table_tag_id, column_header);
+    }
     return path_handlers_util::GetHtmlTableColumn(
         master_http_url_ + url, html_table_tag_id, column_header);
+  }
+
+  // A Rust leader's pages are the web UI, which renders the JSON; only a Rust leader serves
+  // /api/v1/overview.
+  Result<bool> LeaderIsRust() {
+    faststring result;
+    if (!GetUrl("/api/v1/overview", &result).ok()) {
+      return false;
+    }
+    JsonDocument doc;
+    return doc.Parse(result.ToString()).ok();
+  }
+
+  Result<JsonValue> GetJson(const std::string& path, JsonDocument* doc) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl(path, &result));
+    return doc->Parse(result.ToString());
+  }
+
+  static Result<std::string> JsonCell(const JsonValue& value) {
+    if (value.IsString()) {
+      return value.GetString();
+    }
+    if (value.IsNull()) {
+      return std::string();
+    }
+    if (value.IsInt64()) {
+      return std::to_string(VERIFY_RESULT(value.GetInt64()));
+    }
+    return value.ToString();
+  }
+
+  // The rows of the C++ page's HTML table `html_table_tag_id`, from the JSON a Rust leader renders
+  // it from.
+  Result<std::vector<std::vector<std::string>>> RustTableRows(
+      const std::string& url, const std::string& html_table_tag_id) {
+    static const std::map<std::pair<std::string, std::string>,
+                          std::pair<std::string, std::vector<std::string>>> kTables = {
+        {{"/load-distribution", "Warnings Summary"},
+         {"warnings_summary", {"example_message", "count"}}},
+        {{"/load-distribution", "Tasks Summary"},
+         {"tasks_summary", {"example_description", "state", "count", "example_status"}}},
+        {{"/load-distribution", "Ongoing Remote Bootstraps"},
+         {"ongoing_remote_bootstraps",
+          {"tablet_id", "table", "source_ts_uuid", "dest_ts_uuid", "progress"}}},
+    };
+    auto it = kTables.find({url, html_table_tag_id});
+    SCHECK(it != kTables.end(), NotSupported,
+           Format("No JSON for table $0 of $1 on a Rust master", html_table_tag_id, url));
+    const auto& [array_name, fields] = it->second;
+    JsonDocument doc;
+    auto json = VERIFY_RESULT(GetJson("/api/v1" + url, &doc));
+    std::vector<std::vector<std::string>> rows;
+    for (const auto& element : VERIFY_RESULT(json[array_name].GetArray())) {
+      auto& row = rows.emplace_back();
+      for (const auto& field : fields) {
+        row.push_back(VERIFY_RESULT(JsonCell(element[field])));
+      }
+    }
+    return rows;
+  }
+
+  Result<std::vector<std::string>> RustTableColumn(
+      const std::string& url, const std::string& html_table_tag_id,
+      const std::string& column_header) {
+    std::vector<std::string> cells;
+    JsonDocument doc;
+    if (url == "/tablet-servers" && html_table_tag_id == "universe_summary" &&
+        column_header.starts_with("Tablet Peer Limit")) {
+      auto json = VERIFY_RESULT(GetJson("/api/v1/overview", &doc));
+      for (const auto& placement : VERIFY_RESULT(json["placements"].GetArray())) {
+        const auto limit = placement["tablet_peer_limit"];
+        cells.push_back(
+            limit.IsNull() ? "limit undefined" : std::to_string(VERIFY_RESULT(limit.GetInt64())));
+      }
+      return cells;
+    }
+    if (url == "/tablet-servers" && column_header == "YSQL Lease Expiry & Epoch") {
+      // The C++ cell's text and color.
+      auto json = VERIFY_RESULT(GetJson("/api/v1/tablet-server-clocks", &doc));
+      for (const auto& tserver : VERIFY_RESULT(json["tservers"].GetArray())) {
+        const auto state = VERIFY_RESULT(tserver["ysql_lease"]["state"].GetString());
+        cells.push_back(
+            state == "N/A" ? state
+                           : Format("$0 $1", state == "LIVE" ? "Green" : "Red", state));
+      }
+      return cells;
+    }
+    return STATUS_FORMAT(
+        NotSupported, "No JSON for column $0 of table $1 of $2 on a Rust master", column_header,
+        html_table_tag_id, url);
   }
 
   Status WaitForLeaseStatusCounts(

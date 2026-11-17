@@ -20,10 +20,12 @@
 #include <map>
 #include <random>
 #include <regex>
+#include <set>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -38,6 +40,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/strings/escaping.h"
+#include "yb/gutil/strings/strip.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
@@ -551,7 +554,139 @@ std::string ComparablePage(const std::string& page) {
   return std::regex_replace(page.substr(0, page.find("<footer")), kUptime, "<td>uptime</td>");
 }
 
+// A JSON page as comparable text: object keys sorted, arrays sorted (most C++ pages list unordered
+// maps), and the values that change between fetches masked. A page that is not one JSON document
+// (an error page the handler left unterminated) stays as it is.
+std::string CanonicalJson(const rapidjson::Value& value) {
+  static const std::set<std::string> kVolatile = {
+      "time_since_hb", "time_since_hb_sec", "uptime_seconds", "ram_used", "ram_used_bytes",
+      "num_sst_files", "total_sst_file_size", "total_sst_file_size_bytes",
+      "uncompressed_sst_file_size", "uncompressed_sst_file_size_bytes", "path_metrics",
+      "read_ops_per_sec", "write_ops_per_sec", "most_recent_uptime", "on_disk_size",
+      "lease_info", "Tasks", "reason"};
+  if (value.IsObject()) {
+    std::map<std::string, std::string> members;
+    for (const auto& member : value.GetObject()) {
+      std::string key(member.name.GetString(), member.name.GetStringLength());
+      members[key] = kVolatile.contains(key) ? "*" : CanonicalJson(member.value);
+    }
+    std::string result = "{";
+    for (const auto& [key, member] : members) {
+      result += Format("\"$0\":$1,", key, member);
+    }
+    return result + "}";
+  }
+  if (value.IsArray()) {
+    std::vector<std::string> elements;
+    for (const auto& element : value.GetArray()) {
+      elements.push_back(CanonicalJson(element));
+    }
+    std::sort(elements.begin(), elements.end());
+    return "[" + JoinStrings(elements, ",") + "]";
+  }
+  if (value.IsString()) {
+    return Format("\"$0\"", std::string(value.GetString(), value.GetStringLength()));
+  }
+  if (value.IsBool()) {
+    return value.GetBool() ? "true" : "false";
+  }
+  if (value.IsNull()) {
+    return "null";
+  }
+  if (value.IsDouble()) {
+    return Format("$0", value.GetDouble());
+  }
+  return Format("$0", value.IsInt64() ? value.GetInt64() : static_cast<int64_t>(value.GetUint64()));
+}
+
+std::string CanonicalPage(const std::string& page) {
+  rapidjson::Document doc;
+  doc.Parse(page.c_str(), page.size());
+  return doc.HasParseError() ? page : CanonicalJson(doc);
+}
+
 }  // namespace
+
+// A Rust leader serves the leader JSON pages as the C++ leader does.
+TEST_F(RustMasterTest, RustLeaderServesWebJson) {
+  client::TableHandle table;
+  client::kv_table_test::CreateTable(
+      client::Transactional::kTrue, /* num_tablets= */ 3, client_.get(), &table);
+  client::TableHandle index;
+  client::kv_table_test::CreateIndex(
+      client::Transactional::kTrue, /* indexed_column_index= */ 1,
+      /* use_mangled_names= */ false, table, client_.get(), &index);
+  const std::vector<std::string> paths = {
+      "/api/v1/tablet-servers", "/api/v1/health-check",
+      "/api/v1/health-check?tserver_death_interval_msecs=1000", "/api/v1/tablet-replication",
+      "/api/v1/tablet-under-replication", "/dump-entities", "/api/v1/namespaces",
+      "/api/v1/tables", "/api/v1/tables?only_user_tables=true", "/api/v1/cluster-config",
+      "/api/v1/xcluster", "/api/v1/stateful-services", "/api/v1/table",
+      "/api/v1/table?id=" + table->id(), "/api/v1/table?id=" + index->id(),
+      "/api/v1/table?id=no-such-table",
+      Format("/api/v1/table?keyspace_name=$0&table_name=$1", table.name().namespace_name(),
+             table.name().table_name()),
+      Format("/api/v1/table?keyspace_name=$0&table_name=$1&keyspace_type=foo",
+             table.name().namespace_name(), table.name().table_name())};
+
+  auto* cpp_leader = cluster_->master(ASSERT_RESULT(cluster_->GetLeaderMasterIndex()));
+  ASSERT_OK(WaitForLeaders(cpp_leader, table.name(), 3));
+  // The backfill alters the indexed table at each step; the pages list it again once it is
+  // RUNNING.
+  ASSERT_OK(client_->WaitUntilIndexPermissionsAtLeast(
+      table.name(), index.name(), IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(FetchPage(cpp_leader, "/api/v1/table?id=" + table->id()))
+            .contains("\"table_state\":\"Running\"");
+      },
+      kTimeout, "the indexed table to be running"));
+  std::map<std::string, std::string> cpp_pages;
+  for (const auto& path : paths) {
+    cpp_pages[path] = CanonicalPage(ASSERT_RESULT(FetchPage(cpp_leader, path)));
+  }
+
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust(
+      {{"TEST_rust_master_allow_leadership", "true"}}));
+  auto* rust_master = cluster_->master(rust_index);
+  ASSERT_OK(WaitForMastersToCatchUp());
+  ASSERT_OK(TransferLeadershipTo(rust_master));
+  ASSERT_OK(WaitForLeaders(rust_master, table.name(), 3));
+
+  // The Rust leader hears from every tserver within a few heartbeats.
+  for (const auto& path : paths) {
+    SCOPED_TRACE(path);
+    std::string rust_page;
+    // On a timeout, the assertion below shows the difference.
+    WARN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          rust_page = CanonicalPage(VERIFY_RESULT(FetchPage(rust_master, path)));
+          return rust_page == cpp_pages[path];
+        },
+        kTimeout, "the Rust leader's page to match the C++ leader's"), "Pages differ");
+    ASSERT_EQ(rust_page, cpp_pages[path]);
+  }
+
+  // Pages only a Rust leader serves.
+  for (const auto* path :
+       {"/api/v1/overview", "/api/v1/load-distribution", "/api/v1/tasks",
+        "/api/v1/tablet-server-clocks"}) {
+    SCOPED_TRACE(path);
+    const auto page = ASSERT_RESULT(FetchPage(rust_master, path));
+    rapidjson::Document doc;
+    doc.Parse(page.c_str(), page.size());
+    ASSERT_FALSE(doc.HasParseError()) << page;
+  }
+  ASSERT_STR_CONTAINS(
+      ASSERT_RESULT(FetchPage(rust_master, "/api/v1/overview")), "\"live_tservers\":3");
+  // The UI, or a page that says it was not built, at every old page URL.
+  for (const auto* path : {"/", "/tables", "/table?id=x", "/load-distribution"}) {
+    SCOPED_TRACE(path);
+    ASSERT_STR_CONTAINS(ASSERT_RESULT(FetchPage(rust_master, path)), "<html");
+  }
+  // The host's own lock manager page.
+  ASSERT_OK(FetchPage(rust_master, "/ObjectLockManager"));
+}
 
 // The Rust master serves the web port; the pages are those a C++ follower serves.
 TEST_F(RustMasterTest, WebPages) {
@@ -572,6 +707,12 @@ TEST_F(RustMasterTest, WebPages) {
     auto cpp_page = FetchPage(cpp_follower, path);
     ASSERT_OK(rust_page);
     ASSERT_OK(cpp_page);
+    // With the web UI built in (yb_build.sh --build-master-ui), every master serves it at the
+    // page URLs; without it a follower fetches the leader's page.
+    if (!path.starts_with("/api") && !path.starts_with("/dump") &&
+        rust_page->contains("/ui/assets/")) {
+      continue;
+    }
     ASSERT_EQ(ComparablePage(*rust_page), ComparablePage(*cpp_page));
   }
 
@@ -609,6 +750,52 @@ TEST_F(RustMasterTest, WebPages) {
   auto registration = ASSERT_RESULT(Registration(rust_master));
   ASSERT_EQ(registration.registration().http_addresses_size(), 1);
   ASSERT_EQ(registration.registration().http_addresses(0).port(), rust_master->http_port());
+}
+
+// The Rust master's web authentication and HTTP-to-HTTPS redirect, as squeasel's: HTTP Digest
+// against an htdigest file, and a 302 to https for plain HTTP on the TLS port.
+TEST_F(RustMasterTest, WebServerAuthAndRedirect) {
+  const auto certs_dir = GetCertsDir();
+  const auto password_file = JoinPathSegments(GetTestDataDirectory(), "htdigest");
+  // user:realm:md5(user:realm:password).
+  std::string ha1;
+  ASSERT_OK(Subprocess::Call(
+      {"/bin/sh", "-c", "printf %s 'admin:yb-realm:secret' | md5sum | cut -d' ' -f1"}, &ha1));
+  StripTrailingWhitespace(&ha1);
+  ASSERT_OK(WriteStringToFile(Env::Default(), "admin:yb-realm:" + ha1 + "\n", password_file));
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
+      {"webserver_interface", "127.0.0.2"},
+      {"webserver_certificate_file", JoinPathSegments(certs_dir, "node.127.0.0.2.crt")},
+      {"webserver_private_key_file", JoinPathSegments(certs_dir, "node.127.0.0.2.key")},
+      {"webserver_password_file", password_file},
+      {"webserver_authentication_domain", "yb-realm"},
+      {"webserver_redirect_http_to_https", "true"},
+  }));
+  auto* rust_master = cluster_->master(rust_index);
+  const auto https = Format("https://127.0.0.2:$0", rust_master->http_port());
+  auto status_code = [&](const std::vector<std::string>& args) -> Result<std::string> {
+    std::vector<std::string> argv = {
+        "curl", "-s", "-o", "/dev/null", "-w", "%{http_code} %{redirect_url}", "--cacert",
+        JoinPathSegments(certs_dir, "ca.crt")};
+    argv.insert(argv.end(), args.begin(), args.end());
+    std::string out;
+    RETURN_NOT_OK(Subprocess::Call(argv, &out));
+    StripTrailingWhitespace(&out);
+    return out;
+  };
+  // Every path needs credentials: a Rust route and one proxied to the host.
+  for (const auto* path : {"/api/v1/version", "/varz"}) {
+    SCOPED_TRACE(path);
+    ASSERT_EQ(ASSERT_RESULT(status_code({https + path})), "401");
+    ASSERT_EQ(
+        ASSERT_RESULT(status_code({"--digest", "-u", "admin:secret", https + path})), "200");
+    ASSERT_EQ(
+        ASSERT_RESULT(status_code({"--digest", "-u", "admin:wrong", https + path})), "401");
+  }
+  ASSERT_EQ(
+      ASSERT_RESULT(status_code(
+          {Format("http://127.0.0.2:$0/api/v1/version", rust_master->http_port())})),
+      Format("302 $0/api/v1/version", https));
 }
 
 // The Rust master serves HTTPS with the C++ web server's TLS flags.
@@ -734,7 +921,7 @@ TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
 
   // Web pages only the leader serves answer at once instead of fetching from this master again.
   ASSERT_OK(FetchPage(rust_master, "/api/v1/is-leader"));
-  ASSERT_NOK(FetchPage(rust_master, "/tablet-servers"));
+  ASSERT_OK(FetchPage(rust_master, "/tablet-servers"));
 
   {
     auto proxy = cluster_->GetProxy<master::MasterClusterProxy>(rust_master);

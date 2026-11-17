@@ -2231,6 +2231,7 @@ run_shellcheck() {
     build-support/jenkins/*.sh
     yb_build.sh
     yugabyted-ui/build.sh
+    src/yb/rust/master/web/ui/build.sh
   )
   local script_path
   local shellcheck_had_errors=false

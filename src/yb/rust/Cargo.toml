@@ -34,6 +34,7 @@ members = [
     "master/table-lifecycle",
     "master/tablet-split-manager",
     "master/tablet-locations",
+    "master/web",
     "master/task-runtime",
     "master/ts-manager",
     "master/ysql-manager",
@@ -97,6 +98,7 @@ master-ysql-manager = { path = "master/ysql-manager" }
 master-tablet-locations = { path = "master/tablet-locations" }
 master-task-runtime = { path = "master/task-runtime" }
 master-ts-manager = { path = "master/ts-manager" }
+master-web = { path = "master/web" }
 master-tserver-sim = { path = "master/tools/tserver-sim" }
 yb-proto = { path = "common/yb-proto" }
 yb-web = { path = "common/yb-web" }

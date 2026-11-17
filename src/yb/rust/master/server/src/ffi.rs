@@ -141,6 +141,12 @@ pub(crate) mod bridge {
         fn web_private_key_password(self: &MasterHost) -> Vec<u8>;
         #[cxx_name = "WebSslCiphers"]
         fn web_ssl_ciphers(self: &MasterHost) -> String;
+        #[cxx_name = "WebRedirectHttpToHttps"]
+        fn web_redirect_http_to_https(self: &MasterHost) -> bool;
+        #[cxx_name = "WebPasswordFile"]
+        fn web_password_file(self: &MasterHost) -> String;
+        #[cxx_name = "WebAuthenticationDomain"]
+        fn web_authentication_domain(self: &MasterHost) -> String;
         #[cxx_name = "SetWebServer"]
         fn set_web_server(
             self: Pin<&mut MasterHost>,

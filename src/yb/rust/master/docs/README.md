@@ -60,6 +60,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-table-lifecycle` | Namespace and table DDL on the leader, and the controllers that create tablets |
 | `master-tablet-locations` | Observed replica locations |
 | `master-ts-manager` | Tserver registry, `TSHeartbeat`, tablet reports, the location stream |
+| `master-web` | The leader's web pages: the `/api/v1` JSON and the embedded web UI ([web.md](web.md)) |
 | `tools/conformance` (`master-conformance`) | Checks Rust re-serialization of real rows against C++ |
 | `tools/tserver-sim` (`master-tserver-sim`) | Fake tservers that load a master: registration, heartbeats, tablet reports, tablet RPCs |
 | `tools/tserver-sim-main` | The static library of the `master-tserver-sim` executable: flags and the C++ host bridge |

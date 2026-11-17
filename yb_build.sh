@@ -220,6 +220,11 @@ run_yugabyted_ui_build() {
   "${YB_SRC_ROOT}/yugabyted-ui/build.sh"
 }
 
+run_master_ui_build() {
+  # Builds into $BUILD_ROOT/master-ui, which the C++ build hands to Cargo as YB_MASTER_UI_DIR.
+  "${YB_SRC_ROOT}/src/yb/rust/master/web/ui/build.sh"
+}
+
 run_cxx_build() {
   expect_vars_to_be_set make_file
 
@@ -1149,6 +1154,11 @@ if [[ $build_type == "compilecmds" ]]; then
 fi
 
 readonly build_java=${build_java}
+
+# Before the C++ build: master-web embeds the built files at compile time.
+if [[ ${build_master_ui} == "true" && ${cmake_only} != "true" ]]; then
+  run_master_ui_build
+fi
 
 if [[ ${build_cxx} == "true" ||
       ${force_run_cmake} == "true" ||

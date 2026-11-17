@@ -94,6 +94,10 @@ Build options:
 
   --build-yugabyted-ui
     Build yugabyted-ui. If specified with --cmake-only, it won't be built.
+  --build-master-ui, --no-master-ui
+    Build (or not, the default) the Rust master's web UI (src/yb/rust/master/web/ui, needs
+    Node.js) into \$BUILD_ROOT/master-ui before the C++ build, which embeds it in yb-master-rs.
+    A UI built earlier stays embedded until that directory is removed.
 
   --skip-pg-parquet
     Skip pg_parquet extension build.
@@ -458,6 +462,7 @@ set_default_yb_build_args() {
   fi
 
   build_yugabyted_ui=false
+  build_master_ui=false
 
   validate_args_only=false
 }
@@ -677,6 +682,12 @@ parse_yb_build_cmd_line() {
       ;;
       --no-yugabyted-ui|--skip-yugabyted-ui)
         build_yugabyted_ui=false
+      ;;
+      --build-master-ui|--with-master-ui)
+        build_master_ui=true
+      ;;
+      --no-master-ui|--skip-master-ui)
+        build_master_ui=false
       ;;
       --skip-pg-parquet)
         export YB_SKIP_PG_PARQUET_BUILD=1

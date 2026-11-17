@@ -139,6 +139,12 @@ impl YsqlLeases {
         f(guard.as_mut().expect("set above"))
     }
 
+    /// The tserver's lease deadline in leader term `term` (`ysql_lease_deadline`), for the web
+    /// pages.
+    pub fn deadline_in_term(&self, term: i64, uuid: &[u8]) -> Instant {
+        self.deadline(term, uuid)
+    }
+
     fn deadline(&self, term: i64, uuid: &[u8]) -> Instant {
         let ttl = (self.options.ttl)();
         self.with_deadlines(term, |d| {

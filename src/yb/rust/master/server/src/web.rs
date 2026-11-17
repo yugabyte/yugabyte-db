@@ -23,7 +23,7 @@ use yb_host_api::rpc::RpcClient;
 use yb_proto::pb::master_cluster::ListMastersResponsePB;
 use yb_proto::pb::master_types::{master_error_pb, MasterErrorPB};
 use yb_proto::pb::wire_protocol::{app_status_pb, AppStatusPB};
-use yb_web::{TlsSettings, WebListener};
+use yb_web::{AuthSettings, TlsSettings, WebListener};
 
 use crate::ffi::bridge::MasterHost;
 
@@ -69,11 +69,19 @@ pub(crate) fn bind(host: &MasterHost) -> Result<WebListener, String> {
         private_key_password: host.web_private_key_password(),
         ciphers: host.web_ssl_ciphers(),
         strict_transport_security: Some(|| WEBSERVER_STRICT_TRANSPORT_SECURITY.get()),
+        redirect_http_to_https: host.web_redirect_http_to_https(),
+    });
+    // As in the C++ web server, the domain alone does nothing.
+    let password_file = host.web_password_file();
+    let auth = (!password_file.is_empty()).then(|| AuthSettings {
+        password_file,
+        domain: host.web_authentication_domain(),
     });
     WebListener::bind(
         &host.public_web_interface(),
         host.public_web_port(),
         tls.as_ref(),
+        auth.as_ref(),
     )
     .map_err(|e| e.to_string())
 }

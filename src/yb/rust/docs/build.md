@@ -9,6 +9,11 @@
 
 `--skip-rust` leaves out `src/yb/rust`, `src/yb/rust_bridge` and every component's C++ host.
 
+`--build-master-ui` first builds the master's web UI (`master/web/ui`, needs Node.js 22) into
+`$BUILD_ROOT/master-ui`; while that directory has an `index.html`, the Cargo steps get
+`YB_MASTER_UI_DIR` pointing at it and `master-web` embeds it. Without it a leader answers the page
+URLs with a note saying how to build it.
+
 ## Toolchain
 
 `src/yb/rust/rust-toolchain.toml` pins the Rust version. With rustup, Cargo picks it up automatically;

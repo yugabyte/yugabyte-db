@@ -13,10 +13,14 @@
 //! HTTPS with OpenSSL, the same library the rest of the server uses, configured from the C++ web
 //! server's flags (webserver_options.cc).
 
+use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::extract::Request;
+use axum::http::{header, HeaderValue, StatusCode as HttpStatus};
+use axum::response::{IntoResponse, Response};
 use axum::Router;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
@@ -41,6 +45,9 @@ pub struct TlsSettings {
     /// Whether to send `Strict-Transport-Security` (`webserver_strict_transport_security`); read
     /// per response, so a runtime flag change applies.
     pub strict_transport_security: Option<fn() -> bool>,
+    /// `webserver_redirect_http_to_https`: answer plain HTTP on the port with a redirect to
+    /// HTTPS, as squeasel does for a port with the `r` suffix. Otherwise plain HTTP is dropped.
+    pub redirect_http_to_https: bool,
 }
 
 /// A client that has not finished the TLS handshake by then is dropped.
@@ -86,10 +93,50 @@ pub(crate) fn acceptor(settings: &TlsSettings) -> Result<SslAcceptor, Status> {
     Ok(builder.build())
 }
 
+/// squeasel's `redirect_to_https_port`: `302` to `https://<Host without port>:<port><uri>`, before
+/// any authentication. Unlike squeasel, an IPv6 Host keeps its brackets and the path is not
+/// percent-decoded.
+fn https_redirect(request: &Request, local: SocketAddr) -> Response {
+    let host = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    let host = if host.starts_with('[') {
+        host.split_inclusive(']').next().unwrap_or("")
+    } else {
+        host.split(':').next().unwrap_or("")
+    };
+    let host = match (host.is_empty(), local.ip()) {
+        (false, _) => host.to_string(),
+        (true, IpAddr::V4(ip)) => ip.to_string(),
+        (true, IpAddr::V6(ip)) => format!("[{ip}]"),
+    };
+    let path = request.uri().path_and_query().map_or("/", |pq| pq.as_str());
+    match HeaderValue::from_str(&format!("https://{host}:{}{path}", local.port())) {
+        Ok(location) => (HttpStatus::FOUND, [(header::LOCATION, location)]).into_response(),
+        Err(_) => HttpStatus::BAD_REQUEST.into_response(),
+    }
+}
+
+async fn serve_connection<S>(stream: S, router: Router, peer: SocketAddr, scheme: &str)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let service = TowerToHyperService::new(router);
+    if let Err(e) = auto::Builder::new(TokioExecutor::new())
+        .serve_connection(TokioIo::new(stream), service)
+        .await
+    {
+        tracing::debug!("{scheme} connection from {peer}: {e}");
+    }
+}
+
 pub(crate) async fn serve(
     listener: TcpListener,
     router: Router,
     acceptor: SslAcceptor,
+    redirect_http_to_https: bool,
 ) -> Result<(), Status> {
     let acceptor = Arc::new(acceptor);
     loop {
@@ -106,6 +153,26 @@ pub(crate) async fn serve(
         let acceptor = acceptor.clone();
         let router = router.clone();
         tokio::spawn(async move {
+            // A TLS connection starts with a handshake record, content type 22 (RFC 8446 5.1);
+            // squeasel peeks at the same byte.
+            let mut first = [0u8; 1];
+            match tokio::time::timeout(HANDSHAKE_TIMEOUT, stream.peek(&mut first)).await {
+                Ok(Ok(1)) => {}
+                _ => return,
+            }
+            if first[0] != 22 {
+                if redirect_http_to_https {
+                    let local = match stream.local_addr() {
+                        Ok(local) => local,
+                        Err(e) => return tracing::debug!("HTTP connection from {peer}: {e}"),
+                    };
+                    let redirect = Router::new().fallback(move |request: Request| async move {
+                        https_redirect(&request, local)
+                    });
+                    serve_connection(stream, redirect, peer, "HTTP").await;
+                }
+                return;
+            }
             let ssl = match Ssl::new(acceptor.context()) {
                 Ok(ssl) => ssl,
                 Err(e) => return tracing::warn!("TLS session for {peer}: {e}"),
@@ -119,13 +186,7 @@ pub(crate) async fn serve(
                 Ok(Err(e)) => return tracing::debug!("TLS handshake with {peer}: {e}"),
                 Err(_) => return tracing::debug!("TLS handshake with {peer} timed out"),
             }
-            let service = TowerToHyperService::new(router);
-            if let Err(e) = auto::Builder::new(TokioExecutor::new())
-                .serve_connection(TokioIo::new(stream), service)
-                .await
-            {
-                tracing::debug!("HTTPS connection from {peer}: {e}");
-            }
+            serve_connection(stream, router, peer, "HTTPS").await;
         });
     }
 }

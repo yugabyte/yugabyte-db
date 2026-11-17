@@ -2070,3 +2070,41 @@ fn balancer_options() -> BalancerOptions {
         ..BalancerOptions::default()
     }
 }
+
+static ENABLE_OBJECT_LOCKING_FOR_TABLE_LOCKS: FlagRef<bool> =
+    FlagRef::new("enable_object_locking_for_table_locks");
+static ENABLE_YSQL_OPERATION_LEASE: FlagRef<bool> = FlagRef::new("enable_ysql_operation_lease");
+
+static LEADERLESS_TABLET_ALERT_DELAY_SECS: FlagRef<u32> =
+    FlagRef::new("leaderless_tablet_alert_delay_secs");
+static WEBSERVER_CERTIFICATE_FILE: FlagRef<String> = FlagRef::new("webserver_certificate_file");
+static MASTER_WEBSERVER_REQUIRE_HTTPS: FlagRef<bool> =
+    FlagRef::new("master_webserver_require_https");
+
+static TABLET_REPLICAS_PER_CORE_LIMIT: FlagRef<u32> =
+    FlagRef::new("tablet_replicas_per_core_limit");
+static TABLET_REPLICAS_PER_GIB_LIMIT: FlagRef<u32> = FlagRef::new("tablet_replicas_per_gib_limit");
+static ENFORCE_TABLET_REPLICA_LIMITS: FlagRef<bool> = FlagRef::new("enforce_tablet_replica_limits");
+static HIDE_DEAD_NODE_THRESHOLD_MINS: FlagRef<i32> = FlagRef::new("hide_dead_node_threshold_mins");
+
+/// The flags the web pages read.
+pub(crate) fn web_options() -> master_web::WebOptions {
+    master_web::WebOptions {
+        enable_ysql: || ENABLE_YSQL.get(),
+        ysql_lease_enabled: || {
+            ENABLE_OBJECT_LOCKING_FOR_TABLE_LOCKS.get() || ENABLE_YSQL_OPERATION_LEASE.get()
+        },
+        replication_factor: || REPLICATION_FACTOR.get(),
+        leaderless_alert_delay: || {
+            Duration::from_secs(LEADERLESS_TABLET_ALERT_DELAY_SECS.get().into())
+        },
+        tablespace_refresh_secs: || YSQL_TABLESPACE_INFO_REFRESH_SECS.get(),
+        tablet_replicas_per_core_limit: || TABLET_REPLICAS_PER_CORE_LIMIT.get(),
+        tablet_replicas_per_gib_limit: || TABLET_REPLICAS_PER_GIB_LIMIT.get(),
+        enforce_tablet_replica_limits: || ENFORCE_TABLET_REPLICA_LIMITS.get(),
+        hide_dead_node_threshold_mins: || HIDE_DEAD_NODE_THRESHOLD_MINS.get(),
+        https_links: || {
+            !WEBSERVER_CERTIFICATE_FILE.get().is_empty() && MASTER_WEBSERVER_REQUIRE_HTTPS.get()
+        },
+    }
+}

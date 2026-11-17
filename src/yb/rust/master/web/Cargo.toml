@@ -1,0 +1,32 @@
+[package]
+name = "master-web"
+description = "The master's web pages: the /api/v1 JSON a leader serves, and the embedded web UI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum.workspace = true
+master-catalog-entity.workspace = true
+master-catalog-state.workspace = true
+master-cluster-balancer.workspace = true
+master-rpc-handlers.workspace = true
+master-table-lifecycle.workspace = true
+master-tablet-locations.workspace = true
+master-task-runtime.workspace = true
+master-ts-manager.workspace = true
+protobuf.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+yb-host-api.workspace = true
+yb-proto.workspace = true
+yb-web.workspace = true
+
+[dev-dependencies]
+master-sys-catalog.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

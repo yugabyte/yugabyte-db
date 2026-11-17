@@ -24,6 +24,7 @@ master-xcluster.workspace = true
 master-xrepl.workspace = true
 master-tablet-split-manager.workspace = true
 master-ysql-manager.workspace = true
+master-web.workspace = true
 master-task-runtime.workspace = true
 master-ts-manager.workspace = true
 protobuf.workspace = true

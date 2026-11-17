@@ -901,3 +901,25 @@ message XClusterHistoricalSchemaPackingResponsePB {
   optional uint32 existing_version = 2;
   optional dockv.SchemaPackingPB new_packing = 3;
 }
+
+// The web table page's C++-rendered parts (MasterPathHandlers::HandleTablePageJSON): the schema's
+// columns and each partition's PartitionDebugString. A vector index's partitions are keyed by its
+// indexed table's schema, which the caller passes as `partition_schema` and `partition_keys`.
+message WebTableLayoutRequestPB {
+  optional SchemaPB schema = 1;
+  optional PartitionSchemaPB partition_schema = 2;
+  // The schema the partition keys are encoded with; `schema` when absent.
+  optional SchemaPB partition_keys = 3;
+  repeated PartitionPB partitions = 4;
+}
+
+message WebTableLayoutResponsePB {
+  message Column {
+    optional bytes name = 1;
+    optional bytes id = 2;
+    optional bytes type = 3;
+  }
+  optional MasterErrorPB error = 1;
+  repeated Column columns = 2;
+  repeated bytes partitions = 3;
+}

@@ -149,7 +149,7 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
             gate.clone(),
         )),
         wiring::leadership_allowed,
-        registry,
+        registry.clone(),
     );
     host.pin_mut().set_apply_sink(Box::new(store::ApplySink {
         sender: apply_sender.clone(),
@@ -246,11 +246,24 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
         }),
     );
 
+    let web = Arc::new(master_web::MasterWeb {
+        leader: core.leader.clone(),
+        options: wiring::web_options(),
+        ui: master_web::UiAssets::embedded(),
+        host: Arc::new(store::HostSchema(
+            host.pin_mut().info_handle(),
+            gate.clone(),
+        )),
+        tasks: registry.clone(),
+    });
     host.pin_mut().start().map_err(|e| e.what().to_string())?;
     core.run(runtime.handle(), sys_catalog, info.clone(), rpc.clone());
     let loopback_port = host.loopback_web_port().map_err(|e| e.what().to_string())?;
     runtime.spawn(async move {
-        if let Err(e) = web_listener.serve(axum::Router::new(), loopback_port).await {
+        if let Err(e) = web_listener
+            .serve(master_web::routes(web), loopback_port)
+            .await
+        {
             tracing::error!("The web server stopped: {e}");
         }
     });

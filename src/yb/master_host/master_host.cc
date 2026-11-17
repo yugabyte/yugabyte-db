@@ -32,6 +32,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/version_info.h"
@@ -147,6 +148,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/ulimit_util.h"
+#include "yb/util/url-coding.h"
 
 #include "yb/tserver/tserver.messages.h"
 
@@ -188,12 +190,10 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_string(tmp_dir);
 DECLARE_int32(master_ysql_lease_svc_queue_length);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
-DECLARE_string(webserver_authentication_domain);
 
 DEFINE_test_flag(bool, rust_master_allow_leadership, true,
     "Lets the Rust master lead the sys catalog. When false it stays a follower: it never starts "
     "an election and steps down if a leader transfer elects it.");
-DECLARE_string(webserver_password_file);
 DECLARE_bool(webserver_redirect_http_to_https);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 DECLARE_int32(xcluster_safe_time_table_num_tablets);
@@ -765,13 +765,6 @@ std::unique_ptr<MasterHost> CreateMasterHost() {
   if (FLAGS_emergency_repair_mode) {
     throw std::runtime_error("emergency_repair_mode needs a master leader; use the C++ master");
   }
-  if (!FLAGS_webserver_password_file.empty() || !FLAGS_webserver_authentication_domain.empty() ||
-      FLAGS_webserver_redirect_http_to_https) {
-    // Fail closed: the Rust web server implements neither web authentication nor the redirect.
-    throw std::runtime_error(
-        "webserver_password_file, webserver_authentication_domain and "
-        "webserver_redirect_http_to_https are not supported by the Rust master yet");
-  }
   InitCommonFlags();
   auto opts = master::MasterOptions::CreateMasterOptions();
   if (!opts.ok()) {
@@ -789,6 +782,9 @@ std::unique_ptr<MasterHost> CreateMasterHostWithOptions(master::MasterOptions op
   web.certificate_file.clear();
   web.private_key_file.clear();
   web.private_key_password.clear();
+  // Rust authenticates in front of it; the proxied requests carry no credentials for this server.
+  web.password_file.clear();
+  web.authentication_domain.clear();
   return std::make_unique<MasterHost>(opts, std::move(public_web_opts));
 }
 
@@ -867,13 +863,29 @@ void MasterHost::RegisterWebPages() {
   for (const auto& page : kLeaderPages) {
     web_server_->RegisterPathHandler(
         page.path, page.alias,
-        [this](const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+        [this, path = std::string(page.path)](
+            const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
           auto masters = ListMastersForWeb();
           if (IsLeaderInList(masters)) {
-            // RedirectToLeader would fetch this page from this master again, tying up a web
-            // worker per hop.
+            if (path == "/ObjectLockManager") {
+              // MasterPathHandlers::HandleObjectLocksPage: the lock manager is the host's.
+              std::shared_ptr<tserver::TSLocalLockManager> lock_manager;
+              {
+                std::lock_guard lock(local_lock_manager_mutex_);
+                lock_manager = local_lock_manager_;
+              }
+              if (!lock_manager) {
+                resp->output << "<h2>Could not locate the object lock manager...</h2>\n";
+                return;
+              }
+              lock_manager->DumpLocksToHtml(resp->output);
+              return;
+            }
+            // Rust serves every other leader page on a ready leader; this master only gets here
+            // while it is not ready yet. RedirectToLeader would fetch the page from this master
+            // again, tying up a web worker per hop.
             resp->code = 503;
-            resp->output << "<h2>This page is not served by a Rust master leader yet.</h2>\n";
+            resp->output << "<h2>The master leader is not ready yet.</h2>\n";
             return;
           }
           ServerRegistrationPB local_reg;
@@ -977,6 +989,18 @@ rust::Vec<uint8_t> MasterHost::WebPrivateKeyPassword() const {
 
 rust::String MasterHost::WebSslCiphers() const {
   return rust::String::lossy(public_web_opts_.ssl_ciphers);
+}
+
+bool MasterHost::WebRedirectHttpToHttps() const {
+  return FLAGS_webserver_redirect_http_to_https;
+}
+
+rust::String MasterHost::WebPasswordFile() const {
+  return rust::String::lossy(public_web_opts_.password_file);
+}
+
+rust::String MasterHost::WebAuthenticationDomain() const {
+  return rust::String::lossy(public_web_opts_.authentication_domain);
 }
 
 void MasterHost::SetWebServer(
@@ -1987,6 +2011,33 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
     return HandleRequest<master::EnableCdcServiceRequestPB, master::EnableCdcServiceResponsePB>(
         request, [this](const auto&, auto*) -> Status {
           tablet_server_->EnableCDCService();
+          return Status::OK();
+        });
+  }
+  if (name == "WebTableLayout") {
+    // JsonOutputSchemaTable and the partition column of HandleTablePageJSON.
+    return HandleRequest<master::WebTableLayoutRequestPB, master::WebTableLayoutResponsePB>(
+        request, [](const auto& req, auto* resp) -> Status {
+          Schema schema;
+          RETURN_NOT_OK(SchemaFromPB(req.schema(), &schema));
+          for (size_t i = 0; i < schema.num_columns(); ++i) {
+            const auto& col = schema.column(i);
+            auto* column = resp->add_columns();
+            column->set_name(EscapeForHtmlToString(col.name()));
+            column->set_id(schema.column_id(i).ToString());
+            column->set_type(col.TypeToString());
+          }
+          Schema keys;
+          RETURN_NOT_OK(SchemaFromPB(
+              req.has_partition_keys() ? req.partition_keys() : req.schema(), &keys));
+          dockv::PartitionSchema partition_schema;
+          RETURN_NOT_OK(
+              dockv::PartitionSchema::FromPB(req.partition_schema(), keys, &partition_schema));
+          for (const auto& partition_pb : req.partitions()) {
+            dockv::Partition partition;
+            dockv::Partition::FromPB(partition_pb, &partition);
+            resp->add_partitions(partition_schema.PartitionDebugString(partition, keys));
+          }
           return Status::OK();
         });
   }
