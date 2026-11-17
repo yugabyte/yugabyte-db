@@ -1175,4 +1175,36 @@ public class RedactingServiceTest {
     out = RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, false);
     assertEquals(overrides, out.at("/userIntent/universeOverrides").asText());
   }
+
+  @Test
+  public void testFilterSecretFieldsApisRedactsNodeDetailsAndProviderOverrides() {
+    String overrides = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    ObjectNode nodeDetails = mapper.createObjectNode().put("kubernetesOverrides", overrides);
+    ObjectNode provider = mapper.createObjectNode();
+    ObjectNode region = provider.putArray("regions").addObject();
+    region
+        .putObject("details")
+        .putObject("cloudInfo")
+        .putObject("kubernetes")
+        .put("overrides", overrides);
+    region
+        .putArray("zones")
+        .addObject()
+        .putObject("details")
+        .putObject("cloudInfo")
+        .putObject("kubernetes")
+        .put("overrides", overrides);
+    // An "overrides" field outside a kubernetes cloud info object is left alone.
+    provider.put("overrides", overrides);
+
+    JsonNode out =
+        RedactingService.filterSecretFields(nodeDetails, RedactionTarget.APIS, null, null, true);
+    assertEquals(redacted, out.get("kubernetesOverrides").asText());
+    out = RedactingService.filterSecretFields(provider, RedactionTarget.APIS, null, null, true);
+    assertEquals(redacted, out.at("/regions/0/details/cloudInfo/kubernetes/overrides").asText());
+    assertEquals(
+        redacted, out.at("/regions/0/zones/0/details/cloudInfo/kubernetes/overrides").asText());
+    assertEquals(overrides, out.get("overrides").asText());
+  }
 }

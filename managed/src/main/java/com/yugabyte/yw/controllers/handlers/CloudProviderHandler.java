@@ -120,6 +120,9 @@ public class CloudProviderHandler {
       cloudProviderHelper.maybeUpdateGCPProject(reqProvider);
     }
     cloudProviderHelper.maybeUpdateVPC(reqProvider);
+    if (providerCode.equals(kubernetes)) {
+      CloudInfoInterface.checkNoRedactedKubernetesOverrides(reqProvider);
+    }
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
     if (cloudAPI != null && !cloudAPI.isValidCreds(reqProvider)) {

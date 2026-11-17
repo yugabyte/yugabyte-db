@@ -299,4 +299,16 @@ public class KubernetesOverridesRedactorTest {
                     "overrides"));
     assertFalse(e.getMessage(), e.getMessage().contains("submitted-secret"));
   }
+
+  @Test
+  public void redactParsesKeysSpelledWithEscapes() {
+    // "\x79cql_ldap_bind_passwd" is ycql_ldap_bind_passwd to the parser and to Helm.
+    String stored = "gflags:\n  tserver:\n    \"\\x79cql_ldap_bind_passwd\": tserver-secret\n";
+    String redacted = KubernetesOverridesRedactor.redact(stored);
+    assertFalse(redacted, redacted.contains("tserver-secret"));
+    assertEquals(
+        stored,
+        KubernetesOverridesRedactor.restore(stored, redacted + "x: y\n", "overrides")
+            .replace("x: y\n", ""));
+  }
 }

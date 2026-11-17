@@ -38,6 +38,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -770,6 +771,57 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
             .getCloudInfo()
             .getKubernetes()
             .getKubernetesStorageClass());
+  }
+
+  @Test
+  public void testK8sProviderEditRestoresRedactedOverrides() throws InterruptedException {
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: zone-secret\n";
+    Provider k8sProvider = createK8sProvider(false);
+    AvailabilityZone zone =
+        Provider.getOrBadRequest(k8sProvider.getUuid()).getRegions().get(0).getZones().get(0);
+    zone.getDetails().getCloudInfo().getKubernetes().setOverrides(stored);
+    zone.save();
+
+    // Overrides copied from GET providers, with an edit.
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    String edit = "tserver:\n  podLabels:\n    env: test\n";
+    p.getRegions()
+        .get(0)
+        .getZones()
+        .get(0)
+        .getDetails()
+        .getCloudInfo()
+        .getKubernetes()
+        .setOverrides(KubernetesOverridesRedactor.redact(stored) + edit);
+    UUID taskUUID = doEditProvider(p, false);
+    assertEquals(TaskInfo.State.Success, waitForTask(taskUUID).getTaskState());
+
+    p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    assertEquals(
+        stored + edit,
+        p.getRegions()
+            .get(0)
+            .getZones()
+            .get(0)
+            .getDetails()
+            .getCloudInfo()
+            .getKubernetes()
+            .getOverrides());
+  }
+
+  @Test
+  public void testK8sProviderEditRejectsRedactedOverridesWithNothingStored() {
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    p.getRegions()
+        .get(0)
+        .getZones()
+        .get(0)
+        .getDetails()
+        .getCloudInfo()
+        .getKubernetes()
+        .setOverrides("gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n");
+    verifyEditError(p, false, "Kubernetes provider overrides");
   }
 
   @Test

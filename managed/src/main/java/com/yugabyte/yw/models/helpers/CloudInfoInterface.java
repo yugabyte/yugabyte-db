@@ -517,6 +517,22 @@ public interface CloudInfoInterface {
     return cloudInfo.getEnvVars();
   }
 
+  /** A new provider, region or zone has nothing stored to restore REDACTED overrides from. */
+  public static void checkNoRedactedKubernetesOverrides(Provider provider) {
+    provider.getRegions().forEach(CloudInfoInterface::checkNoRedactedRegionOverrides);
+  }
+
+  private static void checkNoRedactedRegionOverrides(Region region) {
+    checkNoRedactedOverrides(CloudInfoInterface.get(region));
+    region.getZones().forEach(az -> checkNoRedactedOverrides(CloudInfoInterface.get(az)));
+  }
+
+  private static void checkNoRedactedOverrides(CloudInfoInterface cloudInfo) {
+    if (cloudInfo instanceof KubernetesRegionInfo) {
+      ((KubernetesRegionInfo) cloudInfo).restoreRedactedOverrides(null);
+    }
+  }
+
   public static void mergeSensitiveFields(Provider provider, Provider editProviderReq) {
     // This helper function helps in merging the masked config values using
     // the entity that is saved in the ebean so as to avoid saving the masked values.
@@ -563,6 +579,7 @@ public interface CloudInfoInterface {
     for (Region region : editProviderReq.getRegions()) {
       Region oldRegion = existingRegions.get(region.getCode());
       if (oldRegion == null) {
+        checkNoRedactedRegionOverrides(region);
         continue;
       }
       CloudInfoInterface regionCloudInfo = CloudInfoInterface.get(region);
@@ -574,6 +591,7 @@ public interface CloudInfoInterface {
       for (AvailabilityZone az : region.getZones()) {
         AvailabilityZone oldAZ = existingAZs.get(az.getCode());
         if (oldAZ == null) {
+          checkNoRedactedOverrides(CloudInfoInterface.get(az));
           continue;
         }
         CloudInfoInterface azCloudInfo = CloudInfoInterface.get(az);

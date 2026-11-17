@@ -2,6 +2,8 @@ package com.yugabyte.yw.models.helpers.provider.region;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -110,5 +112,23 @@ public class KubernetesRegionInfo extends KubernetesInfo {
   @JsonIgnore
   public void mergeMaskedFields(CloudInfoInterface providerCloudInfo) {
     super.mergeMaskedFields(providerCloudInfo);
+    restoreRedactedOverrides(
+        providerCloudInfo instanceof KubernetesRegionInfo
+            ? ((KubernetesRegionInfo) providerCloudInfo).overrides
+            : null);
+  }
+
+  /**
+   * Overrides copied from an API response hold REDACTED secrets (KubernetesOverridesRedactor): puts
+   * the stored values back, or rejects REDACTED where nothing is stored, as for a new region or
+   * zone (storedOverrides null).
+   */
+  @JsonIgnore
+  public void restoreRedactedOverrides(String storedOverrides) {
+    if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      overrides =
+          KubernetesOverridesRedactor.restore(
+              storedOverrides, overrides, "Kubernetes provider overrides");
+    }
   }
 }

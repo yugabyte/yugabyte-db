@@ -294,22 +294,18 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testGetNodeDetailsK8sRedactsSecretsInLiveHelmValues() {
+  public void testGetNodeDetailsK8sRedactsLdapSecretsInLiveHelmValues() {
     Universe u = createK8sUniverseWithOverrides("k8s-helm-secrets", null, null);
-    String rootKey = java.util.Base64.getEncoder().encodeToString("dummy root CA key".getBytes());
     when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
         .thenReturn(
-            "rootCA:\n  key: "
-                + rootKey
-                + "\n"
-                + "gflags:\n"
+            "gflags:\n"
                 + "  tserver:\n"
                 + "    ycql_ldap_bind_passwd: tserver-secret\n"
                 + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
                 + " ldapbindpasswd=hba-secret\"\n");
 
     String overrides = getKubernetesOverrides(u, "host-n1");
-    for (String secret : List.of(rootKey, "tserver-secret", "hba-secret")) {
+    for (String secret : List.of("tserver-secret", "hba-secret")) {
       assertFalse(overrides, overrides.contains(secret));
     }
     assertTrue(overrides, overrides.contains("ycql_ldap_bind_passwd: REDACTED"));

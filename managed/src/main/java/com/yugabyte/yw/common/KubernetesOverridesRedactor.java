@@ -146,7 +146,9 @@ public final class KubernetesOverridesRedactor {
   }
 
   public static String redact(String overrides) {
-    if (overrides == null || !mentionsSecret(overrides, secretKeys())) {
+    // A double-quoted scalar can spell a name with escapes, so text with a backslash is parsed.
+    if (overrides == null
+        || (overrides.indexOf('\\') < 0 && !mentionsSecret(overrides, secretKeys()))) {
       return overrides;
     }
     String digest = DigestUtils.sha256Hex(overrides);

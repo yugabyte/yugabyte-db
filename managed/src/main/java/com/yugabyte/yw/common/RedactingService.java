@@ -186,9 +186,11 @@ public class RedactingService {
           SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
-  // Kubernetes overrides YAML text in v1 userIntent and v2 ClusterProviderSpec.
+  // Kubernetes overrides YAML text: v1 userIntent, v2 ClusterProviderSpec, and node details (which
+  // may hold the live helm values). Provider, region and zone overrides are the "overrides" of a
+  // "kubernetes" cloud info object.
   private static final Set<String> K8S_OVERRIDES_FIELDS =
-      Set.of("universeOverrides", "helm_overrides");
+      Set.of("universeOverrides", "helm_overrides", "kubernetesOverrides");
   private static final Set<String> K8S_AZ_OVERRIDES_FIELDS =
       Set.of("azOverrides", "az_helm_overrides");
 
@@ -1345,6 +1347,15 @@ public class RedactingService {
                   } else if (K8S_OVERRIDES_FIELDS.contains(fieldName)) {
                     objNode.put(fieldName, KubernetesOverridesRedactor.redact(fieldValue.asText()));
                   }
+                } else if (fieldValue != null
+                    && fieldValue.isObject()
+                    && fieldName.equals("kubernetes")
+                    && fieldValue.path("overrides").isTextual()) {
+                  ((ObjectNode) fieldValue)
+                      .put(
+                          "overrides",
+                          KubernetesOverridesRedactor.redact(fieldValue.get("overrides").asText()));
+                  redactLdapBindPasswdRecursive(fieldValue);
                 } else if (fieldValue != null
                     && fieldValue.isObject()
                     && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
