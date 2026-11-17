@@ -32,6 +32,8 @@ The YugabyteDB MCP Server is a lightweight, Python-based server that enables age
 Install skills and connect to the [MCP server](mcp-server/).
 {{</lead>}}
 
+To manage Serverless Postgres clusters in YugabyteDB Aeon, use the [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/).
+
 ## Get started
 
 {{<tip>}}

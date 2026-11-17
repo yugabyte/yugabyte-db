@@ -20,6 +20,7 @@ Use the following automation tools to manage your YugabyteDB Aeon account and cl
 | [REST API](managed-api/) | Deploy and manage database clusters using a REST API. |
 | [Terraform provider](managed-terraform/) | Provider for automating YugabyteDB Aeon resources that are accessible via the API. |
 | [CLI](managed-cli/) | Manage YugabyteDB Aeon resources from the command line. |
+| [AMP MCP Server](../serverless/mcp-server-amp/) | Manage Serverless Postgres clusters, branches, and endpoints from an AI client. |
 
 ### Authentication
 

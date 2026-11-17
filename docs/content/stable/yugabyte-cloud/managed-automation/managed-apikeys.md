@@ -2,7 +2,7 @@
 title: API keys
 headerTitle: API keys
 linkTitle: API keys
-description: Manage API keys for use with YugabyteDB Aeon automation tools including API, CLI, and Terraform provider.
+description: Manage API keys for use with YugabyteDB Aeon automation tools including API, CLI, Terraform provider, and the AMP MCP Server.
 headcontent: Use API keys to authenticate with automation tools
 aliases:
   - /stable/yugabyte-cloud/cloud-admin/cloud-admin-apikeys/
@@ -14,13 +14,15 @@ menu:
 type: docs
 ---
 
-YugabyteDB Aeon provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key.
+YugabyteDB Aeon provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key. API keys are also used to authenticate the [AMP MCP Server](../../serverless/mcp-server-amp/). Create that key in the [Serverless account](../../managed-security/manage-accounts/#serverless-account).
 
 API keys are not stored in YugabyteDB Aeon. Safeguard them by doing the following:
 
 - Store API keys in a secure location with strong encryption, such as a password manager.
 - Revoke keys that are lost or compromised.
 - Don't embed keys in code. Applications that contain keys can be de-compiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
+
+API keys are [account-specific](../../managed-security/manage-accounts/#switch-accounts); switch to the account with the cluster you want to connect to before creating a key.
 
 API keys are [role-specific](../../managed-security/managed-roles/); for example, keys assigned a Developer role can only be used to perform developer-level tasks using the API.
 
@@ -33,6 +35,8 @@ To view API key details, select an API key in the list to display the **API Key 
 ## Create an API key
 
 To create an API key:
+
+1. Switch to the account with the cluster or endpoint you want to connect to.
 
 1. Navigate to **Security > Access Control > API Keys**, and click **Create API Key**.
 

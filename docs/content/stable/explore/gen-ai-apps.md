@@ -51,6 +51,8 @@ MCP is an industry standard that acts as a secure bridge between AI applications
 
 In short, MCP transforms YugabyteDB from a static data source into a dynamic tool that an LLM can use to generate accurate, real-time, data-driven responses.
 
+YugabyteDB publishes servers for querying a database, managing Serverless Postgres clusters, and searching the documentation; see [MCP servers](/stable/reference/mcp/).
+
 Using the [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/), you can:
 
 1. Explore: Enable LLMs to automatically discover your database schema, table structures, and relationships.

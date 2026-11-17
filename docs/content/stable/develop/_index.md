@@ -9,12 +9,8 @@ cascade:
   unversioned: true
 ---
 
-{{< tip title="YugabyteDB MCP Server and Skills" >}}
-The YugabyteDB MCP Server enables agents to securely connect to, access, query, analyze, and interpret data in your YugabyteDB database using natural language prompts. YugabyteDB Agent Skills provide AI coding agents with native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows. See [YugabyteDB MCP server](AI/mcp-server/).
-{{< /tip >}}
-
-{{< tip title="Docs MCP Server" >}}
-Access the YugabyteDB Docs AI from your IDE or CLI. See [Docs MCP Server](../reference/docs-mcp-server/).
+{{< tip title="MCP servers" >}}
+Connect an AI client to query a database, manage Serverless Postgres clusters, search the documentation, and use skills. See [MCP servers](../reference/mcp/).
 {{< /tip >}}
 
 ## Tutorials

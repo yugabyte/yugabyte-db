@@ -25,6 +25,8 @@ The YugabyteDB Aeon REST API allows you to deploy and manage your database clust
 
 If an AI coding agent (such as Claude Code, Cursor, or Codex) calls this API for you, install the official [aeon-api skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/aeon-api) first. The skill supplies cluster, network, and backup calls, so the agent makes fewer errors.
 
+To manage Serverless Postgres clusters, branches, and endpoints without writing API calls, connect the [AMP MCP Server](../../serverless/mcp-server-amp/). The server calls the Serverless Postgres APIs for you.
+
 To install the skill, run the following command:
 
 ```sh
