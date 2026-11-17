@@ -531,9 +531,9 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 /*
  * Whether index column indexcol, one build_index_pathkeys skipped as
  * redundant, is a single-value stream key: a column with an equality index
- * clause, or a hash column (see yb_finalize_merge_scan_info).  Unless clause
- * is NULL, sets *clause to its equality index clause, or to NULL for a hash
- * column without one.
+ * clause or a hash column (see yb_finalize_merge_scan_info).  If clause is not
+ * NULL, also sets *clause to the column's equality index clause, if it has
+ * one.
  */
 static bool
 ybIsSingleValueStreamCol(IndexOptInfo *index, List *indexclauses,

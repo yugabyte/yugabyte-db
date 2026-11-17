@@ -1,9 +1,9 @@
 --
 -- See yb_merge_scan_schedule for details about the test.  Tests merge scans
--- with gap columns.  A gap column is an index column that the merge sort
--- columns skip because a filter or the index predicate ties it to an earlier
--- column or to a constant.  The merge sorts on each gap column, since a filter
--- that ties it can run after the merge.
+-- with gap columns.  A gap column is an index column before the last ORDER BY
+-- column of the index that the ORDER BY can skip because a filter or the index
+-- predicate ties it to an earlier column or to a constant.  The merge sorts on
+-- each gap column, since a filter that ties it can run after the merge.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
