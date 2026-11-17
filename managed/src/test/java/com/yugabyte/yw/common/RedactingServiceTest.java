@@ -5,6 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -1233,6 +1234,37 @@ public class RedactingServiceTest {
       assertEquals(SECRET_REPLACEMENT, out.at("/azOverrides/az-2").asText());
       // The fields after them are still redacted.
       assertFalse(out.toString(), out.toString().contains("dummy-"));
+    }
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisRedactsKubernetesOverridesWhenOtherRedactionFails() {
+    ObjectNode root = mapper.createObjectNode();
+    root.putObject("gflags")
+        .put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass");
+    root.put("universeOverrides", K8S_OVERRIDES);
+    root.putObject("azOverrides").put("az-1", K8S_OVERRIDES);
+    // The ysql_hba_conf_csv redaction throws, which stops its walk.
+    try (MockedStatic<HbaConfRedactor> hba =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      hba.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new IllegalStateException());
+      JsonNode out =
+          RedactingService.filterSecretFields(
+              root.deepCopy(), RedactionTarget.APIS, null, null, true);
+      assertEquals(K8S_OVERRIDES_REDACTED, out.get("universeOverrides").asText());
+      assertEquals(K8S_OVERRIDES_REDACTED, out.at("/azOverrides/az-1").asText());
+    }
+    // The audit details redaction throws, which skips the rest of the gflags redaction.
+    try (MockedStatic<RedactingService> service =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      service
+          .when(() -> RedactingService.redactAuditAdditionalDetails(any(), any(), any()))
+          .thenThrow(new IllegalStateException());
+      JsonNode out =
+          RedactingService.filterSecretFields(
+              root.deepCopy(), RedactionTarget.APIS, null, null, true);
+      assertEquals(K8S_OVERRIDES_REDACTED, out.get("universeOverrides").asText());
+      assertEquals(K8S_OVERRIDES_REDACTED, out.at("/azOverrides/az-1").asText());
     }
   }
 }
