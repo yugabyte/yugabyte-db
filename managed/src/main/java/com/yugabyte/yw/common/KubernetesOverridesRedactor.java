@@ -28,6 +28,7 @@ import org.yaml.snakeyaml.nodes.Node;
 import org.yaml.snakeyaml.nodes.NodeTuple;
 import org.yaml.snakeyaml.nodes.ScalarNode;
 import org.yaml.snakeyaml.nodes.SequenceNode;
+import org.yaml.snakeyaml.nodes.Tag;
 import play.libs.Json;
 
 /**
@@ -40,13 +41,14 @@ import play.libs.Json;
  * value can continue on the next line. Comments are never restored.
  *
  * <p>Overrides are hidden whole as REDACTED instead when they can't be parsed and could hold a
- * secret: they name one, or hold a backslash, with which a quoted key can spell one. So are
- * overrides with a key or any other string that mentions a secret, whose value could be anywhere in
- * that string or in the ones after it, and overrides that hold a secret and use YAML the rewrite
- * doesn't follow: anchors, aliases and tags, which can carry a value to another key or change how
- * it loads, keys that aren't strings, a secret or ysql_hba_conf_csv that isn't a scalar, and a
- * repeated secret key. Overrides rarely use these, and hiding them whole fails closed. Sent back
- * unchanged, hidden overrides restore the stored text; an edit has to submit them in full.
+ * secret: they name one, or hold a backslash or a !, with which a key can spell one (escapes in a
+ * double-quoted key, or a binary tag). So are overrides with a binary tag, which Helm decodes from
+ * base64, overrides with a key or any other string that mentions a secret, whose value could be
+ * anywhere in that string or in the ones after it, and overrides that hold a secret and use YAML
+ * the rewrite doesn't follow: anchors and aliases, which can carry a value to another key, other
+ * tags, keys that aren't strings, a secret or ysql_hba_conf_csv that isn't a scalar, and a repeated
+ * secret key. Overrides rarely use these, and hiding them whole fails closed. Sent back unchanged,
+ * hidden overrides restore the stored text; an edit has to submit them in full.
  */
 @Slf4j
 public final class KubernetesOverridesRedactor {
@@ -67,12 +69,6 @@ public final class KubernetesOverridesRedactor {
       }
       // An empty value has no span to replace; REDACTED would be glued to the key's colon.
       return value.isEmpty() ? value : REDACTED;
-    }
-
-    // Contains, not equals, as RedactingService.isGFlagRedacted: "REDACTED " or a block scalar
-    // holding REDACTED must not be stored as the token.
-    boolean holdsRedacted(String value) {
-      return value.contains(REDACTED);
     }
   }
 
@@ -145,8 +141,11 @@ public final class KubernetesOverridesRedactor {
     if (overrides == null) {
       return null;
     }
-    // A double-quoted key can spell a secret name with escapes, so text with a backslash is parsed.
-    if (overrides.indexOf('\\') < 0 && !mentionsSecret(overrides, secretKeys())) {
+    // A double-quoted key can spell a secret name with escapes, and a key with a binary tag (every
+    // tag starts with !) in base64, so text with a backslash or a ! is parsed.
+    if (overrides.indexOf('\\') < 0
+        && overrides.indexOf('!') < 0
+        && !mentionsSecret(overrides, secretKeys())) {
       return overrides;
     }
     Finder found;
@@ -194,7 +193,7 @@ public final class KubernetesOverridesRedactor {
    * returned as stored, even when the stored text already holds REDACTED.
    */
   public static String restore(String stored, String submitted, String where) {
-    if (submitted == null || !submitted.contains(REDACTED)) {
+    if (!RedactingService.isGFlagRedacted(submitted)) {
       return submitted;
     }
     // Unchanged overrides, as stored or as redacted, change nothing, even if the stored text
@@ -215,7 +214,7 @@ public final class KubernetesOverridesRedactor {
               where, REDACTED, e.getMessage()));
     }
     if (found.root instanceof ScalarNode
-        && ((ScalarNode) found.root).getValue().contains(REDACTED)) {
+        && RedactingService.isGFlagRedacted(((ScalarNode) found.root).getValue())) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
@@ -235,7 +234,8 @@ public final class KubernetesOverridesRedactor {
     List<Replacement> replacements = new ArrayList<>();
     for (Secret secret : found.secrets) {
       String value = secret.value.getValue();
-      if (!secret.kind.holdsRedacted(value)) {
+      // Contains, not equals: "REDACTED " or a block scalar holding REDACTED must not be stored.
+      if (!RedactingService.isGFlagRedacted(value)) {
         continue;
       }
       String name = where + " at " + String.join(".", secret.path);
@@ -265,7 +265,7 @@ public final class KubernetesOverridesRedactor {
                 name, REDACTED));
       }
       String storedValue = storedSecret.value.getValue();
-      if (storedValue.contains(REDACTED)) {
+      if (RedactingService.isGFlagRedacted(storedValue)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
@@ -328,6 +328,9 @@ public final class KubernetesOverridesRedactor {
     if (root != null) {
       finder.collect(root, new ArrayList<>(), false, false);
     }
+    if (finder.binary) {
+      throw new HiddenException("use a binary tag, which can spell a secret");
+    }
     if (finder.unsupported != null
         && (!finder.secrets.isEmpty() || mentionsSecret(overrides, finder.secretKeys))) {
       throw new HiddenException(finder.unsupported);
@@ -348,6 +351,8 @@ public final class KubernetesOverridesRedactor {
     final List<int[]> scalarSpans = new ArrayList<>();
     // YAML the rewrite doesn't follow, which hides the overrides whole if they hold a secret.
     String unsupported;
+    // A binary tag, which hides the overrides whole: its text is base64, so no check can read it.
+    boolean binary;
 
     Finder(String text, Node root) {
       this.text = text;
@@ -374,10 +379,13 @@ public final class KubernetesOverridesRedactor {
      * Notes an anchor, a tag, and an alias, which reuses the node of its anchor; returns false for
      * a node seen before. SnakeYAML starts a node's mark at its properties, and a node can't start
      * with ! otherwise: a plain scalar may not, and the other styles start with a quote, |, >, [ or
-     * {.
+     * {. SnakeYAML resolves every spelling of the binary tag (!!binary, verbatim, %TAG) to one tag.
      */
     boolean visit(Node node) {
       boolean first = visited.add(node);
+      if (Tag.BINARY.equals(node.getTag())) {
+        binary = true;
+      }
       int start = charOffset(node.getStartMark().getIndex());
       if (!first
           || node.getAnchor() != null
