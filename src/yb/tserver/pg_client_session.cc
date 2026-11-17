@@ -230,13 +230,6 @@ YB_DEFINE_ENUM(PgClientSessionKind,
     (kPlain)(kAutonomousDdl)(kLegacyCatalog)(kSequence)(kPgSession)(kHistoricalRead));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
 
-void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
-  read_point.SetReadTime(
-      ReadHybridTime::SingleTime(
-          read_point.Now().AddMilliseconds(-static_cast<int64_t>(staleness_ms))),
-      {});
-}
-
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 const std::string kTxnLogPrefixTagSource("Session ");
