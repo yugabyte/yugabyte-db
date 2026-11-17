@@ -641,8 +641,6 @@ ybAppendMergeGapCol(YbSortInfo *sort_info, IndexOptInfo *index,
  * an expression column or has an expression gap column before it, and
  * *yb_distinct_nkeys is set to -1 if the truncation cuts into the pathkeys
  * that span the distinct prefix.
- * TODO(#36017): an index-only scan compares the values in the index row, so it
- * does not need the truncation.
  *
  * Each index column before the last merge sort column is one of:
  *

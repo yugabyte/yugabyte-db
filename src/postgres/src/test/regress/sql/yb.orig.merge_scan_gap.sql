@@ -185,6 +185,7 @@ DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_unread_tbl, gap_desc_tbl,
 \i :gap_cells
 
 \c co
+\set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
 \i :filename
 -- The same cells on embedded indexes.  For an embedded index scan, an
 -- expression column is not available for sort (see also #36017), so the merge
