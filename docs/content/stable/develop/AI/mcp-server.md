@@ -62,7 +62,7 @@ The server exposes three tools that MCP clients can call:
 
 All three tools accept an optional `requested_role` parameter. When [OIDC is enabled](#oidc-and-per-user-database-roles) and the caller's identity claim resolves to multiple mapped database roles (for example, Cognito groups or Keycloak realm roles), the agent can pass `requested_role` to pick one. The server clamps the choice to the JWT's mapped candidates; the agent cannot SET ROLE to a role that is not in the token.
 
-Claude Desktop surfaces read-only badges on the read tools and a confirmation prompt before each `run_write_query` call (`destructiveHint: true`).
+Claude Desktop can show read-only badges on the read tools and a confirmation prompt before each `run_write_query` call, because the tool is marked `destructiveHint: true`. That mark is a hint. The client skips the prompt when the tool is set to always allow, or when the client auto-approves tool calls.
 
 ## Set up YugabyteDB MCP Server
 

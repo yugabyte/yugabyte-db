@@ -65,11 +65,11 @@ For information on extensions supported in YugabyteDB, see [PostgreSQL extension
 
 Select a **Connectivity Method**. This determines how clients connect to the cluster.
 
-**Public Endpoint** is the default. Enter **Trusted IP Addresses**. Each entry is one address or a CIDR range. Separate several entries using commas.
+**Public Endpoint** is the default. Enter **Trusted IP Addresses**. Each entry is one address or a CIDR range. Separate several entries using commas. You must provide at least one trusted address.
 
-{{< warning title="Important" >}}
+{{< warning title="Using 0.0.0.0/0" >}}
 
-A public endpoint with no trusted IP addresses accepts connections from anywhere on the internet. The database password is the only protection. Do not use `0.0.0.0/0` for production data.
+A trusted IP address of `0.0.0.0/0` accepts connections from anywhere on the internet. The database password is the only protection. Do not use `0.0.0.0/0` for production data.
 
 {{< /warning >}}
 

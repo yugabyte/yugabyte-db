@@ -9,8 +9,7 @@ menu:
     identifier: reference-mcp
     parent: reference
     weight: 1000
-type: indexpage
-showRightNav: true
+type: docs
 unversioned: true
 ---
 
@@ -64,7 +63,7 @@ host=<HOST_ADDRESS> port=<PORT> user=<DB_USER> password=<DB_PASSWORD> dbname=pos
 
 If **Connect** dialog includes `sslmode` and `sslrootcert` parameters, replace `<ROOT_CERT_PATH>` with the path to the CA certificate you download in the **Connect** dialog. Replace `postgres` if you're connecting to a different database.
 
-The YugabyteDB MCP Server runs on your computer and connects to the endpoint; you must add your computer's IP address to the endpoint's **Trusted IP addresses**. Set those addresses when you [add the endpoint](/stable/yugabyte-cloud/serverless/manage/#add-a-compute-endpoint).
+The YugabyteDB MCP Server runs on your computer and connects to the endpoint; add your computer's IP address to the endpoint's **Trusted IP addresses** so that it can connect. You can add the address when creating a branch or endpoint; to update endpoint network settings, see [Change network settings](/stable/yugabyte-cloud/serverless/manage/#change-network-settings).
 
 ## Security
 
@@ -72,11 +71,11 @@ The YugabyteDB MCP Server runs on your computer and connects to the endpoint; yo
 
 Read-only tools fetch information. A schema summary, a `SELECT`, a search of the docs, and a list of clusters don't change your data.
 
-Write tools create, update, or delete. The client shows you the request and waits for you to confirm it before anything changes. On the YugabyteDB MCP Server, write queries stay off until you enable them. On the AMP MCP Server, a create, update, or delete waits for your confirmation. The Docs MCP Server has no write tools.
+Write tools create, update, or delete. The client may ask you to confirm the request before it runs. Whether it asks depends on its settings. A client set to auto-approve, or a tool you have already allowed, runs the change with no prompt. On the YugabyteDB MCP Server, write queries stay off until you enable them. The Docs MCP Server has no write tools.
 
-Give the credential only the access the task needs. A read-only database role can run the read tools. An Aeon API key with only Read permission can list resources and can't change them.
+The credential limits the change: grant it only the access the task needs. A read-only database role can run the read tools. An Aeon API key with only Read permission can list resources and can't create, update, or delete.
 
-The client chooses the call and interprets the result. Confirm a change before you accept it, and check the result in the database or in YugabyteDB Aeon.
+The client chooses the call and interprets the result. After a change, check the result in the database or in YugabyteDB Aeon.
 
 ### Credentials
 
