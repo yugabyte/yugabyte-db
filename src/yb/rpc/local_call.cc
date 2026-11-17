@@ -82,6 +82,14 @@ size_t LocalOutboundCall::TransferSidecars(Sidecars* dest) {
   return inbound_call_->sidecars().Transfer(dest);
 }
 
+size_t LocalOutboundCall::GetSidecarsCount() const {
+  return inbound_call_->sidecars().offsets().size();
+}
+
+size_t LocalOutboundCall::TransferSidecars(Sidecars* dest, size_t begin, size_t end) {
+  return inbound_call_->sidecars().CopyRangeTo(dest, begin, end);
+}
+
 void LocalOutboundCall::TimeOut() {
   DoSetTimedOut(STATUS_FORMAT(
       TimedOut, "Local $0 RPC (request call id $1) timed out after $2",

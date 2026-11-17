@@ -825,6 +825,11 @@ size_t OutboundCall::TransferSidecars(Sidecars* dest) NO_THREAD_SAFETY_ANALYSIS 
   return call_response_.TransferSidecars(dest);
 }
 
+size_t OutboundCall::TransferSidecars(
+    Sidecars* dest, size_t begin, size_t end) NO_THREAD_SAFETY_ANALYSIS {
+  return call_response_.TransferSidecars(dest, begin, end);
+}
+
 string OutboundCall::ToString() const {
   std::ostringstream out;
   if (is_local()) {
@@ -966,6 +971,10 @@ Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
 
 size_t CallResponse::TransferSidecars(Sidecars* dest) {
   return sidecars_.Transfer(response_data_.holder(), dest);
+}
+
+size_t CallResponse::TransferSidecars(Sidecars* dest, size_t begin, size_t end) {
+  return sidecars_.Transfer(response_data_.holder(), dest, begin, end);
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {

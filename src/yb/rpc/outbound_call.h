@@ -187,6 +187,8 @@ class CallResponse {
   // the context.
   size_t TransferSidecars(Sidecars* dest);
 
+  size_t TransferSidecars(Sidecars* dest, size_t begin, size_t end);
+
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_, sidecars_);
   }
@@ -459,6 +461,8 @@ class OutboundCall : public RpcCall {
   virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
   virtual size_t GetSidecarsCount() const;
   virtual size_t TransferSidecars(Sidecars* dest);
+  // Transfers only sidecars [begin, end). Returns the index of the first one in dest.
+  virtual size_t TransferSidecars(Sidecars* dest, size_t begin, size_t end);
 
   // ----------------------------------------------------------------------------------------------
   // Protected fields set in constructor or during initialization

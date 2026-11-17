@@ -87,6 +87,7 @@ Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_st
         .hybrid_time = hybrid_time(),
         .sealed = request()->sealed(),
         .apply_to_storages = docdb::StorageSet::All(),
+        .applied_in_response = applied_in_response_.get(),
     };
     return transaction_participant->ProcessReplicated(data);
   }

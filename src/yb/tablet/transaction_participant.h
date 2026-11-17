@@ -84,6 +84,10 @@ struct TransactionApplyData {
   // Owned by running transaction if non-null.
   const docdb::ApplyTransactionState* apply_state = nullptr;
 
+  // When set, the leader reports the apply by storing true here instead of sending
+  // APPLIED_IN_ONE_OF_INVOLVED_TABLETS. See UpdateTxnOperation::set_applied_in_response.
+  std::atomic<bool>* applied_in_response = nullptr;
+
   std::string ToString() const;
 };
 
@@ -171,6 +175,8 @@ class TransactionParticipant : public TransactionStatusManager {
     HybridTime hybrid_time;
     bool sealed = false;
     docdb::StorageSet apply_to_storages;
+    // See UpdateTxnOperation::set_applied_in_response.
+    std::atomic<bool>* applied_in_response = nullptr;
 
     std::string ToString() const;
   };

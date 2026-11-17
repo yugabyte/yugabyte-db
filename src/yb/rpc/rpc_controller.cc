@@ -71,6 +71,7 @@ void RpcController::Swap(RpcController* other) {
 
   std::swap(timeout_, other->timeout_);
   std::swap(allow_local_calls_in_curr_thread_, other->allow_local_calls_in_curr_thread_);
+  std::swap(inline_local_call_, other->inline_local_call_);
   std::swap(call_, other->call_);
   std::swap(invoke_callback_mode_, other->invoke_callback_mode_);
 }
@@ -121,6 +122,10 @@ size_t RpcController::GetSidecarsCount() const { return call_->GetSidecarsCount(
 
 size_t RpcController::TransferSidecars(Sidecars* dest) {
   return call_->TransferSidecars(dest);
+}
+
+size_t RpcController::TransferSidecars(Sidecars* dest, size_t begin, size_t end) {
+  return call_->TransferSidecars(dest, begin, end);
 }
 
 void RpcController::set_timeout(const MonoDelta& timeout) {

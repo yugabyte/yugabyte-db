@@ -35,6 +35,9 @@
 
 DECLARE_int32(TEST_strand_done_inject_delay_ms);
 DECLARE_uint64(default_idle_timeout_ms);
+DECLARE_bool(thread_pool_futex_park);
+DECLARE_bool(thread_pool_notify_outside_lock);
+DECLARE_uint32(thread_pool_park_spin_us);
 
 using namespace std::literals;
 
@@ -945,5 +948,80 @@ TEST_F(ThreadPoolTest, ReclaimSpeedLargePool) {
 TEST_F(ThreadPoolTest, IdleReclaimFifo) {
   idle_reclaim::LiveWorkersAfterTrickle(WorkerWakeOrder::kFifo);
 }
+
+YB_DEFINE_ENUM(WorkerParkMode, (kDefault)(kNotifyOutsideLock)(kFutexPark)(kFutexParkSpin));
+
+class ThreadPoolParkTest : public YBTest, public testing::WithParamInterface<WorkerParkMode> {
+ protected:
+  void SetUp() override {
+    YBTest::SetUp();
+    auto mode = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_thread_pool_notify_outside_lock) =
+        mode == WorkerParkMode::kNotifyOutsideLock;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_thread_pool_futex_park) =
+        mode == WorkerParkMode::kFutexPark || mode == WorkerParkMode::kFutexParkSpin;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_thread_pool_park_spin_us) =
+        mode == WorkerParkMode::kFutexParkSpin ? 50 : 0;
+  }
+};
+
+// Many producers, each waiting for its own tasks, so that workers park and wake all the time.
+TEST_P(ThreadPoolParkTest, ProducersAndIdleTimeout) {
+  constexpr size_t kProducers = 16;
+  constexpr size_t kTasksPerProducer = RegularBuildVsSanitizers(20000, 2000);
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "park",
+    .max_workers = 32,
+    .idle_timeout = MonoDelta(200ms),
+  });
+  std::atomic<size_t> executed{0};
+  TestThreadHolder threads;
+  for (size_t i = 0; i != kProducers; ++i) {
+    threads.AddThreadFunctor([&pool, &executed] {
+      for (size_t j = 0; j != kTasksPerProducer; ++j) {
+        CountDownLatch latch(1);
+        ASSERT_TRUE(pool.EnqueueFunctor([&latch, &executed] {
+          executed.fetch_add(1, std::memory_order_relaxed);
+          latch.CountDown();
+        }));
+        ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
+      }
+    });
+  }
+  threads.JoinAll();
+  ASSERT_EQ(executed.load(), kProducers * kTasksPerProducer);
+
+  // Parked workers must still time out.
+  ASSERT_OK(WaitFor([&pool] { return pool.NumWorkers() == 0; }, 10s * kTimeMultiplier,
+                    "Workers idle out"));
+
+  // And come back.
+  CountDownLatch latch(1);
+  ASSERT_TRUE(pool.EnqueueFunctor([&latch] { latch.CountDown(); }));
+  ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
+  pool.Shutdown();
+}
+
+// Shutdown must wake workers parked without a timeout.
+TEST_P(ThreadPoolParkTest, ShutdownWithParkedWorkers) {
+  ThreadPool pool(ThreadPoolOptions {
+    .name = "park_shutdown",
+    .max_workers = 8,
+    .min_workers = 8,
+  });
+  CountDownLatch latch(8);
+  for (int i = 0; i != 8; ++i) {
+    ASSERT_TRUE(pool.EnqueueFunctor([&latch] { latch.CountDown(); }));
+  }
+  ASSERT_TRUE(latch.WaitFor(10s * kTimeMultiplier));
+  std::this_thread::sleep_for(100ms);
+  pool.Shutdown();
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , ThreadPoolParkTest, testing::ValuesIn(kWorkerParkModeArray),
+    [](const testing::TestParamInfo<WorkerParkMode>& info) {
+      return std::string(ToCString(info.param)).substr(1);
+    });
 
 } // namespace yb::rpc

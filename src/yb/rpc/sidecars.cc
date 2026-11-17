@@ -47,6 +47,18 @@ size_t Sidecars::Transfer(Sidecars* dest) {
   return dest->Take(&buffer_, &offsets_);
 }
 
+size_t Sidecars::CopyRangeTo(Sidecars* dest, size_t begin, size_t end) const {
+  // dest can be shared by concurrent transfers, so it is only changed through Take.
+  Sidecars copy;
+  end = std::min<size_t>(end, offsets_.size());
+  for (auto idx = begin; idx < end; ++idx) {
+    auto slice = Extract(idx);
+    auto data = slice.AsSlice();
+    copy.Start().Append(data.cdata(), data.size());
+  }
+  return dest->Take(&copy.buffer_, &copy.offsets_);
+}
+
 size_t Sidecars::Take(
     WriteBuffer* buffer, google::protobuf::RepeatedField<uint32_t>* offsets) {
   std::lock_guard lock(take_mutex_);
@@ -75,7 +87,7 @@ size_t Sidecars::Take(
   }
   auto base_offset = narrow_cast<uint32_t>(buffer_.size());
   const auto* base = bounds.front();
-  buffer_.AddBlock(buffer, base - buffer.udata());
+  buffer_.AddBlock(buffer, base - buffer.udata(), bounds.back() - base);
   for (auto it = bounds.begin(), end = --bounds.end(); it != end; ++it) {
     offsets_.Add(narrow_cast<uint32_t>(base_offset + *it - base));
   }

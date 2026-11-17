@@ -578,6 +578,8 @@ class YBClient::Data {
 
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;
+  std::once_flag update_transaction_batcher_once_;
+  std::shared_ptr<UpdateTransactionBatcher> update_transaction_batcher_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   scoped_refptr<internal::MetaCache> meta_cache_;
   scoped_refptr<MetricEntity> metric_entity_;

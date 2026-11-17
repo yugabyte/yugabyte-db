@@ -63,6 +63,7 @@ set(CLIENT_SRCS
   transaction_manager.cc
   transaction_pool.cc
   transaction_rpc.cc
+  update_transaction_batcher.cc
   transaction_status_tablets.cc
   universe_key_client.cc
   value.cc

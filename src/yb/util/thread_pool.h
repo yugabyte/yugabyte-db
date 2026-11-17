@@ -242,6 +242,9 @@ class YBThreadPool : public TaskRecipient<ThreadPoolTask> {
 
   bool Owns(Thread* thread);
   bool OwnsThisThread();
+
+  // Whether the current thread is a worker of any YBThreadPool.
+  static bool IsCurrentThreadPoolWorker();
   bool BusyWait(MonoTime deadline);
 
   size_t NumWorkers() const;

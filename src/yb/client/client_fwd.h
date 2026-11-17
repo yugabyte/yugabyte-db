@@ -42,6 +42,7 @@ class RejectionScoreSource;
 using RejectionScoreSourcePtr = std::shared_ptr<RejectionScoreSource>;
 
 class YBClient;
+class UpdateTransactionBatcher;
 class YBClientBuilder;
 
 class YBError;

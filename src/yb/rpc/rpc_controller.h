@@ -131,6 +131,12 @@ class RpcController {
   void set_allow_local_calls_in_curr_thread(bool al) { allow_local_calls_in_curr_thread_ = al; }
   bool allow_local_calls_in_curr_thread() const { return allow_local_calls_in_curr_thread_; }
 
+  // For a node-local call issued from a thread pool worker: run the handler on the calling thread,
+  // whichever pool it belongs to, and run the response callback on the thread that responds. Only
+  // for handlers that never block and callbacks that are safe to run on any worker.
+  void set_inline_local_call(bool value) { inline_local_call_ = value; }
+  bool inline_local_call() const { return inline_local_call_; }
+
   // Sets where to invoke callback on receiving response to the async call.
   // For sync calls callback is always executed on reactor thread.
   void set_invoke_callback_mode(InvokeCallbackMode invoke_callback_mode) {
@@ -153,6 +159,9 @@ class RpcController {
 
   // Transfer all sidecars to specified context.
   size_t TransferSidecars(Sidecars* dest);
+
+  // Transfer sidecars [begin, end) to dest. Returns the index of the first one in dest.
+  size_t TransferSidecars(Sidecars* dest, size_t begin, size_t end);
 
   int32_t call_id() const;
 
@@ -194,6 +203,7 @@ class RpcController {
   // Once the call is sent, it is tracked here.
   OutboundCallPtr call_;
   bool allow_local_calls_in_curr_thread_ = false;
+  bool inline_local_call_ = false;
   InvokeCallbackMode invoke_callback_mode_ = InvokeCallbackMode::kThreadPoolNormal;
 
   std::unique_ptr<Sidecars> outbound_sidecars_;

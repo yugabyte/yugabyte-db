@@ -16,6 +16,7 @@
 
 #include "yb/common/common_net.pb.h"
 
+#include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -31,7 +32,9 @@ class PeriodicTimer;
 
 namespace consensus {
 
-using HeartbeatResponseCallback = std::function<void(const Status&)>;
+// Called with the peer's response, which is valid only during the call and null on failure.
+using MultiRaftResponseCallback =
+    std::function<void(const Status&, const LWConsensusResponsePB* response)>;
 
 // - MultiRaftHeartbeatBatcher is responsible for the batching of heartbeats
 //   among peers that are communicating with remote peers at the same tserver
@@ -54,13 +57,17 @@ class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftH
   // Required to start a periodic timer to send out batches.
   void Start();
 
-  // When called adds the request to a batch (request data will be swapped).
-  // If the batch executes sucessfully then the response is populated and the callback is executed.
-  // If the batch rpc call fails the response will NOT be populated and the callback will be
-  // executed with an error status.
-  void AddRequestToBatch(ConsensusRequestPB* request,
-                         ConsensusResponsePB* response,
-                         HeartbeatResponseCallback callback);
+  // Adds a heartbeat to the batch. The request is copied. It goes out with the next batch, which
+  // is sent by the timer, once the batch is full, or with a data request.
+  void AddHeartbeatToBatch(const LWConsensusRequestPB& request, MultiRaftResponseCallback callback);
+
+  // Adds a request that carries operations. The request is referenced, so it must stay valid until
+  // the callback; msgs_holder keeps its operations alive until the batch is sent. Uses natural
+  // batching: the batch is sent at once if fewer than --multi_raft_batch_max_in_flight batches
+  // are in flight, otherwise when one of them returns.
+  void AddDataRequestToBatch(
+      LWConsensusRequestPB* request, LWReplicateMsgsHolder msgs_holder,
+      MultiRaftResponseCallback callback);
 
   void Shutdown();
 
@@ -77,7 +84,7 @@ class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftH
   // If data is null then we will not send a batch request.
   void SendBatchRequest(std::shared_ptr<MultiRaftConsensusData> data);
 
-  void MultiRaftUpdateHeartbeatResponseCallback(std::shared_ptr<MultiRaftConsensusData> data);
+  void BatchDone(std::shared_ptr<MultiRaftConsensusData> data);
 
   rpc::Messenger* messenger_;
 
@@ -88,6 +95,11 @@ class MultiRaftHeartbeatBatcher : public std::enable_shared_from_this<MultiRaftH
   std::mutex mutex_;
 
   std::shared_ptr<MultiRaftConsensusData> current_batch_ GUARDED_BY(mutex_);
+
+  // Batches of this batcher in flight, and whether current_batch_ has a data request that waits
+  // for one of them to return.
+  size_t in_flight_ GUARDED_BY(mutex_) = 0;
+  bool data_pending_ GUARDED_BY(mutex_) = false;
 
   std::atomic<int>* running_calls_;
 };
@@ -105,7 +117,8 @@ class MultiRaftManager: public std::enable_shared_from_this<MultiRaftManager> {
   ~MultiRaftManager();
 
   // Add a batcher with the given hostport (if one does not already exist)
-  // and returns the newly created batcher.
+  // and returns the newly created batcher. Returns null unless heartbeat or data batching is
+  // enabled.
   MultiRaftHeartbeatBatcherPtr AddOrGetBatcher(const RaftPeerPB& remote_peer_pb);
 
   void StartShutdown();
