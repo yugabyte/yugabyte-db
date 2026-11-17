@@ -186,24 +186,36 @@ void TCMallocReleaseMemoryToSystemWithLookbacks(
   // The sampled/cold heap has its own intervals, which MallocExtension does not expose. TCMalloc
   // releases from that heap first on every call, so leaving them at their defaults makes it compute
   // recent demand even when the caller asked for 0/0.
+  // The accessors are weak symbols. In dynamic builds they resolve only in executables that export
+  // TCMalloc's symbols (postgres does, yb-tserver does not), so check them like MallocExtension
+  // does.
+  const bool has_cold_intervals =
+      &TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdShortInterval != nullptr &&
+      &TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdLongInterval != nullptr &&
+      &TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdShortInterval != nullptr &&
+      &TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdLongInterval != nullptr;
   const auto short_interval = tcmalloc::MallocExtension::GetSkipSubreleaseShortInterval();
   const auto long_interval = tcmalloc::MallocExtension::GetSkipSubreleaseLongInterval();
   absl::Duration cold_short_interval;
   absl::Duration cold_long_interval;
-  TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdShortInterval(&cold_short_interval);
-  TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdLongInterval(&cold_long_interval);
+  if (has_cold_intervals) {
+    TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdShortInterval(&cold_short_interval);
+    TCMalloc_Internal_GetHugePageFillerSkipSubreleaseColdLongInterval(&cold_long_interval);
+    TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdShortInterval(
+        absl::Milliseconds(short_interval_ms));
+    TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdLongInterval(
+        absl::Milliseconds(long_interval_ms));
+  }
   tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(
       absl::Milliseconds(short_interval_ms));
   tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(absl::Milliseconds(long_interval_ms));
-  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdShortInterval(
-      absl::Milliseconds(short_interval_ms));
-  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdLongInterval(
-      absl::Milliseconds(long_interval_ms));
   TCMallocReleaseMemoryToSystem(bytes);
   tcmalloc::MallocExtension::SetSkipSubreleaseShortInterval(short_interval);
   tcmalloc::MallocExtension::SetSkipSubreleaseLongInterval(long_interval);
-  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdShortInterval(cold_short_interval);
-  TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdLongInterval(cold_long_interval);
+  if (has_cold_intervals) {
+    TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdShortInterval(cold_short_interval);
+    TCMalloc_Internal_SetHugePageFillerSkipSubreleaseColdLongInterval(cold_long_interval);
+  }
 #else
   TCMallocReleaseMemoryToSystem(bytes);
 #endif
