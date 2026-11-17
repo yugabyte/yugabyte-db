@@ -581,8 +581,8 @@ ybIsCopyOfEarlierIndexCol(IndexOptInfo *index, int indexcol)
  * Only the last kind needs the merge to sort on it, or the merged rows can
  * come out of order.  Telling the first two kinds apart takes a proof that the
  * predicate implies the column (see #37784) or knowing where each filter runs
- * (see #37785), so err on the side of correct order and make all three gap
- * columns, at a cost to the first two kinds:
+ * (see #37785), so err on the side of correct order and treat columns of all
+ * three kinds as gap columns, at a cost to the first two kinds:
  * - extra comparisons that always tie
  * - for an expression column of an embedded index scan, the pathkey cut in
  *   yb_finalize_merge_scan_info, which in the worst case leaves the index path
