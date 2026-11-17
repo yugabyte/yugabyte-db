@@ -40,6 +40,7 @@
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 #include "yb/fs/fs_manager.h"
+#include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -131,6 +132,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_simulate_abrupt_server_restart);
 DECLARE_bool(TEST_skip_vector_index_stamp_after_restore_reopen);
 DECLARE_bool(TEST_use_custom_varz);
@@ -160,6 +162,7 @@ DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_uint64(vector_index_backfill_single_chunk_size_bytes);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
@@ -7238,6 +7241,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
         pgwrapper::DistanceOpName(distance_kind_), limit))));
   }
 
+  static constexpr int64_t kUnappliedInsertRowId = 100;
+
   static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
     RETURN_NOT_OK(conn.Execute("BEGIN"));
     RETURN_NOT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = $1", vector, id));
@@ -7247,6 +7252,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   void TestFastPathVectorDeletion(const std::string& statement);
   void TestUnappliedVectorUpdates();
   void TestCompactionDropsDeletedPayloadVectors(Split split);
+  void TestReverseMappingPostSplitCompactionUnappliedInsert(
+      const std::string& statement, int num_row_entries);
   void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
 
@@ -7871,6 +7878,86 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
           ybctid_2_vector_1 -> DEL
       )#",
       with_row2_dump);
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/38070. The statement removes the vector of
+// a row, while the insert of the row is committed but not applied. num_row_entries is the number of
+// reverse mapping entries of the row which the statement writes.
+void PgVectorIndexUtilTest::TestReverseMappingPostSplitCompactionUnappliedInsert(
+    const std::string& statement, int num_row_entries) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  // The held apply reaches the children when its resend to the parent fails with a split error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // The statement has to be applied before the held apply is resent.
+  constexpr int64_t kResendIntervalSec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) =
+      kResendIntervalSec * kTimeMultiplier * MonoTime::kMicrosecondsPerSecond;
+
+  constexpr size_t kNumRows = 10;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+
+  // The insert is committed, but not applied. Its vector is the nearest to the origin.
+  google::SetVLOGLevel("transaction_participant", 2);
+  StringWaiterLogSink rejected_apply_log("TEST: Rejected apply");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[0.5, 0.5, 0.5]')", kUnappliedInsertRowId));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(rejected_apply_log.WaitFor(10s * kTimeMultiplier));
+
+  // The statement reads the row from the intents. Its apply writes the reverse mapping tombstone.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(conn.Execute(statement));
+  std::string dump;
+  ASSERT_OK(WaitFor([this, &dump]() -> Result<bool> {
+    dump = VERIFY_RESULT(DumpSingleTabletReverseMapping());
+    return dump.find("-> DEL") != std::string::npos;
+  }, 10s * kTimeMultiplier, "Reverse mapping tombstone"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  const auto row_entry = Format(" -> ybctid_$0\n", kUnappliedInsertRowId);
+  dump += '\n';
+  ASSERT_EQ(CountSubstring(dump, row_entry), num_row_entries) << "The insert is applied: " << dump;
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitForAllIntentsApplied(
+      cluster_.get(), MonoDelta::FromSeconds(kResendIntervalSec + 30) * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+
+  // The row has a far vector now (a deleted row is inserted back), so the vector of its old version
+  // would come first.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[100, 100, 100]') ON CONFLICT DO NOTHING",
+      kUnappliedInsertRowId));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 5)), "[1, 2, 3, 4, 5]");
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionDeleteOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format("DELETE FROM test WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 0);
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionUpdateOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format(
+          "UPDATE test SET embedding = '[100, 100, 100]' WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 1);
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/35923.
