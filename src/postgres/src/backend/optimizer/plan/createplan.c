@@ -3433,6 +3433,22 @@ yb_target_has_transition_tables(Oid relid, CmdType operation)
 }
 
 /*
+ * Returns true if the relation the query names has an AFTER STATEMENT UPDATE
+ * trigger.  For a partitioned target, statement triggers fire only for that
+ * relation, not for the leaf the update goes to.
+ */
+static bool
+yb_target_has_update_after_statement_trigger(Oid relid)
+{
+	Relation	target_rel = RelationIdGetRelation(relid);
+	bool		result = (target_rel->trigdesc &&
+						  target_rel->trigdesc->trig_update_after_statement);
+
+	RelationClose(target_rel);
+	return result;
+}
+
+/*
  * yb_leaf_update_modifies_partition_key
  *
  * Returns true if any column in the input bitmapset is a partition key column
@@ -3950,6 +3966,18 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * the update is not single row.
 	 */
 	if (has_unpushable_exprs)
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Outside a transaction block, a single-row UPDATE takes the fast path
+	 * (YbIsSingleRowModifyTxnPlanned), which commits the write on its own, so
+	 * an error from an AFTER STATEMENT trigger could not roll it back.
+	 */
+	if (path->operation == CMD_UPDATE &&
+		yb_target_has_update_after_statement_trigger(query_target_relid))
 	{
 		RelationClose(relation);
 		return false;

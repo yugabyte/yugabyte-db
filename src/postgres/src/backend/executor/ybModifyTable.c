@@ -120,20 +120,16 @@ YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 	if (ActivePortal->stmts->length != 1 || !YBCIsSingleRowModify(pstmt))
 		return false;
 
+	/*
+	 * For UPDATE, the planner refuses the single-row plan when a trigger or an
+	 * updated secondary index needs the statement's transaction
+	 * (yb_single_row_update_or_delete_path), so the checks below don't apply.
+	 */
+	if (pstmt->commandType == CMD_UPDATE)
+		return true;
+
 	ResultRelInfo *resultRelInfo =
 		(ResultRelInfo *) linitial(estate->es_opened_result_relations);
-
-	if (pstmt->commandType == CMD_UPDATE)
-	{
-		TriggerDesc *trigdesc = resultRelInfo->ri_TrigDesc;
-
-		/*
-		 * The planner does not check AFTER STATEMENT triggers, so check them
-		 * here on the target root relation. The fast path update is already
-		 * committed if such a trigger raises an error
-		 */
-		return !(trigdesc && trigdesc->trig_update_after_statement);
-	}
 
 	if (!YBCIsSingleRowTxnCapableRel(resultRelInfo))
 		return false;
