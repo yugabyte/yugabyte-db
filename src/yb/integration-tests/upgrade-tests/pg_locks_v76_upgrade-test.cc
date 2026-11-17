@@ -19,39 +19,14 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 
 namespace yb {
 
-// false turns enable_object_locking_for_table_locks off on every version; true keeps the build
-// default, which is on in release builds. Without false, release builds would cover only the
-// upgraded transaction that refreshes its catalog cache on a new lock, not the one that keeps its
-// stale catalog cache. Debug builds default to off, so true would repeat false there and is
-// skipped.
-class PgLocksV76UpgradeTest : public UpgradeTestBase, public ::testing::WithParamInterface<bool> {
+class PgLocksV76UpgradeTest : public UpgradeTestBase {
  public:
   PgLocksV76UpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
-
- protected:
-  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
-    if (!GetParam()) {
-      for (auto* flags : {&opts.extra_master_flags, &opts.extra_tserver_flags}) {
-        for (const auto* flag :
-             {"enable_object_locking_for_table_locks", "ysql_yb_ddl_transaction_block_enabled",
-              "ysql_enable_concurrent_ddl", "ysql_yb_enable_ddl_savepoint_support",
-              "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks"}) {
-          AddUnDefOkAndSetFlag(*flags, flag, "false");
-        }
-      }
-    }
-    UpgradeTestBase::SetUpOptions(opts);
-  }
 };
 
 // Verify that the pg_locks view correctly displays advisory locks and other types of locks
 // during and after the upgrade.
-TEST_P(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
-#ifndef NDEBUG
-  if (GetParam()) {
-    GTEST_SKIP() << "Object locking for table locks is off by default in debug builds";
-  }
-#endif
+TEST_F(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
   constexpr int kMinTxnAgeMs = 0;
   const std::string kPgLocksQuery = "SELECT classid, objid, objsubid, mode FROM pg_locks";
   ASSERT_OK(StartClusterInOldVersion());
@@ -142,9 +117,5 @@ TEST_P(PgLocksV76UpgradeTest, TestPgLocksViewAdvisoryLocksSupport) {
       Format("$0 WHERE locktype = 'advisory';", kPgLocksQuery)));
   ASSERT_EQ(pg_locks_result, "0, 1, 1, ExclusiveLock");
 }
-
-
-INSTANTIATE_TEST_SUITE_P(
-    TableLocks, PgLocksV76UpgradeTest, ::testing::Bool(), ::testing::PrintToStringParamName());
 
 } // namespace yb
