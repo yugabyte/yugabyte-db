@@ -1,6 +1,7 @@
 package providerutil
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -81,6 +82,20 @@ func TestBuildRegionMapInstanceTemplate(t *testing.T) {
 					got, ok, c.wantValue, c.wantPresent)
 			}
 		})
+	}
+}
+
+func TestSSHPort(t *testing.T) {
+	for _, port := range []int{1, 22, 65535} {
+		if got, err := SSHPort(port); err != nil || got != int32(port) {
+			t.Errorf("SSHPort(%d) = (%d, %v), want %d", port, got, err, port)
+		}
+	}
+	for _, port := range []int{0, -1, 65536, 1 << 32} {
+		want := fmt.Sprintf("invalid ssh-port %d; provide a port between 1 and 65535", port)
+		if _, err := SSHPort(port); err == nil || err.Error() != want {
+			t.Errorf("SSHPort(%d) error = %v, want %q", port, err, want)
+		}
 	}
 }
 

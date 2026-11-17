@@ -209,7 +209,7 @@ func TestEditOCIImageBundlesSSHPort(t *testing.T) {
 			Uuid: util.GetStringPointer("u1"),
 			Details: &ybaclient.ImageBundleDetails{
 				Regions: &regions,
-				SshPort: util.GetInt32Pointer(22),
+				SshPort: util.GetInt32Pointer(2200),
 			},
 		}}
 	}
@@ -236,7 +236,7 @@ func TestEditOCIImageBundlesSSHPort(t *testing.T) {
 		"image-bundle-uuid=u1::ssh-user=yb",
 	}, existing(), []string{"us-ashburn-1"}, nil)
 	checkErr(t, err, "")
-	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 22 {
+	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 2200 {
 		t.Errorf("omitted ssh-port changed the stored port to %v", got[0].GetDetails().SshPort)
 	}
 }

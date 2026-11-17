@@ -63,9 +63,9 @@ func TestImageBundleSSHPort(t *testing.T) {
 	}
 	edited = editAWSImageBundles([]string{
 		"image-bundle-uuid=u1::ssh-user=ec2-user",
-	}, nil, sshBundle(22))
-	if port := sshPortValue(edited[0]); port != 22 {
-		t.Errorf("edit without ssh-port = %d, want 22", port)
+	}, nil, sshBundle(2200))
+	if port := sshPortValue(edited[0]); port != 2200 {
+		t.Errorf("edit without ssh-port = %d, want the stored 2200", port)
 	}
 
 	rejectSSHPort(t, []sshPortCase{

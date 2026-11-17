@@ -510,9 +510,17 @@ func BuildImageBundleRegionOverrideMapFromString(
 	return override
 }
 
+// SSHPort checks that an --ssh-port flag value is a TCP port, 1 to 65535.
+func SSHPort(port int) (int32, error) {
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid ssh-port %d; provide a port between 1 and 65535", port)
+	}
+	return int32(port), nil
+}
+
 // ImageBundleSSHPort parses ssh-port. An empty value is an omitted flag and
-// defaults to 22. Any other value must be an integer from 1 to 65535, so a
-// bad flag cannot be stored as 22 or truncated into the int32 the API stores.
+// defaults to 22. Any other value must be a TCP port, 1 to 65535, so a bad
+// flag is neither stored as 22 nor sent to YBA out of range.
 func ImageBundleSSHPort(bundle map[string]string) (int32, error) {
 	raw := bundle["ssh-port"]
 	if raw == "" {
