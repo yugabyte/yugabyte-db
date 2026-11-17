@@ -13,9 +13,10 @@ import (
 
 // ValidateImageBundleEdits rejects an --edit-image-bundle or
 // --edit-image-bundle-region-override UUID that is not one of bundles, or that
-// --remove-image-bundle removes in the same command. The edit helpers only act on
-// a matching bundle, so either would be a silent no-op. Pass the bundles from
-// before the removal.
+// --remove-image-bundle removes in the same command. The edit helpers act only on a
+// matching bundle, so --edit-image-bundle, and AWS's region override, would drop
+// such an edit silently. OCI's edit reports an unmatched region override itself, but
+// only as an unknown bundle. Pass the bundles from before the removal.
 func ValidateImageBundleEdits(
 	removeUUIDs, editImageBundles, editRegionOverrides []string,
 	bundles []ybaclient.ImageBundle,
