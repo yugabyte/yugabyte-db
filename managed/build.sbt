@@ -409,7 +409,18 @@ externalResolvers := {
 }
 
 (Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts).value
-(Test / test) := (Test / test).dependsOn(testDependentArtifacts).value
+// The support bundle Go helpers aren't Maven modules, so mvn test never reaches them. Their tests
+// run after the Java tests, and a failure fails `sbt test`. testDependentArtifacts can't carry
+// this: sbt ignores its exit status.
+(Test / test) := {
+  val javaTests = (Test / test).dependsOn(testDependentArtifacts).result.value
+  ybLog("Testing support bundle Go helpers...")
+  val goStatus = Process("bash devops/supportbundle/run_go_tests.sh", baseDirectory.value).!
+  javaTests.toEither.left.foreach(incomplete => throw incomplete)
+  if (goStatus != 0) {
+    sys.error("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
+  }
+}
 
 (Compile / compilePlatform) := {
   Def.sequential(
