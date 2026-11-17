@@ -842,6 +842,53 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCheckNoRedactedGFlagsOnCreateChecksKubernetesOverrides() {
+    String redacted =
+        "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT + "\n";
+    UserIntent universeLevel = new UserIntent();
+    universeLevel.universeOverrides = redacted;
+    UserIntent azLevel = new UserIntent();
+    azLevel.azOverrides = new HashMap<>(Map.of("az-1", "tserver:\n  cpu: 2\n", "az-2", redacted));
+    UserIntent hiddenWhole = new UserIntent();
+    hiddenWhole.universeOverrides = SECRET_REPLACEMENT;
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      for (UserIntent userIntent : List.of(universeLevel, azLevel, hiddenWhole)) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(userIntent, "2.25.0.0", null));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      }
+      PlatformServiceException azEx =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(azLevel, "2.25.0.0", null));
+      assertTrue(azEx.getMessage(), azEx.getMessage().contains("Kubernetes overrides of AZ az-2"));
+
+      UserIntent real = new UserIntent();
+      real.universeOverrides = redacted.replace(SECRET_REPLACEMENT, "dummy-bind-pass");
+      // Only a secret can't be REDACTED.
+      real.azOverrides =
+          new HashMap<>(
+              Map.of(
+                  "az-1", "# " + SECRET_REPLACEMENT + "\ntserver:\n  note: " + SECRET_REPLACEMENT));
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(real, "2.25.0.0", null);
+    }
+    // With the redaction off, a client gets the overrides unredacted and nothing is checked.
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(false);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(universeLevel, "2.25.0.0", null);
+    }
+  }
+
+  @Test
   public void testMergeSensitiveGFlagsYsqlHbaFirstTimeWithRedactedThrowsBadRequest() {
     try (var mockedRedactingService = Mockito.mockStatic(RedactingService.class)) {
       mockedRedactingService

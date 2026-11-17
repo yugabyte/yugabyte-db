@@ -1137,4 +1137,102 @@ public class RedactingServiceTest {
     String input = "key: abc, other: abc";
     assertEquals(input, RedactingService.redactValues(input, List.of("abc")));
   }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+  private static final String K8S_OVERRIDES_REDACTED =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT + "\n";
+
+  @Test
+  public void testFilterSecretFieldsApisRedactsKubernetesOverrides() {
+    ObjectNode userIntent = mapper.createObjectNode();
+    userIntent.put("universeOverrides", K8S_OVERRIDES);
+    userIntent.putObject("azOverrides").put("az-1", K8S_OVERRIDES).putNull("az-2");
+    // userIntentOverrides.azOverrides shares the name but holds objects, which are still searched.
+    userIntent
+        .putObject("userIntentOverrides")
+        .putObject("azOverrides")
+        .putObject("8d6f9c2e-0000-0000-0000-000000000000")
+        .put("instanceType", "c5.large")
+        .put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass");
+    ObjectNode universe = mapper.createObjectNode();
+    universe
+        .putObject("universeDetails")
+        .putArray("clusters")
+        .addObject()
+        .set("userIntent", userIntent);
+    ObjectNode v2Provider =
+        universe.putObject("spec").putArray("clusters").addObject().putObject("provider_spec");
+    v2Provider.put("helm_overrides", K8S_OVERRIDES);
+    v2Provider.putObject("az_helm_overrides").put("az-1", K8S_OVERRIDES);
+    ObjectNode root = mapper.createObjectNode();
+    root.putArray("universes").add(universe);
+    root.putObject("node").put("kubernetesOverrides", K8S_OVERRIDES);
+    // KubernetesOverridesUpgradeParams, as task details show them.
+    root.putObject("taskParams")
+        .put("universeOverrides", K8S_OVERRIDES)
+        .putObject("azOverrides")
+        .put("az-1", K8S_OVERRIDES);
+    String noSecrets = "tserver:\n  podLabels:\n    env: test\n";
+    root.put("helm_overrides", noSecrets);
+
+    JsonNode out =
+        RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+    assertFalse(out.toString(), out.toString().contains("dummy-"));
+    JsonNode outIntent = out.at("/universes/0/universeDetails/clusters/0/userIntent");
+    assertEquals(K8S_OVERRIDES_REDACTED, outIntent.get("universeOverrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, outIntent.at("/azOverrides/az-1").asText());
+    assertTrue(outIntent.at("/azOverrides/az-2").isNull());
+    assertEquals(
+        "c5.large",
+        outIntent
+            .at("/userIntentOverrides/azOverrides")
+            .elements()
+            .next()
+            .get("instanceType")
+            .asText());
+    JsonNode outV2 = out.at("/universes/0/spec/clusters/0/provider_spec");
+    assertEquals(K8S_OVERRIDES_REDACTED, outV2.get("helm_overrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, outV2.at("/az_helm_overrides/az-1").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, out.at("/node/kubernetesOverrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, out.at("/taskParams/universeOverrides").asText());
+    assertEquals(K8S_OVERRIDES_REDACTED, out.at("/taskParams/azOverrides/az-1").asText());
+    assertEquals(noSecrets, out.get("helm_overrides").asText());
+
+    // With the gflags sensitive data API redaction off, as the restore on writes is.
+    assertEquals(
+        root, RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, false));
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisHidesKubernetesOverridesTheRedactorHides() {
+    ObjectNode root = mapper.createObjectNode();
+    root.put(
+        "universeOverrides",
+        "x: &pw dummy-bind-pass\n" + K8S_OVERRIDES.replace("dummy-bind-pass", "*pw"));
+    JsonNode out =
+        RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+    assertEquals(SECRET_REPLACEMENT, out.get("universeOverrides").asText());
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisHidesKubernetesOverridesWhoseRedactionFails() {
+    ObjectNode root = mapper.createObjectNode();
+    root.put("universeOverrides", K8S_OVERRIDES);
+    root.putObject("azOverrides").put("az-1", K8S_OVERRIDES).put("az-2", "x: y\n");
+    root.put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass");
+    try (MockedStatic<KubernetesOverridesRedactor> redactor =
+        Mockito.mockStatic(KubernetesOverridesRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      redactor
+          .when(() -> KubernetesOverridesRedactor.redact(anyString()))
+          .thenThrow(new IllegalStateException());
+      JsonNode out =
+          RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+      assertEquals(SECRET_REPLACEMENT, out.get("universeOverrides").asText());
+      assertEquals(SECRET_REPLACEMENT, out.at("/azOverrides/az-1").asText());
+      assertEquals(SECRET_REPLACEMENT, out.at("/azOverrides/az-2").asText());
+      // The fields after them are still redacted.
+      assertFalse(out.toString(), out.toString().contains("dummy-"));
+    }
+  }
 }

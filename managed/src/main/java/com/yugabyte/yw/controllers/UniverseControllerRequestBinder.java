@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
@@ -180,7 +181,8 @@ public class UniverseControllerRequestBinder {
   /**
    * Copies master, tserver, and specific gflags from the stored cluster back into the request
    * params, but only for map entries whose value is the redaction sentinel. specificGFlags is
-   * scanned only in per-process and per-AZ maps (gflagGroups is enum names, not secrets).
+   * scanned only in per-process and per-AZ maps (gflagGroups is enum names, not secrets). Also
+   * restores the REDACTED secrets in Kubernetes overrides from the stored ones.
    */
   private static void copyGFlagsFromUniverseDetails(
       UniverseDefinitionTaskParams taskParams, Universe universe) {
@@ -227,6 +229,10 @@ public class UniverseControllerRequestBinder {
       if (specificGFlagsContainsRedactedPlaceholder(dst.specificGFlags)) {
         dst.specificGFlags = src.specificGFlags == null ? null : src.specificGFlags.clone();
       }
+      dst.universeOverrides =
+          KubernetesOverridesRedactor.restore(
+              src.universeOverrides, dst.universeOverrides, "Kubernetes universe overrides");
+      dst.azOverrides = KubernetesOverridesRedactor.restoreAz(src.azOverrides, dst.azOverrides);
     }
   }
 

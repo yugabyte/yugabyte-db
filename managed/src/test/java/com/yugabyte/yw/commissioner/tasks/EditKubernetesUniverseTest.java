@@ -966,6 +966,38 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertThat(e.getMessage(), containsString("expose service setting follows the primary"));
   }
 
+  @Test
+  public void testAzOverridesChangeRejectedWithoutTheirSecrets() {
+    setupUniverseSingleAZ(/* Create Masters */ true);
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-stored-pass\n";
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides =
+                    new HashMap<>(Map.of("az-1", stored)));
+
+    Cluster primary = defaultUniverse.getUniverseDetails().getPrimaryCluster();
+    primary.userIntent.azOverrides =
+        new HashMap<>(Map.of("az-1", stored.replace("dummy-stored-pass", "dummy-new-pass")));
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = new ArrayList<>(Collections.singletonList(primary));
+    taskParams.nodePrefix = NODE_PREFIX;
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.EditKubernetesUniverse, taskParams));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    assertThat(
+        e.getMessage(),
+        containsString("previous overrides: " + redacted + ", new overrides: " + redacted));
+  }
+
   //   @Test
   public void testEditKubernetesUniverseRetry() {
     setupUniverseSingleAZ(/* Create Masters */ true);
