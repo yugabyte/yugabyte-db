@@ -842,6 +842,36 @@ public class GFlagsUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCheckNoRedactedGFlagsOnCreateChecksKubernetesOverrides() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd"));
+      String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT;
+      UserIntent universeLevel = new UserIntent();
+      universeLevel.universeOverrides = redacted;
+      UserIntent azLevel = new UserIntent();
+      azLevel.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+      for (UserIntent userIntent : List.of(universeLevel, azLevel)) {
+        PlatformServiceException ex =
+            assertThrows(
+                PlatformServiceException.class,
+                () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(userIntent, "2.25.0.0", null));
+        assertEquals(BAD_REQUEST, ex.getHttpStatus());
+      }
+
+      UserIntent real = new UserIntent();
+      real.universeOverrides =
+          "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: ycql-bind-secret-xyz";
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(real, "2.25.0.0", null);
+    }
+  }
+
+  @Test
   public void testMergeSensitiveGFlagsYsqlHbaFirstTimeWithRedactedThrowsBadRequest() {
     try (var mockedRedactingService = Mockito.mockStatic(RedactingService.class)) {
       mockedRedactingService

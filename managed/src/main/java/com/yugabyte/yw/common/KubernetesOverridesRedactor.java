@@ -36,13 +36,6 @@ import play.libs.Json;
 @Slf4j
 public final class KubernetesOverridesRedactor {
 
-  // Whole-value secrets: the names RedactingService redacts in text when no DB version is given.
-  private static final Set<String> SECRET_KEYS =
-      Set.of(
-          "ycql_ldap_bind_passwd",
-          "ldapbindpasswd",
-          "ldapBindPassword",
-          "ldapServiceAccountPassword");
   private static final String REDACTED = RedactingService.SECRET_REPLACEMENT;
 
   private KubernetesOverridesRedactor() {}
@@ -82,9 +75,17 @@ public final class KubernetesOverridesRedactor {
     }
   }
 
+  /**
+   * Whole-value secrets: the names RedactingService redacts in text when no DB version is given, as
+   * PlatformResults redacts API responses.
+   */
+  private static Set<String> secretKeys() {
+    return RedactingService.sensitiveNames(null, null);
+  }
+
   public static String redact(String overrides) {
     if (overrides == null
-        || (SECRET_KEYS.stream().noneMatch(overrides::contains)
+        || (secretKeys().stream().noneMatch(overrides::contains)
             && !HbaConfRedactor.mentionsLdapBindPasswd(overrides))) {
       return overrides;
     }
@@ -104,7 +105,7 @@ public final class KubernetesOverridesRedactor {
       }
       return apply(overrides, replacements);
     } catch (UnparsableException e) {
-      // Helm cannot apply such overrides either; the text scan errs towards redacting too much.
+      // Not one YAML document with scalar secrets; the text scan errs towards redacting too much.
       log.debug("Redacting Kubernetes overrides as text: {}", e.getMessage());
       return RedactingService.redactSensitiveInfoInString(overrides);
     }
@@ -134,11 +135,12 @@ public final class KubernetesOverridesRedactor {
               where, REDACTED, e.getMessage()));
     }
     Map<List<String>, Secret> storedSecrets = new HashMap<>();
+    String storedParseError = null;
     if (stored != null) {
       try {
         findSecrets(stored).forEach(s -> storedSecrets.put(s.path, s));
       } catch (UnparsableException e) {
-        log.warn("Cannot parse the stored {} to restore REDACTED values from", where, e);
+        storedParseError = e.getMessage();
       }
     }
     List<Replacement> replacements = new ArrayList<>();
@@ -151,6 +153,14 @@ public final class KubernetesOverridesRedactor {
       String name = where + " at " + String.join(".", secret.path);
       Secret storedSecret = storedSecrets.get(secret.path);
       String storedValue = storedSecret == null ? null : storedSecret.value.getValue();
+      if (storedValue == null && storedParseError != null) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "%s contain %s, and the stored overrides cannot be parsed to restore it from: %s."
+                    + " Submit the actual value.",
+                name, REDACTED, storedParseError));
+      }
       if (storedValue == null) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -209,14 +219,24 @@ public final class KubernetesOverridesRedactor {
     }
     List<Secret> secrets = new ArrayList<>();
     if (root != null) {
-      collect(root, new ArrayList<>(), secrets, new HashSet<>());
+      collect(root, new ArrayList<>(), secretKeys(), secrets, new HashSet<>(), new HashSet<>());
     }
     return secrets;
   }
 
-  private static void collect(Node node, List<String> path, List<Secret> secrets, Set<Node> visited)
+  /**
+   * An alias reuses the node of its anchor, so a secret behind an alias is rewritten once, where
+   * the anchor is. Secret nodes are tracked apart from visited, so a secret is still found when its
+   * anchor sits under a key that is not secret.
+   */
+  private static void collect(
+      Node node,
+      List<String> path,
+      Set<String> secretKeys,
+      List<Secret> secrets,
+      Set<Node> visited,
+      Set<Node> secretNodes)
       throws UnparsableException {
-    // An alias reuses the node of its anchor; its secrets are rewritten where the anchor is.
     if (!visited.add(node)) {
       return;
     }
@@ -229,13 +249,15 @@ public final class KubernetesOverridesRedactor {
         List<String> childPath = new ArrayList<>(path);
         childPath.add(key);
         Node value = tuple.getValueNode();
-        if (SECRET_KEYS.contains(key) || GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key)) {
+        if (secretKeys.contains(key) || GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key)) {
           if (!(value instanceof ScalarNode)) {
             throw new UnparsableException(key + " is not a scalar", null);
           }
-          secrets.add(new Secret(childPath, key, (ScalarNode) value));
+          if (secretNodes.add(value)) {
+            secrets.add(new Secret(childPath, key, (ScalarNode) value));
+          }
         } else {
-          collect(value, childPath, secrets, visited);
+          collect(value, childPath, secretKeys, secrets, visited, secretNodes);
         }
       }
     } else if (node instanceof SequenceNode) {
@@ -243,7 +265,7 @@ public final class KubernetesOverridesRedactor {
       for (int i = 0; i < items.size(); i++) {
         List<String> childPath = new ArrayList<>(path);
         childPath.add(String.valueOf(i));
-        collect(items.get(i), childPath, secrets, visited);
+        collect(items.get(i), childPath, secretKeys, secrets, visited, secretNodes);
       }
     }
   }
@@ -253,8 +275,7 @@ public final class KubernetesOverridesRedactor {
    * ends after its line breaks, which are kept so the next key stays on a line of its own.
    */
   private static Replacement replaceScalar(String text, ScalarNode scalar, String replacement) {
-    // SnakeYAML counts code points.
-    int start = text.offsetByCodePoints(0, scalar.getStartMark().getIndex());
+    int start = scalarStart(text, scalar);
     int end = text.offsetByCodePoints(0, scalar.getEndMark().getIndex());
     int contentEnd = end;
     while (contentEnd > start
@@ -269,10 +290,31 @@ public final class KubernetesOverridesRedactor {
    * on its indentation, so it is quoted instead.
    */
   private static String storedScalarText(String stored, ScalarNode scalar) {
-    int start = stored.offsetByCodePoints(0, scalar.getStartMark().getIndex());
+    int start = scalarStart(stored, scalar);
     int end = stored.offsetByCodePoints(0, scalar.getEndMark().getIndex());
     String text = stored.substring(start, end);
     return text.indexOf('\n') < 0 && text.indexOf('\r') < 0 ? text : quote(scalar.getValue());
+  }
+
+  /**
+   * Where the scalar's own text starts. SnakeYAML counts code points, and starts the mark at an
+   * &anchor or !tag in front of the scalar, which is kept so aliases still resolve. A scalar cannot
+   * start with & or ! itself: plain scalars may not, and the other styles start with a quote, | or
+   * >.
+   */
+  private static int scalarStart(String text, ScalarNode scalar) {
+    int start = text.offsetByCodePoints(0, scalar.getStartMark().getIndex());
+    // An empty scalar ends at its properties; the skip must not run on into the next line.
+    int end = text.offsetByCodePoints(0, scalar.getEndMark().getIndex());
+    while (start < end && (text.charAt(start) == '&' || text.charAt(start) == '!')) {
+      while (start < end && !Character.isWhitespace(text.charAt(start))) {
+        start++;
+      }
+      while (start < end && Character.isWhitespace(text.charAt(start))) {
+        start++;
+      }
+    }
+    return start;
   }
 
   /** A JSON string is a YAML double-quoted scalar. */

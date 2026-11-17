@@ -164,4 +164,43 @@ public class KubernetesOverridesRedactorTest {
     String submitted = "tserver:\n  podLabels:\n    note: REDACTED\n";
     assertEquals(submitted, KubernetesOverridesRedactor.restore(null, submitted, "overrides"));
   }
+
+  @Test
+  public void aliasedSecretIsRewrittenOnceAndKeepsItsAnchor() {
+    String stored =
+        "gflags:\n"
+            + "  master:\n"
+            + "    ycql_ldap_bind_passwd: &pw master-secret\n"
+            + "  tserver:\n"
+            + "    ycql_ldap_bind_passwd: *pw\n"
+            + "    ysql_enable_auth: !!str true\n";
+    String redacted = KubernetesOverridesRedactor.redact(stored);
+    assertEquals(stored.replace("&pw master-secret", "&pw REDACTED"), redacted);
+    String submitted = redacted + "tserver:\n  podLabels:\n    env: test\n";
+    assertEquals(
+        stored + "tserver:\n  podLabels:\n    env: test\n",
+        KubernetesOverridesRedactor.restore(stored, submitted, "overrides"));
+  }
+
+  @Test
+  public void secretAnchoredUnderAnotherKeyIsStillRedacted() {
+    String stored =
+        "shared: &pw master-secret\ngflags:\n  master:\n    ycql_ldap_bind_passwd: *pw\n";
+    assertNoSecrets(KubernetesOverridesRedactor.redact(stored));
+  }
+
+  @Test
+  public void restoreSaysWhenStoredOverridesCannotBeParsed() {
+    String stored =
+        "gflags:\n  tserver:\n    ycql_ldap_bind_passwd:\n      nested: tserver-secret\n";
+    // Sent back unchanged, it equals redact(stored), which the text scan produced.
+    String unchanged = KubernetesOverridesRedactor.redact(stored);
+    assertEquals(stored, KubernetesOverridesRedactor.restore(stored, unchanged, "overrides"));
+    String edited = unchanged + "tserver:\n  podLabels:\n    env: test\n";
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> KubernetesOverridesRedactor.restore(stored, edited, "overrides"));
+    assertTrue(e.getMessage(), e.getMessage().contains("cannot be parsed"));
+  }
 }
