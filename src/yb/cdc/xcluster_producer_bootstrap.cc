@@ -124,7 +124,8 @@ Status XClusterProducerBootstrap::RunBootstrapProducer() {
   TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeResolvingTablets");
   RETURN_NOT_OK(ConstructServerToTabletsMapping());
 
-  TEST_SYNC_POINT("XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds");
+  TEST_SYNC_POINT_CALLBACK(
+      "XClusterProducerBootstrap::RunBootstrapProducer::BeforeReadingOpIds", cdc_service_context_);
 
   LOG_WITH_FUNC(INFO) << "Retrieving Latest OpIDs for each tablet.";
   RETURN_NOT_OK(GetLatestOpIdsFromLocalPeers());
@@ -250,8 +251,16 @@ Status XClusterProducerBootstrap::GetLatestOpIdsFromLocalPeers() {
   HybridTime ht;
   OpId op_id = yb::OpId::Invalid();
   for (const auto& [bootstrap_id, tablet_id] : local_tablets_) {
-    // Check if this tablet has local information cached.
-    auto tablet_peer = VERIFY_RESULT(cdc_service_context_->GetServingTablet(tablet_id));
+    // The locations can list a local peer that is now tombstoned, deleted or remote bootstrapping.
+    auto tablet_peer_result = cdc_service_context_->GetServingTablet(tablet_id);
+    if (!tablet_peer_result.ok()) {
+      LOG(WARNING) << "Fetching the latest op id of tablet " << tablet_id
+                   << " from its leader, since the local peer cannot serve: "
+                   << tablet_peer_result.status();
+      remote_tablets_to_fetch_opids_for_.emplace(bootstrap_id, tablet_id);
+      continue;
+    }
+    const auto& tablet_peer = *tablet_peer_result;
 
     if (!tablet_peer->log_available()) {
       const std::string err_msg = GetErrMsgForUninitializedLocalPeer(tablet_id, tablet_peer);
