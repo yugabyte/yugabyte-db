@@ -1971,7 +1971,8 @@ public class KubernetesUtil {
    */
   public static void initializeK8sNodeResourceSpecsFromInstanceType(
       UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
-    initializeK8sNodeResourceSpecsFromInstanceType(taskParams, true /* overwrite */, runtimeConfGetter);
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        taskParams, true /* overwrite */, runtimeConfGetter);
   }
 
   /**
@@ -1980,11 +1981,14 @@ public class KubernetesUtil {
    */
   public static void fillMissingK8sNodeResourceSpecsFromInstanceType(
       UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
-    initializeK8sNodeResourceSpecsFromInstanceType(taskParams, false /* overwrite */, runtimeConfGetter);
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        taskParams, false /* overwrite */, runtimeConfGetter);
   }
 
   private static void initializeK8sNodeResourceSpecsFromInstanceType(
-      UniverseDefinitionTaskParams taskParams, boolean overwrite, RuntimeConfGetter runtimeConfGetter) {
+      UniverseDefinitionTaskParams taskParams,
+      boolean overwrite,
+      RuntimeConfGetter runtimeConfGetter) {
     if (taskParams == null
         || taskParams.clusters == null
         || !Util.isKubernetesBasedUniverse(taskParams)) {
@@ -1998,16 +2002,21 @@ public class KubernetesUtil {
 
   public static void initializeK8sNodeResourceSpecsFromInstanceType(
       ClusterType clusterType, UserIntent userIntent, RuntimeConfGetter runtimeConfGetter) {
-    initializeK8sNodeResourceSpecsFromInstanceType(clusterType, userIntent, true /* overwrite */, runtimeConfGetter);
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        clusterType, userIntent, true /* overwrite */, runtimeConfGetter);
   }
 
   public static void fillMissingK8sNodeResourceSpecsFromInstanceType(
       ClusterType clusterType, UserIntent userIntent, RuntimeConfGetter runtimeConfGetter) {
-    initializeK8sNodeResourceSpecsFromInstanceType(clusterType, userIntent, false /* overwrite */, runtimeConfGetter);
+    initializeK8sNodeResourceSpecsFromInstanceType(
+        clusterType, userIntent, false /* overwrite */, runtimeConfGetter);
   }
 
   private static void initializeK8sNodeResourceSpecsFromInstanceType(
-      ClusterType clusterType, UserIntent userIntent, boolean overwrite, RuntimeConfGetter runtimeConfGetter) {
+      ClusterType clusterType,
+      UserIntent userIntent,
+      boolean overwrite,
+      RuntimeConfGetter runtimeConfGetter) {
     if (userIntent == null || !Util.isKubernetesBased(userIntent)) {
       return;
     }
