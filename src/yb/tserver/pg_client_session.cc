@@ -1473,6 +1473,7 @@ class TransactionProvider {
 
 YB_STRONGLY_TYPED_BOOL(IsTxnUsingTableLocks);
 YB_STRONGLY_TYPED_BOOL(DeferReadPoint);
+YB_STRONGLY_TYPED_BOOL(RestartTxn);
 
 // Whether the autonomous DDL transaction, if created by this request, should pick a deferred read
 // point. Only meaningful for the first request of the DDL that creates the transaction.
@@ -2271,11 +2272,13 @@ class PgClientSession::Impl {
         resp->set_global_limit_ht(global_limit.ToUint64());
       }
     }
-    if (req.read_point_only()) {
+    if (req.kind() == PgRestartTransactionForRetryRequestPB::READ_POINT_ONLY) {
       return Status::OK();
     }
-    return ResultToStatus(
-        SetupSession(req.options(), context->GetClientDeadline(), /* arena= */ nullptr));
+    return ResultToStatus(SetupSession(
+        req.options(), context->GetClientDeadline(), /* arena= */ nullptr,
+        /* in_txn_limit= */ {}, TransactionFullLocality::RegionLocal(),
+        RestartTxn(req.kind() == PgRestartTransactionForRetryRequestPB::RESTART_TRANSACTION)));
   }
 
   Status RollbackToSubTransaction(
@@ -3938,10 +3941,6 @@ class PgClientSession::Impl {
 
     auto& read_point = *Session(PgClientSessionKind::kPlain)->read_point();
     switch (manipulation) {
-      case ReadTimeManipulation::RESTART:
-        read_point.Restart();
-        VLOG(1) << "Restarted read point " << read_point.GetReadTime();
-        return;
       case ReadTimeManipulation::ENSURE_READ_TIME_IS_SET:
         if (!read_point.GetReadTime() || (read_time_serial_no_ != read_time_serial_no)) {
           read_point.SetCurrentReadTime();
@@ -4075,7 +4074,8 @@ class PgClientSession::Impl {
   Result<SetupSessionResult> SetupSession(
       const OptionsPB& options, CoarseTimePoint deadline, const ThreadSafeArenaPtr& arena,
       HybridTime in_txn_limit = {},
-      TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
+      TransactionFullLocality locality = TransactionFullLocality::RegionLocal(),
+      RestartTxn restart_txn = RestartTxn::kFalse) {
     EnsureSessionDatabase(options);
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_historical_read_session()) {
@@ -4109,7 +4109,7 @@ class PgClientSession::Impl {
     VLOG_WITH_PREFIX_AND_FUNC(4) << options.ShortDebugString() << ", deadline: "
         << MonoDelta(deadline - CoarseMonoClock::now());
 
-    RETURN_NOT_OK(UpdateReadTime(options, kind, deadline, in_txn_limit));
+    RETURN_NOT_OK(UpdateReadTime(options, kind, deadline, in_txn_limit, restart_txn));
 
     session.SetDeadline(deadline);
 
@@ -4135,7 +4135,7 @@ class PgClientSession::Impl {
   template <class OptionsPB>
   Status UpdateReadTime(
       const OptionsPB& options, PgClientSessionKind kind, CoarseTimePoint deadline,
-      HybridTime in_txn_limit = {}) {
+      HybridTime in_txn_limit = {}, RestartTxn restart_txn = RestartTxn::kFalse) {
     auto& session_data = GetSessionData(kind);
     auto& session = *session_data.session;
     auto& txn = session_data.transaction;
@@ -4151,7 +4151,7 @@ class PgClientSession::Impl {
             (read_time_options.has_read_time() && read_time_options.read_time().has_read_ht()),
         IllegalState, "Historical read session must have a read time");
 
-    if (read_time_options.restart_transaction()) {
+    if (restart_txn) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
       RETURN_NOT_OK(RestartTransaction(kind, deadline));
     } else if (!skip_read_time) {

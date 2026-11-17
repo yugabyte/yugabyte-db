@@ -1003,11 +1003,12 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<HybridTime> RestartTransactionForRetry(
-      tserver::PgPerformOptionsPB* options, bool read_point_only) {
+      tserver::PgPerformOptionsPB* options,
+      tserver::PgRestartTransactionForRetryRequestPB::Kind kind) {
     tserver::PgRestartTransactionForRetryRequestPB req;
     req.set_session_id(session_id_);
     options->Swap(req.mutable_options());
-    req.set_read_point_only(read_point_only);
+    req.set_kind(kind);
 
     tserver::PgRestartTransactionForRetryResponsePB resp;
     RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RestartTransactionForRetry,
@@ -2399,8 +2400,9 @@ Status PgClient::RollbackToSubTransaction(
 }
 
 Result<HybridTime> PgClient::RestartTransactionForRetry(
-    tserver::PgPerformOptionsPB* options, bool read_point_only) {
-  return impl_->RestartTransactionForRetry(options, read_point_only);
+    tserver::PgPerformOptionsPB* options,
+    tserver::PgRestartTransactionForRetryRequestPB::Kind kind) {
+  return impl_->RestartTransactionForRetry(options, kind);
 }
 
 Status PgClient::ValidatePlacement(tserver::PgValidatePlacementRequestPB* req) {

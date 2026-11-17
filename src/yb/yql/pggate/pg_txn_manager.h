@@ -245,9 +245,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   void ResetTxnAndSession();
   void StartNewSession();
-  enum class RetryRestartKind { kRestartTransaction, kRecreateTransaction, kReadPointOnly };
-  Result<HybridTime> RestartTransactionForRetry(
-      SetupPerformOptionsAccessorTag tag, RetryRestartKind kind);
+  using RetryKind = tserver::PgRestartTransactionForRetryRequestPB::Kind;
+  Result<HybridTime> RestartTransactionForRetry(SetupPerformOptionsAccessorTag tag, RetryKind kind);
   void CapRetryGlobalLimit(HybridTime global_limit);
   Status RecreateTransaction(SavePriority save_priority);
   Status SetupReadTimeOptions(
@@ -264,8 +263,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
       const tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
       std::optional<ReadTimeAction> read_time_action,
       tserver::ReadTimeManipulation manipulation,
-      NonTransactionalWrites ops_has_non_transactional_writes,
-      bool need_defer_read_point) const;
+      NonTransactionalWrites ops_has_non_transactional_writes) const;
 
   bool UsesFollowerReads() const;
 
@@ -286,7 +284,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status CheckConflictWithCrossTxnSnapshotTime(
       std::optional<ReadTimeAction> read_time_action = {},
       NonTransactionalWrites ops_has_non_transactional_writes = NonTransactionalWrites::kFalse,
-      bool has_read_time = false, bool restart_transaction = false) const;
+      bool has_read_time = false) const;
 
   // ----------------------------------------------------------------------------------------------
 

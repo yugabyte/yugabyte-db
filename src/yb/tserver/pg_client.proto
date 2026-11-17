@@ -859,8 +859,9 @@ message PgPerformOpPB {
 }
 
 enum ReadTimeManipulation {
+  reserved 1;
+  reserved "RESTART";
   NONE = 0;
-  RESTART = 1;
   ENSURE_READ_TIME_IS_SET = 2;
 }
 
@@ -919,7 +920,7 @@ message PgPerformOptionsPB {
   message ReadTimeOptionsPB {
     uint64 read_time_serial_no = 1;
     uint64 read_time_serial_no_history_min = 2;
-    bool restart_transaction = 3;
+    reserved 3; // restart_transaction, replaced by PgRestartTransactionForRetryRequestPB.kind
     bool defer_read_point = 4;
     ReadTimeManipulation read_time_manipulation = 5;
     ReadHybridTimePB read_time = 6;
@@ -1047,11 +1048,16 @@ message PgRollbackToSubTransactionResponsePB {
 }
 
 message PgRestartTransactionForRetryRequestPB {
+  enum Kind {
+    RECREATE_TRANSACTION = 0;
+    RESTART_TRANSACTION = 1;
+    // Only report the global limit of the read point that faced the restart; used by READ
+    // COMMITTED statement retries, which don't restart the transaction.
+    READ_POINT_ONLY = 2;
+  }
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
-  // Only report the global limit of the read point that faced the restart; used by READ COMMITTED
-  // statement retries, which don't restart the transaction.
-  bool read_point_only = 3;
+  Kind kind = 3;
 }
 
 message PgRestartTransactionForRetryResponsePB {

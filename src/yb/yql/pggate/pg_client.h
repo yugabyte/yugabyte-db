@@ -276,7 +276,8 @@ class PgClient {
   Status RollbackToSubTransaction(SubTransactionId id, tserver::PgPerformOptionsPB* options);
 
   Result<HybridTime> RestartTransactionForRetry(
-      tserver::PgPerformOptionsPB* options, bool read_point_only);
+      tserver::PgPerformOptionsPB* options,
+      tserver::PgRestartTransactionForRetryRequestPB::Kind kind);
 
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 
