@@ -1175,7 +1175,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       newMasterSpecAZs.contains(azUUID)));
             });
     getRunnableTask().addSubTaskGroup(helmUpgrade);
-    // Wait for gflags change to be reflected on mounted locations
+    createGflagsSyncWaitTask();
+  }
+
+  /** Waits for kubelet to sync the rendered gflags Secrets into the running pods. */
+  protected void createGflagsSyncWaitTask() {
     createWaitForDurationSubtask(
             taskParams().getUniverseUUID(),
             Duration.ofSeconds(confGetter.getGlobalConf(GlobalConfKeys.waitForK8sGFlagSyncSec)))

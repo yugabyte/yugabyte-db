@@ -26,6 +26,7 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.yb.client.YBClientApi;
 
 @Slf4j
@@ -79,11 +80,12 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     checkParams();
     try {
       setFlags();
-    } catch (CancellationException e) {
-      throw e;
     } catch (RuntimeException e) {
       // Not the SubTaskGroup's ignoreErrors: it runs the later groups but still fails the task.
-      if (!taskParams().ignoreErrors) {
+      // setFlags wraps every client error, so an abort shows up as a cause.
+      if (!taskParams().ignoreErrors
+          || ExceptionUtils.hasCause(e, CancellationException.class)
+          || ExceptionUtils.hasCause(e, InterruptedException.class)) {
         throw e;
       }
       log.warn("Ignoring error from {}: {}", getName(), e.getMessage());

@@ -65,7 +65,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1086,14 +1085,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           tserversToRemoveAzMap.entrySet().stream()
               .flatMap(e -> e.getValue().stream())
               .collect(Collectors.toSet());
+      // The pods full moves add too: the universe lists them only once their POD_INFO has run,
+      // which on a first try is after this is planned, and on a retry may be before.
       createMasterAddressesUpdateTask(
           universe.getUniverseUUID(),
           newCluster,
           newPlacement,
           masterAddresses,
-          mastersToAdd,
+          mastersToAddAzMap.values().stream().flatMap(Set::stream).collect(Collectors.toSet()),
           skipMasters,
-          tserversToAdd,
+          tserversToAddAzMap.values().stream().flatMap(Set::stream).collect(Collectors.toSet()),
           skipTservers,
           fullMoveMasterAZs,
           fullMoveTserverAZs,
@@ -1321,14 +1322,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
   }
 
-  /** Waits for kubelet to sync the rendered gflags Secrets into the running pods. */
-  private void createGflagsSyncWaitTask() {
-    createWaitForDurationSubtask(
-            taskParams().getUniverseUUID(),
-            Duration.ofSeconds(confGetter.getGlobalConf(GlobalConfKeys.waitForK8sGFlagSyncSec)))
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-  }
-
   /** Adds to zones the AZs the edit adds with masters, which run once the master step has. */
   private static void addNewMasterAZs(
       KubernetesPlacement curPlacement, KubernetesPlacement newPlacement, PlacementInfo zones) {
@@ -1399,7 +1392,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     boolean isReadOnlyCluster = newCluster.clusterType == ClusterType.ASYNC;
 
-    // .contains() will work for NodeDetails since .equals() is defined.
+    // Match nodes by name: NodeDetails.equals compares node UUIDs, which differ between a planned
+    // pod and its universe node, and POD_INFO can give a universe node another node's UUID when
+    // the AZs' pods share hostnames (old helm naming). A removed node kept that way gets a push,
+    // which fails on a retry once its pod is gone.
+    Set<String> tserverNamesToRemove =
+        tserversToRemove.stream().map(n -> n.nodeName).collect(Collectors.toSet());
+    Set<String> masterNamesToRemove =
+        mastersToRemove.stream().map(n -> n.nodeName).collect(Collectors.toSet());
     Set<NodeDetails> tserversToModify =
         Stream.concat(
                 tserversToAdd.stream(),
@@ -1407,7 +1407,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                     ? universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
                         .filter(n -> n.isTserver)
                     : Stream.empty())
-            .filter(n -> !tserversToRemove.contains(n))
+            .filter(n -> !tserverNamesToRemove.contains(n.nodeName))
+            .collect(Collectors.toMap(n -> n.nodeName, n -> n, (a, b) -> a))
+            .values()
+            .stream()
             .collect(Collectors.toSet());
     createMasterAddressesRenderTask(
         universeUUID,
@@ -1426,7 +1429,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                       ? universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
                           .filter(n -> n.isMaster)
                       : Stream.empty())
-              .filter(n -> !mastersToRemove.contains(n))
+              .filter(n -> !masterNamesToRemove.contains(n.nodeName))
+              .collect(Collectors.toMap(n -> n.nodeName, n -> n, (a, b) -> a))
+              .values()
+              .stream()
               .collect(Collectors.toSet());
       // Set flag in memory for master
       if (CollectionUtils.isNotEmpty(mastersToModify)) {

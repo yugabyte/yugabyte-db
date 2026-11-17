@@ -2539,7 +2539,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             plan,
             ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
-    // This version rolls the pods to change master addresses, so no render before the data move.
+    // This version rolls the pods to change master addresses, so no render before the adds or
+    // after them, up to the data move.
+    assertTrue(earlySecretUpdate(plan).isEmpty());
     int dataMove = firstPosition(subtasks(plan, TaskType.WaitForDataMove, p -> true));
     assertTrue(
         helmUpgradesInAZs(
@@ -3841,7 +3843,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   /**
    * A master full move deletes the old master pods in its batch, so the read replica's Secrets get
-   * the new masters right after it instead of in the read replica's own pass.
+   * the new masters right after the removes, before that delete, as well as in the read replica's
+   * own pass.
    */
   @Test
   public void testMasterFullMoveRendersReadReplicaSecrets() {
@@ -3959,6 +3962,32 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
               return TestUtils.deserialize("{\"items\": [" + pods + "]}", PodList.class).getItems();
             });
 
+    fakeMasterQuorum(events, downHosts);
+    // Record the helm upgrades, and stop at the first one after the remove: the new az-4 tserver.
+    doAnswer(
+            inv -> {
+              String ns = inv.getArgument(4);
+              if (events.stream().anyMatch(e -> e.startsWith("REMOVE")) && ns.endsWith("az-4")) {
+                throw new RuntimeException("stop after the master move");
+              }
+              events.add("HELM " + ns.substring(ns.length() - 4));
+              return null;
+            })
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    doNothing()
+        .when(mockKubernetesManager)
+        .helmInstall(any(), any(), any(), any(), any(), any(), any());
+
+    return submitEdit(currentIntent(), pi, null);
+  }
+
+  /**
+   * A fake master quorum that follows the config changes, and in-memory flag pushes that fail for
+   * downHosts and are recorded in events otherwise. Returns the voters' addresses and ports.
+   */
+  private Map<String, Integer> fakeMasterQuorum(List<String> events, Set<String> downHosts)
+      throws Exception {
     // Fake quorum that follows the config changes. It is seeded on the first change with the
     // masters the universe knows then, which by that point carry their POD_INFO addresses.
     Map<String, Integer> voters = Collections.synchronizedMap(new java.util.LinkedHashMap<>());
@@ -4017,23 +4046,199 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
                       + sortedCsv(inv.getArgument(2)));
               return true;
             });
-    // Record the helm upgrades, and stop at the first one after the remove: the new az-4 tserver.
+    return voters;
+  }
+
+  /**
+   * A fake K8s cluster for edits that run to the end: every helm install or upgrade sets its
+   * release's pods from its overrides, as the chart does, and the pod listings return them. Each AZ
+   * of the universe starts with one master and one tserver.
+   */
+  private void fakeK8sCluster() {
+    Map<String, List<String>> podsByNamespace = new java.util.concurrent.ConcurrentHashMap<>();
+    for (String az : ImmutableList.of("az-1", "az-2", "az-3")) {
+      podsByNamespace.put(NODE_PREFIX + "-" + az, ImmutableList.of("yb-master-0", "yb-tserver-0"));
+    }
+    Function<Integer, org.mockito.stubbing.Answer<Void>> applyOverrides =
+        nsArg ->
+            inv -> {
+              String ns = inv.getArgument(nsArg);
+              Map<String, Object> overrides;
+              try (InputStream is = new FileInputStream(inv.<String>getArgument(nsArg + 1))) {
+                overrides = new Yaml().loadAs(is, Map.class);
+              }
+              List<String> pods = new ArrayList<>();
+              pods.addAll(chartPods(overrides, "master"));
+              pods.addAll(chartPods(overrides, "tserver"));
+              podsByNamespace.put(ns, pods);
+              return null;
+            };
+    doAnswer(applyOverrides.apply(4))
+        .when(mockKubernetesManager)
+        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    doAnswer(applyOverrides.apply(5))
+        .when(mockKubernetesManager)
+        .helmInstall(any(), any(), any(), any(), any(), any(), any());
     doAnswer(
             inv -> {
-              String ns = inv.getArgument(4);
-              if (events.stream().anyMatch(e -> e.startsWith("REMOVE")) && ns.endsWith("az-4")) {
-                throw new RuntimeException("stop after the master move");
-              }
-              events.add("HELM " + ns.substring(ns.length() - 4));
+              podsByNamespace.remove(inv.<String>getArgument(2));
               return null;
             })
         .when(mockKubernetesManager)
-        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
-    doNothing()
-        .when(mockKubernetesManager)
-        .helmInstall(any(), any(), any(), any(), any(), any(), any());
+        .helmDelete(any(), any(), any());
+    when(mockKubernetesManager.getPodInfos(any(), any(), any()))
+        .thenAnswer(
+            inv -> {
+              String ns = inv.getArgument(2);
+              String pods =
+                  podsByNamespace.getOrDefault(ns, Collections.emptyList()).stream()
+                      .map(hostname -> podJson(hostname, "192.0.2.1", ns))
+                      .collect(Collectors.joining(","));
+              return TestUtils.deserialize("{\"items\": [" + pods + "]}", PodList.class).getItems();
+            });
+  }
 
-    return submitEdit(currentIntent(), pi, null);
+  /** The pods the chart runs for a server type: its StatefulSet, plus the moved one mid-move. */
+  @SuppressWarnings("unchecked")
+  private static List<String> chartPods(Map<String, Object> overrides, String server) {
+    java.util.function.BiFunction<Map<String, Object>, String, Map<String, Object>> sub =
+        (m, k) -> (Map<String, Object>) m.getOrDefault(k, Collections.emptyMap());
+    Map<String, Object> stsIndex = sub.apply(sub.apply(overrides, "stsIndex"), server);
+    int start = ((Number) stsIndex.getOrDefault("start", 0)).intValue();
+    int end = ((Number) stsIndex.getOrDefault("end", start)).intValue();
+    List<String> pods = new ArrayList<>();
+    java.util.function.BiConsumer<Integer, Number> addSts =
+        (index, replicas) -> {
+          for (int i = 0; i < replicas.intValue(); i++) {
+            pods.add(String.format("yb-%s%s-%d", server, index > 0 ? "-" + index : "", i));
+          }
+        };
+    addSts.accept(start, (Number) sub.apply(overrides, "replicas").getOrDefault(server, 0));
+    if (end != start) {
+      addSts.accept(
+          end,
+          (Number) sub.apply(sub.apply(overrides, "moveOp"), "replicas").getOrDefault(server, 0));
+    }
+    return pods;
+  }
+
+  /**
+   * Runs the edit to the end against the fake cluster and master quorum, aborting before each of
+   * its subtasks in turn and retrying: no retry may skip a step an earlier attempt had not done.
+   * Returns the master quorum's voters at the end.
+   */
+  private Set<String> verifyEditRetries(
+      UniverseDefinitionTaskParams.UserIntent userIntent, PlacementInfo pi) throws Exception {
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.kubernetes.wait_for_gflag_sync_sec", "0");
+    // As POD_INFO leaves them, so it keeps each pod's node UUID, which the edit matches nodes by.
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails()
+                    .nodeDetailsSet
+                    .forEach(n -> n.cloudInfo.kubernetesPodName = n.nodeName.split("_")[0]));
+    fakeK8sCluster();
+    Map<String, Integer> voters =
+        fakeMasterQuorum(Collections.synchronizedList(new ArrayList<>()), Collections.emptySet());
+    // No tablet is left on the removed tservers once their data moved.
+    setDumpEntitiesMock(defaultUniverse, "", false);
+    // The leader is a voter: the first one, or before any config change, the first master.
+    UUID universeUUID = defaultUniverse.getUniverseUUID();
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenAnswer(
+            inv -> {
+              synchronized (voters) {
+                if (!voters.isEmpty()) {
+                  Map.Entry<String, Integer> leader = voters.entrySet().iterator().next();
+                  return HostAndPort.fromParts(leader.getKey(), leader.getValue());
+                }
+              }
+              NodeDetails master = Universe.getOrBadRequest(universeUUID).getMasters().get(0);
+              return HostAndPort.fromParts(master.cloudInfo.private_ip, master.masterRpcPort);
+            });
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.upsertPrimaryCluster(userIntent, null, pi);
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Edit,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.EditKubernetesUniverse,
+        taskParams);
+    checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
+    return new java.util.HashSet<>(voters.keySet());
+  }
+
+  /** The masters the universe lists, by address. */
+  private Set<String> universeMasterHosts() {
+    return Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getMasters().stream()
+        .map(n -> n.cloudInfo.private_ip)
+        .collect(Collectors.toSet());
+  }
+
+  @Test
+  public void testZoneReplaceRetries() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+
+    Set<String> voters = verifyEditRetries(currentIntent(), zoneReplacePlacement());
+
+    Set<String> masters =
+        ImmutableSet.of(
+            podHost("yb-master", "az-1"),
+            podHost("yb-master", "az-2"),
+            podHost("yb-master", "az-4"));
+    assertEquals(masters, voters);
+    assertEquals(masters, universeMasterHosts());
+  }
+
+  @Test
+  public void testMasterFullMoveRetries() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream().forEach(az -> az.masterStsIndex = 1);
+
+    Set<String> voters = verifyEditRetries(newIntent, pi);
+
+    Set<String> masters =
+        ImmutableSet.of("az-1", "az-2", "az-3").stream()
+            .map(az -> podHost("yb-master-1", az).replace("yb-master-1s.", "yb-masters."))
+            .collect(Collectors.toSet());
+    assertEquals(masters, voters);
+    assertEquals(masters, universeMasterHosts());
+  }
+
+  @Test
+  public void testMasterAndTserverFullMoveRetries() throws Exception {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream()
+        .forEach(
+            az -> {
+              az.masterStsIndex = 1;
+              az.tsStsIndex = 1;
+            });
+
+    Set<String> voters = verifyEditRetries(newIntent, pi);
+
+    Set<String> masters =
+        ImmutableSet.of("az-1", "az-2", "az-3").stream()
+            .map(az -> podHost("yb-master-1", az).replace("yb-master-1s.", "yb-masters."))
+            .collect(Collectors.toSet());
+    assertEquals(masters, voters);
+    assertEquals(masters, universeMasterHosts());
   }
 
   /** The address the run-time tests reach pod 0 of the server in the AZ at. */
