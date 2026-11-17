@@ -56,6 +56,30 @@ public class UniverseEditNetworkingDefaultsTest {
   }
 
   @Test
+  public void omittedUniverseSettingsKeepsStoredExpertMode() throws Exception {
+    UUID clusterUuid = UUID.randomUUID();
+    UniverseDefinitionTaskParams existing = universeWithNonDefaultNetworking(clusterUuid);
+
+    UniverseEditSpec edit =
+        mapper.readValue(
+            "{"
+                + "\"expected_universe_version\": -1,"
+                + "\"clusters\": [{\"uuid\": \""
+                + clusterUuid
+                + "\"}]"
+                + "}",
+            UniverseEditSpec.class);
+
+    assertNull(edit.getUniverseSettings());
+
+    UniverseDefinitionTaskParams mapped =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromEditSpec(
+            edit, existing);
+
+    assertTrue(mapped.universeSettings.isExpertMode());
+  }
+
+  @Test
   public void explicitNetworkingFieldsAreApplied() throws Exception {
     UUID clusterUuid = UUID.randomUUID();
     UniverseDefinitionTaskParams existing = universeWithNonDefaultNetworking(clusterUuid);
