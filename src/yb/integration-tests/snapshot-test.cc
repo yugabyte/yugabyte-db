@@ -26,6 +26,8 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 
+#include "yb/docdb/consensus_frontier.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -44,6 +46,8 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/rocksdb/db.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/outbound_call.h"
@@ -81,6 +85,7 @@ DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_bool(enable_async_snapshot_directory_cleanup);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(snapshot_create_flush_before_submit);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_int32(snapshot_preflush_timeout_ms);
@@ -1140,6 +1145,79 @@ TEST_F(SnapshotTest, DeleteSnapshotTombstoneCompletedBeforePhysicalCleanup) {
   }
 }
 
+// DELETE_ON_TABLET does not record itself in the flushed frontier, so a tserver that goes down
+// with the delete still unflushed replays it on bootstrap. The replay must be a no-op, and the
+// writes applied around the delete must survive.
+TEST_F(SnapshotTest, UnflushedDeleteReplayedOnRestart) {
+  const auto kTimeout = 30s * kTimeMultiplier;
+
+  auto workload = SetupWorkload();
+  workload.Start();
+  workload.WaitInserted(100);
+  workload.StopAndJoin();
+
+  // CREATE_ON_TABLET flushes and records itself in the frontier, so everything that follows it
+  // in the log stays above the frontier until the next flush.
+  const auto snapshot_id = CreateSnapshot();
+  ASSERT_NO_FATALS(VerifySnapshotFiles(snapshot_id));
+  workload.Start();
+  workload.WaitInserted(200);
+  workload.StopAndJoin();
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  const auto rows_inserted = workload.rows_inserted();
+
+  auto peers =
+      ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+  for (const auto& peer : peers) {
+    const auto snapshot_dir =
+        JoinPathSegments(peer->tablet_metadata()->snapshots_dir(), snapshot_id.ToString());
+    auto* const env = peer->tablet_metadata()->fs_manager()->env();
+    ASSERT_OK(WaitFor(
+        [&] { return !env->FileExists(snapshot_dir); }, kTimeout,
+        Format("Wait for snapshot $0 to be deleted on $1", snapshot_id, peer->LogPrefix())));
+    // The delete is applied, so it is the latest op in the log, and the log is ahead of the
+    // flushed frontier: bootstrap will replay it.
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    const auto flushed_op_id = docdb::MaxPersistentOpIdForDb(
+        tablet->regular_db(), /* invalid_if_no_new_data = */ false);
+    const auto last_op_id = peer->GetLatestLogEntryOpId();
+    LOG(INFO) << peer->LogPrefix() << "flushed op id: " << flushed_op_id
+              << ", last log op id: " << last_op_id;
+    ASSERT_LT(flushed_op_id.index, last_op_id.index);
+  }
+  peers.clear();
+
+  // Lose the memtables with the restart, so bootstrap has to replay the writes and the delete.
+  // Nothing flushes during the first restart either, so the second one replays them again.
+  const auto flush_rocksdb_on_shutdown = FLAGS_flush_rocksdb_on_shutdown;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+  auto restore_flush_on_shutdown = ScopeExit([flush_rocksdb_on_shutdown] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = flush_rocksdb_on_shutdown;
+  });
+  for (int restart = 0; restart < 2; ++restart) {
+    ASSERT_OK(cluster_->RestartSync());
+    ASSERT_OK(WaitAllReplicasReady(cluster_.get(), kTimeout));
+    peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), kTableName.table_name()));
+    for (const auto& peer : peers) {
+      const auto top_snapshots_dir = peer->tablet_metadata()->snapshots_dir();
+      const auto children = ASSERT_RESULT(
+          peer->tablet_metadata()->fs_manager()->env()->GetChildren(
+              top_snapshots_dir, ExcludeDots::kTrue));
+      for (const auto& child : children) {
+        ASSERT_FALSE(child.starts_with(snapshot_id.ToString()))
+            << peer->LogPrefix() << "unexpected " << child << " in " << top_snapshots_dir;
+      }
+    }
+    peers.clear();
+
+    ClusterVerifier cluster_verifier(cluster_.get());
+    cluster_verifier.SetVerificationTimeout(kTimeout);
+    ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+    ASSERT_NO_FATALS(cluster_verifier.CheckRowCount(
+        kTableName, ClusterVerifier::EXACTLY, rows_inserted));
+  }
+}
+
 // Tests that a non-imported snapshot hides a table that is dropped subsequently.
 TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 500;
@@ -1719,13 +1797,6 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
   for (int iter = 0; iter < kNumIters; ++iter) {
     const auto log_prefix = Format("Iteration $0: ", iter);
     ASSERT_OK(ts1->FlushTablets({}));
-    const auto snapshot_id = ASSERT_RESULT(snapshot_util.CreateSnapshot(table));
-    auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
-    for (const auto& tablet_id : tablet_ids) {
-      ASSERT_OK(WaitForServersToAgree(
-          kTimeout, ts_map, tablet_id, 0,
-          /* expected_index = */ nullptr, itest::MustBeCommitted::kTrue));
-    }
 
     const auto rows_inserted = workload.rows_inserted();
     LOG(INFO) << log_prefix << "writing more data";
@@ -1733,17 +1804,23 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
     workload.WaitInserted(rows_inserted + 100);
     workload.Stop();
 
-    LOG(INFO) << log_prefix << "paused workload, starting snapshot deletion";
+    // CREATE_ON_TABLET is the snapshot operation that still records itself in the flushed frontier
+    // (DELETE_ON_TABLET no longer does), so the crash is injected right after the create saves it.
+    // Create flushes before that update, so this no longer checks that ModifyFlushedFrontier
+    // flushes before stamping (#26910); TabletSnapshotsTest covers that directly. It still checks
+    // recovery from a crash between the frontier save and the reply to the master: bootstrap skips
+    // the create, the master retries it, and the rows written before it survive.
+    LOG(INFO) << log_prefix << "paused workload, starting snapshot creation";
     constexpr auto kCrashProbabilityFlagName =
         "TEST_simulated_crash_after_modify_flushed_frontier_probability";
     ASSERT_OK(cluster_->SetFlag(ts1, kCrashProbabilityFlagName, "0.3"));
-    ASSERT_OK(snapshot_util.DeleteSnapshot(snapshot_id));
-    LOG(INFO) << log_prefix << "snapshot deletion started";
+    const auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(table));
+    LOG(INFO) << log_prefix << "snapshot creation started";
 
     ASSERT_OK(LoggedWaitFor(
         [&]() -> Result<bool> {
           auto state = VERIFY_RESULT(snapshot_util.SnapshotState(snapshot_id));
-          if (state == SysSnapshotEntryPB::DELETED) {
+          if (state == SysSnapshotEntryPB::COMPLETE) {
             return true;
           }
           YB_LOG_EVERY_N_SECS(INFO, 1)
@@ -1751,7 +1828,7 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
           RETURN_NOT_OK(RestartIfNotAlive(ts1, log_prefix));
           return false;
         },
-        kTimeout, "Wait for snapshot cleanup"));
+        kTimeout * 3, "Wait for snapshot creation"));
     auto status = cluster_->SetFlag(ts1, kCrashProbabilityFlagName, "0");
     // Network error is acceptable since process may crash due to injected fault.
     ASSERT_TRUE(status.ok() || status.IsNetworkError())
@@ -1763,7 +1840,7 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
     // Wait for local bootstrap to complete and pending operations to be applied.
     // A fault injected just before the flag was reset could still be tearing the process down, so
     // restart ts1 whenever it is found dead and retry until it stays up and answers.
-    ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
+    auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
     auto* ts1_details = ts_map[ts1->uuid()].get();
     ASSERT_OK(LoggedWaitFor(
         [&]() -> Result<bool> {
@@ -1783,6 +1860,10 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
     ClusterVerifier cluster_verifier(cluster_.get());
     cluster_verifier.SetVerificationTimeout(kTimeout);
     ASSERT_NO_FATALS(cluster_verifier.CheckCluster());
+
+    ASSERT_OK(snapshot_util.DeleteSnapshot(snapshot_id));
+    ASSERT_OK(snapshot_util.WaitSnapshotInState(
+        snapshot_id, SysSnapshotEntryPB::DELETED, kTimeout));
   }
 
   workload.StopAndJoin();

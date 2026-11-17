@@ -44,7 +44,7 @@ We'll develop and deploy an HTTP trigger function, which connects to YugabyteDB 
 
 For steps on creating a cluster in YugabyteDB Aeon, see the [Quick start](/stable/yugabyte-cloud/cloud-quickstart/).
 
-For a configuration that provides fault tolerance across availability zones, deploy a [three-node cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region. However, you can start with an always-free single-node [Sandbox cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
+For a configuration that provides fault tolerance across availability zones, deploy a [three-node cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region.
 
 ![Deploy a 3-node YugabyteDB Aeon cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
 

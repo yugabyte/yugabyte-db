@@ -105,10 +105,11 @@ class XClusterSafeTimeServiceTest : public YBTest {
   const xcluster::ReplicationGroupId replication_group_id = xcluster::ReplicationGroupId("c1");
   const NamespaceId db1 = "db1";
   const NamespaceId db2 = "db2";
-  const SafeTimeTablePK t1 = ConstructSafeTimeTablePK(replication_group_id, "t1");
-  const SafeTimeTablePK t2 = ConstructSafeTimeTablePK(replication_group_id, "t2");
-  const SafeTimeTablePK t3 = ConstructSafeTimeTablePK(replication_group_id, "t3");
-  const SafeTimeTablePK t4 = ConstructSafeTimeTablePK(replication_group_id, "t4");
+  const xrepl::StreamId stream_id = xrepl::StreamId::GenerateRandom();
+  const SafeTimeTablePK t1 = ConstructSafeTimeTablePK(replication_group_id, "t1", stream_id);
+  const SafeTimeTablePK t2 = ConstructSafeTimeTablePK(replication_group_id, "t2", stream_id);
+  const SafeTimeTablePK t3 = ConstructSafeTimeTablePK(replication_group_id, "t3", stream_id);
+  const SafeTimeTablePK t4 = ConstructSafeTimeTablePK(replication_group_id, "t4", stream_id);
   const HybridTime ht1 = HybridTime(HybridTime::kInitial.ToUint64() + 1);
   const HybridTime ht2 = HybridTime(ht1.ToUint64() + 1);
   const HybridTime ht3 = HybridTime(ht2.ToUint64() + 1);
@@ -125,9 +126,9 @@ class XClusterSafeTimeServiceTest : public YBTest {
 
   SafeTimeTablePK ConstructSafeTimeTablePK(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::string& producer_tablet_id) {
+      const std::string& producer_tablet_id, const xrepl::StreamId& stream_id) {
     return CHECK_RESULT(SafeTimeTablePK::FromProducerTabletInfo(
-        replication_group_id, producer_tablet_id, "not_a_sequences_data_alias"));
+        replication_group_id, producer_tablet_id, "not_a_sequences_data_alias", stream_id));
   }
 
   Result<bool> ComputeSafeTime(XClusterSafeTimeServiceMocked& safe_time_service) {
@@ -275,7 +276,7 @@ TEST_F(XClusterSafeTimeServiceTest, ComputeSafeTime) {
     XClusterSafeTimeServiceMocked safe_time_service;
     safe_time_service.consumer_registry_ = default_consumer_registry;
 
-    const SafeTimeTablePK t5 = ConstructSafeTimeTablePK(replication_group_id, "t5");
+    const SafeTimeTablePK t5 = ConstructSafeTimeTablePK(replication_group_id, "t5", stream_id);
     safe_time_service.table_entries_[t1] = ht2;
     safe_time_service.table_entries_[t2] = ht2;
     safe_time_service.table_entries_[t3] = ht2;
@@ -293,7 +294,7 @@ TEST_F(XClusterSafeTimeServiceTest, ComputeSafeTimeWithFilters) {
   safe_time_service.consumer_registry_ = default_consumer_registry;
   safe_time_service.leader_safe_time_ = ht2;
 
-  const SafeTimeTablePK t5 = ConstructSafeTimeTablePK(replication_group_id, "t5");
+  const SafeTimeTablePK t5 = ConstructSafeTimeTablePK(replication_group_id, "t5", stream_id);
   safe_time_service.consumer_registry_[t4] = db1;
   safe_time_service.consumer_registry_[t5] = db1;
 
@@ -413,13 +414,16 @@ TEST_F(SafeTimeTablePKTest, Creation) {
   xcluster::ReplicationGroupId group_id{"replication_group_id"};
   TabletId tablet_id{"tablet_id"};
 
+  auto stream_id = xrepl::StreamId::GenerateRandom();
+
   // When the producer table ID is not a sequence alias
   {
     TableId table_id{"producer_table_id"};
-    SafeTimeTablePK input = ASSERT_RESULT(
-        xcluster::SafeTimeTablePK::FromProducerTabletInfo(group_id, tablet_id, table_id));
+    SafeTimeTablePK input = ASSERT_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+        group_id, tablet_id, table_id, stream_id));
     EXPECT_EQ(input.replication_group_id(), group_id);
     EXPECT_EQ(input.tablet_id(), tablet_id);
+    EXPECT_EQ(input.stream_id(), stream_id);
     EXPECT_EQ(input.TEST_sequences_data_namespace_id(), "");
   }
 
@@ -427,10 +431,11 @@ TEST_F(SafeTimeTablePKTest, Creation) {
   {
     NamespaceId namespace_id = "00004000000030008000000000000000";
     TableId table_id = xcluster::GetSequencesDataAliasForNamespace(namespace_id);
-    SafeTimeTablePK input = ASSERT_RESULT(
-        xcluster::SafeTimeTablePK::FromProducerTabletInfo(group_id, tablet_id, table_id));
+    SafeTimeTablePK input = ASSERT_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+        group_id, tablet_id, table_id, stream_id));
     EXPECT_EQ(input.replication_group_id(), group_id);
     EXPECT_EQ(input.tablet_id(), tablet_id);
+    EXPECT_EQ(input.stream_id(), stream_id);
     EXPECT_EQ(input.TEST_sequences_data_namespace_id(), namespace_id);
   }
 }
@@ -441,34 +446,45 @@ TEST_F(SafeTimeTablePKTest, Encoding) {
   TableId normal_table_id{"producer_table_id"};
   NamespaceId namespace_id{"00004000000030008000000000000000"};
   TableId sequence_table_id = xcluster::GetSequencesDataAliasForNamespace(namespace_id);
+  auto stream_id = xrepl::StreamId::GenerateRandom();
 
   // When the producer table ID is not a sequence alias
-  SafeTimeTablePK input1 = ASSERT_RESULT(
-      xcluster::SafeTimeTablePK::FromProducerTabletInfo(group_id, tablet_id, normal_table_id));
+  SafeTimeTablePK input1 = ASSERT_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+      group_id, tablet_id, normal_table_id, stream_id));
   SafeTimeTablePK output1 = ASSERT_RESULT(xcluster::SafeTimeTablePK::FromSafeTimeTableRow(
       input1.replication_group_id_column_value(), input1.tablet_id_column_value()));
   EXPECT_EQ(input1, output1);
-  // Check backwards compatibility.
-  EXPECT_EQ(input1.tablet_id_column_value(), tablet_id);
+  EXPECT_EQ(input1.tablet_id_column_value(), Format("stream.$0.$1", stream_id, tablet_id));
 
   // When the producer table ID is a sequence alias
-  SafeTimeTablePK input2 = ASSERT_RESULT(
-      xcluster::SafeTimeTablePK::FromProducerTabletInfo(group_id, tablet_id, sequence_table_id));
+  SafeTimeTablePK input2 = ASSERT_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+      group_id, tablet_id, sequence_table_id, stream_id));
   SafeTimeTablePK output2 = ASSERT_RESULT(xcluster::SafeTimeTablePK::FromSafeTimeTableRow(
       input2.replication_group_id_column_value(), input2.tablet_id_column_value()));
   EXPECT_EQ(input2, output2);
   // Check encoded tablet_id column value is pleasing to humans.
-  EXPECT_EQ(input2.tablet_id_column_value(), Format("sequence.$0.$1", namespace_id, tablet_id));
+  EXPECT_EQ(
+      input2.tablet_id_column_value(),
+      Format("stream.$0.sequence.$1.$2", stream_id, namespace_id, tablet_id));
 
   // Verify we can distinguish the two cases.
   EXPECT_NE(output1, output2);
+
+  SafeTimeTablePK other_stream = ASSERT_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
+      group_id, tablet_id, normal_table_id, xrepl::StreamId::GenerateRandom()));
+  EXPECT_NE(input1, other_stream);
+  EXPECT_NE(input1.tablet_id_column_value(), other_stream.tablet_id_column_value());
 }
 
 TEST_F(SafeTimeTablePKTest, BadEncoding) {
   xcluster::ReplicationGroupId group_id{"replication_group_id"};
+  const auto stream_id = xrepl::StreamId::GenerateRandom();
 
   std::vector<std::string> bad_tablet_id_column_values{
-      "", "sequence.bad", "sequence.", "sequence..", "sequence.foo.", "sequence..foo"};
+      "", "sequence.bad", "sequence.", "sequence..", "sequence.foo.", "sequence..foo", "stream.",
+      "stream.no_separator", "stream..tablet_id", Format("stream.$0.", stream_id),
+      Format("stream.$0.sequence.bad", stream_id),
+      Format("stream.$0.tablet_id", xrepl::StreamId::Nil())};
   for (const auto& bad_value : bad_tablet_id_column_values) {
     SCOPED_TRACE(std::string("using bad value ") + bad_value);
 #ifndef NDEBUG
@@ -479,6 +495,10 @@ TEST_F(SafeTimeTablePKTest, BadEncoding) {
     EXPECT_NOK(xcluster::SafeTimeTablePK::FromSafeTimeTableRow(group_id, bad_value));
 #endif
   }
+
+  // A stream ID that does not parse is an error rather than a DCHECK failure.
+  EXPECT_NOK(xcluster::SafeTimeTablePK::FromSafeTimeTableRow(
+      group_id, "stream.not_a_stream_id.tablet_id"));
 }
 
 }  // namespace master
