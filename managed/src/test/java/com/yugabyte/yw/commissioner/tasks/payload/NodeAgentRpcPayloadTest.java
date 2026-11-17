@@ -10,9 +10,13 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.After;
@@ -71,12 +75,14 @@ public class NodeAgentRpcPayloadTest {
         new NodeAgentRpcPayload(
             null, null, null, null, telemetryProviderService, null, null, null, null);
     UUID exporterUUID = UUID.randomUUID();
+    UniverseLogsExporterConfig exporterConfig = new UniverseLogsExporterConfig();
+    exporterConfig.setExporterUuid(exporterUUID);
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    auditLogConfig.setUniverseLogsExporterConfig(List.of(exporterConfig));
+    TelemetryConfig telemetryConfig = new TelemetryConfig();
+    telemetryConfig.setAuditLogConfig(auditLogConfig);
     PlatformServiceException e =
-        assertThrows(
-            PlatformServiceException.class,
-            () ->
-                payload.setupInstallOtelCollectorBitsEnv(
-                    null, nodeAgent("2026.2.0.0-b10"), "/tmp", exporterUUID, null, null));
+        assertThrows(PlatformServiceException.class, () -> payload.getVmExporters(telemetryConfig));
     assertEquals("Invalid Telemetry Provider UUID: " + exporterUUID, e.getMessage());
   }
 }

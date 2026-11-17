@@ -64,6 +64,7 @@ import com.yugabyte.yw.nodeagent.GcsConfig;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import com.yugabyte.yw.nodeagent.InstallSoftwareInput;
 import com.yugabyte.yw.nodeagent.InstallYbcInput;
+import com.yugabyte.yw.nodeagent.S3Config;
 import com.yugabyte.yw.nodeagent.ServerControlInput;
 import com.yugabyte.yw.nodeagent.ServerControlType;
 import com.yugabyte.yw.nodeagent.ServerGFlagsInput;
@@ -73,6 +74,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -561,15 +563,14 @@ public class NodeAgentRpcPayload {
 
     boolean installsConfig =
         !refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig);
+    List<TelemetryProvider> exporters =
+        installsConfig ? getVmExporters(telemetryConfig) : List.of();
     if (installsConfig) {
       // Checked before any upload, so a failure leaves nothing on the node.
       Map<String, String> secretEnv = new HashMap<>();
-      for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
-        TelemetryProvider telemetryProvider =
-            telemetryProviderService.getOrBadRequest(exporterUUID);
-        secretEnv.putAll(OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
-      }
+      exporters.forEach(e -> secretEnv.putAll(OtelCollectorConfigGenerator.getCredentialEnv(e)));
       checkNodeAgentReadsSecretEnv(nodeAgent, secretEnv);
+      installOtelCollectorInputBuilder.putAllOtelColSecretEnv(secretEnv);
     }
 
     installOtelCollectorInputBuilder.setRemoteTmp(customTmpDirectory);
@@ -661,20 +662,30 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      // Every exporter the config renders needs its credentials, or its ${env:...} is unset.
-      for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
+      // AWS keys and GCP creds file per exporter. The secret env is set above.
+      for (TelemetryProvider exporter : exporters) {
         installOtelCollectorInputBuilder =
             setupInstallOtelCollectorBitsEnv(
                 installOtelCollectorInputBuilder,
                 nodeAgent,
                 customTmpDirectory,
-                exporterUUID,
+                exporter,
                 taskParams.getUniverseUUID(),
                 taskParams.nodeUuid);
       }
     }
 
     return installOtelCollectorInputBuilder.build();
+  }
+
+  /** Every exporter the VM config renders. Fails for a UUID with no provider. */
+  @VisibleForTesting
+  List<TelemetryProvider> getVmExporters(TelemetryConfig telemetryConfig) {
+    List<TelemetryProvider> exporters = new ArrayList<>();
+    for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
+      exporters.add(telemetryProviderService.getOrBadRequest(exporterUUID));
+    }
+    return exporters;
   }
 
   /**
@@ -747,9 +758,8 @@ public class NodeAgentRpcPayload {
         if (StringUtils.isBlank(target.roleArn) || StringUtils.isBlank(target.audience)) {
           throw new RuntimeException("AWS role ARN and audience are required to reach S3");
         }
-        // Fully qualified: telemetry.S3Config is imported in this file for the OTel exporter.
         builder.setS3(
-            com.yugabyte.yw.nodeagent.S3Config.newBuilder()
+            S3Config.newBuilder()
                 .setRoleArn(target.roleArn)
                 .setAudience(target.audience)
                 .setProfileName(YB_CROSS_CLOUD_FEDERATION_AWS_PROFILE)
@@ -773,16 +783,14 @@ public class NodeAgentRpcPayload {
     }
   }
 
-  public InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(
+  private InstallOtelCollectorInput.Builder setupInstallOtelCollectorBitsEnv(
       InstallOtelCollectorInput.Builder installOtelCollectorInputBuilder,
       NodeAgent nodeAgent,
       String customTmpDirectory,
-      UUID exporterUUID,
+      TelemetryProvider telemetryProvider,
       UUID universeUUID,
       UUID nodeUUID) {
-    TelemetryProvider telemetryProvider = telemetryProviderService.getOrBadRequest(exporterUUID);
-    installOtelCollectorInputBuilder.putAllOtelColSecretEnv(
-        OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
+    UUID exporterUUID = telemetryProvider.getUuid();
     Pair<String, String> awsKeys = OtelCollectorConfigGenerator.getAwsKeys(telemetryProvider);
     if (awsKeys != null) {
       log.info("Setting AWS credentials in builder for exporter UUID: {}", exporterUUID);
