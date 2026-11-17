@@ -811,16 +811,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           + " SELECT gen_random_uuid(), gen_random_uuid(), 0, 0, false, '\\x00'"
           + " FROM generate_series(1, 1000)");
 
-      // getTableUUID() skips system tables, which include yb_system's.
-      YBClient client = miniCluster.getClient();
-      String tableId = client.getTablesList(table, false, null).getTableInfoList().stream()
-          .filter(t -> t.getName().equals(table)
-              && t.getNamespace().getName().equals("yb_system"))
-          .findFirst().get().getId().toStringUtf8();
-      client.flushTable(tableId);
+      runYbAdmin("flush_table", "ysql.yb_system", table);
       List<String> tablets = getTabletsForYsqlTable("yb_system", table);
       assertEquals(1, tablets.size());
-      client.splitTablet(tablets.get(0));
+      miniCluster.getClient().splitTablet(tablets.get(0));
       TestUtils.waitFor(() -> getTabletsForYsqlTable("yb_system", table).size() == 2,
           Timeouts.adjustTimeoutSecForBuildType(60 * 1000));
 
@@ -828,10 +822,17 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
+  private static String notifySeriesSql(String prefix, int count) {
+    return "SELECT pg_notify('" + CHANNEL + "', '" + prefix + "' || lpad(g::text, 5, '0'))"
+        + " FROM generate_series(0, " + (count - 1) + ") g";
+  }
+
+  /** Waits for the last of count notifications with the given prefix and checks their order. */
   private static void assertNotificationsInOrder(
-      List<PGNotification> notifs, String prefix, int count) {
+      Connection listenerConn, String prefix, int count) throws Exception {
     List<String> payloads = new ArrayList<>();
-    for (PGNotification n : notifs) {
+    for (PGNotification n : waitForNotification(
+        listenerConn, CHANNEL, String.format("%s%05d", prefix, count - 1))) {
       if (n.getParameter().startsWith(prefix)) {
         payloads.add(n.getParameter());
       }
@@ -861,12 +862,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       try (Statement stmt = notifierConn.createStatement()) {
         // One statement in a transaction block.
         stmt.execute("BEGIN");
-        stmt.execute("SELECT pg_notify('" + CHANNEL + "', 'stmt_' || lpad(g::text, 5, '0'))"
-            + " FROM generate_series(0, " + (n - 1) + ") g");
+        stmt.execute(notifySeriesSql("stmt_", n));
         stmt.execute("COMMIT");
-        assertNotificationsInOrder(
-            waitForNotification(listenerConn, CHANNEL, String.format("stmt_%05d", n - 1)),
-            "stmt_", n);
+        assertNotificationsInOrder(listenerConn, "stmt_", n);
 
         // Separate NOTIFY statements in a transaction block.
         stmt.execute("BEGIN");
@@ -874,16 +872,11 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
           stmt.execute(String.format("NOTIFY %s, 'multi_%05d'", CHANNEL, i));
         }
         stmt.execute("COMMIT");
-        assertNotificationsInOrder(
-            waitForNotification(listenerConn, CHANNEL, String.format("multi_%05d", n - 1)),
-            "multi_", n);
+        assertNotificationsInOrder(listenerConn, "multi_", n);
 
         // One autocommit statement.
-        stmt.execute("SELECT pg_notify('" + CHANNEL + "', 'auto_' || lpad(g::text, 5, '0'))"
-            + " FROM generate_series(0, " + (n - 1) + ") g");
-        assertNotificationsInOrder(
-            waitForNotification(listenerConn, CHANNEL, String.format("auto_%05d", n - 1)),
-            "auto_", n);
+        stmt.execute(notifySeriesSql("auto_", n));
+        assertNotificationsInOrder(listenerConn, "auto_", n);
       }
     }
   }
