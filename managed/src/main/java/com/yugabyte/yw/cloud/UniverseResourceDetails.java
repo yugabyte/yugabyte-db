@@ -47,7 +47,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -396,13 +395,16 @@ public class UniverseResourceDetails {
    * @param providerUUID Optional provider uuid. If present - we count only nodes for provider.
    * @param nodes Nodes that make up this universe.
    * @param params Parameters describing this universe.
+   * @param priceForAllNodes - whether to calculate the price based on all nodes or use only
+   *     provided nodes (to keep the V1 behavior)
    * @return a UniverseResourceDetails object containing info on the universe's resources.
    */
   public static UniverseResourceDetails create(
       Optional<UUID> providerUUID,
       Collection<NodeDetails> nodes,
       UniverseDefinitionTaskParams params,
-      Context context) {
+      Context context,
+      boolean priceForAllNodes) {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
     details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
@@ -424,9 +426,14 @@ public class UniverseResourceDetails {
       }
     }
     Collection<NodeDetails> providerNodes = new ArrayList<>();
+    Map<UUID, UUID> providerUUIDByAZ = new HashMap<>();
     for (NodeDetails node : nodes) {
       Cluster cluster = params.getClusterByUuid(node.placementUuid);
-      UUID nodeProviderUUID = cluster.getProviderUUIDForNode(node);
+      // Additional caching for the case if node has incorrect az, so that we will not end up with
+      // db query per node.
+      UUID nodeProviderUUID =
+          providerUUIDByAZ.computeIfAbsent(node.azUuid, cluster::getProviderUUIDByAZ);
+
       if (providerUUID.isPresent() && !Objects.equals(providerUUID.get(), nodeProviderUUID)) {
         continue;
       }
@@ -480,31 +487,27 @@ public class UniverseResourceDetails {
         }
       }
     }
-    details.addPrice(providerNodes, params, context);
+    // V1 API always uses all the nodes for price calculation,
+    // but for V2 API we take only passed nodes into account.
+    details.addPrice(priceForAllNodes ? params.nodeDetailsSet : providerNodes, params, context);
     return details;
   }
 
   /** Resource estimate for each provider represented by {@code nodes} */
   public static Map<UUID, UniverseResourceDetails> createPerProvider(
       Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
-    Map<UUID, UUID> providerUUIDByAZ = new HashMap<>();
 
-    Map<UUID, List<NodeDetails>> nodesByProvider =
+    Set<UUID> allProviderUUIDs =
         nodes.stream()
-            .collect(
-                Collectors.groupingBy(
-                    n -> {
-                      Cluster cluster = params.getClusterByUuid(n.placementUuid);
-                      // Additional caching for the case if node has incorrect az,
-                      // so that we will not end up with db query per node.
-                      return providerUUIDByAZ.computeIfAbsent(
-                          n.azUuid, cluster::getProviderUUIDByAZ);
-                    }));
+            .map(n -> params.getClusterByUuid(n.placementUuid))
+            .filter(Objects::nonNull)
+            .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+            .collect(Collectors.toSet());
     Map<UUID, UniverseResourceDetails> result = new HashMap<>();
-    nodesByProvider.forEach(
-        (providerUUID, providerNodes) -> {
+    allProviderUUIDs.forEach(
+        providerUUID -> {
           result.put(
-              providerUUID, create(Optional.of(providerUUID), providerNodes, params, context));
+              providerUUID, create(Optional.of(providerUUID), nodes, params, context, false));
         });
     return result;
   }

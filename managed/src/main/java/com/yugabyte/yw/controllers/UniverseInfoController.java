@@ -161,12 +161,14 @@ public class UniverseInfoController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     // Keeping current logic.
-    UniverseDefinitionTaskParams.ClusterType clusterType = universe.getUniverseDetails().currentClusterType;
+    UniverseDefinitionTaskParams.ClusterType clusterType =
+        universe.getUniverseDetails().currentClusterType;
     if (clusterType == null) {
       clusterType = UniverseDefinitionTaskParams.ClusterType.PRIMARY;
     }
     return PlatformResults.withData(
-        universeInfoHandler.getUniverseResources(customer, universe.getUniverseDetails(), null));
+        universeInfoHandler.getUniverseResources(
+            customer, universe.getUniverseDetails(), clusterType, true));
   }
 
   @ApiOperation(
@@ -193,7 +195,7 @@ public class UniverseInfoController extends AuthenticatedController {
             runtimeConfigFactory.globalRuntimeConf(), customer, universe.getUniverseDetails());
     return PlatformResults.withData(
         UniverseResourceDetails.create(
-            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context));
+            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context, true));
   }
 
   @ApiOperation(

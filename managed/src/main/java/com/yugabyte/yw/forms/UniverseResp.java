@@ -81,7 +81,7 @@ public class UniverseResp {
         taskUUID,
         context.getProvider(Util.getDefaultProviderUUID(universe)),
         UniverseResourceDetails.create(
-            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context),
+            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context, true),
         getPerProviderDetails(universe, context),
         allowedTasks.get(universe.getUniverseUUID()),
         rollMaxBatchSize,
@@ -123,7 +123,8 @@ public class UniverseResp {
                         Optional.empty(),
                         universe.getNodes(),
                         universe.getUniverseDetails(),
-                        context),
+                        context,
+                        true),
                     getPerProviderDetails(universe, context),
                     allowedTasks.get(universe.getUniverseUUID()),
                     suggests.get(universe.getUniverseUUID()),
@@ -144,7 +145,8 @@ public class UniverseResp {
                 Optional.of(providerUUID),
                 universe.getNodes(),
                 universe.getUniverseDetails(),
-                context));
+                context,
+                false));
       }
     }
     return resourcesPerProvider;

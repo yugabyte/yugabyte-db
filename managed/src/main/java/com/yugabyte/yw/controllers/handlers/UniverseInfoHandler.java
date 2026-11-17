@@ -83,14 +83,26 @@ public class UniverseInfoHandler {
   @Inject private GCPUtil gcpUtil;
 
   public UniverseResourceDetails getUniverseResources(
+      Customer customer, UniverseDefinitionTaskParams taskParams) {
+    return getUniverseResources(customer, taskParams, null, true);
+  }
+
+  public UniverseResourceDetails getUniverseResources(
       Customer customer,
       UniverseDefinitionTaskParams taskParams,
-      @Nullable UniverseDefinitionTaskParams.ClusterType clusterType) {
+      @Nullable UniverseDefinitionTaskParams.ClusterType clusterType,
+      boolean priceForAllNodes) {
     return UniverseResourceDetails.create(
         Optional.empty(),
         getNodes(clusterType, taskParams),
         taskParams,
-        resourceContext(customer, taskParams));
+        resourceContext(customer, taskParams),
+        priceForAllNodes);
+  }
+
+  public Map<UUID, UniverseResourceDetails> getUniverseResourcesPerProvider(
+      Customer customer, UniverseDefinitionTaskParams taskParams) {
+    return getUniverseResourcesPerProvider(customer, taskParams, null);
   }
 
   public Map<UUID, UniverseResourceDetails> getUniverseResourcesPerProvider(
@@ -107,9 +119,13 @@ public class UniverseInfoHandler {
     if (clusterType == null) {
       return taskParams.nodeDetailsSet;
     }
-    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC
-        && !CollectionUtils.isEmpty(taskParams.getReadOnlyClusters())) {
-      return taskParams.getNodesInCluster(taskParams.getReadOnlyClusters().get(0).uuid);
+    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+      if (!CollectionUtils.isEmpty(taskParams.getReadOnlyClusters())) {
+        return taskParams.getNodesInCluster(taskParams.getReadOnlyClusters().get(0).uuid);
+      } else {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "The universe " + taskParams.getUniverseUUID() + " has no async replica");
+      }
     }
     return taskParams.getNodesInCluster(taskParams.getPrimaryCluster().uuid);
   }
@@ -132,7 +148,11 @@ public class UniverseInfoHandler {
       try {
         response.add(
             UniverseResourceDetails.create(
-                Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context));
+                Optional.empty(),
+                universe.getNodes(),
+                universe.getUniverseDetails(),
+                context,
+                true));
       } catch (Exception e) {
         log.error(
             "Could not add cost details for Universe with UUID: " + universe.getUniverseUUID());

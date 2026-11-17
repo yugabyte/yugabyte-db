@@ -288,7 +288,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     Context context = new Context(getApp().config(), customer, params);
     UniverseResourceDetails details =
         UniverseResourceDetails.create(
-            Optional.of(provider.getUuid()), params.nodeDetailsSet, params, context);
+            Optional.of(provider.getUuid()), params.nodeDetailsSet, params, context, true);
 
     assertThat(details, notNullValue());
     assertThat(details.ebsPricePerHour, equalTo(0.0));

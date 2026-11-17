@@ -1546,7 +1546,8 @@ public class UniverseTestBase extends UniverseControllerTestBase {
             Optional.of(Util.getDefaultProviderUUID(dbUniverse)),
             dbUniverse.getNodes(),
             dbUniverse.getUniverseDetails(),
-            context);
+            context,
+            false);
     validateUniverseInfoResources(v2UnivInfo.getResources(), v1UniverseResourceDetails);
     assertThat(
         v2UnivInfo.getSoftwareUpgradeState().getValue(), is(dbUniv.softwareUpgradeState.name()));
