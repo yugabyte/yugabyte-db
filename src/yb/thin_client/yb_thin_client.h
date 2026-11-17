@@ -284,9 +284,11 @@ typedef struct {
 
 // Run a batch of read ops as the ops of ONE Perform: one RPC, one read session, one snapshot.
 // `options` is batch-level; NULL means all zero. An op with `paging_state_in` set continues that
-// op's scan and stays on the scan's original snapshot automatically -- the time the first page
-// was served at travels inside `paging_state`, so the server keeps no read state -- and paging
-// with `read_time_ht` left 0 throughout is still consistent: no rows are dropped mid-scan.
+// op's scan; the read time it was served at travels inside `paging_state`, so the server keeps no
+// read state and no rows are dropped mid-scan. A scan started with `read_time_ht` set, or as a
+// follower read, stays on its first page's snapshot across tablets. A scan started with neither
+// keeps its snapshot only within a tablet: a page that ends at a tablet boundary carries no read
+// time, so the next tablet is read at a newer snapshot and may see rows written since (#38112).
 // Continuation ops in one batch must all share the paging session that issued
 // them; if that session was dropped or reopened, e.g. on another endpoint, the batch fails with
 // YBTHIN_READ_RESTART. Status is batch-level: any op failure fails the whole call with no partial
