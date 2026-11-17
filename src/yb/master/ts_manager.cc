@@ -613,7 +613,8 @@ void TSManager::StampTServerListChanges(const std::vector<TSDescriptorPtr>& desc
 }
 
 uint32_t TSManager::NextTServerListCounterUnlocked() {
-  // Restart before the counter can carry into the term bits; older versions are then "ahead".
+  // Restart before the counter can carry into the term bits. Only older versions above the new
+  // counter get a full list; one below it takes 2^31 changes between heartbeats and is not handled.
   if (static_cast<uint32_t>(tserver_list_version_) >= kTServerListCounterLimit) {
     tserver_list_version_ &= ~uint64_t{std::numeric_limits<uint32_t>::max()};
     tserver_list_changes_.clear();
@@ -643,6 +644,7 @@ void TSManager::StampTServerListChangeUnlocked(
   auto [stamp, is_new] = tserver_list_stamps_.try_emplace(desc.id(), counter);
   if (!is_new) {
     auto it = tserver_list_changes_.find(stamp->second);
+    DCHECK(it != tserver_list_changes_.end());
     it->second.ids.erase(desc.id());
     if (it->second.ids.empty()) {
       tserver_list_changes_.erase(it);
