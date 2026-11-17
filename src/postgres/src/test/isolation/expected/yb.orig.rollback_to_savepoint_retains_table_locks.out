@@ -10,7 +10,7 @@ step s2_add_check: ALTER TABLE t ADD CONSTRAINT tc CHECK (v < 10); <waiting ...>
 step s1_commit: COMMIT;
 step s2_add_check: <... completed>
 ERROR:  check constraint "tc" of relation "t" is violated by some row
-step s2_select: SELECT * FROM t ORDER BY k;
+step s2_select: SELECT k, v FROM t ORDER BY k;
 k| v
 -+--
 1| 1
@@ -28,7 +28,202 @@ step s2_add_check: ALTER TABLE t ADD CONSTRAINT tc CHECK (v < 10); <waiting ...>
 step s1_commit: COMMIT;
 step s2_add_check: <... completed>
 ERROR:  check constraint "tc" of relation "t" is violated by some row
-step s2_select: SELECT * FROM t ORDER BY k;
+step s2_select: SELECT k, v FROM t ORDER BY k;
+k| v
+-+--
+1| 1
+2|20
+(2 rows)
+
+
+starting permutation: s1_begin_rr s1_insert_t s1_savepoint s1_alter_u s1_rollback_to s1_wait s2_add_check s1_commit s2_select
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_insert_t: INSERT INTO t VALUES (2, 20);
+step s1_savepoint: SAVEPOINT a;
+step s1_alter_u: ALTER TABLE u ADD COLUMN c int;
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_add_check: ALTER TABLE t ADD CONSTRAINT tc CHECK (v < 10); <waiting ...>
+step s1_commit: COMMIT;
+step s2_add_check: <... completed>
+ERROR:  check constraint "tc" of relation "t" is violated by some row
+step s2_select: SELECT k, v FROM t ORDER BY k;
+k| v
+-+--
+1| 1
+2|20
+(2 rows)
+
+
+starting permutation: s1_begin_rc s1_insert_t s1_savepoint s1_alter_u s1_rollback_to s1_wait s2_add_check s1_commit s2_select
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_insert_t: INSERT INTO t VALUES (2, 20);
+step s1_savepoint: SAVEPOINT a;
+step s1_alter_u: ALTER TABLE u ADD COLUMN c int;
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_add_check: ALTER TABLE t ADD CONSTRAINT tc CHECK (v < 10); <waiting ...>
+step s1_commit: COMMIT;
+step s2_add_check: <... completed>
+ERROR:  check constraint "tc" of relation "t" is violated by some row
+step s2_select: SELECT k, v FROM t ORDER BY k;
+k| v
+-+--
+1| 1
+2|20
+(2 rows)
+
+
+starting permutation: s1_begin_rr s1_lock_t s1_savepoint s1_alter_u s1_rollback_to s1_wait s2_update_t s1_commit s2_select
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_lock_t: LOCK TABLE t IN ACCESS EXCLUSIVE MODE;
+step s1_savepoint: SAVEPOINT a;
+step s1_alter_u: ALTER TABLE u ADD COLUMN c int;
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_update_t: UPDATE t SET v = v + 5 WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_t: <... completed>
+step s2_select: SELECT k, v FROM t ORDER BY k;
+k|v
+-+-
+1|6
+(1 row)
+
+
+starting permutation: s1_begin_rr s1_lock_t s1_savepoint s1_create_w s1_rollback_to s1_wait s2_update_t s1_commit s2_select
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_lock_t: LOCK TABLE t IN ACCESS EXCLUSIVE MODE;
+step s1_savepoint: SAVEPOINT a;
+step s1_create_w: CREATE TABLE w (k int PRIMARY KEY);
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_update_t: UPDATE t SET v = v + 5 WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_t: <... completed>
+step s2_select: SELECT k, v FROM t ORDER BY k;
+k|v
+-+-
+1|6
+(1 row)
+
+
+starting permutation: s1_begin_rr s1_lock_t s1_savepoint s1_drop_u s1_rollback_to s1_wait s2_update_t s1_commit s2_select
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_lock_t: LOCK TABLE t IN ACCESS EXCLUSIVE MODE;
+step s1_savepoint: SAVEPOINT a;
+step s1_drop_u: DROP TABLE u;
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_update_t: UPDATE t SET v = v + 5 WHERE k = 1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update_t: <... completed>
+step s2_select: SELECT k, v FROM t ORDER BY k;
+k|v
+-+-
+1|6
+(1 row)
+
+
+starting permutation: s1_begin_rr s1_storage_t s1_select_t s1_savepoint s1_alter_u s1_rollback_to s1_wait s2_update_t s1_update_t s1_commit s2_select
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+s1: NOTICE:  ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables
+step s1_storage_t: ALTER TABLE t ALTER COLUMN note SET STORAGE EXTERNAL;
+step s1_select_t: SELECT v FROM t WHERE k = 1;
+v
+-
+1
+(1 row)
+
+step s1_savepoint: SAVEPOINT a;
+step s1_alter_u: ALTER TABLE u ADD COLUMN c int;
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_update_t: UPDATE t SET v = v + 5 WHERE k = 1; <waiting ...>
+step s1_update_t: UPDATE t SET v = 1 + 10 WHERE k = 1;
+step s1_commit: COMMIT;
+step s2_update_t: <... completed>
+step s2_select: SELECT k, v FROM t ORDER BY k;
+k| v
+-+--
+1|16
+(1 row)
+
+
+starting permutation: s1_begin_rr s1_trigger_t s1_savepoint s1_alter_u s1_rollback_to s1_wait s2_drop_t s1_commit s2_triggers
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_trigger_t: CREATE TRIGGER trg BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION tf();
+step s1_savepoint: SAVEPOINT a;
+step s1_alter_u: ALTER TABLE u ADD COLUMN c int;
+step s1_rollback_to: ROLLBACK TO SAVEPOINT a;
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_drop_t: DROP TABLE t; <waiting ...>
+step s1_commit: COMMIT;
+step s2_drop_t: <... completed>
+step s2_triggers: SELECT tgname FROM pg_trigger WHERE tgname = 'trg';
+tgname
+------
+(0 rows)
+
+
+starting permutation: s1_begin_rr s1_insert_t s1_ddl_in_exception_block s1_wait s2_add_check s1_commit s2_select
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_insert_t: INSERT INTO t VALUES (2, 20);
+step s1_ddl_in_exception_block: 
+  DO $$
+  BEGIN
+    ALTER TABLE u ADD COLUMN c int;
+    RAISE EXCEPTION 'undo';
+  EXCEPTION WHEN raise_exception THEN
+    NULL;
+  END $$;
+
+step s1_wait: SELECT pg_sleep(2);
+pg_sleep
+--------
+        
+(1 row)
+
+step s2_add_check: ALTER TABLE t ADD CONSTRAINT tc CHECK (v < 10); <waiting ...>
+step s1_commit: COMMIT;
+step s2_add_check: <... completed>
+ERROR:  check constraint "tc" of relation "t" is violated by some row
+step s2_select: SELECT k, v FROM t ORDER BY k;
 k| v
 -+--
 1| 1

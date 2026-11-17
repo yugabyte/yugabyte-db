@@ -33,19 +33,19 @@ Note that upgrading a PostgreSQL 11-based universe ({{<release "2024.2">}} and e
 | Feature | Description |
 | --------| ----------- |
 
-| [Stored generated columns](../the-sql-language/statements/ddl_create_table#stored-generated-columns)
+| [Stored generated columns](../the-sql-language/statements/ddl_create_table/#stored-generated-columns)
 | Define columns whose values are automatically calculated and stored based on expressions involving other columns.
 |
 
-|[Before&nbsp;row&nbsp;triggers&nbsp;on partitioned tables](../the-sql-language/statements/ddl_create_trigger#partitioned-tables)
+|[Before&nbsp;row&nbsp;triggers&nbsp;on partitioned tables](../the-sql-language/statements/ddl_create_trigger/#partitioned-tables)
 | Enforce custom business logic, perform validation, or even modify row data before it is written to the appropriate partition.
 |
 
-| [Non distinct NULLs in a Unique index](../the-sql-language/statements/ddl_create_index#nulls-not-distinct)
+| [Non distinct NULLs in a Unique index](../the-sql-language/statements/ddl_create_index/#nulls-not-distinct)
 | Enforce that only one NULL value is permitted instead of allowing multiple NULL entries in a unique index.
 |
 
-| [Filter rows while importing data](../the-sql-language/statements/cmd_copy#where)
+| [Filter rows while importing data](../the-sql-language/statements/cmd_copy/#where)
 | Use COPY FROM with WHERE clause while importing data into a table and eliminate preprocessing data files.
 |
 
@@ -65,7 +65,7 @@ Note that upgrading a PostgreSQL 11-based universe ({{<release "2024.2">}} and e
 | Enable a client to send multiple queries to the server without waiting for each query's response before sending the next one. This reduces the round-trip time between client and server and significantly boosts the performance when running many queries in quick succession.
 |
 
-| [Replace triggers](../the-sql-language/statements/ddl_create_trigger#or-replace)
+| [Replace triggers](../the-sql-language/statements/ddl_create_trigger/#or-replace)
 | Replace an existing trigger with a new one without first having to drop the old trigger and create a new one.
 |
 

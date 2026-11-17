@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -71,6 +72,8 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @Inject Commissioner commissioner;
+
+  @Inject BackupHelper backupHelper;
 
   @ApiOperation(
       value = "Create a customer configuration",
@@ -133,6 +136,8 @@ public class CustomerConfigController extends AuthenticatedController {
                 + configUUID.toString()
                 + " is in progress.");
       }
+      // Also checked by customerConfigService.delete, which the isDeleteBackups task skips.
+      customerConfigService.checkNoBackupsBeingDeleted(customerConfig);
 
       preBackupConfigDeleteValidation(customerConfig);
 
@@ -266,8 +271,10 @@ public class CustomerConfigController extends AuthenticatedController {
           BAD_REQUEST, "Can only list YBA backup directories for storage configurations.");
     }
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
+    CustomerConfigData configData = customerConfig.getDataObject();
+    backupHelper.requireYbaFederatedIdentity(customerConfig, configData);
 
-    return PlatformResults.withData(storageUtil.getYbaBackupDirs(customerConfig.getDataObject()));
+    return PlatformResults.withData(storageUtil.getYbaBackupDirs(configData));
   }
 
   @ApiOperation(

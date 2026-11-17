@@ -118,30 +118,40 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
             logging.error(f"Invalid source URI: {source_uri}")
             raise ValueError(f"Invalid source URI: {source_uri}")
 
-    def _update_create_source_status(self, work_queue_id: str, status: str):
+    def _update_create_source_status(self, task: WorkQueueTask, source_id, status: str) -> bool:
         """
-        Update the status of a create source task.
+        Set the status of the task's source, while the task's lease still holds.
+
+        A worker whose lease expired and whose task another worker reclaimed
+        writes nothing, so it can't overwrite the new worker's source status.
+        Returns False when nothing was written.
         """
         connection = None
         try:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-            query = """
-            UPDATE dist_rag.sources
-            SET status = %s
-            WHERE id = %s
-            RETURNING id;
-            """
-            cursor.execute(query, (status, work_queue_id))
-            result = cursor.fetchone()
+            if task.lease_token is None:
+                cursor.execute(
+                    "UPDATE dist_rag.sources SET status = %s WHERE id = %s",
+                    (status, str(source_id)),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE dist_rag.sources SET status = %s WHERE id = %s "
+                    "AND EXISTS (SELECT 1 FROM dist_rag.work_queue w WHERE w.id = %s "
+                    "AND w.lease_token = %s AND w.task_status = 'IN_PROGRESS')",
+                    (status, str(source_id), str(task.id), str(task.lease_token)),
+                )
+            updated = cursor.rowcount > 0
             connection.commit()
+            return updated
         except Exception as e:
             if connection:
                 try:
                     connection.rollback()
                 except Exception:
                     pass
-            logging.error(f"Error updating create source status for task {work_queue_id}: {str(e)}")
+            logging.error(f"Error setting source {source_id} {status} for task {task.id}: {str(e)}")
             raise
         finally:
             if connection:
@@ -236,7 +246,7 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                 self.connection_pool.return_connection(connection)
 
     def _fail_task(self, task: WorkQueueTask) -> None:
-        """Finalize the work_queue row as FAILED, so the reaper doesn't re-queue it."""
+        """Finalize the work_queue row as FAILED, so no poll reclaims it."""
         try:
             self.poller.mark_failed(task.id, lease_token=task.lease_token)
         except Exception as finalize_err:
@@ -277,13 +287,11 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                 f"Processing create source task: source_id={source_id}"
             )
 
-            self._update_create_source_status(work_queue_id=work_queue_id, status="IN_PROGRESS")
-
             # nik-todo: fetch source details from source_id.
             source_details = self.source_document_tracking.get_source_details(source_id=source_id)
             if not source_details:
                 # Re-running can't fix a missing source; without finalizing,
-                # the reaper would redeliver this task every lease period.
+                # a poll would reclaim this task every lease period.
                 self.logger.error(f"Source details not found for source_id: {source_id}")
                 self._fail_task(task)
                 return {
@@ -291,11 +299,21 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                     'source_id': source_id
                 }
 
+            # The source exists, so nothing written means the lease expired
+            # and another worker reclaimed the task. Crawling on would list
+            # the source twice at once, and before pg_dist_rag 0.0.4 nothing
+            # stops that from duplicating its documents.
+            if not self._update_create_source_status(task, source_id, "IN_PROGRESS"):
+                self.logger.warning(
+                    f"Task {work_queue_id} lost its lease before crawling source {source_id}"
+                )
+                return {'task_id': work_queue_id, 'status': 'lease_lost'}
+
             source_uri = source_details.get('source_uri')
             self._get_documents_from_source(source_uri=source_uri, source_id=source_id)
 
         except Exception as e:
-            self._update_create_source_status(work_queue_id=work_queue_id, status="FAILED")
+            self._update_create_source_status(task, source_id, "FAILED")
             self._fail_task(task)
             self.logger.error(f"Error processing create source task: {str(e)}")
             raise
@@ -318,7 +336,7 @@ class CreateSourceProcessorForAWS_S3(TaskProcessor):
                 self.poller.release(work_queue_id, self.COMPLETION_RETRY_SECONDS,
                                     lease_token=task.lease_token)
                 return {'task_id': work_queue_id, 'status': 'retry'}
-            self._update_create_source_status(work_queue_id=work_queue_id, status="FAILED")
+            self._update_create_source_status(task, source_id, "FAILED")
             self._fail_task(task)
             self.logger.error(
                 f"Giving up completing task {work_queue_id} after "

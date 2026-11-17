@@ -67,6 +67,9 @@ static const uint32_t kPgPublicationOid = 6104;
 // Hardcoded for pg_publication_rel (in pg_publication_rel.h).
 static const uint32_t kPgPublicationRelOid = 6106;
 
+// Hardcoded for pg_publication_rel_prpubid_index (in pg_publication_rel.h).
+static const uint32_t kPgPublicationRelPrpubidIndexOid = 6116;
+
 // Hardcoded for pg_replication_origin (in pg_replication_origin.h).
 static const uint32_t kPgReplicationOriginOid = 6000;
 

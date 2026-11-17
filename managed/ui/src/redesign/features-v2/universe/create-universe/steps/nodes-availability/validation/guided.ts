@@ -64,6 +64,21 @@ export function validateGuidedRules({
     }
   }
 
+  // Region-level: exactly one AZ per selected region (nodes may be >1 on that AZ).
+  if (faultToleranceType === FaultToleranceType.REGION_LEVEL) {
+    const regionsWithExtraAzs = values(availabilityZones).filter(
+      (zones) => (zones?.length ?? 0) > 1
+    );
+    if (regionsWithExtraAzs.length > 0) {
+      fieldErrors.push(
+        createError({
+          path,
+          message: 'errMsg.regionLevelOneAzPerRegion'
+        })
+      );
+    }
+  }
+
   if (
     faultToleranceType === FaultToleranceType.NODE_LEVEL &&
     metrics.nodeCounts < metrics.faultToleranceNeeded

@@ -13,25 +13,35 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.models.configs.CustomerConfig.ConfigType.CALLHOME;
 import static com.yugabyte.yw.models.configs.CustomerConfig.ConfigType.STORAGE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
@@ -39,6 +49,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
@@ -48,7 +59,11 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -234,6 +249,54 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListStorageConfigUsageFromBackups() {
+    UUID usedConfigUuid =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "USED").getConfigUUID();
+    UUID unusedConfigUuid =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "UNUSED").getConfigUUID();
+    Universe universe1 = ModelFactory.createUniverse("universe-1", defaultCustomer.getId());
+    Universe universe2 = ModelFactory.createUniverse("universe-2", defaultCustomer.getId());
+    Universe universe3 = ModelFactory.createUniverse("universe-3", defaultCustomer.getId());
+    UUID customerUuid = defaultCustomer.getUuid();
+    // Two completed backups of the same universe must produce a single universe entry.
+    ModelFactory.createBackup(customerUuid, universe1.getUniverseUUID(), usedConfigUuid)
+        .transitionState(Backup.BackupState.Completed);
+    ModelFactory.createBackup(customerUuid, universe1.getUniverseUUID(), usedConfigUuid)
+        .transitionState(Backup.BackupState.Completed);
+    // In-progress backups count as usage.
+    ModelFactory.createBackup(customerUuid, universe2.getUniverseUUID(), usedConfigUuid);
+    // Failed backups don't.
+    ModelFactory.createBackup(customerUuid, universe3.getUniverseUUID(), unusedConfigUuid)
+        .transitionState(Backup.BackupState.Failed);
+    // Backups of a universe that no longer exists don't either.
+    ModelFactory.createBackup(customerUuid, UUID.randomUUID(), unusedConfigUuid)
+        .transitionState(Backup.BackupState.Completed);
+
+    String url = "/api/customers/" + customerUuid + "/configs";
+    Result result = doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    assertOk(result);
+    Map<String, JsonNode> configsByUuid = new HashMap<>();
+    Json.parse(contentAsString(result))
+        .forEach(config -> configsByUuid.put(config.get("configUUID").asText(), config));
+
+    JsonNode usedConfig = configsByUuid.get(usedConfigUuid.toString());
+    assertTrue(usedConfig.get("inUse").asBoolean());
+    Set<String> usedUniverseUuids = new HashSet<>();
+    usedConfig
+        .get("universeDetails")
+        .forEach(universe -> usedUniverseUuids.add(universe.get("uuid").asText()));
+    assertEquals(2, usedConfig.get("universeDetails").size());
+    assertEquals(
+        Set.of(universe1.getUniverseUUID().toString(), universe2.getUniverseUUID().toString()),
+        usedUniverseUuids);
+
+    JsonNode unusedConfig = configsByUuid.get(unusedConfigUuid.toString());
+    assertFalse(unusedConfig.get("inUse").asBoolean());
+    assertEquals(0, unusedConfig.get("universeDetails").size());
+    assertAuditEntry(0, customerUuid);
+  }
+
+  @Test
   public void testDeleteValidCustomerConfig() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST9").getConfigUUID();
 
@@ -326,6 +389,84 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         "Backup task associated with Configuration " + configUUID.toString() + " is in progress.");
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.getUuid()).size());
     assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  private static final String BACKUPS_BEING_DELETED =
+      "Backups stored with configuration %s are still being deleted, which can take a few garbage"
+          + " collector runs. Try again once their deletion finishes, or use the V2 delete, which"
+          + " removes the configuration once it does.";
+
+  /** A config backup in one of the deletion states, as left by a delete the GC has yet to run. */
+  private Backup backupBeingDeleted(UUID configUUID, Backup.BackupState state) {
+    Backup backup =
+        ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), configUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+    backup.transitionState(Backup.BackupState.QueuedForDeletion);
+    backup.transitionState(state);
+    assertEquals(state, backup.getState());
+    return backup;
+  }
+
+  @Test
+  public void testDeleteStorageConfigWithBackupsBeingDeleted() {
+    int i = 0;
+    for (Backup.BackupState state : Backup.DELETION_STATES) {
+      CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "DEL" + i++);
+      UUID configUUID = config.getConfigUUID();
+      backupBeingDeleted(configUUID, state);
+      for (String query : new String[] {"", "?isDeleteBackups=true"}) {
+        String url =
+            "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID + query;
+        Result result =
+            assertPlatformException(
+                () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+        assertBadRequest(result, String.format(BACKUPS_BEING_DELETED, config.getConfigName()));
+        assertNotNull(CustomerConfig.get(configUUID));
+      }
+    }
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testDeleteStorageConfigIgnoresOtherConfigsBackupsBeingDeleted() {
+    UUID otherConfigUUID =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "OTHER").getConfigUUID();
+    backupBeingDeleted(otherConfigUUID, Backup.BackupState.QueuedForDeletion);
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14").getConfigUUID();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID;
+    assertOk(doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+    assertNull(CustomerConfig.get(configUUID));
+  }
+
+  /** The operator deletes through the service, not the controller. */
+  @Test
+  public void testServiceDeleteRefusedWhileBackupsBeingDeleted() {
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15");
+    backupBeingDeleted(config.getConfigUUID(), Backup.BackupState.DeleteInProgress);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> customerConfigService.delete(defaultCustomer.getUuid(), config.getConfigUUID()));
+    assertEquals(String.format(BACKUPS_BEING_DELETED, config.getConfigName()), e.getMessage());
+    assertNotNull(CustomerConfig.get(config.getConfigUUID()));
+  }
+
+  @Test
+  public void testServiceDeleteRefusedWithInProgressBackup() {
+    // The HTTP delete rejects running backups before validation; the service delete doesn't.
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16");
+    ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), config.getConfigUUID());
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> customerConfigService.delete(defaultCustomer.getUuid(), config.getConfigUUID()));
+    assertTrue(
+        e.getMessage(),
+        e.getMessage()
+            .contains(
+                "Configuration " + config.getConfigName() + " is used in backup and can't be"));
+    assertNotNull(CustomerConfig.get(config.getConfigUUID()));
   }
 
   @Test
@@ -757,5 +898,116 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             () ->
                 doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
     assertBadRequest(result, "Cannot edit config as it is queued for deletion.");
+  }
+
+  @Test
+  public void testEditWithoutData() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16").getConfigUUID();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID;
+    assertEditWithoutDataRejected(url);
+  }
+
+  @Test
+  public void testEditWithoutDataYb() {
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST16").getConfigUUID();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID + "/edit";
+    assertEditWithoutDataRejected(url);
+  }
+
+  private void assertEditWithoutDataRejected(String url) {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("name", NAME_S3);
+    bodyJson.put("type", STORAGE.toString());
+    bodyJson.put("configName", "TEST16");
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "data", "must not be null");
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testEditAzureRegionsWithMaskedTokens_TokensPersist() {
+    CustomerConfig config = createAzureRegionalConfig("westus2");
+
+    Result result = editAzureRegionalConfig(config, config.getMaskedData());
+    assertOk(result);
+    assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
+  }
+
+  @Test
+  public void testEditAzureRegionsWithStoredDuplicateRegion_TokensPersist() {
+    CustomerConfig config = createAzureRegionalConfig("eastus");
+
+    Result result = editAzureRegionalConfig(config, config.getMaskedData());
+    assertOk(result);
+    assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
+  }
+
+  @Test
+  public void testEditAzureRegionRenamed_TokenPersists() {
+    CustomerConfig config = createAzureRegionalConfig("westus2");
+    ObjectNode data = config.getMaskedData();
+    ((ObjectNode) data.get("REGION_LOCATIONS").get(1)).put("REGION", "WestUS2");
+
+    Result result = editAzureRegionalConfig(config, data);
+    assertOk(result);
+    JsonNode renamed = CustomerConfig.get(config.getConfigUUID()).getData().get("REGION_LOCATIONS");
+    assertEquals("WestUS2", renamed.get(1).get("REGION").asText());
+    assertEquals("west-sas-token", renamed.get(1).get("AZURE_STORAGE_SAS_TOKEN").asText());
+  }
+
+  @Test
+  public void testEditAzureRegionsSwapped_BadRequest() {
+    CustomerConfig config = createAzureRegionalConfig("westus2");
+    ObjectNode data = config.getMaskedData();
+    ((ObjectNode) data.get("REGION_LOCATIONS").get(0)).put("REGION", "westus2");
+    ((ObjectNode) data.get("REGION_LOCATIONS").get(1)).put("REGION", "eastus");
+
+    Result result = assertPlatformException(() -> editAzureRegionalConfig(config, data));
+    assertBadRequest(
+        result,
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but by REGION or LOCATION it"
+            + " matches more than one stored element, or one that another element in the request"
+            + " also matches. Send the actual value.");
+    assertEquals(config.getData(), CustomerConfig.get(config.getConfigUUID()).getData());
+  }
+
+  private CustomerConfig createAzureRegionalConfig(String secondRegion) {
+    // Lenient: edits rejected before storage validation never reach the Azure util.
+    lenient().when(mockStorageUtilFactory.getCloudUtil(Util.AZ)).thenReturn(mockAZUtil);
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "https://foo.blob.core.windows.net/east");
+    data.put("AZURE_STORAGE_SAS_TOKEN", "east-sas-token");
+    ArrayNode regions = data.putArray("REGION_LOCATIONS");
+    regions
+        .addObject()
+        .put("REGION", "eastus")
+        .put("LOCATION", "https://foo.blob.core.windows.net/east")
+        .put("AZURE_STORAGE_SAS_TOKEN", "east-sas-token");
+    regions
+        .addObject()
+        .put("REGION", secondRegion)
+        .put("LOCATION", "https://foo.blob.core.windows.net/west")
+        .put("AZURE_STORAGE_SAS_TOKEN", "west-sas-token");
+    ObjectNode formData = Json.newObject();
+    formData.put("configName", "azure-regional");
+    formData.put("name", NAME_AZURE);
+    formData.put("type", STORAGE.toString());
+    formData.set("data", data);
+    return CustomerConfig.createWithFormData(defaultCustomer.getUuid(), formData);
+  }
+
+  private Result editAzureRegionalConfig(CustomerConfig config, ObjectNode data) {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("name", NAME_AZURE);
+    bodyJson.put("type", STORAGE.toString());
+    bodyJson.put("configName", config.getConfigName());
+    bodyJson.set("data", data);
+    String url =
+        "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + config.getConfigUUID();
+    return doRequestWithAuthTokenAndBody("PUT", url, defaultUser.createAuthToken(), bodyJson);
   }
 }

@@ -249,8 +249,7 @@ extern int	yb_batch_expr_size(PlannerInfo *root,
 							   Node *batched_expr);
 extern double yb_bnl_outer_skip_selectivity(PlannerInfo *root, Node *clause,
 											 Oid opfamily, int strategy,
-											 Relids outer_relids,
-											 List *outer_baserestrictinfo);
+											 Relids outer_relids);
 double		get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids);
 
 #endif							/* SELFUNCS_H */

@@ -208,6 +208,7 @@ class PgFetchedTarget {
  public:
   virtual ~PgFetchedTarget() = default;
 
+  virtual int index() const { return -1; }
   virtual void SetNull(PgTuple* out) = 0;
   virtual void SetValue(Slice* data, PgTuple* out) = 0;
 };
@@ -276,7 +277,7 @@ class PgAggregateOperator : public PgOperator, public PgFetchedTarget {
     tuple->WriteNull(index());
   }
 
-  int index() const {
+  int index() const override {
     return index_;
   }
 

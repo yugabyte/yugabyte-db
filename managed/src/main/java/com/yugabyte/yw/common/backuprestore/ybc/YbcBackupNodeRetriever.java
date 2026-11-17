@@ -90,11 +90,10 @@ public class YbcBackupNodeRetriever {
 
   private void addUniverseTserverIPs(Set<String> nodeIPsAlreadyAssigned, int nodeIPsToAdd) {
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    String certFile = universe.getCertificateNodetoNode();
     List<String> nodeIPs =
         YbcManager.getPreferenceBasedYBCNodeIPsList(universe, nodeIPsAlreadyAssigned);
     nodeIPs.stream()
-        .filter(ip -> ybcManager.ybcPingCheck(ip, certFile, ybcPort))
+        .filter(ip -> ybcManager.ybcPingCheck(ip, universe, ybcPort))
         .limit(nodeIPsToAdd)
         .forEach(ip -> universeTserverIPs.add(ip));
     log.info("Node IPs list for backup: {}", universeTserverIPs.toString());

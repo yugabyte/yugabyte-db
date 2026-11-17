@@ -81,9 +81,9 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
               TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_ADMIN_TIMEOUT_MS),
               TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_SOCKET_READ_TIMEOUT_MS),
               TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_OPERATION_TIMEOUT_MS));
-      return ybService.getClientWithConfig(ybClientConfig);
+      return ybService.getClientWithConfig(ybClientConfig.withClientCertOf(universe));
     }
-    return ybService.getClient(masterAddresses, certificate);
+    return ybService.getUniverseClient(universe, masterAddresses);
   }
 
   public YBClientApi getClient(long adminOperationTimeoutMs) {
@@ -97,7 +97,7 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
             adminOperationTimeoutMs,
             TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_SOCKET_READ_TIMEOUT_MS),
             TimeUnit.SECONDS.toMillis(VALIDATE_PRECHECK_OPERATION_TIMEOUT_MS));
-    return ybService.getClientWithConfig(ybClientConfig);
+    return ybService.getClientWithConfig(ybClientConfig.withClientCertOf(universe));
   }
 
   public void checkParams() {

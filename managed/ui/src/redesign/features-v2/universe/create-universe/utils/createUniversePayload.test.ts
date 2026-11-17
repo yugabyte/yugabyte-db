@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getCreateEITPayload, mapCreateUniversePayload } from './createUniversePayload';
+import {
+  getCreateEITPayload,
+  mapCreateUniversePayload,
+  mapProxySettingsToProxyConfig
+} from './createUniversePayload';
+import { ProxyAdvancedProps } from '../steps/advanced-settings/dtos';
 import { createUniverseFormProps } from '../CreateUniverseContext';
 import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { CertType, SecuritySettingsProps } from '../steps/security-settings/dtos';
@@ -28,7 +33,7 @@ const buildFormValues = (
     generalSettings: {
       universeName: 'test',
       databaseVersion: '2025.1.0.0',
-      providerConfiguration: { uuid: 'provider-uuid', code }
+      providerConfigurations: [{ uuid: 'provider-uuid', code }]
     },
     resilienceAndRegionsSettings: {},
     nodesAvailabilitySettings: { availabilityZones: {} },
@@ -143,5 +148,58 @@ describe('getCreateEITPayload (kubernetes)', () => {
     expect(payload.enable_client_to_node_encrypt).toBe(false);
     expect(payload.root_ca).toBe('cert-uuid');
     expect(payload.client_root_ca).toBe('');
+  });
+});
+
+describe('mapCreateUniversePayload proxy config', () => {
+  const getProxyConfig = (proxySettings: Record<string, unknown>) =>
+    mapCreateUniversePayload({
+      ...buildFormValues(CloudType.aws, {}),
+      proxySettings
+    } as unknown as createUniverseFormProps).spec.clusters[0].networking_spec?.proxy_config;
+
+  const base = { enableProxyServer: true, byPassProxyListValues: ['a.com'] };
+
+  it('omits no_proxy_list when bypass is unchecked', () => {
+    expect(getProxyConfig({ ...base, byPassProxyList: false })).not.toHaveProperty('no_proxy_list');
+  });
+
+  it('sends no_proxy_list when bypass is checked', () => {
+    expect(getProxyConfig({ ...base, byPassProxyList: true })?.no_proxy_list).toEqual(['a.com']);
+  });
+
+  it('omits proxy_config when the proxy is disabled', () => {
+    expect(getProxyConfig({ ...base, enableProxyServer: false, byPassProxyList: true })).toBe(
+      undefined
+    );
+  });
+});
+
+describe('mapProxySettingsToProxyConfig', () => {
+  const settings = {
+    enableProxyServer: true,
+    webProxy: true,
+    webProxyServer: 'proxy.example.com',
+    webProxyPort: 3128,
+    secureWebProxy: false,
+    byPassProxyList: false,
+    byPassProxyListValues: ['a.com']
+  } as ProxyAdvancedProps;
+
+  it('sends an empty no_proxy_list for edit when bypass is unchecked', () => {
+    expect(mapProxySettingsToProxyConfig(settings, { clearNoProxyList: true })).toEqual({
+      http_proxy: 'proxy.example.com:3128',
+      https_proxy: '',
+      no_proxy_list: []
+    });
+  });
+
+  it('sends the list for edit when bypass is checked', () => {
+    expect(
+      mapProxySettingsToProxyConfig(
+        { ...settings, byPassProxyList: true },
+        { clearNoProxyList: true }
+      ).no_proxy_list
+    ).toEqual(['a.com']);
   });
 });

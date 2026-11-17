@@ -407,6 +407,134 @@ BEGIN
 END $$;
 
 -- ============================================
+-- Test 7c: One document row per file in a source (0.0.4)
+-- ============================================
+DO $$
+DECLARE
+  v_source_id UUID;
+  v_other_source UUID;
+BEGIN
+  RAISE NOTICE '=== Test 7c: uq_documents_source_uri ===';
+  v_source_id := dist_rag.create_source(r_source_uri := 'https://unique.example.com/docs/');
+  v_other_source := dist_rag.create_source(r_source_uri := 'https://unique2.example.com/docs/');
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_source_id, 'a.pdf', 'https://unique.example.com/a.pdf');
+
+  BEGIN
+    INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+    VALUES (v_source_id, 'a.pdf', 'https://unique.example.com/a.pdf');
+    RAISE EXCEPTION 'a second row for the same source and URI was accepted';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  -- The crawler's targetless upsert skips the row instead of failing.
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_source_id, 'a.pdf', 'https://unique.example.com/a.pdf')
+  ON CONFLICT DO NOTHING;
+
+  -- The same file in another source, and rows with no URI, are allowed.
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_other_source, 'a.pdf', 'https://unique.example.com/a.pdf'),
+         (v_source_id, 'n1', NULL), (v_source_id, 'n2', NULL);
+
+  ASSERT (SELECT count(*) FROM dist_rag.documents
+          WHERE document_uri = 'https://unique.example.com/a.pdf') = 2,
+    'Expected one row per source for the shared URI';
+  RAISE NOTICE 'PASS: one document row per (source_id, document_uri)';
+END $$;
+
+-- ============================================
+-- Test 7d: At most one live PREPROCESS task per document and index (0.0.4)
+-- ============================================
+DO $$
+DECLARE
+  v_details JSONB := jsonb_build_object('document_id', gen_random_uuid(),
+                                        'index_id', gen_random_uuid());
+  v_task UUID;
+BEGIN
+  RAISE NOTICE '=== Test 7d: uq_live_preprocess ===';
+  INSERT INTO dist_rag.work_queue (task_type, task_details)
+  VALUES ('PREPROCESS', v_details) RETURNING id INTO v_task;
+
+  BEGIN
+    INSERT INTO dist_rag.work_queue (task_type, task_details) VALUES ('PREPROCESS', v_details);
+    RAISE EXCEPTION 'a second live task was accepted';
+  EXCEPTION WHEN unique_violation THEN
+    NULL;
+  END;
+
+  -- Claiming keeps the task inside the index predicate without a conflict.
+  UPDATE dist_rag.work_queue SET task_status = 'IN_PROGRESS' WHERE id = v_task;
+  -- A second index for the same document is a different key.
+  INSERT INTO dist_rag.work_queue (task_type, task_details)
+  VALUES ('PREPROCESS', v_details || jsonb_build_object('index_id', gen_random_uuid()));
+  -- A FAILED task leaves the predicate, so a retry can be queued.
+  UPDATE dist_rag.work_queue SET task_status = 'FAILED' WHERE id = v_task;
+  INSERT INTO dist_rag.work_queue (task_type, task_details) VALUES ('PREPROCESS', v_details);
+
+  RAISE NOTICE 'PASS: one live task per document and index';
+END $$;
+
+-- ============================================
+-- Test 7e: _queue_document queues one document for each mapped index (0.0.4)
+-- ============================================
+DO $$
+DECLARE
+  v_mapped UUID;
+  v_unmapped UUID;
+  v_doc UUID;
+  v_done UUID;
+  v_lonely UUID;
+  v_queued INT;
+BEGIN
+  RAISE NOTICE '=== Test 7e: _queue_document ===';
+  v_mapped := dist_rag.create_source(r_source_uri := 'https://queuedoc.example.com/docs/');
+  v_unmapped := dist_rag.create_source(r_source_uri := 'https://queuedoc2.example.com/docs/');
+  PERFORM dist_rag.init_vector_index(
+    r_index_name := 'queue_document_a',
+    r_sources := ARRAY[v_mapped]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536));
+  PERFORM dist_rag.init_vector_index(
+    r_index_name := 'queue_document_b',
+    r_sources := ARRAY[v_mapped]::UUID[],
+    r_embedding_model_params := jsonb_build_object('dimensions', 1536));
+
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, document_type)
+  VALUES (v_mapped, 'q.txt', 'https://queuedoc.example.com/q.txt', 'text/plain')
+  RETURNING document_id INTO v_doc;
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri, status)
+  VALUES (v_mapped, 'done.txt', 'https://queuedoc.example.com/done.txt', 'COMPLETED')
+  RETURNING document_id INTO v_done;
+  INSERT INTO dist_rag.documents (source_id, document_name, document_uri)
+  VALUES (v_unmapped, 'l.txt', 'https://queuedoc2.example.com/l.txt')
+  RETURNING document_id INTO v_lonely;
+
+  ASSERT dist_rag._queue_document(v_doc) = 2, 'Expected a task for each of the two indexes';
+  ASSERT dist_rag._queue_document(v_doc) = 0, 'A second call must add nothing';
+  ASSERT dist_rag._queue_document(v_done) = 0, 'A COMPLETED document must not be queued';
+  ASSERT dist_rag._queue_document(v_lonely) = 0, 'An unmapped source has no index to queue for';
+
+  SELECT count(*) INTO v_queued FROM dist_rag.work_queue
+  WHERE task_details->>'document_id' = v_doc::TEXT
+    AND task_details->>'document_type' = 'text/plain'
+    AND task_details->>'source_id' = v_mapped::TEXT;
+  ASSERT v_queued = 2, format('Expected two complete task payloads, got %s', v_queued);
+  RAISE NOTICE 'PASS: _queue_document queues per mapped index and skips finished documents';
+END $$;
+
+-- ============================================
+-- Test 7f: maintenance_runs is seeded for the orphan sweep (0.0.4)
+-- ============================================
+DO $$
+BEGIN
+  RAISE NOTICE '=== Test 7f: maintenance_runs ===';
+  ASSERT EXISTS (SELECT 1 FROM dist_rag.maintenance_runs WHERE name = 'orphan_sweep'),
+    'The orphan_sweep row must exist so a worker can claim a sweep';
+  RAISE NOTICE 'PASS: maintenance_runs has the orphan_sweep row';
+END $$;
+
+-- ============================================
 -- Test 8: Error handling - NULL source_uri
 -- ============================================
 DO $$

@@ -24,6 +24,7 @@
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/retry_after.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
@@ -499,6 +500,9 @@ void YBInboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
   ErrorStatusPB err;
   err.set_message(status.ToString());
   err.set_code(error_code);
+  if (auto retry_after = RetryAfter(status); retry_after.value().Initialized()) {
+    err.set_retry_after_ms(narrow_cast<uint32_t>(retry_after.value().ToMilliseconds()));
+  }
 
   Respond(AnyMessageConstPtr(&err), /*is_success=*/false);
 }

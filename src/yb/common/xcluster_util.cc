@@ -21,6 +21,10 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+DEFINE_RUNTIME_AUTO_bool(xcluster_safe_time_table_include_stream_id, kLocalPersisted, false, true,
+    "Include the stream ID in the xcluster safe time table key, so that a replaced stream's "
+    "poller cannot advance the safe time of the stream that replaced it.");
+
 DECLARE_string(certs_for_cdc_dir);
 
 namespace yb::xcluster {
@@ -34,7 +38,26 @@ constexpr char kSequencesDataAliasTableIdMid[] = ".sequences_data_for.";
 constexpr int kTableIdSize = 32;
 
 constexpr std::string_view kTabletIdColumnSequencePrefix  = "sequence.";
+constexpr std::string_view kTabletIdColumnStreamPrefix = "stream.";
 constexpr std::string_view kTabletIdColumnSeparator = ".";
+
+// Consumes "<prefix><id>." from the start of rest and sets id. Returns:
+// - true if rest does not start with prefix. Nothing is consumed.
+// - true if "<prefix><id>." was consumed.
+// - false if prefix is not followed by "<id>.", so rest is malformed.
+bool ConsumePrefixedId(std::string_view prefix, std::string_view* rest, std::string_view* id) {
+  if (!rest->starts_with(prefix)) {
+    return true;
+  }
+  rest->remove_prefix(prefix.size());
+  const auto separator_position = rest->find(kTabletIdColumnSeparator);
+  if (separator_position == 0 || separator_position == std::string_view::npos) {
+    return false;
+  }
+  *id = rest->substr(0, separator_position);
+  rest->remove_prefix(separator_position + kTabletIdColumnSeparator.size());
+  return true;
+}
 
 }  // namespace
 
@@ -94,15 +117,21 @@ Result<NamespaceId> GetReplicationNamespaceBelongsTo(const TableId& table_id) {
 
 Result<SafeTimeTablePK> SafeTimeTablePK::FromProducerTabletInfo(const ProducerTabletInfo& info) {
   return SafeTimeTablePK::FromProducerTabletInfo(
-      info.replication_group_id, info.tablet_id, info.table_id);
+      info.replication_group_id, info.tablet_id, info.table_id, info.stream_id);
 }
 
 Result<SafeTimeTablePK> SafeTimeTablePK::FromProducerTabletInfo(
     const xcluster::ReplicationGroupId& replication_group_id, const std::string& producer_tablet_id,
-    const std::string& producer_table_id) {
+    const std::string& producer_table_id, const xrepl::StreamId& stream_id) {
   SafeTimeTablePK result;
   result.replication_group_id_ = replication_group_id;
   result.tablet_id_ = producer_tablet_id;
+  if (FLAGS_xcluster_safe_time_table_include_stream_id) {
+    RSTATUS_DCHECK(
+        !stream_id.IsNil(), IllegalState, "Nil stream ID for producer tablet $0",
+        producer_tablet_id);
+    result.stream_id_ = stream_id;
+  }
   if (IsSequencesDataAlias(producer_table_id)) {
     result.sequences_data_namespace_id_ =
         VERIFY_RESULT(GetReplicationNamespaceBelongsTo(producer_table_id));
@@ -118,27 +147,27 @@ Result<SafeTimeTablePK> SafeTimeTablePK::FromSafeTimeTableRow(
   RSTATUS_DCHECK(
       !result.replication_group_id_.empty(), IllegalState,
       "Safe time table replication group ID column is empty");
-  if (!tablet_id_column_value.starts_with(kTabletIdColumnSequencePrefix)) {
-    result.tablet_id_ = tablet_id_column_value;
+
+  std::string_view rest = tablet_id_column_value;
+  std::string_view stream_id;
+  std::string_view namespace_id;
+  const bool well_formed = ConsumePrefixedId(kTabletIdColumnStreamPrefix, &rest, &stream_id) &&
+                           ConsumePrefixedId(kTabletIdColumnSequencePrefix, &rest, &namespace_id) &&
+                           !rest.empty();
+  RSTATUS_DCHECK(
+      well_formed, IllegalState,
+      "Safe time table tablet ID column is not in the form "
+      "[stream.<stream_id>.][sequence.<namespace_id>.]<tablet_id>: $0",
+      tablet_id_column_value);
+
+  if (!stream_id.empty()) {
+    result.stream_id_ = VERIFY_RESULT(xrepl::StreamId::FromString(std::string(stream_id)));
     RSTATUS_DCHECK(
-        !result.tablet_id_.empty(), IllegalState, "Safe time table tablet ID column is empty");
-  } else {
-    size_t namespace_id_start = kTabletIdColumnSequencePrefix.size();
-    size_t separator_position =
-        tablet_id_column_value.find(kTabletIdColumnSeparator, namespace_id_start);
-    if (separator_position != std::string::npos) {
-      result.sequences_data_namespace_id_ = tablet_id_column_value.substr(
-          namespace_id_start, separator_position - namespace_id_start);
-      result.tablet_id_ =
-          tablet_id_column_value.substr(separator_position + kTabletIdColumnSeparator.size());
-    }
-    RSTATUS_DCHECK(
-        !result.tablet_id_.empty() && !result.sequences_data_namespace_id_.empty(), IllegalState,
-        Format(
-            "Safe time table tablet ID column starts with '$0' but is not in the form $0$1$2$3: $4",
-            kTabletIdColumnSequencePrefix, "<namespace_id>", kTabletIdColumnSeparator,
-            "<tablet_id>", tablet_id_column_value));
+        !result.stream_id_.IsNil(), IllegalState,
+        "Safe time table tablet ID column has a nil stream ID: $0", tablet_id_column_value);
   }
+  result.sequences_data_namespace_id_ = namespace_id;
+  result.tablet_id_ = rest;
   return result;
 }
 
@@ -147,12 +176,17 @@ xcluster::ReplicationGroupId SafeTimeTablePK::replication_group_id_column_value(
 }
 
 TabletId SafeTimeTablePK::tablet_id_column_value() const {
-  if (sequences_data_namespace_id_.empty()) {
-    return tablet_id_;
+  TabletId value = tablet_id_;
+  if (!sequences_data_namespace_id_.empty()) {
+    value = Format(
+        "$0$1$2$3", kTabletIdColumnSequencePrefix, sequences_data_namespace_id_,
+        kTabletIdColumnSeparator, value);
   }
-  return Format(
-      "$0$1$2$3", kTabletIdColumnSequencePrefix, sequences_data_namespace_id_,
-      kTabletIdColumnSeparator, tablet_id_);
+  if (!stream_id_.IsNil()) {
+    value = Format(
+        "$0$1$2$3", kTabletIdColumnStreamPrefix, stream_id_, kTabletIdColumnSeparator, value);
+  }
+  return value;
 }
 
 xcluster::ReplicationGroupId SafeTimeTablePK::replication_group_id() const {
@@ -161,22 +195,28 @@ xcluster::ReplicationGroupId SafeTimeTablePK::replication_group_id() const {
 
 TabletId SafeTimeTablePK::tablet_id() const { return tablet_id_; }
 
+const xrepl::StreamId& SafeTimeTablePK::stream_id() const { return stream_id_; }
+
 NamespaceId SafeTimeTablePK::TEST_sequences_data_namespace_id() const {
   return sequences_data_namespace_id_;
 }
 
 bool SafeTimeTablePK::operator==(const SafeTimeTablePK& rhs) const {
   return replication_group_id_ == rhs.replication_group_id_ && tablet_id_ == rhs.tablet_id_ &&
+         stream_id_ == rhs.stream_id_ &&
          sequences_data_namespace_id_ == rhs.sequences_data_namespace_id_;
 }
 
 bool SafeTimeTablePK::operator<(const SafeTimeTablePK& rhs) const {
-  return std::tie(replication_group_id_, tablet_id_, sequences_data_namespace_id_) <
-         std::tie(rhs.replication_group_id_, rhs.tablet_id_, rhs.sequences_data_namespace_id_);
+  return std::tie(replication_group_id_, tablet_id_, stream_id_, sequences_data_namespace_id_) <
+         std::tie(
+             rhs.replication_group_id_, rhs.tablet_id_, rhs.stream_id_,
+             rhs.sequences_data_namespace_id_);
 }
 
 std::string SafeTimeTablePK::ToString() const {
-  return YB_CLASS_TO_STRING(replication_group_id, tablet_id, sequences_data_namespace_id);
+  return YB_CLASS_TO_STRING(
+      replication_group_id, tablet_id, stream_id, sequences_data_namespace_id);
 }
 
 }  // namespace yb::xcluster

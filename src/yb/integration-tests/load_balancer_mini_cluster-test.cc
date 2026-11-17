@@ -270,41 +270,40 @@ TEST_F(LoadBalancerMiniClusterRf3Test, DurationMetric) {
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TaskTracker) {
-  auto kTimeout = 30s;
   auto load_balancer = ASSERT_RESULT(
       mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->cluster_balancer();
-  ASSERT_TRUE(load_balancer->GetLatestActivityInfo().IsIdle());
+
+  const auto& activity_buffer = load_balancer->TEST_activity_buffer();
+
+  // Wait for load_balancer_num_idle_runs consecutive idle runs rather than one: a single idle run
+  // can occur mid-move, and the move's follow-up tasks would then land in the next phase. Checking
+  // every buffered run, not just the latest, catches a task type that shows up in only one run.
+  auto wait_for_task_then_idle = [&](server::MonitoredTaskType type, const std::string& phase) {
+    ASSERT_OK(WaitFor(
+        [&] { return activity_buffer.AnyRunHasOnlyTasksOfType(type); },
+        kDefaultTimeout * kTimeMultiplier, Format("Wait for $0 task to start", phase)));
+    WaitLoadBalancerIdle(client_.get(), Format("Wait for $0 task to complete", phase));
+  };
+
+  // A partially filled buffer reports idle after fewer than load_balancer_num_idle_runs runs.
+  ASSERT_OK(WaitFor([&] { return activity_buffer.IsFull(); }, kDefaultTimeout * kTimeMultiplier,
+                    "Wait for activity buffer to fill"));
+  ASSERT_NO_FATALS(
+      WaitLoadBalancerIdle(client_.get(), "Wait for initial load balancing to complete"));
 
   // Add a tablet server. The load balancer should start an add server task.
   auto new_ts_index = mini_cluster()->num_tablet_servers();
   ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kAddServer;
-  }, kTimeout, "Wait for add server task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      kTimeout, "Wait for add server task to complete"));
+  ASSERT_NO_FATALS(wait_for_task_then_idle(server::MonitoredTaskType::kAddServer, "add server"));
 
   // Leader blacklist the new tablet server. The load balancer should start a stepdown task.
   ASSERT_OK(mini_cluster()->AddTServerToLeaderBlacklist(new_ts_index));
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kTryStepDown;
-  }, kTimeout, "Wait for stepdown task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      kTimeout, "Wait for stepdown task to complete"));
+  ASSERT_NO_FATALS(wait_for_task_then_idle(server::MonitoredTaskType::kTryStepDown, "stepdown"));
 
   // Blacklist the new tablet server. The load balancer should start a remove server task.
   ASSERT_OK(mini_cluster()->AddTServerToBlacklist(new_ts_index));
-  ASSERT_OK(WaitFor([&] {
-    auto tasks_summary = load_balancer->GetLatestActivityInfo().GetTasksSummary();
-    return tasks_summary.size() == 1 &&
-           tasks_summary.begin()->first.first == server::MonitoredTaskType::kRemoveServer;
-  }, kTimeout, "Wait for remove server task to start"));
-  ASSERT_OK(WaitFor([&] { return load_balancer->GetLatestActivityInfo().IsIdle(); },
-      kTimeout, "Wait for remove server task to complete"));
+  ASSERT_NO_FATALS(
+      wait_for_task_then_idle(server::MonitoredTaskType::kRemoveServer, "remove server"));
 }
 
 TEST_F(LoadBalancerMiniClusterTest, TabletsInWrongPlacementMetric) {

@@ -130,7 +130,7 @@ This is the new result:
 
 This time, the columns _"t0 + 720 hours"_ and _"t0 + 30 days"_ have the same value as each other while these still differ from the _"t0 + 1 month"_ value.
 
-The reason  that the three different _interval_ value spellings can have different effects is given by comparing them using the [user-defined _"strict equals"_ interval-interval `==` operator](../../interval-utilities#the-user-defined-strict-equals-interval-interval-operator).
+The reason  that the three different _interval_ value spellings can have different effects is given by comparing them using the [user-defined _"strict equals"_ interval-interval `==` operator](../../interval-utilities/#the-user-defined-strict-equals-interval-interval-operator).
 
 ```plpgsql
 select (

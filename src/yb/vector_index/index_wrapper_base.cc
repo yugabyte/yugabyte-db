@@ -24,6 +24,9 @@ DEFINE_RUNTIME_bool(vector_index_enable_block_cache_reservation, true,
     "evicts other blocks instead of letting total memory grow. Disable to restore the prior "
     "behavior where the index footprint is purely additive on top of the block cache.");
 
+DEFINE_test_flag(bool, vector_index_insert_out_of_memory, false,
+    "Fail every vector index insert as if the index ran out of memory.");
+
 namespace yb::vector_index {
 
 Result<BlockCacheReservation> BlockCacheReservation::Create(

@@ -1,3 +1,6 @@
+import psycopg
+
+from db.capabilities import Capabilities
 from db.connection_pool import ConnectionPool
 from models.document_metadata import DocumentMetadata
 from typing import Union, Dict, Any, Optional
@@ -25,7 +28,8 @@ class SourceDocumentTracking:
                     - status (str, optional; defaults to 'QUEUED')
             Returns:
                 document_id (UUID): The ID of the inserted document, or None
-                when a row for the same source and URI already exists.
+                when a row for the same source and URI already exists. On
+                pg_dist_rag 0.0.4 the existing row is queued either way.
 
             Raises:
                 ValueError: If metadata is invalid
@@ -35,45 +39,24 @@ class SourceDocumentTracking:
         try:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
-
-            # No conflict target: the statement must work both before and
-            # after pg_dist_rag 0.0.4 adds UNIQUE (source_id, document_uri).
-            # With that index, a re-listed file (a retried or redelivered
-            # CREATE_SOURCE) or a file the api-server already inserted is
-            # skipped instead of failing the crawl.
-            query = """
-                INSERT INTO dist_rag.documents (
-                    source_id,
-                    document_name,
-                    document_uri,
-                    document_checksum,
-                    document_type,
-                    status
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
-                RETURNING document_id;
-            """
-
-            source_id = document_metadata.source_id
-            document_name = document_metadata.document_name
-            document_uri = document_metadata.document_uri
-            document_checksum = document_metadata.document_checksum
-            document_type = document_metadata.document_type
-            status = document_metadata.status
-
-            cursor.execute(
-                query,
-                (source_id, document_name, document_uri,
-                 document_checksum, document_type, status)
-            )
-            row = cursor.fetchone()
+            # Checked before the insert, so a missing function never aborts
+            # the transaction that holds the document row.
+            queue = Capabilities.has(cursor, Capabilities.QUEUE_DOCUMENT)
+            try:
+                document_id = self._insert_document(cursor, document_metadata, queue)
+            except psycopg.errors.UndefinedFunction:
+                # The cache said 0.0.4 but the function is gone; insert the
+                # document alone and let source completion queue it.
+                connection.rollback()
+                Capabilities.forget(Capabilities.QUEUE_DOCUMENT)
+                document_id = self._insert_document(cursor, document_metadata, False)
             connection.commit()
-            if row is None:
+            if document_id is None:
                 self.logger.info(
-                    f"Document {document_uri} of source {source_id} already exists"
+                    f"Document {document_metadata.document_uri} of source "
+                    f"{document_metadata.source_id} already exists"
                 )
                 return None
-            document_id = row[0]
             self.logger.info(
                 f"Inserted document metadata with document_id: {document_id}"
             )
@@ -89,6 +72,55 @@ class SourceDocumentTracking:
         finally:
             if connection:
                 self.connection_pool.return_connection(connection)
+
+    def _insert_document(self, cursor, document_metadata: DocumentMetadata,
+                         queue: bool):
+        """Insert one document and, when queue is set, its PREPROCESS tasks.
+
+        Both run in the caller's transaction, so a crawled document never
+        exists without a task for each index its source is mapped to. Before
+        pg_dist_rag 0.0.4 there is no _queue_document; the document is then
+        queued when its source completes.
+        """
+        # No conflict target: the statement must work both before and after
+        # pg_dist_rag 0.0.4 adds UNIQUE (source_id, document_uri). With that
+        # index, a re-listed file (a retried or redelivered CREATE_SOURCE) or
+        # a file the api-server already inserted isn't inserted again, and
+        # the crawl doesn't fail.
+        cursor.execute(
+            """
+            INSERT INTO dist_rag.documents (
+                source_id,
+                document_name,
+                document_uri,
+                document_checksum,
+                document_type,
+                status
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT DO NOTHING
+            RETURNING document_id;
+            """,
+            (document_metadata.source_id, document_metadata.document_name,
+             document_metadata.document_uri, document_metadata.document_checksum,
+             document_metadata.document_type, document_metadata.status),
+        )
+        row = cursor.fetchone()
+        document_id = row[0] if row else None
+        queue_id = document_id
+        if queue and queue_id is None:
+            # In Meko the api-server inserts an uploaded file before the
+            # crawler lists it, so the usual first crawl conflicts here. Queue
+            # the existing row too, or it waits for its source to complete.
+            cursor.execute(
+                "SELECT document_id FROM dist_rag.documents "
+                "WHERE source_id = %s AND document_uri = %s",
+                (document_metadata.source_id, document_metadata.document_uri),
+            )
+            existing = cursor.fetchone()
+            queue_id = existing[0] if existing else None
+        if queue and queue_id is not None:
+            cursor.execute("SELECT dist_rag._queue_document(%s)", (str(queue_id),))
+        return document_id
 
     def get_source_details(self, source_id: UUID) -> Dict[str, Any]:
         """
@@ -186,8 +218,8 @@ class SourceDocumentTracking:
         Two tasks for one document (from re-queuing a source) would otherwise
         both embed it. The claim records the task id and lease token. A
         document left PROCESSING can be reclaimed only when the lease that
-        claimed it is no longer live: the reaper re-queued its task, or the
-        lease expired. A worker whose lease lapsed therefore can't share the
+        claimed it is no longer live: another worker reclaimed its task, or
+        the lease expired. A worker whose lease lapsed therefore can't share the
         document with the one that took over. A claim made by an older agent,
         which recorded no task, is also reclaimable; a claim made without a
         lease token never is.
@@ -249,14 +281,30 @@ class SourceDocumentTracking:
         document_id: UUID,
         status: str,
         trace_id: Optional[str] = None,
-    ):
+        task_id=None,
+        lease_token=None,
+    ) -> bool:
         """
         Update the status of a document.
 
         When *trace_id* is supplied the ``document_details`` JSONB column is
         set (or merged) with ``{"meko": {"trace_id": "<value>"}}``.
+
+        With *lease_token*, the update applies only while that lease still
+        holds task *task_id*. A worker whose task was reclaimed after its
+        lease expired then can't overwrite the status the new worker sets.
+
+        Returns False when the fenced update matched no row.
         """
+        fence, fence_params = "", ()
+        if lease_token is not None:
+            fence = (
+                " AND EXISTS (SELECT 1 FROM dist_rag.work_queue w "
+                "WHERE w.id = %s AND w.lease_token = %s AND w.task_status = 'IN_PROGRESS')"
+            )
+            fence_params = (str(task_id), str(lease_token))
         connection = None
+        cursor = None
         try:
             connection = self.connection_pool.get_connection()
             cursor = connection.cursor()
@@ -276,17 +324,23 @@ class SourceDocumentTracking:
                     "        to_jsonb(%s::text),"
                     "        true"
                     "    ) "
-                    "WHERE document_id = %s",
-                    (status, trace_id, document_id),
+                    "WHERE document_id = %s" + fence,
+                    (status, trace_id, str(document_id), *fence_params),
                 )
             else:
                 cursor.execute(
                     "UPDATE dist_rag.documents SET status = %s "
-                    "WHERE document_id = %s",
-                    (status, document_id),
+                    "WHERE document_id = %s" + fence,
+                    (status, str(document_id), *fence_params),
                 )
+            updated = cursor.rowcount > 0
             connection.commit()
-            return True
+            if not updated and lease_token is not None:
+                self.logger.warning(
+                    f"Not setting document {document_id} {status}: task {task_id} "
+                    f"no longer holds lease {lease_token}"
+                )
+            return updated or lease_token is None
         except Exception as e:
             if connection:
                 try:

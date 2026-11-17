@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Tests for the work queue behaviors that keep document indexing reliable at scale:
-source tasks before document tasks, a not-before time for retries, re-queuing
+source tasks before document tasks, a not-before time for retries, reclaiming
 tasks whose worker died, a sweep for documents left with no task, an atomic
 document claim, retrying a rate-limited document instead of failing it, and
 renewing the lease of a task that is still running.
@@ -15,20 +15,24 @@ from uuid import uuid4
 from work_queue.poller import Poller
 
 
-def _poller(mock_pool_cls):
+def _poller(mock_pool_cls, expired=None):
     mock_pool = Mock()
     mock_pool_cls.return_value = mock_pool
     conn, cur = Mock(), Mock()
     mock_pool.get_connection.return_value = conn
     conn.cursor.return_value = cur
     poller = Poller()
-    # Keep the periodic reap and sweep out of tests that don't exercise them.
-    poller._last_reap = poller._last_sweep = time.monotonic()
+    # Keep the periodic sweep and the expired-lease claim out of tests that
+    # don't exercise them.
+    poller._last_sweep = time.monotonic()
+    poller._claim_expired = Mock(return_value=expired)
     return poller, conn, cur
 
 
 def _claims(cur):
-    return [c.args for c in cur.execute.call_args_list if "UPDATE dist_rag.work_queue" in c.args[0]]
+    """The claims of QUEUED tasks, in the order poll() tried them."""
+    return [c.args for c in cur.execute.call_args_list
+            if "UPDATE dist_rag.work_queue" in c.args[0] and "task_status = 'QUEUED'" in c.args[0]]
 
 
 @patch("work_queue.poller.ConnectionPool")
@@ -67,16 +71,59 @@ class TestPollOrder:
 
 @patch("work_queue.poller.ConnectionPool")
 class TestRecovery:
-    def test_expired_leases_are_requeued_at_most_once_a_minute(self, mock_pool_cls):
+    def test_a_reclaimed_task_is_returned_before_any_queued_claim(self, mock_pool_cls):
+        poller, _, cur = _poller(mock_pool_cls, expired=("row",))
+        with patch("work_queue.poller.WorkQueueTask.from_db_row", return_value="task"):
+            assert poller.poll("worker", ["text/plain"]) == "task"
+        assert _claims(cur) == []
+
+    def test_an_expired_lease_is_reclaimed_under_a_new_token(self, mock_pool_cls):
         poller, _, cur = _poller(mock_pool_cls)
-        poller._last_reap = 0.0
-        cur.rowcount = 2
-        poller._maybe_reap_expired(cur)
-        poller._maybe_reap_expired(cur)
-        reaps = [c for c in cur.execute.call_args_list
-                 if "lease_expires_at < CURRENT_TIMESTAMP" in c.args[0]]
-        assert len(reaps) == 1
-        assert "task_status = 'QUEUED'" in reaps[0].args[0]
+        del poller._claim_expired
+        task_id = uuid4()
+        cur.fetchone.return_value = (task_id, "PREPROCESS", {}, uuid4(), "t", "IN_PROGRESS")
+        row = poller._claim_expired(cur, "worker", ["text/plain"], 600)
+        assert row[0] == task_id and len(row) == 5
+        sql, params = cur.execute.call_args.args
+        assert "lease_expires_at < CURRENT_TIMESTAMP" in sql
+        assert "gen_random_uuid()" in sql and "'{expired_claims}'" in sql
+        assert params["types"] == ["text/plain"] and params["max"] == poller.MAX_EXPIRED_CLAIMS
+
+    def test_the_claim_that_reaches_the_cap_fails_the_task_and_its_document(self, mock_pool_cls):
+        poller, conn, cur = _poller(mock_pool_cls)
+        del poller._claim_expired
+        doc = str(uuid4())
+        cur.fetchone.return_value = (uuid4(), "PREPROCESS", {"document_id": doc}, None, None,
+                                     "FAILED")
+        assert poller._claim_expired(cur, "worker", ["text/plain"], 600) is None
+        claim_sql = cur.execute.call_args_list[0].args[0]
+        assert "THEN 'FAILED'" in claim_sql, "the claim statement itself decides"
+        sql, params = cur.execute.call_args.args
+        assert sql.startswith("UPDATE dist_rag.documents SET status = 'FAILED'")
+        assert params == (doc,)
+        # poll() commits the task and the document together.
+        conn.commit.assert_not_called()
+
+    def test_a_failed_source_task_fails_its_source(self, mock_pool_cls):
+        poller, _, cur = _poller(mock_pool_cls)
+        del poller._claim_expired
+        source = str(uuid4())
+        cur.fetchone.return_value = (uuid4(), "CREATE_SOURCE", {"source_id": source}, None, None,
+                                     "FAILED")
+        assert poller._claim_expired(cur, "worker", ["text/plain"], 600) is None
+        sql, params = cur.execute.call_args.args
+        assert sql.startswith("UPDATE dist_rag.sources SET status = 'FAILED'")
+        assert params == (source,)
+
+    def test_after_failing_a_task_the_poll_claims_a_queued_one_in_the_same_transaction(
+            self, mock_pool_cls):
+        poller, conn, cur = _poller(mock_pool_cls)
+        del poller._claim_expired
+        failed = (uuid4(), "PREPROCESS", {"document_id": str(uuid4())}, None, None, "FAILED")
+        cur.fetchone.side_effect = [failed, ("row",)]
+        with patch("work_queue.poller.WorkQueueTask.from_db_row", return_value="task"):
+            assert poller.poll("worker", ["text/plain"]) == "task"
+        assert conn.commit.call_count == 2  # the sweep's, then the claim's
 
     def test_release_puts_a_task_back_with_a_delay(self, mock_pool_cls):
         poller, _, _ = _poller(mock_pool_cls)
@@ -101,7 +148,8 @@ class TestRecovery:
             poller.release(task_id, 60, lease_token=lease)
         assert dml.call_args.kwargs["params"] == (60, str(task_id), str(lease))
 
-    def test_the_sweep_resets_stuck_documents_and_queues_each_source_once(self, mock_pool_cls):
+    @patch("work_queue.poller.Capabilities.has", return_value=False)
+    def test_the_sweep_resets_stuck_documents_and_queues_each_source_once(self, _, mock_pool_cls):
         poller, _, cur = _poller(mock_pool_cls)
         poller._last_sweep = 0.0
         stuck, queued, source = uuid4(), uuid4(), uuid4()
@@ -114,12 +162,35 @@ class TestRecovery:
         queues = [a for a in sqls if "_queue_source_documents" in a[0]]
         assert len(queues) == 1 and queues[0][1] == (str(source), str(source))
 
-    def test_the_sweep_does_nothing_without_orphans(self, mock_pool_cls):
+    @patch("work_queue.poller.Capabilities.has", return_value=False)
+    def test_the_sweep_does_nothing_without_orphans(self, _, mock_pool_cls):
         poller, _, cur = _poller(mock_pool_cls)
         poller._last_sweep = 0.0
         cur.fetchall.return_value = []
         poller._maybe_sweep_orphans(cur)
         assert len(cur.execute.call_args_list) == 1
+
+    @patch("work_queue.poller.Capabilities.has", return_value=True)
+    def test_a_worker_that_loses_the_sweep_slot_does_not_sweep(self, _, mock_pool_cls):
+        poller, _, cur = _poller(mock_pool_cls)
+        poller._last_sweep = 0.0
+        cur.fetchone.return_value = None
+        poller._maybe_sweep_orphans(cur)
+        assert len(cur.execute.call_args_list) == 1
+        assert "UPDATE dist_rag.maintenance_runs" in cur.execute.call_args.args[0]
+        assert poller._last_sweep > 0.0, "it waits a full interval before trying again"
+
+    @patch("work_queue.poller.Capabilities.has", return_value=True)
+    def test_the_winner_commits_its_slot_before_sweeping(self, _, mock_pool_cls):
+        poller, _, cur = _poller(mock_pool_cls)
+        poller._last_sweep = 0.0
+        cur.fetchone.return_value = ("orphan_sweep",)
+        cur.fetchall.return_value = []
+        order = []
+        cur.connection.commit.side_effect = lambda: order.append("commit")
+        cur.execute.side_effect = lambda sql, *a: order.append(sql.split()[0])
+        poller._maybe_sweep_orphans(cur)
+        assert order[:3] == ["UPDATE", "commit", "SELECT"]
 
 
 class TestClaimAndRetry:
@@ -146,9 +217,67 @@ class TestClaimAndRetry:
         conn.cursor.return_value = cur
         cur.fetchone.return_value = None
         metadata = Mock(source_id=uuid4(), document_uri="s3://b/a.txt")
-        assert tracking.insert_document_metadata(metadata) is None
+        with patch("db.source_document_tracking.Capabilities.has", return_value=False):
+            assert tracking.insert_document_metadata(metadata) is None
         assert "ON CONFLICT DO NOTHING" in cur.execute.call_args.args[0]
         conn.commit.assert_called_once()
+
+    def test_a_crawled_document_is_queued_in_the_same_transaction(self):
+        from db.source_document_tracking import SourceDocumentTracking
+
+        tracking = SourceDocumentTracking.__new__(SourceDocumentTracking)
+        tracking.logger = Mock()
+        conn, cur = Mock(), Mock()
+        tracking.connection_pool = Mock(get_connection=Mock(return_value=conn))
+        conn.cursor.return_value = cur
+        doc = uuid4()
+        cur.fetchone.return_value = (doc,)
+        with patch("db.source_document_tracking.Capabilities.has", return_value=True):
+            assert tracking.insert_document_metadata(Mock()) == doc
+        sqls = [c.args[0] for c in cur.execute.call_args_list]
+        assert "INSERT INTO dist_rag.documents" in sqls[0]
+        assert sqls[1] == "SELECT dist_rag._queue_document(%s)"
+        conn.commit.assert_called_once()
+
+    def test_a_missing_queue_function_still_inserts_the_document(self):
+        import psycopg
+        from db.source_document_tracking import SourceDocumentTracking
+
+        tracking = SourceDocumentTracking.__new__(SourceDocumentTracking)
+        tracking.logger = Mock()
+        conn, cur = Mock(), Mock()
+        tracking.connection_pool = Mock(get_connection=Mock(return_value=conn))
+        conn.cursor.return_value = cur
+        doc = uuid4()
+        cur.fetchone.return_value = (doc,)
+
+        def execute(sql, params=None):
+            if "_queue_document" in sql:
+                raise psycopg.errors.UndefinedFunction("gone")
+
+        cur.execute.side_effect = execute
+        with patch("db.source_document_tracking.Capabilities.has", return_value=True), \
+                patch("db.source_document_tracking.Capabilities.forget") as forget:
+            assert tracking.insert_document_metadata(Mock()) == doc
+        conn.rollback.assert_called_once()
+        forget.assert_called_once()
+        conn.commit.assert_called_once()
+
+    def test_a_fenced_status_write_needs_the_live_lease(self):
+        from db.source_document_tracking import SourceDocumentTracking
+
+        tracking = SourceDocumentTracking.__new__(SourceDocumentTracking)
+        tracking.logger = Mock()
+        conn, cur = Mock(), Mock()
+        tracking.connection_pool = Mock(get_connection=Mock(return_value=conn))
+        conn.cursor.return_value = cur
+        cur.rowcount = 0
+        task, lease, doc = uuid4(), uuid4(), uuid4()
+        assert tracking.update_document_status(doc, "COMPLETED", task_id=task,
+                                               lease_token=lease) is False
+        sql, params = cur.execute.call_args.args
+        assert "w.lease_token = %s AND w.task_status = 'IN_PROGRESS'" in sql
+        assert params == ("COMPLETED", str(doc), str(task), str(lease))
 
     def test_rate_limits_are_recognized(self):
         from rag_pipeline.document_preprocessor import _is_rate_limited
@@ -293,17 +422,6 @@ class TestPollByDocumentType:
         firsts = [params[-1] for sql, params in _claims(cur) if "PREPROCESS" in sql][::2]
         assert firsts == ["a", "b"]
 
-    @patch("work_queue.poller.ConnectionPool")
-    def test_a_failed_reap_is_retried_on_the_next_poll(self, mock_pool_cls):
-        poller, _, cur = _poller(mock_pool_cls)
-        poller._last_reap = 0.0
-        cur.execute.side_effect = RuntimeError("db")
-        try:
-            poller._maybe_reap_expired(cur)
-        except RuntimeError:
-            pass
-        assert poller._last_reap == 0.0
-
 
 class TestCreateSource:
     def _processor(self):
@@ -342,6 +460,19 @@ class TestCreateSource:
             pass
         proc.poller.mark_failed.assert_called_once_with(task.id, lease_token=task.lease_token)
 
+    def test_source_status_is_written_to_the_source_under_the_lease(self):
+        from rag_pipeline.aws_source_processor import CreateSourceProcessorForAWS_S3
+        proc = CreateSourceProcessorForAWS_S3.__new__(CreateSourceProcessorForAWS_S3)
+        proc.connection_pool = Mock()
+        cur = proc.connection_pool.get_connection.return_value.cursor.return_value
+        cur.rowcount = 1
+        task, source = self._task(), uuid4()
+        assert proc._update_create_source_status(task, source, "FAILED")
+        sql, params = cur.execute.call_args.args
+        assert sql.startswith("UPDATE dist_rag.sources SET status = %s WHERE id = %s")
+        assert params == ("FAILED", str(source), str(task.id), str(task.lease_token)), \
+            "the source id, not the task id, selects the row"
+
     def test_a_failed_completion_is_retried_not_failed(self):
         proc = self._processor()
         proc._mark_task_completed = Mock(side_effect=RuntimeError("40001 conflict"))
@@ -368,6 +499,13 @@ class TestCreateSource:
         proc.poller.mark_failed.assert_not_called()
         proc._update_create_source_status.assert_called_once()  # IN_PROGRESS only
 
+    def test_a_lease_lost_before_crawling_stops_the_crawl(self):
+        proc = self._processor()
+        proc._update_create_source_status.return_value = False
+        assert proc.process(self._task())["status"] == "lease_lost"
+        proc._get_documents_from_source.assert_not_called()
+        proc.poller.mark_failed.assert_not_called()
+
     def test_queuing_runs_after_the_completion_commits_and_its_failure_is_not_fatal(self):
         proc = self._processor()
         conn = proc.connection_pool.get_connection.return_value
@@ -384,8 +522,9 @@ class TestCreateSource:
 
 
 @patch("work_queue.poller.ConnectionPool")
+@patch("work_queue.poller.Capabilities.has", return_value=False)
 class TestMaintenanceNeverBlocksClaims:
-    def test_a_failing_sweep_still_lets_the_worker_claim(self, mock_pool_cls):
+    def test_a_failing_sweep_still_lets_the_worker_claim(self, _, mock_pool_cls):
         poller, conn, cur = _poller(mock_pool_cls)
         poller._last_sweep = 0.0
         claimed = ("row",)
@@ -401,12 +540,15 @@ class TestMaintenanceNeverBlocksClaims:
         conn.rollback.assert_called()
         assert poller._last_sweep == 0.0, "the failed sweep is retried on the next poll"
 
-    def test_the_sweep_only_considers_sources_mapped_to_an_index(self, mock_pool_cls):
+    def test_the_sweep_only_considers_sources_mapped_to_an_index(self, _, mock_pool_cls):
         poller, _, cur = _poller(mock_pool_cls)
         poller._last_sweep = 0.0
         cur.fetchall.return_value = []
         poller._maybe_sweep_orphans(cur)
-        assert "vector_index_source_mappings" in cur.execute.call_args_list[0].args[0]
+        sql = cur.execute.call_args_list[0].args[0]
+        assert "vector_index_source_mappings" in sql
+        assert "w.task_details->>'index_id' = m.index_id::text" in sql, \
+            "a live task for one index doesn't hide a missing task for another"
 
 
 class TestChunkIds:
@@ -416,3 +558,54 @@ class TestChunkIds:
         assert chunk_id(doc, 1, "a") == chunk_id(doc, 1, "a")
         assert chunk_id(doc, 1, "a") != chunk_id(doc, 1, "b")
         assert chunk_id(doc, 1, "a") != chunk_id(doc, 2, "a")
+
+
+class TestCapabilities:
+    def setup_method(self):
+        from db.capabilities import Capabilities
+        Capabilities.reset()
+
+    teardown_method = setup_method
+
+    def _cursor(self, *answers):
+        cur = Mock()
+        cur.fetchone.side_effect = [(a,) for a in answers]
+        return cur
+
+    def test_a_present_object_is_checked_once(self):
+        from db.capabilities import Capabilities
+        cur = self._cursor(True)
+        assert Capabilities.has(cur, Capabilities.MAINTENANCE_RUNS)
+        assert Capabilities.has(cur, Capabilities.MAINTENANCE_RUNS)
+        assert cur.execute.call_count == 1
+
+    def test_an_absent_object_is_checked_again_after_the_interval(self):
+        from db.capabilities import Capabilities
+        cur = self._cursor(False, True)
+        assert not Capabilities.has(cur, Capabilities.QUEUE_DOCUMENT)
+        assert not Capabilities.has(cur, Capabilities.QUEUE_DOCUMENT)
+        assert cur.execute.call_count == 1, "cached until the interval passes"
+        with patch("db.capabilities.time.monotonic", return_value=time.monotonic() + 3600):
+            assert Capabilities.has(cur, Capabilities.QUEUE_DOCUMENT)
+        assert cur.execute.call_count == 2
+
+    def test_forget_drops_a_cached_present_result(self):
+        from db.capabilities import Capabilities
+        cur = self._cursor(True, False)
+        assert Capabilities.has(cur, Capabilities.MAINTENANCE_RUNS)
+        Capabilities.forget(Capabilities.MAINTENANCE_RUNS)
+        assert not Capabilities.has(cur, Capabilities.MAINTENANCE_RUNS)
+
+
+class TestRagHandler:
+    def test_processing_a_document_runs_no_index_ddl(self):
+        """The chunk table's owner builds its vector index; per-document DDL raced
+        between workers and failed documents whose chunks were already in."""
+        from rag_pipeline.rag_handler import RagPipelineHandler
+        handler = RagPipelineHandler.__new__(RagPipelineHandler)
+        handler.logger = Mock()
+        handler.pipeline_tracking = Mock()
+        handler.vector_store = Mock()
+        handler._ingest_document = Mock()
+        assert handler.start_processing(uuid4(), uuid4(), "s3://b/a.txt", "kb")
+        handler.vector_store.create_index.assert_not_called()

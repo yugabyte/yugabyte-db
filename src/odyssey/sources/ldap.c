@@ -100,7 +100,7 @@ od_retcode_t od_ldap_endpoint_prepare(od_ldap_endpoint_t *le)
 		return NOT_OK_RESPONSE;
 	}
 
-	if (od_asprintf(&le->ldapurl, "%s://%s:%d", scheme, le->ldapserver,
+	if (od_asprintf(&le->ldapurl, "%s://%s:%" PRIu64, scheme, le->ldapserver,
 			le->ldapport) != OK_RESPONSE) {
 		return NOT_OK_RESPONSE;
 	}

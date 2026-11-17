@@ -62,6 +62,7 @@ DECLARE_bool(enable_data_block_fsync);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_bool(disable_auto_flags_management);
 DECLARE_bool(allow_encryption_at_rest);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 
 METRIC_DEFINE_entity(test);
 
@@ -137,6 +138,9 @@ void TabletServerTestBase::StartTabletServer() {
 
   // Disallow encryption at rest as there is no master.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+
+  // There is no master to grant the xCluster-guarded information lease.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
 
   auto mini_ts = CreateMiniTabletServer();
   CHECK_OK(mini_ts);
@@ -252,6 +256,8 @@ void TabletServerTestBase::InsertTestRowsRemote(int tid,
       controller.Reset();
       controller.set_timeout(MonoDelta::FromSeconds(FLAGS_rpc_timeout));
       req.clear_ql_write_batch();
+      // resp's fields point into the previous call's response buffer, which Reset just freed.
+      resp.Clear();
 
       auto first_row_in_batch = first_row + (i * count / num_batches);
       auto last_row_in_batch = first_row_in_batch + count / num_batches;

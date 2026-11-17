@@ -220,8 +220,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
     buffers_holder_ = std::move(holder);
   }
 
-  bool local_calls_can_time_out() const {
-    return buffers_holder_ != nullptr;
+  const std::shared_ptr<void>& buffers_holder() const {
+    return buffers_holder_;
   }
 
   CoarseTimePoint deadline() const {

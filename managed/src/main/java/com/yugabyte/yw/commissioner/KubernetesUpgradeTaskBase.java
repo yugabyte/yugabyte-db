@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner;
 
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -11,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOpera
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -30,6 +32,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -905,5 +908,32 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           upgradeParams.getYbcSoftwareVersion(),
           ysqlMajorVersionUpgradeState);
     }
+  }
+
+  /**
+   * Checks that every pod of every cluster runs {@code ybSoftwareVersion}. POD_INFO replaces the
+   * universe nodes on each roll, so the nodes are named from the placement, as the rolls name them,
+   * rather than taken from the universe before the task ran.
+   */
+  protected SubTaskGroup createCheckSoftwareVersionTaskForPods(
+      Universe universe, String ybSoftwareVersion) {
+    List<NodeDetails> nodes = new ArrayList<>();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      boolean isReadOnlyCluster =
+          cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC;
+      KubernetesPlacement placement =
+          new KubernetesPlacement(cluster.getOverallPlacement(), isReadOnlyCluster);
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Util.getSingleProvider(cluster));
+      List<ServerType> serverTypes =
+          isReadOnlyCluster
+              ? List.of(ServerType.TSERVER)
+              : List.of(ServerType.MASTER, ServerType.TSERVER);
+      for (ServerType serverType : serverTypes) {
+        getPodsToAdd(placement, null, serverType, isMultiAz, isReadOnlyCluster)
+            .values()
+            .forEach(nodes::addAll);
+      }
+    }
+    return createCheckSoftwareVersionTask(nodes, ybSoftwareVersion);
   }
 }

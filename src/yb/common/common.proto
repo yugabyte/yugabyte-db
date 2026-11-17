@@ -175,6 +175,13 @@ message PgVectorIdxOptionsPB {
   // an index must not mix vectors with and without payload. Always set for an index of a table
   // with TablePropertiesPB::skip_vector_reverse_mapping set.
   optional bool store_payload = 10;
+
+  // Number of leading primary-key components that identify the vector tenant and are stored in
+  // the payload. All hash columns form a single hash-group component, followed by one component
+  // per range column. 0 means the vectors have no tenant.
+  // Set by master at index creation only for hnswlib indexes that store payload. Always less than
+  // Schema::NumHashGroupAndRangeComponents, so the tenant never covers the full primary key.
+  optional uint32 tenant_hash_group_and_range_components = 11;
 }
 
 message PgHnswReadOptionsPB {
@@ -343,9 +350,35 @@ message IndexInfoPB {
   // snapshot predates when the index became consistent.
   optional fixed64 birth_time = 37;
 
+  // Whether birth_time is final. BIRTH_TIME_FINAL (the default, also for indexes created before
+  // this field existed) means birth_time is final; it is 0 if the index has none. The PENDING
+  // states are set at index creation and mean the index may not be consistent yet: while one is set
+  // (and birth_time is 0), the docdb read guard returns a retryable error for reads at the index
+  // instead of serving a possibly-incomplete result. The state records which build path finalizes
+  // birth_time, so each path only finalizes its own indexes.
+  //
+  // TODO(#33155): The birth_time is not yet passed to xcluster targets. However, the state is
+  // still moved to BIRTH_TIME_FINAL on xcluster targets to preserve the old behaviour and allow
+  // reads until we fix this.
+  enum BirthTimeState {
+    BIRTH_TIME_FINAL = 0;
+    // Online (backfilled) build: finalized when backfill completes.
+    BIRTH_TIME_PENDING_BACKFILL = 1;
+    // Nonconcurrent (inline) build: finalized when the CREATE INDEX transaction commits.
+    BIRTH_TIME_PENDING_DDL_COMMIT = 2;
+  }
+  optional BirthTimeState birth_time_state = 40;
+
   // When backfill fails, the status it failed with. Unlike backfill_error_message, this
   // preserves error codes such as the PostgreSQL error code.
   optional AppStatusPB backfill_status = 38;
+
+  // The origination time (HybridTime value) of the CREATE INDEX statement that created this YSQL
+  // index, set only for an index built with backfill.  A backfill done for any other statement,
+  // e.g., an in-place rebuild of an existing index, must carry that statement's origination time
+  // instead.  In the indexed table's list of indexes, master clears it when it moves the index to
+  // any permission other than INDEX_PERM_DO_BACKFILL.
+  optional fixed64 backfill_origination_ht = 39;
 }
 
 // The possible order modes for clients.

@@ -45,9 +45,11 @@ class SafeTimeTablePK {
  public:
   static Result<SafeTimeTablePK> FromProducerTabletInfo(const ProducerTabletInfo& info);
 
+  // stream_id becomes part of the key once xcluster_safe_time_table_include_stream_id is promoted.
   static Result<SafeTimeTablePK> FromProducerTabletInfo(
       const xcluster::ReplicationGroupId& replication_group_id,
-      const std::string& producer_tablet_id, const std::string& producer_table_id);
+      const std::string& producer_tablet_id, const std::string& producer_table_id,
+      const xrepl::StreamId& stream_id);
 
   static Result<SafeTimeTablePK> FromSafeTimeTableRow(
       const xcluster::ReplicationGroupId& replication_group_id_column_value,
@@ -60,6 +62,7 @@ class SafeTimeTablePK {
   // These are the actual underlying values.
   xcluster::ReplicationGroupId replication_group_id() const;
   TabletId tablet_id() const;
+  const xrepl::StreamId& stream_id() const;
   // Only tests should access this information directly.
   NamespaceId TEST_sequences_data_namespace_id() const;
 
@@ -72,6 +75,8 @@ class SafeTimeTablePK {
  private:
   xcluster::ReplicationGroupId replication_group_id_;
   TabletId tablet_id_;
+  // Keeps a replaced stream's poller from advancing its replacement's safe time.
+  xrepl::StreamId stream_id_ = xrepl::StreamId::Nil();
   // If this is a sequences_data tablet, then this holds its producer tablet
   // ID sequence alias's replication namespace.  Otherwise holds the empty string.
   //

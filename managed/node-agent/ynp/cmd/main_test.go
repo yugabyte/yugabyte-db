@@ -700,7 +700,10 @@ func TestNodeExporterFipsMode(t *testing.T) {
 	t.Cleanup(func() { applyFipsMode = util.ApplyFipsMode })
 
 	godebugOff := `Environment="GODEBUG=fips140=off"`
-	if script := renderModuleScripts(t, "ConfigureNodeExporter"); !strings.Contains(script, godebugOff) {
+	if script := renderModuleScripts(t, "ConfigureNodeExporter"); !strings.Contains(
+		script,
+		godebugOff,
+	) {
 		t.Errorf("non-FIPS node_exporter unit must contain %q", godebugOff)
 	}
 	// The last --extra_vars wins over the one renderModuleScripts passes.

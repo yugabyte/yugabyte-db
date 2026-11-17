@@ -13,6 +13,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -97,6 +98,7 @@ DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_bool(TEST_cdc_snapshot_failure);
@@ -172,7 +174,6 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
 
 namespace yb {
@@ -519,6 +520,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckCount(const uint32_t* expected_count, uint32_t* count);
 
+  void CheckTextTuple(
+      const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id,
+      const std::optional<std::string>& value);
+
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::VaryingExpectedRecord expected_records,
       uint32_t* count, uint32_t num_cols);
@@ -718,6 +723,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void WaitUntilSplitIsSuccesful(
       const TabletId& tablet_id, const yb::client::YBTableName& table,
       const int expected_num_tablets = 2);
+
+  void WaitUntilPeerLeaderState(
+      const tablet::TabletPeerPtr& peer, bool is_leader_and_ready, const std::string& description);
 
   void PollUntilTabletSplit(
       const xrepl::StreamId& stream_id,
@@ -929,11 +937,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status ExecuteYBAdminCommand(
       const std::string& command_name, const std::vector<string>& command_args);
 
+  Result<std::string> ExecuteYBAdminCommand(
+      const std::string& master_addresses, const std::string& command_name,
+      const std::vector<string>& command_args);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(const xrepl::StreamId& stream_id);
 
   void TestDisableOfDynamicTableAdditionOnCDCStream(bool use_consistent_snapshot_stream);
 
   Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
+
+  Result<std::string> PrepareReplicationSlotsForTransactionalDDL(
+      const std::string& master_addresses, const std::string& slot_name);
 
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

@@ -120,11 +120,21 @@ struct TableInfo {
   // make sure this vector doesn't grow too large.
   std::vector<DeletedColumn> deleted_cols;
 
+  // For each schema version that is no longer current, the boundary op id past which WAL entries
+  // can no longer be packed with it. The entries below the boundary are packed with this version or
+  // older ones. Maintained while the tablet is under CDC replication so that OldSchemaGC retains
+  // the packings needed to decode WAL entries CDC may still stream. Entries are pruned together
+  // with their packings.
+  std::map<SchemaVersion, OpId> cdcsdk_schema_version_boundaries;
+
   // We use the retention time from the primary table.
   uint32_t wal_retention_secs = 0;
 
   // See TableInfoPB::vector_index_deactivated_ht. Invalid while the vector index is active.
   HybridTime vector_index_deactivated_ht;
+
+  // See TableInfoPB::vector_reverse_mapping_repair_pending.
+  bool vector_reverse_mapping_repair_pending = false;
 
   // Public ctor with private argument to allow std::make_shared, but prevent public usage.
   TableInfo(const std::string& log_prefix,
@@ -208,6 +218,8 @@ struct TableInfo {
   static TableInfoPtr TEST_Create(Args&&... args) {
     return TEST_CreateWithLogPrefix("TEST: ", std::forward<Args>(args)...);
   }
+
+  void EraseDeletedColumnsInSchema();
 
  private:
   Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
@@ -374,6 +386,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<TableInfoPtr> GetTableInfo(TableIdView table_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(TableIdView table_id) const REQUIRES(data_mutex_);
 
+  // Unlike GetTableInfo, cheap when the table is missing: debug builds format all tables into the
+  // NotFound status.
+  bool HasTable(const TableId& table_id) const EXCLUDES(data_mutex_);
+
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
 
@@ -466,6 +482,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   std::string intents_rocksdb_dir() const;
   std::string snapshots_dir() const;
   std::string vector_index_dir(const PgVectorIdxOptionsPB& vector_index_options) const;
+  // Storage dirs of the vector indexes this tablet lists.
+  std::vector<std::string> vector_index_dirs() const;
+  // Deletes the storage dir of each "vi-*" name in storage_names, see
+  // docdb::GetVectorIndexStorageName, whose index this tablet does not list. Ignores other names.
+  // DeleteTabletData destroys only the storages of listed indexes. Best effort.
+  void DeleteUnlistedVectorIndexStorages(const std::vector<std::string>& storage_names) const;
 
   const std::string& lower_bound_key() const { return kv_store_.lower_bound_key; }
   const std::string& upper_bound_key() const { return kv_store_.upper_bound_key; }
@@ -637,7 +659,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       HybridTime ht,
       const TableId& pg_table_id,
       const SkipTableTombstoneCheck skip_table_tombstone_check,
-      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings)
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings,
+      bool vector_reverse_mapping_repair_pending = false)
       EXCLUDES(data_mutex_);
 
   void RemoveTable(const TableId& table_id, const OpId& op_id);
@@ -803,6 +826,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void DisableSchemaGC();
   void EnableSchemaGC();
 
+  // Min schema version whose packing must be retained for CDCSDK. WAL entries the streams may
+  // still read can be packed with it or newer versions. No constraint (i.e max) when the tablet is
+  // not under CDCSDK replication.
+  SchemaVersion MinCDCSDKSchemaVersionToRetainUnlocked(const TableInfo& table_info) const
+      REQUIRES(data_mutex_);
+
   Result<docdb::CompactionSchemaInfo> CotablePacking(
       const Uuid& cotable_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
@@ -844,12 +873,23 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   OpId MinUnflushedChangeMetadataOpId() const;
 
+  // See TableInfoPB::vector_reverse_mapping_repair_pending. Does not flush the superblock.
+  Status SetVectorReverseMappingRepairPending(const TableId& table_id, bool pending)
+      EXCLUDES(data_mutex_);
+
   // Called to update related metadata when index table backfilling is complete.
   // Returns kStatusNotFound if table is not found in kv_store, in other case returns kStatusOk.
   Status OnBackfillDone(const TableId& table_id, uint64_t birth_time = 0)
       EXCLUDES(data_mutex_);
   Status OnBackfillDone(const OpId& op_id, const TableId& table_id,
                         uint64_t birth_time = 0) EXCLUDES(data_mutex_);
+
+  // Called to finalize the birth_time of a nonconcurrently built index (see
+  // IndexInfoPB.birth_time_state). birth_time 0 leaves the index without a birth_time.
+  Status OnNonConcurrentIndexDone(const TableId& table_id, uint64_t birth_time)
+      EXCLUDES(data_mutex_);
+  Status OnNonConcurrentIndexDone(const OpId& op_id, const TableId& table_id,
+                                  uint64_t birth_time) EXCLUDES(data_mutex_);
 
   // Updates related meta data as a reaction for post split compaction completed. Returns true
   // if any field has been updated and a flush may be required.
@@ -907,6 +947,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
   Status OnBackfillDoneUnlocked(const TableId& table_id, uint64_t birth_time = 0)
+      REQUIRES(data_mutex_);
+
+  Status OnNonConcurrentIndexDoneUnlocked(const TableId& table_id, uint64_t birth_time)
       REQUIRES(data_mutex_);
 
   Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,

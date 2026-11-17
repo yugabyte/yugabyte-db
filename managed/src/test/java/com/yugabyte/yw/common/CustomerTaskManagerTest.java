@@ -864,8 +864,11 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackEditUniverseDisabledByRuntimeFlag() {
-    // With yb.task.allow_edit_universe_rollback off (default), edit-universe rollback is rejected
-    // at the computer (second gate). Listing would already hide the button via isEnabled().
+    // With yb.task.allow_edit_universe_rollback off, edit-universe rollback is rejected at the
+    // computer (second gate). Listing would already hide the button via isEnabled().
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_edit_universe_rollback", "false");
     universe = ModelFactory.createUniverse(customer.getId());
     JsonNode taskParams = editUniverseTaskParams(universe);
     CustomerTask failedTask =
@@ -1034,6 +1037,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackAddNodeDisabledByRuntimeFlag() {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.task.allow_add_node_rollback", "false");
     universe =
         Universe.saveDetails(
             ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
@@ -1214,8 +1218,11 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackResizeNodeDisabledByRuntimeFlag() {
-    // yb.task.allow_resize_node_rollback off (default) rejects at the computer (second gate).
+    // yb.task.allow_resize_node_rollback off rejects at the computer (second gate).
     // Listing would already hide the button via isEnabled().
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_resize_node_rollback", "false");
     universe = ModelFactory.createUniverse(customer.getId());
     universe = markResizeNodeFailed(universe);
     JsonNode taskParams = resizeNodeTaskParams(universe);

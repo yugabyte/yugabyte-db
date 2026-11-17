@@ -357,6 +357,9 @@ message ConsensusRequestPB {
 
   // If enabled, a trace will be collected for this RPC and returned in the response.
   optional bool trace_requested = 12;
+
+  // The last op replicated to all peers tracked by the leader.
+  optional OpIdPB all_replicated_op_id = 13;
 }
 
 message ConsensusResponsePB {
@@ -383,6 +386,9 @@ message ConsensusResponsePB {
 
   // The trace for the RPC as a string, returned only if requested.
   optional string trace_buffer = 7;
+
+  // If set, the leader prefers another remote bootstrap source.
+  optional bool pending_post_split_compaction = 8;
 }
 
 message MultiRaftConsensusRequestPB {

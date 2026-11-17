@@ -120,8 +120,9 @@ const Endpoint& LocalYBInboundCall::local_address() const {
 }
 
 void LocalYBInboundCall::Respond(AnyMessageConstPtr resp, bool is_success) {
-  // Released on return, after the handler is done with the caller's buffers.
-  auto buffers_holder = std::move(buffers_holder_);
+  // The handler is done with the caller's buffers. Release them before the caller gets the
+  // response, so it can reuse them right away.
+  buffers_holder_.reset();
   if (completed_.exchange(true, std::memory_order_acq_rel)) {
     // Timed out, the caller does not wait for the response anymore.
     NotifyTransferred(Status::OK(), /* ConnectionPtr */ nullptr);
