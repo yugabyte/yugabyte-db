@@ -246,7 +246,9 @@ Disable callhome diagnostics.
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
+Available in v2025.2.8.1 and later.
+
+Resolve stack trace addresses to symbols when logging stack traces. Symbolization reads the binaries' symbol tables and is expensive. When set to `false`, frames are logged as a hex address plus module and offset, which you can resolve offline with `llvm-symbolizer`. Set it to `false` to reduce CPU load from slow-operation warnings that log stack traces.
 
 ### Metric export flags
 
@@ -414,7 +416,9 @@ During startup, only the server-wide value applies, set with [ysql_pg_conf_csv](
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
+Available in v2025.2.8.1 and later.
+
+Lets a connection that [preloads the catalog cache](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/) start from a catalog version that the node already has cached. When such a connection begins while the YB-Master leader reports that it is shedding catalog prefetches, it can read the catalog at the version cached on its YB-TServer instead of fetching the whole catalog from the leader. It then applies the invalidation messages between that version and the current version before it runs any statement.
 
 On a cluster with default settings, connections do not preload the catalog cache, so they do not take this path. In that configuration, this parameter only changes the admission priority of the read that a backend makes ahead of authentication: that read is admitted ahead of catalog prefetches that are waiting to begin.
 
@@ -761,7 +765,9 @@ During a YSQL major upgrade, refresh always runs in place, regardless of this se
 Default: `0`
 {{% /tags/wrap %}}
 
-v2025.2.9.0 and later only. Sets how long, in minutes, a newly set or changed password remains valid. When non-zero, YugabyteDB sets the role's password expiration (`VALID UNTIL`) to the current time plus this duration. You can specify a unit, for example `90d`. The default value of `0` means passwords do not expire.
+Available in v2025.2.9.0 and later.
+
+Sets how long, in minutes, a newly set or changed password remains valid. When non-zero, YugabyteDB sets the role's password expiration to the current time plus this duration. You can specify a unit, for example `90d`. The default value of `0` means passwords do not expire.
 
 This parameter applies only when a password is stored, that is, when you run `CREATE ROLE` or `ALTER ROLE ... PASSWORD`. It does not change the expiration of existing passwords. If the statement includes a `VALID UNTIL` clause, that clause takes precedence over this parameter.
 
@@ -1711,7 +1717,9 @@ Enables the YB-TServer catalog cache, which reduces YB-Master overhead for start
 Default: `true`
 {{% /tags/wrap %}}
 
-v2025.2.8.1 and later only. Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
+Available in v2025.2.8.1 and later.
+
+Lets a connection start from a catalog version that the node already has cached when the YB-Master leader is shedding catalog prefetches, instead of fetching the whole catalog from the leader. This applies only to connections that preload the catalog cache when they start; on a cluster with default settings it only changes the admission priority of the read that a backend makes ahead of authentication. See [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) for the preconditions. When set to `false`, every connection fetches the catalog from the leader, and the pre-authentication read takes the ordinary catalog prefetch admission priority.
 
 See also the [yb_enable_stale_catalog_prefetch](#yb-enable-stale-catalog-prefetch) configuration parameter.
 
