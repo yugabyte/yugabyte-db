@@ -7,7 +7,6 @@ package storageconfigurationutil
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -63,32 +62,11 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode
 		util.FatalHTTPError(response, err, callSite, "Delete - List Customer Configurations")
 	}
 
-	storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
-	for _, s := range r {
-		if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
-			storageConfigs = append(storageConfigs, s)
-		}
-	}
-	storageConfigsName := make([]ybaclient.CustomerConfigUI, 0)
-	for _, s := range storageConfigs {
-		if strings.Compare(s.GetConfigName(), storageName) != 0 {
-			continue
-		}
-		if !util.IsEmptyString(storageCode) &&
-			!strings.EqualFold(s.GetName(), storageCode) {
-			continue
-		}
-		storageConfigsName = append(storageConfigsName, s)
-	}
-	r = storageConfigsName
+	r = FilterStorageConfigs(r, storageName, storageCode)
 
 	if len(r) < 1 {
-		errMessage := fmt.Sprintf("No storage configurations with name: %s found\n", storageName)
-		if !util.IsEmptyString(storageCode) {
-			errMessage = fmt.Sprintf("No %s storage configurations with name: %s found\n",
-				storageCode, storageName)
-		}
-		logrus.Fatalf(formatter.Colorize(errMessage, formatter.RedColor))
+		logrus.Fatalf(formatter.Colorize(
+			storageConfigNotFoundMessage(storageName, storageCode), formatter.RedColor))
 	}
 
 	var storageUUID string

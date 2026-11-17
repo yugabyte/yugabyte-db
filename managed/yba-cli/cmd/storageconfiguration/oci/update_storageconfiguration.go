@@ -170,21 +170,17 @@ yba storage-config oci update --name <storage-configuration-name> \
 			delete(data, util.OCIS3SecretAccessKeyField)
 			delete(data, util.OCIS3HostBaseField)
 		} else {
-			if util.IsEmptyString(accessKeyID) && util.IsEmptyString(secretAccessKey) && wasIAM {
-				accessKeyID, secretAccessKey, err = util.OCIS3CredentialsFromEnv()
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
+			keyFlagSet := cmd.Flags().Changed("access-key-id") ||
+				cmd.Flags().Changed("secret-access-key")
+			err = applyOCIS3Keys(data, accessKeyID, secretAccessKey, keyFlagSet, wasIAM)
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
 			if wasIAM && util.IsEmptyString(hostBase) {
 				logrus.Fatalln(formatter.Colorize(
 					"--s3-host-base is required when switching from OCI IAM "+
 						"to S3-compatible credentials\n",
 					formatter.RedColor))
-			}
-			if !util.IsEmptyString(accessKeyID) && !util.IsEmptyString(secretAccessKey) {
-				data[util.OCIS3AccessKeyIDField] = accessKeyID
-				data[util.OCIS3SecretAccessKeyField] = secretAccessKey
 			}
 			if !util.IsEmptyString(hostBase) {
 				data[util.OCIS3HostBaseField] = hostBase
@@ -211,6 +207,30 @@ yba storage-config oci update --name <storage-configuration-name> \
 		storageconfigurationutil.UpdateStorageConfigurationUtil(authAPI, storageName, storageUUID)
 
 	},
+}
+
+// applyOCIS3Keys writes the S3-compatible key pair into data. Without key flags the stored
+// pair is kept, or read from the environment when switching off OCI IAM. A key flag given an
+// empty value is an error, so that a failed rotation never looks like a successful one.
+func applyOCIS3Keys(
+	data map[string]interface{}, accessKeyID, secretAccessKey string, keyFlagSet, wasIAM bool,
+) error {
+	if !keyFlagSet {
+		if !wasIAM {
+			return nil
+		}
+		var err error
+		accessKeyID, secretAccessKey, err = util.OCIS3CredentialsFromEnv()
+		if err != nil {
+			return err
+		}
+	}
+	if util.IsEmptyString(accessKeyID) || util.IsEmptyString(secretAccessKey) {
+		return fmt.Errorf("--access-key-id and --secret-access-key must both be non-empty")
+	}
+	data[util.OCIS3AccessKeyIDField] = accessKeyID
+	data[util.OCIS3SecretAccessKeyField] = secretAccessKey
+	return nil
 }
 
 // isOCIIAMEnabled handles USE_OCI_IAM stored either as a JSON boolean or a string.

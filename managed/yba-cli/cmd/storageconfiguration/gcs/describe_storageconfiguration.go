@@ -20,7 +20,8 @@ var describeGCSStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DescribeStorageConfigurationUtil(cmd, util.GCSStorageConfigType)
+		storageconfigurationutil.DescribeStorageConfigurationUtil(
+			cmd, util.GCSStorageConfigType, util.GCSStorageConfigType)
 	},
 }
 

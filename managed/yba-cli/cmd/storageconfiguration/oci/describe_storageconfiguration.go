@@ -20,7 +20,8 @@ var describeOCIStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DescribeStorageConfigurationUtil(cmd, util.OCIStorageConfigType)
+		storageconfigurationutil.DescribeStorageConfigurationUtil(
+			cmd, util.OCIStorageConfigType, util.OCIStorageConfigType)
 	},
 }
 

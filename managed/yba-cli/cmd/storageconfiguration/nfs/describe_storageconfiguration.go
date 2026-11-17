@@ -20,7 +20,8 @@ var describeNFSStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DescribeStorageConfigurationUtil(cmd, util.NFSStorageConfigType)
+		storageconfigurationutil.DescribeStorageConfigurationUtil(
+			cmd, util.NFSStorageConfigType, util.NFSStorageConfigType)
 	},
 }
 

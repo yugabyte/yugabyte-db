@@ -7,6 +7,7 @@ package azure
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/storageconfiguration/storageconfigurationutil"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 var describeAZStorageConfigurationCmd = &cobra.Command{
@@ -19,7 +20,8 @@ var describeAZStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DescribeStorageConfigurationUtil(cmd, "Azure")
+		storageconfigurationutil.DescribeStorageConfigurationUtil(
+			cmd, "Azure", util.AzureStorageConfigType)
 	},
 }
 

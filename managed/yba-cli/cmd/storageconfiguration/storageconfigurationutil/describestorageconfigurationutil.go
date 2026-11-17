@@ -19,7 +19,35 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/storageconfiguration"
 )
 
-func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
+// FilterStorageConfigs returns the storage configs in configs with the given name and storage
+// code. An empty name or storageCode matches any.
+func FilterStorageConfigs(
+	configs []ybaclient.CustomerConfigUI, name, storageCode string,
+) []ybaclient.CustomerConfigUI {
+	filtered := make([]ybaclient.CustomerConfigUI, 0)
+	for _, s := range configs {
+		if strings.Compare(s.GetType(), util.StorageCustomerConfigType) != 0 {
+			continue
+		}
+		if name != "" && strings.Compare(s.GetConfigName(), name) != 0 {
+			continue
+		}
+		if !util.IsEmptyString(storageCode) && !strings.EqualFold(s.GetName(), storageCode) {
+			continue
+		}
+		filtered = append(filtered, s)
+	}
+	return filtered
+}
+
+func storageConfigNotFoundMessage(name, storageCode string) string {
+	if util.IsEmptyString(storageCode) {
+		return fmt.Sprintf("No storage configurations with name: %s found\n", name)
+	}
+	return fmt.Sprintf("No %s storage configurations with name: %s found\n", storageCode, name)
+}
+
+func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 	storageConfigListRequest := authAPI.GetListOfCustomerConfig()
@@ -33,29 +61,11 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 		util.FatalHTTPError(response, err, callSite, "Describe")
 	}
 
-	storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
-	for _, s := range r {
-		if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
-			storageConfigs = append(storageConfigs, s)
-		}
-	}
-
-	// filter by name and/or by storage-configurations code
 	storageName, err := cmd.Flags().GetString("name")
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if storageName != "" {
-		storageConfigsName := make([]ybaclient.CustomerConfigUI, 0)
-		for _, s := range storageConfigs {
-			if strings.Compare(s.GetConfigName(), storageName) == 0 {
-				storageConfigsName = append(storageConfigsName, s)
-			}
-		}
-		storageConfigs = storageConfigsName
-	}
-
-	r = storageConfigs
+	r = FilterStorageConfigs(r, storageName, storageCode)
 
 	if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 		fullStorageConfigurationContext := *storageconfiguration.NewFullStorageConfigContext()
@@ -68,12 +78,8 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	}
 
 	if len(r) < 1 {
-		logrus.Fatalf(
-			formatter.Colorize(
-				fmt.Sprintf("No storage configurations with name: %s found\n",
-					storageName),
-				formatter.RedColor,
-			))
+		logrus.Fatalf(formatter.Colorize(
+			storageConfigNotFoundMessage(storageName, storageCode), formatter.RedColor))
 	}
 
 	storageConfigCtx := formatter.Context{
