@@ -107,13 +107,14 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   /**
    * A read-replica-only edit carries no primary cluster, and the primary is not edited by it. Adds
-   * a copy of the pre-edit primary to {@code target} when it has none.
+   * a copy of the pre-edit primary to {@code target} when it has none, first in the list: the
+   * checkpoint delta keeps the target's cluster order, so a rollback restores that order.
    */
   protected static void addPrimaryClusterIfMissing(
       UniverseDefinitionTaskParams target, UniverseDefinitionTaskParams before) {
     Cluster beforePrimary = before.getPrimaryCluster();
     if (target.getPrimaryCluster() == null && beforePrimary != null) {
-      target.clusters.add(Json.fromJson(Json.toJson(beforePrimary), Cluster.class));
+      target.clusters.add(0, Json.fromJson(Json.toJson(beforePrimary), Cluster.class));
     }
   }
 
