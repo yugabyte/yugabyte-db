@@ -62,4 +62,7 @@ extern void YbCleanupListenStateForProc(PGPROC *proc);
 /* True if this session is listening or has a pending LISTEN in the xact. */
 extern bool YbHasActiveOrPendingListen(void);
 
+extern int	YbNumPendingNotifies(void);
+extern void YbTruncatePendingNotifies(int num_notifies);
+
 #endif							/* ASYNC_H */
