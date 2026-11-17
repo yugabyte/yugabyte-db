@@ -12,6 +12,7 @@
 package com.yugabyte.yw.common.kms.services;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
@@ -38,10 +39,12 @@ import com.oracle.bmc.model.BmcException;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.YWErrorHandler;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.InvalidOciKmsConfigException;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
@@ -206,12 +209,7 @@ public class OciEARServiceTest extends FakeDBApplication {
   public void testRefreshKmsWithService_storedKeyNotEnabled_failsWithBadRequest() throws Exception {
     ObjectNode authConfig = withKeyName(fakeAuthConfig);
     stubRenamedKey();
-    doThrow(
-            new RuntimeException(
-                "OCI key '"
-                    + keyOcid
-                    + "' has invalid settings: it must be in Enabled state and use AES"
-                    + " algorithm."))
+    doThrow(new InvalidOciKmsConfigException(notEnabledMessage()))
         .when(mockOciEARServiceUtil)
         .validateKMSProviderConfigFormData(any(), eq(false));
 
@@ -223,6 +221,38 @@ public class OciEARServiceTest extends FakeDBApplication {
     assertTrue(e.getMessage().contains(keyOcid));
     verify(mockOciEARServiceUtil, never()).testWrapAndUnwrapKey(any(), any());
     verify(mockOciEARServiceUtil, never()).createKey(any(), any(), any());
+  }
+
+  @Test
+  public void testRefreshKms_invalidKey_reachesClientAsBadRequest() throws Exception {
+    saveKmsConfig(withKeyName(fakeAuthConfig));
+    doThrow(new InvalidOciKmsConfigException(notEnabledMessage()))
+        .when(mockOciEARServiceUtil)
+        .validateKMSProviderConfigFormData(any(), eq(false));
+
+    // refreshKms wraps the failure; the HTTP error handler finds the 400 in the cause chain.
+    RuntimeException e =
+        assertThrows(RuntimeException.class, () -> mockOciEARService.refreshKms(configUUID));
+    PlatformServiceException response =
+        YWErrorHandler.toPlatformServiceException(e).orElseThrow(AssertionError::new);
+    assertEquals(BAD_REQUEST, response.getHttpStatus());
+    assertEquals(notEnabledMessage(), response.getMessage());
+  }
+
+  @Test
+  public void testRefreshKmsWithService_unexpectedErrorInValidation_isNotTurnedIntoBadRequest()
+      throws Exception {
+    ObjectNode authConfig = withKeyName(fakeAuthConfig);
+    NullPointerException unexpected = new NullPointerException();
+    doThrow(unexpected)
+        .when(mockOciEARServiceUtil)
+        .validateKMSProviderConfigFormData(any(), eq(false));
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARService.refreshKmsWithService(configUUID, authConfig));
+    assertSame(unexpected, e);
   }
 
   @Test
@@ -316,7 +346,57 @@ public class OciEARServiceTest extends FakeDBApplication {
   }
 
   @Test
-  public void testUpdateAuthConfig_legacyConfigKeyNameMissing_failsWithReason() throws Exception {
+  public void testUpdateAuthConfig_storedKeyDeleted_reportsMissingKey() throws Exception {
+    saveKmsConfig(withKeyName(fakeAuthConfig));
+    stubRenamedKey();
+    doReturn(false).when(mockOciEARServiceUtil).checkKeyExists(any(), eq(keyOcid));
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARService.updateAuthConfig(configUUID, withKeyName(fakeAuthConfig)));
+    assertTrue(e.getMessage().contains("OCI key '" + keyOcid + "' does not exist."));
+    verify(mockOciEARServiceUtil, never()).validateKeySettings(any(), any());
+  }
+
+  @Test
+  public void testUpdateAuthConfig_keyAccessDenied_keepsOciCause() throws Exception {
+    saveKmsConfig(withKeyName(fakeAuthConfig));
+    stubRenamedKey();
+    BmcException forbidden = mock(BmcException.class);
+    lenient().when(forbidden.getStatusCode()).thenReturn(403);
+    RuntimeException accessError =
+        new RuntimeException("Insufficient permissions to access OCI key.", forbidden);
+    doThrow(accessError).when(mockOciEARServiceUtil).checkKeyExists(any(), eq(keyOcid));
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARService.updateAuthConfig(configUUID, withKeyName(fakeAuthConfig)));
+    assertSame(accessError, e.getCause());
+    assertFalse(e.getMessage().contains("Enabled state"));
+  }
+
+  @Test
+  public void testValidateRetrieveKeyWithService_decryptFails_throwsWithReason() throws Exception {
+    saveKmsConfig(withKeyName(fakeAuthConfig));
+    RuntimeException decryptError = new RuntimeException("key is disabled");
+    doThrow(decryptError)
+        .when(mockOciEARServiceUtil)
+        .decryptUniverseKey(eq(configUUID), eq(randomBytes), any());
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                mockOciEARService.validateRetrieveKeyWithService(
+                    configUUID, randomBytes, null, withKeyName(fakeAuthConfig)));
+    assertTrue(e.getMessage().contains("key is disabled"));
+    assertSame(decryptError, e.getCause());
+  }
+
+  @Test
+  public void testUpdateAuthConfig_legacyConfigNameMatchesNoKey_failsWithReason() throws Exception {
     ObjectNode legacyConfig = withKeyName(fakeAuthConfig);
     legacyConfig.remove(OciKmsAuthConfigField.ociKeyOcid.fieldName);
     saveKmsConfig(legacyConfig);
@@ -356,6 +436,12 @@ public class OciEARServiceTest extends FakeDBApplication {
     assertEquals(otherKeyOcid, editForm.path(OciKmsAuthConfigField.ociKeyOcid.fieldName).asText());
   }
 
+  private String notEnabledMessage() {
+    return "OCI key '"
+        + keyOcid
+        + "' has invalid settings: it must be in Enabled state and use AES algorithm.";
+  }
+
   private ObjectNode withKeyName(ObjectNode authConfig) {
     ObjectNode copy = authConfig.deepCopy();
     copy.put(OciKmsAuthConfigField.ociKeyName.fieldName, keyName);
@@ -385,6 +471,8 @@ public class OciEARServiceTest extends FakeDBApplication {
         .doReturn(createKeyResponse)
         .when(mockOciEARServiceUtil)
         .createKey(any(), any(), any());
+    lenient().doReturn(true).when(mockOciEARServiceUtil).checkKeyExists(any(), eq(keyOcid));
+    lenient().doReturn(true).when(mockOciEARServiceUtil).checkKeyExists(any(), eq(otherKeyOcid));
     lenient().doReturn(true).when(mockOciEARServiceUtil).validateKeySettings(any(), eq(keyOcid));
     lenient()
         .doReturn(false)

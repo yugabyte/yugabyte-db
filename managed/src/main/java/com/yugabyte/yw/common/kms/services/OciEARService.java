@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.InvalidOciKmsConfigException;
 import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
@@ -70,23 +71,17 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
     ObjectNode updatedConfig = withStoredKeyOcid(configUUID, config);
     try {
       String keyOcid = ociEARServiceUtil.resolveKeyOcid(configUUID, updatedConfig);
-      if (!ociEARServiceUtil.validateKeySettings(updatedConfig, keyOcid)) {
-        throw new RuntimeException(
-            String.format(
-                "OCI key '%s' has invalid settings: it must be in Enabled state and use AES"
-                    + " algorithm.",
-                keyOcid));
-      }
+      ociEARServiceUtil.validateKey(updatedConfig, keyOcid);
     } catch (Exception e) {
       String context = "Error updating OCI KMS config";
       LOG.error(context, e);
-      throw new RuntimeException(
-          OCIErrorFormatter.isOciError(e)
-              ? OCIErrorFormatter.userMessage(context, e)
-              : context + ": " + e.getMessage(),
-          e);
+      throw withReason(context, e);
     }
     return KmsConfig.updateKMSConfig(configUUID, updatedConfig);
+  }
+
+  private static RuntimeException withReason(String context, Exception e) {
+    return new RuntimeException(OCIErrorFormatter.userMessage(context, e), e);
   }
 
   /**
@@ -160,8 +155,11 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
       return ociEARServiceUtil.decryptUniverseKey(
           configUUID, keyRef, withStoredKeyOcid(configUUID, authConfig));
     } catch (Exception e) {
-      LOG.error("Error validating key retrieval from OCI KMS", e);
-      return null;
+      // EditKMSConfig reports a null return only as a generic error, and operator edits reach it
+      // without the controller's validation, so the reason has to travel in the exception.
+      String context = "Error validating key retrieval from OCI KMS";
+      LOG.error(context, e);
+      throw withReason(context, e);
     }
   }
 
@@ -189,13 +187,11 @@ public class OciEARService extends EncryptionAtRestService<OciAlgorithm> {
   public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
     this.ociEARServiceUtil = getOciEarServiceUtil();
     // Validates the stored key OCID, or for a config without one the key found by name.
+    // Other failures propagate: YWErrorHandler maps an OCI error by its BmcException cause, and
+    // anything else is a 500.
     try {
       ociEARServiceUtil.validateKMSProviderConfigFormData(authConfig, false /* isCreate */);
-    } catch (RuntimeException e) {
-      // An OCI error keeps its BmcException cause, which YWErrorHandler maps to a status.
-      if (OCIErrorFormatter.isOciError(e)) {
-        throw e;
-      }
+    } catch (InvalidOciKmsConfigException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
     ociEARServiceUtil.resolveKeyOcid(configUUID, authConfig);
