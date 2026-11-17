@@ -803,12 +803,12 @@ public class KubernetesUtilTest extends FakeDBApplication {
     Universe universe =
         ModelFactory.createUniverse("k8s-sidecar", customer.getId(), CloudType.kubernetes);
     RuntimeConfGetter keyOn = confGetterWithSidecarKey(true);
-    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b12", universe, keyOn));
-    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b11", universe, keyOn));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b15", universe, keyOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b14", universe, keyOn));
     assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.1.0-b5", universe, keyOn));
     assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.1.2.0-b100", universe, keyOn));
-    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2.33.0.0-b53", universe, keyOn));
-    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2.33.0.0-b52", universe, keyOn));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2.33.0.0-b58", universe, keyOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2.33.0.0-b57", universe, keyOn));
     assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2.31.0.0-b700", universe, keyOn));
     // A later preview train passes the 2.33 gate from its first build.
     assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2.35.0.0-b1", universe, keyOn));
@@ -817,7 +817,7 @@ public class KubernetesUtilTest extends FakeDBApplication {
     assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled(null, universe, keyOn));
     assertFalse(
         KubernetesUtil.isNodeExporterSidecarEnabled(
-            "2026.2.0.0-b12", universe, confGetterWithSidecarKey(false)));
+            "2026.2.0.0-b15", universe, confGetterWithSidecarKey(false)));
   }
 
   @Test
@@ -831,8 +831,8 @@ public class KubernetesUtilTest extends FakeDBApplication {
         .thenReturn(true);
     when(confGetter.getConfForScope(eq(other), eq(UniverseConfKeys.k8sNodeExporterEnabled)))
         .thenReturn(false);
-    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b12", universe, confGetter));
-    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b12", other, confGetter));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b15", universe, confGetter));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b15", other, confGetter));
   }
 
   private RuntimeConfGetter confGetterWithTlsKeys(
@@ -871,11 +871,11 @@ public class KubernetesUtilTest extends FakeDBApplication {
   public void testIsNodeExporterSidecarTlsEnabled() {
     Universe nodeToNode = k8sUniverseWithNodeToNode(true);
     RuntimeConfGetter allOn = confGetterWithTlsKeys(true, true, false);
-    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2026.2.0.0-b12", nodeToNode, allOn));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2026.2.0.0-b15", nodeToNode, allOn));
     assertFalse(
-        KubernetesUtil.isNodeExporterSidecarTlsEnabled("2026.2.0.0-b11", nodeToNode, allOn));
-    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2.33.0.0-b53", nodeToNode, allOn));
-    assertFalse(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2.33.0.0-b52", nodeToNode, allOn));
+        KubernetesUtil.isNodeExporterSidecarTlsEnabled("2026.2.0.0-b14", nodeToNode, allOn));
+    assertTrue(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2.33.0.0-b58", nodeToNode, allOn));
+    assertFalse(KubernetesUtil.isNodeExporterSidecarTlsEnabled("2.33.0.0-b57", nodeToNode, allOn));
     // Each term turns it off on its own.
     assertFalse(
         KubernetesUtil.isNodeExporterSidecarTlsEnabled(
