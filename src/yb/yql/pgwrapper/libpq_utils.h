@@ -460,6 +460,7 @@ inline constexpr std::string_view kGlobalView = "global_view";
 inline constexpr std::string_view kAutoAnalyze = "auto_analyze";
 inline constexpr std::string_view kXClusterDdlQueue = "xcluster_ddl_queue";
 inline constexpr std::string_view kXClusterSetup = "xcluster_setup";
+inline constexpr std::string_view kOnlineSchemaChangeBackfill = "online_schema_change_backfill";
 }  // namespace YbInternalConnKindWireName
 
 struct PGConnSettings {

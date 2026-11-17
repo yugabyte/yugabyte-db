@@ -960,25 +960,25 @@ char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
   return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
-// False until PG makes the first YBCSetObjectLockingInfraForCurrTxn() call of the backend from
+// False until PG makes the first YBCSetObjectLockingForCurrTxn() call of the backend from
 // StartTransaction. pggate only reads it inside a transaction, so the is_using_table_locks it sends
 // to the tserver never comes from the unset value: PgTxnManager reads it through
 // IsTableLockingEnabledForCurrentTxn() from BeginTransaction onwards, and the sequence RPCs are
 // only issued while a statement runs. The PG side does read it earlier, at least from
 // YBCIsLegacyModeForCatalogOps during sys table prefetching, where
 // YBCIsSysTablePrefetchingStarted() forces legacy mode anyway.
-static bool object_locking_infra_for_curr_txn = false;
+static bool object_locking_for_curr_txn = false;
 
-void YBCSetObjectLockingInfraForCurrTxn() {
-  object_locking_infra_for_curr_txn = yb_enable_object_locking_infra;
+void YBCSetObjectLockingForCurrTxn(bool enabled) {
+  object_locking_for_curr_txn = enabled;
 }
 
-bool YBCIsObjectLockingInfraEnabled() {
-  return object_locking_infra_for_curr_txn;
+bool YBCIsObjectLockingLatchedForCurrTxn() {
+  return object_locking_for_curr_txn;
 }
 
 bool YBCIsObjectLockingEnabled() {
-  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingInfraEnabled();
+  return FLAGS_enable_object_locking_for_table_locks && YBCIsObjectLockingLatchedForCurrTxn();
 }
 
 bool YBCIsAutoAnalyzeEnabled() {

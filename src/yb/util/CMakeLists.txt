@@ -121,6 +121,8 @@ set(UTIL_SRCS
   countdown_latch.cc
   crash_point.cc
   crc.cc
+  crc32c/crc32c_abseil.cc
+  crc32c/cpu_detect.cc
   cross_thread_mutex.cc
   crypt.cc
   csv_util.cc
@@ -395,8 +397,8 @@ endif()
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)
-ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
-YB_TEST_TARGET_LINK_LIBRARIES(crc-test.cc rocksdb yb_ash)
+ADD_YB_TEST(crc-test)
+YB_TEST_TARGET_LINK_LIBRARIES(crc-test.cc yb_ash)
 ADD_YB_TEST(crypt-test)
 ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(debug-util-test)
@@ -552,4 +554,5 @@ YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)
 # Microbenchmarks
 #######################################
 
+ADD_YB_BENCHMARK(crc-benchmark)
 ADD_YB_BENCHMARK(mutex-benchmark DEPS absl)

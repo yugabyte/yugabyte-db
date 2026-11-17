@@ -790,8 +790,10 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   // Create a new table after slot creation so that UpdatePublicationTableListRPC is called.
   ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
 
+  const auto txn_ddl = ASSERT_RESULT(cluster_->GetFlag(
+      pg_ts, "TEST_ysql_yb_enable_replication_slot_transactional_ddl")) == "true";
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this]() {
+  thread_holder.AddThreadFunctor([this, txn_ddl]() {
     std::vector<std::string> argv = {
         GetPgToolPath("pg_recvlogical"),
         "--dbname=yugabyte",
@@ -799,7 +801,9 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
         Format("--host=$0", pg_ts->bind_host()),
         Format("--port=$0", pg_ts->ysql_port()),
         Format("--slot=$0", kSlotName),
-        "--endpos=0/6", // so that the replication stops after 2 commits
+        // With transactional DDL, DDL records also take LSN values. Therefore, adjust endpos
+        // accordingly so that both the commits are streamed.
+        Format("--endpos=0/$0", txn_ddl ? "11" : "6"),
         "--file=-",
         "--start"
     };

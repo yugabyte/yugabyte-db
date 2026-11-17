@@ -3119,7 +3119,8 @@ ybInsertPendingNotifiesToTable(void)
 		 * requirement along the lines of UPDATE's (GHI #31856).
 		 */
 		YBCExecuteDelete(rel, slot, NIL, true /* target_tuple_fetched */ ,
-						 YB_TRANSACTIONAL, false /* changingPart */ , estate);
+						 YB_TRANSACTIONAL, false /* changingPart */ ,
+						 false /* persist_missing_row */ , estate);
 	}
 
 	YBEndOperationsBuffering();

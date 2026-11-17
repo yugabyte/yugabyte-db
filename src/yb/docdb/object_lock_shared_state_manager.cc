@@ -23,6 +23,7 @@
 #include "yb/docdb/object_lock_shared_state.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_pg_acquires,
@@ -214,7 +215,9 @@ Status ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& a
 
 Result<ObjectLockSharedStateHolder> ObjectLockSharedStateManager::AllocateShared() {
   UniqueLock lock(mutex_);
-  WaitOnConditionVariable(&start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_; });
+  WaitOnConditionVariable(
+      &start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_ || shutdown_; });
+  SCHECK(!shutdown_, ShutdownInProgress, "ObjectLockSharedStateManager is shut down");
   auto state = VERIFY_RESULT(DCHECK_NOTNULL(allocator_)->MakeUnique<ObjectLockSharedState>(
       *allocator_, exclusive_intents_));
   auto* ptr = state.get();
@@ -265,6 +268,14 @@ void ObjectLockSharedStateManager::Stop() {
     write_locks_.clear();
     VLOG(1) << "Stopped ObjectLockSharedStateManager";
   }
+}
+
+void ObjectLockSharedStateManager::Shutdown() {
+  {
+    std::lock_guard lock(mutex_);
+    shutdown_ = true;
+  }
+  start_cond_.notify_all();
 }
 
 void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(

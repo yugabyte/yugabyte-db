@@ -20,6 +20,7 @@ DEFINE_NON_RUNTIME_PREVIEW_bool(enable_tiered_storage, false,
     "tablespace option, per-tablet tier_paths in the tablet superblock, tier-aware disk "
     "selection, the AlterTabletTier and GetTabletTierInfo RPCs and the tier migration "
     "reconciler. When disabled, tier labels, the storage_tier option and the RPCs are rejected, "
+    "tservers register no storage tiers with the master, "
     "a target tier on tablet creation is ignored and no tiered-storage metadata is written. "
     "Tablets that already carry tier_paths keep honoring them so their SST files stay "
     "reachable; a target tier they already carry is kept but not acted on.");
