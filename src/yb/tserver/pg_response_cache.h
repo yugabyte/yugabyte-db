@@ -68,24 +68,22 @@ class PgResponseCache {
 
   using Setter = std::function<void(Response&&)>;
 
-  // One connection's claim on a database, held while it fills. Counting it is what sends other
-  // connections to the older version this node holds. A request that fills takes one for the
-  // length of that request; a connection start's prefetch instead keeps one across all of its
-  // requests, so the gaps between them -- the backend building its relcache, with nothing
-  // outstanding -- do not read as an idle database.
+  // One connection's claim on a database, held while it fills. Counting it is what sends
+  // connections to the older version this node holds, the ones sharing this claim included. A
+  // request that fills takes one for the length of that request; a connection start's prefetch
+  // instead keeps one across all of its requests, so the gaps between them -- the backend
+  // building its relcache, with nothing outstanding -- do not read as an idle database.
   class FillToken;
   using FillTokenPtr = std::shared_ptr<FillToken>;
 
-  // session_id is the only handle on "another connection" a Perform carries, and is what the
-  // in-flight count is kept under. See AnotherFillInFlight for what the session's own counts
-  // being skipped does and does not decide.
-  //
   // token is the caller's slot for a connection start's claim, kept across that prefetch's
   // requests and released on its last one. The claim ends when its last holder lets go, so a
-  // session that goes away cannot leave its database looking busy.
+  // session that goes away cannot leave its database looking busy. Sharing a slot is all that
+  // ties a caller to another's claim: parallel workers share their leader's, and nothing else
+  // here distinguishes one caller from another.
   Result<Setter> Get(
       LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter, uint64_t session_id, FillTokenPtr* token);
+      const PgResponseCacheWaiterPtr& waiter, FillTokenPtr* token);
 
   struct DisablerType;
   using Disabler = std::shared_ptr<DisablerType>;

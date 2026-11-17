@@ -1434,6 +1434,20 @@ void CDCSDKYsqlTest::CheckRecordWithThreeColumns(
   }
 }
 
+void CDCSDKYsqlTest::CheckTextTuple(
+    const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id,
+    const std::optional<std::string>& value) {
+  ASSERT_EQ(tuple.size(), 2);
+  ASSERT_TRUE(tuple.Get(0).has_datum_int32());
+  ASSERT_EQ(tuple.Get(0).datum_int32(), id);
+  if (value) {
+    ASSERT_TRUE(tuple.Get(1).has_datum_string());
+    ASSERT_EQ(tuple.Get(1).datum_string(), *value);
+  } else {
+    ASSERT_EQ(tuple.Get(1).datum_case(), DatumMessagePB::DATUM_NOT_SET);
+  }
+}
+
 void CDCSDKYsqlTest::CheckCount(const uint32_t* expected_count, uint32_t* count) {
   for (int i = 0; i < 6; i++) {
     ASSERT_EQ(expected_count[i], count[i]);

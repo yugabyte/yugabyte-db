@@ -75,11 +75,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_min_conns_per_db, 1,
     "Minimum number of physical connections, that will be present in pool. "
     "This limit is not considered while closing a broken physical connection.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
-    "Enable unix socket connections between Ysql Connection Manager and pg_backend. "
-    "For pg_backend to accept unix socket connection by Ysql Connection Manager add "
-    "'local all yugabyte trust' in hba.conf (set ysql_hba_conf_csv as 'local all yugabyte trust')."
-    );
+DEPRECATE_FLAG(bool, ysql_conn_mgr_use_unix_conn, "11_2026");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "Specifies the maximum duration (in seconds) that a backend PostgreSQL connection "

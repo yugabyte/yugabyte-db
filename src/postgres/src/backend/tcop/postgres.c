@@ -8067,6 +8067,12 @@ PostgresMain(const char *dbname, const char *username)
 					int			conn_salen = MyProcPort->raddr.salen;
 					List	   *guc_options = MyProcPort->guc_options;
 					char	   *cmdline_options = MyProcPort->cmdline_options;
+					char	   *app_name = MyProcPort->application_name;
+					char	   *hostname = MyProcPort->remote_hostname;
+					int			hostname_resolv =
+						MyProcPort->remote_hostname_resolv;
+					int			hostname_errcode =
+						MyProcPort->remote_hostname_errcode;
 
 					/*
 					 * Clear guc_options sent in startup packet for
@@ -8080,6 +8086,21 @@ PostgresMain(const char *dbname, const char *username)
 					 * NULL before that
 					 */
 					MyProcPort->authn_id = NULL;
+
+					/*
+					 * The startup packet sets application_name only if the
+					 * client sent one, and check_hostname() caches the
+					 * client's reverse-resolved name and its verdict.  Both
+					 * names are allocated in the transaction context below.
+					 * Clear them so that each client is logged with its own
+					 * application_name and its hostname-based pg_hba rules
+					 * are evaluated against its own address, not a previous
+					 * client's freed values.
+					 */
+					MyProcPort->application_name = NULL;
+					MyProcPort->remote_hostname = NULL;
+					MyProcPort->remote_hostname_resolv = 0;
+					MyProcPort->remote_hostname_errcode = 0;
 #ifdef USE_SSL
 					/*
 					 * YB: Reset the TLS connection state of the logical connection.
@@ -8207,6 +8228,10 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->raddr.salen = conn_salen;
 					MyProcPort->guc_options = guc_options;
 					MyProcPort->cmdline_options = cmdline_options;
+					MyProcPort->application_name = app_name;
+					MyProcPort->remote_hostname = hostname;
+					MyProcPort->remote_hostname_resolv = hostname_resolv;
+					MyProcPort->remote_hostname_errcode = hostname_errcode;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 

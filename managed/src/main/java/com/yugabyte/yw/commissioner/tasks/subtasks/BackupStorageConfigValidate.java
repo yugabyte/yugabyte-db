@@ -7,7 +7,6 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,7 +38,7 @@ public class BackupStorageConfigValidate extends AbstractTaskBase {
   public void run() {
     CustomerConfig customerConfig =
         configService.getOrBadRequest(taskParams().customerUUID, taskParams().storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new RuntimeException("Storage config cannot be used as it is not in Active state");
     }
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);

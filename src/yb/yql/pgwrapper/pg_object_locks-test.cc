@@ -3744,7 +3744,7 @@ class PgObjectLocksWaitForBackendsIndexValid
     ASSERT_OK(create_index_future.get());
 
     ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet_rpc=4"));
-    LogWaiter log_waiter_failed_read(ts1, "backfill metadata not yet applied locally");
+    LogWaiter log_waiter_failed_read(ts1, "birth time not yet finalized locally");
     auto status_future = std::async(std::launch::async, [&]() {
       return conn_rr.FetchMatrix("SELECT * FROM test WHERE v = 1", 1 /* rows */, 2 /* columns */);
     });
