@@ -2582,7 +2582,11 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
   uint64_t restart_lsn = 0;
   uint64_t last_record_lsn = 0;
 
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 7);
+  // 2 transactions of BEGIN, INSERT and COMMIT, plus, without transactional DDL support, the DDL
+  // record carrying the schema of test1.
+  ASSERT_EQ(
+      change_resp.cdc_sdk_proto_records_size(),
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 6 : 7);
   for (auto record : change_resp.cdc_sdk_proto_records()) {
     last_record_lsn = record.row_message().pg_lsn();
     restart_lsn = last_record_lsn + 1;
