@@ -1296,11 +1296,20 @@ TEST_F(PgLocalCatalogPushFailoverTest, NewLeaderPushesWithoutWaiting) {
 }
 
 // A leader that loses its lease for a while is still the leader: its cycles push nothing and are
-// retried without counting a failure, and its gauges keep the targets and the copies' lag.
+// retried without counting a failure, and its gauges keep the targets and the copies' lag. The lag
+// grows even when the last cycle before the lapse found the copies current and was skipped.
 TEST_F(PgLocalCatalogPushFailoverTest, LeaseLapseKeepsGauges) {
   ASSERT_OK(SeedCopies());
   auto* leader = &LeaderMaster();
   ASSERT_EQ(PushGauge(METRIC_local_catalog_push_targets, leader), 1);
+  const auto skipped = PushCounter(METRIC_local_catalog_push_cycles_skipped, leader);
+  ASSERT_OK(WaitFor(
+      [this, leader, skipped]() -> Result<bool> {
+        RETURN_NOT_OK(Pusher(leader).TEST_RunCycle(/* skip_if_wal_unchanged = */ true));
+        return PushCounter(METRIC_local_catalog_push_cycles_skipped, leader) > skipped;
+      },
+      30s * kTimeMultiplier, "Cycle skipped"));
+  ASSERT_EQ(PushGauge<FunctionGauge>(METRIC_local_catalog_push_safe_time_lag_ms, leader), 0);
   for (size_t i = 0; i != cluster_->num_masters(); ++i) {
     if (cluster_->mini_master(i) != leader) {
       cluster_->mini_master(i)->Shutdown();

@@ -81,8 +81,9 @@ class SysCatalogPusher {
   // Runs one push cycle and returns when every target has answered or been skipped. The cycle
   // certifies a new safe time even when the WAL has not moved. Returns nullopt without pushing
   // when this master is not the leader, or when the YSQL lease or invalidation messages are off.
-  // Cycles run one at a time.
-  Result<std::optional<PushCycleResult>> TEST_RunCycle();
+  // Cycles run one at a time. With skip_if_wal_unchanged, the cycle is skipped as a timer cycle
+  // would be.
+  Result<std::optional<PushCycleResult>> TEST_RunCycle(bool skip_if_wal_unchanged = false);
 
   struct TargetState {
     // The copy's position and safe time from its last answer; unset until it answers.

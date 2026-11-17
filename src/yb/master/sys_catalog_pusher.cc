@@ -533,9 +533,10 @@ void SysCatalogPusher::Run() {
   }
 }
 
-Result<std::optional<SysCatalogPusher::PushCycleResult>> SysCatalogPusher::TEST_RunCycle() {
+Result<std::optional<SysCatalogPusher::PushCycleResult>> SysCatalogPusher::TEST_RunCycle(
+    bool skip_if_wal_unchanged) {
   std::lock_guard lock(cycle_mutex_);
-  return DoRunCycle(/* skip_if_wal_unchanged = */ false);
+  return DoRunCycle(skip_if_wal_unchanged);
 }
 
 struct SysCatalogPusher::CycleLeader {
