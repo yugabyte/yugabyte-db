@@ -144,8 +144,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsertWithAutoCommit))
 TEST_F(CDCSDKYsqlTest, SerializableDmlSkipsEmptyTopLevelIntent) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks_for_upgrade) = true;
-  // An unpacked row takes 2 intents; a 2-intent page could hold only an incomplete row, which
-  // GetChanges defers forever. 3 guarantees progress while still splitting the batch insert.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 3;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
