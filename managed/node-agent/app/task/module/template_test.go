@@ -274,8 +274,11 @@ func TestChronyTemplate(t *testing.T) {
 			if !strings.Contains(output, tc.wantWrite) {
 				t.Fatalf("Expected %q in output:\n%s", tc.wantWrite, output)
 			}
-			if strings.Contains(output, " /etc/chrony.conf\n") {
-				t.Fatalf("Expected writes to go through CHRONY_CONF:\n%s", output)
+			// sed/grep take the file after a quoted arg, echo after >>.
+			for _, old := range []string{"' /etc/chrony.conf", ">> /etc/chrony.conf"} {
+				if strings.Contains(output, old) {
+					t.Fatalf("Expected writes to go through CHRONY_CONF, found %q:\n%s", old, output)
+				}
 			}
 			if strings.Contains(output, ntsRm) != tc.wantRm {
 				t.Fatalf("Expected NTS pool removal=%v in output:\n%s", tc.wantRm, output)
