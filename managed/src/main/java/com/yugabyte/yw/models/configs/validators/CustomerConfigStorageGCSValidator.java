@@ -65,7 +65,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
 
     // Should not contain neither or both json creds and use GCP IAM flag.
     if ((StringUtils.isBlank(gcsData.gcsCredentialsJson) && !gcsData.useGcpIam)
-        || introduces(CustomerConfigStorageGCSValidator::hasKeyWithGcpIam, gcsData, storedGcs)) {
+        || newlyViolates(CustomerConfigStorageGCSValidator::hasKeyWithGcpIam, gcsData, storedGcs)) {
       SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
       validationErrorsMap.put(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
@@ -79,7 +79,8 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     // Federation only runs through USE_GCP_IAM, and a JSON key takes priority over it on the DB
     // nodes, so a config marked as federated would still use the key. Checked on its own, so that
     // a config saved with a key and USE_GCP_IAM cannot turn on federation and keep the key.
-    if (introduces(CustomerConfigStorageGCSValidator::hasFederationWithKey, gcsData, storedGcs)) {
+    if (newlyViolates(
+        CustomerConfigStorageGCSValidator::hasFederationWithKey, gcsData, storedGcs)) {
       throwBeanConfigDataValidatorError(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
           "USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of GCS_CREDENTIALS_JSON.");

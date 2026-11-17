@@ -75,7 +75,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       // way they are not the config's credential, so they are refused, and the message names the
       // IAM role as YBA's fallback. A config saved with keys and federation keeps taking edits
       // such as a rename.
-      if (introduces(
+      if (newlyViolates(
           CustomerConfigStorageS3Validator::hasKeysWithFederation,
           s3data,
           (CustomerConfigStorageS3Data) stored)) {

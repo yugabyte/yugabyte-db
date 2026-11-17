@@ -31,10 +31,18 @@ public abstract class ConfigDataValidator extends BaseBeanValidator {
     validate(data);
   }
 
-  /** Whether {@code data} breaks {@code rule}, unless the saved {@code stored} already did. */
-  protected static <T extends CustomerConfigData> boolean introduces(
-      Predicate<T> rule, T data, @Nullable T stored) {
-    return rule.test(data) && (stored == null || !rule.test(stored));
+  /**
+   * Whether {@code data} newly violates a rule: it violates the rule, and the saved config does
+   * not.
+   *
+   * @param violation returns true when a config violates the rule
+   * @param data the config as it would be saved by this request
+   * @param stored the config as it is saved now, or null for a new config
+   * @return true if the request should be rejected
+   */
+  protected static <T extends CustomerConfigData> boolean newlyViolates(
+      Predicate<T> violation, T data, @Nullable T stored) {
+    return violation.test(data) && (stored == null || !violation.test(stored));
   }
 
   protected void throwBeanConfigDataValidatorError(String fieldName, String exceptionMsg) {
