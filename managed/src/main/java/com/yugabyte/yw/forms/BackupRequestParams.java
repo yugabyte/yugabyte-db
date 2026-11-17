@@ -19,7 +19,6 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -289,7 +288,7 @@ public class BackupRequestParams extends UniverseTaskParams {
       UUID customerUUID) {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, this.storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as Storage config is queued for deletion");
     }
