@@ -1432,23 +1432,42 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             XClusterConfigTaskBase.getTableIds(
                 XClusterConfigTaskBase.getTableInfoList(mockYBClientService, sourceUniverse)));
     assertTrue(setTablesForm.tables.contains(matviewTableId(namespaceIds.get(0))));
+    // The set-tables computation and its validations are deferred to the SetTablesDrConfig task,
+    // so the API accepts the request; the materialized view is rejected when the task computes the
+    // set-tables params.
+    UUID setTablesTaskUUID = buildTaskInfo(null, TaskType.SetTablesDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(setTablesTaskUUID);
     Result setTablesResult =
-        assertPlatformException(
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/dr_configs/"
+                + drConfig.getUuid()
+                + "/set_tables",
+            authToken,
+            Json.toJson(setTablesForm));
+    assertOk(setTablesResult);
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
             () ->
-                doRequestWithAuthTokenAndBody(
-                    "POST",
-                    "/api/customers/"
-                        + defaultCustomer.getUuid()
-                        + "/dr_configs/"
-                        + drConfig.getUuid()
-                        + "/set_tables",
-                    authToken,
-                    Json.toJson(setTablesForm)));
-    assertBadRequest(
-        setTablesResult,
+                XClusterConfigController.getSetTablesTaskParams(
+                    mockYBClientService,
+                    xClusterConfig,
+                    sourceUniverse,
+                    targetUniverse,
+                    setTablesForm.tables,
+                    null /* bootstrapParams */,
+                    false /* autoIncludeIndexTables */,
+                    true /* dryRun */,
+                    true /* validateRequestedChange */));
+    assertEquals(
         "Materialized views can be part of replication only for xCluster/DR configs in automatic"
             + " DDL mode; the following requested tables are materialized views: ["
             + matviewTableId(namespaceIds.get(0))
-            + "]");
+            + "]",
+        exception.getMessage());
   }
 }

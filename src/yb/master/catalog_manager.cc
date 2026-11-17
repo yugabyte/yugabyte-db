@@ -585,7 +585,10 @@ DEFINE_test_flag(bool, create_table_with_empty_namespace_name, false,
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
     "Delay creating child tablets and upserting them to sys catalog");
 
+DECLARE_bool(ysql_yb_enable_colocated_tables_with_tablespaces);
+namespace deprecated_flag_do_not_use {
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+}
 
 DEFINE_test_flag(bool, pause_pg_catalog_versions_cache_refresh, false,
     "When true, RefreshPgCatalogVersionCache() returns without doing anything, for both its "
@@ -4582,14 +4585,16 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       !colocated || req.has_table_id(), InvalidArgument,
       "Colocated table should specify a table ID");
 
-  // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
-  // specified for indexes on colocated tables. Vector indexes are exempt: they are copartitioned
-  // with (and stored on) the indexed table's tablets, so a tablespace recorded for them only
-  // mirrors the indexed table's tablespace for catalog consistency and is never used for the
-  // vector index's (shared) placement.
+  // If colocated tables with tablespaces are not enabled then tablespaces cannot be specified for
+  // indexes on colocated tables. The deprecated flag counts as well, because postgres honors it
+  // too (see AppendPgGFlags). Vector indexes are exempt: they are copartitioned with (and stored
+  // on) the indexed table's tablets, so a tablespace recorded for them only mirrors the indexed
+  // table's tablespace for catalog consistency and is never used for the vector index's (shared)
+  // placement.
   SCHECK(
-      FLAGS_ysql_enable_colocated_tables_with_tablespaces || !colocated || !IsIndex(req) ||
-          is_vector_index || !req.has_tablespace_id(),
+      FLAGS_ysql_yb_enable_colocated_tables_with_tablespaces ||
+          deprecated_flag_do_not_use::FLAGS_ysql_enable_colocated_tables_with_tablespaces ||
+          !colocated || !IsIndex(req) || is_vector_index || !req.has_tablespace_id(),
       InvalidArgument, "TABLESPACE is not supported for indexes on colocated tables.");
 
   // TODO: If this is a colocated index table, convert any hash partition columns into

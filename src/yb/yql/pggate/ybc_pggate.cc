@@ -2533,7 +2533,9 @@ void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo version_info,
     YbcPgSysTablePrefetcherCacheMode cache_mode,
-    YbcPgSysTablePrefetchKind kind) {
+    YbcPgSysTablePrefetchKind kind,
+    bool send_away_if_fill_in_flight,
+    bool part_of_connection_prefetch) {
   YBCStartSysTablePrefetchingImpl(
       PrefetcherOptions::CachingInfo{
           {
@@ -2541,7 +2543,8 @@ void YBCStartSysTablePrefetching(
               MakeReadHybridTime(version_info.version_read_time),
               version_info.is_db_catalog_version_mode
           },
-          database_oid, YBCMapPrefetcherCacheMode(cache_mode)},
+          database_oid, YBCMapPrefetcherCacheMode(cache_mode),
+          send_away_if_fill_in_flight, part_of_connection_prefetch},
       kind);
 }
 

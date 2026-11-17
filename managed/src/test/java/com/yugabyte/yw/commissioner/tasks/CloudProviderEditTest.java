@@ -45,6 +45,8 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertificateHelperTest;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
@@ -60,6 +62,9 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
@@ -802,6 +807,215 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     verify(mockAccessManager, times(1)).createKubernetesConfig(anyString(), anyMap(), eq(true));
     verify(mockAccessManager, times(2))
         .createKubernetesAuthDataFile(anyString(), anyString(), anyString(), eq(true));
+  }
+
+  @Test
+  public void testK8sInUseZoneKubeConfigEditAllowed() throws InterruptedException {
+    // PLAT-21218: kubeconfig-only edits must succeed for in-use Kubernetes zones.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    AvailabilityZone zone = p.getRegions().get(0).getZones().get(0);
+    // Seed a zone-level kubeconfig before marking the AZ in use, then rotate it.
+    setZoneKubeConfig(zone, "seed.conf", "test-kubeconfig.conf");
+    UUID seedTask = doEditProvider(p, false);
+    assertEquals(TaskInfo.State.Success, waitForTask(seedTask).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    zone = p.getRegions().get(0).getZones().get(0);
+    attachUniverseToZone(k8sProvider, zone);
+
+    KubernetesRegionInfo k8sRegInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("rotated.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    k8sRegInfo =
+        p.getRegions().get(0).getZones().get(0).getDetails().getCloudInfo().getKubernetes();
+    assertNull(k8sRegInfo.getKubeConfigName());
+    assertNotNull(k8sRegInfo.getKubeConfig());
+    assertEquals("https://5.6.7.8", k8sRegInfo.getApiServerEndpoint());
+  }
+
+  @Test
+  public void testK8sInUseRegionKubeConfigEditAllowed() throws InterruptedException {
+    // PLAT-21218: kubeconfig-only edits must succeed for in-use Kubernetes regions.
+    // createK8sProvider(false) leaves region.cloudInfo null; seed region kubeconfig first.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    Region region = p.getRegions().get(0);
+    setRegionKubeConfig(region, "seed-region.conf", "test-kubeconfig.conf");
+    UUID seedTask = doEditProvider(p, false);
+    assertEquals(TaskInfo.State.Success, waitForTask(seedTask).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    region = p.getRegions().get(0);
+    attachUniverseToZone(k8sProvider, region.getZones().get(0));
+
+    KubernetesRegionInfo k8sRegInfo = region.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("rotated-region.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    k8sRegInfo = p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes();
+    assertNull(k8sRegInfo.getKubeConfigName());
+    assertNotNull(k8sRegInfo.getKubeConfig());
+    assertEquals("https://5.6.7.8", k8sRegInfo.getApiServerEndpoint());
+  }
+
+  @Test
+  public void testK8sInUseProviderKubeConfigEditAllowed() throws InterruptedException {
+    // PLAT-21218: provider-level kubeconfig rotation is allowed via @EditableInUseProvider.
+    Provider k8sProvider = createK8sProvider();
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    attachUniverseToZone(k8sProvider, p.getRegions().get(0).getZones().get(0));
+
+    p.getDetails().getCloudInfo().getKubernetes().setKubeConfigName("rotated-provider.conf");
+    p.getDetails()
+        .getCloudInfo()
+        .getKubernetes()
+        .setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+
+    UUID taskUUID = doEditProvider(p, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    KubernetesInfo k8sInfo = CloudInfoInterface.get(p);
+    assertNull(k8sInfo.getKubeConfigName());
+    assertNotNull(k8sInfo.getKubeConfig());
+    assertEquals("https://5.6.7.8", k8sInfo.getApiServerEndpoint());
+  }
+
+  @Test
+  public void testK8sInUseZoneNonKubeConfigEditBlocked() {
+    // PLAT-21218: non-kubeconfig zone edits remain blocked when the AZ is in use.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    AvailabilityZone zone = p.getRegions().get(0).getZones().get(0);
+    attachUniverseToZone(k8sProvider, zone);
+
+    KubernetesRegionInfo k8sRegInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubernetesStorageClass("new-storage-class");
+
+    verifyEditError(
+        p, false, "Modifying zone us-west1-a details is not allowed for providers in use.");
+  }
+
+  @Test
+  public void testK8sInUseZoneMixedKubeConfigAndStorageEditBlocked() throws InterruptedException {
+    // PLAT-21218: exemption is kubeconfig-only; mixed zone edits stay blocked.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    AvailabilityZone zone = p.getRegions().get(0).getZones().get(0);
+    setZoneKubeConfig(zone, "seed.conf", "test-kubeconfig.conf");
+    assertEquals(TaskInfo.State.Success, waitForTask(doEditProvider(p, false)).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    zone = p.getRegions().get(0).getZones().get(0);
+    attachUniverseToZone(k8sProvider, zone);
+
+    KubernetesRegionInfo k8sRegInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    k8sRegInfo.setKubeConfigName("rotated.conf");
+    k8sRegInfo.setKubeConfigContent(TestUtils.readResource("test-kubeconfig-updated.conf"));
+    k8sRegInfo.setKubernetesStorageClass("new-storage-class");
+
+    verifyEditError(
+        p, false, "Modifying zone us-west1-a details is not allowed for providers in use.");
+  }
+
+  @Test
+  public void testK8sInUseRegionNonKubeConfigEditBlocked() throws InterruptedException {
+    // PLAT-21218: non-kubeconfig region edits remain blocked when the region is in use.
+    Provider k8sProvider = createK8sProvider(false);
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    Region region = p.getRegions().get(0);
+    setRegionKubeConfig(region, "seed-region.conf", "test-kubeconfig.conf");
+    assertEquals(TaskInfo.State.Success, waitForTask(doEditProvider(p, false)).getTaskState());
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    region = p.getRegions().get(0);
+    attachUniverseToZone(k8sProvider, region.getZones().get(0));
+
+    region.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("new-sc");
+
+    verifyEditError(
+        p, false, "Modifying region us-west1 details is not allowed for providers in use.");
+  }
+
+  @Test
+  public void testK8sInUseProviderNonKubeConfigEditBlocked() {
+    // PLAT-21218: non-editable provider cloudInfo fields stay blocked when in use.
+    Provider k8sProvider = createK8sProvider();
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    attachUniverseToZone(k8sProvider, p.getRegions().get(0).getZones().get(0));
+
+    p.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("blocked-sc");
+
+    verifyEditError(p, false, "Kubernetes Storage Class cannot be modified for in-use providers.");
+  }
+
+  /** Places a node of a new universe in the given zone, marking the zone and region as in use. */
+  private void attachUniverseToZone(Provider provider, AvailabilityZone zone) {
+    Universe universe =
+        ModelFactory.createUniverse(
+            "k8s-in-use-" + zone.getCode() + "-" + UUID.randomUUID(),
+            UUID.randomUUID(),
+            defaultCustomer.getId(),
+            Common.CloudType.kubernetes);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          Cluster primaryCluster = details.getPrimaryCluster();
+          primaryCluster.userIntent.provider = provider.getUuid().toString();
+          primaryCluster.userIntent.providerType = Common.CloudType.kubernetes;
+          primaryCluster.userIntent.numNodes = 1;
+
+          NodeDetails node = new NodeDetails();
+          node.nodeName = "yb-tserver-0";
+          node.nodeIdx = 1;
+          node.azUuid = zone.getUuid();
+          node.placementUuid = primaryCluster.uuid;
+          node.state = NodeState.Live;
+          node.isTserver = true;
+          node.isMaster = true;
+          node.cloudInfo = new CloudSpecificInfo();
+          node.cloudInfo.cloud = Common.CloudType.kubernetes.name();
+          node.cloudInfo.region = zone.getRegion().getCode();
+          node.cloudInfo.az = zone.getCode();
+          details.nodeDetailsSet = new HashSet<>(Collections.singletonList(node));
+        });
+  }
+
+  private void setZoneKubeConfig(AvailabilityZone zone, String name, String resource) {
+    KubernetesRegionInfo k8sInfo = zone.getDetails().getCloudInfo().getKubernetes();
+    if (k8sInfo == null) {
+      k8sInfo = new KubernetesRegionInfo();
+      zone.getDetails().getCloudInfo().setKubernetes(k8sInfo);
+    }
+    k8sInfo.setKubeConfigName(name);
+    k8sInfo.setKubeConfigContent(TestUtils.readResource(resource));
+  }
+
+  private void setRegionKubeConfig(Region region, String name, String resource) {
+    // RegionDetails.cloudInfo is null until set (unlike AZ details which default an empty object).
+    if (region.getDetails().getCloudInfo() == null) {
+      region.getDetails().setCloudInfo(new RegionDetails.RegionCloudInfo());
+    }
+    if (region.getDetails().getCloudInfo().getKubernetes() == null) {
+      region.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    }
+    KubernetesRegionInfo k8sInfo = region.getDetails().getCloudInfo().getKubernetes();
+    k8sInfo.setKubeConfigName(name);
+    k8sInfo.setKubeConfigContent(TestUtils.readResource(resource));
   }
 
   @Test

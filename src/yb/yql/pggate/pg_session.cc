@@ -938,9 +938,18 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     auto& read_time_options = *options.mutable_read_time_options();
     VLOG(2) << "Perform - catalog_read_time: " << catalog_read_time_
             << " read_time: " << read_time_options.read_time().ShortDebugString();
-    // catalog_read_time_ is empty => pick a fresh read time.
-    if (!read_time_options.has_read_time() && catalog_read_time_) {
-      catalog_read_time_.ToPB(read_time_options.mutable_read_time());
+    if (!read_time_options.has_read_time()) {
+      if (catalog_read_time_) {
+        catalog_read_time_.ToPB(read_time_options.mutable_read_time());
+      } else {
+        // catalog_read_time_ is empty => a fresh catalog snapshot is required. It must be picked
+        // from the local clock instead of by the storage layer, which uses the sys catalog tablet's
+        // safe time: concurrent in-flight sys catalog writes hold that safe time back below the
+        // commit time of a DDL this session has just committed, hiding the session's own catalog
+        // changes. Catalog reads also force global_limit == read, so no read restart would correct
+        // it.
+        read_time_options.set_clamp_uncertainty_window(true);
+      }
     }
     options.set_use_legacy_catalog_session(true);
   } else {
@@ -1015,6 +1024,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
     caching_info.set_catalog_version(cache_options.catalog_version);
     caching_info.set_lookup_only(cache_options.lookup_only);
     caching_info.set_completes_connection_prefetch(cache_options.completes_connection_prefetch);
+    caching_info.set_send_away_if_fill_in_flight(cache_options.send_away_if_fill_in_flight);
+    caching_info.set_part_of_connection_prefetch(cache_options.part_of_connection_prefetch);
     if (cache_options.lifetime_threshold_ms) {
       caching_info.mutable_lifetime_threshold_ms()->set_value(*cache_options.lifetime_threshold_ms);
     }
