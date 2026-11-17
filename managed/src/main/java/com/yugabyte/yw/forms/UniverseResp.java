@@ -77,6 +77,7 @@ public class UniverseResp {
     String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
     return new UniverseResp(
         universe,
+        Customer.get(universe.getCustomerId()),
         taskUUID,
         context.getProvider(Util.getDefaultProviderUUID(universe)),
         UniverseResourceDetails.create(
@@ -113,6 +114,7 @@ public class UniverseResp {
             universe ->
                 new UniverseResp(
                     universe,
+                    customer,
                     null,
                     context.getProvider(Util.getDefaultProviderUUID(universe)),
                     // Counting overall details separately instead of sum of per-provider to avoid
@@ -299,6 +301,7 @@ public class UniverseResp {
   public UniverseResp(Universe entity) {
     this(
         entity,
+        Customer.get(entity.getCustomerId()),
         null, /* taskUUID */
         Provider.getOrBadRequest(Util.getDefaultProviderUUID(entity)),
         null,
@@ -312,6 +315,7 @@ public class UniverseResp {
 
   public UniverseResp(
       Universe entity,
+      Customer customer,
       UUID taskUUID,
       Provider defaultProvider,
       UniverseResourceDetails totalResources,
@@ -325,7 +329,6 @@ public class UniverseResp {
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
     version = entity.getVersion();
-    Customer customer = Customer.get(entity.getCustomerId());
     dnsName = getDnsName(customer, defaultProvider); // This is only evaluated per one provider
     UniverseDefinitionTaskParams details = entity.getUniverseDetails();
     if (Util.isMulticloud(entity)) {
