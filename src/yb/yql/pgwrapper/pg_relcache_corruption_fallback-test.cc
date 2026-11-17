@@ -12,6 +12,7 @@
 
 #include <string>
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
 
@@ -267,6 +268,47 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
   }
 
   /*
+   * relchecks higher than the table's CHECK rows, seen by a session that was already connected.
+   * A new catalog version without invalidation messages makes its next statement do a full
+   * catalog cache refresh, which rebuilds every relcache entry, user tables included, through
+   * the same preload code whatever the preload flags. Like upstream PostgreSQL, the rebuild only
+   * warns, so the session keeps working, and writes to the table fail in ExecRelCheck.
+   */
+  void RunRelchecksHigherRefreshTest(const std::string& table_name) {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateFullSchema(setup_conn));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (col1 int CHECK (col1 > 0), col2 int)", table_name));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", table_name));
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (5, 6)", table_name));
+
+    ASSERT_OK(CorruptRelchecks(setup_conn, table_name, 2));
+    ASSERT_OK(IncrementAllDBCatalogVersions(setup_conn, IsBreakingCatalogVersionChange::kFalse));
+    const auto target_version = ASSERT_RESULT(setup_conn.FetchRow<int64_t>(
+        "SELECT current_version FROM pg_yb_catalog_version WHERE db_oid = "
+        "(SELECT oid FROM pg_database WHERE datname = current_database())"));
+    // Each probe is a statement on conn, so it refreshes conn's caches once the new version
+    // reaches its tserver.
+    ASSERT_OK(LoggedWaitFor(
+        [&conn, target_version]() -> Result<bool> {
+          return VERIFY_RESULT(conn.FetchRow<int64_t>(
+              "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()")) >=
+              target_version;
+        },
+        30s * kTimeMultiplier, "the session sees the new catalog version"));
+
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(
+        Format("SELECT col1 + col2 FROM $0 ORDER BY col2", table_name)));
+    ASSERT_EQ(rows, "3; 7; 11");
+
+    auto status = conn.ExecuteFormat("INSERT INTO $0 VALUES (7, 8)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "1 pg_constraint record(s) missing");
+  }
+
+  /*
    * A column with atthasdef but no pg_attrdef row, plus another table whose corruption makes the
    * preload fail. Like upstream PostgreSQL, building the entry only warns and leaves the missing
    * default out, so the retry's relcache teardown can free it. Before the fix, the preload left a
@@ -377,6 +419,14 @@ TEST_F(PgRelcacheFaultToleranceTest, RelchecksHigher) {
 
 TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelchecksHigher) {
   RunRelchecksHigherTest("t_relchecks_high");
+}
+
+TEST_F(PgRelcacheFaultToleranceTest, RelchecksHigherRefresh) {
+  RunRelchecksHigherRefreshTest("t_relchecks_refresh");
+}
+
+TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelchecksHigherRefresh) {
+  RunRelchecksHigherRefreshTest("t_relchecks_refresh");
 }
 
 TEST_F(PgRelcacheFaultToleranceTest, AttrdefMissing) {

@@ -1659,8 +1659,8 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
  * with atthasdef.  Like AttrDefaultFetch, it only warns about a missing
  * pg_attrdef record or a null adbin, and installs the array only once it is
  * valid, with only the entries found: a NULL adbin left in it would crash
- * FreeTupleDesc, for example in the relcache preload retry's teardown
- * (#37715).
+ * FreeTupleDesc when the entry is freed, for example by the relcache preload
+ * retry or by the next catalog cache refresh (#37715).
  */
 static void
 YbAttrDefaultFetch(Relation relation, AttrDefault *attrdef, int ndef,
@@ -1741,9 +1741,9 @@ YbAttrDefaultFetch(Relation relation, AttrDefault *attrdef, int ndef,
  *
  * Like CheckConstraintFetch, it only warns when the CHECK rows don't match
  * relchecks, and installs the array only once it is fully valid, with
- * num_check set to the number of entries found: the executor refuses writes to
- * the relation (ExecRelCheck).  An error here would leave a half-filled array
- * behind, which the relcache preload retry would free (#37715).
+ * num_check set to the number of entries found; the executor refuses writes to
+ * the relation (ExecRelCheck).  So, as with RelationBuildDesc, a mismatch
+ * fails neither a connection's relcache preload nor a catalog cache refresh.
  */
 static void
 YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cache)
