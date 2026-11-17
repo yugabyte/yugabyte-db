@@ -7,7 +7,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -24,11 +23,12 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 import play.libs.Json;
 
 /**
- * Random overrides YAML through redact and restore: secret gflags, ysql_hba_conf_csv and other
- * strings that mention a secret, in every scalar style, in block and flow collections and lists,
- * with comments, escaped keys, a document marker and CRLF line ends. Secrets end with -secret,
- * which nothing else contains, so any output holding it leaks. The redacted YAML must load as the
- * stored YAML with each secret redacted, and restore must give back the stored text.
+ * Random overrides YAML through redact and restore: secret gflags and ysql_hba_conf_csv in every
+ * scalar style, in block and flow collections and lists, with comments, escaped keys, a document
+ * marker and CRLF line ends, and now and then another string that mentions a secret, which hides
+ * the overrides whole. Secrets end with -secret, which nothing else contains, so any output holding
+ * it leaks. The redacted YAML must load as the stored YAML with each secret redacted, and restore
+ * must give back the stored text.
  */
 public class KubernetesOverridesRedactionRandomizedTest {
 
@@ -38,6 +38,7 @@ public class KubernetesOverridesRedactionRandomizedTest {
   private Random random;
   private int next;
   private boolean secretInList;
+  private boolean hiddenWhole;
 
   @Test
   public void testRedactAndRestore() {
@@ -56,9 +57,17 @@ public class KubernetesOverridesRedactionRandomizedTest {
 
       String redacted = KubernetesOverridesRedactor.redact(stored);
       assertFalse(message + "\nredacted:\n" + redacted, redacted.contains("-secret"));
-      assertEquals(
-          message + "\nredacted:\n" + redacted, expected(load(stored), null), load(redacted));
+      hiddenWhole = false;
+      Object want = expected(load(stored), null);
+      if (hiddenWhole) {
+        assertEquals(message, RedactingService.SECRET_REPLACEMENT, redacted);
+      } else {
+        assertEquals(message + "\nredacted:\n" + redacted, want, load(redacted));
+      }
       assertEquals(message, stored, KubernetesOverridesRedactor.restore(stored, redacted, "o"));
+      if (hiddenWhole) {
+        continue;
+      }
 
       String edited = redacted + "zz_extra: 1" + eol;
       if (secretInList && !redacted.equals(stored)) {
@@ -69,10 +78,10 @@ public class KubernetesOverridesRedactionRandomizedTest {
         continue;
       }
       @SuppressWarnings("unchecked")
-      Map<Object, Object> want = new LinkedHashMap<>((Map<Object, Object>) load(stored));
-      want.put("zz_extra", 1);
+      Map<Object, Object> wantEdited = new LinkedHashMap<>((Map<Object, Object>) load(stored));
+      wantEdited.put("zz_extra", 1);
       String restored = KubernetesOverridesRedactor.restore(stored, edited, "o");
-      assertEquals(message + "\nrestored:\n" + restored, want, load(restored));
+      assertEquals(message + "\nrestored:\n" + restored, wantEdited, load(restored));
     }
   }
 
@@ -80,9 +89,12 @@ public class KubernetesOverridesRedactionRandomizedTest {
     return new Yaml(new SafeConstructor(new LoaderOptions())).load(yaml);
   }
 
-  /** The loaded YAML with each secret redacted, worked out on the tree rather than the text. */
+  /**
+   * The loaded YAML with each secret redacted, worked out on the tree rather than the text. Sets
+   * hiddenWhole for another string that mentions a secret.
+   */
   @SuppressWarnings("unchecked")
-  private static Object expected(Object node, String key) {
+  private Object expected(Object node, String key) {
     if (node instanceof Map) {
       Map<Object, Object> out = new LinkedHashMap<>();
       ((Map<Object, Object>) node).forEach((k, v) -> out.put(k, expected(v, String.valueOf(k))));
@@ -106,7 +118,7 @@ public class KubernetesOverridesRedactionRandomizedTest {
       return HbaConfRedactor.redact(value);
     }
     if (NAMES.stream().anyMatch(value::contains) || HbaConfRedactor.mentionsLdapBindPasswd(value)) {
-      return RedactingService.redactShellProcessOutput(value, RedactionTarget.LOGS);
+      hiddenWhole = true;
     }
     return value;
   }
@@ -208,7 +220,10 @@ public class KubernetesOverridesRedactionRandomizedTest {
           out.append(indent)
               .append(key)
               .append(": ")
-              .append(blockValue("--" + name() + "=" + secret(), indent));
+              .append(
+                  blockValue(
+                      random.nextInt(8) == 0 ? "--" + name() + "=" + secret() : "v" + (next++),
+                      indent));
           break;
         case 4:
           out.append(indent).append(key).append(": test");
@@ -235,11 +250,12 @@ public class KubernetesOverridesRedactionRandomizedTest {
             out.append(indent).append("  - ");
             if (random.nextInt(3) == 0) {
               secretInList = true;
-              out.append(quote("--" + name() + "=" + secret()));
+              out.append(secretKey(name()))
+                  .append(": ")
+                  .append(blockValue(secret(), indent + "    "));
             } else {
-              out.append("item").append(next++);
+              out.append("item").append(next++).append("\n");
             }
-            out.append("\n");
           }
       }
     }
