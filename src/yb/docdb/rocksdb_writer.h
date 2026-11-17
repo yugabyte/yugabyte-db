@@ -287,20 +287,17 @@ class VectorIndexesUpdater {
   VectorIndexesUpdater(
       DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages,
-      vector_index::VectorLSMChunkHolds& chunk_holds);
+      vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target = false);
 
   // write_time is the time the regular record is written at. The reverse mapping entry is written
-  // at the same time, and the vector index feed is gated by it. An xCluster target record is
-  // indexed even below the index hybrid time, see IntentApplyShouldUpdateVectorIndex. A caller
-  // passes the same xcluster_target for a record here and to AppliesToRow.
+  // at the same time, and the vector index feed is gated by it.
   Status Feed(
-      rocksdb::DirectWriteHandler& handler, Slice key, Slice value, DocHybridTime write_time,
-      XClusterTargetApplied xcluster_target);
+      rocksdb::DirectWriteHandler& handler, Slice key, Slice value, DocHybridTime write_time);
   Status Complete();
 
   // Whether an index this update applies to takes the row with the specified key, written at
   // write_ht.
-  bool AppliesToRow(Slice key, HybridTime write_ht, XClusterTargetApplied xcluster_target) const;
+  bool AppliesToRow(Slice key, HybridTime write_ht) const;
 
  private:
   template <class Decoder>
@@ -322,9 +319,8 @@ class VectorIndexesUpdater {
     return apply_to_storages_.TestVectorIndex(index);
   }
 
-  static bool IntentApplyShouldUpdateVectorIndex(
-      const DocVectorIndex& vector_index, HybridTime write_ht,
-      XClusterTargetApplied xcluster_target);
+  bool IntentApplyShouldUpdateVectorIndex(
+      const DocVectorIndex& vector_index, HybridTime write_ht) const;
 
   // Whether the table with the specified key prefix writes the vector reverse mapping. Fixed at
   // table creation, so it does not depend on the schema version the row is packed with.
@@ -335,9 +331,9 @@ class VectorIndexesUpdater {
   ConsensusFrontiers& frontiers_;
   StorageSet apply_to_storages_;
   vector_index::VectorLSMChunkHolds& chunk_holds_;
-  // Write time and origin of the record being fed, see Feed.
+  const bool xcluster_target_;
+  // Write time of the record being fed, see Feed.
   DocHybridTime write_time_;
-  XClusterTargetApplied xcluster_target_ = XClusterTargetApplied::kFalse;
 
   struct IndexBatch {
     // TODO(#30819 vector_index) Optimize memory management

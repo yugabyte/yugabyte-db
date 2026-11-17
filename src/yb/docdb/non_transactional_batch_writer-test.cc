@@ -947,43 +947,56 @@ TEST_F(NonTransactionalBatchWriterTest, ApplyInsertsOpVectorsAtOnce) {
 
 // GH#34697: an xCluster target writes a row at its source hybrid time, which can be below the
 // hybrid time of a vector index that was backfilled before the row arrived, and the index must
-// still take the row. External intents come from an xCluster source only, while a plain write is
-// one only when the consumer marks it with XClusterTargetApplied.
+// still take the row. The consumer marks its writes with XClusterTargetApplied, except one older
+// than that flag, whose ops the external transactions they carry mark instead. Every record of an
+// op is gated the same way.
 TEST_F(NonTransactionalBatchWriterTest, XClusterWriteBelowIndexHybridTime) {
+  const Uuid involved_tablet = ASSERT_RESULT(Uuid::FromString(kTabletUUID));
+  const auto txn = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
+  const auto kBatchHT = 5000_usec_ht;
+  const auto kWriteHT = 6000_usec_ht;
   // Above the hybrid time of every write below.
   const auto kIndexHT = 7000_usec_ht;
-  // The regular bit is left clear, so the apply doesn't also write the regular-DB reverse mapping,
-  // which would need a real encoded vector value; only the vector feed is exercised.
-  StorageSet apply_to_storages;
-  apply_to_storages.Resize(1);
-  apply_to_storages.SetVectorIndex(0);
-  auto make_indexes = [](const std::shared_ptr<CountingVectorIndex>& index) {
+
+  auto row_path = [](int row) {
+    const DocKey doc_key(static_cast<uint16_t>(row), MakeKeyEntryValues(Format("row$0", row)));
+    return DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
+  };
+  auto add_plain_write = [&row_path](docdb::LWKeyValueWriteBatchPB* put_batch, int row) {
+    auto* write_pair = put_batch->add_write_pairs();
+    write_pair->dup_key(EncodeDocPathKey(row_path(row)).AsSlice());
+    write_pair->dup_value(EncodeValue(QLValue::Primitive("vec")));
+  };
+  auto inserted_entries = [&](
+      const docdb::LWKeyValueWriteBatchPB& put_batch,
+      XClusterTargetApplied xcluster_target_applied) -> size_t {
+    auto index = MakeCountingIndex(kIndexHT);
     auto indexes = std::make_shared<DocVectorIndexes>();
     indexes->push_back(index);
-    return indexes;
-  };
-
-  auto external_index = MakeCountingIndex(kIndexHT);
-  ApplyExternalVectorColumnWrite(
-      make_indexes(external_index), apply_to_storages, "0000000000000001", 0);
-  ASSERT_EQ(external_index->inserted_entries(), 1);
-
-  auto plain_write_entries = [&](XClusterTargetApplied xcluster_target_applied) -> size_t {
-    auto index = MakeCountingIndex(kIndexHT);
-    const DocKey doc_key(static_cast<uint16_t>(1), MakeKeyEntryValues("row1"));
-    docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
-    auto* write_pair = put_batch.add_write_pairs();
-    write_pair->dup_key(EncodeDocPathKey(
-        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)))).AsSlice());
-    write_pair->dup_value(EncodeValue(QLValue::Primitive("vec")));
+    // The regular bit is left clear, so the apply doesn't also write the regular-DB reverse
+    // mapping, which would need a real encoded vector value; only the vector feed is exercised.
+    StorageSet apply_to_storages;
+    apply_to_storages.Resize(1);
+    apply_to_storages.SetVectorIndex(0);
     CHECK_OK(SendWriteBatch(
-        put_batch, 6000_usec_ht, 5000_usec_ht, make_indexes(index), apply_to_storages,
-        TableType::PGSQL_TABLE_TYPE, /* can_advance_intents_flush_op_id= */ nullptr,
-        xcluster_target_applied));
+        put_batch, kWriteHT, kBatchHT, indexes, apply_to_storages, TableType::PGSQL_TABLE_TYPE,
+        /* can_advance_intents_flush_op_id= */ nullptr, xcluster_target_applied));
     return index->inserted_entries();
   };
-  ASSERT_EQ(plain_write_entries(XClusterTargetApplied::kFalse), 0);
-  ASSERT_EQ(plain_write_entries(XClusterTargetApplied::kTrue), 1);
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  add_plain_write(&put_batch, /* row= */ 0);
+  ASSERT_EQ(inserted_entries(put_batch, XClusterTargetApplied::kFalse), 0);
+  ASSERT_EQ(inserted_entries(put_batch, XClusterTargetApplied::kTrue), 1);
+
+  // The same op from an older consumer, also applying a transaction.
+  put_batch.Clear();
+  AddExternalIntentsWritePair(
+      &put_batch, txn, kMinSubTransactionId,
+      {{row_path(1), EncodeValue(QLValue::Primitive("vec"))}}, involved_tablet);
+  add_plain_write(&put_batch, /* row= */ 0);
+  AddApplyExternalTxn(&put_batch, txn, kWriteHT);
+  ASSERT_EQ(inserted_entries(put_batch, XClusterTargetApplied::kFalse), 2);
 }
 
 }  // namespace yb::docdb

@@ -3655,9 +3655,7 @@ Status Tablet::WriteMissingVectorReverseMappings(const TableInfo& table_info, co
     if (doc_ht <= table_tombstone_time) {
       continue;
     }
-    // No vector index is fed here, so the xCluster gating does not apply.
-    RETURN_NOT_OK(updater.Feed(
-        writer, key, iter->value(), doc_ht, docdb::XClusterTargetApplied::kFalse));
+    RETURN_NOT_OK(updater.Feed(writer, key, iter->value(), doc_ht));
     if (writer.size() >= kEntriesPerWrite) {
       write();
     }
