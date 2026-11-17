@@ -215,8 +215,8 @@ public abstract class UniverseDefinitionTaskParamsDecorator
             universeEditSpec, v1UniverseDefinitionTaskParams);
 
     // expert_mode used to deserialize as false when omitted (schema default) and replace the
-    // stored setting. Null, or universe_settings omitted entirely (the delegate then nulls it),
-    // means the edit did not set it.
+    // stored setting. Null, or universe_settings omitted entirely, or passing {}
+    // means the edit did not set it and current settings will be kept.
     Boolean expertMode =
         universeEditSpec != null && universeEditSpec.getUniverseSettings() != null
             ? universeEditSpec.getUniverseSettings().getExpertMode()
