@@ -1721,7 +1721,8 @@ Status YBClient::GetCDCStream(
     bool* is_notification_slot,
     std::optional<bool>* xcluster_use_target_applied_filter,
     bool* paused_for_upgrade,
-    bool* unusable_with_transactional_ddl) {
+    bool* unusable_with_transactional_ddl,
+    std::optional<HybridTime>* implicit_conversion_barrier_ht) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1816,6 +1817,12 @@ Status YBClient::GetCDCStream(
 
   if (unusable_with_transactional_ddl) {
     *unusable_with_transactional_ddl = resp.stream().cdcsdk_unusable_with_transactional_ddl();
+  }
+
+  if (implicit_conversion_barrier_ht &&
+      resp.stream().has_cdcsdk_implicit_conversion_barrier_ht()) {
+    *implicit_conversion_barrier_ht =
+        HybridTime(resp.stream().cdcsdk_implicit_conversion_barrier_ht());
   }
 
   return Status::OK();

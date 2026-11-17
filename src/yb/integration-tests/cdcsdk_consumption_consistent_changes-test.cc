@@ -31,6 +31,7 @@
 
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_int32(log_min_segments_to_retain);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
@@ -80,16 +81,37 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     return stream_id;
   }
 
-  // Sets the catalog barrier, streams a change committed after it and pauses the slot.
-  Status SetBarrierAndPause(
+  // Inserts key, sets the catalog barrier with the consumer stopped, optionally inserts
+  // key_after_barrier once the barrier time has passed, and then streams and acknowledges until the
+  // slot pauses. Returns the records streamed.
+  Result<std::vector<CDCSDKProtoRecordPB>> SetBarrierAndPause(
       const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
-      pgwrapper::PGConn* conn, int key) {
-    RETURN_NOT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {slot_name}));
+      pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier = std::nullopt) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
     RETURN_NOT_OK(InsertRow(conn, key));
-    RETURN_NOT_OK(GetAllPendingTxnsFromVirtualWAL(
-        stream_id, {table_id}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
+    RETURN_NOT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {slot_name}));
+    if (key_after_barrier) {
+      // The barrier time is at least the master's time plus the maximum clock skew.
+      SleepFor(MonoDelta::FromMicroseconds(FLAGS_max_clock_skew_usec) + 100ms);
+      RETURN_NOT_OK(InsertRow(conn, *key_after_barrier));
+    }
+    RETURN_NOT_OK(InitVirtualWAL(stream_id, {table_id}));
+    std::vector<CDCSDKProtoRecordPB> records;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+          for (const auto& record : resp.cdc_sdk_proto_records()) {
+            records.push_back(record);
+            if (record.row_message().op() == RowMessage_Op_COMMIT) {
+              const auto lsn = record.row_message().pg_lsn();
+              RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn + 1));
+            }
+          }
+          return ExecuteYBAdminCommand("pause_replication_slot", {slot_name, "1"}).ok();
+        },
+        60s * kTimeMultiplier, "Waiting for the slot to pause"));
     RETURN_NOT_OK(DestroyVirtualWAL());
-    return ExecuteYBAdminCommand("pause_replication_slot", {slot_name});
+    return records;
   }
 
   void TestStoppedSlotRetainsWalIntentsAndHistory(bool pub_refresh);
@@ -7549,7 +7571,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
 
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("pause_replication_slot", {kSlotName}), "Set the catalog barrier");
-  ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1));
+  constexpr int kKeyAfterBarrier = 100;
+  const auto paused_records = ASSERT_RESULT(
+      SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1, kKeyAfterBarrier));
+  ASSERT_EQ(std::ranges::count_if(paused_records, [](const auto& record) {
+    return record.row_message().op() == RowMessage_Op_INSERT;
+  }), 1);
+  const auto last_lsn_before_pause = paused_records.back().row_message().pg_lsn();
   ASSERT_NOK_STR_CONTAINS(
       InitVirtualWAL(
           stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
@@ -7585,23 +7613,27 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
           false /* pub_all_tables */, false /* retry */), "is unusable");
 
-  constexpr int kExpectedDmlRecords = 3;
+  // Rows kKeyAfterBarrier, 2, 3 and 4.
+  constexpr int kExpectedDmlRecords = 4;
   auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, kExpectedDmlRecords, true /* init_virtual_wal */));
+  ASSERT_GT(resp.records.front().row_message().pg_lsn(), last_lsn_before_pause);
+  std::vector<int32_t> insert_keys;
   std::vector<uint64_t> insert_record_times;
   std::vector<uint64_t> ddl_record_times;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
     if (row_message.op() == RowMessage_Op_INSERT) {
+      insert_keys.push_back(row_message.new_tuple(0).pg_ql_value().int32_value());
       insert_record_times.push_back(row_message.record_time());
     } else if (row_message.op() == RowMessage_Op_DDL) {
       ddl_record_times.push_back(row_message.record_time());
     }
   }
-  ASSERT_EQ(insert_record_times.size(), kExpectedDmlRecords);
+  ASSERT_EQ(insert_keys, (std::vector<int32_t>{kKeyAfterBarrier, 2, 3, 4}));
   // Only the sys catalog shows the DROP COLUMN, as a change to pg_attribute.
   ASSERT_TRUE(std::ranges::any_of(ddl_record_times, [&](uint64_t record_time) {
-    return record_time > insert_record_times[1] && record_time < insert_record_times[2];
+    return record_time > insert_record_times[2] && record_time < insert_record_times[3];
   }));
 }
 
@@ -7638,6 +7670,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
           stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
           false /* pub_all_tables */, false /* retry */), "is unusable");
+  ASSERT_NOK_STR_CONTAINS(
+      ExecuteYBAdminCommand("release_replication_slot", {kSlotName}),
+      "is unusable with transactional DDL");
 }
 
 // A converted slot whose consumer resumes after cdc_intent_retention_ms fails VWAL init, on the

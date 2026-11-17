@@ -265,6 +265,14 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
 
   detect_publication_changes_implicitly_ =
       stream->GetDetectPublicationChangesImplicitly().value_or(false);
+  if (!detect_publication_changes_implicitly_) {
+    if (auto stop_time = stream->GetImplicitConversionBarrierTime()) {
+      implicit_conversion_stop_time_ = *stop_time;
+      LOG_WITH_PREFIX(INFO) << "Replication slot " << *slot_name << " has a catalog barrier, so "
+                            << "no change committed after " << implicit_conversion_stop_time_
+                            << " is shipped";
+    }
+  }
   if (detect_publication_changes_implicitly_ &&
       !FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     return STATUS_FORMAT(
@@ -768,6 +776,17 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   // response.
   while (CanAddMoreRecords(resp_records_size, resp->cdc_sdk_proto_records_size()) &&
          !sorted_records.empty() && empty_tablet_queues.empty()) {
+    if (implicit_conversion_stop_time_.is_valid() &&
+        !(is_txn_in_progress && curr_active_txn_commit_record) &&
+        sorted_records.top().second.first->GetCommitTime() >
+            implicit_conversion_stop_time_.ToUint64()) {
+      // Every tablet queue has its next record in the priority queue, so every record committed up
+      // to the stop time has been shipped, and the restart time can move to the stop time.
+      virtual_wal_safe_time_ = std::max(virtual_wal_safe_time_, implicit_conversion_stop_time_);
+      VLOG_WITH_PREFIX(2) << "Holding back records committed after the stop time "
+                          << implicit_conversion_stop_time_;
+      break;
+    }
     auto tablet_record_info_pair = VERIFY_RESULT(
         GetNextRecordToBeShipped(&sorted_records, &empty_tablet_queues, hostport, deadline));
     const auto tablet_id = tablet_record_info_pair.first;

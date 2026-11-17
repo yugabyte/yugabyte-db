@@ -4518,7 +4518,8 @@ Status ClusterAdminClient::PauseReplicationSlot(
   req.set_replication_slot_name(slot_name);
 
   const auto deadline = CoarseMonoClock::Now() + timeout;
-  for (bool waiting = false;; waiting = true) {
+  bool waiting = false;
+  while (true) {
     master::PauseReplicationSlotResponsePB resp;
     RpcController rpc;
     rpc.set_timeout(timeout_);
@@ -4537,7 +4538,8 @@ Status ClusterAdminClient::PauseReplicationSlot(
     }
     if (!waiting) {
       cout << "Waiting up to " << timeout.ToSeconds() << " seconds for the restart time of "
-           << "replication slot " << slot_name << " to pass its catalog barrier time" << endl;
+           << "replication slot " << slot_name << " to reach its catalog barrier time" << endl;
+      waiting = true;
     }
     SleepFor(1s);
   }

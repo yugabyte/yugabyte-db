@@ -745,7 +745,8 @@ class YBClient {
       bool* is_notification_slot = nullptr,
       std::optional<bool>* xcluster_use_target_applied_filter = nullptr,
       bool* paused_for_upgrade = nullptr,
-      bool* unusable_with_transactional_ddl = nullptr);
+      bool* unusable_with_transactional_ddl = nullptr,
+      std::optional<HybridTime>* implicit_conversion_barrier_ht = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,

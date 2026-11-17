@@ -4408,6 +4408,14 @@ Status CatalogManager::ListCDCStreams(
         ltm->pb.cdcsdk_ysql_replication_slot_name());
     }
 
+    if (ltm->pb.has_cdcsdk_implicit_conversion_barrier_ht()) {
+      stream->set_cdcsdk_implicit_conversion_barrier_ht(
+          ltm->pb.cdcsdk_implicit_conversion_barrier_ht());
+    }
+    stream->set_cdcsdk_paused_for_upgrade(ltm->pb.cdcsdk_paused_for_upgrade());
+    stream->set_cdcsdk_unusable_with_transactional_ddl(
+        ltm->pb.cdcsdk_unusable_with_transactional_ddl());
+
     if (ltm->pb.has_cdcsdk_ysql_replication_slot_plugin_name()) {
       stream->set_cdcsdk_ysql_replication_slot_plugin_name(
           ltm->pb.cdcsdk_ysql_replication_slot_plugin_name());
@@ -5682,6 +5690,10 @@ Result<CDCStreamInfoPtr> CatalogManager::GetPubRefreshStream(const std::string& 
   SCHECK_FORMAT(
       !l->pb.detect_publication_changes_implicitly(), InvalidArgument,
       "Replication slot $0 already detects publication changes implicitly", slot_name);
+  SCHECK_FORMAT(
+      !l->pb.cdcsdk_unusable_with_transactional_ddl(), InvalidArgument,
+      "Replication slot $0 is unusable with transactional DDL. Create a new replication slot",
+      slot_name);
   return stream;
 }
 
@@ -5755,6 +5767,9 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
       },
       60s, "Waiting for the sys catalog retention barrier", 100ms /* initial_delay */,
       1 /* delay_multiplier */));
+  // The slot's virtual WAL stops at the recorded time, so it must not be below the commit time of
+  // anything the stopped consumer could already have received, whichever tserver committed it.
+  barrier_ht = std::max(barrier_ht, master_->clock()->MaxGlobalNow());
 
   {
     auto l = stream->LockForWrite();
@@ -5809,9 +5824,10 @@ Status CatalogManager::PauseReplicationSlot(
       "Slot entry of replication slot $0 not found", slot_name);
   const HybridTime restart_ht(*slot_entry->record_id_commit_time);
   SCHECK_FORMAT(
-      restart_ht > barrier_ht, TryAgain,
+      restart_ht >= barrier_ht, TryAgain,
       "The restart time $0 of replication slot $1 is still below its catalog barrier time $2. Its "
-      "consumer has to acknowledge a change committed after the barrier",
+      "consumer, started after the barrier was set, has to acknowledge every change committed up "
+      "to the barrier",
       restart_ht, slot_name, barrier_ht);
 
   {

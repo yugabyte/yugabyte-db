@@ -21,6 +21,7 @@
 #include "yb/util/string_util.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/logical_replication_test_utils.h"
@@ -199,7 +200,11 @@ class CdcUpgradeTest : public UpgradeTestBase {
       daemon->AddExtraFlag(kFlag, "true");
     }
     RETURN_NOT_OK(cluster_->SetFlagOnMasters(kFlag, "true"));
-    return RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes);
+    RETURN_NOT_OK(RestartAllTServersInCurrentVersion(kNoDelayBetweenNodes));
+    // The restart doesn't wait for postgres, and the walsender connections go to tserver 0.
+    return WaitFor(
+        [this]() { return cluster_->ConnectToDB(kDbName, 0 /* tserver_index */).ok(); }, 60s,
+        "Waiting for postgres on tserver 0");
   }
 
   // Creates pub-refresh slots in the old version, streams from the first, and upgrades without
@@ -462,12 +467,20 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   constexpr auto kUnpausedSlot = "unpaused_pub_refresh_slot";
   ASSERT_NO_FATALS(CreatePubRefreshSlotsAndUpgrade({kSlot, kUnpausedSlot}));
 
-  ASSERT_OK(RunYbAdmin("set_replication_slot_catalog_barrier", kSlot));
   ASSERT_OK(InsertRows(21, 25));
+  ASSERT_OK(RunYbAdmin("set_replication_slot_catalog_barrier", kSlot));
+  ASSERT_OK(cluster_->SetFlagOnTServers("cdcsdk_update_restart_time_interval_secs", "1"));
   ASSERT_OK(CheckNoRowsLost(
       ASSERT_RESULT(StreamRows(kSlot, 25, IgnoreReadTime::kTrue)),
       ExpectedRows(21, 25, WithNewCol::kFalse)));
+  // The slot's restart time reaches the barrier time only while a consumer streams it. Nothing
+  // committed after the barrier is streamed, so this consumer times out.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this] {
+    ASSERT_NOK(StreamAndAcknowledge(kSlot, "value_26", 60s, IgnoreReadTime::kTrue, nullptr));
+  });
   ASSERT_OK(RunYbAdmin("pause_replication_slot", kSlot));
+  thread_holder.JoinAll();
 
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));
