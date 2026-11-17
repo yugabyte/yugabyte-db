@@ -4432,6 +4432,78 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         });
   }
 
+  private static UniverseCRUDHandler.UpdateOptionsState getUpdateOptionsState(
+      UniverseDefinitionTaskParams params) {
+    return UniverseCRUDHandler.getUpdateOptions(
+        params,
+        EDIT,
+        params.getPrimaryCluster(),
+        Universe.getOrBadRequest(params.getUniverseUUID()));
+  }
+
+  @Test
+  public void testUpdateOptionsFullMoveReasons() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 0), // -> 7001
+            new Pair(UserAction.MODIFY_IMAGE_BUNDLE_UUID, 0) // -> new ib
+            ),
+        (idx, params) -> {
+          UniverseCRUDHandler.UpdateOptionsState state = getUpdateOptionsState(params);
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of("Communication ports are changed"), state.getFullMoveReasons());
+              break;
+            case 1:
+              assertEquals(
+                  Set.of("Communication ports are changed", "The image bundle is changed"),
+                  state.getFullMoveReasons());
+              break;
+          }
+        });
+  }
+
+  @Test
+  public void testUpdateOptionsNoFullMoveReasonsForDeviceChange() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        // inc volume size
+        Collections.singletonList(new Pair(UserAction.CHANGE_DEVICE_DETAILS, 1)),
+        (idx, params) -> {
+          UniverseCRUDHandler.UpdateOptionsState state = getUpdateOptionsState(params);
+          assertEquals(Set.of(SMART_RESIZE_NON_RESTART, FULL_MOVE), state.getUpdateOptions());
+          assertEquals(Collections.emptySet(), state.getFullMoveReasons());
+          assertEquals(Collections.emptySet(), state.getResizeRestrictions());
+        });
+  }
+
+  @Test
+  public void testUpdateOptionsResizeRestrictions() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        u ->
+            TestUtils.updateDeviceInfo(
+                u.getUniverseDetails().getPrimaryCluster().userIntent,
+                UniverseTaskBase.ServerType.TSERVER,
+                deviceInfo -> deviceInfo.numVolumes = 2),
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        // inc num volumes
+        Collections.singletonList(new Pair(UserAction.CHANGE_DEVICE_DETAILS, 3)),
+        (idx, params) -> {
+          UniverseCRUDHandler.UpdateOptionsState state = getUpdateOptionsState(params);
+          assertEquals(Set.of(FULL_MOVE), state.getUpdateOptions());
+          assertFalse(state.getResizeRestrictions().isEmpty());
+        });
+  }
+
   @Test(expected = UnsupportedOperationException.class)
   public void testConfigureChangeRFAndOther() {
     setupAndApplyActions(

@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -723,18 +724,22 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     assertThat(
         new HashSet<>(checkResizeOptionsResp.getOptions()),
         is(Set.of(ResizeUpdateOption.SMART_RESIZE_NON_RESTART, ResizeUpdateOption.FULL_MOVE)));
+    assertThat(checkResizeOptionsResp.getResizeRestrictions(), is(empty()));
+    assertThat(checkResizeOptionsResp.getFullMoveReasons(), is(empty()));
 
     nodeSpec.instanceType(newInstanceType);
     checkResizeOptionsResp = api.checkResizeOptions(customer.getUuid(), uUUID, spec);
     assertThat(
         new HashSet<>(checkResizeOptionsResp.getOptions()),
         is(Set.of(ResizeUpdateOption.FULL_MOVE, ResizeUpdateOption.SMART_RESIZE)));
+    assertThat(checkResizeOptionsResp.getResizeRestrictions(), is(empty()));
 
     nodeSpec.getStorageSpec().numVolumes(100);
     checkResizeOptionsResp = api.checkResizeOptions(customer.getUuid(), uUUID, spec);
     assertThat(
         new HashSet<>(checkResizeOptionsResp.getOptions()),
         is(Set.of(ResizeUpdateOption.FULL_MOVE)));
+    assertThat(checkResizeOptionsResp.getResizeRestrictions(), is(not(empty())));
   }
 
   @Test

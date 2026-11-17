@@ -68,6 +68,7 @@ import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -130,9 +131,11 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import javax.validation.constraints.NotNull;
+import lombok.Data;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -210,57 +213,115 @@ public class UniverseCRUDHandler {
             ? taskParams.getPrimaryCluster()
             : taskParams.getReadOnlyClusters().get(0);
     return getUpdateOptions(
-        taskParams, clusterOperation, cluster, PlacementInfoUtil.getUniverseForParams(taskParams));
+            taskParams,
+            clusterOperation,
+            cluster,
+            PlacementInfoUtil.getUniverseForParams(taskParams))
+        .getUpdateOptions();
   }
 
-  public static Set<UniverseDefinitionTaskParams.UpdateOptions> getUpdateOptions(
+  @Data
+  public static class UpdateOptionsState {
+    private Set<String> fullMoveReasons = new HashSet<>();
+    private Set<String> resizeRestrictions = new HashSet<>();
+    private Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions = new HashSet<>();
+  }
+
+  public static UpdateOptionsState getUpdateOptions(
       UniverseDefinitionTaskParams taskParams,
       UniverseConfigureTaskParams.ClusterOperationType clusterOperation,
       Cluster cluster,
       @Nullable Universe universe) {
+    UpdateOptionsState result = new UpdateOptionsState();
     boolean isK8s = Util.isKubernetesBasedUniverse(taskParams);
     if (clusterOperation == UniverseConfigureTaskParams.ClusterOperationType.CREATE
         || universe == null) {
-      return Collections.singleton(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+      result.updateOptions =
+          Collections.singleton(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
     }
     Cluster currentCluster = universe.getCluster(cluster.uuid);
-    Set<UniverseDefinitionTaskParams.UpdateOptions> result = new HashSet<>();
     Set<NodeDetails> nodesInCluster = taskParams.getNodesInCluster(cluster.uuid);
     boolean hasChangedNodes = false;
     boolean hasRemainingNodes = false;
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
-    boolean smartResizePossible =
-        ResizeNodeParams.checkResizeIsPossible(
-            cluster.uuid, currentCluster.userIntent, cluster.userIntent, universe);
+    String smartResizeRestriction =
+        ResizeNodeParams.getResizeIsPossibleError(
+            cluster.uuid,
+            currentCluster.userIntent,
+            cluster.userIntent,
+            universe,
+            runtimeConfGetter);
+
+    boolean smartResizePossible = smartResizeRestriction == null;
+
     boolean samePlacement =
         PlacementInfoUtil.isSamePlacement(currentCluster.placementInfo, cluster.placementInfo);
 
-    boolean nonNodeChanges =
-        !cluster.areTagsSame(currentCluster)
-            || !Objects.equals(
-                PlacementInfoUtil.getDefaultRegion(universe.getUniverseDetails()),
-                PlacementInfoUtil.getDefaultRegion(taskParams))
-            || PlacementInfoUtil.didAffinitizedLeadersChange(
-                currentCluster.placementInfo, cluster.placementInfo)
-            || PlacementInfoUtil.areReplicasChanged(
-                currentCluster.placementInfo, cluster.placementInfo)
-            || isRegionListUpdate(cluster, currentCluster)
-            || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
-            || isKubernetesVolumeUpdate(cluster, currentCluster)
-            || isKubernetesNodeSpecUpdate(cluster, currentCluster)
-            || isProviderSpecificationsChanged(cluster, currentCluster)
-            || (isK8s
-                && !isSameInstanceTypes(
-                    cluster.userIntent, currentCluster.userIntent, nodesInCluster))
-            || cluster.userIntent.enableExposingService
-                != currentCluster.userIntent.enableExposingService
-            || ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster);
+    Set<String> nonNodeChanges =
+        Stream.of(
+                Map.entry(!cluster.areTagsSame(currentCluster), "There are changes in tags"),
+                Map.entry(
+                    !Objects.equals(
+                        PlacementInfoUtil.getDefaultRegion(universe.getUniverseDetails()),
+                        PlacementInfoUtil.getDefaultRegion(taskParams)),
+                    "The default region is changed"),
+                Map.entry(
+                    PlacementInfoUtil.didAffinitizedLeadersChange(
+                        currentCluster.placementInfo, cluster.placementInfo),
+                    "The affinitized leaders set is changed"),
+                Map.entry(
+                    PlacementInfoUtil.areReplicasChanged(
+                        currentCluster.placementInfo, cluster.placementInfo),
+                    "The replicas distribution is changed"),
+                Map.entry(
+                    isRegionListUpdate(cluster, currentCluster), "The list of regions is changed"),
+                Map.entry(
+                    cluster.userIntent.replicationFactor
+                        != currentCluster.userIntent.replicationFactor,
+                    "The replication factor is changed"),
+                Map.entry(
+                    isKubernetesVolumeUpdate(cluster, currentCluster),
+                    "Kubernetes volume is changed"),
+                Map.entry(
+                    isKubernetesNodeSpecUpdate(cluster, currentCluster),
+                    "Kubernetes node specification is changed"),
+                Map.entry(
+                    !haveSameProviderIds(cluster, currentCluster),
+                    "The list of provider specifications is changed"),
+                Map.entry(
+                    isK8s
+                        && !isSameInstanceTypes(
+                            cluster.userIntent, currentCluster.userIntent, nodesInCluster),
+                    "Kubernetes instance types are changed"),
+                Map.entry(
+                    cluster.userIntent.enableExposingService
+                        != currentCluster.userIntent.enableExposingService,
+                    "Kubernetes load balancer exposing state is changed"),
+                Map.entry(
+                    ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster),
+                    "Managed load balancer state is changed"))
+            .filter(Map.Entry::getKey)
+            .map(Map.Entry::getValue)
+            .collect(Collectors.toSet());
 
-    boolean nodeSettingsChanges =
-        isAwsArnChanged(cluster, currentCluster)
-            || areCommunicationPortsChanged(taskParams, universe)
-            || currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP
-            || imageBundleChanged(currentCluster, cluster);
+    Set<String> nodeSettingsChanges =
+        Stream.of(
+                Map.entry(
+                    isAwsArnChanged(cluster, currentCluster),
+                    "The aws instance profile is changed"),
+                Map.entry(
+                    areCommunicationPortsChanged(taskParams, universe),
+                    "Communication ports are changed"),
+                Map.entry(
+                    currentCluster.userIntent.assignPublicIP != cluster.userIntent.assignPublicIP,
+                    "Whether to assign public IP is changed"),
+                Map.entry(
+                    imageBundleChanged(currentCluster, cluster), "The image bundle is changed"))
+            .filter(Map.Entry::getKey)
+            .map(Map.Entry::getValue)
+            .collect(Collectors.toSet());
 
     for (NodeDetails node : nodesInCluster) {
       if (node.state == NodeState.ToBeAdded || node.state == NodeState.ToBeRemoved) {
@@ -270,26 +331,40 @@ public class UniverseCRUDHandler {
       }
     }
     if (!hasRemainingNodes) {
-      result.add(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
+      result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.FULL_MOVE);
       if (!samePlacement) {
         smartResizePossible = false;
       }
     } else {
-      if (hasChangedNodes || !samePlacement || nonNodeChanges) {
-        result.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+      if (hasChangedNodes || !samePlacement || !nonNodeChanges.isEmpty()) {
+        result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
       } else if (GFlagsUtil.checkGFlagsByIntentChange(
           currentCluster.userIntent, cluster.userIntent)) {
-        result.add(UniverseDefinitionTaskParams.UpdateOptions.GFLAGS_UPGRADE);
+        result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.GFLAGS_UPGRADE);
       }
     }
-    if (smartResizePossible && !nonNodeChanges && samePlacement && !nodeSettingsChanges) {
+    result.fullMoveReasons.addAll(nodeSettingsChanges);
+    if (smartResizePossible
+        && nonNodeChanges.isEmpty()
+        && samePlacement
+        && nodeSettingsChanges.isEmpty()) {
       if (isSameInstanceTypes(
           cluster.userIntent,
           currentCluster.userIntent,
           taskParams.getNodesInCluster(cluster.uuid))) {
-        result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+        result.updateOptions.add(
+            UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
       } else if (!isK8s) {
-        result.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
+        result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
+      }
+    } else {
+      result.resizeRestrictions.add(smartResizeRestriction);
+      if (!ResizeNodeParams.NOTHING_CHANGED.equals(smartResizeRestriction)) {
+        if (!samePlacement) {
+          result.resizeRestrictions.add("Placement has changed");
+        }
+        result.resizeRestrictions.addAll(nodeSettingsChanges);
+        result.resizeRestrictions.addAll(nonNodeChanges);
       }
     }
     return result;
@@ -308,16 +383,24 @@ public class UniverseCRUDHandler {
     return result;
   }
 
-  private static boolean isProviderSpecificationsChanged(Cluster cluster, Cluster currentCluster) {
-    Set<UniverseDefinitionTaskParams.ProviderSpecification> current = new HashSet<>();
+  /**
+   * Verify that the set of provider ids remains the same (in case of multicloud). The changes in
+   * provider settings are detected elsewhere.
+   *
+   * @param cluster
+   * @param currentCluster
+   * @return
+   */
+  private static boolean haveSameProviderIds(Cluster cluster, Cluster currentCluster) {
+    Set<UUID> currentIds = new HashSet<>();
     if (currentCluster.userIntent.providerSpecifications != null) {
-      current.addAll(currentCluster.userIntent.providerSpecifications);
+      currentIds = currentCluster.userIntent.getAllProviderUUIDs();
     }
-    Set<UniverseDefinitionTaskParams.ProviderSpecification> newOne = new HashSet<>();
+    Set<UUID> newIds = new HashSet<>();
     if (cluster.userIntent.providerSpecifications != null) {
-      newOne.addAll(cluster.userIntent.providerSpecifications);
+      newIds = cluster.userIntent.getAllProviderUUIDs();
     }
-    return !Objects.equals(current, newOne);
+    return Objects.equals(currentIds, newIds);
   }
 
   private static boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {
@@ -565,7 +648,8 @@ public class UniverseCRUDHandler {
       }
       try {
         taskParams.updateOptions =
-            getUpdateOptions(taskParams, taskParams.clusterOperation, cluster, universe);
+            getUpdateOptions(taskParams, taskParams.clusterOperation, cluster, universe)
+                .getUpdateOptions();
       } catch (Exception e) {
         LOG.error("Failed to calculate update options", e);
       }

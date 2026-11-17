@@ -48,6 +48,7 @@ import play.mvc.Http.Status;
 @EqualsAndHashCode(callSuper = true)
 @Slf4j
 public class ResizeNodeParams extends UpgradeWithGFlags {
+  public static final String NOTHING_CHANGED = "Nothing changed";
 
   public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
 
@@ -193,25 +194,6 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
    * @param currentUserIntent current user intent
    * @param newUserIntent desired user intent
    * @param universe current universe
-   * @return
-   */
-  public static boolean checkResizeIsPossible(
-      UUID clusterUUID, UserIntent currentUserIntent, UserIntent newUserIntent, Universe universe) {
-
-    RuntimeConfGetter runtimeConfGetter =
-        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
-
-    return checkResizeIsPossible(
-        clusterUUID, currentUserIntent, newUserIntent, universe, runtimeConfGetter);
-  }
-
-  /**
-   * Checks if smart resize is available
-   *
-   * @param clusterUUID cluster UUID
-   * @param currentUserIntent current user intent
-   * @param newUserIntent desired user intent
-   * @param universe current universe
    * @param runtimeConfGetter config factory
    * @return
    */
@@ -239,7 +221,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
    * @param universe current universe
    * @return null if available, otherwise returns error message
    */
-  private static String getResizeIsPossibleError(
+  public static String getResizeIsPossibleError(
       UUID clusterUUID,
       UserIntent currentUserIntent,
       UserIntent newUserIntent,
@@ -347,7 +329,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       }
     }
     if (!hasChanges) {
-      return "Nothing changed!";
+      return NOTHING_CHANGED;
     }
 
     return null;

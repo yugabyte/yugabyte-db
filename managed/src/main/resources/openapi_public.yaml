@@ -14037,6 +14037,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ResizeUpdateOption'
+        resize_restrictions:
+          description: Reasons why an in-place resize (SMART_RESIZE or SMART_RESIZE_NON_RESTART)
+            is not available for the proposed node settings. Empty if no restriction
+            was found.
+          type: array
+          items:
+            type: string
+        full_move_reasons:
+          description: Reasons why the proposed node settings require a full node
+            replacement (FULL_MOVE), such as a changed image bundle, AWS instance
+            profile, public IP assignment or communication ports.
+          type: array
+          items:
+            type: string
     VMImageClusterSpec:
       title: VMImageClusterSpec
       description: Information about the VM image for particular provider in particular

@@ -1487,6 +1487,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 EDIT,
                 taskParams.getPrimaryCluster(),
                 Universe.getOrBadRequest(universe.getUniverseUUID()))
+            .getUpdateOptions()
             .contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE));
     when(cloudAPI.ensureManagedLoadBalancer(any(), any(), any(), any(), any(), any()))
         .thenThrow(new RuntimeException("quota exceeded"))
