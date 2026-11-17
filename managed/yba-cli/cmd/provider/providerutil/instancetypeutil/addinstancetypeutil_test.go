@@ -65,6 +65,7 @@ func TestBuildInstanceTypeRequest(t *testing.T) {
 		flags        addInstanceTypeFlags
 		changed      []string
 		want         ybaclient.InstanceType
+		wantErr      bool
 	}{
 		{
 			name:         "existing type without flags keeps its values",
@@ -151,6 +152,35 @@ func TestBuildInstanceTypeRequest(t *testing.T) {
 			flags: defaults,
 			want:  request(2, 16, nil, nil, nil),
 		},
+		{
+			name:         "new onprem type without volume fails",
+			providerType: util.OnpremProviderType,
+			flags:        defaults,
+			wantErr:      true,
+		},
+		{
+			name:         "existing onprem type without stored volumes fails",
+			providerType: util.OnpremProviderType,
+			existing: &ybaclient.InstanceTypeResp{
+				NumCores:  util.GetFloat64Pointer(2),
+				MemSizeGB: util.GetFloat64Pointer(16),
+				InstanceTypeDetails: &ybaclient.InstanceTypeDetails{
+					VolumeDetailsList: []ybaclient.VolumeDetails{},
+				},
+			},
+			flags:   defaults,
+			wantErr: true,
+		},
+		{
+			name:         "existing onprem type without details fails",
+			providerType: util.OnpremProviderType,
+			existing: &ybaclient.InstanceTypeResp{
+				NumCores:  util.GetFloat64Pointer(2),
+				MemSizeGB: util.GetFloat64Pointer(16),
+			},
+			flags:   defaults,
+			wantErr: true,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -162,8 +192,17 @@ func TestBuildInstanceTypeRequest(t *testing.T) {
 				}
 				return false
 			}
-			got := buildInstanceTypeRequest(
+			got, err := buildInstanceTypeRequest(
 				providerUUID, tc.providerType, shape, tc.existing, tc.flags, changed)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("got %+v, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %+v (details %+v), want %+v (details %+v)",
 					got, got.InstanceTypeDetails, tc.want, tc.want.InstanceTypeDetails)

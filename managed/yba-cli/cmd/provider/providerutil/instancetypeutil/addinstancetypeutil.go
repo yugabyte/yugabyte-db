@@ -5,7 +5,9 @@
 package instancetypeutil
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -94,13 +96,21 @@ func AddInstanceTypeUtil(
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 
-	instanceTypes, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
+	// Look the type up by code: the list API hides AWS types whose arch differs from the
+	// default image bundle's, and types with unsupported prefixes.
+	existing, response, err := authAPI.InstanceTypeDetail(providerUUID, instanceTypeName).Execute()
 	if err != nil {
-		util.FatalHTTPError(response, err, callSite, "Add - List Instance Types")
+		// The provider was found above, so a 400 here means it has no such instance type.
+		if response == nil || response.StatusCode != http.StatusBadRequest {
+			util.FatalHTTPError(response, err, callSite, "Add - Get Instance Type")
+		}
+		existing = nil
+	} else if !existing.GetActive() {
+		// The create API replaces an inactive type with a new one.
+		existing = nil
 	}
-	existing := findInstanceType(instanceTypes, instanceTypeName)
 
-	requestBody := buildInstanceTypeRequest(
+	requestBody, err := buildInstanceTypeRequest(
 		providerUUID,
 		providerType,
 		instanceTypeName,
@@ -114,6 +124,9 @@ func AddInstanceTypeUtil(
 		},
 		cmd.Flags().Changed,
 	)
+	if err != nil {
+		logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
 
 	rCreate, response, err := authAPI.CreateInstanceType(providerUUID).
 		InstanceType(requestBody).Execute()
@@ -160,7 +173,7 @@ func buildInstanceTypeRequest(
 	existing *ybaclient.InstanceTypeResp,
 	flags addInstanceTypeFlags,
 	changed func(flag string) bool,
-) ybaclient.InstanceType {
+) (ybaclient.InstanceType, error) {
 	// The create API replaces every field of an existing instance type, so a flag the user
 	// did not set must carry the existing value rather than the flag default.
 	useFlag := func(flag string) bool {
@@ -189,6 +202,12 @@ func buildInstanceTypeRequest(
 	if useFlag("volume") {
 		details.VolumeDetailsList = buildVolumeDetails(flags.volumes, providerType)
 	}
+	// The server accepts an onprem type without volumes.
+	if len(details.VolumeDetailsList) == 0 &&
+		strings.EqualFold(providerType, util.OnpremProviderType) {
+		return ybaclient.InstanceType{},
+			errors.New("at least one volume is required per instance type")
+	}
 	if !util.IsEmptyString(flags.arch) &&
 		(useFlag("arch") || util.IsEmptyString(details.GetArch())) {
 		details.SetArch(flags.arch)
@@ -201,27 +220,10 @@ func buildInstanceTypeRequest(
 		InstanceTypeDetails: &details,
 		MemSizeGB:           util.GetFloat64Pointer(memSize),
 		NumCores:            util.GetFloat64Pointer(numCores),
-	}
-}
-
-func findInstanceType(
-	instanceTypes []ybaclient.InstanceTypeResp,
-	instanceTypeName string,
-) *ybaclient.InstanceTypeResp {
-	for i := range instanceTypes {
-		if instanceTypes[i].IdKey.InstanceTypeCode == instanceTypeName {
-			return &instanceTypes[i]
-		}
-	}
-	return nil
+	}, nil
 }
 
 func buildVolumeDetails(volumeStrings []string, providerType string) []ybaclient.VolumeDetails {
-	if len(volumeStrings) == 0 && strings.EqualFold(providerType, util.OnpremProviderType) {
-		logrus.Fatalln(
-			formatter.Colorize("Atleast one volume is required per instance type.\n",
-				formatter.RedColor))
-	}
 	res := make([]ybaclient.VolumeDetails, 0)
 	for _, volumeString := range volumeStrings {
 		volume := map[string]string{}
