@@ -52,9 +52,9 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
   }
 
   /**
-   * A config saved with both a JSON key and {@code USE_GCP_IAM}, or with federation and a JSON key,
-   * was accepted before these rules. It keeps taking edits such as a rename while it keeps that
-   * combination. Turning on federation for a config with a JSON key is not exempt.
+   * A config saved with both a JSON key and {@code USE_GCP_IAM}, which an earlier YBA accepted,
+   * keeps taking edits such as a rename while it keeps that combination, but cannot turn on
+   * federation.
    */
   @Override
   public void validate(CustomerConfigData data, @Nullable CustomerConfigData stored) {
@@ -76,14 +76,18 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
       throwMultipleBeanConfigDataValidatorError(validationErrorsMap, "storageConfigValidation");
     }
 
-    // Federation only runs through USE_GCP_IAM, and a JSON key takes priority over it on the DB
-    // nodes, so a config marked as federated would still use the key. Checked on its own, so that
-    // a config saved with a key and USE_GCP_IAM cannot turn on federation and keep the key.
+    // Federation runs only through USE_GCP_IAM, and a JSON key takes priority over it on the DB
+    // nodes, so a config saved with a key and USE_GCP_IAM, which the check above lets keep both,
+    // cannot turn on federation. Federation with a JSON key and without USE_GCP_IAM is accepted:
+    // the key is then the credential of YBA and the DB nodes alike, which BackupHelper counts as
+    // YBA's own (see BackupHelper.hasCredentialsOfItsOwn).
     if (newlyViolates(
-        CustomerConfigStorageGCSValidator::hasFederationWithKey, gcsData, storedGcs)) {
+        CustomerConfigStorageGCSValidator::hasFederationWithKeyAndGcpIam, gcsData, storedGcs)) {
       throwBeanConfigDataValidatorError(
           CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
-          "USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of GCS_CREDENTIALS_JSON.");
+          "USE_CROSS_CLOUD_FEDERATION cannot be turned on while both GCS_CREDENTIALS_JSON and"
+              + " USE_GCP_IAM are set. Remove GCS_CREDENTIALS_JSON to federate through"
+              + " USE_GCP_IAM.");
     }
 
     // useGcpIam (GKE workload identity or cross-cloud federation): no universe/provider context at
@@ -150,7 +154,7 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     return gcsData.useGcpIam && StringUtils.isNotBlank(gcsData.gcsCredentialsJson);
   }
 
-  private static boolean hasFederationWithKey(CustomerConfigStorageGCSData gcsData) {
-    return gcsData.useCrossCloudFederation && StringUtils.isNotBlank(gcsData.gcsCredentialsJson);
+  private static boolean hasFederationWithKeyAndGcpIam(CustomerConfigStorageGCSData gcsData) {
+    return gcsData.useCrossCloudFederation && hasKeyWithGcpIam(gcsData);
   }
 }

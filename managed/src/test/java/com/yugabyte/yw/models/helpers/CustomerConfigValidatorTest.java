@@ -694,12 +694,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
 
   @Test
   public void testValidateDataContent_Storage_S3_FederationWithKeysIsRejected() {
-    ObjectNode data = Json.newObject();
-    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
-    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
-    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
-    data.put("USE_CROSS_CLOUD_FEDERATION", true);
-    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, s3FederationWithKeys());
     assertThat(
         () -> customerConfigValidator.validateConfig(config),
         thrown(
@@ -707,11 +702,20 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             "errorJson: {\""
                 + fieldFullName(AWS_ACCESS_KEY_ID_FIELDNAME)
                 + "\":[\"AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY cannot be used together with"
-                + " USE_CROSS_CLOUD_FEDERATION. Remove them and set IAM_INSTANCE_PROFILE to true,"
-                + " so YBA uses its IAM role where it does not federate.\"]}"));
+                + " USE_CROSS_CLOUD_FEDERATION and IAM_INSTANCE_PROFILE, as YBA then uses its IAM"
+                + " role and never the keys. Remove the keys, or set IAM_INSTANCE_PROFILE to false"
+                + " so YBA uses them where it does not federate.\"]}"));
   }
 
-  /** A config saved with keys and federation before the rule existed still takes a rename. */
+  /** Without IAM_INSTANCE_PROFILE, the keys are YBA's own credential where it does not federate. */
+  @Test
+  public void testValidateDataContent_Storage_S3_FederationWithKeysWithoutIamRoleIsAccepted() {
+    ObjectNode data = s3FederationWithKeys();
+    data.put("IAM_INSTANCE_PROFILE", false);
+    customerConfigValidator.validateConfig(createConfig(ConfigType.STORAGE, NAME_S3, data));
+  }
+
+  /** A config saved with keys, IAM_INSTANCE_PROFILE and federation still takes a rename. */
   @Test
   public void testValidateDataContent_Storage_S3_SavedFederationWithKeysCanBeRenamed() {
     ObjectNode data = s3FederationWithKeys();
@@ -795,25 +799,18 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             containsString("Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.")));
   }
 
+  /** Without USE_GCP_IAM, the JSON key is the federated config's credential, for YBA too. */
   @Test
-  public void testValidateDataContent_Storage_GCS_FederationWithoutGcpIamIsRejected() {
-    // With a JSON key instead of USE_GCP_IAM, the federation flag would be silently ignored.
-    ObjectNode data = gcsFederationWithJson();
-    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
-    assertThat(
-        () -> customerConfigValidator.validateConfig(config),
-        thrown(
-            PlatformServiceException.class,
-            "errorJson: {\""
-                + fieldFullName("USE_GCP_IAM")
-                + "\":[\"USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of"
-                + " GCS_CREDENTIALS_JSON.\"]}"));
+  public void testValidateDataContent_Storage_GCS_FederationWithJsonWithoutGcpIamIsAccepted() {
+    customerConfigValidator.validateConfig(
+        createConfig(ConfigType.STORAGE, NAME_GCS, gcsFederationWithJson()));
   }
 
-  /** A config saved with federation and a JSON key before the rule existed still takes a rename. */
+  /** A config saved with federation, a JSON key and USE_GCP_IAM still takes a rename. */
   @Test
-  public void testValidateDataContent_Storage_GCS_SavedFederationWithJsonCanBeRenamed() {
+  public void testValidateDataContent_Storage_GCS_SavedFederationWithJsonAndGcpIamCanBeRenamed() {
     ObjectNode data = gcsFederationWithJson();
+    data.put("USE_GCP_IAM", true);
     CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
     customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
   }
@@ -837,8 +834,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         thrown(
             PlatformServiceException.class,
             containsString(
-                "USE_CROSS_CLOUD_FEDERATION requires USE_GCP_IAM instead of"
-                    + " GCS_CREDENTIALS_JSON.")));
+                "USE_CROSS_CLOUD_FEDERATION cannot be turned on while both GCS_CREDENTIALS_JSON"
+                    + " and USE_GCP_IAM are set.")));
   }
 
   private static ObjectNode gcsFederationWithJson() {
@@ -849,11 +846,13 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     return data;
   }
 
+  /** Keys that are never used: with IAM_INSTANCE_PROFILE, YBA uses its IAM role. */
   private static ObjectNode s3FederationWithKeys() {
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
     data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
     data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    data.put("IAM_INSTANCE_PROFILE", true);
     data.put("USE_CROSS_CLOUD_FEDERATION", true);
     return data;
   }
