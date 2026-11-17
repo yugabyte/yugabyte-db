@@ -32,9 +32,10 @@ permissions:
   contents: read
 
 # One run per branch at a time. A newer push replaces a run that is still queued, and each
-# run regenerates the whole file from its own commit, so nothing is lost.
+# run regenerates the whole file from its own commit, so nothing is lost. Dry runs get their
+# own group so that one never replaces a queued sync.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ inputs.dry_run && 'dry' || 'sync' }}
   cancel-in-progress: false
 
 env:
@@ -109,8 +110,9 @@ jobs:
           repository: ${{ env.CHARTS_REPO }}
           ref: ${{ env.BRANCH }}
           path: charts
-          # charts is public, so a dry run reads it without the App token.
-          token: ${{ steps.app-token.outputs.token || github.token }}
+          # Keeps the App token off disk while merge_crd.py runs; the push authenticates
+          # through gh instead.
+          persist-credentials: false
 
       - name: Generate CRD file
         id: generate
@@ -167,6 +169,7 @@ jobs:
           git add -- "${CRD_FILE}"
           git commit -m "Update operator CRDs from yugabyte-db ${BRANCH}@${YB_DB_SHA:0:12}"
           # One PR branch per target branch, so later runs update the open PR.
+          gh auth setup-git
           git push --force origin "${PR_BRANCH}"
 
           existing=$(gh pr list --repo "${CHARTS_REPO}" --head "${PR_BRANCH}" --base "${BRANCH}" \
