@@ -152,6 +152,7 @@
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_initialization.h"
+#include "yb/master/sys_catalog_pusher.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/system_tablet.h"
@@ -1209,6 +1210,11 @@ Status CatalogManager::Init() {
   metric_max_follower_heartbeat_delay_ =
     METRIC_max_follower_heartbeat_delay.Instantiate(master_->metric_entity_cluster(), 0);
 
+  if (FLAGS_enable_local_tserver_catalog) {
+    sys_catalog_pusher_metrics_ = CreateSysCatalogPusherMetrics(
+        master_->metric_entity_cluster(), master_->mem_tracker(), master_->clock());
+  }
+
   cdc_state_table_ = std::make_unique<cdc::CDCStateTable>(master_->cdc_state_client_future());
 
   RETURN_NOT_OK(xcluster_manager_->Init());
@@ -1231,6 +1237,7 @@ Status CatalogManager::Init() {
   if (!master_->opts().IsShellMode()) {
     RETURN_NOT_OK(GetUniverseKeyRegistryFromOtherMastersAsync());
     RETURN_NOT_OK(EnableBgTasks());
+    RETURN_NOT_OK(StartSysCatalogPusher());
   }
 
   // Cache the server registration even for shell mode masters. See
@@ -1636,6 +1643,10 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   }  // Exclusive mutex_ scope.
   catalog_loaded_term_.store(term, std::memory_order_release);
   leader_ready_term_ = term;
+  // The copies keep the safe time the last leader certified until this leader pushes.
+  if (auto pusher = sys_catalog_pusher()) {
+    pusher->RequestCycle();
+  }
   return Status::OK();
 }
 
@@ -2388,6 +2399,10 @@ bool CatalogManager::StartShutdown() {
 
   ysql_manager_->StartShutdown();
 
+  if (auto pusher = sys_catalog_pusher()) {
+    pusher->StartShutdown();
+  }
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -2405,6 +2420,11 @@ void CatalogManager::CompleteShutdown() {
 
   xcluster_manager_->CompleteShutdown();
   ysql_manager_->CompleteShutdown();
+
+  // Before the sys catalog shuts down, since a push cycle reads its tablet.
+  if (auto pusher = sys_catalog_pusher()) {
+    pusher->CompleteShutdown();
+  }
 
   if (cdc_background_tasks_) {
     cdc_background_tasks_->Shutdown();
@@ -12102,6 +12122,33 @@ void CatalogManager::IncrementBackfillAborted() {
   IncrementCounter(metric_backfill_aborted_);
 }
 
+std::shared_ptr<SysCatalogPusher> CatalogManager::sys_catalog_pusher() const {
+  SharedLock lock(mutex_);
+  return sys_catalog_pusher_;
+}
+
+Status CatalogManager::StartSysCatalogPusher() {
+  // The metrics are created in Init only when enable_local_tserver_catalog is set.
+  if (!sys_catalog_pusher_metrics_) {
+    return Status::OK();
+  }
+  LockGuard lock(mutex_);
+  // A shutdown that has started gets no pusher; one that starts later stops the pusher set here.
+  {
+    std::lock_guard l(state_lock_);
+    if (state_ == kClosing) {
+      return Status::OK();
+    }
+  }
+  if (sys_catalog_pusher_) {
+    return Status::OK();
+  }
+  auto pusher = std::make_shared<SysCatalogPusher>(*this, sys_catalog_pusher_metrics_);
+  RETURN_NOT_OK(pusher->Start());
+  sys_catalog_pusher_ = std::move(pusher);
+  return Status::OK();
+}
+
 Status CatalogManager::EnableBgTasks() {
   LockGuard lock(mutex_);
   background_tasks_.reset(new CatalogManagerBgTasks(master_));
@@ -12271,6 +12318,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   // Now that we're no longer in shell mode, make call to fetch encryption keys from other masters.
   RETURN_NOT_OK(GetUniverseKeyRegistryFromOtherMastersAsync());
   RETURN_NOT_OK(EnableBgTasks());
+  RETURN_NOT_OK(StartSysCatalogPusher());
 
   return Status::OK();
 }
@@ -14112,6 +14160,14 @@ Status CatalogManager::GoIntoShellMode() {
 
   LOG(INFO) << "Starting going into shell mode.";
   master_->SetShellMode(true);
+
+  // Before the sys catalog goes into shell mode, since a push cycle reads its log. The pusher stays
+  // set until it has shut down, so that a concurrent process shutdown also waits for it.
+  if (auto pusher = sys_catalog_pusher()) {
+    pusher->CompleteShutdown();
+    LockGuard lock(mutex_);
+    sys_catalog_pusher_.reset();
+  }
 
   std::unique_ptr<CatalogManagerCdcBgTasks> cdc_background_tasks;
   std::unique_ptr<CatalogManagerBgTasks> background_tasks;

@@ -117,6 +117,13 @@ class ObjectLockInfoManager {
   void BootstrapLocksPostLoad();
 
   TSDescriptorVector GetAllTSDescriptorsWithALiveLease() const;
+
+  struct LiveLease {
+    TSDescriptorPtr ts;
+    uint64_t lease_epoch;
+  };
+  // The tservers with a live lease, each with the epoch of that lease.
+  std::vector<LiveLease> GetLiveLeases() const;
   bool TabletServerHasLiveLease(const std::string& ts_uuid) const;
 
  private:

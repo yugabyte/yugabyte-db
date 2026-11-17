@@ -116,6 +116,7 @@ class PgCronLeaderService;
 namespace tserver {
 
 class GetYSQLLeaseInfoResponsePB;
+class LocalCatalogServiceImpl;
 class PgClientServiceImpl;
 class TabletServiceBackupImpl;
 class TServerCgroupManager;
@@ -490,6 +491,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return nullptr;
   }
 
+  LocalCatalogServiceImpl* TEST_GetLocalCatalogService() {
+    if (auto service_ptr = local_catalog_service_.lock()) {
+      return service_ptr.get();
+    }
+    return nullptr;
+  }
+
   std::optional<uint64_t> GetCatalogVersionsFingerprint() const {
     return catalog_versions_fingerprint_.load(std::memory_order_acquire);
   }
@@ -711,6 +719,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // RpcAndWebServerBase is shut down.
   std::weak_ptr<RemoteBootstrapServiceImpl> remote_bootstrap_service_;
   std::weak_ptr<TabletServiceBackupImpl> backup_service_;
+  std::weak_ptr<LocalCatalogServiceImpl> local_catalog_service_;
 
   struct PgClientServiceHolder;
 

@@ -87,6 +87,7 @@
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/heartbeater_factory.h"
+#include "yb/tserver/local_catalog_service.h"
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
@@ -175,6 +176,11 @@ DEFINE_NON_RUNTIME_int32(thin_client_svc_queue_length,
              yb::tserver::TabletServer::kDefaultSvcQueueLength,
              "RPC queue length for the Thin Client service.");
 TAG_FLAG(thin_client_svc_queue_length, advanced);
+
+DEFINE_NON_RUNTIME_int32(local_catalog_svc_queue_length,
+             yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the Local Catalog service.");
+TAG_FLAG(local_catalog_svc_queue_length, advanced);
 
 DEFINE_NON_RUNTIME_bool(enable_direct_local_tablet_server_call,
             true,
@@ -996,6 +1002,13 @@ Status TabletServer::RegisterServices() {
   LOG(INFO) << "yb::tserver::ThinClientServiceImpl created at " << thin_client_service.get();
   RETURN_NOT_OK(RegisterService(
       FLAGS_thin_client_svc_queue_length, std::move(thin_client_service)));
+
+  if (FLAGS_enable_local_tserver_catalog) {
+    auto local_catalog_service = std::make_shared<LocalCatalogServiceImpl>(metric_entity());
+    local_catalog_service_ = local_catalog_service;
+    RETURN_NOT_OK(RegisterService(
+        FLAGS_local_catalog_svc_queue_length, std::move(local_catalog_service)));
+  }
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(

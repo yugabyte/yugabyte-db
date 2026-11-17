@@ -1,0 +1,61 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+syntax = "proto2";
+
+package yb.tserver;
+
+option java_package = "org.yb.tserver";
+
+import "yb/cdc/cdc_service.proto";
+import "yb/common/opid.proto";
+
+// The master leader pushes its system catalog changes to the tserver's copy of the catalog.
+service LocalCatalogService {
+  rpc PushCatalogChanges(PushCatalogChangesRequestPB) returns (PushCatalogChangesResponsePB);
+}
+
+message PushCatalogChangesRequestPB {
+  // The records cover the system catalog WAL after from_op_id up to and including to_op_id.
+  // from_op_id and to_op_id may be equal with a term of -1 when the master does not know the
+  // copy's position: a copy at or past to_op_id.index answers OK, any other copy answers GAP, both
+  // with the copy's position. Such a batch carries no safe_time.
+  optional OpIdPB from_op_id = 1;
+  optional OpIdPB to_op_id = 2;
+  repeated cdc.CDCRecordPB records = 3;
+
+  // Set only on a batch whose to_op_id is at or past a certified position: once the copy has
+  // applied up to to_op_id, it holds every catalog transaction committed at or before
+  // safe_time. A copy never lowers its safe time, since a batch from an earlier cycle can arrive
+  // after a later one.
+  optional fixed64 safe_time = 4;
+
+  // The master no longer holds the WAL after from_op_id, or its entry at from_op_id differs from
+  // the copy's, so the copy must be rebuilt. Such a request carries no records.
+  optional bool reseed_required = 5;
+}
+
+message PushCatalogChangesResponsePB {
+  enum Code {
+    // The batch was applied, or the copy was already past it.
+    OK = 0;
+    // The batch does not start at the copy's position; resend from applied_op_id.
+    GAP = 1;
+    // This tserver keeps no copy of the catalog.
+    NO_COPY = 2;
+  }
+  optional Code code = 1;
+
+  // The copy's position and safe time after handling the request.
+  optional OpIdPB applied_op_id = 2;
+  optional fixed64 safe_time = 3;
+}

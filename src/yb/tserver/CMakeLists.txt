@@ -150,6 +150,25 @@ ADD_YB_LIBRARY(tserver_admin_proto
   NONLINK_DEPS ${TSERVER_ADMIN_YRPC_TGTS})
 
 #########################################
+# local_catalog_proto
+#########################################
+
+YRPC_GENERATE(
+  LOCAL_CATALOG_YRPC_SRCS LOCAL_CATALOG_YRPC_HDRS LOCAL_CATALOG_YRPC_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES local_catalog.proto)
+set(LOCAL_CATALOG_YRPC_LIBS
+  yrpc
+  yb_common_proto
+  protobuf
+  cdc_service_proto)
+ADD_YB_LIBRARY(local_catalog_proto
+  SRCS ${LOCAL_CATALOG_YRPC_SRCS}
+  DEPS ${LOCAL_CATALOG_YRPC_LIBS}
+  NONLINK_DEPS ${LOCAL_CATALOG_YRPC_TGTS})
+
+#########################################
 # tserver_service_proto
 #########################################
 
@@ -259,6 +278,7 @@ set(TSERVER_SRCS
   full_compaction_manager.cc
   heartbeater.cc
   heartbeater_factory.cc
+  local_catalog_service.cc
   master_leader_poller.cc
   metrics_snapshotter.cc
   pg_cache_util.cc
@@ -336,6 +356,7 @@ set(TSERVER_DEPS
   consensus
   consensus_proto
   hnsw
+  local_catalog_proto
   log
   log_proto
   master_proto

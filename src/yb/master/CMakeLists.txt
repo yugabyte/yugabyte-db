@@ -132,6 +132,7 @@ set(MASTER_SRCS
   state_with_tablets.cc
   sys_catalog.cc
   sys_catalog_initialization.cc
+  sys_catalog_pusher.cc
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
@@ -214,7 +215,9 @@ set(MASTER_DEPS
   master_util
   yb_pggate_flags
   yb_pggate
+  cdc
   cdc_util
+  local_catalog_proto
   auto_flags_manager_common
 )
 

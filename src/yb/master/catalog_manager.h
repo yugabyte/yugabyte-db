@@ -508,6 +508,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       rpc::RpcContext rpc);
   ObjectLockInfoManager* object_lock_info_manager() { return object_lock_info_manager_.get(); }
 
+  // Set only when the tserver copies of the catalog are enabled and master is not in shell mode.
+  std::shared_ptr<SysCatalogPusher> sys_catalog_pusher() const EXCLUDES(mutex_);
+
   // Gets the progress of ongoing index backfills.
   Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
                                   GetIndexBackfillProgressResponsePB* resp,
@@ -2565,6 +2568,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Used on normal master startup or when master comes out of the shell mode.
   Status EnableBgTasks();
 
+  // Starts the system catalog pusher if enable_local_tserver_catalog is set. Used on normal master
+  // startup or when master comes out of the shell mode.
+  Status StartSysCatalogPusher();
+
   // Helper function for RebuildYQLSystemPartitions to get the system.partitions tablet.
   Status GetYQLPartitionsVTable(std::shared_ptr<SystemTablet>* tablet) REQUIRES(mutex_);
   // Background task for automatically rebuilding system.partitions every
@@ -2904,6 +2911,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       GUARDED_BY(mutex_);
 
   std::unique_ptr<ObjectLockInfoManager> object_lock_info_manager_;
+
+  std::shared_ptr<SysCatalogPusher> sys_catalog_pusher_ GUARDED_BY(mutex_);
+  // Set once in Init.
+  std::shared_ptr<SysCatalogPusherMetrics> sys_catalog_pusher_metrics_;
 
   std::unique_ptr<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 

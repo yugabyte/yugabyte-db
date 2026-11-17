@@ -929,6 +929,20 @@ TSDescriptorVector ObjectLockInfoManager::GetAllTSDescriptorsWithALiveLease() co
   return impl_->GetAllTSDescriptorsWithALiveLease();
 }
 
+std::vector<ObjectLockInfoManager::LiveLease> ObjectLockInfoManager::GetLiveLeases() const {
+  std::vector<LiveLeaseSnapshotEntry> live_leases;
+  auto descriptors = impl_->GetAllTSDescriptorsWithALiveLease(&live_leases);
+  std::vector<LiveLease> result;
+  result.reserve(descriptors.size());
+  for (size_t i = 0; i != descriptors.size(); ++i) {
+    result.push_back(LiveLease {
+      .ts = std::move(descriptors[i]),
+      .lease_epoch = live_leases[i].lease_epoch,
+    });
+  }
+  return result;
+}
+
 bool ObjectLockInfoManager::TabletServerHasLiveLease(const std::string& ts_uuid) const {
   return impl_->TabletServerHasLiveLease(ts_uuid);
 }
