@@ -350,6 +350,20 @@ def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
         else:
             m = pat.search(output)
             matches = [m] if m else []
+        if proc.returncode != 0 and not matches:
+            # The script failed before it reported anything the regex reads (a missing
+            # tool, a failed fetch): report that instead of passing the file.
+            first_line = next((ln for ln in output.splitlines() if ln.strip()), "")
+            msgs.append(Message(
+                path,
+                None,
+                "error",
+                "script-failed",
+                f"linter script exited with status {proc.returncode}"
+                + (f": {first_line.strip()}" if first_line else ""),
+                linter.name,
+            ))
+            continue
         for m in matches:
             gd = m.groupdict()
             line = gd.get("line")
