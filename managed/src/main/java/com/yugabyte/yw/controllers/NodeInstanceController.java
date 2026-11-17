@@ -16,6 +16,8 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YnpProviderUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -158,6 +160,11 @@ public class NodeInstanceController extends AuthenticatedController {
       if (StringUtils.isBlank(helmValues)) {
         helmValues = getStoredKubernetesOverrides(universe, nodeName);
       }
+      // The values hold the LDAP gflags, the root CA private key and the telemetry credentials.
+      // Redacted as KubernetesManager redacts the same helm output for the log; the UI only shows
+      // the text, so an HBA line cut after its ldapbindpasswd does no harm.
+      helmValues =
+          RedactingService.redactShellProcessOutput(helmValues, RedactionTarget.HELM_VALUES);
     }
     NodeDetailsResp resp = new NodeDetailsResp(detail, universe, helmValues);
     return PlatformResults.withData(resp);

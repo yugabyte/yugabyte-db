@@ -11,6 +11,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -48,6 +49,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -289,6 +291,42 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     Result r = getNodeDetails(universe.getUniverseUUID(), nodeName);
     checkOk(r);
     return parseResult(r).get("kubernetesOverrides").asText();
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sRedactsSecretsInLiveHelmValues() {
+    Universe u = createK8sUniverseWithOverrides("k8s-helm-secrets", null, null);
+    String rootKey = java.util.Base64.getEncoder().encodeToString("dummy root CA key".getBytes());
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any()))
+        .thenReturn(
+            "rootCA:\n  key: "
+                + rootKey
+                + "\n"
+                + "gflags:\n"
+                + "  tserver:\n"
+                + "    ycql_ldap_bind_passwd: tserver-secret\n"
+                + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+                + " ldapbindpasswd=hba-secret\"\n");
+
+    String overrides = getKubernetesOverrides(u, "host-n1");
+    for (String secret : List.of(rootKey, "tserver-secret", "hba-secret")) {
+      assertFalse(overrides, overrides.contains(secret));
+    }
+    assertTrue(overrides, overrides.contains("ycql_ldap_bind_passwd: REDACTED"));
+  }
+
+  @Test
+  public void testGetNodeDetailsK8sRedactsSecretsInStoredOverrides() {
+    Universe u =
+        createK8sUniverseWithOverrides(
+            "k8s-stored-secrets",
+            "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n",
+            null);
+    when(mockKubernetesManager.getOverridenHelmReleaseValues(any(), any(), any())).thenReturn("");
+
+    assertEquals(
+        "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n",
+        getKubernetesOverrides(u, "host-n1"));
   }
 
   @Test

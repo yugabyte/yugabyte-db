@@ -9,6 +9,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheStats;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.io.StringReader;
 import java.util.ArrayList;
@@ -83,7 +84,7 @@ public final class KubernetesOverridesRedactor {
         case HBA:
           return HbaConfRedactor.redact(value);
         default:
-          return RedactingService.redactSensitiveInfoInString(value);
+          return RedactingService.redactShellProcessOutput(value, RedactionTarget.LOGS);
       }
     }
 
@@ -162,9 +163,10 @@ public final class KubernetesOverridesRedactor {
     try {
       found = find(overrides);
     } catch (UnparsableException e) {
-      // The text scan errs towards redacting too much.
+      // The text scan errs towards redacting too much. Ordered as for shell output: the passes that
+      // can run on past an unclosed value run one line at a time.
       log.debug("Redacting Kubernetes overrides as text: {}", e.getMessage());
-      return RedactingService.redactSensitiveInfoInString(overrides);
+      return RedactingService.redactShellProcessOutput(overrides, RedactionTarget.LOGS);
     }
     List<Replacement> replacements = new ArrayList<>();
     for (Secret secret : found.secrets) {
@@ -184,7 +186,7 @@ public final class KubernetesOverridesRedactor {
         continue;
       }
       String text = overrides.substring(comment[0], comment[1]);
-      String redacted = RedactingService.redactSensitiveInfoInString(text);
+      String redacted = RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS);
       if (!redacted.equals(text)) {
         replacements.add(new Replacement(comment[0], comment[1], redacted));
       }

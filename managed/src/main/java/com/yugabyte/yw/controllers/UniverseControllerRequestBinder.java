@@ -207,13 +207,8 @@ public class UniverseControllerRequestBinder {
       }
       UniverseDefinitionTaskParams.Cluster universeCluster =
           universeClustersByUuid.get(paramCluster.uuid);
-      // Kubernetes tasks apply the primary cluster's overrides to every cluster, so a read replica,
-      // new or stored without its own, may be sent the primary's.
-      UserIntent primary = universeDetails.getPrimaryCluster().userIntent;
       if (universeCluster == null || universeCluster.userIntent == null) {
-        restoreKubernetesOverrides(
-            paramCluster.userIntent, primary.universeOverrides, primary.azOverrides);
-        // Its gflags have nothing stored to restore REDACTED from, as on universe create.
+        // A new cluster has nothing stored to restore REDACTED from, as on universe create.
         GFlagsUtil.checkNoRedactedGFlagsOnCreate(
             paramCluster.userIntent,
             universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion,
@@ -233,19 +228,13 @@ public class UniverseControllerRequestBinder {
       if (specificGFlagsContainsRedactedPlaceholder(dst.specificGFlags)) {
         dst.specificGFlags = src.specificGFlags == null ? null : src.specificGFlags.clone();
       }
-      restoreKubernetesOverrides(
-          dst,
-          src.universeOverrides != null ? src.universeOverrides : primary.universeOverrides,
-          src.azOverrides != null ? src.azOverrides : primary.azOverrides);
+      // A read replica can't have overrides (UniverseDefinitionTaskBase.verifyParams), so only the
+      // cluster's own stored overrides are restored.
+      dst.universeOverrides =
+          KubernetesOverridesRedactor.restore(
+              src.universeOverrides, dst.universeOverrides, "Kubernetes universe overrides");
+      dst.azOverrides = KubernetesOverridesRedactor.restoreAz(src.azOverrides, dst.azOverrides);
     }
-  }
-
-  private static void restoreKubernetesOverrides(
-      UserIntent dst, String storedOverrides, Map<String, String> storedAzOverrides) {
-    dst.universeOverrides =
-        KubernetesOverridesRedactor.restore(
-            storedOverrides, dst.universeOverrides, "Kubernetes universe overrides");
-    dst.azOverrides = KubernetesOverridesRedactor.restoreAz(storedAzOverrides, dst.azOverrides);
   }
 
   private static boolean mapContainsRedactedPlaceholder(Map<String, String> map) {
