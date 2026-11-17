@@ -249,3 +249,21 @@ DROP TABLE cp_test;
 DROP FUNCTION IF EXISTS get_extension_deps(text);
 DROP EXTENSION vector CASCADE;
 \c yugabyte
+-- PG15 backups name pg_stat_statements_reset(oid, oid, bigint); a restore maps it to the 4-argument function.
+\c yugabyte yugabyte
+CREATE ROLE pgss_reset_role;
+SET yb_binary_restore = true;
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) FROM PUBLIC;
+GRANT ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(userid oid, dbid oid, queryid bigint) TO pgss_reset_role;
+RESET yb_binary_restore;
+SELECT has_function_privilege('pgss_reset_role', 'pg_catalog.pg_stat_statements_reset(oid, oid, bigint, boolean)', 'EXECUTE');
+ has_function_privilege 
+------------------------
+ t
+(1 row)
+
+-- Outside a restore, the 3-argument name does not exist.
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(oid, oid, bigint) FROM pgss_reset_role;
+ERROR:  function pg_catalog.pg_stat_statements_reset(oid, oid, bigint) does not exist
+REVOKE ALL ON FUNCTION pg_catalog.pg_stat_statements_reset(oid, oid, bigint, boolean) FROM pgss_reset_role;
+DROP ROLE pgss_reset_role;
