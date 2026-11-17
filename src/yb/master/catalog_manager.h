@@ -1921,7 +1921,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Result<CDCStreamInfoPtr> GetPubRefreshStream(const std::string& slot_name) EXCLUDES(mutex_);
   Result<bool> HasSysCatalogRetentionBarrier(const xrepl::StreamId& stream_id);
-  Status ClearImplicitConversionState(const CDCStreamInfoPtr& stream);
+  Status ClearImplicitConversionState(const CDCStreamInfoPtr& stream) EXCLUDES(mutex_);
+  // Requires cdcsdk_sys_catalog_barrier_mutex_.
+  Status ReleaseSysCatalogRetentionBarriersIfUnused(const xrepl::StreamId& stream_id)
+      EXCLUDES(mutex_);
 
   // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
   // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,
@@ -3709,6 +3712,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   bool xrepl_maps_loaded_ GUARDED_BY(mutex_) = false;
 
   std::mutex xrepl_stream_ids_in_use_mutex_;
+
+  // Serializes releasing the sys catalog retention barriers with setting them, so that a release
+  // never drops a barrier that a stream being created or a catalog barrier command just set.
+  std::mutex cdcsdk_sys_catalog_barrier_mutex_;
   std::unordered_set<xrepl::StreamId> xrepl_stream_ids_in_use_
       GUARDED_BY(xrepl_stream_ids_in_use_mutex_);
 

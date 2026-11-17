@@ -31,7 +31,6 @@
 
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_int32(log_min_segments_to_retain);
-DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 namespace yb {
@@ -63,56 +62,6 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
   void TestSlotRowDeletion(bool multiple_streams);
   void TestColocatedUpdateWithIndex(bool use_pk_as_index);
   void TestColocatedUpdateAffectingNoRows(bool use_multi_shard);
-
-  Status InsertRow(pgwrapper::PGConn* conn, int key) {
-    return conn->ExecuteFormat(
-        "INSERT INTO $0 ($1, $2) VALUES ($3, $4)", kTableName, kKeyColumnName, kValueColumnName,
-        key, key * 10);
-  }
-
-  // Creates a slot that detects publication changes through publication refresh, as on a
-  // release without implicit detection.
-  Result<xrepl::StreamId> CreatePubRefreshSlot(const std::string& slot_name) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
-        false;
-    auto stream_id = CreateConsistentSnapshotStreamWithReplicationSlot(slot_name);
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
-        true;
-    return stream_id;
-  }
-
-  // Inserts key, sets the catalog barrier with the consumer stopped, optionally inserts
-  // key_after_barrier once the barrier time has passed, and then streams and acknowledges until the
-  // slot pauses. Returns the records streamed.
-  Result<std::vector<CDCSDKProtoRecordPB>> SetBarrierAndPause(
-      const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
-      pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier = std::nullopt) {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
-    RETURN_NOT_OK(InsertRow(conn, key));
-    RETURN_NOT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {slot_name}));
-    if (key_after_barrier) {
-      // The barrier time is at least the master's time plus the maximum clock skew.
-      SleepFor(MonoDelta::FromMicroseconds(FLAGS_max_clock_skew_usec) + 100ms);
-      RETURN_NOT_OK(InsertRow(conn, *key_after_barrier));
-    }
-    RETURN_NOT_OK(InitVirtualWAL(stream_id, {table_id}));
-    std::vector<CDCSDKProtoRecordPB> records;
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
-          for (const auto& record : resp.cdc_sdk_proto_records()) {
-            records.push_back(record);
-            if (record.row_message().op() == RowMessage_Op_COMMIT) {
-              const auto lsn = record.row_message().pg_lsn();
-              RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn + 1));
-            }
-          }
-          return ExecuteYBAdminCommand("pause_replication_slot", {slot_name, "1"}).ok();
-        },
-        60s * kTimeMultiplier, "Waiting for the slot to pause"));
-    RETURN_NOT_OK(DestroyVirtualWAL());
-    return records;
-  }
 
   void TestStoppedSlotRetainsWalIntentsAndHistory(bool pub_refresh);
   void TestExplcictCheckpointMovementAfterDDL(bool no_activity_post_ddl);
@@ -7587,15 +7536,21 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("pause_replication_slot", {kUnpausedSlotName, "1"}),
       "rerun the command until it succeeds");
+  // Releasing a slot keeps the sys catalog retention barriers that another paused slot needs.
+  ASSERT_OK(ExecuteYBAdminCommand("release_replication_slot", {kUnpausedSlotName}));
+  ASSERT_LT(
+      ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster())
+          ->tablet_peer()->cdc_sdk_min_checkpoint_op_id(),
+      OpId::Max());
 
   ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(InsertRow(&conn, 2));
+  ASSERT_OK(WriteRows(2, 2 + 1, &test_cluster_, {} /* optional_cols_name */, &conn));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 ($1, $2, value_2) VALUES (3, 30, 'foo')", kTableName, kKeyColumnName,
       kValueColumnName));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value_2", kTableName));
-  ASSERT_OK(InsertRow(&conn, 4));
+  ASSERT_OK(WriteRows(4, 4 + 1, &test_cluster_, {} /* optional_cols_name */, &conn));
   ASSERT_OK(conn.Execute("COMMIT"));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
@@ -7653,6 +7608,11 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
   ASSERT_OK(ExecuteYBAdminCommand("release_replication_slot", {kSlotName}));
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("pause_replication_slot", {kSlotName}), "Set the catalog barrier");
+  const auto sys_catalog_peer =
+      ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster())->tablet_peer();
+  ASSERT_EQ(sys_catalog_peer->get_cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
+  ASSERT_EQ(sys_catalog_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  ASSERT_EQ(sys_catalog_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
 
   // Release deletes the sys catalog entry also when the stream records no barrier, as after a
   // barrier command that failed once the barrier was set.
@@ -7664,7 +7624,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
   ASSERT_OK(ExecuteYBAdminCommand("release_replication_slot", {kSlotName}));
   ASSERT_FALSE(ASSERT_RESULT(
       cdc_state_table.TryFetchEntry({master::kSysCatalogTabletId, stream_id})).has_value());
-  ASSERT_OK(InsertRow(&conn, 2));
+  ASSERT_OK(WriteRows(2, 2 + 1, &test_cluster_, {} /* optional_cols_name */, &conn));
   ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
   ASSERT_OK(DestroyVirtualWAL());
@@ -7769,7 +7729,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAnd
   if (pub_refresh) {
     ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1));
   } else {
-    ASSERT_OK(InsertRow(&conn, 1));
+    ASSERT_OK(WriteRows(1, 1 + 1, &test_cluster_, {} /* optional_cols_name */, &conn));
     ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
         stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
     ASSERT_OK(DestroyVirtualWAL());
@@ -7781,13 +7741,13 @@ void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAnd
         kKeyColumnName));
   }
   ASSERT_OK(conn.Execute("BEGIN"));
-  ASSERT_OK(InsertRow(&conn, 2));
+  ASSERT_OK(WriteRows(2, 2 + 1, &test_cluster_, {} /* optional_cols_name */, &conn));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN value_2 text", kTableName));
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 ($1, $2, value_2) VALUES (3, 30, 'foo')", kTableName, kKeyColumnName,
       kValueColumnName));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN value_2", kTableName));
-  ASSERT_OK(InsertRow(&conn, 4));
+  ASSERT_OK(WriteRows(4, 4 + 1, &test_cluster_, {} /* optional_cols_name */, &conn));
   ASSERT_OK(conn.Execute("COMMIT"));
 
   auto user_tablet_peer =
@@ -7846,7 +7806,7 @@ void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAnd
       ddl_record_times.push_back(row_message.record_time());
     }
   }
-  ASSERT_EQ(before_images, (std::vector<int32_t>{10, 11}));
+  ASSERT_EQ(before_images, (std::vector<int32_t>{2, 11}));
   // Without the CDC barriers, both cutoffs would be within a second of the compaction, past the
   // first UPDATE by more than the original cdc_intent_retention_ms.
   ASSERT_TRUE(first_update_commit_time);

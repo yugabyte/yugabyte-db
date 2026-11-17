@@ -3264,6 +3264,14 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
   }
 }
 
+Status CDCServiceImpl::ReleaseSysCatalogRetentionBarriers() {
+  TabletCDCCheckpointInfo checkpoint_info;
+  checkpoint_info.cdc_sdk_op_id = OpId::Max();
+  return UpdateTabletPeerWithCheckpoint(
+      master::kSysCatalogTabletId, &checkpoint_info, false /* enable_update_local_peer_min_index */,
+      false /* ignore_rpc_failures */);
+}
+
 Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
     bool enable_update_local_peer_min_index, bool ignore_rpc_failures,

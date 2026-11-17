@@ -5115,6 +5115,48 @@ Result<std::string> CDCSDKYsqlTest::PrepareReplicationSlotsForTransactionalDDL(
       master_addresses, "prepare_replication_slots_for_transactional_ddl", command_args);
 }
 
+Result<xrepl::StreamId> CDCSDKYsqlTest::CreatePubRefreshSlot(const std::string& slot_name) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  auto stream_id = CreateConsistentSnapshotStreamWithReplicationSlot(slot_name);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  return stream_id;
+}
+
+Result<std::vector<CDCSDKProtoRecordPB>> CDCSDKYsqlTest::SetBarrierAndPause(
+    const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
+    pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  RETURN_NOT_OK(WriteRows(key, key + 1, &test_cluster_, {} /* optional_cols_name */, conn));
+  RETURN_NOT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {slot_name}));
+  if (key_after_barrier) {
+    // The barrier time is at least the master's time plus the maximum clock skew.
+    SleepFor(
+        MonoDelta::FromMicroseconds(FLAGS_max_clock_skew_usec) + MonoDelta::FromMilliseconds(100));
+    RETURN_NOT_OK(WriteRows(
+        *key_after_barrier, *key_after_barrier + 1, &test_cluster_, {} /* optional_cols_name */,
+        conn));
+  }
+  RETURN_NOT_OK(InitVirtualWAL(stream_id, {table_id}));
+  std::vector<CDCSDKProtoRecordPB> records;
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          records.push_back(record);
+          if (record.row_message().op() == RowMessage_Op_COMMIT) {
+            const auto lsn = record.row_message().pg_lsn();
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn + 1));
+          }
+        }
+        return ExecuteYBAdminCommand("pause_replication_slot", {slot_name, "1"}).ok();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, "Waiting for the slot to pause"));
+  RETURN_NOT_OK(DestroyVirtualWAL());
+  return records;
+}
+
 Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
     const xrepl::StreamId& stream_id) {
   std::string yb_admin_command =

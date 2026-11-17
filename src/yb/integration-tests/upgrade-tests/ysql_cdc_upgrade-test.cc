@@ -135,6 +135,26 @@ class CdcUpgradeTest : public UpgradeTestBase {
     return std::make_pair(stream_id, implicit.value_or(false));
   }
 
+  Result<std::pair<HybridTime, HybridTime>> GetBarrierAndRestartTime(const std::string& slot_name) {
+    const auto stream_id = VERIFY_RESULT(GetSlotStream(slot_name)).first;
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    NamespaceId ns_id;
+    TableIds table_ids;
+    std::unordered_map<std::string, std::string> options;
+    cdc::StreamModeTransactional transactional(false);
+    std::optional<HybridTime> barrier_ht;
+    RETURN_NOT_OK(client->GetCDCStream(
+        stream_id, &ns_id, &table_ids, &options, &transactional, nullptr, nullptr, nullptr,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        nullptr, &barrier_ht));
+    SCHECK_FORMAT(barrier_ht, NotFound, "Replication slot $0 has no catalog barrier", slot_name);
+    auto conn = VERIFY_RESULT(cluster_->ConnectToDB(kDbName));
+    const auto restart_ht = VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT yb_restart_commit_ht FROM pg_replication_slots WHERE slot_name = '$0'",
+        slot_name)));
+    return std::make_pair(*barrier_ht, HybridTime(restart_ht));
+  }
+
   Result<bool> HasTxnDdlCatalogTables(const std::string& slot_name) {
     const auto stream_id = VERIFY_RESULT(GetSlotStream(slot_name)).first;
     auto conn = VERIFY_RESULT(cluster_->ConnectToDB(kDbName));
@@ -481,6 +501,8 @@ void CdcUpgradeTest::TestPausedPubRefreshSlotConvertedToImplicit() {
   });
   ASSERT_OK(RunYbAdmin("pause_replication_slot", kSlot));
   thread_holder.JoinAll();
+  const auto [barrier_ht, restart_ht] = ASSERT_RESULT(GetBarrierAndRestartTime(kSlot));
+  ASSERT_EQ(restart_ht, barrier_ht);
 
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kDbName));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN new_col INT", kTableName));

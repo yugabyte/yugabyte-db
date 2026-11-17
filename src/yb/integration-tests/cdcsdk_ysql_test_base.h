@@ -175,6 +175,7 @@ DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
 DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 
@@ -947,6 +948,17 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Result<std::string> PrepareReplicationSlotsForTransactionalDDL(
       const std::string& master_addresses, const std::string& slot_name);
+
+  // Creates a slot that detects publication changes through publication refresh, as on a
+  // release without implicit detection.
+  Result<xrepl::StreamId> CreatePubRefreshSlot(const std::string& slot_name);
+
+  // Inserts key, sets the catalog barrier with the consumer stopped, optionally inserts
+  // key_after_barrier once the barrier time has passed, and then streams and acknowledges until the
+  // slot pauses. Returns the records streamed.
+  Result<std::vector<CDCSDKProtoRecordPB>> SetBarrierAndPause(
+      const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
+      pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier = std::nullopt);
 
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

@@ -1611,6 +1611,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
 
   {
     // Add the stream to the in-memory map.
+    std::lock_guard barrier_lock(cdcsdk_sys_catalog_barrier_mutex_);
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
     // Check again before inserting to handle concurrent creates.
@@ -5723,6 +5724,7 @@ Status CatalogManager::SetReplicationSlotCatalogBarrier(
       "enabled");
 
   auto stream = VERIFY_RESULT(GetPubRefreshStream(req->replication_slot_name()));
+  std::lock_guard barrier_lock(cdcsdk_sys_catalog_barrier_mutex_);
   NamespaceId namespace_id;
   std::optional<uint64_t> existing_barrier_ht;
   {
@@ -5855,6 +5857,7 @@ Status CatalogManager::ReleaseReplicationSlot(
 }
 
 Status CatalogManager::ClearImplicitConversionState(const CDCStreamInfoPtr& stream) {
+  std::lock_guard barrier_lock(cdcsdk_sys_catalog_barrier_mutex_);
   {
     auto l = stream->LockForWrite();
     auto& pb = l.mutable_data()->pb;
@@ -5868,11 +5871,45 @@ Status CatalogManager::ClearImplicitConversionState(const CDCStreamInfoPtr& stre
     }
   }
   // Deleted even when the stream records no barrier, since a barrier command that failed after
-  // setting the barrier leaves the entry without recording it. If this fails, the entry expires
-  // like any unused one.
-  WARN_NOT_OK(
+  // setting the barrier leaves the entry without recording it.
+  RETURN_NOT_OK_PREPEND(
       cdc_state_table_->DeleteEntries({{kSysCatalogTabletId, stream->StreamId()}}),
       Format("Failed to delete the sys catalog entry of CDC stream $0", stream->id()));
+  return ReleaseSysCatalogRetentionBarriersIfUnused(stream->StreamId());
+}
+
+// Release runs before a rollback, and an older master may never move the sys catalog retention
+// barriers, so they are released here unless another stream still needs them.
+Status CatalogManager::ReleaseSysCatalogRetentionBarriersIfUnused(
+    const xrepl::StreamId& stream_id) {
+  if (!FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    return Status::OK();
+  }
+  std::vector<CDCStreamInfoPtr> streams;
+  {
+    SharedLock lock(mutex_);
+    streams.reserve(cdc_stream_map_.size());
+    for (const auto& [id, stream] : cdc_stream_map_) {
+      if (id != stream_id) {
+        streams.push_back(stream);
+      }
+    }
+  }
+  for (const auto& stream : streams) {
+    auto l = stream->LockForRead();
+    if (!l->started_deleting() && (l->pb.detect_publication_changes_implicitly() ||
+                                   l->pb.has_cdcsdk_implicit_conversion_barrier_ht())) {
+      LOG_WITH_FUNC(INFO) << "Not releasing the sys catalog retention barriers, which CDC stream "
+                          << stream->id() << " needs";
+      return Status::OK();
+    }
+  }
+  auto cdc_service = master_->tablet_server()->GetCDCService();
+  SCHECK(cdc_service, IllegalState, "The CDC service isn't running on the master");
+  RETURN_NOT_OK_PREPEND(
+      cdc_service->ReleaseSysCatalogRetentionBarriers(),
+      "Failed to release the sys catalog retention barriers");
+  LOG_WITH_FUNC(INFO) << "Released the sys catalog retention barriers";
   return Status::OK();
 }
 
