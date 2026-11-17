@@ -144,6 +144,10 @@ class PgPartmanTestBase : public MiniClusterTestWithClient<ExternalMiniCluster> 
       flags->push_back("--ysql_yb_enable_ddl_savepoint_support=true");
       flags->push_back(Format("--$0=true", kNativeFlag));
     }
+    // The pg_partman tests read indexes (e.g. a foreign key check on a UNIQUE constraint) created
+    // earlier in the same transaction.
+    // TODO(#37091): remove once a transaction can read an index it created.
+    opts->extra_master_flags.push_back("--enable_ysql_index_birth_time_state=false");
   }
 
   // The flag is on, but pg_partman keeps the flag-off path because a prerequisite is off.

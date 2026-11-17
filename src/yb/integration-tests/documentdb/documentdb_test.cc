@@ -17,6 +17,7 @@
 
 DECLARE_bool(ysql_enable_documentdb);
 DECLARE_bool(enable_pg_cron);
+DECLARE_bool(enable_ysql_index_birth_time_state);
 
 namespace yb {
 class DocumentDBTest : public pgwrapper::PgMiniTestBase {
@@ -28,6 +29,10 @@ class DocumentDBTest : public pgwrapper::PgMiniTestBase {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_documentdb) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_cron) = true;
+    // CREATE EXTENSION documentdb reads cron.job through an index pg_cron created earlier in the
+    // same transaction.
+    // TODO(#37091): remove once a transaction can read an index it created.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql_index_birth_time_state) = false;
 
     TEST_SETUP_SUPER(pgwrapper::PgMiniTestBase);
 

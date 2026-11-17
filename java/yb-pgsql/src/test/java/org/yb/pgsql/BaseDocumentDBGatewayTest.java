@@ -62,6 +62,10 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
     flagMap.put("enable_pg_cron", "true");
     flagMap.put("allowed_preview_flags_csv", "ysql_enable_documentdb");
     flagMap.put("ysql_enable_documentdb", "true");
+    // CREATE EXTENSION documentdb reads cron.job through an index pg_cron created earlier in the
+    // same transaction.
+    // TODO(#37091): remove once a transaction can read an index it created.
+    flagMap.put("enable_ysql_index_birth_time_state", "false");
     return flagMap;
   }
 
