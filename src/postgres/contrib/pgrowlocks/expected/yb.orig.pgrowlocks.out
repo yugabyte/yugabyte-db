@@ -1,0 +1,75 @@
+--
+-- pgrowlocks reads heap pages directly, so it is installed as a library only:
+-- it can no longer be created, but a database restored from a backup that has
+-- it keeps working.  pgrowlocks() rejects YB tables and keeps working on temp
+-- tables.
+--
+\set VERBOSITY terse
+CREATE EXTENSION pgrowlocks;
+ERROR:  extension "pgrowlocks" is not available
+\set VERBOSITY default
+SELECT name FROM pg_available_extensions WHERE name = 'pgrowlocks';
+ name 
+------
+(0 rows)
+
+-- Recreate the extension the way a backup restore does.
+SET yb_binary_restore = true;
+SET yb_non_ddl_txn_for_sys_tables_allowed = true;
+SELECT binary_upgrade_create_empty_extension('pgrowlocks', 'public', true, '1.2', NULL, NULL, ARRAY[]::text[]);
+ binary_upgrade_create_empty_extension 
+---------------------------------------
+ 
+(1 row)
+
+CREATE FUNCTION pgrowlocks(relname text, OUT locked_row tid, OUT locker xid, OUT multi boolean, OUT xids xid[], OUT modes text[], OUT pids integer[]) RETURNS SETOF record
+    LANGUAGE c STRICT PARALLEL SAFE
+    AS '$libdir/pgrowlocks', 'pgrowlocks';
+ALTER EXTENSION pgrowlocks ADD FUNCTION pgrowlocks(text);
+RESET yb_non_ddl_txn_for_sys_tables_allowed;
+RESET yb_binary_restore;
+SELECT extname, extversion FROM pg_extension WHERE extname = 'pgrowlocks';
+  extname   | extversion 
+------------+------------
+ pgrowlocks | 1.2
+(1 row)
+
+CREATE TABLE yb_t (k int PRIMARY KEY, v int);
+INSERT INTO yb_t SELECT g, g FROM generate_series(1, 10) g;
+SELECT * FROM pgrowlocks('yb_t');
+ERROR:  cannot get row locks of YugabyteDB table "yb_t"
+HINT:  Query the pg_locks view instead.
+BEGIN;
+SELECT k FROM yb_t WHERE k = 1 FOR UPDATE;
+ k 
+---
+ 1
+(1 row)
+
+SELECT * FROM pgrowlocks('yb_t');
+ERROR:  cannot get row locks of YugabyteDB table "yb_t"
+HINT:  Query the pg_locks view instead.
+ROLLBACK;
+-- Temp tables are heap tables and keep working
+CREATE TEMP TABLE tmp_t (k int PRIMARY KEY, v int);
+INSERT INTO tmp_t SELECT g, g FROM generate_series(1, 10) g;
+BEGIN;
+SELECT k FROM tmp_t WHERE k IN (1, 2) FOR UPDATE;
+ k 
+---
+ 1
+ 2
+(2 rows)
+
+SELECT locked_row, multi, modes FROM pgrowlocks('tmp_t');
+ locked_row | multi |     modes      
+------------+-------+----------------
+ (0,1)      | f     | {"For Update"}
+ (0,2)      | f     | {"For Update"}
+(2 rows)
+
+COMMIT;
+-- DROP EXTENSION works without the control file
+DROP TABLE tmp_t;
+DROP TABLE yb_t;
+DROP EXTENSION pgrowlocks;
