@@ -306,6 +306,21 @@ DELETE FROM sample where b = 1;
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE a > 0;
 SELECT DISTINCT a FROM sample WHERE a > 0;
 
+-- See issue #37536: same as above, but with a filter on the last key column.
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE b > 0;
+SELECT DISTINCT a FROM sample WHERE b > 0;
+
+-- Deleted rows: before the live row for a = 1 and 2, after it for a = 3, all rows for a = 4.
+-- Live rows: (1,3), (2,2), (3,5).
+INSERT INTO sample VALUES (1,1), (1,3), (2,1), (2,2), (3,5), (3,6), (4,1);
+DELETE FROM sample WHERE (a, b) IN ((1,1), (1,2), (2,1), (3,6), (4,1));
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE b > 0;
+SELECT DISTINCT a FROM sample WHERE b > 0;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE b > 0 ORDER BY a DESC;
+SELECT DISTINCT a FROM sample WHERE b > 0 ORDER BY a DESC;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE b IN (1, 2, 3, 5);
+SELECT DISTINCT a FROM sample WHERE b IN (1, 2, 3, 5);
+
 DROP TABLE sample;
 
 -- See issue #22615

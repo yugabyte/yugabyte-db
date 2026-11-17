@@ -124,11 +124,13 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
     return impl().DoSearch(query_vector, options);
   }
 
-  std::vector<VectorWithDistance<DistanceResult>> SearchExact(
+  Result<std::vector<VectorWithDistance<DistanceResult>>> SearchExact(
       const Vector& query_vector, const SearchOptions& options) const {
     using Entry = VectorWithDistance<DistanceResult>;
     rocksdb::BinaryHeap<Entry> top;
-    for (const auto& [vector_id, vector] : *this) {
+    auto it = this->CreateIterator();
+    for (; it->Valid(); it->Next()) {
+      const auto& [vector_id, vector] = it->Entry();
       if (options.filter && !options.filter(vector_id)) {
         continue;
       }
@@ -139,6 +141,7 @@ class IndexWrapperBase : public VectorIndexIf<Vector, DistanceResult> {
         top.replace_top(element);
       }
     }
+    RETURN_NOT_OK(it->status());
     return MakeResult<DistanceResult>(options.max_num_results, top.data());
   }
 

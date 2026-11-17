@@ -234,13 +234,16 @@ class DocVectorIndexViewImpl : public DocVectorIndexView {
   Status ForEachVector(const DocVectorIndexEntryCallback& callback) const override {
     ValueBuffer buffer;
     for (const auto& index : indexes_) {
-      for (const auto& [vector_id, vector] : *index) {
+      auto it = index->CreateIterator();
+      for (; it->Valid(); it->Next()) {
+        const auto& [vector_id, vector] = it->Entry();
         VectorToYSQL(vector, &buffer);
         RETURN_NOT_OK(callback(DocVectorIndexEntry {
           .vector_id = vector_id,
           .vector = buffer.AsSlice(),
         }));
       }
+      RETURN_NOT_OK(it->status());
     }
     return Status::OK();
   }
