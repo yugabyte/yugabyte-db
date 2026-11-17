@@ -1023,7 +1023,9 @@ void YBCStartSysTablePrefetchingNoCache(
 // one, or the two would answer each other. It reaches the wire only on the prefetch's opening
 // round; a round after that has fetched data a send-away would throw away.
 //
-// part_of_connection_prefetch is as above.
+// part_of_connection_prefetch says this prefetch is a connection start's. The first of its
+// rounds that the cache fills takes the session's claim on the database, and the flag keeps that
+// claim across the rounds that follow.
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,

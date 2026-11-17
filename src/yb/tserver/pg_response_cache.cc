@@ -610,7 +610,7 @@ class PgResponseCache::Impl : private GarbageCollector {
   // or two early there; the next round that fills takes a fresh token, and the database is
   // uncounted until one does.
   static void EndPrefetchClaimIfComplete(
-      const ConnectionPrefetchInfo& prefetch, FillTokenPtr* token) {
+      ConnectionPrefetchInfo prefetch, FillTokenPtr* token) {
     if (FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
       return;
     }
@@ -690,7 +690,7 @@ class PgResponseCache::Impl : private GarbageCollector {
 
  public:
   Result<Setter> Get(
-      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, const ConnectionPrefetchInfo& prefetch,
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, ConnectionPrefetchInfo prefetch,
       CoarseTimePoint deadline, const PgResponseCacheWaiterPtr& waiter,
       FillTokenPtr* token) EXCLUDES(mutex_) {
     // The last request of a connection start's prefetch is one of its requests, so the two fields
@@ -877,7 +877,7 @@ class PgResponseCache::Impl : private GarbageCollector {
   // a miss: an entry claimed for a fill that is not coming makes every later query on that key
   // wait out the RPC deadline.
   Result<Setter> LookupOnlyGet(
-      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, const ConnectionPrefetchInfo& prefetch,
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, ConnectionPrefetchInfo prefetch,
       const PgResponseCacheWaiterPtr& waiter) EXCLUDES(mutex_) {
     auto data = FindEntryData(cache_info);
     queries_->Increment();
@@ -1043,7 +1043,7 @@ void PgResponseCache::EndConnectionPrefetchClaim(
 
 Result<PgResponseCache::Setter> PgResponseCache::Get(
     LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
-    const ConnectionPrefetchInfo& prefetch,
+    ConnectionPrefetchInfo prefetch,
     CoarseTimePoint deadline,
     const PgResponseCacheWaiterPtr& waiter,
     FillTokenPtr* token) {

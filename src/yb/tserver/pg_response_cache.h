@@ -90,7 +90,7 @@ class PgResponseCache {
   // ties a caller to another's claim: parallel workers share their leader's, and nothing else
   // here distinguishes one caller from another.
   Result<Setter> Get(
-      LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, const ConnectionPrefetchInfo& prefetch,
+      LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, ConnectionPrefetchInfo prefetch,
       CoarseTimePoint deadline, const PgResponseCacheWaiterPtr& waiter, FillTokenPtr* token);
 
   // Ends a connection start's claim on the round of its last request that runs out of paging

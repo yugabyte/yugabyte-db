@@ -562,7 +562,7 @@ class PgSession::RunHelper {
 
   Result<PerformFuture> Flush(
       std::optional<CacheOptions>&& cache_options,
-      const PgConnectionPrefetchOptions& connection_prefetch) {
+      PgConnectionPrefetchOptions connection_prefetch) {
     if (ops_info_.ops.Empty()) {
       // All operations were buffered, no need to flush.
       return PerformFuture();
@@ -1293,7 +1293,7 @@ template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
     const Generator& generator, const RunOptions& options,
     std::optional<CacheOptions>&& cache_options,
-    const PgConnectionPrefetchOptions& connection_prefetch) {
+    PgConnectionPrefetchOptions connection_prefetch) {
   const auto first_table_op = generator();
   RSTATUS_DCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
   // Previously, yb_non_ddl_txn_for_sys_tables_allowed flag caused CREATE VIEW to fail with
@@ -1395,7 +1395,7 @@ Result<PerformFuture> PgSession::RunAsync(
 
 Result<PerformFuture> PgSession::RunAsync(
     const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options,
-    const PgConnectionPrefetchOptions& connection_prefetch) {
+    PgConnectionPrefetchOptions connection_prefetch) {
   if (cache_options) {
     RSTATUS_DCHECK(!cache_options->key_value.empty(), InvalidArgument, "Cache key can't be empty");
     // Ensure no buffered requests will be added to cached request.

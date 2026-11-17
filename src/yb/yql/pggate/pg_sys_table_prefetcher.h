@@ -71,9 +71,11 @@ struct PrefetcherOptions {
   uint64_t fetch_row_limit;
   YbcPgSysTablePrefetchKind kind;
   uint64_t fetch_size_limit;
-  // Whether this prefetch is a connection start's, which makes the tserver treat the database as
-  // busy for its whole duration. Outside caching_info because a connection start reading without
-  // the cache sets it too. See PgPerformOptionsPB.part_of_connection_prefetch.
+  // Whether this prefetch is a connection start's. Where it caches, that keeps the tserver
+  // treating the database as busy for its whole duration; where it does not, it only keeps a
+  // claim an earlier cached attempt took from being dropped. Outside caching_info because a
+  // connection start reading without the cache sets it too.
+  // See PgPerformOptionsPB.part_of_connection_prefetch.
   bool part_of_connection_prefetch;
 
   std::string ToString() const;
