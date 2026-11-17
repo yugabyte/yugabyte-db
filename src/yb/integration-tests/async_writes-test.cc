@@ -21,7 +21,6 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/master/master_client.pb.h"
@@ -1538,206 +1537,260 @@ TEST_F(AsyncWritesExternalTest, IntentsFrontierInflationCausesDataLoss) {
       << "Data hash mismatch on restarted old leader.";
 }
 
-YB_DEFINE_ENUM(StalledStatement,
-    // A pipelined INSERT as the transaction's first statement.
-    (kFirstInsert)
-    // A pipelined INSERT after an earlier write in the transaction.
-    (kInsertAfterWrite)
-    // A pipelined INSERT inside a savepoint; the app rolls back to the savepoint and commits.
-    (kInsertInSavepoint)
-    // A pipelined INSERT in a READ COMMITTED transaction, where every statement is a
-    // subtransaction.
-    (kInsertReadCommitted)
-    // A row lock, which is also applied before replication.
-    (kSelectForUpdate)
-    // A plain read, which applies nothing and must keep the transparent resend.
-    (kPlainSelect));
-
-class AsyncWritesPausedLeaderTest : public AsyncWritesExternalTest {
+// A single-tablet table with rows, and a connection to a tserver that is not the tablet's leader.
+class AsyncWritesSingleTabletTest : public AsyncWritesExternalTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     AsyncWritesExternalTest::UpdateMiniClusterOptions(options);
     // Elect a new leader quickly once the old one is paused.
     options->extra_tserver_flags.push_back("--leader_failure_max_missed_heartbeat_periods=6");
+  }
+
+  void SetUp() override {
+    TEST_SETUP_SUPER(AsyncWritesExternalTest);
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS", kTableName));
+
+    tablet_id_ = ASSERT_RESULT(GetSingleTabletId(kTableName));
+    leader_idx_ = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+    client_idx_ = ASSERT_RESULT(cluster_->GetTabletFollowerIndexes(tablet_id_))[0];
+    leader_ = cluster_->tablet_server(leader_idx_);
+    ASSERT_OK(MoveTransactionStatusLeaders());
+
+    conn_ = std::make_unique<pgwrapper::PGConn>(
+        ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", client_idx_)));
+    ASSERT_OK(conn_->ExecuteFormat(
+        "INSERT INTO $0 SELECT g, g FROM generate_series(0, $1) g", kTableName, kInitialRows - 1));
+  }
+
+  // Keeps transaction status tablet leaders off the table's leader, so COMMIT doesn't wait on a
+  // tserver that the test pauses or slows down.
+  Status MoveTransactionStatusLeaders() {
+    for (const auto& entry : VERIFY_RESULT(cluster_->GetTablets(leader_))) {
+      if (entry.table_name() == "transactions" && entry.is_leader()) {
+        RETURN_NOT_OK(cluster_->MoveTabletLeader(entry.tablet_id(), client_idx_));
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Insert(int key) {
+    return conn_->ExecuteFormat("INSERT INTO $0 VALUES ($1, $1)", kTableName, key);
+  }
+
+  static constexpr auto kTableName = "tbl1";
+  static constexpr auto kWriteDelayFlag = "TEST_delay_before_added_to_leader_ms";
+  static constexpr uint64_t kInitialRows = 10;
+
+  TabletId tablet_id_;
+  size_t leader_idx_ = 0;
+  size_t client_idx_ = 0;
+  ExternalTabletServer* leader_ = nullptr;
+  std::unique_ptr<pgwrapper::PGConn> conn_;
+};
+
+// When a pipelined statement's leader stops responding, the statement is restarted or resent only
+// where that is safe and the transaction aborts otherwise, so the old leader does not crash once it
+// resumes.
+class AsyncWritesPausedLeaderTest : public AsyncWritesSingleTabletTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    AsyncWritesSingleTabletTest::UpdateMiniClusterOptions(options);
     // The pause leaves peer RPCs in flight far longer than the stuck-call threshold, which is a
     // DFATAL in debug builds.
     options->extra_tserver_flags.push_back("--consensus_stuck_peer_call_threshold_ms=0");
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
 
-  void TestPausedLeader(StalledStatement stalled);
+  void DoBeforeTearDown() override {
+    if (leader_ && leader_->IsProcessPaused()) {
+      WARN_NOT_OK(leader_->Resume(), "Resume failed");
+    }
+    AsyncWritesSingleTabletTest::DoBeforeTearDown();
+  }
+
+  // Runs `statement` while the leader holds it under `delay_flag` and is paused, and returns its
+  // status once the client gives up on the leader. The leader stays paused until
+  // ResumeLeaderAndCheck.
+  Status RunWithLeaderPaused(
+      const std::function<Status()>& statement, const std::string& delay_flag = kWriteDelayFlag) {
+    delay_flag_ = delay_flag;
+    RETURN_NOT_OK(cluster_->SetFlag(leader_, delay_flag_, "5000"));
+    RETURN_NOT_OK(cluster_->SetFlag(leader_, "vmodule", "tablet_service=5"));
+    LogWaiter request_received(
+        leader_, {Format("Received Write RPC: tablet_id: \"$0\"", tablet_id_),
+                  Format("Read req: tablet_id: \"$0\"", tablet_id_)});
+    Status status;
+    TestThreadHolder thread_holder;
+    thread_holder.AddThread([&statement, &status] {
+      auto start = MonoTime::Now();
+      status = statement();
+      LOG(INFO) << "Statement took " << MonoTime::Now() - start << ": " << status;
+    });
+    // Pause only once the leader has read the request, and while the delay still holds it.
+    RETURN_NOT_OK(request_received.WaitFor(10s * kTimeMultiplier));
+    RETURN_NOT_OK(leader_->Pause());
+    thread_holder.JoinAll();
+    return status;
+  }
+
+  // Resumes the old leader and checks that the new leader has `expected_rows`, and that the old
+  // leader catches up with it without crashing.
+  void ResumeLeaderAndCheck(uint64_t expected_rows) {
+    ASSERT_OK(leader_->Resume());
+    ASSERT_OK(cluster_->SetFlag(leader_, delay_flag_, "0"));
+    ASSERT_OK(cluster_->SetFlag(leader_, "vmodule", ""));
+
+    auto new_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id_));
+    auto healthy_dump = ASSERT_RESULT(DumpTabletData(new_leader_idx, tablet_id_));
+    ASSERT_EQ(healthy_dump.row_count(), expected_rows);
+
+    ASSERT_OK(LoggedWaitFor(
+        [this, &healthy_dump]() -> Result<bool> {
+          if (!leader_->IsProcessAlive()) {
+            return true;
+          }
+          auto dump = DumpTabletData(leader_idx_, tablet_id_);
+          return dump.ok() && dump->row_count() == healthy_dump.row_count() &&
+                 dump->xor_hash() == healthy_dump.xor_hash();
+        },
+        120s * kTimeMultiplier, "Wait for old leader to catch up or crash"));
+    ASSERT_TRUE(leader_->IsProcessAlive()) << "Old leader crashed after resuming";
+  }
+
+  Status SelectRow(int key, const std::string& suffix = "") {
+    return ResultToStatus(
+        conn_->FetchFormat("SELECT * FROM $0 WHERE key = $1 $2", kTableName, key, suffix));
+  }
+
+  std::string delay_flag_;
 };
 
-// #34179: a pipelined write sent to a leader that is frozen (SIGSTOP) sits in that leader's socket
-// buffer. After rpc_connection_timeout_ms with no reads the client tears the connection down with a
-// NetworkError. Resending the write to the new leader let the txn commit there, while the old
-// leader, once resumed, still processed the buffered write as a term-1 leader, early-applied its
-// intents, and aborted the op on step-down without removing them; applying the commit then failed
-// the intra-txn write id check. The client now aborts the transaction instead.
-void AsyncWritesPausedLeaderTest::TestPausedLeader(StalledStatement stalled) {
-  constexpr auto kTableName = "tbl1";
-  const auto kWaitTimeout = 120s * kTimeMultiplier;
-
-  auto setup_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(setup_conn.ExecuteFormat(
-      "CREATE TABLE $0 (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS", kTableName));
-  ASSERT_OK(setup_conn.ExecuteFormat(
-      "INSERT INTO $0 SELECT g, g FROM generate_series(0, 9) g", kTableName));
-
-  auto tablet_id = ASSERT_RESULT(GetSingleTabletId(kTableName));
-  const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
-  const auto follower_indexes = ASSERT_RESULT(cluster_->GetTabletFollowerIndexes(tablet_id));
-  const auto client_idx = follower_indexes[0];
-  auto* leader = cluster_->tablet_server(leader_idx);
-  LOG(INFO) << "Tablet " << tablet_id << " leader: " << leader_idx << ", client: " << client_idx;
-
-  // Keep transaction status tablet leaders off the node we pause, so COMMIT doesn't wait on them.
-  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
-  const auto& leader_uuid = leader->uuid();
-  const auto& client_uuid = cluster_->tablet_server(client_idx)->uuid();
-  for (const auto& entry : ASSERT_RESULT(cluster_->GetTablets(leader))) {
-    if (entry.table_name() != "transactions" || !entry.is_leader()) {
-      continue;
-    }
-    ASSERT_OK(itest::LeaderStepDown(
-        ts_map[leader_uuid].get(), entry.tablet_id(), ts_map[client_uuid].get(), 10s));
-    ASSERT_OK(LoggedWaitFor(
-        [this, tablet = entry.tablet_id(), leader_idx]() -> Result<bool> {
-          auto idx = cluster_->GetTabletLeaderIndex(tablet);
-          return idx.ok() && *idx != leader_idx;
-        },
-        kWaitTimeout, "Wait for status tablet leader to move"));
-  }
-
-  // The client tserver's meta cache must point at the old leader when the statement is sent.
-  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", client_idx));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (100, 100)", kTableName));
-
-  ASSERT_OK(conn.Execute(
-      stalled == StalledStatement::kInsertReadCommitted
-          ? "BEGIN ISOLATION LEVEL READ COMMITTED" : "BEGIN ISOLATION LEVEL REPEATABLE READ"));
-  if (stalled != StalledStatement::kFirstInsert) {
-    // The stalled statement is then not the txn's first, so YSQL can't restart the txn.
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (300, 300)", kTableName));
-  }
-  if (stalled == StalledStatement::kInsertInSavepoint) {
-    ASSERT_OK(conn.Execute("SAVEPOINT s"));
-  }
-
-  // Hold the statement inside the old leader, then freeze the process there, as in the stress runs
-  // where the frozen leader had already read the write. A write sleeps in its append path, holding
-  // the replica state lock; a plain read sleeps before it reads.
-  std::string statement;
-  std::string delay_flag = "TEST_delay_before_added_to_leader_ms";
-  switch (stalled) {
-    case StalledStatement::kFirstInsert: [[fallthrough]];
-    case StalledStatement::kInsertAfterWrite: [[fallthrough]];
-    case StalledStatement::kInsertInSavepoint: [[fallthrough]];
-    case StalledStatement::kInsertReadCommitted:
-      statement = Format("INSERT INTO $0 VALUES (200, 200)", kTableName);
-      break;
-    case StalledStatement::kSelectForUpdate:
-      statement = Format("SELECT * FROM $0 WHERE key = 5 FOR UPDATE", kTableName);
-      break;
-    case StalledStatement::kPlainSelect:
-      statement = Format("SELECT * FROM $0 WHERE key = 5", kTableName);
-      delay_flag = "TEST_transactional_read_delay_ms";
-      break;
-  }
-  ASSERT_OK(cluster_->SetFlag(leader, delay_flag, "5000"));
-  Status stalled_status;
-  MonoDelta stalled_duration;
-  const bool is_read = stalled == StalledStatement::kSelectForUpdate ||
-                       stalled == StalledStatement::kPlainSelect;
-  std::thread stalled_thread([&conn, &stalled_status, &stalled_duration, &statement, is_read] {
-    auto start = MonoTime::Now();
-    stalled_status = is_read ? ResultToStatus(conn.Fetch(statement)) : conn.Execute(statement);
-    stalled_duration = MonoTime::Now() - start;
-  });
-  std::this_thread::sleep_for(1s);
-  ASSERT_OK(leader->Pause());
-  {
-    auto resume = ScopeExit([leader] {
-      WARN_NOT_OK(leader->Resume(), "Resume failed");
-    });
-    // The client gives up on the frozen leader after the connection read timeout.
-    stalled_thread.join();
-    LOG(INFO) << "Stalled statement took " << stalled_duration << ": " << stalled_status;
-    if (stalled_status.ok()) {
-      ASSERT_OK(conn.Execute("COMMIT"));
-    } else if (stalled == StalledStatement::kInsertInSavepoint) {
-      // An app that handles the error by rolling back to the savepoint, writing again and
-      // committing. The new write takes the same intra-txn write ids as the stray, so committing
-      // would crash the old leader; the txn was aborted, so none of this may commit.
-      WARN_NOT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s"), "Rollback to savepoint failed");
-      WARN_NOT_OK(
-          conn.ExecuteFormat("INSERT INTO $0 VALUES (400, 400)", kTableName), "Insert failed");
-      WARN_NOT_OK(conn.Execute("COMMIT"), "Commit failed");
-    } else {
-      ASSERT_OK(conn.Execute("ROLLBACK"));
-    }
-  }
-  ASSERT_OK(cluster_->SetFlag(leader, delay_flag, "0"));
-
-  // Only the first statement can be restarted transparently, and a plain read is resent.
-  uint64_t expected_rows = 11;
-  switch (stalled) {
-    case StalledStatement::kFirstInsert:
-      ASSERT_OK(stalled_status);
-      expected_rows = 12;
-      break;
-    case StalledStatement::kPlainSelect:
-      ASSERT_OK(stalled_status);
-      expected_rows = 12;
-      break;
-    case StalledStatement::kInsertAfterWrite: [[fallthrough]];
-    case StalledStatement::kInsertInSavepoint: [[fallthrough]];
-    case StalledStatement::kInsertReadCommitted: [[fallthrough]];
-    case StalledStatement::kSelectForUpdate:
-      ASSERT_NOK(stalled_status);
-      break;
-  }
-
-  auto new_leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
-  auto healthy_dump = ASSERT_RESULT(DumpTabletData(new_leader_idx, tablet_id));
-  ASSERT_EQ(healthy_dump.row_count(), expected_rows);
-
-  // The resumed leader processes the buffered request, steps down, and catches up.
-  ASSERT_OK(LoggedWaitFor(
-      [this, &tablet_id, &healthy_dump, leader, leader_idx]() -> Result<bool> {
-        if (!leader->IsProcessAlive()) {
-          return true;
-        }
-        auto dump = DumpTabletData(leader_idx, tablet_id);
-        return dump.ok() && dump->row_count() == healthy_dump.row_count() &&
-               dump->xor_hash() == healthy_dump.xor_hash();
-      },
-      kWaitTimeout, "Wait for old leader to catch up or crash"));
-  ASSERT_TRUE(leader->IsProcessAlive()) << "Old leader crashed applying the commit";
-}
-
+// The first statement of a transaction is restarted transparently.
 TEST_F(AsyncWritesPausedLeaderTest, FirstInsert) {
-  TestPausedLeader(StalledStatement::kFirstInsert);
+  ASSERT_OK(conn_->Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(RunWithLeaderPaused([this] { return Insert(200); }));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+  ResumeLeaderAndCheck(kInitialRows + 1);
 }
 
 TEST_F(AsyncWritesPausedLeaderTest, InsertAfterWrite) {
-  TestPausedLeader(StalledStatement::kInsertAfterWrite);
+  ASSERT_OK(conn_->Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(Insert(300));
+  ASSERT_NOK(RunWithLeaderPaused([this] { return Insert(200); }));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+  ResumeLeaderAndCheck(kInitialRows);
 }
 
+// Rolling back to the savepoint does not save the transaction.
 TEST_F(AsyncWritesPausedLeaderTest, InsertInSavepoint) {
-  TestPausedLeader(StalledStatement::kInsertInSavepoint);
+  ASSERT_OK(conn_->Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(Insert(300));
+  ASSERT_OK(conn_->Execute("SAVEPOINT s"));
+  ASSERT_NOK(RunWithLeaderPaused([this] { return Insert(200); }));
+  ASSERT_OK(conn_->Execute("ROLLBACK TO SAVEPOINT s"));
+  ASSERT_NOK(Insert(400));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+  ResumeLeaderAndCheck(kInitialRows);
 }
 
+// Every READ COMMITTED statement runs in its own subtransaction.
 TEST_F(AsyncWritesPausedLeaderTest, InsertReadCommitted) {
-  TestPausedLeader(StalledStatement::kInsertReadCommitted);
+  ASSERT_OK(conn_->Execute("BEGIN ISOLATION LEVEL READ COMMITTED"));
+  ASSERT_OK(Insert(300));
+  ASSERT_NOK(RunWithLeaderPaused([this] { return Insert(200); }));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+  ResumeLeaderAndCheck(kInitialRows);
 }
 
+// A row lock is also applied before it is replicated.
 TEST_F(AsyncWritesPausedLeaderTest, SelectForUpdate) {
-  TestPausedLeader(StalledStatement::kSelectForUpdate);
+  ASSERT_OK(conn_->Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(Insert(300));
+  ASSERT_NOK(RunWithLeaderPaused([this] { return SelectRow(5, "FOR UPDATE"); }));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+  ResumeLeaderAndCheck(kInitialRows);
 }
 
+// A plain read applies nothing, so it is still resent to the new leader.
 TEST_F(AsyncWritesPausedLeaderTest, PlainSelect) {
-  TestPausedLeader(StalledStatement::kPlainSelect);
+  ASSERT_OK(conn_->Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(Insert(300));
+  ASSERT_OK(RunWithLeaderPaused(
+      [this] { return SelectRow(5); }, "TEST_transactional_read_delay_ms"));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+  ResumeLeaderAndCheck(kInitialRows + 1);
+}
+
+// A pipelined statement that fails at its deadline aborts the transaction only when the leader may
+// still apply the write.
+class AsyncWritesTimeoutTest : public AsyncWritesSingleTabletTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    AsyncWritesSingleTabletTest::UpdateMiniClusterOptions(options);
+    // pggate and the tablet RPCs of a Perform share this deadline, plus pg_client_extra_timeout_ms.
+    options->extra_tserver_flags.push_back(
+        Format("--ysql_client_read_write_timeout_ms=$0", ToMilliseconds(kClientTimeout)));
+  }
+
+  // Runs an INSERT inside a savepoint while `leader_flag` makes it fail at its deadline, then rolls
+  // back to the savepoint.
+  // The savepoint is the only way the transaction can go on after the failed statement, so it tells
+  // an aborted transaction from a failed statement.
+  Status InsertPastDeadlineInSavepoint(const std::string& leader_flag, const std::string& value) {
+    RETURN_NOT_OK(conn_->Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    RETURN_NOT_OK(Insert(300));
+    RETURN_NOT_OK(conn_->Execute("SAVEPOINT s"));
+    RETURN_NOT_OK(cluster_->SetFlag(leader_, leader_flag, value));
+    auto status = Insert(200);
+    RETURN_NOT_OK(cluster_->SetFlag(leader_, leader_flag, "0"));
+    SCHECK(!status.ok(), IllegalState, "INSERT succeeded despite running past its deadline");
+    return conn_->Execute("ROLLBACK TO SAVEPOINT s");
+  }
+
+  Result<uint64_t> CountRows() {
+    return static_cast<uint64_t>(
+        VERIFY_RESULT(conn_->FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName))));
+  }
+
+  static constexpr auto kClientTimeout = 10s;
+};
+
+// A call that times out while the leader still holds the write may still be applied, so the whole
+// transaction aborts even inside a savepoint.
+TEST_F(AsyncWritesTimeoutTest, CallTimedOut) {
+  // Hold the write a bit past the deadline, so the leader is free again for the checks.
+  ASSERT_OK(InsertPastDeadlineInSavepoint(
+      kWriteDelayFlag, AsString(ToMilliseconds(kClientTimeout + 5s))));
+  // The statement fails at its deadline while the tserver may still be sending the write, and the
+  // transaction aborts only once the tserver gives up on it.
+  ASSERT_OK(LoggedWaitFor(
+      [this]() -> Result<bool> { return !CountRows().ok(); }, 30s * kTimeMultiplier,
+      "Wait for the transaction to abort"));
+  ASSERT_OK(conn_->Execute("ROLLBACK"));
+  ASSERT_EQ(ASSERT_RESULT(CountRows()), kInitialRows);
+}
+
+// A rejected write whose deadline passes before its retry has no call outstanding, so only the
+// savepoint is rolled back and the transaction commits.
+TEST_F(AsyncWritesTimeoutTest, RejectedUntilDeadline) {
+  // Logged by the client tserver once it gives up on the write. An aborted transaction logs no
+  // failure for the write.
+  LogWaiter write_failed(
+      cluster_->tablet_server(client_idx_), Format("Failed Write(tablet: $0", tablet_id_));
+  // Retry a rejected write only after its deadline, so the deadline passes between attempts.
+  for (const auto* flag : {"min_rejection_delay_ms", "max_rejection_delay_ms"}) {
+    ASSERT_OK(cluster_->SetFlag(leader_, flag, AsString(ToMilliseconds(kClientTimeout + 5s))));
+  }
+  ASSERT_OK(InsertPastDeadlineInSavepoint("TEST_write_rejection_percentage", "100"));
+  // The statement fails at its deadline while the tserver may still be sending the write, and the
+  // transaction can't commit until the tserver gives up on it.
+  ASSERT_OK(write_failed.WaitFor(30s * kTimeMultiplier));
+  ASSERT_STR_CONTAINS(write_failed.matched_log_line(), "passed its deadline");
+  ASSERT_OK(Insert(400));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+  ASSERT_EQ(ASSERT_RESULT(CountRows()), kInitialRows + 2);
 }
 
 // Verify that WaitForAsyncWrite RPCs retry via TabletInvoker when the leader steps down.
