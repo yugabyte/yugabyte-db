@@ -15,12 +15,18 @@
 #
 # `sbt test` runs this after the Java tests and fails if it does. Every module runs even when an
 # earlier one fails. Exits 1 if any test failed, and 2 if the tests could not run: go is missing,
-# or go-junit-report cannot be installed (it needs the Go module proxy or a module cache).
+# or go-junit-report, a module's dependencies or the Go toolchain its go.mod asks for cannot be
+# downloaded (they need the Go module proxy or a module cache).
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULES=(cdcstate logparse serverconfredact)
+
+# A run that stops early must not leave the previous run's reports for CI to collect.
+for module in "${MODULES[@]}"; do
+  rm -f "$SCRIPT_DIR/$module/target/test-reports/"*
+done
 
 if ! command -v go >/dev/null; then
   echo "go not found in PATH" >&2
@@ -33,6 +39,14 @@ if ! GOBIN="$REPORTER_BIN" go install github.com/jstemmer/go-junit-report/v2@v2.
   echo "failed to install go-junit-report" >&2
   exit 2
 fi
+
+# Download up front, so that a download failure is reported as one rather than as failed tests.
+for module in "${MODULES[@]}"; do
+  if ! (cd "$SCRIPT_DIR/$module" && go mod download); then
+    echo "failed to download the Go toolchain or dependencies of supportbundle/$module" >&2
+    exit 2
+  fi
+done
 
 failed=()
 for module in "${MODULES[@]}"; do
