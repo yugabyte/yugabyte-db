@@ -1421,6 +1421,43 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyCursorStoppedByCatalogVers
   ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
 }
 
+// The counterpart of LegacyCursorStoppedByCatalogVersionCheck for a transaction with global object
+// locks. The tablets skip the catalog version check for it, and PG checks table privileges only
+// when the cursor is opened, so a cursor opened before a REVOKE reads to the end, as in PG. The
+// next statement of the transaction is planned again and fails PG's privilege check.
+TEST_F(PgObjectLocksTestMixModeDuringPromotion, CursorWithGlobalLocksReadsToEndAfterRevoke) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE ROLE r"));
+    // One range-sharded tablet and no sort, so the cursor reads the table page by page.
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT, v INT, PRIMARY KEY (k ASC))"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 100), 0"));
+    ASSERT_OK(conn.Execute("GRANT SELECT ON test TO r"));
+  }
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(i), "ysql_yb_enable_global_object_locking_infra", "true"));
+  }
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  // One row per page, so that reading the rest of the cursor below needs more requests.
+  ASSERT_OK(conn.Execute("SET yb_fetch_row_limit = 1"));
+  ASSERT_OK(conn.Execute("SET ROLE r"));
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn.Execute("DECLARE c CURSOR FOR SELECT k FROM test"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("FETCH 1 FROM c")), 1);
+
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute("REVOKE SELECT ON test FROM r"));
+  WaitForCatalogVersionToPropagate();
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRows<int32_t>("FETCH ALL FROM c")).size(), 99);
+  ASSERT_NOK_STR_CONTAINS(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"), "permission denied");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+}
+
 // Tests for #36572.
 //
 // A DDL with global object locks relies on object locks to wait for, or block, concurrent DMLs. A

@@ -962,10 +962,7 @@ message PgPerformOptionsPB {
   uint32 xrepl_origin_id = 31;
 
   // The transaction runs with global object locking: its DDLs take global object locks, while the
-  // transaction itself may hold only local locks, as a DML-only transaction does. DDLs order
-  // themselves against it through object locks, so the tablets skip their catalog version check
-  // for its requests and DDLs do not abort it. A transaction without global object locking keeps
-  // both fences, even though it takes local locks.
+  // transaction itself may hold only local locks, as a DML-only transaction does.
   bool using_table_locks_globally = 32;
 
   ReadTimeOptionsPB read_time_options = 34;
