@@ -44,11 +44,16 @@ public final class KubernetesOverridesRedactor {
     final List<String> path;
     final String key;
     final ScalarNode value;
+    // The scalar's own text in the overrides, as char offsets.
+    final int start;
+    final int end;
 
-    Secret(List<String> path, String key, ScalarNode value) {
+    Secret(List<String> path, String key, ScalarNode value, int start, int end) {
       this.path = path;
       this.key = key;
       this.value = value;
+      this.start = start;
+      this.end = end;
     }
 
     boolean isHba() {
@@ -96,11 +101,11 @@ public final class KubernetesOverridesRedactor {
         if (secret.isHba()) {
           String redacted = HbaConfRedactor.redact(value);
           if (!redacted.equals(value)) {
-            replacements.add(replaceScalar(overrides, secret.value, quote(redacted)));
+            replacements.add(replaceScalar(overrides, secret, quote(redacted)));
           }
         } else if (!value.isEmpty() && !REDACTED.equals(value)) {
           // An empty value has no span to replace; REDACTED would be glued to the key's colon.
-          replacements.add(replaceScalar(overrides, secret.value, REDACTED));
+          replacements.add(replaceScalar(overrides, secret, REDACTED));
         }
       }
       return apply(overrides, replacements);
@@ -185,8 +190,7 @@ public final class KubernetesOverridesRedactor {
                     + " fields. To change them, submit the value with the actual ldapbindpasswd.",
                 name, REDACTED));
       }
-      replacements.add(
-          replaceScalar(submitted, secret.value, storedScalarText(stored, storedSecret.value)));
+      replacements.add(replaceScalar(submitted, secret, storedScalarText(stored, storedSecret)));
     }
     return apply(submitted, replacements);
   }
@@ -217,56 +221,99 @@ public final class KubernetesOverridesRedactor {
     } catch (RuntimeException e) {
       throw new UnparsableException(e.getMessage(), e);
     }
-    List<Secret> secrets = new ArrayList<>();
+    Finder finder = new Finder(overrides);
     if (root != null) {
-      collect(root, new ArrayList<>(), secretKeys(), secrets, new HashSet<>(), new HashSet<>());
+      finder.collect(root, new ArrayList<>());
     }
-    return secrets;
+    return finder.secrets;
   }
 
-  /**
-   * An alias reuses the node of its anchor, so a secret behind an alias is rewritten once, where
-   * the anchor is. Secret nodes are tracked apart from visited, so a secret is still found when its
-   * anchor sits under a key that is not secret.
-   */
-  private static void collect(
-      Node node,
-      List<String> path,
-      Set<String> secretKeys,
-      List<Secret> secrets,
-      Set<Node> visited,
-      Set<Node> secretNodes)
-      throws UnparsableException {
-    if (!visited.add(node)) {
-      return;
+  private static class Finder {
+    final String text;
+    // SnakeYAML marks count code points: the char offset of each, or null when they are the same.
+    final int[] charOffsets;
+    final Set<String> secretKeys = secretKeys();
+    final List<Secret> secrets = new ArrayList<>();
+    final Set<Node> visited = new HashSet<>();
+    final Set<Node> secretNodes = new HashSet<>();
+
+    Finder(String text) {
+      this.text = text;
+      int codePoints = text.codePointCount(0, text.length());
+      if (codePoints == text.length()) {
+        charOffsets = null;
+      } else {
+        charOffsets = new int[codePoints + 1];
+        for (int cp = 0, i = 0; cp <= codePoints; cp++) {
+          charOffsets[cp] = i;
+          if (i < text.length()) {
+            i += Character.charCount(text.codePointAt(i));
+          }
+        }
+      }
     }
-    if (node instanceof MappingNode) {
-      for (NodeTuple tuple : ((MappingNode) node).getValue()) {
-        if (!(tuple.getKeyNode() instanceof ScalarNode)) {
-          continue;
+
+    int charOffset(int codePointIndex) {
+      return charOffsets == null ? codePointIndex : charOffsets[codePointIndex];
+    }
+
+    /**
+     * An alias reuses the node of its anchor, so a secret behind an alias is rewritten once, where
+     * the anchor is. Secret nodes are tracked apart from visited, so a secret is still found when
+     * its anchor sits under a key that is not secret.
+     */
+    void collect(Node node, List<String> path) throws UnparsableException {
+      if (!visited.add(node)) {
+        return;
+      }
+      if (node instanceof MappingNode) {
+        for (NodeTuple tuple : ((MappingNode) node).getValue()) {
+          if (!(tuple.getKeyNode() instanceof ScalarNode)) {
+            continue;
+          }
+          String key = ((ScalarNode) tuple.getKeyNode()).getValue();
+          List<String> childPath = new ArrayList<>(path);
+          childPath.add(key);
+          Node value = tuple.getValueNode();
+          if (secretKeys.contains(key) || GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key)) {
+            if (!(value instanceof ScalarNode)) {
+              throw new UnparsableException(key + " is not a scalar", null);
+            }
+            if (secretNodes.add(value)) {
+              int end = charOffset(value.getEndMark().getIndex());
+              int start = scalarStart(charOffset(value.getStartMark().getIndex()), end);
+              secrets.add(new Secret(childPath, key, (ScalarNode) value, start, end));
+            }
+          } else {
+            collect(value, childPath);
+          }
         }
-        String key = ((ScalarNode) tuple.getKeyNode()).getValue();
-        List<String> childPath = new ArrayList<>(path);
-        childPath.add(key);
-        Node value = tuple.getValueNode();
-        if (secretKeys.contains(key) || GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key)) {
-          if (!(value instanceof ScalarNode)) {
-            throw new UnparsableException(key + " is not a scalar", null);
-          }
-          if (secretNodes.add(value)) {
-            secrets.add(new Secret(childPath, key, (ScalarNode) value));
-          }
-        } else {
-          collect(value, childPath, secretKeys, secrets, visited, secretNodes);
+      } else if (node instanceof SequenceNode) {
+        List<Node> items = ((SequenceNode) node).getValue();
+        for (int i = 0; i < items.size(); i++) {
+          List<String> childPath = new ArrayList<>(path);
+          childPath.add(String.valueOf(i));
+          collect(items.get(i), childPath);
         }
       }
-    } else if (node instanceof SequenceNode) {
-      List<Node> items = ((SequenceNode) node).getValue();
-      for (int i = 0; i < items.size(); i++) {
-        List<String> childPath = new ArrayList<>(path);
-        childPath.add(String.valueOf(i));
-        collect(items.get(i), childPath, secretKeys, secrets, visited, secretNodes);
+    }
+
+    /**
+     * Where the scalar's own text starts. SnakeYAML starts the mark at an &anchor or !tag in front
+     * of the scalar, which is kept so aliases still resolve. A scalar cannot start with & or !
+     * itself: plain scalars may not, and the other styles start with a quote, | or >. An empty
+     * scalar ends at its properties, so the skip stops at the end.
+     */
+    int scalarStart(int start, int end) {
+      while (start < end && (text.charAt(start) == '&' || text.charAt(start) == '!')) {
+        while (start < end && !Character.isWhitespace(text.charAt(start))) {
+          start++;
+        }
+        while (start < end && Character.isWhitespace(text.charAt(start))) {
+          start++;
+        }
       }
+      return start;
     }
   }
 
@@ -274,47 +321,23 @@ public final class KubernetesOverridesRedactor {
    * Replaces a scalar, whatever its style, with text that fits on its first line. A block scalar
    * ends after its line breaks, which are kept so the next key stays on a line of its own.
    */
-  private static Replacement replaceScalar(String text, ScalarNode scalar, String replacement) {
-    int start = scalarStart(text, scalar);
-    int end = text.offsetByCodePoints(0, scalar.getEndMark().getIndex());
-    int contentEnd = end;
-    while (contentEnd > start
+  private static Replacement replaceScalar(String text, Secret secret, String replacement) {
+    int contentEnd = secret.end;
+    while (contentEnd > secret.start
         && (text.charAt(contentEnd - 1) == '\n' || text.charAt(contentEnd - 1) == '\r')) {
       contentEnd--;
     }
-    return new Replacement(start, end, replacement + text.substring(contentEnd, end));
+    return new Replacement(
+        secret.start, secret.end, replacement + text.substring(contentEnd, secret.end));
   }
 
   /**
    * The stored scalar as the user wrote it, when it sits on one line; a multi-line scalar depends
    * on its indentation, so it is quoted instead.
    */
-  private static String storedScalarText(String stored, ScalarNode scalar) {
-    int start = scalarStart(stored, scalar);
-    int end = stored.offsetByCodePoints(0, scalar.getEndMark().getIndex());
-    String text = stored.substring(start, end);
-    return text.indexOf('\n') < 0 && text.indexOf('\r') < 0 ? text : quote(scalar.getValue());
-  }
-
-  /**
-   * Where the scalar's own text starts. SnakeYAML counts code points, and starts the mark at an
-   * &anchor or !tag in front of the scalar, which is kept so aliases still resolve. A scalar cannot
-   * start with & or ! itself: plain scalars may not, and the other styles start with a quote, | or
-   * >.
-   */
-  private static int scalarStart(String text, ScalarNode scalar) {
-    int start = text.offsetByCodePoints(0, scalar.getStartMark().getIndex());
-    // An empty scalar ends at its properties; the skip must not run on into the next line.
-    int end = text.offsetByCodePoints(0, scalar.getEndMark().getIndex());
-    while (start < end && (text.charAt(start) == '&' || text.charAt(start) == '!')) {
-      while (start < end && !Character.isWhitespace(text.charAt(start))) {
-        start++;
-      }
-      while (start < end && Character.isWhitespace(text.charAt(start))) {
-        start++;
-      }
-    }
-    return start;
+  private static String storedScalarText(String stored, Secret secret) {
+    String text = stored.substring(secret.start, secret.end);
+    return text.indexOf('\n') < 0 && text.indexOf('\r') < 0 ? text : quote(secret.value.getValue());
   }
 
   /** A JSON string is a YAML double-quoted scalar. */
@@ -326,12 +349,18 @@ public final class KubernetesOverridesRedactor {
     }
   }
 
+  /** Replacements do not overlap: each is a distinct secret node's span. */
   private static String apply(String text, List<Replacement> replacements) {
-    replacements.sort(Comparator.comparingInt((Replacement r) -> r.start).reversed());
-    StringBuilder out = new StringBuilder(text);
-    for (Replacement r : replacements) {
-      out.replace(r.start, r.end, r.text);
+    if (replacements.isEmpty()) {
+      return text;
     }
-    return out.toString();
+    replacements.sort(Comparator.comparingInt((Replacement r) -> r.start));
+    StringBuilder out = new StringBuilder(text.length());
+    int from = 0;
+    for (Replacement r : replacements) {
+      out.append(text, from, r.start).append(r.text);
+      from = r.end;
+    }
+    return out.append(text, from, text.length()).toString();
   }
 }
