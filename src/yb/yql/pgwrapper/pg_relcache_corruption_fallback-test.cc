@@ -77,6 +77,14 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
     return conn;
   }
 
+  // Connects with a single attempt. Connect() retries a failed attempt, which would hide a
+  // backend that crashed during connection startup.
+  Result<PGConn> ConnectOnce() {
+    auto settings = MakeConnSettings();
+    settings.should_stop = [] { return true; };
+    return PGConnBuilder(settings).Connect();
+  }
+
   struct TimedConnectionResult {
     PGConn conn;
     MonoDelta elapsed;
@@ -258,6 +266,39 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
     ASSERT_STR_CONTAINS(status.ToString(), "violates check constraint");
   }
 
+  /*
+   * A column with atthasdef but no pg_attrdef row, plus another table whose corruption makes the
+   * preload fail. Like upstream PostgreSQL, building the entry only warns and leaves the missing
+   * default out, so the retry's relcache teardown can free it. Before the fix, the preload left a
+   * NULL adbin in the DEFAULT array, and the teardown crashed the backend freeing it.
+   */
+  void RunAttrdefMissingTest(const std::string& table_name) {
+    auto setup_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(CreateFullSchema(setup_conn));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "CREATE TABLE $0 (col1 int, col2 int DEFAULT 5)", table_name));
+    ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 2)", table_name));
+    ASSERT_OK(setup_conn.Execute("CREATE TABLE t_attrdef_natts (col1 int, col2 int)"));
+
+    ASSERT_OK(setup_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = true"));
+    ASSERT_OK(setup_conn.ExecuteFormat(
+        "DELETE FROM pg_attrdef WHERE adrelid = '$0'::regclass", table_name));
+    ASSERT_OK(setup_conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = false"));
+    ASSERT_OK(CorruptRelnatts(setup_conn, "t_attrdef_natts", 3));
+    ASSERT_OK(InvalidateRelcacheInitFile(setup_conn));
+
+    auto conn = ASSERT_RESULT(ConnectOnce());
+    VerifyFullSchema(conn);
+
+    auto rows = ASSERT_RESULT(conn.FetchAllAsString(
+        Format("SELECT col1 + col2 FROM $0", table_name)));
+    ASSERT_EQ(rows, "3");
+
+    auto status = conn.ExecuteFormat("INSERT INTO $0 (col1) VALUES (3)", table_name);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "default expression not found");
+  }
+
   void RunPartitionTwoDefaultsTest() {
     auto setup_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateFullSchema(setup_conn));
@@ -336,6 +377,14 @@ TEST_F(PgRelcacheFaultToleranceTest, RelchecksHigher) {
 
 TEST_F(PgRelcacheFaultToleranceWithPreloadTest, RelchecksHigher) {
   RunRelchecksHigherTest("t_relchecks_high");
+}
+
+TEST_F(PgRelcacheFaultToleranceTest, AttrdefMissing) {
+  RunAttrdefMissingTest("t_attrdef_missing");
+}
+
+TEST_F(PgRelcacheFaultToleranceWithPreloadTest, AttrdefMissing) {
+  RunAttrdefMissingTest("t_attrdef_missing");
 }
 
 TEST_F(PgRelcacheFaultToleranceTest, PartitionTwoDefaults) {

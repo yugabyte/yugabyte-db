@@ -1654,12 +1654,18 @@ YBLoadRelations(YbUpdateRelationCacheState *state)
  * YbAttrDefaultFetch performs same action as PG's AttrDefaultFetch
  * but with using in memory tuple cache instead of relation scan.
  * Most code is borrowed from PG's AttrDefaultFetch.
+ *
+ * attrdef holds an entry, with a NULL adbin, for each of the ndef columns
+ * with atthasdef.  Like AttrDefaultFetch, it only warns about a missing
+ * pg_attrdef record or a null adbin, and installs the array only once it is
+ * valid, with only the entries found: a NULL adbin left in it would crash
+ * FreeTupleDesc, for example in the relcache preload retry's teardown
+ * (#37715).
  */
 static void
-YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
+YbAttrDefaultFetch(Relation relation, AttrDefault *attrdef, int ndef,
+				   const YbTupleCache *pg_attrdef_cache)
 {
-	AttrDefault *attrdef = relation->rd_att->constr->defval;
-	uint16		ndef = relation->rd_att->constr->num_defval;
 	Relation	adrel = pg_attrdef_cache->rel;
 
 	Oid			relid = RelationGetRelid(relation);
@@ -1676,7 +1682,7 @@ YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
 		Form_pg_attribute attr = TupleDescAttr(relation->rd_att,
 											   adform->adnum - 1);
 
-		uint16		i = 0;
+		int			i = 0;
 
 		for (; i < ndef; ++i)
 		{
@@ -1710,6 +1716,22 @@ YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
 				 "unexpected attrdef record found for attr %d of rel %s",
 				 adform->adnum, RelationGetRelationName(relation));
 	}
+
+	int			found = 0;
+
+	for (int i = 0; i < ndef; ++i)
+	{
+		if (attrdef[i].adbin != NULL)
+			attrdef[found++] = attrdef[i];
+	}
+
+	if (found != ndef)
+		elog(WARNING, "%d pg_attrdef record(s) missing for relation \"%s\"",
+			 ndef - found, RelationGetRelationName(relation));
+
+	/* Install array only after it's fully valid */
+	relation->rd_att->constr->defval = attrdef;
+	relation->rd_att->constr->num_defval = found;
 }
 
 /*
@@ -1990,11 +2012,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 		if (ndef > 0)			/* DEFAULTs */
 		{
 			if (ndef < RelationGetNumberOfAttributes(relation))
-				constr->defval = (AttrDefault *) repalloc(attrdef, ndef * sizeof(AttrDefault));
-			else
-				constr->defval = attrdef;
-			constr->num_defval = ndef;
-			YbAttrDefaultFetch(relation, state->pg_attrdef_cache);
+				attrdef = (AttrDefault *) repalloc(attrdef, ndef * sizeof(AttrDefault));
+			YbAttrDefaultFetch(relation, attrdef, ndef, state->pg_attrdef_cache);
 		}
 		else
 			constr->num_defval = 0;
