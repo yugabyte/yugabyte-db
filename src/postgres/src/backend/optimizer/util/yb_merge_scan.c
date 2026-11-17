@@ -750,6 +750,12 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		if (!tle)
 			return NULL;
 
+		/*
+		 * The pathkeys walk takes only key columns, so the gap columns before
+		 * this one are key columns too, as the merge sort arrays assume.
+		 */
+		Assert(tle->resno <= index->nkeycolumns);
+
 		for (int indexcol = last_sort_indexcol + 1; indexcol < tle->resno - 1;
 			 indexcol++)
 		{

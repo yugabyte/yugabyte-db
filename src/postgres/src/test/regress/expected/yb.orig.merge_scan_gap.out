@@ -1,8 +1,9 @@
 --
--- See yb_merge_scan_schedule for details about the test.  Tests a merge scan
--- whose sort columns skip an index column that a filter holds equal to an
--- earlier column.  Such a gap column varies within each stream, so the merge
--- also sorts on it, and the merge order holds wherever the filter runs.
+-- See yb_merge_scan_schedule for details about the test.  Tests merge scans
+-- whose sort columns skip an index column, a gap column, that a filter or the
+-- index predicate ties to an earlier column or to a constant.  The merge also
+-- sorts on each gap column, since a filter that ties it can run after the
+-- merge.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
