@@ -58,6 +58,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
@@ -1162,6 +1163,24 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     assertNotNull(computers.get(TaskType.EditKubernetesUniverse));
     assertNotNull(computers.get(TaskType.AddNodeToUniverse));
     assertNull(computers.get(TaskType.CreateUniverse));
+  }
+
+  @Test
+  public void testEveryRollbackableTaskTypeHasRollbackComputer() {
+    // @CanRollback is inherited from superclasses, so a subclass of a rollbackable task is also
+    // rollbackable unless it opts out. Without a computer, listing shows Rollback and submit
+    // returns 500 (PLAT-23944).
+    Injector guiceInjector = app.injector().instanceOf(Injector.class);
+    Map<TaskType, TaskRollbackComputer> computers =
+        guiceInjector.getInstance(
+            Key.get(new TypeLiteral<Map<TaskType, TaskRollbackComputer>>() {}));
+    List<TaskType> missing =
+        Arrays.stream(TaskType.values())
+            .filter(t -> t.getTaskClass() != null)
+            .filter(Commissioner::canTaskTypeRollback)
+            .filter(t -> !computers.containsKey(t))
+            .collect(Collectors.toList());
+    assertEquals(Collections.emptyList(), missing);
   }
 
   @Test
