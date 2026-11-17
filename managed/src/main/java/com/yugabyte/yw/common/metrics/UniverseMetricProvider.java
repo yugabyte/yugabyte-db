@@ -14,6 +14,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -23,7 +24,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -51,7 +51,9 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -72,8 +74,6 @@ public class UniverseMetricProvider implements MetricsProvider {
   @Inject MetricService metricService;
 
   @Inject AccessManager accessManager;
-
-  @Inject ImageBundleUtil imageBundleUtil;
 
   @Inject Environment environment;
 
@@ -103,17 +103,15 @@ public class UniverseMetricProvider implements MetricsProvider {
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
     List<MetricSaveGroup> metricSaveGroups = new ArrayList<>();
     Map<UUID, KmsHistory> activeEncryptionKeys =
-        KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY).stream()
+        KmsHistory.getAllActiveHistoryWithoutEncryptionContext(TargetType.UNIVERSE_KEY).stream()
             .collect(Collectors.toMap(key -> key.getUuid().targetUuid, Function.identity()));
     Map<UUID, KmsConfig> kmsConfigMap =
-        KmsConfig.listAllKMSConfigs().stream()
+        KmsConfig.listAllKMSConfigsWithoutAuthConfig().stream()
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
-    Map<UUID, ImageBundle> imageBundleMap = null;
-    if (vmOsPatchingEnabled) {
-      imageBundleMap = imageBundleUtil.collectUniversesImageBundles();
-    }
+    // Image bundles of the universes seen so far, fetched once per run. Null for a missing one.
+    Map<UUID, ImageBundle> imageBundleMap = new HashMap<>();
 
     String ybaVersion = ConfigHelper.getCurrentVersion(environment);
     Map<String, ReleaseContainer> releaseContainers =
@@ -244,8 +242,12 @@ public class UniverseMetricProvider implements MetricsProvider {
             if (userIntent != null) {
               int universeOSUpdateRequired = 0;
               for (UUID imageBundleUUID : userIntent.getAllImageBundles()) {
-                if (imageBundleMap != null && imageBundleMap.containsKey(imageBundleUUID)) {
-                  ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+                if (imageBundleUUID != null) {
+                  // Also remember missing bundles (null), so they are not queried again.
+                  if (!imageBundleMap.containsKey(imageBundleUUID)) {
+                    imageBundleMap.put(imageBundleUUID, ImageBundle.get(imageBundleUUID));
+                  }
+                  ImageBundle bundle = imageBundleMap.get(imageBundleUUID);
                   if (bundle != null
                       && bundle.getMetadata() != null
                       && bundle.getMetadata().getType() != null
@@ -280,12 +282,7 @@ public class UniverseMetricProvider implements MetricsProvider {
                 universe.getUniverseDetails().getPrimaryCluster().userIntent;
             boolean isK8SUniverse = Util.isKubernetesBasedUniverse(universe);
             Map<UUID, Map<String, Object>> finalUniverseOverridesAZMap =
-                isK8SUniverse
-                    ? KubernetesUtil.getFinalOverrides(
-                        universe.getUniverseDetails().getPrimaryCluster(),
-                        primaryUserIntent.universeOverrides,
-                        primaryUserIntent.azOverrides)
-                    : null;
+                isK8SUniverse ? getFinalOverridesForAllZones(universe, primaryUserIntent) : null;
             for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
               if (nodeDetails.cloudInfo == null || nodeDetails.cloudInfo.private_ip == null) {
                 // Node IP is missing - node is being created
@@ -461,6 +458,20 @@ public class UniverseMetricProvider implements MetricsProvider {
     return metricSaveGroups;
   }
 
+  // Applying the primary cluster's overrides to every cluster's zones, since read replica pods
+  // are deployed with them.
+  @VisibleForTesting
+  static Map<UUID, Map<String, Object>> getFinalOverridesForAllZones(
+      Universe universe, UserIntent primaryUserIntent) throws IOException {
+    Map<UUID, Map<String, Object>> result = new HashMap<>();
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      result.putAll(
+          KubernetesUtil.getFinalOverrides(
+              cluster, primaryUserIntent.universeOverrides, primaryUserIntent.azOverrides));
+    }
+    return result;
+  }
+
   private Metric createUniverseMetric(
       Customer customer, Universe universe, PlatformMetrics metric, double value) {
     String nodePrefix = universe.getUniverseDetails().nodePrefix;
@@ -517,7 +528,8 @@ public class UniverseMetricProvider implements MetricsProvider {
         .setValue(value);
   }
 
-  private Double getEncryptionKeyExpiryDays(KmsHistory activeKey, Map<UUID, KmsConfig> configMap) {
+  @VisibleForTesting
+  static Double getEncryptionKeyExpiryDays(KmsHistory activeKey, Map<UUID, KmsConfig> configMap) {
     if (activeKey == null) {
       return null;
     }
@@ -533,7 +545,11 @@ public class UniverseMetricProvider implements MetricsProvider {
       // For now only Hashicorp config expires.
       return null;
     }
-    ObjectNode credentials = kmsConfig.getAuthConfig();
+    // The config map is loaded without auth configs, so load this one's explicitly.
+    ObjectNode credentials = KmsConfig.getKMSAuthObj(kmsConfig.getConfigUUID());
+    if (credentials == null) {
+      return null;
+    }
     JsonNode keyTtlNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     if (keyTtlNode == null || keyTtlNode.asLong() == 0) {
       return null;

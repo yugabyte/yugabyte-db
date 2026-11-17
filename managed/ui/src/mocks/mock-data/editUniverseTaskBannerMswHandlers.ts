@@ -2,7 +2,9 @@ import { http, HttpResponse } from 'msw';
 
 import {
   EDIT_UNIVERSE_TASK_ID,
-  EDIT_UNIVERSE_TASK_UNIVERSE_UUID
+  EDIT_UNIVERSE_TASK_UNIVERSE_UUID,
+  PAUSE_UNIVERSE_TASK_ID,
+  PAUSE_UNIVERSE_TASK_UNIVERSE_UUID
 } from './taskMocks';
 import { generateUniverseMockResponse } from './universeMocks';
 
@@ -58,6 +60,42 @@ export const editUniverseTaskBannerMswHandlers = (
       HttpResponse.json({ data: mockUniverse })
     ),
     http.get(`${V2_CUSTOMER_ROOT}/universes/${EDIT_UNIVERSE_TASK_UNIVERSE_UUID}`, () =>
+      HttpResponse.json(mockUniverse)
+    )
+  ];
+};
+
+/** New commissioner task UUID returned by retry of the aborted pause fixture. */
+export const PAUSE_UNIVERSE_SUBMITTED_TASK_ID = 'e0000001-0001-4000-8000-000000000004';
+
+/** MSW handlers for {@link TaskAbortedBanner} retry of a pause-universe task. */
+export const pauseUniverseTaskBannerMswHandlers = (
+  getOutcome: () => EditUniverseTaskActionOutcome
+) => {
+  const mockUniverse = generateUniverseMockResponse({
+    universeUuid: PAUSE_UNIVERSE_TASK_UNIVERSE_UUID
+  });
+
+  const respondToRetry = () => {
+    if (getOutcome() === 'failure') {
+      return HttpResponse.json({ error: 'Universe is locked' }, { status: 400 });
+    }
+    return HttpResponse.json({
+      task_uuid: PAUSE_UNIVERSE_SUBMITTED_TASK_ID,
+      resource_uuid: PAUSE_UNIVERSE_TASK_UNIVERSE_UUID
+    });
+  };
+
+  return [
+    http.post(`${V2_CUSTOMER_ROOT}/tasks/${PAUSE_UNIVERSE_TASK_ID}/retry`, respondToRetry),
+    http.get(`${V1_CUSTOMER_ROOT}/tasks/${PAUSE_UNIVERSE_SUBMITTED_TASK_ID}`, () =>
+      HttpResponse.json({ percent: 100, status: 'Success' })
+    ),
+    http.get(`${V1_CUSTOMER_ROOT}/tasks`, () => HttpResponse.json([])),
+    http.get(`${V1_CUSTOMER_ROOT}/universes/${PAUSE_UNIVERSE_TASK_UNIVERSE_UUID}`, () =>
+      HttpResponse.json({ data: mockUniverse })
+    ),
+    http.get(`${V2_CUSTOMER_ROOT}/universes/${PAUSE_UNIVERSE_TASK_UNIVERSE_UUID}`, () =>
       HttpResponse.json(mockUniverse)
     )
   ];

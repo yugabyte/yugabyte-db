@@ -33,11 +33,13 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <gtest/gtest.h>
 
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/prometheus_metric_filter.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -73,6 +75,7 @@ class PrometheusMetricFilterTest : public YBTest {
     MetricEntity::AttributeMap entity_attr;
 
     // Initialize metric entities.
+    entity_attr["table_type"] = "PGSQL_TABLE_TYPE";
     entity_attr["table_id"] = "table_id_1";
     table_entity_1_ =
         METRIC_ENTITY_table.Instantiate(&registry_, "table_entity_id_1", entity_attr);
@@ -291,6 +294,217 @@ TEST_F(PrometheusMetricFilterTest, TestV2ServerLevel) {
   ASSERT_EQ(kTableLevel, names_to_levels[kTabletMetricName2]);
   ASSERT_EQ(kTableLevel, names_to_levels[kTableMetricName]);
   ASSERT_EQ(kNoLevel, names_to_levels[kServerMetricName]);
+}
+
+TEST_F(PrometheusMetricFilterTest, TestActiveTableIds) {
+  auto GetOutput = [this](const MetricPrometheusOptions& opts) -> Result<std::string> {
+    std::stringstream output;
+    PrometheusWriter writer(&output, opts);
+    RETURN_NOT_OK(registry_.WriteForPrometheus(&writer, opts));
+    return output.str();
+  };
+
+  static const auto kTableIdLabel1 = R"#(table_id="table_id_1")#";
+  static const auto kTableIdLabel2 = R"#(table_id="table_id_2")#";
+
+  MetricPrometheusOptions opts;
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+      std::initializer_list<std::string>{"table_id_1"});
+
+  // v1 ignores the list: a table level metric has no server level copy there, so filtering it
+  // would make node totals undercount.
+  opts.version = kFilterVersionOne;
+  auto output = ASSERT_RESULT(GetOutput(opts));
+  ASSERT_STR_CONTAINS(output, kTableIdLabel1);
+  ASSERT_STR_CONTAINS(output, kTableIdLabel2);
+
+  opts.version = kFilterVersionTwo;
+
+  // Without an active-table list, every table is exported.
+  opts.active_table_ids.reset();
+  output = ASSERT_RESULT(GetOutput(opts));
+  ASSERT_STR_CONTAINS(output, kTableIdLabel1);
+  ASSERT_STR_CONTAINS(output, kTableIdLabel2);
+  ASSERT_STR_CONTAINS(output, kServerMetricName);
+
+  // A list drops the table level series of every table outside of it.
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+      std::initializer_list<std::string>{"table_id_1"});
+  output = ASSERT_RESULT(GetOutput(opts));
+  ASSERT_STR_CONTAINS(output, kTableIdLabel1);
+  ASSERT_STR_NOT_CONTAINS(output, kTableIdLabel2);
+  ASSERT_STR_CONTAINS(output, kServerMetricName);
+
+  // An empty list drops all of them, while metrics without a table id are untouched.
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+  output = ASSERT_RESULT(GetOutput(opts));
+  ASSERT_STR_NOT_CONTAINS(output, "table_id=");
+  ASSERT_STR_CONTAINS(output, kServerMetricName);
+  ASSERT_STR_CONTAINS(output, kTableMetricName);
+}
+
+TEST_F(PrometheusMetricFilterTest, TestActiveTableIdsScope) {
+  MetricPrometheusOptions opts;
+  opts.version = kFilterVersionTwo;
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+  auto filter = CreatePrometheusMetricFilter(opts);
+
+  // The filter caches its decision per table ID, so every table gets its own ID.
+  auto Attributes = [](
+      const std::string& table_type, const std::string& namespace_name,
+      const std::string& table_name) {
+    return MetricEntity::AttributeMap{
+        {"table_id", Format("$0.$1.$2", table_type, namespace_name, table_name)},
+        {"table_type", table_type}, {"namespace_name", namespace_name},
+        {"table_name", table_name}};
+  };
+  auto ShouldExport = [&filter](
+      const MetricEntity::AttributeMap& attributes,
+      const std::string& metric_entity_type = kTabletMetricEntityName) {
+    return filter->ShouldExportTableMetrics(kTableMetricName, attributes, metric_entity_type);
+  };
+
+  const auto ysql_table = Attributes("PGSQL_TABLE_TYPE", "yugabyte", "user_table");
+  ASSERT_FALSE(ShouldExport(ysql_table));
+  ASSERT_FALSE(ShouldExport(ysql_table, kTableMetricEntityName));
+
+  // Only table and tablet entities are filtered, even if another entity type carries a table id.
+  ASSERT_TRUE(ShouldExport(ysql_table, kXClusterMetricEntityName));
+  ASSERT_TRUE(ShouldExport(ysql_table, "new_entity_type"));
+
+  // Server level aggregates carry no table id.
+  ASSERT_TRUE(ShouldExport({{"metric_type", kTabletMetricEntityName}}));
+
+  // A table without a table_type label cannot be shown to be a YSQL table, so it is not filtered.
+  ASSERT_TRUE(ShouldExport({
+      {"table_id", "no_table_type"}, {"namespace_name", "yugabyte"},
+      {"table_name", "user_table"}}));
+
+  // Only YSQL tables are filtered.
+  ASSERT_TRUE(ShouldExport(Attributes("YQL_TABLE_TYPE", "keyspace", "user_table")));
+
+  // Every table YugabyteDB creates itself, as listed in the IDEA-2151 design doc, is never
+  // filtered.
+  struct SystemTable {
+    const char* table_type;
+    const char* namespace_name;
+    const char* table_name;
+  };
+  for (const auto& table : std::initializer_list<SystemTable>{
+           // Transaction status tables, global and per placement, by table type.
+           {"TRANSACTION_STATUS_TABLE_TYPE", "system", "transactions"},
+           {"TRANSACTION_STATUS_TABLE_TYPE", "system", "transactions_a1b2c3"},
+           // YCQL system tables, by table type.
+           {"YQL_TABLE_TYPE", "system", "cdc_state"},
+           {"YQL_TABLE_TYPE", "system", "pg_advisory_locks"},
+           // YSQL tables in the namespaces YugabyteDB creates.
+           {"PGSQL_TABLE_TYPE", "system", "internal_table"},
+           {"PGSQL_TABLE_TYPE", "system_postgres", "sequences_data"},
+           {"PGSQL_TABLE_TYPE", "yb_system", "pg_yb_notifications"},
+           {"PGSQL_TABLE_TYPE", "yb_system", "another_yb_system_table"},
+           // xCluster automatic mode DDL replication tables, which live in user databases.
+           {"PGSQL_TABLE_TYPE", "yugabyte", "ddl_queue"},
+           {"PGSQL_TABLE_TYPE", "yugabyte", "replicated_ddls"},
+       }) {
+    SCOPED_TRACE(Format("$0.$1", table.namespace_name, table.table_name));
+    const auto attributes = Attributes(table.table_type, table.namespace_name, table.table_name);
+    ASSERT_TRUE(ShouldExport(attributes));
+    ASSERT_TRUE(ShouldExport(attributes, kTableMetricEntityName));
+  }
+
+  // Each table gets its own cached decision: a filtered table and an exempt table, interleaved over
+  // several tablets, keep their own answers.
+  const auto internal_table = Attributes("PGSQL_TABLE_TYPE", "yb_system", "pg_yb_notifications");
+  for (int i = 0; i < 3; ++i) {
+    ASSERT_FALSE(ShouldExport(ysql_table));
+    ASSERT_TRUE(ShouldExport(internal_table));
+  }
+
+  // sequences_data is recognised by its fixed table ID, even when its tablets carry no
+  // namespace_name, as tablets created before v2.3.0.0 do.
+  ASSERT_TRUE(ShouldExport({
+      {"table_id", "0000ffff00003000800000000000ffff"}, {"table_type", "PGSQL_TABLE_TYPE"},
+      {"namespace_name", ""}, {"table_name", "sequences_data"}}));
+  // A user table with the same name but its own ID is filtered.
+  ASSERT_FALSE(ShouldExport(Attributes("PGSQL_TABLE_TYPE", "yugabyte", "sequences_data")));
+
+  // Names are matched exactly, so similar user names are still filtered.
+  ASSERT_FALSE(ShouldExport(Attributes("PGSQL_TABLE_TYPE", "yb_system_copy", "user_table")));
+  ASSERT_FALSE(ShouldExport(Attributes("PGSQL_TABLE_TYPE", "yugabyte", "ddl_queue_copy")));
+
+  // v1 never applies the list.
+  opts.version = kFilterVersionOne;
+  filter = CreatePrometheusMetricFilter(opts);
+  ASSERT_TRUE(ShouldExport(ysql_table));
+}
+
+TEST_F(PrometheusMetricFilterTest, TestTableAlwaysAllowlist) {
+  MetricPrometheusOptions opts;
+  opts.version = kFilterVersionTwo;
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+  opts.table_always_allowlist_string = kTableMetricName;
+
+  std::stringstream output;
+  PrometheusWriter writer(&output, opts);
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+  const auto output_str = output.str();
+
+  // The always-allowed metric is exported for every table, although none is in the list.
+  ASSERT_STR_CONTAINS(output_str, R"#(table_id="table_id_1")#");
+  ASSERT_STR_CONTAINS(output_str, R"#(table_id="table_id_2")#");
+
+  // Other table level metrics are still filtered, and server level metrics are untouched.
+  auto names_to_levels = ASSERT_RESULT(GetAndParseMetricOutput(opts));
+  ASSERT_EQ(kTableLevel | kServerLevel, names_to_levels[kTableMetricName]);
+  ASSERT_EQ(kServerLevel, names_to_levels[kTabletMetricName1]);
+  ASSERT_EQ(kServerLevel, names_to_levels[kTabletMetricName2]);
+  ASSERT_EQ(kServerLevel, names_to_levels[kServerMetricName]);
+
+  // The always-export list only exempts metrics that table_allowlist already exports per table. It
+  // does not add table level series for a metric that table_allowlist leaves out.
+  opts.table_allowlist_string = kTabletMetricName1;
+  names_to_levels = ASSERT_RESULT(GetAndParseMetricOutput(opts));
+  ASSERT_EQ(kServerLevel, names_to_levels[kTableMetricName]);
+  ASSERT_EQ(kServerLevel, names_to_levels[kTabletMetricName1]);
+
+  // Listing a table brings back its table level series of table_allowlist metrics only.
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+      std::initializer_list<std::string>{"table_id_2"});
+  names_to_levels = ASSERT_RESULT(GetAndParseMetricOutput(opts));
+  ASSERT_EQ(kServerLevel, names_to_levels[kTableMetricName]);
+  ASSERT_EQ(kTableLevel | kServerLevel, names_to_levels[kTabletMetricName1]);
+
+  // v1 does not filter, so the always-export list has nothing to exempt.
+  opts.version = kFilterVersionOne;
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>();
+  auto filter = CreatePrometheusMetricFilter(opts);
+  ASSERT_TRUE(filter->ShouldExportTableMetrics(
+      kTabletMetricName2,
+      {{"table_id", "table_id_2"}, {"table_type", "PGSQL_TABLE_TYPE"},
+       {"namespace_name", "yugabyte"}, {"table_name", "user_table"}},
+      kTabletMetricEntityName));
+}
+
+TEST_F(PrometheusMetricFilterTest, TestActiveTableIdsWithMaxMetricEntries) {
+  MetricPrometheusOptions opts;
+  opts.version = kFilterVersionTwo;
+  opts.table_allowlist_string = kTableMetricName;
+  opts.server_allowlist_string = kServerMetricName;
+  // Only table_id_1 and the server metric are left to export, so the two entries fit into the
+  // budget and nothing is reported as cut off.
+  opts.active_table_ids = std::make_shared<std::unordered_set<std::string>>(
+      std::initializer_list<std::string>{"table_id_1"});
+  opts.max_metric_entries = 2;
+
+  NMSWriter::EntityMetricsMap table_metrics;
+  NMSWriter::MetricsMap server_metrics;
+  NMSWriter writer(&table_metrics, &server_metrics, opts);
+  ASSERT_OK(registry_.WriteForPrometheus(&writer, opts));
+
+  ASSERT_EQ(1, table_metrics.size());
+  ASSERT_TRUE(table_metrics.contains("table_id_1"));
+  ASSERT_EQ(1, server_metrics.size());
+  ASSERT_EQ(0, writer.TEST_GetNumberOfEntriesCutOff());
 }
 
 TEST_F(PrometheusMetricFilterTest, TestLimitMaxMetricEntries) {

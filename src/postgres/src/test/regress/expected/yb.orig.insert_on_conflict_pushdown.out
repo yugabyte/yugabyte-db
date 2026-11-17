@@ -1,0 +1,1181 @@
+--
+-- INSERT ... ON CONFLICT DO NOTHING pushdown
+--
+-- For eligible single-row inserts, DocDB resolves the conflict as part of the
+-- write and avoids a separate conflict-check read.  Most tests below check the
+-- path using the storage read count:
+--   pushdown: no storage reads
+--   fallback: one or more storage reads
+--
+-- ioc_plan() is used when the storage read count cannot distinguish the paths.
+-- Keep this test independent of yb_insert_on_conflict_read_batch_size because
+-- it runs as part of the existing INSERT ON CONFLICT schedule.
+-- Pushdown is enabled for the whole file; individual sections turn it off when
+-- exercising the fallback path.
+-- Execute cmd and identify the path from its storage read count.
+CREATE FUNCTION ioc_pushdown(cmd text) RETURNS text
+  LANGUAGE plpgsql AS $$
+DECLARE
+  ln text;
+  reads int := 0;
+BEGIN
+  FOR ln IN EXECUTE 'EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF) ' || cmd
+  LOOP
+    ln := btrim(ln);
+    IF ln LIKE 'Storage Read Requests:%' THEN
+      reads := btrim(split_part(ln, ':', 2))::int;
+    END IF;
+  END LOOP;
+  RETURN CASE WHEN reads = 0 THEN 'pushdown' ELSE 'fallback' END;
+END;
+$$;
+-- Return the affected-row count: 1 for an insert and 0 for a skipped row.
+CREATE FUNCTION ins_count(cmd text) RETURNS bigint
+  LANGUAGE plpgsql AS $$
+DECLARE
+  n bigint;
+BEGIN
+  EXECUTE cmd;
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END;
+$$;
+-- Check the plan without executing cmd.  This is needed for tables where neither
+-- path issues a storage read, such as a table without an index.
+CREATE FUNCTION ioc_plan(cmd text) RETURNS text
+  LANGUAGE plpgsql AS $$
+DECLARE
+  ln text;
+BEGIN
+  FOR ln IN EXECUTE 'EXPLAIN (COSTS OFF) ' || cmd
+  LOOP
+    IF btrim(ln) LIKE 'Conflict Resolution Pushdown:%' THEN
+      RETURN 'pushdown';
+    END IF;
+  END LOOP;
+  RETURN 'fallback';
+END;
+$$;
+-- Return the inserted and conflicting tuple counts reported by EXPLAIN ANALYZE.
+CREATE FUNCTION ioc_tuples(cmd text) RETURNS text
+  LANGUAGE plpgsql AS $$
+DECLARE
+  ln text;
+  ins text := 'none';
+  conf text := 'none';
+BEGIN
+  FOR ln IN EXECUTE 'EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF) ' || cmd
+  LOOP
+    ln := btrim(ln);
+    IF ln LIKE 'Tuples Inserted:%' THEN
+      ins := btrim(split_part(ln, ':', 2));
+    ELSIF ln LIKE 'Conflicting Tuples:%' THEN
+      conf := btrim(split_part(ln, ':', 2));
+    END IF;
+  END LOOP;
+  RETURN format('inserted=%s conflicting=%s', ins, conf);
+END;
+$$;
+-- Execute cmd and return the transaction type reported by EXPLAIN ANALYZE.
+CREATE FUNCTION ioc_txn(cmd text) RETURNS text
+  LANGUAGE plpgsql AS $$
+DECLARE
+  ln text;
+BEGIN
+  FOR ln IN EXECUTE 'EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF) ' || cmd
+  LOOP
+    IF btrim(ln) LIKE 'Transaction: Fast Path%' THEN
+      RETURN 'fast_path';
+    END IF;
+  END LOOP;
+  RETURN 'distributed';
+END;
+$$;
+SET yb_enable_ioc_do_nothing_pushdown = on;
+--- Basic
+CREATE TABLE pd_basic (id int PRIMARY KEY, val int);
+INSERT INTO pd_basic VALUES (1, 10);
+-- Disabling the feature uses the regular ON CONFLICT path.
+SET yb_enable_ioc_do_nothing_pushdown = off;
+SELECT ioc_pushdown($$INSERT INTO pd_basic VALUES (1, 999) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_basic ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+(1 row)
+
+SET yb_enable_ioc_do_nothing_pushdown = on;
+-- Insert a new row.
+SELECT ioc_pushdown($$INSERT INTO pd_basic VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_basic ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- Skip a conflicting row.
+SELECT ioc_pushdown($$INSERT INTO pd_basic VALUES (1, 999) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_basic ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- Check the affected-row count for an insert and a skip.
+SELECT ins_count($$INSERT INTO pd_basic VALUES (3, 30) ON CONFLICT (id) DO NOTHING$$) AS n;  -- 1
+ n 
+---
+ 1
+(1 row)
+
+SELECT ins_count($$INSERT INTO pd_basic VALUES (3, 31) ON CONFLICT (id) DO NOTHING$$) AS n;  -- 0
+ n 
+---
+ 0
+(1 row)
+
+SELECT * FROM pd_basic ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+  3 |  30
+(3 rows)
+
+--- Arbiter and primary key variants
+-- Bare DO NOTHING uses the primary key as the arbiter.
+SELECT ioc_pushdown($$INSERT INTO pd_basic VALUES (1, 111) ON CONFLICT DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+-- Explicit primary key column.
+SELECT ioc_pushdown($$INSERT INTO pd_basic VALUES (1, 111) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+-- Primary key constraint name.
+SELECT ioc_pushdown($$INSERT INTO pd_basic VALUES (1, 111) ON CONFLICT ON CONSTRAINT pd_basic_pkey DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+-- Composite primary key.
+CREATE TABLE pd_comp_pk (id int, id2 int, val int, PRIMARY KEY (id, id2));
+INSERT INTO pd_comp_pk VALUES (1, 1, 100);
+SELECT ioc_pushdown($$INSERT INTO pd_comp_pk VALUES (1, 1, 999) ON CONFLICT (id, id2) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_comp_pk VALUES (1, 2, 200) ON CONFLICT (id, id2) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_comp_pk ORDER BY id, id2;
+ id | id2 | val 
+----+-----+-----
+  1 |   1 | 100
+  1 |   2 | 200
+(2 rows)
+
+-- Range primary key.
+CREATE TABLE pd_range_pk (id int, val int, PRIMARY KEY (id ASC));
+INSERT INTO pd_range_pk VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_range_pk VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_range_pk VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_range_pk ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- Tablegroup in a non-colocated database.
+CREATE TABLEGROUP pd_tg;
+CREATE TABLE pd_tg_tab (id int PRIMARY KEY, val int) TABLEGROUP pd_tg;
+INSERT INTO pd_tg_tab VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_tg_tab VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_tg_tab VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_tg_tab ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+--- Row shapes
+-- Dropped column.
+CREATE TABLE pd_drop_col (id int PRIMARY KEY, drop_me int, val int);
+ALTER TABLE pd_drop_col DROP COLUMN drop_me;
+INSERT INTO pd_drop_col VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_drop_col VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_drop_col VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_drop_col ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- Single-row INSERT ... SELECT without a FROM clause.
+CREATE TABLE pd_ins_select (id int PRIMARY KEY, val int);
+INSERT INTO pd_ins_select VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_ins_select SELECT 2, 20 ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_ins_select SELECT 1, 99 ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_ins_select ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+--- Unsupported cases
+-- DO UPDATE.
+CREATE TABLE pd_do_update (id int PRIMARY KEY, val int);
+INSERT INTO pd_do_update VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_do_update VALUES (1, 20) ON CONFLICT (id) DO UPDATE SET val = excluded.val$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_do_update ORDER BY id;   -- updated to (1,20): DO UPDATE still works via fallback
+ id | val 
+----+-----
+  1 |  20
+(1 row)
+
+SELECT ioc_plan($$INSERT INTO pd_do_update VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET val = 21$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+SELECT ioc_plan($$INSERT INTO pd_do_update VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET val = pd_do_update.val + 1 WHERE pd_do_update.val > 0$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+SELECT ioc_plan($$INSERT INTO pd_do_update VALUES (1, 0) ON CONFLICT ON CONSTRAINT pd_do_update_pkey DO UPDATE SET val = 23 RETURNING id, val$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_do_update VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET val = pd_do_update.val + 1 WHERE pd_do_update.val > 0$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+INSERT INTO pd_do_update VALUES (1, 0) ON CONFLICT ON CONSTRAINT pd_do_update_pkey DO UPDATE SET val = 23 RETURNING id, val;
+ id | val 
+----+-----
+  1 |  23
+(1 row)
+
+SELECT * FROM pd_do_update ORDER BY id;
+ id | val 
+----+-----
+  1 |  23
+(1 row)
+
+-- Secondary index.
+CREATE TABLE pd_sec_idx (id int PRIMARY KEY, val int);
+CREATE INDEX ON pd_sec_idx (val);
+INSERT INTO pd_sec_idx VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_sec_idx VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_sec_idx VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_sec_idx ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- Secondary unique index as arbiter.
+CREATE TABLE pd_uni_arb (id int PRIMARY KEY, val int UNIQUE);
+INSERT INTO pd_uni_arb VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_uni_arb VALUES (2, 10) ON CONFLICT (val) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_uni_arb ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+(1 row)
+
+-- Primary key as arbiter on a table with another unique index.
+SELECT ioc_pushdown($$INSERT INTO pd_uni_arb VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_uni_arb ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+(1 row)
+
+-- Table without a primary key.  Use the plan because neither path issues a
+-- storage read.
+CREATE TABLE pd_no_pk (id int, val int);
+INSERT INTO pd_no_pk VALUES (1, 10);
+SELECT ioc_plan($$INSERT INTO pd_no_pk VALUES (1, 10) ON CONFLICT DO NOTHING$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+INSERT INTO pd_no_pk VALUES (1, 10) ON CONFLICT DO NOTHING;
+SELECT * FROM pd_no_pk ORDER BY id, val;
+ id | val 
+----+-----
+  1 |  10
+  1 |  10
+(2 rows)
+
+-- Multi-row VALUES.
+CREATE TABLE pd_multi_row (id int PRIMARY KEY, val int);
+INSERT INTO pd_multi_row VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_multi_row VALUES (1, 99), (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_multi_row ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- INSERT ... SELECT from a table.
+CREATE TABLE pd_scan_src (id int, val int);
+INSERT INTO pd_scan_src VALUES (2, 20);
+CREATE TABLE pd_scan (id int PRIMARY KEY, val int);
+INSERT INTO pd_scan VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_scan SELECT id, val FROM pd_scan_src ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_scan ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- Partitioned table.
+CREATE TABLE pd_part (id int, val int, PRIMARY KEY (id)) PARTITION BY RANGE (id);
+CREATE TABLE pd_part_lo PARTITION OF pd_part FOR VALUES FROM (0) TO (10);
+CREATE TABLE pd_part_hi PARTITION OF pd_part FOR VALUES FROM (10) TO (20);
+INSERT INTO pd_part VALUES (1, 10), (11, 110);
+SELECT ioc_pushdown($$INSERT INTO pd_part VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_part VALUES (5, 50) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_part ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  5 |  50
+ 11 | 110
+(3 rows)
+
+-- Secondary index on a leaf partition.
+CREATE INDEX ON pd_part_lo (val);
+INSERT INTO pd_part VALUES (2, 20) ON CONFLICT (id) DO NOTHING;
+SELECT ioc_pushdown($$INSERT INTO pd_part VALUES (2, 999) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_part_lo WHERE val = 20 ORDER BY id;
+ id | val 
+----+-----
+  2 |  20
+(1 row)
+
+SELECT * FROM pd_part ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+  5 |  50
+ 11 | 110
+(4 rows)
+
+-- BEFORE ROW trigger.
+CREATE TABLE pd_bef_trig (id int PRIMARY KEY, val int);
+CREATE FUNCTION pd_bef_trig_fn() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN RETURN NEW; END; $$;
+CREATE TRIGGER pd_bef_trig_bi BEFORE INSERT ON pd_bef_trig FOR EACH ROW EXECUTE FUNCTION pd_bef_trig_fn();
+INSERT INTO pd_bef_trig VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_bef_trig VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_bef_trig VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_bef_trig ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- AFTER ROW trigger.
+CREATE TABLE pd_aft_trig (id int PRIMARY KEY, val int);
+CREATE TABLE pd_aft_trig_log (id int);
+CREATE FUNCTION pd_aft_trig_fn() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN INSERT INTO pd_aft_trig_log VALUES (NEW.id); RETURN NULL; END; $$;
+CREATE TRIGGER pd_aft_trig_ai AFTER INSERT ON pd_aft_trig FOR EACH ROW EXECUTE FUNCTION pd_aft_trig_fn();
+INSERT INTO pd_aft_trig VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_aft_trig VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_aft_trig VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_aft_trig ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+SELECT * FROM pd_aft_trig_log ORDER BY id;
+ id 
+----
+  1
+  2
+(2 rows)
+
+-- Temporary table.  Use the plan because this table does not issue storage
+-- requests.
+CREATE TEMP TABLE pd_temp (id int PRIMARY KEY, val int);
+INSERT INTO pd_temp VALUES (1, 10);
+SELECT ioc_plan($$INSERT INTO pd_temp VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+INSERT INTO pd_temp VALUES (1, 99) ON CONFLICT (id) DO NOTHING;
+INSERT INTO pd_temp VALUES (2, 20) ON CONFLICT (id) DO NOTHING;
+SELECT * FROM pd_temp ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- An auto-updatable view is rewritten to target its base table, allowing
+-- pushdown.
+CREATE TABLE pd_view_base (id int PRIMARY KEY, val int);
+CREATE VIEW pd_view AS SELECT * FROM pd_view_base;
+INSERT INTO pd_view_base VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_view VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_view VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_view_base ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- A view with an INSTEAD OF INSERT trigger remains the target, so pushdown
+-- falls back.  Use the plan because the trigger body issues storage requests.
+-- An arbiter cannot be inferred on a view, so use bare DO NOTHING.  ExecInsert
+-- returns after firing the trigger, so duplicate handling happens in the
+-- trigger body.
+CREATE TABLE pd_view_trig_base (id int PRIMARY KEY, val int);
+CREATE VIEW pd_view_trig AS SELECT * FROM pd_view_trig_base;
+CREATE FUNCTION pd_view_trig_fn() RETURNS trigger LANGUAGE plpgsql AS
+  $$ BEGIN INSERT INTO pd_view_trig_base VALUES (NEW.id, NEW.val)
+       ON CONFLICT DO NOTHING; RETURN NEW; END; $$;
+CREATE TRIGGER pd_view_trig_ii INSTEAD OF INSERT ON pd_view_trig
+  FOR EACH ROW EXECUTE FUNCTION pd_view_trig_fn();
+INSERT INTO pd_view_trig_base VALUES (1, 10);
+SELECT ioc_plan($$INSERT INTO pd_view_trig VALUES (1, 99) ON CONFLICT DO NOTHING$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+INSERT INTO pd_view_trig VALUES (1, 99) ON CONFLICT DO NOTHING;
+INSERT INTO pd_view_trig VALUES (2, 20) ON CONFLICT DO NOTHING;
+SELECT * FROM pd_view_trig_base ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+--- Prepared statements
+-- Adding an index invalidates the cached plan and disables pushdown.
+CREATE TABLE pd_prep_ddl (id int PRIMARY KEY, val int);
+INSERT INTO pd_prep_ddl VALUES (1, 10);
+PREPARE pd_prep_ddl_p (int, int) AS INSERT INTO pd_prep_ddl VALUES ($1, $2) ON CONFLICT (id) DO NOTHING;
+-- Execute enough times to select a generic plan.
+EXECUTE pd_prep_ddl_p (2, 20);
+EXECUTE pd_prep_ddl_p (3, 30);
+EXECUTE pd_prep_ddl_p (4, 40);
+EXECUTE pd_prep_ddl_p (5, 50);
+EXECUTE pd_prep_ddl_p (6, 60);
+SELECT ioc_pushdown($$EXECUTE pd_prep_ddl_p (1, 99)$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+CREATE INDEX pd_prep_ddl_val_idx ON pd_prep_ddl (val);
+SELECT ioc_pushdown($$EXECUTE pd_prep_ddl_p (1, 99)$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+EXECUTE pd_prep_ddl_p (7, 70);
+SELECT * FROM pd_prep_ddl WHERE val = 70 ORDER BY id;
+ id | val 
+----+-----
+  7 |  70
+(1 row)
+
+SELECT * FROM pd_prep_ddl WHERE val = 99;
+ id | val 
+----+-----
+(0 rows)
+
+SELECT * FROM pd_prep_ddl ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+  3 |  30
+  4 |  40
+  5 |  50
+  6 |  60
+  7 |  70
+(7 rows)
+
+-- Data-modifying CTE.
+CREATE TABLE pd_wcte (id int PRIMARY KEY, val int);
+CREATE TABLE pd_wcte_log (id int);
+INSERT INTO pd_wcte VALUES (1, 10);
+SELECT ioc_pushdown($$WITH w AS (INSERT INTO pd_wcte_log VALUES (2) RETURNING id)
+  INSERT INTO pd_wcte SELECT id, 20 FROM w ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SELECT * FROM pd_wcte ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+SELECT * FROM pd_wcte_log ORDER BY id;
+ id 
+----
+  2
+(1 row)
+
+-- Upsert mode does not change DO NOTHING.
+SET yb_enable_upsert_mode = on;
+CREATE TABLE pd_upsert (id int PRIMARY KEY, val int);
+INSERT INTO pd_upsert VALUES (1, 10);
+SELECT ioc_pushdown($$INSERT INTO pd_upsert VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_upsert VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT * FROM pd_upsert ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+RESET yb_enable_upsert_mode;
+--- GUC changes with a cached plan
+-- The GUC is checked for every execution of a prepared statement.
+CREATE TABLE pd_prep_guc (id int PRIMARY KEY, val int);
+INSERT INTO pd_prep_guc VALUES (1, 10);
+PREPARE pd_prep_guc_p (int, int) AS INSERT INTO pd_prep_guc VALUES ($1, $2) ON CONFLICT (id) DO NOTHING;
+EXECUTE pd_prep_guc_p (2, 20);
+EXECUTE pd_prep_guc_p (3, 30);
+EXECUTE pd_prep_guc_p (4, 40);
+EXECUTE pd_prep_guc_p (5, 50);
+EXECUTE pd_prep_guc_p (6, 60);
+SELECT ioc_plan($$EXECUTE pd_prep_guc_p (1, 99)$$);
+ ioc_plan 
+----------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$EXECUTE pd_prep_guc_p (1, 99)$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+EXECUTE pd_prep_guc_p (7, 70);
+SET yb_enable_ioc_do_nothing_pushdown = off;
+SELECT ioc_plan($$EXECUTE pd_prep_guc_p (1, 99)$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+SELECT ioc_pushdown($$EXECUTE pd_prep_guc_p (1, 99)$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+EXECUTE pd_prep_guc_p (8, 80);
+SET yb_enable_ioc_do_nothing_pushdown = on;
+SELECT ioc_plan($$EXECUTE pd_prep_guc_p (1, 99)$$);
+ ioc_plan 
+----------
+ pushdown
+(1 row)
+
+EXECUTE pd_prep_guc_p (9, 90);
+SELECT * FROM pd_prep_guc ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+  3 |  30
+  4 |  40
+  5 |  50
+  6 |  60
+  7 |  70
+  8 |  80
+  9 |  90
+(9 rows)
+
+DEALLOCATE pd_prep_guc_p;
+--- Transaction blocks
+CREATE TABLE pd_txn (id int PRIMARY KEY, val int);
+INSERT INTO pd_txn VALUES (1, 10);
+SELECT ioc_plan($$INSERT INTO pd_txn VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_plan 
+----------
+ pushdown
+(1 row)
+
+SELECT ioc_plan($$INSERT INTO pd_txn VALUES (2, 20) ON CONFLICT (id) DO NOTHING RETURNING id, val$$);
+ ioc_plan 
+----------
+ pushdown
+(1 row)
+
+SELECT ins_count($$INSERT INTO pd_txn VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$) AS n;  -- 0
+ n 
+---
+ 0
+(1 row)
+
+SELECT ins_count($$INSERT INTO pd_txn VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$) AS n;  -- 1
+ n 
+---
+ 1
+(1 row)
+
+--- Read batching
+-- Set the batch size explicitly because this test runs under several batch-size
+-- configurations.
+SET yb_insert_on_conflict_read_batch_size = 2;
+CREATE TABLE pd_batch (id int PRIMARY KEY, val int);
+INSERT INTO pd_batch VALUES (1, 10);
+-- Single-row inserts use pushdown.
+SELECT ioc_pushdown($$INSERT INTO pd_batch VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_batch VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+-- Multi-row inserts use the batched fallback path.
+SELECT ioc_plan($$INSERT INTO pd_batch VALUES (2, 99), (3, 30), (4, 40) ON CONFLICT (id) DO NOTHING$$);
+ ioc_plan 
+----------
+ fallback
+(1 row)
+
+SELECT ins_count($$INSERT INTO pd_batch VALUES (2, 99), (3, 30), (4, 40) ON CONFLICT (id) DO NOTHING$$) AS n;  -- 2
+ n 
+---
+ 2
+(1 row)
+
+SELECT * FROM pd_batch ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+  3 |  30
+  4 |  40
+(4 rows)
+
+RESET yb_insert_on_conflict_read_batch_size;
+--- Tuple accounting
+-- RETURNING uses the locally generated row, including default and generated
+-- values.
+CREATE TABLE pd_tup_def (id int PRIMARY KEY, val int DEFAULT 42,
+                 val_dbl int GENERATED ALWAYS AS (val * 2) STORED);
+INSERT INTO pd_tup_def (id, val) VALUES (1, 10);
+INSERT INTO pd_tup_def (id) VALUES (2) ON CONFLICT (id) DO NOTHING RETURNING *;
+ id | val | val_dbl 
+----+-----+---------
+  2 |  42 |      84
+(1 row)
+
+INSERT INTO pd_tup_def (id) VALUES (2) ON CONFLICT (id) DO NOTHING RETURNING *;
+ id | val | val_dbl 
+----+-----+---------
+(0 rows)
+
+SELECT * FROM pd_tup_def ORDER BY id;
+ id | val | val_dbl 
+----+-----+---------
+  1 |  10 |      20
+  2 |  42 |      84
+(2 rows)
+
+-- Tuple counts for an insert and a skip.
+CREATE TABLE pd_tup_cnt (id int PRIMARY KEY, val int);
+INSERT INTO pd_tup_cnt VALUES (1, 10);
+SELECT ioc_tuples($$INSERT INTO pd_tup_cnt VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+        ioc_tuples        
+--------------------------
+ inserted=1 conflicting=0
+(1 row)
+
+SELECT ioc_tuples($$INSERT INTO pd_tup_cnt VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+        ioc_tuples        
+--------------------------
+ inserted=0 conflicting=1
+(1 row)
+
+SELECT * FROM pd_tup_cnt ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+-- Source produces no rows.
+CREATE TABLE pd_empty_src (id int PRIMARY KEY, val int);
+SELECT ioc_plan($$INSERT INTO pd_empty_src SELECT 1, 10 WHERE false ON CONFLICT (id) DO NOTHING$$);
+ ioc_plan 
+----------
+ pushdown
+(1 row)
+
+SELECT ins_count($$INSERT INTO pd_empty_src SELECT 1, 10 WHERE false ON CONFLICT (id) DO NOTHING$$) AS n;  -- 0
+ n 
+---
+ 0
+(1 row)
+
+INSERT INTO pd_empty_src SELECT 1, 10 WHERE false ON CONFLICT (id) DO NOTHING RETURNING *;
+ id | val 
+----+-----
+(0 rows)
+
+SELECT count(*) FROM pd_empty_src;
+ count 
+-------
+     0
+(1 row)
+
+--- Checks before pushdown
+-- NULL primary key.
+CREATE TABLE pd_null_pk (id int PRIMARY KEY, val int);
+INSERT INTO pd_null_pk VALUES (1, 10);
+INSERT INTO pd_null_pk VALUES (NULL, 1) ON CONFLICT (id) DO NOTHING;
+ERROR:  null value in column "id" of relation "pd_null_pk" violates not-null constraint
+DETAIL:  Failing row contains (null, 1).
+SELECT * FROM pd_null_pk ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+(1 row)
+
+-- Row-level security policy.
+CREATE TABLE pd_rls (id int PRIMARY KEY, val int);
+INSERT INTO pd_rls VALUES (1, 10);
+ALTER TABLE pd_rls ENABLE ROW LEVEL SECURITY;
+CREATE POLICY pd_rls_policy ON pd_rls FOR ALL USING (true) WITH CHECK (val > 0);
+CREATE USER pd_rls_user;
+GRANT SELECT, INSERT ON pd_rls TO pd_rls_user;
+SET ROLE pd_rls_user;
+SELECT ioc_plan($$INSERT INTO pd_rls VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+ ioc_plan 
+----------
+ pushdown
+(1 row)
+
+INSERT INTO pd_rls VALUES (2, 0) ON CONFLICT (id) DO NOTHING;   -- policy violation
+ERROR:  new row violates row-level security policy for table "pd_rls"
+INSERT INTO pd_rls VALUES (1, 0) ON CONFLICT (id) DO NOTHING;   -- policy violation on a conflicting key
+ERROR:  new row violates row-level security policy for table "pd_rls"
+INSERT INTO pd_rls VALUES (2, 20) ON CONFLICT (id) DO NOTHING;  -- allowed, inserted
+INSERT INTO pd_rls VALUES (1, 99) ON CONFLICT (id) DO NOTHING;  -- allowed, skipped
+RESET ROLE;
+SELECT * FROM pd_rls ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+(2 rows)
+
+REVOKE ALL ON pd_rls FROM pd_rls_user;
+DROP USER pd_rls_user;
+--- Fast path
+-- An eligible autocommit insert can use a single-shard transaction.
+CREATE TABLE pd_fast (id int PRIMARY KEY, val int);
+INSERT INTO pd_fast VALUES (1, 10);
+-- Control case.
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (100, 100)$$);
+  ioc_txn  
+-----------
+ fast_path
+(1 row)
+
+-- Insert a new row.
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (2, 20) ON CONFLICT (id) DO NOTHING$$);
+  ioc_txn  
+-----------
+ fast_path
+(1 row)
+
+SELECT * FROM pd_fast WHERE id = 2;
+ id | val 
+----+-----
+  2 |  20
+(1 row)
+
+-- Skip a conflicting row.
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+  ioc_txn  
+-----------
+ fast_path
+(1 row)
+
+SELECT * FROM pd_fast WHERE id = 1;
+ id | val 
+----+-----
+  1 |  10
+(1 row)
+
+-- Pushdown disabled.
+SET yb_enable_ioc_do_nothing_pushdown = off;
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+   ioc_txn   
+-------------
+ distributed
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_fast VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+SET yb_enable_ioc_do_nothing_pushdown = on;
+-- Explicit transaction block.
+BEGIN;
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (3, 30) ON CONFLICT (id) DO NOTHING$$);
+   ioc_txn   
+-------------
+ distributed
+(1 row)
+
+SELECT ioc_pushdown($$INSERT INTO pd_fast VALUES (4, 40) ON CONFLICT (id) DO NOTHING$$);
+ ioc_pushdown 
+--------------
+ pushdown
+(1 row)
+
+COMMIT;
+SELECT * FROM pd_fast WHERE id IN (3, 4) ORDER BY id;
+ id | val 
+----+-----
+  3 |  30
+  4 |  40
+(2 rows)
+
+-- Secondary index disqualifies pushdown and fast path.
+CREATE INDEX pd_fast_val_idx ON pd_fast (val);
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (1, 99) ON CONFLICT (id) DO NOTHING$$);
+   ioc_txn   
+-------------
+ distributed
+(1 row)
+
+DROP INDEX pd_fast_val_idx;
+-- RETURNING.
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (6, 60) ON CONFLICT (id) DO NOTHING RETURNING id, val$$);
+  ioc_txn  
+-----------
+ fast_path
+(1 row)
+
+INSERT INTO pd_fast VALUES (6, 61) ON CONFLICT (id) DO NOTHING RETURNING id, val;
+ id | val 
+----+-----
+(0 rows)
+
+SELECT * FROM pd_fast WHERE id = 6;
+ id | val 
+----+-----
+  6 |  60
+(1 row)
+
+-- Scalar subquery in RETURNING.
+SELECT ioc_txn($$INSERT INTO pd_fast VALUES (7, 70) ON CONFLICT (id) DO NOTHING
+  RETURNING (SELECT max(val) FROM pd_fast)$$);
+   ioc_txn   
+-------------
+ distributed
+(1 row)
+
+SELECT * FROM pd_fast WHERE id = 7;
+ id | val 
+----+-----
+  7 |  70
+(1 row)
+
+-- Changing the GUC also changes the transaction path of a prepared statement.
+CREATE TABLE pd_fast_guc (id int PRIMARY KEY, val int);
+INSERT INTO pd_fast_guc VALUES (1, 10);
+PREPARE pd_fast_guc_p (int, int) AS
+  INSERT INTO pd_fast_guc VALUES ($1, $2) ON CONFLICT (id) DO NOTHING;
+EXECUTE pd_fast_guc_p (2, 20);
+EXECUTE pd_fast_guc_p (3, 30);
+EXECUTE pd_fast_guc_p (4, 40);
+EXECUTE pd_fast_guc_p (5, 50);
+EXECUTE pd_fast_guc_p (6, 60);
+SELECT ioc_txn($$EXECUTE pd_fast_guc_p (10, 100)$$);
+  ioc_txn  
+-----------
+ fast_path
+(1 row)
+
+SET yb_enable_ioc_do_nothing_pushdown = off;
+SELECT ioc_txn($$EXECUTE pd_fast_guc_p (11, 110)$$);
+   ioc_txn   
+-------------
+ distributed
+(1 row)
+
+SELECT ioc_pushdown($$EXECUTE pd_fast_guc_p (1, 99)$$);
+ ioc_pushdown 
+--------------
+ fallback
+(1 row)
+
+EXECUTE pd_fast_guc_p (12, 120);
+SET yb_enable_ioc_do_nothing_pushdown = on;
+SELECT ioc_txn($$EXECUTE pd_fast_guc_p (13, 130)$$);
+  ioc_txn  
+-----------
+ fast_path
+(1 row)
+
+SELECT * FROM pd_fast_guc ORDER BY id;
+ id | val 
+----+-----
+  1 |  10
+  2 |  20
+  3 |  30
+  4 |  40
+  5 |  50
+  6 |  60
+ 10 | 100
+ 11 | 110
+ 12 | 120
+ 13 | 130
+(10 rows)
+
+DEALLOCATE pd_fast_guc_p;
+-- IOC pushdown can use a generic plan.  Plain INSERT and single-row UPDATE
+-- continue to use custom plans.
+CREATE TABLE pd_plan_cache (id int PRIMARY KEY, val int);
+SET yb_test_planner_custom_plan_threshold TO 1;
+PREPARE pd_plan_cache_ioc_p (int, int) AS
+  INSERT INTO pd_plan_cache VALUES ($1, $2) ON CONFLICT (id) DO NOTHING;
+EXECUTE pd_plan_cache_ioc_p (1, 10);
+EXECUTE pd_plan_cache_ioc_p (2, 20);
+SELECT name, generic_plans > 0 AS uses_generic, custom_plans > 0 AS used_custom
+  FROM pg_prepared_statements WHERE name = 'pd_plan_cache_ioc_p';
+        name         | uses_generic | used_custom 
+---------------------+--------------+-------------
+ pd_plan_cache_ioc_p | t            | t
+(1 row)
+
+PREPARE pd_plan_cache_ins_p (int, int) AS INSERT INTO pd_plan_cache VALUES ($1, $2);
+EXECUTE pd_plan_cache_ins_p (100, 100);
+EXECUTE pd_plan_cache_ins_p (101, 101);
+SELECT name, generic_plans = 0 AS stays_custom
+  FROM pg_prepared_statements WHERE name = 'pd_plan_cache_ins_p';
+        name         | stays_custom 
+---------------------+--------------
+ pd_plan_cache_ins_p | t
+(1 row)
+
+PREPARE pd_plan_cache_upd_p (int, int) AS UPDATE pd_plan_cache SET val = $2 WHERE id = $1;
+EXECUTE pd_plan_cache_upd_p (1, 11);
+EXECUTE pd_plan_cache_upd_p (1, 12);
+SELECT name, generic_plans = 0 AS stays_custom
+  FROM pg_prepared_statements WHERE name = 'pd_plan_cache_upd_p';
+        name         | stays_custom 
+---------------------+--------------
+ pd_plan_cache_upd_p | t
+(1 row)
+
+DEALLOCATE pd_plan_cache_ioc_p;
+DEALLOCATE pd_plan_cache_ins_p;
+DEALLOCATE pd_plan_cache_upd_p;
+SET yb_test_planner_custom_plan_threshold TO DEFAULT;
+--- Cleanup
+DROP FUNCTION ioc_pushdown(text);
+DROP FUNCTION ins_count(text);
+DROP FUNCTION ioc_plan(text);
+DROP FUNCTION ioc_tuples(text);
+DROP FUNCTION ioc_txn(text);

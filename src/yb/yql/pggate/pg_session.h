@@ -85,7 +85,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   [[nodiscard]] const ReadHybridTime& catalog_read_time() const { return catalog_read_time_; }
 
   void SetHistoricalReadContext(
-      const ReadHybridTime& read_time, std::string transaction_id);
+      const ReadHybridTime& read_time, std::string transaction_id,
+      std::vector<uint32_t> aborted_subtxn_set);
   void ResetHistoricalReadContext();
 
   //------------------------------------------------------------------------------------------------
@@ -152,6 +153,20 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
     uint32_t key_group;
     std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
+    // Catalog version the response is cached at, for the tserver to record. Already inside
+    // key_value, but only as bytes it cannot interpret.
+    uint64_t catalog_version;
+    // Do not fill on a miss; see CachingInfoPB.lookup_only.
+    bool lookup_only;
+    // Last request of a connection start's prefetch; see
+    // CachingInfoPB.completes_connection_prefetch.
+    bool completes_connection_prefetch;
+    // Return rather than wait behind a fill already under way; see
+    // CachingInfoPB.send_away_if_fill_in_flight.
+    bool send_away_if_fill_in_flight;
+    // Any round of a connection start's prefetch; see
+    // CachingInfoPB.part_of_connection_prefetch.
+    bool part_of_connection_prefetch;
   };
 
   Result<PerformFuture> RunAsync(
@@ -249,7 +264,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   NonTransactionalWrites OpsHaveNonTransactionalWrites(const PgsqlOps& operations) const;
 
-  Status SetReadTimeIfPresent(const PgsqlOps& operations, tserver::PgPerformOptionsPB& options);
+  Status SetReadTimeIfPresent(
+      const PgsqlOps& operations, bool has_catalog_ops, tserver::PgPerformOptionsPB& options);
   Status CheckConflictWithYbReadTime(const PgsqlOps& operations);
 
   template<class Generator>
@@ -289,6 +305,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   struct HistoricalReadContext {
     ReadHybridTime read_time;
     std::string transaction_id;
+    std::vector<uint32_t> aborted_subtxn_set;
   };
   std::optional<HistoricalReadContext> historical_read_context_;
 

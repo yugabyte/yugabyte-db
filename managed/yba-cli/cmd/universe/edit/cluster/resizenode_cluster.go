@@ -74,15 +74,8 @@ var resizeNodeCmd = &cobra.Command{
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 		}
 
-		cluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-
-		if universeutil.IsClusterEmpty(cluster) {
-			err := fmt.Errorf(
-				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
-			)
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
-		}
-
+		cluster, primaryIndex := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
 		userIntent := cluster.GetUserIntent()
 		deviceInfo := userIntent.GetDeviceInfo()
 
@@ -124,7 +117,7 @@ var resizeNodeCmd = &cobra.Command{
 
 		userIntent.SetDeviceInfo(deviceInfo)
 		cluster.SetUserIntent(userIntent)
-		clusters[0] = cluster
+		clusters[primaryIndex] = cluster
 
 		masterDelay, err := cmd.Flags().GetInt32("delay-between-master-servers")
 		if err != nil {

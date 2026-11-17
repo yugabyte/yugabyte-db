@@ -12,9 +12,12 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleasesUtils.ExtractedMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.controllers.apiModels.ResponseRelease;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.ReleaseLocalFile;
+import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -23,8 +26,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Rule;
 import org.junit.Test;
@@ -176,5 +182,30 @@ public class ReleasesUtilsTest extends FakeDBApplication {
     Map<String, Object> map = new HashMap<String, Object>();
     map.put("version", version);
     return map;
+  }
+
+  @Test
+  public void testVersionUniverseSummariesMatchesVersionUniversesMap() {
+    Customer customer = ModelFactory.testCustomer();
+    ModelFactory.createUniverse("summary-universe-1", customer.getId());
+    ModelFactory.createUniverse("summary-universe-2", customer.getId());
+
+    Map<String, List<Universe>> full = releasesUtils.versionUniversesMap();
+    Map<String, List<ResponseRelease.Universe>> summaries =
+        releasesUtils.versionUniverseSummaries();
+
+    assertEquals(full.keySet(), summaries.keySet());
+    for (Map.Entry<String, List<Universe>> entry : full.entrySet()) {
+      Map<UUID, Universe> byUuid =
+          entry.getValue().stream()
+              .collect(Collectors.toMap(Universe::getUniverseUUID, Function.identity()));
+      List<ResponseRelease.Universe> versionSummaries = summaries.get(entry.getKey());
+      assertEquals(byUuid.size(), versionSummaries.size());
+      for (ResponseRelease.Universe summary : versionSummaries) {
+        Universe universe = byUuid.get(summary.uuid);
+        assertEquals(universe.getName(), summary.name);
+        assertEquals(universe.getCreationDate().getTime(), summary.creation_date.getTime());
+      }
+    }
   }
 }

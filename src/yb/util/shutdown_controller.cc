@@ -22,6 +22,9 @@ namespace {
 
 using State = ShutdownController::State;
 
+const auto kPollInterval = MonoDelta::FromMilliseconds(10);
+const auto kWarnAfter = MonoDelta::FromSeconds(1);
+
 // Advances `state` from `from` to `to`, CHECK-failing if it is not in `from`. Used to move a phase
 // to its completed value.
 void AdvanceState(std::atomic<State>& state, State from, State to) {
@@ -68,7 +71,8 @@ Status ShutdownController::Begin(StartShutdownTag*) {
   // after this call does not observe an in-progress start and fail with IllegalState.
   if (expected_state == State::kShutdownRequested) {
     BusyWait(make_lw_function([this] { return state() != State::kShutdownRequested; }),
-             "concurrent shutdown start to finish");
+             "concurrent shutdown start to finish", kPollInterval, kWarnAfter,
+             /* max_poll_interval= */ MonoDelta());
   }
   return STATUS(ShutdownInProgress, "Shutting down already in progress");
 }
@@ -88,7 +92,8 @@ Status ShutdownController::Begin(CompleteShutdownTag*) {
   // CompleteShutdown() while the object is still being torn down.
   if (expected_state != State::kShutdownCompleted) {
     BusyWait(make_lw_function([this] { return state() == State::kShutdownCompleted; }),
-             "concurrent shutdown to complete");
+             "concurrent shutdown to complete", kPollInterval, kWarnAfter,
+             /* max_poll_interval= */ MonoDelta());
   }
   return STATUS(ShutdownInProgress, "Shutdown already in progress");
 }

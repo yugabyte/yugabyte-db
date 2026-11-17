@@ -5,6 +5,7 @@ package com.yugabyte.yw.metrics;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.models.MetricConfigDefinition;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout.Axis;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
@@ -171,7 +173,9 @@ public class MetricQueryResponseTest {
 
     List<MetricGraphData> data =
         queryResponse.getGraphData(
-            "container_cpu_usage", new MetricConfigDefinition(), METRIC_SETTINGS);
+            "container_cpu_usage",
+            new MetricConfigDefinition(),
+            MetricSettings.defaultSettings("container_cpu_usage"));
 
     assertEquals(data.size(), 1);
     MetricGraphData metricData = data.get(0);
@@ -215,7 +219,10 @@ public class MetricQueryResponseTest {
 
     List<MetricGraphData> data =
         queryResponse.getGraphData(
-            "container_volume_stats", new MetricConfigDefinition(), METRIC_SETTINGS, resolver);
+            "container_volume_stats",
+            new MetricConfigDefinition(),
+            MetricSettings.defaultSettings("container_volume_stats"),
+            resolver);
 
     assertEquals(1, data.size());
     // Single-AZ primary must not carry the AZ or `-readonly` suffix, but must preserve the
@@ -261,7 +268,10 @@ public class MetricQueryResponseTest {
 
     List<MetricGraphData> data =
         queryResponse.getGraphData(
-            "container_volume_stats", new MetricConfigDefinition(), METRIC_SETTINGS, resolver);
+            "container_volume_stats",
+            new MetricConfigDefinition(),
+            MetricSettings.defaultSettings("container_volume_stats"),
+            resolver);
 
     assertEquals(1, data.size());
     // Multi-AZ RR must produce the `_<az>-readonly` suffix (matching KubernetesUtil.
@@ -290,7 +300,7 @@ public class MetricQueryResponseTest {
         queryResponse.getGraphData(
             "container_volume_stats",
             new MetricConfigDefinition(),
-            METRIC_SETTINGS,
+            MetricSettings.defaultSettings("container_volume_stats"),
             null /* resolver - trigger the label-only fallback (defaults to multi-AZ) */);
 
     assertEquals(1, data.size());
@@ -299,5 +309,132 @@ public class MetricQueryResponseTest {
     assertThat(
         data.get(0).instanceName,
         allOf(notNullValue(), equalTo("yb-tserver-0_us-west1-a_datadir0")));
+  }
+
+  @Test
+  public void testK8sKeysGetPodAndVolumeInstanceNames() {
+    JsonNode podJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
+                + " {\"pod_name\":\"yb-master-test-pod\",\"container_name\":\"yb-master\","
+                + "\"namespace\":\"test-namespace\"},\"value\":[1479278137,\"0.5\"]}]}}");
+    List<MetricGraphData> podData =
+        Json.fromJson(podJson, MetricQueryResponse.class)
+            .getGraphData(
+                "k8s_memory_usage",
+                new MetricConfigDefinition(),
+                MetricSettings.defaultSettings("k8s_memory_usage"));
+    assertThat(podData.get(0).instanceName, equalTo("yb-master-test-pod"));
+
+    JsonNode volumeJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":"
+                + " {\"persistentvolumeclaim\":\"datadir0-yb-master-0\","
+                + "\"namespace\":\"test-namespace\"},\"value\":[1479278137,\"0.5\"]}]}}");
+    List<MetricGraphData> volumeData =
+        Json.fromJson(volumeJson, MetricQueryResponse.class)
+            .getGraphData(
+                "k8s_volume_disk_volume_used",
+                new MetricConfigDefinition(),
+                MetricSettings.defaultSettings("k8s_volume_disk_volume_used"));
+    assertThat(volumeData.get(0).instanceName, equalTo("yb-master-0_datadir0"));
+  }
+
+  @Test
+  public void testK8sVolumeKeysGroupedByClaimAreNamedByVolume() {
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":["
+                + "{\"metric\":{\"persistentvolumeclaim\":\"datadir0-yb-master-0\","
+                + "\"namespace\":\"ns\"},\"value\":[1479278137,\"10\"]},"
+                + "{\"metric\":{\"persistentvolumeclaim\":\"datadir0-yb-tserver-0\","
+                + "\"namespace\":\"ns\"},\"value\":[1479278137,\"20\"]}]}}");
+    MetricConfigDefinition config =
+        new MetricConfigDefinition()
+            .setGroupBy("namespace,persistentvolumeclaim")
+            .setLayout(
+                new Layout()
+                    .setYaxis(
+                        new Axis()
+                            .setAlias(
+                                ImmutableMap.of(
+                                    "k8s_volume_disk_volume_used/k8s_volume_disk_volume_capacity",
+                                    "Disk Usage"))));
+    List<MetricGraphData> data =
+        Json.fromJson(responseJson, MetricQueryResponse.class)
+            .getGraphData(
+                "k8s_volume_disk_volume_usage_percent",
+                config,
+                MetricSettings.defaultSettings("k8s_volume_disk_volume_usage_percent"));
+    assertThat(
+        data.stream().map(d -> d.name).collect(Collectors.toList()),
+        containsInAnyOrder("yb-master-0_datadir0", "yb-tserver-0_datadir0"));
+  }
+
+  @Test
+  public void testK8sKeysAreClassifiedByTheirMetricsYmlKey() {
+    JsonNode memoryJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":"
+                + "{\"pod_name\":\"yb-tserver-0\",\"saved_name\":\"container_memory_cache\","
+                + "\"namespace\":\"test-namespace\"},\"value\":[1479278137,\"0.5\"]}]}}");
+    List<MetricGraphData> memoryData =
+        Json.fromJson(memoryJson, MetricQueryResponse.class)
+            .getGraphData(
+                "",
+                new MetricConfigDefinition(),
+                MetricSettings.defaultSettings("k8s_memory_usage"));
+    assertThat(memoryData.get(0).instanceName, equalTo("yb-tserver-0"));
+
+    JsonNode ybaDiskJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":"
+                + "{\"persistentvolumeclaim\":\"yba-yugaware-storage\"},"
+                + "\"value\":[1479278137,\"0.5\"]}]}}");
+    List<MetricGraphData> ybaDiskData =
+        Json.fromJson(ybaDiskJson, MetricQueryResponse.class)
+            .getGraphData(
+                "kubelet_volume_stats_used_bytes",
+                new MetricConfigDefinition().setGroupBy("persistentvolumeclaim"),
+                MetricSettings.defaultSettings("yba_container_disk_used"));
+    assertThat(ybaDiskData.get(0).name, equalTo("yba-yugaware-storage"));
+  }
+
+  @Test
+  public void testK8sVolumeKeysKeepOldNamingNamespacesApart() {
+    String series =
+        "{\"metric\":{\"persistentvolumeclaim\":\"datadir0-yb-tserver-0\",\"namespace\":\"%s\"},"
+            + "\"value\":[1479278137,\"%s\"]}";
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":["
+                + String.format(series, "yb-old-us-west1-a", "1")
+                + ","
+                + String.format(series, "yb-old-us-west1-b", "2")
+                + ","
+                + String.format(series, "yb-old-rr-us-west1-a", "3")
+                + "]}}");
+    K8sPodNodeNameResolver resolver =
+        K8sPodNodeNameResolver.ofReleases(
+            false /* newNamingStyle */,
+            ImmutableList.of(
+                new ReleaseInfo("ignored-a", "yb-old-us-west1-a", "us-west1-a", true, false),
+                new ReleaseInfo("ignored-b", "yb-old-us-west1-b", "us-west1-b", true, false),
+                new ReleaseInfo("ignored-rr", "yb-old-rr-us-west1-a", "us-west1-a", true, true)));
+    MetricConfigDefinition config =
+        new MetricConfigDefinition().setGroupBy("namespace,persistentvolumeclaim");
+    List<MetricGraphData> data =
+        Json.fromJson(responseJson, MetricQueryResponse.class)
+            .getGraphData(
+                "k8s_volume_disk_volume_used",
+                config,
+                MetricSettings.defaultSettings("k8s_volume_disk_volume_used"),
+                resolver);
+    assertThat(
+        data.stream().map(d -> d.name).collect(Collectors.toList()),
+        containsInAnyOrder(
+            "yb-tserver-0_us-west1-a_datadir0",
+            "yb-tserver-0_us-west1-b_datadir0",
+            "yb-tserver-0_us-west1-a-readonly_datadir0"));
   }
 }

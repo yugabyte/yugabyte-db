@@ -77,6 +77,7 @@ public class CheckOCIImageEligibilityTest extends FakeDBApplication {
     assertTrue(
         e.getMessage(),
         e.getMessage().contains(imageId(marketplaceBased) + " in region " + REGION));
+    assertTrue(e.getMessage(), e.getMessage().contains("editing the universe"));
     assertTrue(e.getMessage(), e.getMessage().contains(ALLOW_MARKETPLACE_BASED_KEY));
   }
 

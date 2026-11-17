@@ -38,6 +38,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/request_id_allocator.h"
 
+#include "yb/common/cdr_metadata.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/origination_info.h"
@@ -507,8 +508,8 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
-  uint32_t XreplOriginId() const { return xrepl_origin_id_; }
-  void SetXreplOriginId(uint32_t value) { xrepl_origin_id_ = value; }
+  const CdrMetadata& cdr_metadata() const { return cdr_metadata_; }
+  void SetCdrMetadata(const CdrMetadata& value) { cdr_metadata_ = value; }
 
   const OriginationInfo& origination_info() const { return origination_info_; }
   void SetOriginationInfo(const OriginationInfo& value) { origination_info_ = value; }
@@ -534,7 +535,7 @@ class YBPgsqlWriteOp : public YBPgsqlOpSidecarBase {
   // Else could be distributed transaction (or non-transactional) depending on target table type.
   bool is_single_row_txn_ = false;
   HybridTime write_time_;
-  uint32_t xrepl_origin_id_ = 0;
+  CdrMetadata cdr_metadata_;
   OriginationInfo origination_info_;
 };
 
@@ -566,6 +567,9 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
     yb_consistency_level_ = yb_consistency_level;
   }
 
+  bool force_snapshot_read() const { return force_snapshot_read_; }
+  void set_force_snapshot_read() { force_snapshot_read_ = true; }
+
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
 
   bool should_apply_intents(IsolationLevel isolation_level) override;
@@ -587,6 +591,7 @@ class YBPgsqlReadOp : public YBPgsqlOpSidecarBase {
   LWPgsqlReadRequestPB* request_;
   bool own_request_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
+  bool force_snapshot_read_ = false;
   ReadHybridTime used_read_time_;
   // The tablet that served this operation.
   TabletId used_tablet_;

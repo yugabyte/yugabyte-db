@@ -45,9 +45,27 @@ class TserverXClusterContextIf {
   // information lease.
   virtual Result<uint32_t> GetOidCacheInvalidationsCount() const = 0;
 
-  // Immutable snapshot of the persistence block map most recently received from master.  Fails if
-  // this TServer does not currently hold a xCluster-guarded information lease.
-  virtual Result<std::shared_ptr<const PersistenceBlockMapPB>> GetPersistenceBlockMap() const = 0;
+  // The time through which this TServer's persistence block map blocks database_oid's stamped
+  // writes and commits, or nullopt if the map has no entry for database_oid.  The map is the one
+  // from the newest xCluster-guarded info this TServer has applied, by version, not necessarily
+  // the most recently received.  Fails if this TServer does not currently hold a xCluster-guarded
+  // information lease.
+  virtual Result<std::optional<HybridTime>> GetPersistenceBlockedThrough(
+      uint32_t database_oid) const = 0;
+
+  // Immutable snapshot of this TServer's persistence block map (see GetPersistenceBlockedThrough).
+  // Fails if this TServer does not currently hold a xCluster-guarded information lease.
+  virtual Result<std::shared_ptr<const PersistenceBlockMapPB>> TEST_GetPersistenceBlockMap()
+      const = 0;
+
+  // Whether this TServer may treat its xCluster-guarded information as current.
+  //
+  // When enforce_xcluster_guarded_lease is true (i.e., after upgrade), this is equivalent to do we
+  // have an unexpired lease?
+  //
+  // Otherwise, we assume yes once we have received a heartbeat from master for backward
+  // compatibility/upgrade reasons.
+  virtual bool HasXClusterGuardedInfoLease() const = 0;
 
   virtual bool IsReadOnlyMode(NamespaceIdView namespace_id) const = 0;
   virtual bool IsTargetAndInAutomaticMode(const NamespaceId& namespace_id) const = 0;

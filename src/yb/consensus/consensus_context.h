@@ -82,6 +82,9 @@ class ConsensusContext {
   // Listener could be set only once and then reset.
   virtual void ListenNumSSTFilesChanged(std::function<void()> listener) = 0;
 
+  // Whether post-split compaction is still pending on this tablet.
+  virtual bool PendingPostSplitCompaction() = 0;
+
   // Checks whether operation with provided op id and type could be added to the log.
   virtual Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) = 0;
@@ -103,7 +106,17 @@ class ConsensusContext {
   //
   // Runs for every op the leader appends while holding the Raft lock, so it must be cheap and must
   // not block.
-  virtual Status CheckReplicateAllowed(const LWReplicateMsg& replicate_msg) = 0;
+  //
+  // May modify an op it allows, e.g., to drop fields only the check needs: the op has not yet
+  // reached the log cache, the WAL, or any follower, all of which see the modified op.
+  virtual Status CheckReplicateAllowed(LWReplicateMsg& replicate_msg) = 0;
+
+  // Whether this replica must give up leadership and not seek it.  While this holds, this replica
+  // starts no elections, including pre-elections; the server steps down its leaders on its own.
+  //
+  // Called on every election start, under the Raft lock, so it must be cheap: it may take only
+  // briefly held locks, and none that is held while taking the Raft lock.
+  virtual bool ShouldRelinquishLeadership() = 0;
 
   virtual ~ConsensusContext() = default;
 };

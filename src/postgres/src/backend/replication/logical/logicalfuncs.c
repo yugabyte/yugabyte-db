@@ -277,7 +277,10 @@ pg_logical_slot_get_changes_guts(FunctionCallInfo fcinfo, bool confirm, bool bin
 		InvalidateSystemCaches();
 
 		if (IsYugaByteEnabled())
+		{
+			YBCValidateBoundPublication(ctx->options.yb_publication_names);
 			YBCInitVirtualWal(ctx->options.yb_publication_names);
+		}
 
 		/* Decode until we run out of records */
 		while (IsYugaByteEnabled() || ctx->reader->EndRecPtr < end_of_wal)

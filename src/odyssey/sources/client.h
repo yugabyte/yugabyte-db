@@ -213,6 +213,7 @@ static inline void od_client_free(od_client_t *client)
 	if (client->prep_stmt_ids) {
 		od_hashmap_free(client->prep_stmt_ids);
 	}
+	kiwi_be_startup_free(&client->startup);
 	yb_kiwi_vars_free(&client->yb_vars_startup);
 	yb_kiwi_vars_free(&client->yb_vars_session);
 	yb_kiwi_vars_free(&client->yb_startup_settings);

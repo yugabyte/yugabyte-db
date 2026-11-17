@@ -194,8 +194,14 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
                     String.format(
                         "Node %s is running a user-level node agent (%s is %s under the %s user)."
                             + " A user-level node agent is not managed by YugabyteDB Anywhere"
-                            + " provisioning.",
-                        n.getNodeName(), NODE_AGENT_SERVICE, activeState, YB_USER));
+                            + " provisioning. Stop and disable it by running 'systemctl --user"
+                            + " disable --now %s' as the %s user on the node, and retry.",
+                        n.getNodeName(),
+                        NODE_AGENT_SERVICE,
+                        activeState,
+                        YB_USER,
+                        NODE_AGENT_SERVICE,
+                        YB_USER));
               }
             },
             shellContext)

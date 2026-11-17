@@ -897,10 +897,9 @@ public class NodeAgentRpcPayload {
             Path localGflagDirPath = tmpDirectoryPath.resolve(nodeDetails.getNodeUuid().toString());
             // Validate directory exists
             if (Files.isDirectory(localGflagDirPath)) {
-              String providerUUID =
-                  Util.getProviderForNode(nodeDetails, universe).getUuid().toString();
-              String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-              String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+              String remoteGFlagPath =
+                  GFlagsUtil.getRemoteGFlagFilesPath(
+                      Util.getProviderForNode(nodeDetails, universe));
 
               // Ensure remote directory exists
               try {

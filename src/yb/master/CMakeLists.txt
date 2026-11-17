@@ -37,11 +37,11 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES
-      master_cluster.proto master_dcl.proto
+      master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
       master_encryption.proto master_heartbeat.proto master_replication.proto
       master_backup.proto master_test.proto master_ysql_lease.proto
   MESSAGES_PROTO_FILES
-      master_ddl.proto master_client.proto master_admin.proto
+      master_ddl.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
       catalog_entity_info.proto master_types.proto)
 set(MASTER_YRPC_LIBS
@@ -74,6 +74,7 @@ set(MASTER_SRCS
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
   backfill_index.cc
+  online_schema_change.cc
   catalog_entity_base.cc
   catalog_entity_info.cc
   catalog_entity_tasks.cc
@@ -81,6 +82,7 @@ set(MASTER_SRCS
   catalog_loading_state.cc
   catalog_manager.cc
   catalog_manager_bg_tasks.cc
+  catalog_manager_cdc_bg_tasks.cc
   catalog_manager_ext.cc
   catalog_manager_util.cc
   cdcsdk_manager.cc
@@ -118,6 +120,7 @@ set(MASTER_SRCS
   multi_step_monitored_task.cc
   object_lock_info_manager.cc
   permissions_manager.cc
+  pg_catalog_versions_cache.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -263,6 +266,7 @@ set(YB_TEST_LINK_LIBS master
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(async_rpc_tasks-test)
 ADD_YB_TEST(async_task_result_collector-test)
+ADD_YB_TEST(online_schema_change-test)
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(catalog_manager_mini_cluster_test)
@@ -276,6 +280,7 @@ ADD_YB_TEST(master_cluster_test)
 ADD_YB_TEST(master_tablet_service_test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(multi_step_monitored_task-test)
+ADD_YB_TEST(pg_catalog_versions_cache-test)
 ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(stateful_service-test)
 ADD_YB_TEST(sys_catalog-test)

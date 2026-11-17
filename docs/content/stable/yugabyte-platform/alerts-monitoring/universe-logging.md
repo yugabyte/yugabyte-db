@@ -35,6 +35,20 @@ Only YSQL query and audit logs can be exported, not YCQL.
 - Configuring logging blocks other universe operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - To limit performance impact and control costs, log and export only what you need. The default settings are based on best practices from open source PostgreSQL, the broader community, and YugabyteDB testing to ensure the impact is bounded and insignificant.
 
+## Exported log attributes
+
+Exported query and audit log records carry attributes parsed from the log line, namespaced under `yugabyte.*`.
+
+| Attribute | <div style="width:120px">Log type</div> |
+| :-------- | :------- |
+| `yugabyte.log_level` | Query and audit |
+| `yugabyte.log.file.name` | Query and audit |
+| `yugabyte.timestamp_with_ms` and `yugabyte.process_id`, from the default `log_line_prefix`. Attributes parsed from other `log_line_prefix` tokens follow the same `yugabyte.*` pattern. | Query and audit |
+| `yugabyte.audit_type` | Audit only |
+| `yugabyte.statement_id`, `yugabyte.substatement_id`, `yugabyte.class`, `yugabyte.command`, `yugabyte.object_type`, `yugabyte.object_name`, and `yugabyte.statement` | Audit |
+
+In v2026.1.3.0 and later, Kubernetes universes running YugabyteDB v2026.1.2.0 and later export these attributes under the same `yugabyte.*` names as VM-based universes. The unprefixed names are not sent, so update any dashboards, alerts, and saved queries that filter on the bare names (for example, `statement`, `class`, or `command`) to use the `yugabyte.*` names. Kubernetes universes on earlier YugabyteDB versions, and VM-based universes, are unchanged.
+
 ## Database query logging
 
 {{<tags/ui/new>}}To enable database query logging for a universe, navigate to the universe and do the following:

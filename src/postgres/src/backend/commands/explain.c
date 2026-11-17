@@ -44,6 +44,7 @@
 #include "executor/nodeYbBatchedNestloop.h"
 #include "executor/ybModifyTable.h"
 #include "optimizer/planner.h"
+#include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
 #include "utils/guc.h"
 
@@ -5602,6 +5603,9 @@ show_modifytable_info(ModifyTableState *mtstate, List *ancestors,
 							"NOTHING" : "UPDATE",
 							es);
 
+		if (mtstate->resultRelInfo->ri_ybUseIocPushdown)
+			ExplainPropertyBool("Conflict Resolution Pushdown", true, es);
+
 		/*
 		 * Don't display arbiter indexes at all when DO NOTHING variant
 		 * implicitly ignores all conflicts
@@ -6767,7 +6771,6 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 {
 	List	   *stream_keys = NIL;
 	List	   *stream_conds = NIL;
-	int			num_streams = 1;
 	List	   *sort_keys = NIL;
 	ListCell   *lc;
 	List	   *context;
@@ -6811,7 +6814,6 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 		 */
 		if (item->clause)
 			stream_conds = lappend(stream_conds, item->clause);
-		num_streams *= item->num_elems;
 	}
 
 	YbSortInfo *sort_cols = merge_scan_info->sort_cols;
@@ -6849,7 +6851,9 @@ YbExplainMergeScan(PlanState *planstate, List *indextlist,
 		ExplainPropertyList("Merge Sort Key", sort_keys, es);
 	Assert(stream_keys);
 	ExplainPropertyList("Merge Stream Key", stream_keys, es);
-	ExplainPropertyInteger("Merge Streams", NULL, num_streams, es);
+	ExplainPropertyInteger("Merge Streams", NULL,
+						   yb_merge_scan_num_streams(merge_scan_info->stream_cols),
+						   es);
 	if (es->verbose)
 		show_scan_qual(stream_conds, "Merge Cond", planstate, ancestors, es);
 }

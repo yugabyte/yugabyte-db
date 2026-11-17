@@ -6,6 +6,8 @@
 
 SET default_transaction_read_only = off;
 
+SET yb_binary_restore = true;
+
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 

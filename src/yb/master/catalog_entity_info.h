@@ -326,6 +326,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  // Removes this tablet's replicas from their tservers' replica load; later replica changes do not
+  // count. Called when the tablet is deleted or replaced.
+  void StopCountingReplicaLoad() EXCLUDES(lock_);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
@@ -426,6 +429,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_) =
       std::make_shared<TabletReplicaMap>();
 
+  // Whether replica_locations_ is counted in TSDescriptor::replica_load_.
+  bool counts_replica_load_ GUARDED_BY(lock_) = true;
+
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);
 
@@ -474,7 +480,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const { return is_running() && !is_hidden(); }
+  // A HIDING table is already dropped or removed by PITR. Exposing it would let a client with a
+  // stale cache write to a colocated table whose parent tablet still accepts writes.
+  bool visible_to_client() const { return is_running() && !started_hiding(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;
@@ -957,15 +965,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return LockForRead()->IsXClusterDDLReplicationTable();
   }
 
-  // Provides the ID of the tablespace that will be used to determine
-  // where the tablets for this table should be placed when the table
-  // is first being created.
-  TablespaceId TablespaceIdForTableCreation() const;
-
-  // Set the tablespace to use during table creation. This will determine
-  // where the tablets of the newly created table should reside.
-  void SetTablespaceIdForTableCreation(const TablespaceId& tablespace_id);
-
   void SetMatview();
 
   google::protobuf::RepeatedField<int> GetHostedStatefulServices() const;
@@ -1065,13 +1064,6 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
   // object, or if the CreateTable was successful.
   Status create_table_error_;
-
-  // This field denotes the tablespace id that the user specified while
-  // creating the table. This will be used only to place tablets at the time
-  // of table creation. At all other times, this information needs to be fetched
-  // from PG catalog tables because the user may have used Alter Table to change
-  // the table's tablespace.
-  TablespaceId tablespace_id_for_table_creation_;
 
   // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
   // table from completing. Not needed once D23712 lands.
@@ -1485,6 +1477,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const NamespaceId namespace_id() const;
 
   const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
+
+  // Whether the stream's table set is governed by the publication it is bound to.
+  bool IsCdcsdkYsqlPublicationsBoundStream() const;
+
+  // Name of the publication this stream is statically bound to. Non-empty exactly when
+  // IsCdcsdkYsqlPublicationsBoundStream() returns true.
+  const std::string GetCdcsdkYsqlBoundPublicationName() const;
+
+  // Whether a newly created table joins this publications bound stream.
+  bool CdcsdkYsqlIncludesNewTables() const;
 
   bool IsConsistentSnapshotStream() const;
 

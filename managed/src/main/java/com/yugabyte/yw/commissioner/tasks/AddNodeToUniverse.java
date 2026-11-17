@@ -70,8 +70,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
   }
 
   /**
-   * Submit params keep the node at {@code Removed}/{@code Decommissioned}; project the named node
-   * to the intended Live process roles so freeze delta can restore that prior state on rollback.
+   * Submit params keep the node at its pre-add state (for example {@code Removed} or {@code
+   * Decommissioned}); project the named node to the intended Live process roles so freeze delta can
+   * restore that prior state on rollback.
    */
   @Override
   protected UniverseDefinitionTaskParams getTargetUniverseDetails() {
@@ -186,6 +187,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       universeNode.state = NodeState.InstanceCreated;
     } else if (universeNode.state == NodeState.Decommissioned) {
       universeNode.state = NodeState.ToBeAdded;
+      // The new machine may run on another cloud. Releasing the node clears this too, when it marks
+      // the node Decommissioned, but a node released by an earlier YBA version still has its old
+      // machine's cloud.
+      universeNode.cloudInfo.physicalCloud = null;
     }
     // Confirm the node on hold.
     commitReservedNodes();
@@ -241,7 +246,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // The starting state was already set in freezeUniverseInTxn, which runs before this plan is
       // built. Node status is honoured rather than ignored so that a Removed node's existing
-      // instance is not recreated; only a Decommissioned node gets a new one.
+      // instance is not recreated. A Decommissioned node gets a new one, and so does a ToBeAdded or
+      // Adding node on a public cloud (an Adding node's leftover is destroyed first).
       boolean isNextFallThrough =
           createCreateNodeTasks(
               universe,
@@ -367,14 +373,20 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         // Update master addresses including xcluster with new master information.
         createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
       }
+      // isMaster covers a retry, where addMaster is already false.
+      if (addMaster || currentNode.isMaster) {
+        queueOtelCollectorConfigRewrite(nodeSet, false /* ignoreErrors */);
+      }
 
-      // Add node to load balancer.
-      createManageLoadBalancerTasks(
-          createLoadBalancerMap(
-              universe.getUniverseDetails(),
-              ImmutableList.of(cluster),
-              null,
-              ImmutableSet.of(currentNode)));
+      if (addTserver) {
+        // Add node to load balancer. Only tservers are load balancer targets.
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universe.getUniverseDetails(),
+                ImmutableList.of(cluster),
+                null,
+                ImmutableSet.of(currentNode)));
+      }
 
       // Update the DNS entry for this universe.
       createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)

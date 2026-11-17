@@ -34,6 +34,7 @@ import {
   CTON_CERT_TYPE_FIELD,
   NTON_CERT_TYPE_FIELD
 } from '../../fields/FieldNames';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
 
 const { Box } = mui;
 
@@ -43,7 +44,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
     { moveToNextPage, moveToPreviousPage, saveSecuritySettings }
   ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
-  const provider = generalSettings?.providerConfiguration;
+  const provider = getPrimaryProvider(generalSettings);
   const ebsKMSConfig = instanceSettings?.ebsKmsConfigUUID;
 
   const { t } = useTranslation('translation', {
@@ -124,7 +125,7 @@ export const SecuritySettings = forwardRef<StepsRef>((_, forwardRef) => {
               {provider && isCloudVendorCloudType(provider?.code) && (
                 <AssignPublicIPField
                   disabled={false}
-                  providerCode={generalSettings?.providerConfiguration?.code ?? ''}
+                  providerCode={getPrimaryProvider(generalSettings)?.code ?? ''}
                 />
               )}
               {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}

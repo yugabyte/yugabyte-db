@@ -1160,9 +1160,7 @@ public class NodeManager extends DevopsBase {
                     FileUtils.getOrCreateTmpDirectory(
                         confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
                 Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
-                String providerUUID = provider.getUuid().toString();
-                String ybHomeDir = GFlagsUtil.getYbHomeDir(providerUUID);
-                String remoteGFlagPath = ybHomeDir + GFlagsUtil.GFLAG_REMOTE_FILES_PATH;
+                String remoteGFlagPath = GFlagsUtil.getRemoteGFlagFilesPath(provider);
                 // Append the path to copy the gFlag file from local to remote host
                 subcommand.add("--local_gflag_files_path");
                 subcommand.add(localGflagFilePath.toString());
@@ -1419,6 +1417,8 @@ public class NodeManager extends DevopsBase {
   public enum SkipCertValidationType {
     ALL,
     HOSTNAME,
+    // Nothing is skipped, but the hostname check accepts only a matching SAN, not the CN.
+    REQUIRE_SAN,
     NONE
   }
 
@@ -1771,6 +1771,9 @@ public class NodeManager extends DevopsBase {
           } else {
             throw new RuntimeException("ReplaceRootVolume for AWS requires root device name.");
           }
+        }
+        if (Common.CloudType.oci == provider.getCloudCode() && rrvParams.forceReplacement) {
+          commandArgs.add("--force_replacement");
         }
         if (!bootScript.isEmpty()) {
           bootScriptFile = addBootscript(bootScript, commandArgs, nodeTaskParam);

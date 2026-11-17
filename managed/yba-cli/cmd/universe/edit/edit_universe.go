@@ -7,7 +7,6 @@ package edit
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/edit/cluster"
-	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // EditUniverseCmd represents the universe command
@@ -25,11 +24,9 @@ func init() {
 	EditUniverseCmd.Flags().SortFlags = false
 	EditUniverseCmd.PersistentFlags().SortFlags = false
 
-	util.PreviewCommand(EditUniverseCmd, []*cobra.Command{
-		editYSQLUniverseCmd,
-		editYCQLUniverseCmd,
-		cluster.EditClusterCmd,
-	})
+	EditUniverseCmd.AddCommand(editYSQLUniverseCmd)
+	EditUniverseCmd.AddCommand(editYCQLUniverseCmd)
+	EditUniverseCmd.AddCommand(cluster.EditClusterCmd)
 
 	EditUniverseCmd.PersistentFlags().StringP("name", "n", "",
 		"[Required] The name of the universe to be edited.")

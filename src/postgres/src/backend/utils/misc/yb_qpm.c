@@ -1096,11 +1096,18 @@ qpmInsert(uint32 databaseId, uint32 userId, uint64 queryId, uint64 planId,
 		else
 			hashEntry->lastUsedTime = *lastUsedTime;
 
-		if (totalTime == 0.0 && queryDesc != NULL && queryDesc->totaltime != NULL)
+		if (queryDesc != NULL && queryDesc->totaltime != NULL)
+		{
 			/*
-			 * Get the total elapsed time (in milliseconds) from the query descriptor.
+			 * qpmProcess passes 0 for both. avg_est_cost is estTotalCost / cnt,
+			 * so a repeat execution must add planTree->total_cost or the
+			 * average decays toward 0.
 			 */
-			totalTime = queryDesc->totaltime->total * 1000.0;
+			if (totalTime == 0.0)
+				totalTime = queryDesc->totaltime->total * 1000.0;
+			if (estTotalCost == 0.0)
+				estTotalCost = queryDesc->plannedstmt->planTree->total_cost;
+		}
 
 		if (totalTime > 0.0)
 		{

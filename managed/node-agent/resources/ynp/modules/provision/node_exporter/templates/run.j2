@@ -89,6 +89,10 @@ WantedBy=default.target
 Type=simple
 Restart=on-failure
 RestartSec=5
+{% if configure_fips != 'True' %}
+# node_exporter is a GOFIPS140 build, which defaults to FIPS mode and its strict TLS rules.
+Environment="GODEBUG=fips140=off"
+{% endif %}
 ExecStart=$install_dir/$node_exported_package_name/node_exporter ${exec_args[*]}
 EOL
 chmod 644 "$tmp_file"

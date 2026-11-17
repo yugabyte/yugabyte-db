@@ -7,13 +7,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.spy;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.io.File;
@@ -53,6 +57,44 @@ public class CertificateInfoTest extends FakeDBApplication {
   @After
   public void tearDown() throws IOException {
     FileUtils.deleteDirectory(new File(TMP_CERTS_PATH));
+  }
+
+  @Test
+  public void testDeleteReferencedByNodeAgent() {
+    UUID certUuid = certIdList.get(0);
+    File certFile = new File(CertificateInfo.get(certUuid).getCertificate());
+    assertTrue(certFile.exists());
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setIp("10.20.30.40");
+    nodeAgent.setName("node-1");
+    nodeAgent.setPort(9070);
+    nodeAgent.setCustomerUuid(customer.getUuid());
+    nodeAgent.setOsType(NodeAgent.OSType.LINUX);
+    nodeAgent.setArchType(NodeAgent.ArchType.AMD64);
+    nodeAgent.setState(NodeAgent.State.READY);
+    nodeAgent.setVersion("2024.2.4.0");
+    nodeAgent.setHome("/home/yugabyte/node-agent");
+    nodeAgent.setConfig(new NodeAgent.Config());
+    nodeAgent.setCertificateUuid(certUuid);
+    nodeAgent.save();
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> CertificateInfo.delete(certUuid, customer.getUuid()));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertTrue(e.getMessage(), e.getMessage().contains("referenced by node_agent"));
+    assertNotNull(CertificateInfo.get(certUuid));
+    assertTrue(certFile.exists());
+  }
+
+  @Test
+  public void testDeleteUnreferenced() {
+    UUID certUuid = certIdList.get(0);
+    File certFile = new File(CertificateInfo.get(certUuid).getCertificate());
+    CertificateInfo.delete(certUuid, customer.getUuid());
+    assertNull(CertificateInfo.get(certUuid));
+    assertFalse(certFile.exists());
   }
 
   @Test

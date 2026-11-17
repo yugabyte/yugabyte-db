@@ -47,6 +47,7 @@
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_context.h"
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/logging.h"
@@ -118,7 +119,9 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
 
   void Clear() { *this = BootstrapTestHooksImpl(); }
 
-  std::optional<DocDbOpIds> GetFlushedOpIdsOverride() const override { return flushed_op_ids; }
+  std::optional<DocDbPersistentState> GetPersistentStateOverride() const override {
+    return persistent_state;
+  }
 
   std::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const override {
     return flushed_retryable_requests_id;
@@ -166,7 +169,7 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
   // ----------------------------------------------------------------------------------------------
 
   // This is queried by TabletBootstrap during its initialization.
-  std::optional<DocDbOpIds> flushed_op_ids;
+  std::optional<DocDbPersistentState> persistent_state;
 
   std::optional<OpId> flushed_retryable_requests_id;
 
@@ -235,6 +238,7 @@ class BootstrapTest : public LogTestBase {
       .tablet_options = tablet_options,
       .mutable_tablet_options = MutableTabletOptions{},
       .log_prefix_suffix = std::string(),
+      .tablet_context = &StandaloneTabletContext::Instance(),
       .transaction_participant_context = nullptr,
       .local_tablet_filter = client::LocalTabletFilter(),
       .transaction_coordinator_context = nullptr,
@@ -247,6 +251,7 @@ class BootstrapTest : public LogTestBase {
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr,
+      .tier_migration_hooks = nullptr,
       .metadata_cache = nullptr,
     };
     BootstrapTabletData data = {
@@ -478,8 +483,8 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
 TEST_F(BootstrapTest, OverwriteTailWithFlushedIndex) {
   BuildLog();
 
-  test_hooks_->flushed_op_ids =
-      DocDbOpIds{.regular = {3, 2}, .intents = {3, 2}, .vector_indexes = {}};
+  test_hooks_->persistent_state =
+      DocDbPersistentState{.regular = {3, 2}, .intents = {3, 2}, .vector_indexes = {}};
 
   const std::string kTestStr("this is a test insert");
   const auto get_test_tuple = [kTestStr](int i) {
@@ -620,7 +625,7 @@ struct BootstrapInput {
   // Committed entries. None of these can be overwritten.
   std::set<OpId> committed;
 
-  DocDbOpIds flushed_op_ids;
+  DocDbPersistentState persistent_state;
   OpId final_committed_op_id;
   bool transactional = false;
 };
@@ -784,7 +789,7 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
       )
   ) : /* or, in the non-transactional case: */ OpId();
 
-  res_input->flushed_op_ids = {
+  res_input->persistent_state = {
     .regular = regular_flushed_op_id,
     .intents = intents_flushed_op_id,
     .vector_indexes = {},
@@ -959,11 +964,11 @@ TEST_F(BootstrapTest, RandomizedInput) {
         LOG(INFO) << "Entry: " << entry.ToString();
       }
     }
-    LOG(INFO) << "Flushed OpIds in the test case: " << input.flushed_op_ids.ToString();
+    LOG(INFO) << "Persistent state in the test case: " << input.persistent_state.ToString();
 
     CleanTablet();
     test_hooks_->Clear();
-    test_hooks_->flushed_op_ids = input.flushed_op_ids;
+    test_hooks_->persistent_state = input.persistent_state;
     test_hooks_->transactional = input.transactional;
     LOG(INFO) << "Test iteration " << iteration << " is "
               << (input.transactional ? "TRANSACTIONAL" : "NON-TRANSACTIONAL");
@@ -1073,8 +1078,8 @@ TEST_F(BootstrapTest, ReplayOpsFromLastOpId) {
     SleepFor(10ms);
   }
 
-  test_hooks_->flushed_op_ids =
-      DocDbOpIds{.regular = {1, 3}, .intents = {1, 3}, .vector_indexes = {}};
+  test_hooks_->persistent_state =
+      DocDbPersistentState{.regular = {1, 3}, .intents = {1, 3}, .vector_indexes = {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
@@ -1110,8 +1115,9 @@ TEST_F(BootstrapTest, ReplayOpsFromFirstOpForUnflushedTablet) {
     SleepFor(10ms);
   }
 
-  test_hooks_->flushed_op_ids =
-      DocDbOpIds{.regular = OpId::Invalid(), .intents = OpId::Invalid(), .vector_indexes = {}};
+  test_hooks_->persistent_state =
+      DocDbPersistentState{
+          .regular = OpId::Invalid(), .intents = OpId::Invalid(), .vector_indexes = {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;
@@ -1146,8 +1152,8 @@ TEST_F(BootstrapTest, ReplayOpsFromFirstOpIfSegmentUnclosed) {
     AppendReplicateBatchToLog(1);
   }
 
-  test_hooks_->flushed_op_ids =
-      DocDbOpIds{.regular = {1, 2}, .intents = {1, 2}, .vector_indexes = {}};
+  test_hooks_->persistent_state =
+      DocDbPersistentState{.regular = {1, 2}, .intents = {1, 2}, .vector_indexes = {}};
   test_hooks_->flushed_retryable_requests_id = OpId{1, 2};
   TabletPtr tablet;
   ConsensusBootstrapInfo boot_info;

@@ -8,6 +8,7 @@ import static io.ebean.DB.beginTransaction;
 import static io.ebean.DB.commitTransaction;
 import static io.ebean.DB.endTransaction;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.common.rollback.RollbackContext;
 import com.yugabyte.yw.common.rollback.RollbackSubmission;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
@@ -84,6 +86,7 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -457,6 +460,35 @@ public class CustomerTaskManager {
       }
     } catch (Exception e) {
       log.error("Encountered error failing pending tasks", e);
+    }
+    deleteValidatingStorageConfigs();
+  }
+
+  /**
+   * Deletes the storage configs still waiting for their storage check: the ValidateStorageConfig
+   * task that would make them Active or delete them can't be running at startup.
+   */
+  @VisibleForTesting
+  void deleteValidatingStorageConfigs() {
+    List<CustomerConfig> configs;
+    try {
+      configs = CustomerConfig.getAllStorageConfigsInState(CustomerConfig.ConfigState.Validating);
+    } catch (Exception e) {
+      log.error("Encountered error listing storage configs being validated", e);
+      return;
+    }
+    // One by one, so that a config that fails to delete doesn't keep the others.
+    for (CustomerConfig config : configs) {
+      try {
+        log.info(
+            "Deleting storage config {} ({}) of customer {}, whose storage check was interrupted",
+            config.getConfigUUID(),
+            config.getConfigName(),
+            config.getCustomerUUID());
+        config.delete();
+      } catch (Exception e) {
+        log.error("Encountered error deleting storage config {}", config.getConfigUUID(), e);
+      }
     }
   }
 
@@ -842,6 +874,12 @@ public class CustomerTaskManager {
 
   public CustomerTask rollbackCustomerTask(UUID customerUUID, UUID taskUUID) {
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    // The operator reconciles its universes to the CR spec, so a user rollback would just be
+    // re-applied.
+    if (commissioner.isRollbackBlockedByOperator(customerTask)) {
+      throw new PlatformServiceException(
+          FORBIDDEN, ResourceOperatorOwned.CONTROLLED_BY_OPERATOR_MESSAGE);
+    }
     Customer customer = Customer.getOrBadRequest(customerUUID);
     TaskInfo taskInfo = customerTask.getTaskInfo();
     JsonNode oldTaskParams = commissioner.getTaskParams(taskUUID);

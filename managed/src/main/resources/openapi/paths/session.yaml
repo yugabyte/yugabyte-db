@@ -1,0 +1,25 @@
+/login:
+  post:
+    operationId: login
+    summary: Log in
+    description: 'Logs a user in with email and password and returns a session token, to be sent in the X-AUTH-TOKEN header. LDAP users log in the same way when LDAP is enabled. With SSO enabled and yb.security.allow_local_login_with_sso off, only local SuperAdmins can log in; other local users and LDAP users are refused. Does not set cookies.'
+    tags:
+      - Session
+    requestBody:
+      $ref: "../components/requestBodies/LoginReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/SessionResp.yaml"
+      '400':
+        description: 'Invalid input, or an error from the LDAP server'
+      '401':
+        description: 'Invalid credentials, or local login is not permitted while SSO is enabled'
+      '500':
+        description: Server error
+    security: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      noAuthz: true
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview

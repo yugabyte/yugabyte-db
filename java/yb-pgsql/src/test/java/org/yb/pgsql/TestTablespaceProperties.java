@@ -463,11 +463,8 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
       stmt.execute(String.format("ALTER INDEX %s SET TABLESPACE %s", nonColocatedIndex, ts1.name));
     }
 
-    // Wait for load balancer to run.
-    waitForLoadBalancer();
-
-    verifyTablePlacement(nonColocatedTable, ts1);
-    verifyTablePlacement(nonColocatedIndex, ts1);
+    waitForTablePlacement(nonColocatedTable, ts1);
+    waitForTablePlacement(nonColocatedIndex, ts1);
   }
 
   @Test
@@ -529,11 +526,8 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
       stmt.execute(String.format("ALTER TABLE %s SET TABLESPACE %s", tables[i], ts2.name));
       stmt.execute(String.format("ALTER INDEX %s SET TABLESPACE %s", indexes[i], ts2.name));
       }
-      // Wait for load balancer to run.
-      waitForLoadBalancer();
-
-      verifyTablePlacement(tables[i], ts2);
-      verifyTablePlacement(indexes[i], ts2);
+      waitForTablePlacement(tables[i], ts2);
+      waitForTablePlacement(indexes[i], ts2);
     }
   }
 
@@ -716,10 +710,9 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
 
     // Verify placement.
     LOG.info("Verifying whether tablet replicas were placed correctly after alter");
-    waitForLoadBalancer();
-    verifyTablePlacement(tableName, customTablespace);
-    verifyTablePlacement(indexName, customTablespace);
-    verifyTablePlacement(matViewName, customTablespace);
+    waitForTablePlacement(tableName, customTablespace);
+    waitForTablePlacement(indexName, customTablespace);
+    waitForTablePlacement(matViewName, customTablespace);
 
     // Refresh materialized view.
     try (Statement setupStatement = connection.createStatement()) {
@@ -861,11 +854,9 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
       stmt.execute(String.format("ALTER INDEX %s_idx_p2 SET TABLESPACE %s", table, ts3.name));
     }
 
-    waitForLoadBalancer();
-
     LOG.info("Verifying whether tablet replicas were moved to the new tablespace");
-    verifyTablePlacement("geo_partition_test_table_p2", ts3);
-    verifyTablePlacement("geo_partition_test_table_idx_p2", ts3);
+    waitForTablePlacement("geo_partition_test_table_p2", ts3);
+    waitForTablePlacement("geo_partition_test_table_idx_p2", ts3);
 
     // Verify that the tablets for the other partition were not moved.
     verifyTablePlacement("geo_partition_test_table_p1", ts1);
@@ -946,10 +937,7 @@ public class TestTablespaceProperties extends BaseTablespaceTest {
           String.format("ALTER TABLE %s SET TABLESPACE %s", testTable, tablespaceName));
     }
 
-    // Wait for loadbalancer to run.
-    waitForLoadBalancer();
-
     LOG.info("Verifying whether tablet replicas were moved to the new tablespace");
-    verifyTablePlacement(testTable, customTablespace);
+    waitForTablePlacement(testTable, customTablespace);
   }
 }

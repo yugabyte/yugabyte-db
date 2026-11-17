@@ -7,7 +7,7 @@ import { YBModal, YBButton } from '../../common/forms/fields';
 import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { isValidObject, isEmptyObject } from '../../../utils/ObjectUtils';
 import { Tab, Tabs } from 'react-bootstrap';
-import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { getIsKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 
 import './UniverseAppsModal.scss';
 
@@ -65,7 +65,7 @@ export default class UniverseAppsModal extends Component {
       closeModal,
       modal: { showModal, visibleModal }
     } = this.props;
-    const enableYSQL = universeDetails.clusters[0].userIntent.enableYSQL;
+    const enableYSQL = getPrimaryCluster(universeDetails.clusters)?.userIntent.enableYSQL;
     const isItKubernetesUniverse = getIsKubernetesUniverse(this.props.currentUniverse);
     const nodeDetails = universeDetails.nodeDetailsSet
       ? universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver)

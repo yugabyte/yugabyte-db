@@ -11,7 +11,9 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,8 +22,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.EmailFixtures;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -73,6 +77,18 @@ public class CommonUtilsTest {
     config.put("SOME_DATA", "VISIBLE_DATA");
     JsonNode maskedData = CommonUtils.maskConfig(config);
     assertValue(maskedData, "SOME_DATA", "VISIBLE_DATA");
+  }
+
+  @Test
+  public void testMaskConfigOciKmsFields() {
+    ObjectNode config = Json.newObject();
+    config.put("ociKeyName", "itest_key");
+    config.put("ociKeyOcid", "ocid1.key.oc1.iad.abcdefgh");
+    config.put("ociPrivateKeyContent", "PRIVATE_KEY_CONTENT");
+    JsonNode maskedData = CommonUtils.maskConfig(config);
+    assertValue(maskedData, "ociKeyName", "itest_key");
+    assertValue(maskedData, "ociKeyOcid", "ocid1.key.oc1.iad.abcdefgh");
+    assertThat(maskedData.get("ociPrivateKeyContent").asText(), not("PRIVATE_KEY_CONTENT"));
   }
 
   @Test
@@ -275,7 +291,7 @@ public class CommonUtilsTest {
     reordered.add(incomingEast);
     incoming.set("REGION_LOCATIONS", reordered);
 
-    Map<String, String> identityFields = CustomerConfig.ARRAY_IDENTITY_FIELDS;
+    Map<String, List<String>> identityFields = CustomerConfig.ARRAY_IDENTITY_FIELDS;
     JsonNode merged = CommonUtils.unmaskJsonObject(original, incoming, identityFields);
     JsonNode mergedRegions = merged.get("REGION_LOCATIONS");
     // Tokens must follow REGION identity, not array position.
@@ -309,6 +325,184 @@ public class CommonUtilsTest {
 
     JsonNode merged = CommonUtils.unmaskJsonObject(original, incoming);
     assertValue(merged, "AZURE_STORAGE_SAS_TOKEN", "new-real-token");
+  }
+
+  @Test
+  public void testUnmaskConfigNullIncomingDataReturnsNull() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    assertThat(
+        CommonUtils.unmaskJsonObject(original, null, CustomerConfig.ARRAY_IDENTITY_FIELDS),
+        nullValue());
+  }
+
+  @Test
+  public void testUnmaskConfigRenamedRegionKeepsTokenByLocation() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    ObjectNode incoming = regionLocations(region("EastUS", "east-loc", masked("east-token")));
+
+    assertEquals(List.of("east-token"), unmaskedSasTokens(original, incoming));
+  }
+
+  @Test
+  public void testUnmaskConfigMovedLocationKeepsTokenByRegion() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    ObjectNode incoming = regionLocations(region("eastus", "new-loc", masked("east-token")));
+
+    assertEquals(List.of("east-token"), unmaskedSasTokens(original, incoming));
+  }
+
+  @Test
+  public void testUnmaskConfigElementRenamedOntoAnotherRegionKeepsOwnToken() {
+    ObjectNode original =
+        regionLocations(
+            region("eastus", "east-loc", "east-token"),
+            region("westus2", "west-loc", "west-token"));
+    ObjectNode incoming =
+        regionLocations(
+            region("eastus", "east-loc", masked("east-token")),
+            region("eastus", "west-loc", masked("west-token")));
+
+    assertEquals(List.of("east-token", "west-token"), unmaskedSasTokens(original, incoming));
+  }
+
+  @Test
+  public void testUnmaskConfigStoredDuplicateRegionsRoundTrip() {
+    ObjectNode original =
+        regionLocations(region("eastus", "loc-1", "token-1"), region("eastus", "loc-2", "token-2"));
+    ObjectNode incoming =
+        regionLocations(
+            region("eastus", "loc-2", masked("token-2")),
+            region("eastus", "loc-1", masked("token-1")));
+
+    assertEquals(List.of("token-2", "token-1"), unmaskedSasTokens(original, incoming));
+  }
+
+  @Test
+  public void testUnmaskConfigRejectsMaskWhenRegionAndLocationPointToDifferentElements() {
+    ObjectNode original =
+        regionLocations(
+            region("eastus", "east-loc", "east-token"),
+            region("westus2", "west-loc", "west-token"));
+    ObjectNode incoming =
+        regionLocations(
+            region("westus2", "east-loc", masked("east-token")),
+            region("eastus", "west-loc", masked("west-token")));
+
+    assertUnmaskRejected(
+        original,
+        incoming,
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but by REGION or LOCATION it"
+            + " matches more than one stored element, or one that another element in the request"
+            + " also matches. Send the actual value.");
+  }
+
+  @Test
+  public void testUnmaskConfigRejectsMaskWhenRegionAndLocationBothChange() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    ObjectNode incoming = regionLocations(region("centralus", "new-loc", masked("east-token")));
+
+    assertUnmaskRejected(
+        original,
+        incoming,
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but no stored element matches"
+            + " it by REGION or LOCATION. Send the actual value.");
+  }
+
+  @Test
+  public void testUnmaskConfigRejectsMaskThatTwoElementsCouldTake() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    ObjectNode incoming =
+        regionLocations(
+            region("eastus", "loc-1", masked("east-token")),
+            region("eastus", "loc-2", masked("east-token")));
+
+    assertUnmaskRejected(
+        original,
+        incoming,
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but by REGION or LOCATION it"
+            + " matches more than one stored element, or one that another element in the request"
+            + " also matches. Send the actual value.");
+  }
+
+  @Test
+  public void testUnmaskConfigElementWithActualValueDoesNotTakeStoredMatch() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    ObjectNode incoming =
+        regionLocations(
+            region("eastus", "east-loc", "new-token"),
+            region("eastus", "east-loc", masked("east-token")));
+
+    assertEquals(List.of("new-token", "east-token"), unmaskedSasTokens(original, incoming));
+  }
+
+  @Test
+  public void testUnmaskConfigRejectsMaskWhenMatchedElementHasNoStoredValue() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", null));
+    ObjectNode incoming = regionLocations(region("eastus", "east-loc", masked("other-token")));
+
+    assertUnmaskRejected(
+        original,
+        incoming,
+        "REGION_LOCATIONS[0].AZURE_STORAGE_SAS_TOKEN is masked, but the stored element it matches"
+            + " has no value to restore. Send the actual value.");
+  }
+
+  @Test
+  public void testUnmaskConfigKeepsMaskAlreadyStored() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", masked("east-token")));
+    ObjectNode incoming = original.deepCopy();
+
+    assertEquals(List.of(masked("east-token")), unmaskedSasTokens(original, incoming));
+  }
+
+  @Test
+  public void testUnmaskConfigUnmatchedArrayElementWithActualValueKeptAsIs() {
+    ObjectNode original = regionLocations(region("eastus", "east-loc", "east-token"));
+    ObjectNode incoming = regionLocations(region("centralus", "new-loc", "replacement-token"));
+
+    JsonNode merged =
+        CommonUtils.unmaskJsonObject(original, incoming, CustomerConfig.ARRAY_IDENTITY_FIELDS);
+    assertThat(merged, equalTo(incoming));
+  }
+
+  private static ObjectNode region(String region, String location, String sasToken) {
+    ObjectNode element = Json.newObject().put("REGION", region).put("LOCATION", location);
+    if (sasToken != null) {
+      element.put("AZURE_STORAGE_SAS_TOKEN", sasToken);
+    }
+    return element;
+  }
+
+  private static ObjectNode regionLocations(ObjectNode... elements) {
+    ObjectNode config = Json.newObject();
+    config.putArray("REGION_LOCATIONS").addAll(Arrays.asList(elements));
+    return config;
+  }
+
+  private static String masked(String sasToken) {
+    return CommonUtils.getMaskedValue("AZURE_STORAGE_SAS_TOKEN", sasToken);
+  }
+
+  private static List<String> unmaskedSasTokens(ObjectNode original, ObjectNode incoming) {
+    JsonNode merged =
+        CommonUtils.unmaskJsonObject(original, incoming, CustomerConfig.ARRAY_IDENTITY_FIELDS);
+    List<String> tokens = new ArrayList<>();
+    merged
+        .get("REGION_LOCATIONS")
+        .forEach(e -> tokens.add(e.get("AZURE_STORAGE_SAS_TOKEN").asText()));
+    return tokens;
+  }
+
+  private static void assertUnmaskRejected(
+      ObjectNode original, ObjectNode incoming, String expectedMessage) {
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                CommonUtils.unmaskJsonObject(
+                    original, incoming, CustomerConfig.ARRAY_IDENTITY_FIELDS));
+    assertEquals(BAD_REQUEST, e.getHttpStatus());
+    assertEquals(expectedMessage, e.getUserVisibleMessage());
   }
 
   @Test

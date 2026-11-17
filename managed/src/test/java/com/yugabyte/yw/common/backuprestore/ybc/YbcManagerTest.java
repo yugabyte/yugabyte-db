@@ -11,7 +11,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
@@ -105,13 +104,13 @@ public class YbcManagerTest extends FakeDBApplication {
     YbcClient mockYbcClient_Ip2 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip3 = mock(YbcClient.class);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip1);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip2);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip3);
     when(spyYbcManager.ybcPingCheck(any(YbcClient.class))).thenReturn(true);
     Pair<YbcClient, String> clientIpPair =
@@ -127,13 +126,13 @@ public class YbcManagerTest extends FakeDBApplication {
     YbcClient mockYbcClient_Ip2 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip3 = mock(YbcClient.class);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip1);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip2);
     lenient()
-        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), eq(null)))
+        .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip3);
 
     when(spyYbcManager.ybcPingCheck(eq(mockYbcClient_Ip2))).thenReturn(true);
@@ -148,11 +147,11 @@ public class YbcManagerTest extends FakeDBApplication {
     YbcClient mockYbcClient_Ip1 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip2 = mock(YbcClient.class);
     YbcClient mockYbcClient_Ip3 = mock(YbcClient.class);
-    when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), eq(null)))
+    when(mockYbcClientService.getNewClient(eq("127.0.0.1"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip1);
-    when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), eq(null)))
+    when(mockYbcClientService.getNewClient(eq("127.0.0.2"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip2);
-    when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), eq(null)))
+    when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), any()))
         .thenReturn(mockYbcClient_Ip3);
 
     when(spyYbcManager.ybcPingCheck(any(YbcClient.class))).thenReturn(false);
@@ -215,9 +214,7 @@ public class YbcManagerTest extends FakeDBApplication {
     ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 3);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.usek8sCustomResources))).thenReturn(true);
     YbcClient mockYbcClient = mock(YbcClient.class);
-    doReturn(mockYbcClient)
-        .when(spyYbcManager)
-        .getYbcClient(anyList(), anyInt(), nullable(String.class));
+    doReturn(mockYbcClient).when(spyYbcManager).getYbcClient(anyList(), anyInt(), any());
     // Initial flags
     NonRestartSettableControllerFlags.Builder ybcFlagsBuilder =
         NonRestartSettableControllerFlags.newBuilder();
@@ -276,9 +273,7 @@ public class YbcManagerTest extends FakeDBApplication {
             any(Universe.class), eq(UniverseConfKeys.defaultDiskIoWriteBytesPerSecond)))
         .thenReturn(diskWriteBytesDefault);
     YbcClient mockYbcClient = mock(YbcClient.class);
-    doReturn(mockYbcClient)
-        .when(spyYbcManager)
-        .getYbcClient(anyList(), anyInt(), nullable(String.class));
+    doReturn(mockYbcClient).when(spyYbcManager).getYbcClient(anyList(), anyInt(), any());
     // Initial flags
     NonRestartSettableControllerFlags.Builder ybcFlagsBuilder =
         NonRestartSettableControllerFlags.newBuilder();

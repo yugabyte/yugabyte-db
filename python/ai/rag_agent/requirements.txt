@@ -45,7 +45,11 @@ boto3>=1.34.131  # langchain-aws 0.2.x (langchain-core 0.3.x) requires >=1.34.13
 langfuse>=3.0.0
 
 # finetuning
-mistune
+# Pinned: md_parser drives mistune's block and inline phases separately, so it
+# depends on how this version splits them. TestBlockTokensMatchMistune guards
+# that, but only for the version the tests ran against, and the image installs
+# from this file on every build. Raise the pin deliberately, with that test.
+mistune==3.4.0
 python-frontmatter
 
 langchain-docling==1.0.0

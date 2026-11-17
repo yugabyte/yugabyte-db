@@ -25,6 +25,7 @@ YBQueryRetryData
 YBReorderBufferSchemaChangeCB
 YBSharedInvalMessageHeader
 YBTableSpaceOpts
+YBTaggedQueryString
 YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
@@ -83,6 +84,7 @@ YbDdlMode
 YbDdlModeOptional
 YbDdlOriginalStmtState
 YbDdlTransactionState
+YbDefaultOpClassScanState
 YbDefaultSysScan
 YbDefaultSysScanData
 YbDetailSorter
@@ -154,6 +156,10 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscReplayState
+YbOscTargetOrder
+YbOscTransform
+YbOscTriggerSpec
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState
@@ -339,6 +345,8 @@ YbcPgLocalTabletsDescriptor
 YbcPgMemctx
 YbcPgMetricsCaptureType
 YbcPgOid
+YbcPgOnConflictAction
+YbcPgOnConflictOutcome
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction

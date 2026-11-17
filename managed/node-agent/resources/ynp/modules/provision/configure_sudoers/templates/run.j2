@@ -1,6 +1,14 @@
 {% if sudoers_commands is defined and sudoers_commands | trim != '' %}
 sudoers_file="/etc/sudoers.d/{{yb_user}}"
-echo "Adding commands $sudoers_commands to $sudoers_file"
-echo "{{yb_user}} ALL=(ALL:ALL) NOPASSWD: {{sudoers_commands}}" | tee "$sudoers_file"
-visudo -cf "$sudoers_file"
+echo "Adding commands {{ sudoers_commands }} to $sudoers_file"
+tmp=$(mktemp)
+echo "{{yb_user}} ALL=(ALL:ALL) NOPASSWD: {{sudoers_commands}}" > "$tmp"
+# Validate before installing, as an invalid file in sudoers.d breaks sudo on the node.
+if ! visudo -cf "$tmp"; then
+    rm -f "$tmp"
+    echo "Error: invalid sudoers entry for commands {{ sudoers_commands }}"
+    exit 1
+fi
+install -m 0440 -o root -g root "$tmp" "$sudoers_file"
+rm -f "$tmp"
 {% endif %}

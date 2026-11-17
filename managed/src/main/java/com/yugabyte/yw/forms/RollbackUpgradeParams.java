@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -72,6 +73,20 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
     if (!universeDetails.isSoftwareRollbackAllowed) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot rollback software upgrade as previous upgrade was finalized");
+    }
+    String prevVersion =
+        universeDetails.prevYBSoftwareConfig == null
+            ? null
+            : universeDetails.prevYBSoftwareConfig.getSoftwareVersion();
+    if (universeDetails.getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+        && prevVersion != null
+        && !KubernetesUtil.isUseYbdbInbuiltYbcSupported(prevVersion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot rollback to software version %s as it does not support ybdb inbuilt ybc.%s",
+              prevVersion,
+              disableImmutableYbcHint(universeDetails.softwareUpgradeState, "rolling back")));
     }
   }
 

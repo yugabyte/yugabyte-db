@@ -77,6 +77,12 @@ Complete the **Instance Configuration** section for **TServer** and **Master** a
 - **Memory(GiB)** - specify the memory allocation of the TServer and Master.
 - **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
 
+{{< note title="TServer memory headroom" >}}
+
+**Memory(GiB)** is the pod memory. In v2025.2.8.0 and later, YugabyteDB Anywhere sets `memoryLimitHardPercentage` to 70% for the TServer, so the TServer process uses 70% of that memory and PostgreSQL and other processes in the same pod have the rest. The master runs in its own pod and stays at 85%.
+
+{{< /note >}}
+
 YugabyteDB supports ARM instances, which are specified using Helm overrides. See [Helm Overrides](#helm-overrides).
 
 ### Security Configurations

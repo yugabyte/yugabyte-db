@@ -26,22 +26,37 @@ JOIN pg_stat_statements pgss USING (queryid)
 ORDER BY pgss.queryid ASC
 /* __YB_STAT_PLANS_SKIP */;
 
+-- avg_est_cost is the sum of plan costs divided by the number of timed
+-- executions. Save it after the first call and check it is unchanged
+-- after the repeats below.
+CREATE TEMP TABLE qpm_cost_after_one AS
+SELECT qpm.avg_est_cost
+FROM yb_pg_stat_plans qpm
+JOIN pg_stat_statements pgss USING (queryid)
+WHERE pgss.query = 'SELECT val FROM qpm_timing_test WHERE id = $1'
+/* __YB_STAT_PLANS_SKIP */;
+
 -- Same query run 5 times total to validate Welford's running mean.
 SELECT val FROM qpm_timing_test WHERE id = 2;
 SELECT val FROM qpm_timing_test WHERE id = 3;
 SELECT val FROM qpm_timing_test WHERE id = 4;
 SELECT val FROM qpm_timing_test WHERE id = 5;
 
--- Verify times still match after multiple calls.
+-- Verify times still match after multiple calls, and avg_est_cost did not decay.
 SELECT
     pgss.query,
     (qpm.avg_exec_time = pgss.mean_exec_time) AS times_match,
     (qpm.avg_exec_time > 0) AS time_positive,
-    qpm.calls
+    qpm.calls,
+    (abs(qpm.avg_est_cost - once.avg_est_cost) < 1e-6) AS cost_stable,
+    (qpm.avg_est_cost > 0) AS cost_positive
 FROM yb_pg_stat_plans qpm
 JOIN pg_stat_statements pgss USING (queryid)
+CROSS JOIN qpm_cost_after_one once
 ORDER BY pgss.queryid ASC
 /* __YB_STAT_PLANS_SKIP */;
+
+DROP TABLE qpm_cost_after_one;
 
 -- Test 2: Top-level catalog query with yb_pg_stat_plans_track_catalog_queries ON.
 SET yb_pg_stat_plans_track_catalog_queries = ON;

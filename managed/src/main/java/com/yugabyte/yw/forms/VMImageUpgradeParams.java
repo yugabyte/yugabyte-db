@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -162,8 +163,8 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
 
         Provider provider = providerGetter.apply(node);
         boolean bundleAdded = false;
-        // Old route.
-        if (machineImages != null) {
+        // Old route. The v2 API leaves machineImages as the default empty map.
+        if (machineImages != null && !machineImages.isEmpty()) {
           if (userIntent.isMulticloudSupport()) {
             throw new PlatformServiceException(
                 Status.FORBIDDEN, "Use list of ImageBundleUpgradeInfo for multicloud case");
@@ -271,13 +272,10 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     }
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getCluster(bundleUpgradeInfo.getClusterUuid());
-    if (cluster.getProviderCloudType(node) == CloudType.oci) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST, "VM image upgrade for OCI cloud based universe is not supported.");
-    }
     UUID providerUUID = cluster.getProviderUUIDForNode(node);
     ImageBundle bundle =
         ImageBundle.getOrBadRequest(providerUUID, bundleUpgradeInfo.getImageBundleUuid());
+    ImageBundleUtil.checkArchMatchesUniverse(universe, bundle);
     if (bundle.getProvider().getCloudCode().usesPerRegionImages()
         && !super.runtimeConfGetter.getStaticConf().getBoolean("yb.cloud.enabled")
         && !super.runtimeConfGetter.getGlobalConf(GlobalConfKeys.disableImageBundleValidation)) {

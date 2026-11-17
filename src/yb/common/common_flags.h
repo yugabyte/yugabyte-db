@@ -40,10 +40,18 @@ DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(enable_qos);
 DECLARE_bool(is_yb_managed);
+DECLARE_bool(enforce_xcluster_guarded_lease);
+DECLARE_bool(enable_persistence_gate);
 
 namespace yb {
 
 // Performs the initialization of the common flags, as needed.
 void InitCommonFlags();
+
+// Whether the persistence gate refuses writes and commits blocked by the persistence block map
+// and aborts pending transactions whose commits would likewise be refused, and whether
+// StopPersisting and StartPersisting may run.  True iff both enable_persistence_gate and
+// enforce_xcluster_guarded_lease are set.
+bool IsPersistenceGateEnforced();
 
 } // namespace yb

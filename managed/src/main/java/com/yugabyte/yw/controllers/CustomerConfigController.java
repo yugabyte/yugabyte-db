@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -71,6 +72,8 @@ public class CustomerConfigController extends AuthenticatedController {
   }
 
   @Inject Commissioner commissioner;
+
+  @Inject BackupHelper backupHelper;
 
   @ApiOperation(
       value = "Create a customer configuration",
@@ -133,6 +136,8 @@ public class CustomerConfigController extends AuthenticatedController {
                 + configUUID.toString()
                 + " is in progress.");
       }
+      // Also checked by customerConfigService.delete, which the isDeleteBackups task skips.
+      customerConfigService.checkNoBackupsBeingDeleted(customerConfig);
 
       preBackupConfigDeleteValidation(customerConfig);
 
@@ -266,8 +271,21 @@ public class CustomerConfigController extends AuthenticatedController {
           BAD_REQUEST, "Can only list YBA backup directories for storage configurations.");
     }
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(customerConfig.getName());
+    CustomerConfigData configData = customerConfig.getDataObject();
+    backupHelper.requireYbaFederatedIdentity(customerConfig, configData);
 
-    return PlatformResults.withData(storageUtil.getYbaBackupDirs(customerConfig.getDataObject()));
+    return PlatformResults.withData(storageUtil.getYbaBackupDirs(configData));
+  }
+
+  // A config created through the v2 API is Validating while its ValidateStorageConfig task checks
+  // the data it was created with: an edit meanwhile would be checked on its own, and the task could
+  // then delete the edited config for its old data.
+  private static void refuseIfValidating(CustomerConfig existingConfig) {
+    if (existingConfig.getState() == ConfigState.Validating) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot edit config while its storage check is running. Try again once it finishes.");
+    }
   }
 
   @ApiOperation(
@@ -295,6 +313,7 @@ public class CustomerConfigController extends AuthenticatedController {
     customerConfig.setCustomerUUID(customerUUID);
 
     CustomerConfig existingConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
+    refuseIfValidating(existingConfig);
     customerConfig.setData(
         CommonUtils.unmaskJsonObject(
             existingConfig.getData(),
@@ -337,6 +356,7 @@ public class CustomerConfigController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot edit config as it is queued for deletion.");
     }
+    refuseIfValidating(existingConfig);
 
     CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
     customerConfig.setConfigUUID(configUUID);

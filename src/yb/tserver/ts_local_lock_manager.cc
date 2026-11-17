@@ -33,6 +33,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -127,6 +128,8 @@ void ReleaseObjectLocksForLostMessages(
     std::weak_ptr<TSLocalLockManager> lock_manager_weak,
     const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
     const Status& status) {
+  // Fires at the acquire deadline, long after the DDL finished; must not extend the DDL's trace.
+  auto detach_token = dist_trace::DetachTraceContext();
   if (!status.ok()) {
     LOG_WITH_FUNC(ERROR) << "Aborting Release request"
                          << (VLOG_IS_ON(1) ? release_req->ShortDebugString() : "") << " due to "
@@ -323,7 +326,12 @@ class TSLocalLockManager::Impl {
             ReleaseObjectLocksForLostMessages, std::reference_wrapper<client::YBClient>(client),
             lock_manager_weak, release_req, std::placeholders::_1),
         ToSteady(*apply_after_ht));
-    CleanupMaxDeadlineForTxn(txn_id, subtxn_id);
+    // A release naming specific objects leaves the subtxn's other locks held. Keep the subtxn's
+    // deadlines so that the later release of those locks schedules its own lost-message retry.
+    // Each named release in the subtxn hence schedules a retry at the same deadline.
+    if (release_req->object_locks().empty()) {
+      CleanupMaxDeadlineForTxn(txn_id, subtxn_id);
+    }
   }
 
   Status CheckRequestForDeadline(const tserver::AcquireObjectLockRequestPB& req) {
@@ -914,6 +922,11 @@ std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
 
 TabletId TSLocalLockManager::TEST_GetStatusTabletForTxn(TransactionId txn) const {
   return impl_->TEST_GetStatusTabletForTxn(txn);
+}
+
+std::optional<CoarseTimePoint> TSLocalLockManager::TEST_MaxDeadlineForTxn(
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id) {
+  return impl_->MaxDeadlineForTxn(txn_id, subtxn_id);
 }
 
 void TSLocalLockManager::TrackDeadlineForGlobalAcquire(

@@ -18,6 +18,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -63,6 +64,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -77,6 +79,8 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -100,6 +104,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private static final String YB_ALERT_TEST_EMAIL = "test@yugabyte.com";
   private static final String dummyCheck = "check";
+  private static final String NODE_EXPORTER_CHECK_NAME = "Node exporter";
 
   private HealthChecker healthChecker;
 
@@ -399,6 +404,66 @@ public class HealthCheckerTest extends FakeDBApplication {
     testSingleK8sUniverse(u);
   }
 
+  // With the node_exporter sidecar on, the health script in the DB container cannot see the
+  // sidecar's process, so it reports node_exporter as not running and YBA publishes the node
+  // metrics, as on master.
+  @Test
+  public void testCheckSingleUniverse_K8s_SidecarNotSeenPublishesNodeMetrics() {
+    Universe u = setupK8sUniverse("univ1");
+    setupAlertingData(null, false, false);
+    mockHealthResponseWithNodeMetrics();
+
+    runHealthCheck(u);
+
+    assertTrue(publishedMetricNames(u).contains("yb_node_ysql_connect"));
+  }
+
+  private void runHealthCheck(Universe u) {
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, null, false /*runImmediately*/));
+  }
+
+  private Set<String> publishedMetricNames(Universe u) {
+    return metricService
+        .list(MetricFilter.builder().sourceUuid(u.getUniverseUUID()).build())
+        .stream()
+        .map(Metric::getName)
+        .collect(Collectors.toSet());
+  }
+
+  // The "Node exporter" entry reporting node_exporter as not running, first, then a check carrying
+  // one node metric.
+  private void mockHealthResponseWithNodeMetrics() {
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenAnswer(
+            i -> {
+              NodeDetails nodeDetails = i.getArgument(0);
+              String node =
+                  "''node'':''"
+                      + nodeDetails.cloudInfo.private_ip
+                      + "'', ''node_name'': ''"
+                      + nodeDetails.nodeName
+                      + "'', ''timestamp_iso'': ''2022-03-01T09:22:23Z'', ''has_warning'': false,"
+                      + " ''details'': [], ''has_error'': false, ";
+              return ShellResponse.create(
+                  0,
+                  ("Command output:\n{''error'': false, ''data'': [ {"
+                          + node
+                          + "''metrics_only'': true, ''message'':''"
+                          + NODE_EXPORTER_CHECK_NAME
+                          + "'', ''metrics'': [{''name'': ''yb_node_custom_node_metrics'',"
+                          + " ''help'': ''h'', ''unit'': ''status'', ''values'': [{''value'': 0}]}]"
+                          + " }, {"
+                          + node
+                          + "''message'':''"
+                          + dummyCheck
+                          + "'', ''metrics'': [{''name'': ''yb_node_ysql_connect'', ''help'':"
+                          + " ''h'', ''unit'': ''status'', ''values'': [{''value'': 1}]}] } ] }")
+                      .replace("''", "\""));
+            });
+  }
+
   @Test
   public void testCheckSingleUniverse_YbEmail() {
     mockBadHealthResponse();
@@ -510,6 +575,39 @@ public class HealthCheckerTest extends FakeDBApplication {
     } catch (Exception ignored) {
     }
     verifyNodeUniverseManager(12, 6);
+  }
+
+  @Test
+  public void testScheduleRunner_ChecksAllUniversesAndLoadsCustomerDataOnce() {
+    setupUniverse("univ1");
+    setupUniverse("univ2");
+    setupAlertingData("test@example.com", false, false);
+    Customer customerWithoutUniverses = ModelFactory.testCustomer("tc2", "Customer 2");
+    when(mockEmailHelper.getDestinations(defaultCustomer.getUuid()))
+        .thenReturn(List.of("test@example.com"));
+
+    healthChecker.scheduleRunner();
+
+    // Both universes of the default customer are checked (3 nodes each).
+    verifyNodeUniverseManager(12, 6);
+    // The destinations are read once for the customer, not once per universe, and not at all for
+    // the customer without universes.
+    verify(mockEmailHelper, times(1)).getDestinations(defaultCustomer.getUuid());
+    verify(mockEmailHelper, never()).getDestinations(customerWithoutUniverses.getUuid());
+    // The maintenance windows are listed once per run.
+    verify(mockMaintenanceService, times(1)).listActiveWindows();
+  }
+
+  @Test
+  public void testCheckCustomer_SkipsUniverseWhoseCheckIsStillRunning() {
+    Universe u = setupUniverse("univ1");
+    CompletableFuture<Void> running = new CompletableFuture<>();
+    healthChecker.runningHealthChecks.put(u.getUniverseUUID(), running);
+
+    healthChecker.checkCustomer(defaultCustomer);
+
+    verifyNodeUniverseManager(0, 0);
+    assertEquals(running, healthChecker.runningHealthChecks.get(u.getUniverseUUID()));
   }
 
   @Test
@@ -1018,6 +1116,41 @@ public class HealthCheckerTest extends FakeDBApplication {
           details.updateInProgress = true;
           univ.setUniverseDetails(details);
         });
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_LockedByBackup() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.CreateBackup;
+          univ.setUniverseDetails(details);
+        });
+    assertTrue(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_LockedByOtherTask() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UniverseDefinitionTaskParams details = univ.getUniverseDetails();
+          details.updateInProgress = true;
+          details.updatingTask = TaskType.EditUniverse;
+          univ.setUniverseDetails(details);
+        });
+    assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
+  }
+
+  @Test
+  public void testCanHealthCheckUniverse_NullDetails() {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(u.getUniverseUUID(), univ -> univ.setUniverseDetails(null));
     assertFalse(HealthChecker.canHealthCheckUniverse(u.getUniverseUUID()));
   }
 

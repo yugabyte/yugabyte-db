@@ -141,6 +141,81 @@ static void SaveSlotToPath(ReplicationSlot *slot, const char *path, int elevel);
 static LOCKTAG yb_slot_locktag = {0};
 
 /*
+ * YB: Storage for MyReplicationSlot, which YB does not keep in shared memory.
+ * Not palloc'd: after an error, PostgresMain() releases the slot only after
+ * AbortCurrentTransaction() has freed the caller's memory.
+ */
+static ReplicationSlot yb_acquired_slot;
+
+/*
+ * YB: Free the array entries of slots that no longer exist in yb-master.
+ * Such entries exist because dropping a slot frees its entry only on the
+ * node where the drop runs.
+ *
+ * Returns a free entry, this slot's own entry if another backend just
+ * created one, or NULL if every entry still belongs to a live slot.
+ *
+ * The caller holds ReplicationSlotAllocationLock. It is released while we
+ * ask yb-master and taken back afterwards, and any entry that changed in
+ * the meantime is left alone.
+ */
+static ReplicationSlot *
+YbReleaseStaleReplicationSlotEntries(const char *name)
+{
+	NameData   *before = palloc(max_replication_slots * sizeof(NameData));
+	YbcReplicationSlotDescriptor *existing;
+	size_t		nexisting;
+	ReplicationSlot *found;
+	ReplicationSlot *released = NULL;
+
+	Assert(LWLockHeldByMeInMode(ReplicationSlotAllocationLock, LW_EXCLUSIVE));
+
+	for (int i = 0; i < max_replication_slots; i++)
+		before[i] = ReplicationSlotCtl->replication_slots[i].data.name;
+
+	LWLockRelease(ReplicationSlotAllocationLock);
+	YBCListReplicationSlots(&existing, &nexisting);
+	LWLockAcquire(ReplicationSlotAllocationLock, LW_EXCLUSIVE);
+
+	found = SearchNamedReplicationSlot(name, false);
+
+	for (int i = 0; i < max_replication_slots; i++)
+	{
+		ReplicationSlot *s = &ReplicationSlotCtl->replication_slots[i];
+		bool		exists = false;
+
+		if (s->in_use &&
+			strcmp(NameStr(s->data.name), NameStr(before[i])) == 0)
+		{
+			for (size_t j = 0; j < nexisting && !exists; j++)
+				exists = strcmp(NameStr(s->data.name), existing[j].slot_name) == 0;
+
+			if (!exists)
+			{
+				elog(LOG, "releasing stale entry of dropped replication slot \"%s\"",
+					 NameStr(s->data.name));
+
+				/* The cleanup ReplicationSlotDrop() does on the dropping node. */
+				LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
+				s->in_use = false;
+				LWLockRelease(ReplicationSlotControlLock);
+				pgstat_drop_replslot(s);
+				memset(&s->data, 0, sizeof(ReplicationSlotPersistentData));
+			}
+		}
+
+		if (!s->in_use && !released)
+			released = s;
+	}
+
+	if (existing)
+		pfree(existing);
+	pfree(before);
+
+	return found ? found : released;
+}
+
+/*
  * YB: Build the advisory-lock tag used to guard the named replication slot.
  *
  * objsubid = 2 picks the (int4, int4) advisory-lock key form, where the two
@@ -162,6 +237,9 @@ YbBuildReplicationSlotLockTag(const char *slot_name, LOCKTAG *tag)
 						 /* objsubid= */ 2);
 }
 
+/* Number of consecutive RPC timeouts before escalating the log message to WARNING. */
+#define YB_SLOT_WAIT_WARN_RETRIES 3
+
 /*
  * YB: Try to acquire an exclusive session-level advisory lock for the
  * named replication slot.  Returns false if it is already held.
@@ -170,19 +248,95 @@ YbBuildReplicationSlotLockTag(const char *slot_name, LOCKTAG *tag)
  * static yb_slot_locktag on successful acquisition, so that the
  * ReplicationSlotShmemExit() sentinel never sees a stale "lock held"
  * value when the acquire failed.
+ *
+ * When nowait=false, RPC timeouts and stale retryable-request errors ("request
+ * is too old") are retried (unbounded by default, or up to
+ * yb_replication_slot_wait_max_retries if set) so that the caller blocks
+ * until the lock is granted, the backend is cancelled, or the retry cap is
+ * reached.  This matches PostgreSQL's DROP_REPLICATION_SLOT ... WAIT
+ * behaviour.  Other Expired statuses (deadlock, txn abort) are not retried.
+ * CHECK_FOR_INTERRUPTS is called before each attempt so that a client
+ * disconnect or SIGINT exits the loop promptly.
+ *
+ * After YB_SLOT_WAIT_WARN_RETRIES consecutive timeouts the retry message is
+ * escalated from DEBUG1 to WARNING so that an infrastructure failure (e.g.
+ * advisory-lock tablet has no leader) is visible in the server log at the
+ * default log_min_messages level rather than silently looping forever.
+ *
+ * When yb_replication_slot_wait_max_retries > 0 and that many RPC timeouts
+ * have occurred, the function raises ERROR with ERRCODE_LOCK_NOT_AVAILABLE
+ * instead of retrying further.
  */
 static bool
-YbTryAcquireReplicationSlotLock(const char *slot_name, bool wait)
+YbTryAcquireReplicationSlotLock(const char *slot_name, bool nowait)
 {
 	LOCKTAG		tag;
 	YbcStatus	status;
+	int			retry_count = 0;
 
 	YbBuildReplicationSlotLockTag(slot_name, &tag);
 
-	status = YBCAcquireAdvisoryLock(GetYBAdvisoryLockId(tag),
-									YB_ADVISORY_LOCK_EXCLUSIVE,
-									wait,
-									/* session= */ true);
+	for (;;)
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		status = YBCAcquireAdvisoryLock(GetYBAdvisoryLockId(tag),
+										YB_ADVISORY_LOCK_EXCLUSIVE,
+										/* wait= */ !nowait,
+										/* session= */ true);
+
+		/*
+		 * On a plain try (nowait=true) any timeout is a real failure; on a
+		 * wait acquire a timeout just means the RPC deadline was reached
+		 * before the lock was released -- retry to match PG's no-deadline
+		 * WAIT behaviour.
+		 *
+		 * YBCStatusIsTimedOut covers both "lock still held" and infrastructure
+		 * failures (tablet leader election, unreachable tserver).  After the
+		 * client timeout the same write can also come back as Expired
+		 * ("request is too old") because yb-client resent it with the original
+		 * request id; retry only that stale-request case
+		 * (YBCStatusIsRetryableRequestTooOld) so the next acquire is a new
+		 * write.  Do not retry Expired from the wait queue (deadlock) or
+		 * transaction abort: those must fail the DROP.
+		 * Escalate to WARNING after YB_SLOT_WAIT_WARN_RETRIES attempts so that
+		 * an infrastructure failure is diagnosable from the server log at
+		 * default log_min_messages.
+		 */
+		if (!nowait && status &&
+			(YBCStatusIsTimedOut(status) ||
+			 YBCStatusIsRetryableRequestTooOld(status)))
+		{
+			int			loglevel;
+
+			YBCFreeStatus(status);
+			retry_count++;
+			loglevel = (retry_count > YB_SLOT_WAIT_WARN_RETRIES) ? WARNING : DEBUG1;
+			ereport(loglevel,
+					(errmsg("replication slot \"%s\": advisory-lock RPC timed out"
+							" (attempt %d); the slot may still be held by another"
+							" session",
+							slot_name, retry_count)));
+
+			/*
+			 * YB: If the retries are capped, bail out
+			 * rather than looping forever -- useful when the hang is caused by
+			 * an advisory-lock tablet outage rather than normal lock contention.
+			 */
+			if (yb_replication_slot_wait_max_retries > 0 &&
+				retry_count >= yb_replication_slot_wait_max_retries)
+				ereport(ERROR,
+						(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+						 errmsg("timed out waiting for replication slot \"%s\""
+								" after %d RPC attempt(s)",
+								slot_name, retry_count)));
+
+			continue;
+		}
+
+		break;
+	}
+
 	if (!HandleStatusIgnoreSkipLocking(status))
 		return false;
 
@@ -194,12 +348,46 @@ YbTryAcquireReplicationSlotLock(const char *slot_name, bool wait)
 	return true;
 }
 
-/* YB: Release the slot advisory lock and clear the sentinel. */
+/*
+ * YB: Acquire the advisory lock for the named replication slot.  If another
+ * session holds it, error out if nowait is true, else wait for it.
+ */
+static void
+YbAcquireReplicationSlotLock(const char *slot_name, bool nowait)
+{
+	if (!YbTryAcquireReplicationSlotLock(slot_name, nowait))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("could not acquire replication slot \"%s\"",
+						slot_name),
+				 errdetail("Ensure the slot is not active in another"
+						   " session and try again.")));
+}
+
+/*
+ * YB: Warn and clear yb_slot_locktag for ERRCODE_YB_TXN_ABORTED and
+ * ERRCODE_YB_TXN_LOCK_NOT_FOUND. Those mean the lock is already gone,
+ * and ERROR during walsender cleanup re-enters that cleanup until the
+ * error stack overflows. Any other status is still raised as ERROR.
+ */
 static void
 YbReleaseReplicationSlotLock(void)
 {
-	HandleYBStatus(YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(yb_slot_locktag),
-										  YB_ADVISORY_LOCK_EXCLUSIVE));
+	YbcStatus	status;
+	int			sqlerrcode;
+
+	status = YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(yb_slot_locktag),
+									YB_ADVISORY_LOCK_EXCLUSIVE);
+	sqlerrcode = status ? YBCStatusPgsqlError(status) : 0;
+	if (sqlerrcode == ERRCODE_YB_TXN_ABORTED ||
+		sqlerrcode == ERRCODE_YB_TXN_LOCK_NOT_FOUND)
+	{
+		MemSet(&yb_slot_locktag, 0, sizeof(yb_slot_locktag));
+		HandleYBStatusAtErrorLevel(status, WARNING);
+		return;
+	}
+
+	HandleYBStatus(status);
 	MemSet(&yb_slot_locktag, 0, sizeof(yb_slot_locktag));
 }
 
@@ -370,7 +558,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 					  CRSSnapshotAction yb_snapshot_action,
 					  uint64_t *yb_consistent_snapshot_time,
 					  YbCRSLsnType lsn_type,
-					  YbCRSOrderingMode yb_ordering_mode)
+					  YbCRSOrderingMode yb_ordering_mode,
+					  const char *yb_publication_name)
 {
 	ReplicationSlot *slot = NULL;
 	int			i;
@@ -389,7 +578,8 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 											yb_snapshot_action,
 											yb_consistent_snapshot_time,
 											lsn_type, yb_ordering_mode,
-											MyDatabaseId);
+											MyDatabaseId,
+											yb_publication_name);
 
 	/*
 	 * If some other backend ran this code concurrently with us, we'd likely
@@ -504,7 +694,8 @@ YbReplicationSlotCreateForDB(const char *name, bool two_phase,
 							 uint64_t *yb_consistent_snapshot_time,
 							 YbCRSLsnType lsn_type,
 							 YbCRSOrderingMode yb_ordering_mode,
-							 Oid database_oid)
+							 Oid database_oid,
+							 const char *yb_publication_name)
 {
 	int32_t		max_clock_skew;
 
@@ -516,7 +707,8 @@ YbReplicationSlotCreateForDB(const char *name, bool two_phase,
 
 	YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
 							 yb_consistent_snapshot_time, lsn_type,
-							 yb_ordering_mode, database_oid);
+							 yb_ordering_mode, database_oid,
+							 yb_publication_name);
 
 	/*
 	 * While creating replication slot, the master chooses a snapshot hybrid
@@ -663,22 +855,27 @@ retry:
 		 * Acquire an exclusive cluster-wide advisory lock so only one
 		 * consumer can use the slot at a time.  Uses the internal namespace
 		 * YB_INTERNAL_ADVISORY_LOCK_DB_OID (cannot collide with user advisory
-		 * locks).  Released by ReplicationSlotRelease(), or by
-		 * ReplicationSlotShmemExit() if we error out before MyReplicationSlot
-		 * is set.
+		 * locks).  Released by ReplicationSlotRelease() once MyReplicationSlot
+		 * is set, and below if fetching the slot fails before then.
 		 */
-		if (yb_enable_replication_slot_exclusive_lock &&
-			!YbTryAcquireReplicationSlotLock(name, /* wait = */ !nowait))
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("could not acquire replication slot \"%s\"",
-							name),
-					 errdetail("Ensure the slot is not active in another"
-							   " session and try again.")));
+		if (yb_enable_replication_slot_exclusive_lock)
+			YbAcquireReplicationSlotLock(name, nowait);
 
-		YBCGetReplicationSlot(name, &yb_replication_slot, /* if_exists */ false);
+		PG_TRY();
+		{
+			YBCGetReplicationSlot(name, &yb_replication_slot,
+								  /* if_exists */ false);
+		}
+		PG_CATCH();
+		{
+			if (yb_slot_locktag.locktag_type != 0)
+				YbReleaseReplicationSlotLock();
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
 
-		s = palloc(sizeof(ReplicationSlot));
+		s = &yb_acquired_slot;
+		MemSet(s, 0, sizeof(ReplicationSlot));
 		namestrcpy(&s->data.name, yb_replication_slot->slot_name);
 		namestrcpy(&s->data.plugin, yb_replication_slot->output_plugin);
 		s->data.database = yb_replication_slot->database_oid;
@@ -721,6 +918,9 @@ retry:
 		s->yb_lsn_type =
 			strcmp(yb_replication_slot->yb_lsn_type, LSN_TYPE_HYBRID_TIME) == 0 ?
 			CRS_HYBRID_TIME : CRS_SEQUENCE;
+
+		namestrcpy(&s->data.yb_bound_publication_name,
+				   yb_replication_slot->bound_publication_name);
 
 		MyReplicationSlot = s;
 
@@ -773,11 +973,17 @@ retry:
 		 */
 		CreateSlotOnDisk(s);
 
+		/*
+		 * YB: AllocationLock is the outer lock and covers this whole sequence.
+		 * CheckPointReplicationSlots() reads in_use under it.
+		 * ControlLock is taken only to publish in_use.
+		 */
+		LWLockAcquire(ReplicationSlotAllocationLock, LW_EXCLUSIVE);
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
 
 		if (!slot_for_array)
 		{
-			for (int i = 0; i < *YBCGetGFlags()->ysql_max_replication_slots; i++)
+			for (int i = 0; i < max_replication_slots; i++)
 			{
 				ReplicationSlot *temp_s = &ReplicationSlotCtl->replication_slots[i];
 
@@ -787,14 +993,46 @@ retry:
 					break;
 				}
 			}
+
+			/* Releases AllocationLock while it asks yb-master. */
+			if (!slot_for_array)
+				slot_for_array = YbReleaseStaleReplicationSlotEntries(name);
+
+			/* Another backend created this slot's entry while we waited. */
+			if (slot_for_array && slot_for_array->in_use)
+			{
+				pgstat_acquire_replslot(slot_for_array);
+				LWLockRelease(ReplicationSlotAllocationLock);
+				return;
+			}
+
+			/*
+			 * YB: pg_wrapper sets max_replication_slots from the tserver gflag
+			 * --max_replication_slots at process start. The master's copy of
+			 * that gflag caps the number of slots in the cluster.
+			 */
+			if (!slot_for_array)
+				ereport(ERROR,
+						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+						 errmsg("all replication slots are in use"),
+						 errhint("Free one or increase gflag \"--max_replication_slots\" "
+								 "on master and tserver.")));
+
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 			namestrcpy(&slot_for_array->data.name, name);
 			pgstat_create_replslot(slot_for_array);
+
+			/*
+			 * YB: SearchNamedReplicationSlot() only returns an entry that is already in_use,
+			 * so this store is only needed for a free slot.
+			 */
+			LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
+			slot_for_array->in_use = true;
+			LWLockRelease(ReplicationSlotControlLock);
 		}
 
-		slot_for_array->in_use = true;
 		pgstat_acquire_replslot(slot_for_array);
-
+		LWLockRelease(ReplicationSlotAllocationLock);
 		return;
 	}
 
@@ -932,7 +1170,11 @@ ReplicationSlotRelease(void)
 	if (IsYugaByteEnabled())
 	{
 		if (MyReplicationSlot->data.yb_replica_identities)
+		{
 			hash_destroy(MyReplicationSlot->data.yb_replica_identities);
+			/* The error cleanup calls this again if the lock release fails. */
+			MyReplicationSlot->data.yb_replica_identities = NULL;
+		}
 		/* Release the advisory lock if we are holding one. */
 		if (yb_slot_locktag.locktag_type != 0)
 			YbReleaseReplicationSlotLock();
@@ -1008,10 +1250,14 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 	 */
 	if (IsYugaByteEnabled())
 	{
+		bool		locked = false;
+
 		/*
 		 * YB: Take the advisory lock before dropping so no other consumer can
-		 * use the slot while we drop it. ReplicationSlotAcquire takes the lock
-		 * and then checks existence, so the check happens under the lock.
+		 * use the slot while we drop it. Take only the lock, not an entry in
+		 * the local slot array like ReplicationSlotAcquire does, so a full
+		 * array cannot block a drop. YBCDropReplicationSlot checks existence
+		 * under the lock.
 		 * yb_force callers (e.g. the LISTEN/NOTIFY poller cleanup) drop without
 		 * the lock so they never block on a lock held by another consumer.
 		 */
@@ -1019,8 +1265,23 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 			YBCDropReplicationSlot(name, yb_if_exists);
 		else if (yb_enable_replication_slot_exclusive_lock)
 		{
-			ReplicationSlotAcquire(name, nowait);
-			YBCDropReplicationSlot(name, yb_if_exists);
+			YbAcquireReplicationSlotLock(name, nowait);
+			locked = true;
+
+			/*
+			 * MyReplicationSlot is not set, so the error cleanup would not
+			 * release the lock.
+			 */
+			PG_TRY();
+			{
+				YBCDropReplicationSlot(name, yb_if_exists);
+			}
+			PG_CATCH();
+			{
+				YbReleaseReplicationSlotLock();
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 		}
 		else
 		{
@@ -1037,21 +1298,34 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 			YBCDropReplicationSlot(name, yb_if_exists);
 		}
 
+		/*
+		 * YB: AllocationLock covers the whole drop.
+		 * in_use is cleared before pgstat_drop_replslot(), under ControlLock,
+		 * so a scan cannot observe the slot after its stats entry is gone.
+		 * pgstat_drop_replslot() finds that entry by slot index,
+		 * so the index must not be reused until AllocationLock is released.
+		 */
+		LWLockAcquire(ReplicationSlotAllocationLock, LW_EXCLUSIVE);
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
 
 		if (slot_for_array)
 		{
-			pgstat_drop_replslot(slot_for_array);
+			LWLockAcquire(ReplicationSlotControlLock, LW_EXCLUSIVE);
 			slot_for_array->in_use = false;
+			LWLockRelease(ReplicationSlotControlLock);
+
+			pgstat_drop_replslot(slot_for_array);
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 		}
+
+		LWLockRelease(ReplicationSlotAllocationLock);
 
 		/*
 		 * Release only after the cleanup, so no other session can acquire the
 		 * slot while we are still dropping and cleaning it up.
 		 */
-		if (MyReplicationSlot != NULL)
-			ReplicationSlotRelease();
+		if (locked)
+			YbReleaseReplicationSlotLock();
 
 		return;
 	}

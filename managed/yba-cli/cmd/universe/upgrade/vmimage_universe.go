@@ -30,7 +30,7 @@ var upgradeVMImageCmd = &cobra.Command{
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		universeName, err := cmd.Flags().GetString("name")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(universeName) == 0 {
 			cmd.Help()
@@ -41,12 +41,12 @@ var upgradeVMImageCmd = &cobra.Command{
 		// universeutil.Validations before vm image upgrade operation
 		skipValidations, err := cmd.Flags().GetBool("skip-validations")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
 			_, _, err := universeutil.Validations(cmd, util.UpgradeOperation)
 			if err != nil {
-				logrus.Fatalf(
+				logrus.Fatal(
 					formatter.Colorize(err.Error()+"\n", formatter.RedColor),
 				)
 			}
@@ -63,12 +63,12 @@ var upgradeVMImageCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI, universe, err := universeutil.Validations(cmd, util.UpgradeOperation)
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		primaryLinuxVersionName, err := cmd.Flags().GetString("primary-linux-version")
 		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		imageBundleInfo := make([]ybaclient.ImageBundleUpgradeInfo, 0)
@@ -86,13 +86,8 @@ var upgradeVMImageCmd = &cobra.Command{
 			)
 		}
 
-		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if universeutil.IsClusterEmpty(primaryCluster) {
-			err := fmt.Errorf(
-				"No primary cluster found in universe " + universeName + " (" + universeUUID + ")\n",
-			)
-			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
-		}
+		primaryCluster, _ := universeutil.MustFindPrimaryCluster(
+			clusters, universeName, universeUUID)
 
 		primaryUserIntent := primaryCluster.GetUserIntent()
 
@@ -105,7 +100,7 @@ var upgradeVMImageCmd = &cobra.Command{
 		providerImageBundles := provider.GetImageBundles()
 		if len(providerImageBundles) == 0 {
 			err := fmt.Errorf("no image bundles found for provider %s", provider.GetName())
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		for _, im := range providerImageBundles {
@@ -119,7 +114,7 @@ var upgradeVMImageCmd = &cobra.Command{
 		}
 
 		if len(imageBundleInfo) == 0 {
-			logrus.Fatalf(
+			logrus.Fatal(
 				formatter.Colorize(
 					"The provided linux version name cannot be found\n", formatter.RedColor))
 		}
@@ -129,26 +124,21 @@ var upgradeVMImageCmd = &cobra.Command{
 			if err != nil {
 				logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
-			var rrCluster ybaclient.Cluster
-			for _, c := range clusters {
-				if strings.EqualFold(c.GetClusterType(), util.ReadReplicaClusterType) {
-					rrCluster = c
-					break
-				}
-			}
+			rrCluster, rrIndex := util.FindClusterByType(clusters, util.ReadReplicaClusterType)
 
-			if universeutil.IsClusterEmpty(rrCluster) {
+			if rrIndex < 0 {
 				err := fmt.Errorf(
-					"No read replica cluster found in universe " + universeName + " (" + universeUUID + ")\n",
+					"No read replica cluster found in universe %s (%s)\n",
+					universeName, universeUUID,
 				)
-				logrus.Fatalf(formatter.Colorize(err.Error(), formatter.RedColor))
+				logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
 			}
 
 			rrImageBundle := ""
 			if !inheritFromPrimary {
 				rrLinuxVersionName, err := cmd.Flags().GetString("rr-linux-version")
 				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+					logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
 				for _, im := range providerImageBundles {
 					if strings.Compare(im.GetName(), rrLinuxVersionName) == 0 {
@@ -156,7 +146,7 @@ var upgradeVMImageCmd = &cobra.Command{
 					}
 				}
 				if len(rrImageBundle) == 0 {
-					logrus.Fatalf(
+					logrus.Fatal(
 						formatter.Colorize(
 							"The provided linux version name cannot be found\n",
 							formatter.RedColor))

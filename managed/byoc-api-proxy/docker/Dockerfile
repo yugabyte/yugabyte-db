@@ -13,7 +13,12 @@ FROM ${BASE_IMAGE}
 ARG VERSION
 
 # The base carries no JRE and no unprivileged user. Group 0 lets OpenShift's arbitrary UIDs run it.
-RUN dnf --assumeyes --setopt=install_weak_deps=0 install java-17-openjdk-headless \
+# The base is Fedora, whose repositories have no Java 17, so this runs the proxy's Java 17 bytecode
+# on Java 21, as Perf Advisor does on the same base. yba-ctl installs still run it on their bundled
+# Java 17. A package name dnf doesn't know can resolve to something else without failing, so check
+# that Java 21 is what got installed.
+RUN dnf --assumeyes --setopt=install_weak_deps=0 install java-21-openjdk-headless \
+    && java -version 2>&1 | grep -q 'version "21' \
     && dnf clean all \
     && useradd --uid 10001 --gid 0 --no-create-home --home-dir /opt/yugabyte/byoc-api-proxy \
         byoc-api-proxy

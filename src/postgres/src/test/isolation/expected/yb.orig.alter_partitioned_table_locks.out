@@ -86,3 +86,48 @@ count
    51
 (1 row)
 
+
+starting permutation: s1_begin s1_count_sib s2_detach_sib s1_count_sib_root s1_commit
+step s1_begin: BEGIN;
+step s1_count_sib: SELECT count(*) FROM sib_p_b;
+count
+-----
+    1
+(1 row)
+
+step s2_detach_sib: ALTER TABLE sib_p DETACH PARTITION sib_p_a;
+step s1_count_sib_root: SELECT count(*) FROM sib_p;
+count
+-----
+    2
+(1 row)
+
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin s1_count_sib s2_owner_sib s1_commit
+step s1_begin: BEGIN;
+step s1_count_sib: SELECT count(*) FROM sib_p_b;
+count
+-----
+    1
+(1 row)
+
+step s2_owner_sib: ALTER TABLE sib_p OWNER TO CURRENT_USER;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin s1_count_sib s2_only_default_sib s1_commit
+step s1_begin: BEGIN;
+step s1_count_sib: SELECT count(*) FROM sib_p_b;
+count
+-----
+    1
+(1 row)
+
+step s2_only_default_sib: ALTER TABLE ONLY sib_p ALTER COLUMN b SET DEFAULT 5;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin s1_analyze_sib s2_attach_sib s1_commit
+step s1_begin: BEGIN;
+step s1_analyze_sib: ANALYZE sib_p_b;
+step s2_attach_sib: ALTER TABLE sib_p ATTACH PARTITION sib_q FOR VALUES FROM (300) TO (400);
+step s1_commit: COMMIT;

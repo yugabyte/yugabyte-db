@@ -67,6 +67,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_bool(enable_ysql);
 DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
+DECLARE_bool(TEST_hinted_leader_election_for_existing_tablets);
 
 METRIC_DECLARE_counter(rows_inserted);
 
@@ -94,6 +95,9 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // To prevent automatic creation of the transaction status table.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+
+    // TestTabletReports expects leaders to be elected within its fixed sleep after a restart.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_hinted_leader_election_for_existing_tablets) = true;
 
     YBMiniClusterTestBase::SetUp();
 

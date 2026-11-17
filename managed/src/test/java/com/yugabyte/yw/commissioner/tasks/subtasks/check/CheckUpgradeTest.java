@@ -6,6 +6,7 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -14,6 +15,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
@@ -123,6 +125,33 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     assertEquals(BAD_REQUEST, exception.getHttpStatus());
     assertEquals(
         "FLAG_1 is not present in the requested db version new-version", exception.getMessage());
+  }
+
+  @Test
+  public void testMissingTserverAutoFlag() throws Exception {
+    CheckUpgrade.Params params = new CheckUpgrade.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.ybSoftwareVersion = "new-version";
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), eq(ServerType.MASTER), anyInt()))
+        .thenReturn(ImmutableSet.of("MASTER_FLAG"));
+    when(mockAutoFlagUtil.getPromotedAutoFlags(any(), eq(ServerType.TSERVER), anyInt()))
+        .thenReturn(ImmutableSet.of("TSERVER_FLAG"));
+    AutoFlagDetails masterFlag = new AutoFlagDetails();
+    masterFlag.name = "MASTER_FLAG";
+    AutoFlagsPerServer masterFlags = new AutoFlagsPerServer();
+    masterFlags.autoFlagDetails = Arrays.asList(masterFlag);
+    when(mockGFlagsValidation.extractAutoFlags(any(), eq("yb-master"))).thenReturn(masterFlags);
+    AutoFlagsPerServer tserverFlags = new AutoFlagsPerServer();
+    tserverFlags.autoFlagDetails = new ArrayList<>();
+    when(mockGFlagsValidation.extractAutoFlags(any(), eq("yb-tserver"))).thenReturn(tserverFlags);
+    CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
+    task.initialize(params);
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> task.run());
+    assertEquals(BAD_REQUEST, exception.getHttpStatus());
+    assertEquals(
+        "TSERVER_FLAG is not present in the requested db version new-version",
+        exception.getMessage());
   }
 
   @Test

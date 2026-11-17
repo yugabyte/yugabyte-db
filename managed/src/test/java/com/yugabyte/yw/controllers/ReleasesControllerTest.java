@@ -22,7 +22,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -161,7 +160,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testListRelease() {
-    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
+    when(mockReleasesUtils.versionUniverseSummaries()).thenReturn(new HashMap<>());
     Release r1 = Release.create("2.21.0.1", "STS");
     Release r2 = Release.create("2.22.0.2", "LTS");
     String url = String.format("/api/customers/%s/ybdb_release", defaultCustomer.getUuid());
@@ -190,7 +189,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testListX86Releases() {
-    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
+    when(mockReleasesUtils.versionUniverseSummaries()).thenReturn(new HashMap<>());
     Release r1 = Release.create("2.21.0.1", "STS");
     Release r2 = Release.create("2.22.0.2", "LTS");
     ReleaseArtifact art1 =
@@ -249,7 +248,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetRelease() {
-    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
+    when(mockReleasesUtils.versionUniverseSummaries()).thenReturn(new HashMap<>());
     Release r1 = Release.create("2.21.0.1", "STS");
     Release.create("2.22.0.2", "LTS");
     String url =
@@ -265,7 +264,7 @@ public class ReleasesControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetReleaseWithArtifacts() {
-    when(mockReleasesUtils.versionUniversesMap()).thenReturn(new HashMap<String, List<Universe>>());
+    when(mockReleasesUtils.versionUniverseSummaries()).thenReturn(new HashMap<>());
     Release r1 = Release.create("2.21.0.1", "STS");
     ReleaseArtifact linuxArtifact =
         ReleaseArtifact.create(

@@ -315,12 +315,14 @@ typedef struct YbcPgExecOutParamValue {
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
   // - plan_limit is the limit imposed by the upper plan, most commonly by the Limit node.
+  // - vector_limit is the limit to use in vector index scans.
   // - out_param is an output parameter of an execution while all other parameters are IN params.
   //
   // For now we only support one rowmark.
 
 #ifdef __cplusplus
   uint64_t plan_limit = 0;
+  uint64_t vector_limit = 0;
   int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
@@ -338,6 +340,7 @@ typedef struct YbcPgExecParameters {
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
 #else
   uint64_t plan_limit;
+  uint64_t vector_limit;
   int rowmark;
   // Cast these *_wait_policy fields to LockWaitPolicy for C use.
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
@@ -406,6 +409,7 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
+  int64_t (*GetSessionReplicationOriginTimestamp)();
   bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
@@ -617,14 +621,18 @@ typedef enum {
   YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+  // Serve the request only from what is already cached; if no cached response matches, fail
+  // instead of reading the catalog. Used to start a connection from an older catalog version that
+  // this node already holds.
+  YB_YQL_PREFETCHER_TRUST_CACHE_LOOKUP_ONLY
 } YbcPgSysTablePrefetcherCacheMode;
 
 // Mirrors YsqlCatalogPrefetchKindPB in pgsql_protocol.proto.
 typedef enum {
   YB_YQL_PREFETCH_KIND_NONE = 0,
   YB_YQL_PREFETCH_KIND_CONNECTION_START = 1,
-  YB_YQL_PREFETCH_KIND_CACHE_REFRESH = 2,
+  YB_YQL_PREFETCH_KIND_HIGH_PRIORITY = 2,
 } YbcPgSysTablePrefetchKind;
 
 typedef struct {
@@ -655,6 +663,19 @@ typedef enum {
   // Use a distributed transaction for full ACID semantics (common case).
   YB_TRANSACTIONAL
 } YbcPgTransactionSetting;
+
+typedef enum {
+  YB_PG_ON_CONFLICT_NONE = 0,
+  YB_PG_ON_CONFLICT_NOTHING = 1,
+  YB_PG_ON_CONFLICT_UPDATE = 2,
+} YbcPgOnConflictAction;
+
+typedef enum {
+  YB_PG_ON_CONFLICT_OUTCOME_UNKNOWN = 0,
+  YB_PG_ON_CONFLICT_OUTCOME_INSERTED = 1,
+  YB_PG_ON_CONFLICT_OUTCOME_UPDATED = 2,
+  YB_PG_ON_CONFLICT_OUTCOME_SKIPPED = 3,
+} YbcPgOnConflictOutcome;
 
 // Postgres WAL record pointer defined in Postgres' xlogdefs.h
 typedef uint64_t YbcPgXLogRecPtr;
@@ -689,6 +710,7 @@ typedef struct {
   bool expired;
   bool allow_tables_without_primary_key;
   bool detect_publication_changes_implicitly;
+  const char *bound_publication_name;
 } YbcReplicationSlotDescriptor;
 
 typedef struct {
@@ -705,6 +727,10 @@ typedef struct {
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
 typedef struct {
   const char* column_name;
+  // When TEST_ysql_yb_enable_replication_slot_transactional_ddl is on, the column is identified by
+  // column_attr_num and column_name is NULL. Otherwise it is identified by column_name and
+  // column_attr_num is 0.
+  int column_attr_num;
   // Null indicates that the value is explicitly null while Omitted indicates that the value is
   // present but was just not sent from the CDC service due to the Replica Identity (CHANGE,
   // MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES).
@@ -724,6 +750,7 @@ typedef enum {
   YB_PG_ROW_MESSAGE_ACTION_UPDATE = 4,
   YB_PG_ROW_MESSAGE_ACTION_DELETE = 5,
   YB_PG_ROW_MESSAGE_ACTION_DDL = 6,
+  YB_PG_ROW_MESSAGE_ACTION_PUBLICATION_REFRESH = 7,
 } YbcPgRowMessageAction;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -750,6 +777,10 @@ typedef struct {
   // DocDB transaction id associated with the record.
   bool has_docdb_txn_id;
   char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
+  // Subtransactions of the DocDB transaction rolled back to a savepoint, run length encoded as in
+  // SubtxnSetPB. Only set on BEGIN records.
+  uint32_t* aborted_subtxn_set;
+  int aborted_subtxn_set_size;
 } YbcPgRowMessage;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
@@ -760,6 +791,8 @@ typedef struct {
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
   bool explicit_alter_publication_detected;
+  uint64_t publication_refresh_record_time;
+  char publication_refresh_txn_id[37]; /* UUID string length (36) + null terminator */
 } YbcPgChangeRecordBatch;
 
 typedef struct {

@@ -203,7 +203,7 @@ ysql_max_read_restart_attempts = 0
 ysql_max_write_restart_attempts = 0
 ```
 
-Turn off the [read-committed](../../../explore/transactions/isolation-levels/#read-committed-isolation) isolation level on the target YugabyteDB cluster during the migration.
+Turn off the [read-committed](../../../architecture/transactions/read-committed/) isolation level on the target YugabyteDB cluster during the migration.
 
 {{</note>}}
 

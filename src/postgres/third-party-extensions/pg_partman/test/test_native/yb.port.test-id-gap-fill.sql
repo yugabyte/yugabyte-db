@@ -2,10 +2,14 @@
 -- Additional tests: backfill gap in child tables, start with higher number
     -- Test using a pre-created template table and passing to create_parent. Should allow indexes to be made for initial children.
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
 SELECT plan(41); -- YB: decreased number of tests
@@ -115,4 +119,6 @@ SELECT has_table('partman_test', 'id_taptest_table_p3000000050', 'Check id_tapte
 SELECT has_table('partman_test', 'id_taptest_table_p3000000060', 'Check id_taptest_table_p3000000060 was recreated');
 
 SELECT * FROM finish();
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB

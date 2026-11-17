@@ -25,7 +25,6 @@
 
 #include "postgres.h"
 
-#include "access/attnum.h"
 #include "nodes/pathnodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
@@ -34,6 +33,9 @@
 extern PGDLLIMPORT bool yb_enable_derived_saops;
 extern PGDLLIMPORT int yb_max_merge_scan_streams;
 
+/* Boot default of yb_max_merge_scan_streams; merge=on uses this when the GUC is 0. */
+#define YB_DEFAULT_MERGE_SCAN_MAX_STREAMS 64
+
 extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   IndexOptInfo *index,
 									   Expr *expr,
@@ -41,18 +43,12 @@ extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   int *merge_scan_cardinality,
 									   List **merge_scan_stream_cols);
 
-extern void yb_get_sort_info_from_pathkeys(List *tlist,
-										   List *pathkeys,
-										   Relids relids,
-										   Bitmapset *stream_col_idxs,
-										   int *p_numsortkeys,
-										   AttrNumber **p_sortColIdx,
-										   Oid **p_sortOperators,
-										   Oid **p_collations,
-										   bool **p_nullsFirst);
+extern YbMergeScanInfo *yb_finalize_merge_scan_info(IndexOptInfo *index,
+													Relids relids,
+													List *stream_cols,
+													List *indexclauses,
+													List **pathkeys,
+													int *yb_distinct_nkeys,
+													bool embedded);
 
-extern List *yb_finalize_merge_scan_stream_cols(IndexOptInfo *index,
-												Relids relids,
-												List *stream_cols,
-												List *indexclauses,
-												List *pathkeys);
+extern int yb_merge_scan_num_streams(List *stream_cols);

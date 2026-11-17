@@ -251,6 +251,8 @@ class PgClient {
   Result<int> WaitForBackendsCatalogVersion(
       tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline);
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+  Status StartTableBackfill(
+      tserver::PgStartTableBackfillRequestPB* req, CoarseTimePoint deadline);
 
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
                                   uint64_t* num_rows_read_from_table,
@@ -282,12 +284,14 @@ class PgClient {
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
                              uint64_t ysql_catalog_version,
+                             bool is_using_table_locks,
                              int64_t last_val,
                              bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
+                                   bool is_using_table_locks,
                                    int64_t last_val,
                                    bool is_called,
                                    std::optional<int64_t> expected_last_val,
@@ -296,6 +300,7 @@ class PgClient {
   Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
                                                          int64_t seq_oid,
                                                          uint64_t ysql_catalog_version,
+                                                         bool is_using_table_locks,
                                                          uint32_t fetch_count,
                                                          int64_t inc_by,
                                                          int64_t min_value,
@@ -304,7 +309,7 @@ class PgClient {
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(
       int64_t db_oid, int64_t seq_oid, std::optional<uint64_t> ysql_catalog_version,
-      std::optional<uint64_t> read_time = std::nullopt);
+      bool is_using_table_locks, std::optional<uint64_t> read_time = std::nullopt);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 

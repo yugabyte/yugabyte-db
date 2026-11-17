@@ -421,7 +421,11 @@ class TransactionState {
 
     replicating_ = nullptr;
 
-    // We are not leader, so could abort all queued requests.
+    // Replication of this transaction's update failed (e.g., this peer lost leadership, the Raft
+    // append failed, or a leader-side check refused it); the transaction itself is not aborted and
+    // keeps its status.  Fail the requests queued behind the update: the client can resend a
+    // refused COMMITTED update, and an ABORTED update dropped here is redone when the transaction
+    // expires.
     ClearRequests(STATUS(Aborted, "Replication failed"));
   }
 
@@ -775,6 +779,16 @@ class TransactionState {
         status = STATUS(
             TryAgain, "Heartbeat with inactive pg_session_req_version",
             AdvisoryLocksError(*pg_session_req_version_));
+      }
+      // A transaction of a blocked database is aborted here, so its locks release and its waiters
+      // fail at once; the client's own cleanup on the refused heartbeat does not abort it at the
+      // coordinator.
+      if (status.ok() && state.has_origination_info()) {
+        status = context_.coordinator_context().CheckTransactionMayContinue(
+            state.origination_info());
+        if (!status.ok()) {
+          Abort();
+        }
       }
       // When session level txns are involved in a deadlock due to cyclic advisory lock request
       // dependencies, the detector sends an update transaction request with PENDING status but

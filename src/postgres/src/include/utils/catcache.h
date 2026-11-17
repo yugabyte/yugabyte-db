@@ -251,7 +251,10 @@ extern long *YbGetCatCacheListMisses();
 extern long *YbGetCatCacheNegMisses();
 extern long YbGetCatCacheRefreshes();
 extern long YbGetCatCacheDeltaRefreshes();
+extern void YbIncrementCatCacheDeltaRefreshes();
 extern long YbGetHintCacheRefreshes();
+extern long YbGetStaleCatalogPrefetches();
+extern void YbIncrementStaleCatalogPrefetches();
 extern long YbGetHintCacheHits();
 extern long YbGetHintCacheMisses();
 extern void YbIncrementHintCacheRefreshes();
@@ -268,5 +271,7 @@ extern uint32 YbCatalogCacheComputeHashValue(CatCache *cache, Datum v1, Datum v2
 
 extern void YbHandleLogCatcacheStatsInterrupt(void);
 extern void YbProcessLogCatcacheStatsInterrupt(void);
+
+extern void YbCatalogCacheFlushCatalogWithoutCallbacks(Oid catId);
 
 #endif							/* CATCACHE_H */

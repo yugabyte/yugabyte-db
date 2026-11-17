@@ -94,15 +94,17 @@ describe('usePersistStepFormValues', () => {
 });
 
 describe('resetProviderDependentSettings', () => {
-  it('resets only resilience, nodes, and instance slices', () => {
+  it('resets resilience, nodes, instance slices, and provider slots', () => {
     const saveResilienceAndRegionsSettings = vi.fn();
     const saveNodesAvailabilitySettings = vi.fn();
     const saveInstanceSettings = vi.fn();
+    const clearProviderSlots = vi.fn();
 
     resetProviderDependentSettings({
       saveResilienceAndRegionsSettings,
       saveNodesAvailabilitySettings,
-      saveInstanceSettings
+      saveInstanceSettings,
+      clearProviderSlots
     });
 
     expect(saveResilienceAndRegionsSettings).toHaveBeenCalledWith(
@@ -114,5 +116,6 @@ describe('resetProviderDependentSettings', () => {
     expect(saveInstanceSettings).toHaveBeenCalledWith(
       initialCreateUniverseFormState.instanceSettings
     );
+    expect(clearProviderSlots).toHaveBeenCalled();
   });
 });

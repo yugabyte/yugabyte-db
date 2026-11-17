@@ -134,7 +134,9 @@ class PgApiImpl {
   void Interrupt();
 
   void ResetCatalogReadTime();
-  void SetHistoricalReadContext(const ReadHybridTime& read_time, const char* transaction_id);
+  void SetHistoricalReadContext(
+      const ReadHybridTime& read_time, const char* transaction_id,
+      std::span<const uint32_t> aborted_subtxn_set);
   void ResetHistoricalReadContext();
   [[nodiscard]] ReadHybridTime GetCatalogReadTime() const;
 
@@ -173,6 +175,8 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
 
   [[nodiscard]] uint32_t GetSharedYsqlCatalogPrefetchLoad() const;
+  Result<uint64_t> GetSharedDbLastPrefetchedCatalogVersion(PgOid db_oid);
+
   Result<uint32_t> GetNumberOfDatabases();
   Result<tserver::PgGetTserverCatalogMessageListsResponsePB> GetTserverCatalogMessageLists(
       uint32_t db_oid, uint64_t ysql_catalog_version, uint32_t num_catalog_versions);
@@ -444,6 +448,9 @@ class PgApiImpl {
   Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version, pid_t pid);
 
   Status BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block);
+  Status StartTableBackfill(
+      const PgObjectId& source_table_id, uint32_t target_table_oid,
+      uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id);
   Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,
@@ -536,6 +543,9 @@ class PgApiImpl {
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
   Status DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
 
+  Status DmlGetOnConflictOutcome(
+      PgStatement *handle, PgsqlResponsePB::PgsqlOnConflictOutcome *on_conflict_outcome);
+
   // This function adds a key column to be used in the construction of the tuple id (ybctid).
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YbcPgTypeEntity *type_entity);
@@ -561,6 +571,7 @@ class PgApiImpl {
   Status StartOperationsBuffering();
   Status StopOperationsBuffering();
   void ResetOperationsBuffering();
+  SetupPerformOptionsAccessorTag ClearSessionState();
   Status FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx);
   Status AdjustOperationsBuffering(int multiple = 1);
 
@@ -581,6 +592,9 @@ class PgApiImpl {
   Status ExecInsert(PgStatement *handle);
 
   Status InsertStmtSetUpsertMode(PgStatement *handle);
+
+  Status InsertStmtSetOnConflictAction(PgStatement *handle,
+                                       PgsqlWriteRequestPB::PgsqlOnConflictAction action);
 
   Status InsertStmtSetWriteTime(PgStatement *handle, const HybridTime write_time);
 
@@ -813,7 +827,7 @@ class PgApiImpl {
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
-  Status PrefetchRegisteredSysTables();
+  Status PrefetchRegisteredSysTables(bool completes_connection_prefetch);
 
   //------------------------------------------------------------------------------------------------
   // System Validation.
@@ -852,6 +866,10 @@ class PgApiImpl {
                                   YbcPgReplicationSlotSnapshotAction snapshot_action,
                                   YbcLsnType lsn_type,
                                   YbcOrderingMode ordering_mode,
+                                  const char *yb_publication_name,
+                                  const PgOid *yb_publication_relfilenodes,
+                                  size_t yb_num_publication_tables,
+                                  bool yb_publication_all_tables,
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
@@ -966,8 +984,6 @@ class PgApiImpl {
       const YbcPgInitPostgresInfo& init_postgres_info, YbcPgAshConfig& ash_config,
       YbcPgExecStatsState& session_stats, bool is_binary_upgrade);
   Status Init(std::optional<uint64_t> session_id);
-
-  SetupPerformOptionsAccessorTag ClearSessionState();
 
   template <std::derived_from<PgMemctx::Registrable> R, std::derived_from<R> I>
   Status AddToCurrentPgMemctx(std::unique_ptr<I> impl, R** handle);

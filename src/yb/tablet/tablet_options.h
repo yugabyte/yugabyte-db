@@ -94,6 +94,7 @@ struct TabletInitData {
   TabletOptions tablet_options;
   MutableTabletOptions mutable_tablet_options;
   std::string log_prefix_suffix;
+  TabletContext* tablet_context = nullptr;
   TransactionParticipantContext* transaction_participant_context = nullptr;
   client::LocalTabletFilter local_tablet_filter;
   TransactionCoordinatorContext* transaction_coordinator_context = nullptr;
@@ -111,7 +112,12 @@ struct TabletInitData {
   AutoFlagsManagerBase* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;
+  // Backs the tablet's serial token for intent SST file cleanup and for the regular DB flushes
+  // requested by the intents DB flush filter. Required when the tablet has a transaction
+  // participant.
+  ThreadPool* intent_cleanup_pool = nullptr;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
+  std::shared_ptr<TierMigrationHooks> tier_migration_hooks;
   client::YBMetaDataCache* metadata_cache;
   std::function<SchemaVersion(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version = nullptr;

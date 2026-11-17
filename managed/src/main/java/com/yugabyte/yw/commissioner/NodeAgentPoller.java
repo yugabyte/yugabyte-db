@@ -439,7 +439,7 @@ public class NodeAgentPoller {
         log.info("Starting remote upgrade for node agent {}", nodeAgent);
         // Set up the config and symlink on the remote node agent.
         nodeAgentClient.startUpgrade(nodeAgent, upgradeParam);
-        log.info("Completed remote upgrade for node agent", nodeAgent);
+        log.info("Completed remote upgrade for node agent {}", nodeAgent);
         // Point the node agent to the new cert and key locally.
         // At this point, the node agent is still with old cert and key.
         // So, this client has to trust both old and new certs.

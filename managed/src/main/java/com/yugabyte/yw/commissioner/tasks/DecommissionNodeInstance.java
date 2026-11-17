@@ -30,7 +30,7 @@ public class DecommissionNodeInstance extends AbstractTaskBase {
       throw new RuntimeException(
           String.format(
               "Node instance %s in %s state cannot be manually decommissioned. Node instance must"
-                  + " be in %s state to be recommissioned.",
+                  + " be in %s state to be decommissioned.",
               nodeInstance.getNodeUuid(), nodeInstance.getState(), NodeInstance.State.FREE));
     }
     nodeInstance.setState(State.DECOMMISSIONED);

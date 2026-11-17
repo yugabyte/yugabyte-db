@@ -40,12 +40,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -579,6 +581,50 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeletesStorageConfigsBeingValidated() {
+    // Created through v2: their ValidateStorageConfig task didn't survive the restart.
+    CustomerConfig validating = ModelFactory.createNfsStorageConfig(customer, "validating");
+    validating.setState(CustomerConfig.ConfigState.Validating);
+    validating.update();
+    Customer other = ModelFactory.testCustomer("other-customer");
+    CustomerConfig otherValidating = ModelFactory.createNfsStorageConfig(other, "validating");
+    otherValidating.setState(CustomerConfig.ConfigState.Validating);
+    otherValidating.update();
+    CustomerConfig active = ModelFactory.createNfsStorageConfig(customer, "active");
+    CustomerConfig queued = ModelFactory.createNfsStorageConfig(customer, "queued");
+    queued.setState(CustomerConfig.ConfigState.QueuedForDeletion);
+    queued.update();
+
+    taskManager.handleAllPendingTasks();
+
+    assertNull(CustomerConfig.get(customer.getUuid(), validating.getConfigUUID()));
+    assertNull(CustomerConfig.get(other.getUuid(), otherValidating.getConfigUUID()));
+    assertNotNull(CustomerConfig.get(customer.getUuid(), active.getConfigUUID()));
+    assertEquals(
+        CustomerConfig.ConfigState.QueuedForDeletion,
+        CustomerConfig.get(customer.getUuid(), queued.getConfigUUID()).getState());
+  }
+
+  @Test
+  public void testConfigThatFailsToDeleteKeepsTheOthers() {
+    // Created before continuous backup refused configs being validated: its foreign key keeps
+    // the config from being deleted.
+    CustomerConfig referenced = ModelFactory.createNfsStorageConfig(customer, "referenced");
+    referenced.setState(CustomerConfig.ConfigState.Validating);
+    referenced.update();
+    ContinuousBackupConfig.create(
+        referenced.getConfigUUID(), 1, com.yugabyte.yw.models.helpers.TimeUnit.HOURS, 1, "dir");
+    CustomerConfig other = ModelFactory.createNfsStorageConfig(customer, "other");
+    other.setState(CustomerConfig.ConfigState.Validating);
+    other.update();
+
+    taskManager.handleAllPendingTasks();
+
+    assertNotNull(CustomerConfig.get(customer.getUuid(), referenced.getConfigUUID()));
+    assertNull(CustomerConfig.get(customer.getUuid(), other.getConfigUUID()));
+  }
+
+  @Test
   public void testIncompleteYbaBackupTaskFailsOnRestartWithoutRestore() {
     // Without a preceding restore, an incomplete backup task is a genuine crash and must
     // keep the "Platform restarted" failure.
@@ -864,8 +910,11 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackEditUniverseDisabledByRuntimeFlag() {
-    // With yb.task.allow_edit_universe_rollback off (default), edit-universe rollback is rejected
-    // at the computer (second gate). Listing would already hide the button via isEnabled().
+    // With yb.task.allow_edit_universe_rollback off, edit-universe rollback is rejected at the
+    // computer (second gate). Listing would already hide the button via isEnabled().
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_edit_universe_rollback", "false");
     universe = ModelFactory.createUniverse(customer.getId());
     JsonNode taskParams = editUniverseTaskParams(universe);
     CustomerTask failedTask =
@@ -1034,6 +1083,7 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackAddNodeDisabledByRuntimeFlag() {
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.task.allow_add_node_rollback", "false");
     universe =
         Universe.saveDetails(
             ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
@@ -1214,8 +1264,11 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
 
   @Test
   public void testRollbackResizeNodeDisabledByRuntimeFlag() {
-    // yb.task.allow_resize_node_rollback off (default) rejects at the computer (second gate).
+    // yb.task.allow_resize_node_rollback off rejects at the computer (second gate).
     // Listing would already hide the button via isEnabled().
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.task.allow_resize_node_rollback", "false");
     universe = ModelFactory.createUniverse(customer.getId());
     universe = markResizeNodeFailed(universe);
     JsonNode taskParams = resizeNodeTaskParams(universe);

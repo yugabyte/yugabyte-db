@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.ModelFactory.createAlertDefinition;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -22,6 +23,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.common.alerts.impl.AlertTemplateService;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -182,6 +184,131 @@ public class SwamperHelperTest extends FakeDBApplication {
     assertThat(targets, containsInAnyOrder("10.1.0.1:8889", "10.1.0.2:8889"));
   }
 
+  @Test
+  public void testWriteNodeExporterJsonK8sIncludesMasterAndTserverPods() {
+    Universe u =
+        createK8sUniverseForNodeExporter(NodeExporterSidecarTestUtil.SUPPORTED_VERSION, true);
+
+    assertThat(
+        writeAndReadNodeTargets(u),
+        containsInAnyOrder("1.2.3.1:9300", "1.2.3.2:9300", "1.2.3.101:9300", "1.2.3.102:9300"));
+  }
+
+  @Test
+  public void testWriteNodeExporterJsonK8sSkippedBeforeSupportedVersion() {
+    assertThat(
+        writeAndReadNodeTargets(createK8sUniverseForNodeExporter("2026.1.2.0-b100", true)),
+        empty());
+  }
+
+  @Test
+  public void testWriteNodeExporterJsonK8sSkippedWhenKeyOff() {
+    assertThat(
+        writeAndReadNodeTargets(
+            createK8sUniverseForNodeExporter(NodeExporterSidecarTestUtil.SUPPORTED_VERSION, false)),
+        empty());
+  }
+
+  // Even with the universe's node_exporter TLS flag set.
+  @Test
+  public void testWriteNodeExporterJsonK8sTargetsNeverHttps() throws Exception {
+    Universe u =
+        createK8sUniverseForNodeExporter(NodeExporterSidecarTestUtil.SUPPORTED_VERSION, true);
+    u.updateConfig(ImmutableMap.of(Universe.NODE_EXPORTER_HTTPS, "true"));
+    u.save();
+    swamperHelper.writeUniverseTargetJson(u.getUniverseUUID());
+
+    String json =
+        FileUtils.readFileToString(
+            new File(SWAMPER_TMP_PATH + "node." + u.getUniverseUUID() + ".json"), "UTF-8");
+    ArrayNode entries = (ArrayNode) Json.parse(json);
+    assertFalse(entries.isEmpty());
+    entries.forEach(
+        entry -> {
+          assertEquals("http", entry.get("labels").get("__scheme__").asText());
+        });
+  }
+
+  /** VM nodes are scrape targets whatever the K8s key. */
+  @Test
+  public void testWriteNodeExporterJsonVmUnaffectedByK8sGate() {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
+        .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());
+    Universe u = createUniverse(defaultCustomer.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+              UUID placementUuid = taskParams.getPrimaryCluster().uuid;
+              taskParams.nodeDetailsSet =
+                  new HashSet<>(
+                      List.of(
+                          vmNode("host-n1", "10.1.0.1", placementUuid),
+                          vmNode("host-n2", "10.1.0.2", placementUuid)));
+              universe.setUniverseDetails(taskParams);
+            });
+
+    assertThat(writeAndReadNodeTargets(u), containsInAnyOrder("10.1.0.1:9300", "10.1.0.2:9300"));
+  }
+
+  /**
+   * Creates a K8s universe shaped like {@link #createK8sUniverseWithOtel} -- two yb-tserver pods
+   * and two yb-master pods as separate nodes -- with the DB version and the runtime key under the
+   * test's control.
+   */
+  private Universe createK8sUniverseForNodeExporter(
+      String ybSoftwareVersion, boolean featureEnabled) {
+    when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
+        .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.k8sNodeExporterEnabled)))
+        .thenReturn(featureEnabled);
+    Universe u =
+        ModelFactory.createK8sUniverseCustomCores(
+            "k8s-node-exporter-univ",
+            UUID.randomUUID(),
+            defaultCustomer.getId(),
+            null,
+            null,
+            false,
+            1.0);
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+          UUID placementUuid = taskParams.getPrimaryCluster().uuid;
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion = ybSoftwareVersion;
+          taskParams.nodeDetailsSet =
+              new HashSet<>(
+                  List.of(
+                      k8sPodNode("yb-tserver-0", "1.2.3.1", false, placementUuid),
+                      k8sPodNode("yb-tserver-1", "1.2.3.2", false, placementUuid),
+                      k8sPodNode("yb-master-0", "1.2.3.101", true, placementUuid),
+                      k8sPodNode("yb-master-1", "1.2.3.102", true, placementUuid)));
+          universe.setUniverseDetails(taskParams);
+        });
+  }
+
+  /** Returns the flattened "targets" entries of the universe's node swamper target file. */
+  private List<String> writeAndReadNodeTargets(Universe u) {
+    swamperHelper.writeUniverseTargetJson(u.getUniverseUUID());
+    String targetFilePath = SWAMPER_TMP_PATH + "node." + u.getUniverseUUID() + ".json";
+    List<String> targets = new ArrayList<>();
+    try {
+      ArrayNode targetsJson =
+          (ArrayNode) Json.parse(FileUtils.readFileToString(new File(targetFilePath), "UTF-8"));
+      targetsJson.forEach(entry -> entry.get("targets").forEach(t -> targets.add(t.asText())));
+    } catch (Exception e) {
+      fail("Error reading target json file: " + targetFilePath + ". Reason: " + e.getMessage());
+    }
+    return targets;
+  }
+
   private NodeDetails vmNode(String name, String ip, UUID placementUuid) {
     NodeDetails node = new NodeDetails();
     node.nodeName = name;
@@ -199,6 +326,9 @@ public class SwamperHelperTest extends FakeDBApplication {
    */
   private Universe createK8sUniverseWithOtel(MetricsExportConfig metricsExportConfig) {
     when(appConfig.getString("yb.swamper.targetPath")).thenReturn(SWAMPER_TMP_PATH);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.k8sNodeExporterEnabled)))
+        .thenReturn(false);
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.metricsCollectionLevel)))
         .thenReturn(MetricCollectionLevel.NORMAL.name().toLowerCase());

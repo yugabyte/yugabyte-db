@@ -20,6 +20,7 @@ import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
 import {
   CreateUniverseContext,
+  CreateUniverseSteps,
   createUniverseFormMethods,
   createUniverseFormProps,
   initialCreateUniverseFormState,
@@ -41,6 +42,12 @@ import './styles/override.css';
 import YBLogo from '../../../assets/yb_logo.svg';
 import Close from '../../../assets/close rounded.svg';
 import { CircularProgress } from '@material-ui/core';
+import {
+  ENABLE_MULTI_PROVIDER_CREATE,
+  getPrimaryProvider,
+  isMultiProvider
+} from './helpers/providerConfigurations';
+import { areAllProvidersInstanceConfigured } from './helpers/instanceByProvider';
 
 const { YBButton } = yba;
 
@@ -93,14 +100,32 @@ export function CreateUniverse() {
   // Seed once from profile available at mount; never late-overwrite if settings arrive later.
   const [initialFormState] = useState(() => buildInitialFormState(userSettings));
   const restoreContextData = useMethods(createUniverseFormMethods, initialFormState);
-  const [{ activeStep, resilienceType, generalSettings }] = restoreContextData;
+  const [
+    {
+      activeStep,
+      resilienceType,
+      generalSettings,
+      instanceByProvider,
+      nodesAvailabilitySettings
+    }
+  ] = restoreContextData;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
-  const steps = useMemo(
-    () => getCreateUniverseSteps(t, resilienceType, isK8s, false),
-    [t, resilienceType, isK8s]
-  );
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
+  const multiHardwareIncomplete =
+    activeStep === CreateUniverseSteps.INSTANCE &&
+    ENABLE_MULTI_PROVIDER_CREATE &&
+    isMultiProvider(generalSettings) &&
+    !areAllProvidersInstanceConfigured(
+      generalSettings?.providerConfigurations ?? [],
+      instanceByProvider,
+      !!nodesAvailabilitySettings?.useDedicatedNodes
+    );
+  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s, false), [
+    t,
+    resilienceType,
+    isK8s
+  ]);
   const currentStepRef = useRef<StepsRef>(null);
   // Sync lock prevents double-click from advancing activeStep twice before React re-renders.
   const isNavigatingRef = useRef(false);
@@ -251,7 +276,7 @@ export function CreateUniverse() {
                           onClick={() => {
                             void runStepNavigation(() => currentStepRef.current?.onNext());
                           }}
-                          disabled={isNavigating}
+                          disabled={isNavigating || multiHardwareIncomplete}
                           endIcon={isNavigating ? <CircularProgress size={12} /> : undefined}
                           variant="ybaPrimary"
                           size="large"

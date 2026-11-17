@@ -134,6 +134,7 @@ class SnapshotTestUtil {
       MonoDelta interval = kSnapshotInterval, MonoDelta retention = kSnapshotRetention);
 
   Result<Schedules> ListSchedules(const SnapshotScheduleId& id = SnapshotScheduleId::Nil());
+  Status DeleteSchedule(const SnapshotScheduleId& schedule_id);
 
   Result<TxnSnapshotId> PickSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime hybrid_time);

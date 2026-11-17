@@ -17,8 +17,9 @@ is_cloud={{ is_cloud | default(false) }}
 # Function to start a server on a specific port using Python
 start_server() {
     local port=$1
-    python3 -m http.server $port >/dev/null 2>&1 &
-    echo $!  # Return the PID of the background server process
+    local working_dir=$2
+    (cd "$working_dir" && exec python3 -m http.server "$port") >/dev/null 2>&1 &
+    echo $!
 }
 
 # Function to check if a port is open
@@ -46,11 +47,9 @@ check_port() {
 # Function to forcefully kill a process
 force_kill() {
     local pid=$1
-    kill $pid 2>/dev/null
-    sleep 2
-    if ps -p $pid > /dev/null; then
-        kill -9 $pid 2>/dev/null
-    fi
+    kill "$pid" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do ps -p "$pid" >/dev/null || return; sleep 0.2; done
+    kill -9 "$pid" 2>/dev/null
 }
 
 force_kill_on_exit() {
@@ -74,19 +73,21 @@ check_port_available() {
 }
 
 # Check for internet access.
-if [[ "{{ is_airgap }}" == "False" && "$cloud_type" == "onprem" ]]; then
-    # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
+if [[ "{{ is_airgap }}" == "False" && "{{ cloud_type }}" == "onprem" ]]; then
+    # Attempt to run "/dev/tcp" 5 times with a 5 second timeout and return success if any succeed.
     # --preserve-status flag will maintain the exit code of the "/dev/tcp" command.
     HOST="yugabyte.com"
     PORT=443
 
-    for i in 1 2 3; do
-      timeout 5 bash -c "cat < /dev/null > /dev/tcp/${HOST}/${PORT}" --preserve-status && break
+    for i in 1 2 3 4 5; do
+      timeout --preserve-status 5 bash -c "cat < /dev/null > /dev/tcp/${HOST}/${PORT}" && break
     done
+    # Check the exit status of the internet connection attempt.
+    # Do not fail the precheck because there can be proxy settings.
     if [[ $? -ne 0 ]]; then
-        add_result "Internet Connection" "FAIL" "Internet connection check failed for non-airgap environment"
+        echo "Internet connection check failed for non-airgap environment"
     else
-        add_result "Internet Connection" "PASS" "Internet connection check passed for non-airgap environment"
+        echo "Internet connection check passed for non-airgap environment"
     fi
 fi
 
@@ -99,19 +100,16 @@ if [ "{{ check_available_ports }}" == "True" ]; then
 fi
 
 # Iterate through the list of ports, start server, check port, and stop server
-if [ "$cloud_type" == "onprem" ]; then
+if [ "{{ cloud_type }}" == "onprem" ]; then
+    working_dir=$(mktemp -d)
+    server_pid=""
+    # Single quotes, so the trap uses the server PID current at exit time.
+    trap '[ -n "$server_pid" ] && force_kill_on_exit "$server_pid"; rmdir "$working_dir" 2>/dev/null' EXIT
     for port in "${ports[@]}"; do
-        # Start the server and get its PID
-        server_pid=$(start_server $port)
-        if [ -n "$server_pid" ]; then
-            trap "force_kill_on_exit $server_pid" EXIT
-        fi
-        # Check if the port is open
+        server_pid=$(start_server "$port" "$working_dir")
         check_port "$vm_ip" "$port"
-
-        # Stop the server if the PID exists
-        if ps -p $server_pid > /dev/null; then
-            force_kill $server_pid
+        if ps -p "$server_pid" > /dev/null; then
+            force_kill "$server_pid"
         fi
     done
 fi

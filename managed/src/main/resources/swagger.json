@@ -1016,7 +1016,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1220,7 +1223,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -1520,7 +1526,10 @@
             "YBA_K8S_DISK_USAGE",
             "OTEL_COLLECTOR_RESTART",
             "NODE_EXPORTER_TLS_ROOT_NODES",
-            "NODE_EXPORTER_ROOT_NON_UNIVERSE"
+            "NODE_EXPORTER_ROOT_NON_UNIVERSE",
+            "DB_K8S_CPU_USAGE",
+            "DB_K8S_MEMORY_USAGE",
+            "DB_K8S_DATA_VOLUME_USAGE"
           ],
           "type" : "string"
         },
@@ -2330,6 +2339,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "taskDiff" : {
+          "description" : "Task Diff",
+          "readOnly" : true,
+          "type" : "object"
+        },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",
@@ -2734,6 +2748,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -3048,7 +3063,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -4731,7 +4747,7 @@
           "type" : "string"
         },
         "params" : {
-          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [collect_top_stats, --remote_tar_path, /tmp/top.tar.gz, ...].",
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [collect_top_ps_pmap_stats, --remote_tar_path, /tmp/top.tar.gz, ...].",
           "items" : {
             "type" : "string"
           },
@@ -4742,7 +4758,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {
@@ -5805,6 +5821,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -6119,7 +6136,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -7459,10 +7477,11 @@
           "type" : "string"
         },
         "state" : {
-          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion, Validating.",
           "enum" : [
             "Active",
-            "QueuedForDeletion"
+            "QueuedForDeletion",
+            "Validating"
           ],
           "readOnly" : true,
           "type" : "string"
@@ -7535,10 +7554,11 @@
           "type" : "string"
         },
         "state" : {
-          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion, Validating.",
           "enum" : [
             "Active",
-            "QueuedForDeletion"
+            "QueuedForDeletion",
+            "Validating"
           ],
           "readOnly" : true,
           "type" : "string"
@@ -8723,7 +8743,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {
@@ -9086,6 +9106,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -9400,7 +9421,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -9967,6 +9989,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -10281,7 +10304,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -11541,6 +11565,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -11855,7 +11880,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -12324,6 +12350,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -12638,7 +12665,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -16360,6 +16388,12 @@
           "minimum" : 1,
           "type" : "integer"
         },
+        "max_num_replicas" : {
+          "description" : "Maximum replicas",
+          "format" : "int32",
+          "minimum" : 1,
+          "type" : "integer"
+        },
         "min_num_replicas" : {
           "description" : "Minimum replicas",
           "format" : "int32",
@@ -16556,12 +16590,22 @@
           ],
           "type" : "string"
         },
+        "maxFileSize" : {
+          "description" : "WARNING: This is a preview API that could change. Maximum size of the active application log file before it is rolled over, for example \"1024MB\" or \"1GB\". Minimum 256MB.",
+          "example" : "1024MB",
+          "type" : "string"
+        },
         "maxHistory" : {
           "format" : "int32",
           "minimum" : 0,
           "type" : "integer"
         },
         "rolloverPattern" : {
+          "type" : "string"
+        },
+        "totalSizeCap" : {
+          "description" : "WARNING: This is a preview API that could change. Total size of retained application log archives, for example \"20GB\". Archives are deleted oldest first once this is exceeded, so on a high volume node this binds before maxHistory and retains fewer days than maxHistory allows. Minimum 5GB.",
+          "example" : "20GB",
           "type" : "string"
         }
       },
@@ -17278,6 +17322,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -17592,7 +17637,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -18003,6 +18049,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -18317,7 +18364,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -19126,6 +19174,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -19440,7 +19489,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -20007,6 +20057,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -20321,7 +20372,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -21604,6 +21656,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -21918,7 +21971,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22312,6 +22366,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -22626,7 +22681,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -22758,6 +22814,7 @@
               "ProvisionUniverseNodes",
               "DeleteCustomerConfig",
               "DeleteCustomerStorageConfig",
+              "ValidateStorageConfig",
               "ResizeNode",
               "RollbackResizeNode",
               "CreateTableSpacesInUniverse",
@@ -23072,7 +23129,8 @@
               "SaveSoftwareUpgradeProgress",
               "CheckDuplicateInstance",
               "RunUpgradeNodeAgent",
-              "CreateYbStorageDatabase"
+              "CreateYbStorageDatabase",
+              "WaitForRpcClientCert"
             ],
             "type" : "string"
           },
@@ -23358,6 +23416,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -23672,7 +23731,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -24175,6 +24235,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -24489,7 +24550,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -25381,6 +25443,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -25695,7 +25758,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -26269,6 +26333,7 @@
               "OperatorImport",
               "RegisterWithPACollector",
               "UnregisterFromPACollector",
+              "Validate",
               "Unknown"
             ],
             "type" : "string"
@@ -26776,6 +26841,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -27090,7 +27156,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -27500,6 +27567,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -27814,7 +27882,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -28370,6 +28439,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -28684,7 +28754,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29059,6 +29130,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -29373,7 +29445,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -29748,6 +29821,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -30062,7 +30136,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -30958,6 +31033,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -31272,7 +31348,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },
@@ -31415,7 +31492,7 @@
         },
         "managedLoadBalancer" : {
           "$ref" : "#/definitions/ManagedLoadBalancerConfig",
-          "description" : "WARNING: This is a preview API that could change. Load balancers that YBA creates, manages and deletes. Set when the universe is created. When set, it must enable at least one load balancer."
+          "description" : "WARNING: This is a preview API that could change. Load balancers that YBA creates, manages and deletes. Set when the universe is created. An edit can turn it on or off. When it turns it on, YBA takes over the load balancer that the zones of a region name with lbName. At create, it must enable at least one load balancer; in an edit, one that enables none turns it off and leaving it out keeps it."
         },
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
@@ -31511,6 +31588,10 @@
           "type" : "string"
         },
         "useHostname" : {
+          "type" : "boolean"
+        },
+        "useNodeToNodeClientCerts" : {
+          "description" : "WARNING: This is a preview API that could change. Servers require a client cert on RPC (node_to_node_encryption_use_client_certificates). Supported only on Kubernetes universes whose node-to-node encryption uses a cert-manager (K8SCertManager) root CA; VM universes and Kubernetes universes with other root CA types are not supported. Can only be set at universe creation.",
           "type" : "boolean"
         },
         "useSpotInstance" : {
@@ -32223,6 +32304,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -32537,7 +32619,8 @@
             "SaveSoftwareUpgradeProgress",
             "CheckDuplicateInstance",
             "RunUpgradeNodeAgent",
-            "CreateYbStorageDatabase"
+            "CreateYbStorageDatabase",
+            "WaitForRpcClientCert"
           ],
           "type" : "string"
         },

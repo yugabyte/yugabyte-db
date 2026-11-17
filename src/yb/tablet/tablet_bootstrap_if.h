@@ -38,6 +38,7 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 
 #include "yb/consensus/log_fwd.h"
@@ -136,10 +137,19 @@ class TabletStatusListener {
   DISALLOW_COPY_AND_ASSIGN(TabletStatusListener);
 };
 
-struct DocDbOpIds {
+struct VectorIndexPersistentState {
+  OpId op_id;
+  // Hybrid time of the op that added the index. Its backfill covers the ops at or below it. kMin
+  // when unknown.
+  HybridTime hybrid_time = HybridTime::kMin;
+
+  std::string ToString() const;
+};
+
+struct DocDbPersistentState {
   OpId regular;
   OpId intents;
-  boost::container::small_vector<OpId, 1> vector_indexes;
+  boost::container::small_vector<VectorIndexPersistentState, 1> vector_indexes;
 
   std::string ToString() const;
 };
@@ -149,9 +159,9 @@ class TabletBootstrapTestHooksIf {
  public:
   virtual ~TabletBootstrapTestHooksIf() {}
 
-  // This is called during TabletBootstrap initialization so that the test can pretend certain
-  // OpIds have been flushed in to regular and intents RocksDBs.
-  virtual std::optional<DocDbOpIds> GetFlushedOpIdsOverride() const = 0;
+  // This is called during TabletBootstrap initialization so that the test can override the
+  // persistent state of the DocDB storages.
+  virtual std::optional<DocDbPersistentState> GetPersistentStateOverride() const = 0;
 
   // This is called during TabletBootstrap initialization so that the test can pretent certain
   // OpId has been flushed in retryable requests;

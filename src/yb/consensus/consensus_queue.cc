@@ -35,6 +35,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
@@ -78,6 +79,7 @@ using namespace yb::size_literals;
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_bool(enable_quiescent_tablets);
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
@@ -579,6 +581,9 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     request->set_caller_term(queue_state_.current_term);
+    if (FLAGS_enable_quiescent_tablets) {
+      queue_state_.all_replicated_op_id.ToPB(request->mutable_all_replicated_op_id());
+    }
     unreachable_time =
         MonoTime::Now().GetDeltaSince(peer->last_successful_communication_time);
     if (member_type) *member_type = peer->member_type;
@@ -1135,10 +1140,18 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
 Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerForBootstrap(
     const TrackedPeer* remote_tracked_peer) {
   const CloudInfoPB& src_cloud_info = remote_tracked_peer->cloud_info.value();
+  // Prefer a source that finished post-split compaction, so the new peer doesn't copy the split
+  // parent's data, unless it's outside the new peer's region.
+  auto score = [&src_cloud_info](const TrackedPeer& peer) {
+    auto level = TablespaceParser::GetLocalityLevel(src_cloud_info, peer.cloud_info.value());
+    bool compacted = !peer.pending_post_split_compaction;
+    bool compacted_in_region = compacted && level >= LocalityLevel::kRegion;
+    return std::tuple(compacted_in_region, level, compacted);
+  };
   // initializing rbs_source as the leader itself.
-  LocalityLevel best_locality_level =
-      TablespaceParser::GetLocalityLevel(src_cloud_info, local_peer_pb_.cloud_info());
+  auto best_score = score(*local_peer_);
   PeerMessageQueue::TrackedPeer* rbs_source = local_peer_;
+  const auto min_anchorable_index = VERIFY_RESULT(log_cache_.min_anchorable_index());
   for (auto it = peers_map_.begin(); it != peers_map_.end(); it++) {
     // don't consider locality of remote_tracked_peer with itself
     if (!it->second->cloud_info.has_value() || remote_tracked_peer == it->second ||
@@ -1147,22 +1160,22 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
     }
 
     // Consider only those followers as rbs source which are in the same term as the leader
-    // and have last_received_opid >= leader log's min available index.
+    // and have last_received_opid >= leader log's min anchorable index, since the source anchors
+    // the leader's log at its last op.
     // TODO: Add a gflag that sets the max allowed difference between the leader's last
     // logged opid and that of the rbs source. Reject peer as an rbs source if
     // leader->last_received.index - remote_peer->last_received.index > flag_value
     OpId remote_last_received_opid = it->second->last_received;
     if (it->second->member_type != PeerMemberType::VOTER ||
         remote_last_received_opid.term != queue_state_.current_term ||
-        remote_last_received_opid.index < VERIFY_RESULT(log_cache_.earliest_op_index()) ||
+        remote_last_received_opid.index < min_anchorable_index ||
         !it->second->is_last_exchange_successful) {
       continue;
     }
 
-    auto cur_locality_level =
-        TablespaceParser::GetLocalityLevel(src_cloud_info, it->second->cloud_info.value());
-    if (cur_locality_level > best_locality_level) {
-      best_locality_level = cur_locality_level;
+    auto cur_score = score(*it->second);
+    if (cur_score > best_score) {
+      best_score = cur_score;
       rbs_source = it->second;
     }
   }
@@ -1172,11 +1185,17 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
+  // Read here rather than on local appends, which stop on a tablet without writes and leave the
+  // value stale. Outside queue_lock_ because the check takes a ScopedRWOperation and the metadata
+  // mutex.
+  const bool local_pending_post_split_compaction =
+      context_ && context_->PendingPostSplitCompaction();
   // The whole request is populated under queue_lock_: rbs_source points into peers_map_, and
   // UntrackPeer deletes those objects under the same lock.
   LockGuard lock(queue_lock_);
   DCHECK_EQ(queue_state_.state, State::kQueueOpen);
   DCHECK_NE(uuid, local_peer_uuid_);
+  local_peer_->pending_post_split_compaction = local_pending_post_split_compaction;
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
   if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
     return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
@@ -1681,6 +1700,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
 
     peer->is_last_exchange_successful = true;
     peer->num_sst_files = response.num_sst_files();
+    peer->pending_post_split_compaction = response.pending_post_split_compaction();
 
     if (response.has_responder_term()) {
       // The peer must have responded with a term that is greater than or equal to the last known
@@ -1758,6 +1778,11 @@ PeerMessageQueue::TrackedPeer PeerMessageQueue::GetTrackedPeerForTests(string uu
 OpId PeerMessageQueue::TEST_GetAllReplicatedIndex() const {
   LockGuard lock(queue_lock_);
   return queue_state_.all_replicated_op_id;
+}
+
+OpId PeerMessageQueue::GetAllReplicatedOpId() const {
+  LockGuard lock(queue_lock_);
+  return queue_state_.mode == Mode::LEADER ? queue_state_.all_replicated_op_id : OpId::Min();
 }
 
 OpId PeerMessageQueue::GetAllAppliedOpId() const {

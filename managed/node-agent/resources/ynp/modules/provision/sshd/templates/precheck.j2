@@ -2,9 +2,9 @@ if ssh -o ConnectTimeout=6 \
         -o StrictHostKeyChecking=no \
         -p {{ custom_ssh_port }} \
         test@{{ ip_address }} "echo 'x'" 2>&1 | grep -q "Permission denied"; then
-  add_result "SSH Port Connectivity" "Pass" \
+  add_result "SSH Port Connectivity" "PASS" \
              "Host is reachable on SSH port {{ custom_ssh_port }}"
 else
-  add_result "SSH Port Connectivity" "Fail" \
+  add_result "SSH Port Connectivity" "FAIL" \
              "Unable to reach host on SSH port {{ custom_ssh_port }}"
 fi

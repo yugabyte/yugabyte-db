@@ -585,8 +585,37 @@ public class PerfAdvisorService {
             .setCustomerId(paCollector.getCustomerUUID())
             .setMetricsExportToPrometheusEnabled(mode.isMetricsExportToPrometheusEnabled())
             .setCollectionMode(mode.getCollectionMode())
-            .setExportConfigIds(mode.requiresExportConfig() ? exportConfigIds : null);
+            .setExportConfigIds(mode.requiresExportConfig() ? exportConfigIds : null)
+            .setActiveTableMetricsEnabled(
+                runtimeConfig.getBoolean(UniverseConfKeys.paActiveTableMetricsEnabled.getKey()));
     client.putUniverseMetadata(paCollector, universeMetadata);
+  }
+
+  /**
+   * Sends the universe's current {@code yb.pa.active_table_metrics.enabled} to its PA Collector,
+   * keeping the rest of its registration. Does nothing for universes not registered with PA.
+   */
+  public void syncActiveTableMetrics(Universe universe) {
+    UUID collectorUuid = universe.getUniverseDetails().getPaCollectorUuid();
+    if (collectorUuid == null) {
+      return;
+    }
+    PACollector collector = get(Customer.get(universe.getCustomerId()).getUuid(), collectorUuid);
+    if (collector == null) {
+      return;
+    }
+    PerfAdvisorClient.UniverseMetadata metadata =
+        client.getUniverseMetadata(collector, universe.getUniverseUUID());
+    if (metadata == null) {
+      return;
+    }
+    boolean enabled =
+        configFactory
+            .forUniverse(universe)
+            .getBoolean(UniverseConfKeys.paActiveTableMetricsEnabled.getKey());
+    if (metadata.isActiveTableMetricsEnabled() != enabled) {
+      client.putUniverseMetadata(collector, metadata.setActiveTableMetricsEnabled(enabled));
+    }
   }
 
   public List<PerfAdvisorClient.ExportConfig> listExportConfigs(PACollector collector) {

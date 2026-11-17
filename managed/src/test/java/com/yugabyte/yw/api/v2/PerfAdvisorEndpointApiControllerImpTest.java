@@ -38,8 +38,8 @@ import play.mvc.Result;
 public class PerfAdvisorEndpointApiControllerImpTest extends FakeDBApplication {
 
   private static final String VALID_REPORT =
-      "{\"checks\":[{\"field\":\"collectionEndpoint\",\"ok\":true},"
-          + "{\"field\":\"metricsEndpoint\",\"ok\":true}]}";
+      "{\"checks\":[{\"field\":\"collection.url\",\"ok\":true},"
+          + "{\"field\":\"metrics.url\",\"ok\":true}]}";
 
   private Customer customer;
   private Users user;
@@ -81,9 +81,9 @@ public class PerfAdvisorEndpointApiControllerImpTest extends FakeDBApplication {
       server.enqueue(
           new MockResponse()
               .setBody(
-                  "{\"checks\":[{\"field\":\"collectionEndpoint\",\"ok\":false,"
+                  "{\"checks\":[{\"field\":\"collection.url\",\"ok\":false,"
                       + "\"message\":\"Cannot reach the Collection API\"},"
-                      + "{\"field\":\"metricsEndpoint\",\"ok\":true}]}"));
+                      + "{\"field\":\"metrics.url\",\"ok\":true}]}"));
 
       Result result = assertPlatformException(() -> post(spec("byoc-prod")));
 
@@ -200,7 +200,7 @@ public class PerfAdvisorEndpointApiControllerImpTest extends FakeDBApplication {
       server.enqueue(
           new MockResponse()
               .setBody(
-                  "{\"checks\":[{\"field\":\"metricsEndpoint\",\"ok\":false,"
+                  "{\"checks\":[{\"field\":\"metrics.url\",\"ok\":false,"
                       + "\"message\":\"rejected these credentials\"}]}"));
 
       Result result =
@@ -267,8 +267,8 @@ public class PerfAdvisorEndpointApiControllerImpTest extends FakeDBApplication {
     auth.put("username", "writer");
     auth.put("password", "s3cret");
     spec.set("collection_auth", auth);
-    spec.put("ybm_account_id", "account-1");
-    spec.put("ybm_project_id", "project-1");
+    spec.put("ybm_account_id", "6f4c7a0e-2b1d-4c3e-9a8f-1d2e3f4a5b6c");
+    spec.put("ybm_project_id", "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d");
     return spec;
   }
 

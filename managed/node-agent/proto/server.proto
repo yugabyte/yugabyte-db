@@ -28,6 +28,8 @@ message ServerInfo {
     // Whether /etc/systemd/system/node_exporter.service exists. YBA alerts on nodes that still
     // have it.
     bool rootNodeExporterUnit = 6;
+    // Whether node agent runs in Go FIPS 140-3 mode.
+    bool fipsEnabled = 7;
 }
 
 message PingRequest {

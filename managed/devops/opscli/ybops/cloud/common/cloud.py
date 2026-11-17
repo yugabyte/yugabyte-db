@@ -157,6 +157,12 @@ class AbstractCloud(AbstractCommandParser):
             if value:
                 self.metadata[key] = value
 
+    def format_sdk_error(self, e):
+        """Returns a short user-facing message for an exception raised by this cloud's SDK, or
+        None to show the exception's own text.
+        """
+        return None
+
     def validate_credentials(self):
         potential_env_vars = self.metadata.get('credential_vars')
         missing_var = None
@@ -390,7 +396,8 @@ class AbstractCloud(AbstractCommandParser):
             # Reset the write permissions
             remote_shell.check_exec_command('chmod 400 {}/*'.format(certs_dir))
 
-    def __verify_certs_hostname(self, node_crt_path, connect_options):
+    def __verify_certs_hostname(self, node_crt_path, connect_options,
+                                require_san_match=False):
         host_port_user = get_host_port_user(connect_options)
         host = host_port_user["host"]
         remote_shell = RemoteShell(connect_options)
@@ -426,6 +433,10 @@ class AbstractCloud(AbstractCommandParser):
         cn_matched = _match_hostname(cert_cn, host)
         san_matched = _match_hostname(cert_san, host)
 
+        if require_san_match and not san_matched:
+            raise YBOpsRuntimeError(
+                "'{}' does not match with any SAN entry of the node cert: {}, cert_san: {}. A"
+                " matching SAN is required.".format(host, node_crt_path, cert_san))
         if not cn_matched and not san_matched:
             raise YBOpsRuntimeError(
                 "'{}' does not match with any entry in CN or SAN of the node cert: {}, "
@@ -448,7 +459,8 @@ class AbstractCloud(AbstractCommandParser):
                     root_crt_path, e))
 
     def verify_certs(self, root_crt_path, server_crt_path, server_key_path, connect_options,
-                     verify_hostname=False, perform_extended_validation=False):
+                     verify_hostname=False, perform_extended_validation=False,
+                     require_san_match=False):
         remote_shell = RemoteShell(connect_options)
 
         # Verify that the root cert, server certs and keys are not empty strings or None
@@ -550,7 +562,8 @@ class AbstractCloud(AbstractCommandParser):
                     "Server certificate and server key do not match.")
 
         if verify_hostname:
-            self.__verify_certs_hostname(server_crt_path, connect_options)
+            self.__verify_certs_hostname(server_crt_path, connect_options,
+                                         require_san_match)
 
     def copy_server_certs(
             self,
@@ -612,7 +625,8 @@ class AbstractCloud(AbstractCommandParser):
                         "Skipping host name validation for certs for node {}".format(node_ip))
                     verify_hostname = False
                 self.verify_certs(root_cert_path, server_cert_path, server_key_path,
-                                  connect_options, verify_hostname)
+                                  connect_options, verify_hostname,
+                                  require_san_match=skip_cert_validation == 'REQUIRE_SAN')
             if copy_root:
                 remote_shell.check_exec_command("cp '{}' '{}'".format(root_cert_path,
                                                                       yb_root_cert_path))

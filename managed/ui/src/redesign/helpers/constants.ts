@@ -101,6 +101,8 @@ export const RuntimeConfigKey = {
     'yb.ui.feature_flags.enable_non_restart_gflag_upgrade_option',
   ENABLE_AZ_OVERRIDES_K8S: 'yb.ui.feature_flags.enable_az_overrides_k8s',
   ENABLE_CANARY_UPGRADE: 'yb.upgrade.enable_canary_upgrade',
+  OCI_ALLOW_INPLACE_MARKETPLACE_BASED_IMAGE_UPGRADE:
+    'yb.oci.allow_boot_volume_replace_for_marketplace_based_images',
   SKIP_XCLUSTER_SNAPSHOT_SCHEDULES: 'yb.xcluster.db_scoped.skip_snapshot_schedules',
   ENABLE_PRIMARY_RF_9: 'yb.universe.enable_primary_rf_9'
 } as const;

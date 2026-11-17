@@ -1,0 +1,26 @@
+title: GcpHostInfo
+description: GCE instance metadata of the YBA host. Part of HostCloudInfo.
+type: object
+properties:
+  project:
+    description: ID of the project that the instance belongs to
+    type: string
+    readOnly: true
+  network:
+    description: Name of the VPC network of the instance's first network interface
+    type: string
+    readOnly: true
+  shared_vpc_project:
+    description: 'Number of the project that owns that network: the host project for a Shared VPC, otherwise the instance''s own project'
+    type: string
+    readOnly: true
+  zone:
+    description: GCP zone
+    type: string
+    readOnly: true
+  region:
+    description: GCP region
+    type: string
+    readOnly: true
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

@@ -188,6 +188,24 @@ TEST_F(SysCatalogRespectAffinityTest, TestMoveToPreferredZone) {
   }, kDefaultTimeout, "Master leader stepdown"));
 }
 
+// Tests that when the preferred zone contains only a master that was added to the sys catalog
+// Raft config via ChangeConfig, the sys catalog leader moves to that master.
+TEST_F(SysCatalogRespectAffinityTest, TestMoveToPreferredZoneOfAddedMaster) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2,c.r.z3", 4, ""));
+  ASSERT_OK(yb_admin_client_->SetPreferredZones({"c.r.z3"}));
+
+  // Start a fourth master; the fixture's --placement_zone=z${index} puts it in a new zone, z3.
+  auto new_master = ASSERT_RESULT(external_mini_cluster()->StartShellMaster());
+
+  // Like YBA and yb-admin, ExternalMiniCluster::ChangeConfig sends the new peer without its
+  // cloud_info, so the Raft config does not record the added master's zone (z3).
+  ASSERT_OK(external_mini_cluster()->ChangeConfig(new_master, consensus::ADD_SERVER));
+
+  ASSERT_OK(WaitFor([&]() {
+    return IsMasterLeaderInZone("c", "r", "z3");
+  }, kDefaultTimeout, "Master leader moves to added master's zone"));
+}
+
 // Note for these tests: there is an edge case where the master goes down between ListMasters
 // and StepDown, which is not tested here. The behavior should be the same, however.
 
