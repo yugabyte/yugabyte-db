@@ -25,7 +25,10 @@ MODULES=(cdcstate logparse serverconfredact)
 
 # A run that stops early must not leave the previous run's reports for CI to collect.
 for module in "${MODULES[@]}"; do
-  rm -f "$SCRIPT_DIR/$module/target/test-reports/"*
+  if ! rm -f "$SCRIPT_DIR/$module/target/test-reports/"*; then
+    echo "failed to delete the previous reports of supportbundle/$module" >&2
+    exit 2
+  fi
 done
 
 if ! command -v go >/dev/null; then
@@ -52,7 +55,10 @@ failed=()
 for module in "${MODULES[@]}"; do
   echo "Running Go tests in supportbundle/$module..."
   report_dir="$SCRIPT_DIR/$module/target/test-reports"
-  mkdir -p "$report_dir"
+  if ! mkdir -p "$report_dir"; then
+    echo "failed to create $report_dir" >&2
+    exit 2
+  fi
   output_file="$report_dir/test_output.txt"
   # -count=1: always run, never report a cached pass.
   (cd "$SCRIPT_DIR/$module" && go test -count=1 -v ./...) > "$output_file" 2>&1
