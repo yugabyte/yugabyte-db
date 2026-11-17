@@ -137,8 +137,35 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
+-- Gap columns before two merge sort columns
+--
+-- The merge sorts on ord1, g1, ord2, g2, g3, ord3: g1 is a gap column before
+-- ord2, and g2 and g3 are two gap columns before ord3.  With expression
+-- pushdown off, the filters that tie them run after the merge.  The rows that
+-- pass the filters are as in the descending gap column section.  Each decoy
+-- fails the filter on one gap column and comes first in stream bkt = 1 among
+-- the rows that the earlier merge sort columns tie, so a merge that leaves out
+-- that gap column returns the rows out of order.
+CREATE TABLE gap_multi_tbl (bkt int, ord1 int, g1 int, ord2 int, g2 int, g3 int,
+    ord3 int, PRIMARY KEY (bkt ASC, ord1 ASC, g1 ASC, ord2 ASC, g2 ASC, g3 ASC,
+    ord3 ASC));
+INSERT INTO gap_multi_tbl VALUES
+    (1, 1, 1, 1, 1, 1, 10), (1, 1, 1, 1, 1, 1, 30),  -- stream bkt = 1
+    (2, 1, 1, 1, 1, 1, 20),                          -- stream bkt = 2
+    (1, 1, 0, 9, 9, 9, 99),                          -- decoy for g1
+    (1, 1, 1, 1, 0, 9, 99),                          -- decoy for g2
+    (1, 1, 1, 1, 1, 0, 99);                          -- decoy for g3
+ANALYZE gap_multi_tbl;
+
+SET yb_enable_expression_pushdown = off;
+\set Q1 ':off'
+\set Q2 ':on'
+\set query ':P :Q SELECT g1, ord1, g2, g3, ord2, ord3, bkt FROM gap_multi_tbl WHERE bkt IN (1, 2) AND ord1 = g1 AND ord2 = g2 AND ord2 = g3 ORDER BY ord1, ord2, ord3;'
+\i :run_query
+RESET yb_enable_expression_pushdown;
+
 DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_unread_tbl, gap_desc_tbl,
-    gap_null_tbl;
+    gap_null_tbl, gap_multi_tbl;
 
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
