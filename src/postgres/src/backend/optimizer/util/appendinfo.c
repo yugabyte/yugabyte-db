@@ -31,7 +31,6 @@
 #include "pg_yb_utils.h"
 #include "utils/reltrigger.h"
 
-
 typedef struct
 {
 	PlannerInfo *root;
