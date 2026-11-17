@@ -1011,6 +1011,13 @@ GetUserNameFromId(Oid roleid, bool noerr)
 	tuple = SearchSysCache1(AUTHOID, ObjectIdGetDatum(roleid));
 	if (!HeapTupleIsValid(tuple))
 	{
+		/*
+		 * YB: Send YbObjectDropped to ConnMgr. We match against AuthenticatedUserId
+		 * to only detect when the initial login role is deleted
+		 */
+		if (YbIsClientYsqlConnMgr() && !noerr && roleid == AuthenticatedUserId)
+			YbSendConnMgrObjectDropped('u', roleid);
+
 		if (!noerr)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),

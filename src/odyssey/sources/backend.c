@@ -495,8 +495,6 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 {
 	od_instance_t *instance = server->global->instance;
 	kiwi_fe_error_t error;
-	int detail_len = 0;
-	int hint_len = 0;
 
 	od_client_t *yb_server_client = server->client;
 	od_client_t *yb_external_client = (yb_server_client->yb_is_authenticating) ?
@@ -517,7 +515,6 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	if (error.detail) {
 		od_error(&instance->logger, context, yb_external_client, server,
 			 "DETAIL: %s", error.detail);
-		detail_len = strlen(error.detail);
 	}
 
 	/* catch and store error to be forwarded later if we are in deploy phase */
@@ -530,54 +527,17 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	if (error.hint) {
 		od_error(&instance->logger, context, yb_external_client, server,
 			 "HINT: %s", error.hint);
-		hint_len = strlen(error.hint);
-
-		if (strcmp(error.hint, "Database may have been dropped and recreated") == 0)
-		{
-			/* Reset the route and close the client */
-			yb_mark_routes_inactive(server->global->router,
-							  ((od_route_t*)server->route)->id.yb_db_oid, -1);
-
-			if (yb_external_client != NULL &&
-			    ((od_client_t *)yb_external_client)->type ==
-				    OD_POOL_CLIENT_EXTERNAL)
-			{
-				machine_msg_t *msg;
-				msg = kiwi_be_write_error_as(NULL, error.severity, error.code,
-				     error.detail, detail_len, error.hint,
-				     hint_len, error.message, strlen(error.message));
-				/* YB: best-effort forward to client, already handling error */
-				if (msg == NULL)
-					return;
-				od_write(&yb_external_client->io, &msg);
-			}
-		}
 	}
-
-	if (strstr(error.message, "invalid role OID")) {
-		/* Reset the route and close the client */
-		yb_mark_routes_inactive(server->global->router, -1,
-						  ((od_route_t*)server->route)->id.yb_user_oid);
-
-		if (yb_external_client != NULL &&
-			((od_client_t *)yb_external_client)->type == OD_POOL_CLIENT_EXTERNAL)
-			{
-				machine_msg_t *msg;
-				msg = kiwi_be_write_error_as(NULL, error.severity, error.code,
-				     error.detail, detail_len, error.hint,
-				     hint_len, error.message, strlen(error.message));
-				/* YB: best-effort forward to client, already handling error */
-				if (msg == NULL)
-					return;
-				od_write(&yb_external_client->io, &msg);
-			}	
-		}
 }
 
 int od_backend_ready(od_server_t *server, char *data, uint32_t size)
 {
 	int status;
 	int rc;
+
+	/* YB: Mark the role's routes inactive if YbObjectDropped was received. */
+	yb_apply_dropped_object(server);
+
 	rc = kiwi_fe_read_ready(data, size, &status);
 	if (rc == -1)
 		return -1;
@@ -1078,6 +1038,14 @@ static inline int od_backend_startup(od_server_t *server,
 			if (rc == -1)
 				return -1;
 			if (yb_is_route_invalid(route))
+				return -1;
+			break;
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			rc = yb_handle_object_dropped_pkt(server,
+							  machine_msg_data(msg),
+							  machine_msg_size(msg));
+			machine_msg_free(msg);
+			if (rc == -1)
 				return -1;
 			break;
 		default:
@@ -1610,6 +1578,14 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 			od_backend_error(server, context, machine_msg_data(msg),
 					 machine_msg_size(msg));
 			machine_msg_free(msg);
+			continue;
+		} else if (type == YB_KIWI_BE_OBJECT_DROPPED) {
+			int rc = yb_handle_object_dropped_pkt(
+				server, machine_msg_data(msg),
+				machine_msg_size(msg));
+			machine_msg_free(msg);
+			if (rc == -1)
+				return -1;
 			continue;
 		} else if (type == YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) {
 			od_backend_evict_server_hashmap(server, context,

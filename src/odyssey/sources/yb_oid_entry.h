@@ -15,6 +15,7 @@
 
 enum yb_oid_status { YB_OID_ACTIVE, YB_OID_DROPPED };
 enum yb_oid_object { YB_USER, YB_DATABASE };
+enum yb_dropped_object_kind { YB_DROPPED_ROLE = 'u' };
 
 typedef struct {
 	volatile int name_len;
@@ -35,5 +36,10 @@ extern int yb_is_route_invalid(void *route);
 
 extern int yb_handle_oid_pkt_client(od_instance_t *instance,
 				    od_client_t *client, machine_msg_t *msg);
+
+extern int yb_handle_object_dropped_pkt(od_server_t *server, char *data,
+					uint32_t size);
+
+extern void yb_apply_dropped_object(od_server_t *server);
 
 #endif
