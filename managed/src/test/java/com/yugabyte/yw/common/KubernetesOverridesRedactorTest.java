@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -533,5 +535,16 @@ public class KubernetesOverridesRedactorTest {
     String submitted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: \"REDACTED \"\nx: y\n";
     String restored = KubernetesOverridesRedactor.restore(stored, submitted, "o");
     assertEquals("tserver-secret", at(restored, "gflags", "tserver", "ycql_ldap_bind_passwd"));
+  }
+
+  @Test
+  public void redactIsCachedByContent() {
+    String text = STORED + "id: " + UUID.randomUUID() + "\n";
+    String redacted = KubernetesOverridesRedactor.redact(text);
+    assertNoSecrets(redacted);
+    // Equal text from another response gets the cached result; changed text is redacted afresh.
+    assertSame(redacted, KubernetesOverridesRedactor.redact(new String(text.toCharArray())));
+    String changed = KubernetesOverridesRedactor.redact(text.replace("env: test", "env: prod"));
+    assertEquals(redacted.replace("env: test", "env: prod"), changed);
   }
 }

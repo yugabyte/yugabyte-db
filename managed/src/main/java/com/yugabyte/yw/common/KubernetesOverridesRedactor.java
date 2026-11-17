@@ -5,6 +5,8 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.io.StringReader;
 import java.util.ArrayList;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.yaml.snakeyaml.DumperOptions.FlowStyle;
 import org.yaml.snakeyaml.DumperOptions.ScalarStyle;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -56,6 +59,17 @@ import play.libs.Json;
 public final class KubernetesOverridesRedactor {
 
   private static final String REDACTED = RedactingService.SECRET_REPLACEMENT;
+
+  /**
+   * Each universe GET and poll of the universe list redacts the same stored overrides again, and
+   * parsing overrides that hold secrets takes about as long as redacting the rest of the universe.
+   * Keyed by a digest, so the cache keeps no copy of the overrides. At most 4M chars (8 MB).
+   */
+  private static final Cache<String, String> REDACTED_BY_DIGEST =
+      CacheBuilder.newBuilder()
+          .maximumWeight(4_000_000)
+          .<String, String>weigher((digest, redacted) -> digest.length() + redacted.length())
+          .build();
 
   private KubernetesOverridesRedactor() {}
 
@@ -145,14 +159,20 @@ public final class KubernetesOverridesRedactor {
         && !RedactingService.mentionsSecret(overrides, secretKeys())) {
       return overrides;
     }
-    try {
-      return rewrite(overrides);
-    } catch (RuntimeException e) {
-      // Hidden whole, not thrown: restore compares overrides sent back unchanged with this, so it
-      // has to be what responses show.
-      log.warn("Failed to redact Kubernetes overrides; hiding them whole.", e);
-      return REDACTED;
+    String digest = DigestUtils.sha256Hex(overrides);
+    String redacted = REDACTED_BY_DIGEST.getIfPresent(digest);
+    if (redacted == null) {
+      try {
+        redacted = rewrite(overrides);
+      } catch (RuntimeException e) {
+        // Hidden whole, not thrown: restore compares overrides sent back unchanged with this, so
+        // it has to be what responses show.
+        log.warn("Failed to redact Kubernetes overrides; hiding them whole.", e);
+        redacted = REDACTED;
+      }
+      REDACTED_BY_DIGEST.put(digest, redacted);
     }
+    return redacted;
   }
 
   private static String rewrite(String overrides) {
