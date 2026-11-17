@@ -393,11 +393,28 @@ class GlobalLoadState {
   // List of tablet server ids that have pending deletes.
   std::unordered_map<TabletServerId, std::set<TabletId>> pending_deletes_;
 
-  // Tiered storage: migrations in flight per tablet server and in all, counted while analyzing
-  // tablets (replicas still moving toward their target) and pending tasks, and bumped on every
-  // AlterTabletTier the balancer sends this run.
-  std::unordered_map<TabletServerId, int> tier_migrations_in_flight_;
+  // Tiered storage: the replicas, by tablet server, with a migration in flight. Fed from three
+  // sources that can all describe the same replica: its tablet report (still moving toward its
+  // target), an AlterTabletTier task still pending, and the balancer's record of an
+  // AlterTabletTier it sent whose report has not arrived yet, plus every one sent this run. Keyed
+  // so a replica counts once whichever of them cover it. total_tier_migrations_in_flight_ is the
+  // number of keys, for the placement's cap.
+  std::unordered_map<TabletServerId, std::unordered_set<TabletId>> tier_migrations_in_flight_;
   int total_tier_migrations_in_flight_ = 0;
+
+  // Records the replica as in flight; false when it already was.
+  bool AddTierMigrationInFlight(const TabletId& tablet_id, const TabletServerId& ts_uuid) {
+    if (!tier_migrations_in_flight_[ts_uuid].insert(tablet_id).second) {
+      return false;
+    }
+    ++total_tier_migrations_in_flight_;
+    return true;
+  }
+
+  int TierMigrationsInFlightOn(const TabletServerId& ts_uuid) const {
+    auto it = tier_migrations_in_flight_.find(ts_uuid);
+    return it == tier_migrations_in_flight_.end() ? 0 : narrow_cast<int>(it->second.size());
+  }
 
   ClusterBalancerActivityInfo activity_info_;
 
@@ -690,7 +707,9 @@ class PerTableLoadState {
   std::unordered_map<TableId, TabletToTabletServerMap> pending_remove_replica_tasks_;
   std::unordered_map<TableId, TabletToTabletServerMap> pending_stepdown_leader_tasks_;
   // Tiered storage: AlterTabletTier tasks of this table still pending, plus the ones sent this
-  // run, so a replica is told once.
+  // run, so a replica is told once. A task completes on the tserver's reply; from then until the
+  // replica's next report the balancer's own record of the send
+  // (ClusterLoadBalancer::tier_migrations_awaiting_report_) stands in for it.
   TabletToTabletServersMap pending_tier_migration_tasks_;
 
   // Time at which we started the current round of load balancing.

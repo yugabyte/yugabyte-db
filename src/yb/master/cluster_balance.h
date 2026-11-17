@@ -100,6 +100,8 @@ class ClusterLoadBalancer {
 
   // Tiered storage, tests only: make every FAILED replica's re-send due now.
   void TEST_ExpireTierMigrationRetries();
+  // Tiered storage, tests only: age every awaiting-report entry past the task deadline.
+  void TEST_ExpireTierMigrationsAwaitingReport();
 
   bool IsLoadBalancerEnabled() const;
 
@@ -214,7 +216,8 @@ class ClusterLoadBalancer {
   // whose re-send is due. Bounded by the in-flight caps. Returns true if one was sent.
   Result<bool> HandleTierMigrations(TabletId* out_tablet_id, TabletServerId* out_ts_uuid);
 
-  // Tiered storage: drops the retry entries no table's tier step visited this run.
+  // Tiered storage: drops the retry entries and the awaiting-report entries no table's tier step
+  // visited this run.
   void PruneTierMigrationRetries();
 
   // Processes any required replica removals, as part of having added an extra replica to a
@@ -475,7 +478,26 @@ class ClusterLoadBalancer {
     uint64_t seen_in_run = 0;
   };
   std::unordered_map<std::string, TierMigrationRetry> tier_migration_retries_;
-  // Counts full runs (live placement plus read replicas), for TierMigrationRetry::seen_in_run.
+
+  // Tiered storage: the AlterTabletTier sends whose replica has not reported the new intent yet,
+  // keyed like tier_migration_retries_. The task completes on the tserver's reply and the report
+  // that carries the target arrives a heartbeat later, so without this record a run in between
+  // would see the replica in neither the pending tasks nor its report: not counted against the
+  // caps, and told again. An entry is dropped when the replica reports the target sent with its
+  // migration IN_PROGRESS or DONE, when it is older than the task's own deadline
+  // (unresponsive_ts_rpc_timeout_ms: the task gave up and no report is coming, e.g. the tablet
+  // was gone), and at the end of a run whose tier step did not visit it. Only the balancer's own
+  // thread touches it.
+  struct TierMigrationAwaitingReport {
+    std::string target_tier;
+    TableId table_id;
+    MonoTime sent_at;
+    uint64_t seen_in_run = 0;
+  };
+  std::unordered_map<std::string, TierMigrationAwaitingReport> tier_migrations_awaiting_report_;
+
+  // Counts full runs (live placement plus read replicas), for TierMigrationRetry::seen_in_run
+  // and TierMigrationAwaitingReport::seen_in_run.
   uint64_t tier_migration_run_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);

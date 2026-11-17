@@ -236,6 +236,9 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
   bool TierMigrationRetriesEmpty() const { return cb_.tier_migration_retries_.empty(); }
+  int TierMigrationsAwaitingReport() const {
+    return narrow_cast<int>(cb_.tier_migrations_awaiting_report_.size());
+  }
 
   // What RunClusterBalancer does around the per-table steps.
   void BeginTierMigrationRun() { ++cb_.tier_migration_run_; }

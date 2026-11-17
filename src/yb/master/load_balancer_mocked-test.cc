@@ -1950,6 +1950,101 @@ TEST_F(LoadBalancerTierMigrationTest, PendingTaskCountsAsInFlight) {
   }
 }
 
+// An AlterTabletTier task completes on the tserver's reply, and the replica reports the new
+// intent a heartbeat later. In between the send is remembered: the replica is not told again, it
+// counts against the caps, and it counts once however many of the pending task, the record and
+// the report cover it. A record older than the task's deadline has no report coming.
+TEST_F(LoadBalancerTierMigrationTest, SentReplicaWaitsForItsReport) {
+  PrepareTieredState();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+
+  // Every task completed and no replica has reported: nothing is told again, all still count.
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), total_num_tablets_);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+
+  // One replica reports the intent while its task is still pending: it counts once, and its
+  // record is dropped.
+  const auto& tablet_id = tablets_[0]->tablet_id();
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  SetReplicaTier(tablets_[0].get(), ts_uuid, "ssd", "hdd",
+                 tserver::TierMigrationStatusPB::IN_PROGRESS);
+  cb_.pending_tier_migration_tasks_[tablet_id].insert(ts_uuid);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), total_num_tablets_);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
+
+  // The other records outlive the task deadline: their replicas are told again.
+  cb_.pending_tier_migration_tasks_.clear();
+  cb_.TEST_ExpireTierMigrationsAwaitingReport();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_ - 1);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
+}
+
+// A FAILED replica's re-send is remembered the same way: the replica keeps reporting FAILED until
+// the tserver takes the intent, and is not told again before then.
+TEST_F(LoadBalancerTierMigrationTest, ResentFailedReplicaWaitsForItsReport) {
+  PrepareTieredState();
+  for (const auto& tablet : tablets_) {
+    for (const auto& ts_desc : ts_descs_) {
+      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
+                     tserver::TierMigrationStatusPB::DONE);
+    }
+  }
+  const auto& tablet = tablets_[0];
+  const auto& ts_uuid = ts_descs_[0]->permanent_uuid();
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::FAILED);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  cb_.TEST_ExpireTierMigrationRetries();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 1);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), 1);
+
+  // Still FAILED in the report, task gone, re-send due again: the record holds it back.
+  cb_.TEST_ExpireTierMigrationRetries();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 1);
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+
+  // The tserver took it: the record is dropped, the schedule stays for the next failure.
+  SetReplicaTier(tablet.get(), ts_uuid, "ssd", "hdd", tserver::TierMigrationStatusPB::IN_PROGRESS);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), 0);
+  ASSERT_FALSE(TierMigrationRetriesEmpty());
+}
+
+// A record whose replica the step no longer visits is dropped at the end of the run, like a retry
+// entry. A replica that is briefly not RUNNING (every follower is UNKNOWN right after a term or
+// config change) is still visited, so neither its record nor its schedule is lost to an election.
+TEST_F(LoadBalancerTierMigrationTest, AwaitingReportEntryFollowsTheReplica) {
+  PrepareTieredState();
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), total_num_tablets_);
+  const auto& tablet = tablets_[0];
+  const std::string ts_uuid = ts_descs_[0]->permanent_uuid();
+
+  {
+    auto replicas = std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
+    replicas->at(ts_uuid).state = tablet::RaftGroupStatePB::UNKNOWN;
+    tablet->SetReplicaLocations(replicas);
+  }
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_);
+
+  RemoveReplica(tablet.get(), ts_uuid);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+  ASSERT_EQ(TierMigrationsAwaitingReport(), total_num_tablets_ - 1);
+}
+
 // A replica whose tserver gave up (FAILED) is re-sent the intent once the minimum backoff has
 // passed, and the wait doubles across repeated failures even though every re-send reports
 // IN_PROGRESS before failing again.

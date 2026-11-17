@@ -305,8 +305,7 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
         replica.tier_migration_state != tserver::TierMigrationStatusPB::DONE &&
         meta_ts.descriptor->HasStorageTier(replica.target_storage_tier) &&
         (!check_ts_liveness_ || meta_ts.descriptor->IsLiveAndHasReported())) {
-      ++global_state_->tier_migrations_in_flight_[ts_uuid];
-      ++global_state_->total_tier_migrations_in_flight_;
+      global_state_->AddTierMigrationInFlight(tablet_id, ts_uuid);
       global_state_->activity_info_.has_ongoing_tier_migrations_ = true;
     }
 
