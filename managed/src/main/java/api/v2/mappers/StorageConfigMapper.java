@@ -86,6 +86,30 @@ public interface StorageConfigMapper {
   ObjectMapper DATA_MAPPER =
       Json.mapper().copy().setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
+  /** The v1 subtype (the name column) of a storage type. */
+  static String toV1Subtype(StorageType type) {
+    switch (type) {
+      case StorageTypeS3:
+        return NAME_S3;
+      case StorageTypeGCS:
+        return NAME_GCS;
+      case StorageTypeAzure:
+        return NAME_AZURE;
+      case StorageTypeNFS:
+        return NAME_NFS;
+      case StorageTypeOCI:
+        return NAME_OCI;
+      default:
+        throw new IllegalArgumentException("Unknown storage type: " + type);
+    }
+  }
+
+  static ConfigState toV1State(StorageConfigState state) {
+    return state == StorageConfigState.StorageConfigQueuedForDeletion
+        ? ConfigState.QueuedForDeletion
+        : ConfigState.Active;
+  }
+
   // ---- v1 to v2 ----
 
   default StorageConfig toStorageConfig(CustomerConfig config) {
