@@ -303,6 +303,8 @@ public class RedactingService {
         } catch (Exception e) {
           log.warn("Gflags sensitive data API redaction failed; skipping it.", e);
         }
+        // Outside the try, which skips the rest of the redaction on any exception.
+        redactKubernetesOverrides(afterJsonPath);
       }
     }
 
@@ -1317,9 +1319,44 @@ public class RedactingService {
   }
 
   /**
-   * redactLdapBindPasswdInYsqlHbaConf stops and returns the response as it is on any exception, so
-   * overrides whose redaction fails are hidden whole instead.
+   * Redacts the LDAP secrets in Kubernetes overrides in API response JSON. Overrides that can't be
+   * redacted are hidden whole, and nothing else here throws, so no exception leaves overrides
+   * unredacted.
    */
+  private static void redactKubernetesOverrides(JsonNode node) {
+    if (node == null) {
+      return;
+    }
+    if (node.isObject()) {
+      ObjectNode objNode = (ObjectNode) node;
+      objNode
+          .fieldNames()
+          .forEachRemaining(
+              fieldName -> {
+                JsonNode fieldValue = objNode.get(fieldName);
+                if (fieldValue.isTextual() && K8S_OVERRIDES_FIELDS.contains(fieldName)) {
+                  objNode.put(fieldName, redactOverridesOrHide(fieldValue.asText()));
+                } else if (fieldValue.isObject() && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
+                  ObjectNode azs = (ObjectNode) fieldValue;
+                  azs.fieldNames()
+                      .forEachRemaining(
+                          az -> {
+                            JsonNode azValue = azs.get(az);
+                            if (azValue.isTextual()) {
+                              azs.put(az, redactOverridesOrHide(azValue.asText()));
+                            } else {
+                              redactKubernetesOverrides(azValue);
+                            }
+                          });
+                } else {
+                  redactKubernetesOverrides(fieldValue);
+                }
+              });
+    } else if (node.isArray()) {
+      node.forEach(RedactingService::redactKubernetesOverrides);
+    }
+  }
+
   private static String redactOverridesOrHide(String overrides) {
     try {
       return KubernetesOverridesRedactor.redact(overrides);
@@ -1329,10 +1366,7 @@ public class RedactingService {
     }
   }
 
-  /**
-   * Redacts ldapbindpasswd within ysql_hba_conf_csv fields, and the LDAP secrets in Kubernetes
-   * overrides, in API response JSON.
-   */
+  /** Redacts ldapbindpasswd within ysql_hba_conf_csv fields in API response JSON. */
   private static JsonNode redactLdapBindPasswdInYsqlHbaConf(JsonNode input) {
     if (input == null) {
       return input;
@@ -1361,23 +1395,7 @@ public class RedactingService {
                     String originalValue = fieldValue.asText();
                     String redactedValue = redactAllLdapBindPasswdHbaFormattedValues(originalValue);
                     objNode.put(fieldName, redactedValue);
-                  } else if (K8S_OVERRIDES_FIELDS.contains(fieldName)) {
-                    objNode.put(fieldName, redactOverridesOrHide(fieldValue.asText()));
                   }
-                } else if (fieldValue != null
-                    && fieldValue.isObject()
-                    && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
-                  fieldValue
-                      .fields()
-                      .forEachRemaining(
-                          az -> {
-                            if (az.getValue().isTextual()) {
-                              az.setValue(
-                                  TextNode.valueOf(redactOverridesOrHide(az.getValue().asText())));
-                            } else {
-                              redactLdapBindPasswdRecursive(az.getValue());
-                            }
-                          });
                 } else if (fieldValue != null && (fieldValue.isObject() || fieldValue.isArray())) {
                   redactLdapBindPasswdRecursive(fieldValue);
                 }

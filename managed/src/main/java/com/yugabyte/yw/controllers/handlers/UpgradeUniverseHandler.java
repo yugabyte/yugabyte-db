@@ -319,6 +319,34 @@ public class UpgradeUniverseHandler {
     }
   }
 
+  // A Kubernetes resize runs the edit's check that overrides are unchanged and applies the
+  // request's
+  // overrides, and the binder skips copyGFlagsFromUniverseDetails, which restores them, for
+  // UpgradeWithGFlags.
+  private void restoreKubernetesOverridesForRequestClusters(
+      ResizeNodeParams requestParams, Universe universe) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()
+        || requestParams.clusters == null) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.Cluster clusterParam : requestParams.clusters) {
+      if (clusterParam.userIntent == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster universeCluster =
+          clusterParam.uuid == null ? null : universe.getCluster(clusterParam.uuid);
+      UserIntent stored = universeCluster == null ? null : universeCluster.userIntent;
+      clusterParam.userIntent.universeOverrides =
+          KubernetesOverridesRedactor.restore(
+              stored == null ? null : stored.universeOverrides,
+              clusterParam.userIntent.universeOverrides,
+              "Kubernetes universe overrides");
+      clusterParam.userIntent.azOverrides =
+          KubernetesOverridesRedactor.restoreAz(
+              stored == null ? null : stored.azOverrides, clusterParam.userIntent.azOverrides);
+    }
+  }
+
   // UniverseControllerRequestBinder fills legacy maps the client omitted (the UI sends only
   // specificGFlags) from the stored cluster, so an unchanged map is not client input. Checking it
   // would block every edit once a stored value is REDACTED. When a stored or requested cluster has
@@ -740,6 +768,7 @@ public class UpgradeUniverseHandler {
     }
     mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
     mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+    restoreKubernetesOverridesForRequestClusters(requestParams, universe);
 
     return submitUpgradeTask(
         Util.isKubernetesBasedUniverse(universe)
