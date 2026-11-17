@@ -94,23 +94,26 @@ func AddInstanceTypeUtil(
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 
-	requestBody := ybaclient.InstanceType{
-		IdKey: ybaclient.InstanceTypeKey{
-			InstanceTypeCode: instanceTypeName,
-			ProviderUuid:     providerUUID,
-		},
-		InstanceTypeDetails: &ybaclient.InstanceTypeDetails{
-			Tenancy:           util.GetStringPointer(tenancy),
-			VolumeDetailsList: buildVolumeDetails(volume, providerType),
-		},
-		MemSizeGB: util.GetFloat64Pointer(memSize),
-		NumCores:  util.GetFloat64Pointer(numCores),
+	instanceTypes, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
+	if err != nil {
+		util.FatalHTTPError(response, err, callSite, "Add - List Instance Types")
 	}
-	if !util.IsEmptyString(architecture) {
-		details := requestBody.GetInstanceTypeDetails()
-		details.SetArch(architecture)
-		requestBody.SetInstanceTypeDetails(details)
-	}
+	existing := findInstanceType(instanceTypes, instanceTypeName)
+
+	requestBody := buildInstanceTypeRequest(
+		providerUUID,
+		providerType,
+		instanceTypeName,
+		existing,
+		addInstanceTypeFlags{
+			memSize:  memSize,
+			numCores: numCores,
+			tenancy:  tenancy,
+			arch:     architecture,
+			volumes:  volume,
+		},
+		cmd.Flags().Changed,
+	)
 
 	rCreate, response, err := authAPI.CreateInstanceType(providerUUID).
 		InstanceType(requestBody).Execute()
@@ -129,14 +132,88 @@ func AddInstanceTypeUtil(
 		Format:  instancetype.NewInstanceTypesFormat(viper.GetString("output")),
 	}
 
-	logrus.Infof("The instance type %s has been added to provider %s (%s)\n",
+	action := "added to"
+	if existing != nil {
+		action = "updated in"
+	}
+	logrus.Infof("The instance type %s has been %s provider %s (%s)\n",
 		formatter.Colorize(instanceTypeName, formatter.GreenColor),
+		action,
 		providerName,
 		providerUUID)
 
 	instanceTypeList := make([]ybaclient.InstanceTypeResp, 0)
 	instanceTypeList = append(instanceTypeList, *rCreate)
 	instancetype.Write(instanceTypesCtx, instanceTypeList)
+}
+
+type addInstanceTypeFlags struct {
+	memSize  float64
+	numCores float64
+	tenancy  string
+	arch     string
+	volumes  []string
+}
+
+func buildInstanceTypeRequest(
+	providerUUID, providerType, instanceTypeName string,
+	existing *ybaclient.InstanceTypeResp,
+	flags addInstanceTypeFlags,
+	changed func(flag string) bool,
+) ybaclient.InstanceType {
+	// The create API replaces every field of an existing instance type, so a flag the user
+	// did not set must carry the existing value rather than the flag default.
+	useFlag := func(flag string) bool {
+		return existing == nil || changed(flag)
+	}
+	details := ybaclient.InstanceTypeDetails{}
+	memSize := flags.memSize
+	numCores := flags.numCores
+	if existing != nil {
+		if d := existing.InstanceTypeDetails; d != nil {
+			details.Tenancy = d.Tenancy
+			details.Arch = d.Arch
+			details.VolumeDetailsList = append([]ybaclient.VolumeDetails(nil),
+				d.VolumeDetailsList...)
+		}
+		if !useFlag("mem-size") && existing.MemSizeGB != nil {
+			memSize = existing.GetMemSizeGB()
+		}
+		if !useFlag("num-cores") && existing.NumCores != nil {
+			numCores = existing.GetNumCores()
+		}
+	}
+	if useFlag("tenancy") {
+		details.Tenancy = util.GetStringPointer(flags.tenancy)
+	}
+	if useFlag("volume") {
+		details.VolumeDetailsList = buildVolumeDetails(flags.volumes, providerType)
+	}
+	if !util.IsEmptyString(flags.arch) &&
+		(useFlag("arch") || util.IsEmptyString(details.GetArch())) {
+		details.SetArch(flags.arch)
+	}
+	return ybaclient.InstanceType{
+		IdKey: ybaclient.InstanceTypeKey{
+			InstanceTypeCode: instanceTypeName,
+			ProviderUuid:     providerUUID,
+		},
+		InstanceTypeDetails: &details,
+		MemSizeGB:           util.GetFloat64Pointer(memSize),
+		NumCores:            util.GetFloat64Pointer(numCores),
+	}
+}
+
+func findInstanceType(
+	instanceTypes []ybaclient.InstanceTypeResp,
+	instanceTypeName string,
+) *ybaclient.InstanceTypeResp {
+	for i := range instanceTypes {
+		if instanceTypes[i].IdKey.InstanceTypeCode == instanceTypeName {
+			return &instanceTypes[i]
+		}
+	}
+	return nil
 }
 
 func buildVolumeDetails(volumeStrings []string, providerType string) []ybaclient.VolumeDetails {

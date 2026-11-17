@@ -4,7 +4,7 @@ Add an instance type to YugabyteDB Anywhere GCP provider
 
 ### Synopsis
 
-Add an instance type to YugabyteDB Anywhere GCP provider
+Add an instance type to YugabyteDB Anywhere GCP provider. If the instance type exists, it is updated and unset flags keep their current values.
 
 ```
 yba provider gcp instance-type add [flags]

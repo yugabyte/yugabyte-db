@@ -4,7 +4,7 @@ Add an instance type to YugabyteDB Anywhere Azure provider
 
 ### Synopsis
 
-Add an instance type to YugabyteDB Anywhere Azure provider
+Add an instance type to YugabyteDB Anywhere Azure provider. If the instance type exists, it is updated and unset flags keep their current values.
 
 ```
 yba provider azure instance-type add [flags]
