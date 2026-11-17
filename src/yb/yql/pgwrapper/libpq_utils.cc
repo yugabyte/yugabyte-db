@@ -123,7 +123,7 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   result.reserve(512);
   result += Format("host=$0 port=$1", settings.host, settings.port);
   if (!settings.dbname.empty()) {
-    result += Format(" dbname=$0", PqEscapeStringConn(settings.dbname));
+    result += " " + PqDbNameConnStr(settings.dbname);
   }
   if (settings.connect_timeout) {
     result += Format(" connect_timeout=$0", settings.connect_timeout);
@@ -943,9 +943,6 @@ std::string PqEscapeIdentifier(const std::string& input) {
 // Escape a value for use in a libpq connection string (e.g. to make a
 // libpq connection to a database named `this->'\<-this`, use
 // `dbname='this->\'\\<-this'`).
-//
-// This should behave like `PQescapeStringConn` except that it doesn't need an existing connection
-// passed in.
 std::string PqEscapeStringConn(const std::string& input) {
   std::string output = input;
   boost::algorithm::replace_all(output, "\\", "\\\\");
@@ -953,6 +950,10 @@ std::string PqEscapeStringConn(const std::string& input) {
   output.insert(0, 1, '\'');
   output.push_back('\'');
   return output;
+}
+
+std::string PqDbNameConnStr(const std::string& db_name) {
+  return "dbname=" + PqEscapeStringConn(db_name);
 }
 
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)

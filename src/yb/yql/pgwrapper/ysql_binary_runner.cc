@@ -67,7 +67,7 @@ constexpr const char* kConnectLinePrefix = "\\connect ";
 // Passes the database name as a quoted conninfo value so that ysql_dump/ysqlsh and libpq read it
 // literally whatever characters it contains.
 std::string DbNameArg(const std::string& db_name) {
-  return "--dbname=dbname=" + pgwrapper::PqEscapeStringConn(db_name);
+  return "--dbname=" + pgwrapper::PqDbNameConnStr(db_name);
 }
 
 std::string MakeAllowConnectionsString(const std::string& new_db, bool allow_connections) {

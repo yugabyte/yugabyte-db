@@ -167,6 +167,9 @@ Result<std::string> ToString(const PGresult* result, int row, int column);
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);
 std::string PqEscapeStringConn(const std::string& input);
+// Returns the libpq connection string `dbname='<escaped db_name>'`, which selects `db_name`
+// literally whatever characters it contains.
+std::string PqDbNameConnStr(const std::string& db_name);
 
 namespace libpq_utils::internal {
 

@@ -43,4 +43,9 @@ TEST(PqEscapeTest, EscapeStringConn) {
   EXPECT_EQ(PqEscapeStringConn(""), "''");
 }
 
+TEST(PqEscapeTest, DbNameConnStr) {
+  EXPECT_EQ(PqDbNameConnStr("src=db"), "dbname='src=db'");
+  EXPECT_EQ(PqDbNameConnStr("-d it's \\"), "dbname='-d it\\'s \\\\'");
+}
+
 } // namespace yb::pgwrapper
