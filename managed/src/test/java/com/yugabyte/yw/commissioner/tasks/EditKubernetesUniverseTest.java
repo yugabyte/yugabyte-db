@@ -33,7 +33,6 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -2327,8 +2326,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             .filter(t -> "TSERVER".equals(t.getTaskParams().path("serverType").asText()))
             .collect(Collectors.toList());
     // Master phase, per AZ: create new master pods, render the old and new masters before the
-    // adds, delete the old pods, final render.
-    assertEquals(12, masterHelm.size());
+    // adds, render the final masters after the removes, delete the old pods, final render.
+    assertEquals(15, masterHelm.size());
     List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
     List<TaskInfo> beforeAdds = between(masterHelm, 0, firstPosition(adds));
     assertEquals(6, beforeAdds.size());
@@ -2339,7 +2338,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         between(masterHelm, lastPosition(postRemove), Integer.MAX_VALUE);
     assertEquals(3, createNewMasters.size());
     assertEquals(3, beforeAddRender.size());
-    assertEquals(6, afterMastersJoined.size());
+    assertEquals(9, afterMastersJoined.size());
     Map<String, TaskInfo> createByAZ =
         createNewMasters.stream()
             .collect(Collectors.toMap(t -> t.getTaskParams().path("azCode").asText(), t -> t));
@@ -2371,11 +2370,29 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
                 firstPosition(adds))
             .isEmpty());
     for (TaskInfo t : afterMastersJoined) {
-      // The pod delete and final render rewrite every gflags Secret in the release, tservers
-      // included. The partitions hold every pod, so none rolls.
+      // The final-master render, pod delete and final render rewrite every gflags Secret in the
+      // release, tservers included. The partitions hold every pod, so none rolls.
       assertEquals(newMasters, helmMasterAddresses(t));
       assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
     }
+    // After the removes, the create's helm upgrade renders the final masters, and the old master
+    // pods go only after a gflags sync wait.
+    List<TaskInfo> afterRemoveRender = afterMastersJoined.subList(0, 3);
+    for (TaskInfo t : afterRemoveRender) {
+      TaskInfo create = createByAZ.get(t.getTaskParams().path("azCode").asText());
+      for (String field :
+          ImmutableList.of("fullMoveParams", "masterPartition", "tserverPartition")) {
+        assertEquals(field, create.getTaskParams().path(field), t.getTaskParams().path(field));
+      }
+    }
+    List<TaskInfo> safeToDelete = subtasks(plan, TaskType.CheckNodeSafeToDelete, p -> true);
+    assertTrue(lastPosition(afterRemoveRender) < firstPosition(safeToDelete));
+    assertFalse(
+        between(
+                subtasks(plan, TaskType.WaitForDuration, p -> true),
+                lastPosition(afterRemoveRender),
+                firstPosition(safeToDelete))
+            .isEmpty());
     // Tserver phase renders the new list, as before.
     assertFalse(tserverHelm.isEmpty());
     assertTrue(firstPosition(tserverHelm) > lastPosition(masterHelm));
@@ -3442,12 +3459,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     for (TaskInfo t : afterMastersJoined) {
       assertEquals(newMasters, helmMasterAddresses(t));
     }
-    // The pod delete and final render of each AZ hold the tservers at their partition.
+    // The final-master render, pod delete and final render of each AZ hold the tservers at their
+    // partition.
     List<TaskInfo> masterRenders =
         afterMastersJoined.stream()
             .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
             .collect(Collectors.toList());
-    assertEquals(6, masterRenders.size());
+    assertEquals(9, masterRenders.size());
     for (TaskInfo t : masterRenders) {
       assertEquals(1, t.getTaskParams().path("tserverPartition").asInt());
       assertEquals(0, helmAZ(t).path("tsStsIndex").asInt());
@@ -4133,14 +4151,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(
         MasterMoveStage.MASTERS_SETTLED, retryParams.getPrimaryCluster().getMasterMoveStage());
     retryParams.setPreviousTaskUUID(taskInfo.getUuid());
-    // The retry creates no master pods, so it may stop before any helm upgrade.
-    lenient()
-        .doThrow(new RuntimeException("stop after planning"))
-        .when(mockKubernetesManager)
-        .helmUpgrade(any(), any(), any(), any(), any(), any(), any());
+    int retryStart = events.size();
+    // The retry runs the master config changes again, which look up the masters the first attempt
+    // added, and stops at the az-4 tserver add as before.
     TaskInfo retryInfo =
         waitForTask(commissioner.submit(TaskType.EditKubernetesUniverse, retryParams));
-    assertEquals(Failure, retryInfo.getTaskState());
+    assertTrue(describeFailure(retryInfo), describeFailure(retryInfo).contains("stop after"));
+    assertFalse(changeMasterConfigs(plan(retryInfo), "AddMaster").isEmpty());
+    // The masters are settled, so the config changes find them done and change nothing.
+    List<String> retryEvents = new ArrayList<>(events.subList(retryStart, events.size()));
+    assertTrue(
+        retryEvents.toString(),
+        retryEvents.stream().noneMatch(e -> e.startsWith("ADD") || e.startsWith("REMOVE")));
     List<TaskInfo> retry = plan(retryInfo);
     int dataMove = firstPosition(subtasks(retry, TaskType.WaitForDataMove, p -> true));
     assertTrue(between(masterAddrPushes(retry), 0, dataMove).isEmpty());

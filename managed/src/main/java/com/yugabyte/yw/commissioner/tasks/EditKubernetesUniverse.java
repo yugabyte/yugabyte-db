@@ -1321,6 +1321,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
   }
 
+  /** Waits for kubelet to sync the rendered gflags Secrets into the running pods. */
+  private void createGflagsSyncWaitTask() {
+    createWaitForDurationSubtask(
+            taskParams().getUniverseUUID(),
+            Duration.ofSeconds(confGetter.getGlobalConf(GlobalConfKeys.waitForK8sGFlagSyncSec)))
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
   /** Adds to zones the AZs the edit adds with masters, which run once the master step has. */
   private static void addNewMasterAZs(
       KubernetesPlacement curPlacement, KubernetesPlacement newPlacement, PlacementInfo zones) {
@@ -1633,8 +1641,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    *     the move. Empty for a tserver full move.
    * @param bestEffortTservers names of the tservers whose push may fail without failing the edit:
    *     the ones the edit removes, which may be down.
-   * @param propagateMasterAddrs true to push the live master list during the move and record
-   *     masterMoveStage. See createMoveMasterTasks.
+   * @param propagateMasterAddrs true to push the live master list during the move, record
+   *     masterMoveStage, and render the final masters into the moved AZs' Secrets after the
+   *     removes, before the old master pods are deleted. See createMoveMasterTasks.
    * @param beforeMasterAdds runs once the new master pods run, before the master adds. Null to run
    *     nothing, as in a tserver full move.
    *     <p>Used to record that the new masters run, and to render the old and new masters into the
@@ -1736,6 +1745,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         createSubTaskGroup(
             KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName());
     movingMasterAddrRenders.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    // The final masters, rendered the same way after the removes. The pod-delete upgrade writes
+    // them too, but in the same step that deletes the old master pods.
+    SubTaskGroup finalMasterAddrRenders =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName());
+    finalMasterAddrRenders.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Only generate the list of subtasks and pods to add/remove in each iteration across AZs.
     // Adding to running task is done later as we need to handle group some subtasks together.
@@ -1918,6 +1933,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             movingMasterAddrRenders.addSubTask(
                 withMasterAddresses(fullMoveSubTask, movingMasterAddrs));
           }
+          if (serverType == ServerType.MASTER && propagateMasterAddrs) {
+            finalMasterAddrRenders.addSubTask(
+                withMasterAddresses(fullMoveSubTask, masterAddresses));
+          }
 
           // Add wait for pods before pods delete
           int podsToWaitFor =
@@ -1956,9 +1975,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           tserverPartition =
               serverType == ServerType.TSERVER ? replicas.oldReplicas : currNumTservers;
 
-          // The old masters are removed by now. This render writes the final master list into
-          // every gflags Secret of the AZ's release, tservers included, before the old master pods
-          // go. The partitions hold the pods, so none rolls.
+          // The old masters are removed by now, and finalMasterAddrRenders has written the final
+          // master list. This upgrade writes it again while it deletes the old master pods. The
+          // partitions hold the pods, so none rolls.
           KubernetesCommandExecutor podDeleteSubtask =
               createKubernetesExecutorTaskForServerType(
                   universeName,
@@ -2202,17 +2221,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                   getRunnableTask().addSubTaskGroup(movingMasterAddrRenders);
                   // A tserver container that restarts before kubelet syncs the Secret reads the
                   // old list, which may miss the leader once a new master is added.
-                  createWaitForDurationSubtask(
-                          taskParams().getUniverseUUID(),
-                          Duration.ofSeconds(
-                              confGetter.getGlobalConf(GlobalConfKeys.waitForK8sGFlagSyncSec)))
-                      .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+                  createGflagsSyncWaitTask();
                 }
                 if (beforeMasterAdds != null) {
                   beforeMasterAdds.run();
                 }
               },
               afterMasterRemoves);
+        }
+        if (finalMasterAddrRenders.getSubTaskCount() > 0) {
+          getRunnableTask().addSubTaskGroup(finalMasterAddrRenders);
+          // Before the old master pods go, so a tserver that restarts never reads their
+          // addresses, which stop resolving.
+          createGflagsSyncWaitTask();
         }
       } else {
         // Tserver case
