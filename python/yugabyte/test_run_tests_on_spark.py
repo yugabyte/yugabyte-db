@@ -21,11 +21,14 @@ are patched, so no Spark cluster (or pyspark) is exercised. Only the driver-side
 logic is under test.
 """
 
+import ast
+import inspect
 import os
 import sys
 import threading
 import time
 import types
+import urllib.request
 from typing import Any, List, Set
 
 import pytest
@@ -1167,6 +1170,37 @@ def test_no_function_shadows_a_module_level_import() -> None:
         "whole function body: %s" % offenders)
 
 
+def test_main_calls_nothing_that_can_log_before_logging_is_configured() -> None:
+    """
+    A log call on the unconfigured root logger installs Python's default handler, which drops INFO,
+    and logging.basicConfig() in configure_logging() then changes nothing: the driver's whole INFO
+    log is lost, with no error. So before configure_logging(), main() may only build and run the
+    argument parser. Only a real run would show the loss, so this checks the source instead.
+    """
+    main_def = next(
+        node for node in ast.parse(inspect.getsource(rts)).body
+        if isinstance(node, ast.FunctionDef) and node.name == 'main')
+    early_call_roots: Set[str] = set()
+    configures_logging = False
+    for statement in main_def.body:
+        calls = [node for node in ast.walk(statement) if isinstance(node, ast.Call)]
+        if any(isinstance(call.func, ast.Name) and call.func.id == 'configure_logging'
+               for call in calls):
+            configures_logging = True
+            break
+        for call in calls:
+            func = call.func
+            while isinstance(func, ast.Attribute):
+                func = func.value
+            early_call_roots.add(func.id if isinstance(func, ast.Name) else type(func).__name__)
+    assert configures_logging, "main() does not call configure_logging()"
+    # 'Constant' is a method of a string literal (a help text's .format()); 'os' reads a default.
+    cannot_log = {'argparse', 'parser', 'os', 'Constant'}
+    assert early_call_roots <= cannot_log, (
+        "main() calls these before configure_logging(): %s" % sorted(
+            early_call_roots - cannot_log))
+
+
 # ---------------------------------------------------------------------------------------------
 # A CSI failure must not take the diff's re-runs down with the failed-tests-on-baseline job.
 # ---------------------------------------------------------------------------------------------
@@ -1894,3 +1928,213 @@ def test_a_cancelled_main_pass_repeats_nothing(monkeypatch: pytest.MonkeyPatch) 
         make_args(), FAKE_CONF, [make_result("tests-x/a-test:::A.New")], FAKE_ENV, True)
 
     assert submissions == []
+
+
+# ------------------------------------------------------------------------------------------------
+# Packing several tests into one Spark task (--pack_target_sec)
+# ------------------------------------------------------------------------------------------------
+
+def cpp_tests(names: List[str]) -> List[test_descriptor.TestDescriptor]:
+    return [test_descriptor.TestDescriptor("tests-x/a-test:::A." + name) for name in names]
+
+
+def pack_names(packs: List[List[test_descriptor.TestDescriptor]]) -> List[List[str]]:
+    """The packs as sorted lists of descriptor strings, in a stable order, for comparing."""
+    return sorted(sorted(td.descriptor_str for td in pack) for pack in packs)
+
+
+def use_packing(monkeypatch: pytest.MonkeyPatch, target_sec: float, expected_sec: Any,
+                cluster_cores: Any) -> None:
+    monkeypatch.setattr(rts, "g_pack_target_sec", target_sec)
+    monkeypatch.setattr(rts, "g_expected_test_time_sec", dict(expected_sec))
+    monkeypatch.setattr(rts, "get_cluster_cores", lambda: cluster_cores)
+
+
+def test_load_test_durations_skips_what_it_cannot_parse(tmp_path: Any) -> None:
+    """The file is what the pipeline writes from CSI: uniqueId, start time, end time."""
+    path = tmp_path / "test_durations.txt"
+    path.write_text(
+        "tests-x/a-test:::A.Quick\t2026-01-31T10:20:30.250Z\t2026-01-31T10:20:31.750Z\n\n"
+        "org.yb.SomeTest#testIt\t2026-01-31T23:58:00Z\t2026-02-01T00:02:00Z\n"
+        "tests-x/a-test:::A.NoTimes\n"
+        "tests-x/a-test:::A.NoEnd\t2026-01-31T10:20:30.250Z\n"
+        "tests-x/a-test:::A.NotATime\tsoon\tlater\n"
+        "tests-x/a-test:::A.EndsBeforeItStarts\t2026-01-31T10:20:31Z\t2026-01-31T10:20:30Z\n")
+
+    assert rts.load_test_durations(str(path)) == {
+        "tests-x/a-test:::A.Quick": 1.5, "org.yb.SomeTest#testIt": 240.0}
+
+
+def test_short_tests_share_tasks_up_to_the_target() -> None:
+    tests = cpp_tests(["A", "B", "C", "D", "E"])
+    expected_sec = {td.descriptor_str: 40.0 for td in tests}
+
+    packs = rts.pack_tests(tests, expected_sec, target_sec=100)
+
+    # Two 40-second tests fit under 100 seconds and a third does not.
+    assert sorted(len(pack) for pack in packs) == [1, 2, 2]
+    assert sorted(td.descriptor_str for pack in packs for td in pack) == sorted(
+        td.descriptor_str for td in tests)
+
+
+def test_a_long_test_and_a_test_without_history_are_alone() -> None:
+    tests = cpp_tests(["Long", "Unknown", "Quick1", "Quick2"])
+    expected_sec = {
+        "tests-x/a-test:::A.Long": 100.0,  # exactly the target: not packed
+        "tests-x/a-test:::A.Quick1": 10.0,
+        "tests-x/a-test:::A.Quick2": 10.0}
+
+    packs = rts.pack_tests(tests, expected_sec, target_sec=100)
+
+    assert pack_names(packs) == [
+        ["tests-x/a-test:::A.Long"],
+        ["tests-x/a-test:::A.Quick1", "tests-x/a-test:::A.Quick2"],
+        ["tests-x/a-test:::A.Unknown"]]
+
+
+def test_attempts_of_one_test_never_share_a_task() -> None:
+    """Ten repetitions of two quick tests: every task gets one attempt of each, never two of one."""
+    attempts = (make_attempts("tests-x/a-test:::A.Flaky", 10) +
+                make_attempts("org.yb.SomeTest#testIt", 10))
+    expected_sec = {"tests-x/a-test:::A.Flaky": 5.0, "org.yb.SomeTest#testIt": 5.0}
+
+    packs = rts.pack_tests(attempts, expected_sec, target_sec=600)
+
+    assert len(packs) == 10
+    for pack in packs:
+        assert sorted(td.descriptor_str_without_attempt_index for td in pack) == [
+            "org.yb.SomeTest#testIt", "tests-x/a-test:::A.Flaky"]
+
+
+def test_packing_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+    use_packing(monkeypatch, 0, {td.descriptor_str: 1.0 for td in tests}, 100)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_that_fits_the_cluster_is_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, cluster_cores=2)
+
+    packs = rts.plan_spark_tasks(tests, "a-job", False)
+
+    assert sorted(len(pack) for pack in packs) == [1, 3]
+
+
+@pytest.mark.parametrize("cluster_cores", [None, 1])
+def test_a_job_the_cluster_cannot_hold_is_not_packed(
+        monkeypatch: pytest.MonkeyPatch, cluster_cores: Any) -> None:
+    """
+    Unknown cluster size, or fewer cores than the packed job has tasks: one test per task, which
+    is what the cluster scaling daemon knows how to grow a cluster for.
+    """
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, cluster_cores)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_job_beside_another_counts_half_the_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two tasks fit a cluster of three cores, but not the half of it a shared context leaves."""
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, cluster_cores=3)
+
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 2
+    assert rts.plan_spark_tasks(tests, "a-job", True) == [[td] for td in tests]
+
+
+def test_a_job_with_little_history_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """8 of 10 tests have an expected run time, under PACK_MIN_KNOWN_RATIO: none are packed."""
+    tests = cpp_tests([str(i) for i in range(10)])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests[:8]}, cluster_cores=100)
+
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_cluster_size_is_read_from_the_master_status_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: List[str] = []
+
+    class FakeResponse:
+        def __enter__(self) -> 'FakeResponse':
+            return self
+
+        def __exit__(self, *exc_info: Any) -> None:
+            pass
+
+        def read(self) -> bytes:
+            return b'{"aliveworkers": 180, "cores": 180, "coresused": 12}'
+
+    def fake_urlopen(url: str, timeout: float) -> FakeResponse:
+        asked.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080/")
+
+    assert rts.get_cluster_cores() == 180
+    assert asked == ["http://spark-master.example.com:8080/json/"]
+
+
+def test_an_unreachable_master_leaves_the_cluster_size_unknown(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_urlopen(url: str, timeout: float) -> Any:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080")
+    assert rts.get_cluster_cores() is None
+
+    monkeypatch.setattr(rts, "g_spark_master_ui_url", None)
+    assert rts.get_cluster_cores() is None
+
+
+class RecordingSparkContext(FakeSparkContext):
+    """A FakeSparkContext that keeps what run_tests_job hands to parallelize."""
+
+    def __init__(self) -> None:
+        super().__init__([])
+        self.parallelized: List[Any] = []
+        self.num_slices: List[int] = []
+
+    def accumulator(self, value: Any, accum_param: Any = None) -> FakeAccumulator:
+        return FakeAccumulator([] if accum_param is not None else 0)
+
+    def parallelize(self, values: Any, numSlices: int = 1) -> FakeRDD:  # noqa: N803
+        self.parallelized.append(values)
+        self.num_slices.append(numSlices)
+        return FakeRDD()
+
+
+def run_job_recording_its_tasks(
+        monkeypatch: pytest.MonkeyPatch,
+        tests: List[test_descriptor.TestDescriptor]) -> RecordingSparkContext:
+    spark_context = RecordingSparkContext()
+    monkeypatch.setattr(rts, "spark_context", spark_context)
+    rts.run_tests_job(
+        list(tests), rerun=False, conf=FAKE_CONF, env_vars=FAKE_ENV,
+        job_group=rts.ALL_TESTS_ON_DIFF_JOB_GROUP, shares_context=False,
+        stop_on_failure_limit=False)
+    return spark_context
+
+
+def test_without_packing_a_job_has_one_task_per_test(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+
+    spark_context = run_job_recording_its_tasks(monkeypatch, tests)
+
+    assert spark_context.num_slices == [3]
+    assert sorted(spark_context.parallelized[0]) == [[td.descriptor_str] for td in tests]
+
+
+def test_a_packed_job_has_one_task_per_pack(
+        monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
+    tests = cpp_tests(["A", "B", "C"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 10.0 for td in tests}, cluster_cores=5)
+
+    spark_context = run_job_recording_its_tasks(monkeypatch, tests)
+
+    assert spark_context.num_slices == [1]
+    assert [sorted(task) for task in spark_context.parallelized[0]] == [
+        [td.descriptor_str for td in tests]]

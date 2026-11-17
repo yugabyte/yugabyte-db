@@ -242,6 +242,18 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         fi
       fi
 
+      # Several short tests in one Spark task, so that a small job does not set up a worker per
+      # test. Off unless the pipeline sets a target; the harness also needs the Spark master's web
+      # UI, to see how large the cluster is, and for the main pass the expected run times the
+      # pipeline wrote from CSI (YB_TEST_DURATIONS_FILE, next to rerun_list.txt).
+      if [[ ${YB_SPARK_PACK_TARGET_SEC:-0} != 0 && -n ${YB_SPARK_MASTER_UI_URL:-} ]]; then
+        run_tests_extra_args+=( "--pack_target_sec" "${YB_SPARK_PACK_TARGET_SEC}" )
+        run_tests_extra_args+=( "--spark_master_ui_url" "${YB_SPARK_MASTER_UI_URL}" )
+        if [[ -n ${YB_TEST_DURATIONS_FILE:-} ]]; then
+          run_tests_extra_args+=( "--test_durations_file" "${YB_TEST_DURATIONS_FILE}" )
+        fi
+      fi
+
       set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${run_tests_extra_args[@]}"; then
         set -u
