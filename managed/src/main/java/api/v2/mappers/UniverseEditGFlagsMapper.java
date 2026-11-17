@@ -19,7 +19,9 @@ import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 import play.mvc.Http.Status;
 
-@Mapper(uses = UpgradeOptionEnumMapper.class, config = CentralConfig.class)
+@Mapper(
+    uses = {UpgradeOptionEnumMapper.class, RollMaxBatchSizeMapper.class},
+    config = CentralConfig.class)
 public interface UniverseEditGFlagsMapper {
   UniverseEditGFlagsMapper INSTANCE = Mappers.getMapper(UniverseEditGFlagsMapper.class);
 

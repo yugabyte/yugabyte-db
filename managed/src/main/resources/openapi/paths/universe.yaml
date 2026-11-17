@@ -56,6 +56,8 @@
     description: Edit the clusters of a single YugabyteDB Universe.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseEditReq.yaml"
     responses:
@@ -232,6 +234,8 @@
     description: Add a cluster (eg. read replica cluster) to a YugabyteDB universe.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/ClusterAddReq.yaml"
     responses:
@@ -398,6 +402,8 @@
     description: 'Queues a task to edit GFlags of a universe. The input set of GFlags will replace any existing GFlags in the universe. Refer [YB-Master configuration flags](https://docs.yugabyte.com/preview/reference/configuration/yb-master/#configuration-flags) and [YB-TServer configuration flags](https://docs.yugabyte.com/preview/reference/configuration/yb-tserver/#configuration-flags).'
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseEditGFlagsReq.yaml"
     responses:
@@ -454,6 +460,8 @@
     description: Queues a task to perform a YugabyteDB Software upgrade.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseSoftwareUpgradeReq.yaml"
     responses:
@@ -591,6 +599,8 @@
     description: Queues a task to perform a third party software upgrade.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseThirdPartySoftwareUpgradeReq.yaml"
     responses:
@@ -704,6 +714,8 @@
     description: Queues a task to rollback a YugabyteDB Software upgrade.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseRollbackUpgradeReq.yaml"
     responses:
@@ -866,6 +878,8 @@
     description: Restart a YugabyteDB Universe.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseRestartReq.yaml"
     responses:
@@ -925,6 +939,8 @@
       This is not supported for on prem manual provisioned universes or kubernetes universes.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseSystemdEnableReq.yaml"
     responses:
@@ -982,6 +998,8 @@
       node to client.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseEncryptionInTransitReq.yaml"
     responses:
@@ -1037,6 +1055,8 @@
     description: Rotate the certs used for encryption in transit.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseCertRotateReq.yaml"
     responses:
@@ -1098,6 +1118,8 @@
       override options.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseKubernetesOverridesReq.yaml"
     responses:
@@ -1346,6 +1368,8 @@
       Configure Query Log for a YugabyteDB Universe.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseQueryLogsExportReq.yaml"
     responses:
@@ -1453,6 +1477,8 @@
       and metrics-export-config APIs.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/ExportTelemetryConfigReq.yaml"
     responses:
@@ -2032,6 +2058,8 @@
       addition to updating related gflags and cgroups to match the resize.
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseResizeNodesReq.yaml"
     responses:
@@ -2181,6 +2209,8 @@
     description: Queues a task to edit VM images of a universe nodes
     tags:
       - Universe
+    parameters:
+      - $ref: "../components/parameters/RunOnlyPrechecks.yaml"
     requestBody:
       $ref: "../components/requestBodies/UniverseVMImageUpgradeReq.yaml"
     responses:

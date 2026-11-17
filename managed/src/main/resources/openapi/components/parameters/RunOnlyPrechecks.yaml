@@ -1,0 +1,9 @@
+name: run_only_prechecks
+in: query
+description: |
+  If true, only run the prechecks for the operation and make no changes to the universe. The
+  returned task reports the outcome of the prechecks.
+required: false
+schema:
+  type: boolean
+  default: false

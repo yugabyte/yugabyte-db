@@ -82,7 +82,8 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
     UUID taskUUID = UUID.randomUUID();
     when(mockUpgradeUniverseHandler.restartUniverse(any(), eq(customer), eq(universe)))
         .thenReturn(taskUUID);
-    YBATask resp = apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), null);
+    YBATask resp =
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), null, null);
     assertEquals(taskUUID, resp.getTaskUuid());
     verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(universe));
   }
@@ -94,7 +95,7 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
         .thenReturn(taskUUID);
     UniverseRestart payload = new UniverseRestart();
     YBATask resp =
-        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), null, payload);
     assertEquals(taskUUID, resp.getTaskUuid());
     verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(universe));
   }
@@ -107,7 +108,7 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
     UniverseRestart payload = new UniverseRestart();
     payload.setRestartType(UniverseRestart.RestartTypeEnum.SERVICE);
     YBATask resp =
-        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), null, payload);
     assertEquals(taskUUID, resp.getTaskUuid());
     verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(universe));
   }
@@ -120,7 +121,7 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
     UniverseRestart payload = new UniverseRestart();
     payload.setRestartType(UniverseRestart.RestartTypeEnum.OS);
     YBATask resp =
-        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), null, payload);
     assertEquals(taskUUID, resp.getTaskUuid());
     verify(mockUpgradeUniverseHandler).rebootUniverse(any(), eq(customer), eq(universe));
   }
@@ -135,7 +136,7 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
     UniverseRestart payload = new UniverseRestart();
     payload.setRestartType(UniverseRestart.RestartTypeEnum.OS);
     YBATask resp =
-        apiClient.restartUniverse(customer.getUuid(), k8sUniverse.getUniverseUUID(), payload);
+        apiClient.restartUniverse(customer.getUuid(), k8sUniverse.getUniverseUUID(), null, payload);
     assertEquals(taskUUID, resp.getTaskUuid());
     verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(k8sUniverse));
   }
@@ -155,7 +156,8 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
         assertThrows(
             ApiException.class,
             () ->
-                apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload));
+                apiClient.restartUniverse(
+                    customer.getUuid(), universe.getUniverseUUID(), null, payload));
 
     assertEquals(403, exception.getCode());
     verifyNoInteractions(mockUpgradeUniverseHandler);
@@ -177,7 +179,7 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
     payload.setRestartType(UniverseRestart.RestartTypeEnum.SERVICE);
 
     YBATask response =
-        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), null, payload);
 
     assertEquals(taskUUID, response.getTaskUuid());
     verify(mockUpgradeUniverseHandler).restartUniverse(any(), eq(customer), eq(universe));
@@ -217,7 +219,7 @@ public class UniverseUtilitiesTest extends UniverseControllerTestBase {
     UniverseRestart payload = new UniverseRestart();
     payload.setRollingRestart(false);
     YBATask resp =
-        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), payload);
+        apiClient.restartUniverse(customer.getUuid(), universe.getUniverseUUID(), null, payload);
     assertEquals(taskUUID, resp.getTaskUuid());
     ArgumentCaptor<RestartTaskParams> captor = ArgumentCaptor.forClass(RestartTaskParams.class);
     verify(mockUpgradeUniverseHandler)

@@ -14,7 +14,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 
-@Mapper(config = CentralConfig.class)
+@Mapper(config = CentralConfig.class, uses = RollMaxBatchSizeMapper.class)
 public interface UniverseSoftwareUpgradeStartMapper {
   UniverseSoftwareUpgradeStartMapper INSTANCE =
       Mappers.getMapper(UniverseSoftwareUpgradeStartMapper.class);
@@ -22,7 +22,6 @@ public interface UniverseSoftwareUpgradeStartMapper {
   @Mapping(target = "sleepAfterTServerRestartMillis", source = "sleepAfterTserverRestartMillis")
   @Mapping(target = "ybSoftwareVersion", source = "version")
   @Mapping(target = "upgradeOption", source = "source")
-  @Mapping(target = "runOnlyPrechecks", source = "runOnlyPrechecks")
   @Mapping(target = "canaryUpgradeConfig", ignore = true)
   void copyToV1SoftwareUpgradeParams(
       UniverseSoftwareUpgradeStart source, @MappingTarget SoftwareUpgradeParams target);
