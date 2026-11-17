@@ -248,6 +248,35 @@ func TestClockSyncTemplate(t *testing.T) {
 	}
 }
 
+func TestChronyTemplate(t *testing.T) {
+	templatePath := filepath.Join(
+		os.Getenv("PROJECT_DIR"), "resources/ynp/modules/provision/chrony/templates/run.j2")
+	const ntsRm = "rm -f /etc/chrony/sources.d/ubuntu-ntp-pools.sources"
+	tests := []struct {
+		name   string
+		values map[string]any
+		wantRm bool
+	}{
+		{"custom servers", map[string]any{"chrony_servers": "10.0.0.1", "is_cloud": "False"}, true},
+		{"aws", map[string]any{"chrony_servers": "", "is_cloud": "True", "cloud_type": "aws"}, true},
+		{"onprem no servers", map[string]any{"chrony_servers": "", "is_cloud": "False"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := ResolveTemplate(context.TODO(), tc.values, templatePath)
+			if err != nil {
+				t.Fatalf("ResolveTemplate failed: %v", err)
+			}
+			if strings.Contains(output, " /etc/chrony.conf\n") {
+				t.Fatalf("Expected writes to go through CHRONY_CONF:\n%s", output)
+			}
+			if strings.Contains(output, ntsRm) != tc.wantRm {
+				t.Fatalf("Expected NTS pool removal=%v in output:\n%s", tc.wantRm, output)
+			}
+		})
+	}
+}
+
 func TestCollectMetricsWrapperTemplate(t *testing.T) {
 	projectDir := os.Getenv("PROJECT_DIR")
 	if projectDir == "" {

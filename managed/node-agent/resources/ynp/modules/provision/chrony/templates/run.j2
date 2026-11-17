@@ -1,60 +1,76 @@
+# RHEL keeps chrony.conf in /etc, Debian/Ubuntu in /etc/chrony.
+CHRONY_CONF=/etc/chrony.conf
+if [[ ! -f "${CHRONY_CONF}" && -f /etc/chrony/chrony.conf ]]; then
+    CHRONY_CONF=/etc/chrony/chrony.conf
+elif [[ ! -f "${CHRONY_CONF}" ]]; then
+    echo "chrony.conf not found in /etc/chrony.conf or /etc/chrony/chrony.conf" >&2
+    exit 1
+fi
+
+{% if (chrony_servers is defined and chrony_servers | trim != '') or (is_cloud == 'True' and cloud_type != 'onprem') %}
+# Ubuntu 25.10+ ships NTS pools here. chrony requires one of them to be reachable
+# before it uses any plain NTP source, so the servers set below would be ignored
+# when the node cannot reach ntp.ubuntu.com (e.g. airgap).
+rm -f /etc/chrony/sources.d/ubuntu-ntp-pools.sources
+{% endif %}
+
 # Adding servers to chrony.conf
 {% if chrony_servers is defined and chrony_servers | trim != '' %}
     {% for server in chrony_servers | split_string %}
         {% if server %}
-            sed -i '1i server {{ server }} prefer iburst minpoll 4 maxpoll 4' /etc/chrony.conf
+            sed -i '1i server {{ server }} prefer iburst minpoll 4 maxpoll 4' "${CHRONY_CONF}"
         {% endif %}
     {% endfor %}
 {% elif is_cloud == 'True' and cloud_type != 'onprem' %}
     # Remove any existing pool or server lines if using cloud-specific time source
-    sed -i '/^pool /d' /etc/chrony.conf
-    sed -i '/^server /d' /etc/chrony.conf
+    sed -i '/^pool /d' "${CHRONY_CONF}"
+    sed -i '/^server /d' "${CHRONY_CONF}"
     {% if cloud_type == 'aws' %}
-      grep -q '^server 169.254.169.123' /etc/chrony.conf || \
-      sed -i '1i server 169.254.169.123 prefer iburst minpoll 4 maxpoll 4' /etc/chrony.conf
+      grep -q '^server 169.254.169.123' "${CHRONY_CONF}" || \
+      sed -i '1i server 169.254.169.123 prefer iburst minpoll 4 maxpoll 4' "${CHRONY_CONF}"
     {% elif cloud_type == 'gcp' %}
-      grep -Eq '^server (metadata\.google\.internal|169\.254\.169\.254)\b' /etc/chrony.conf || \
-      sed -i '1i server 169.254.169.254 prefer iburst minpoll 4 maxpoll 4' /etc/chrony.conf
+      grep -Eq '^server (metadata\.google\.internal|169\.254\.169\.254)\b' "${CHRONY_CONF}" || \
+      sed -i '1i server 169.254.169.254 prefer iburst minpoll 4 maxpoll 4' "${CHRONY_CONF}"
     {% elif cloud_type == 'oci' %}
-      grep -q '^server 169.254.169.254' /etc/chrony.conf || \
-      sed -i '1i server 169.254.169.254 prefer iburst minpoll 4 maxpoll 4' /etc/chrony.conf
+      grep -q '^server 169.254.169.254' "${CHRONY_CONF}" || \
+      sed -i '1i server 169.254.169.254 prefer iburst minpoll 4 maxpoll 4' "${CHRONY_CONF}"
     {% elif cloud_type == 'azu' %}
         ptp_hyper_path="/dev/ptp_hyperv"
         if [ -e "$ptp_hyper_path" ]; then
-            grep -q '^refclock PHC /dev/ptp_hyperv' /etc/chrony.conf || \
-            echo 'refclock PHC /dev/ptp_hyperv poll 3 dpoll -2 offset 0' >> /etc/chrony.conf
+            grep -q '^refclock PHC /dev/ptp_hyperv' "${CHRONY_CONF}" || \
+            echo 'refclock PHC /dev/ptp_hyperv poll 3 dpoll -2 offset 0' >> "${CHRONY_CONF}"
         else
-            grep -q '^refclock PHC /dev/ptp0' /etc/chrony.conf || \
-            echo 'refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0' >> /etc/chrony.conf
+            grep -q '^refclock PHC /dev/ptp0' "${CHRONY_CONF}" || \
+            echo 'refclock PHC /dev/ptp0 poll 3 dpoll -2 offset 0' >> "${CHRONY_CONF}"
         fi
     {% endif %}
 
     # --- Custom Chrony settings: Added for enhanced observability and clock sync reliability ---
 
     # Enable logging of system clock behavior
-    grep -q '^log tracking measurements statistics' /etc/chrony.conf || \
-    echo 'log tracking measurements statistics' >> /etc/chrony.conf
+    grep -q '^log tracking measurements statistics' "${CHRONY_CONF}" || \
+    echo 'log tracking measurements statistics' >> "${CHRONY_CONF}"
 
     # This directive forces `chronyd' to send a message to syslog if it
     # makes a system clock adjustment larger than a threshold value in seconds.
-    grep -q '^logchange 0.5' /etc/chrony.conf || \
-    echo 'logchange 0.5' >> /etc/chrony.conf
+    grep -q '^logchange 0.5' "${CHRONY_CONF}" || \
+    echo 'logchange 0.5' >> "${CHRONY_CONF}"
 
     # Allow larger time offset tolerance before rejecting updates.
-    grep -q '^maxupdateskew 100.0' /etc/chrony.conf || \
-    echo 'maxupdateskew 100.0' >> /etc/chrony.conf
+    grep -q '^maxupdateskew 100.0' "${CHRONY_CONF}" || \
+    echo 'maxupdateskew 100.0' >> "${CHRONY_CONF}"
 
     # Directory where Chrony stores measurement history data from 'dumponexit' and 'dump' commands.
-    grep -q '^dumpdir /var/lib/chrony' /etc/chrony.conf || \
-    echo 'dumpdir /var/lib/chrony' >> /etc/chrony.conf
+    grep -q '^dumpdir /var/lib/chrony' "${CHRONY_CONF}" || \
+    echo 'dumpdir /var/lib/chrony' >> "${CHRONY_CONF}"
 
     # Save measurements and tracking data when Chrony exits.
-    grep -q '^dumponexit' /etc/chrony.conf || \
-    echo 'dumponexit' >> /etc/chrony.conf
+    grep -q '^dumponexit' "${CHRONY_CONF}" || \
+    echo 'dumponexit' >> "${CHRONY_CONF}"
 
     # Specify location of hardware clock drift and UTC/local tracking file used by `hwclock`.
-    grep -q '^hwclockfile /etc/adjtime' /etc/chrony.conf || \
-    echo 'hwclockfile /etc/adjtime' >> /etc/chrony.conf
+    grep -q '^hwclockfile /etc/adjtime' "${CHRONY_CONF}" || \
+    echo 'hwclockfile /etc/adjtime' >> "${CHRONY_CONF}"
 
 {% endif %}
 
