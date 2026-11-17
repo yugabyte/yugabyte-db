@@ -78,10 +78,15 @@ public class KubernetesOverridesRedactorTest {
   }
 
   @Test
-  public void redactKeepsUnparsableTextThatNamesNoSecret() {
+  public void redactHidesUnparsableTextWithABackslash() {
+    // A quoted key can spell a secret name with escapes, which only a parse would reveal.
+    String escapedKey =
+        "gflags:\n  tserver:\n    \"\\x79cql_ldap_bind_passwd\": tserver-secret\n\tbad: indent\n";
+    assertEquals("REDACTED", KubernetesOverridesRedactor.redact(escapedKey));
     // "\q" is not a YAML escape.
-    String overrides = "tserver:\n  podLabels:\n    path: \"C:\\q\"\n";
-    assertEquals(overrides, KubernetesOverridesRedactor.redact(overrides));
+    String badEscape = "tserver:\n  podLabels:\n    path: \"C:\\q\"\n";
+    assertEquals("REDACTED", KubernetesOverridesRedactor.redact(badEscape));
+    assertEquals(badEscape, KubernetesOverridesRedactor.restore(badEscape, "REDACTED", "o"));
   }
 
   @Test
@@ -90,7 +95,50 @@ public class KubernetesOverridesRedactorTest {
     assertEquals(overrides, KubernetesOverridesRedactor.redact(overrides));
     String anchored = "base: &b {path: \"C:\\\\x\"}\ntserver: *b\n";
     assertEquals(anchored, KubernetesOverridesRedactor.redact(anchored));
+    String hbaList = "gflags:\n  ysql_hba_conf_csv: [local all all trust]\nx: \"C:\\\\x\"\n";
+    assertEquals(hbaList, KubernetesOverridesRedactor.redact(hbaList));
     assertNull(KubernetesOverridesRedactor.redact(null));
+  }
+
+  @Test
+  public void redactKeepsEmptySecretValues() {
+    String overrides = "gflags:\n  ycql_ldap_bind_passwd:\n  ldapBindPassword: \"\"\nx: y\n";
+    assertEquals(overrides, KubernetesOverridesRedactor.redact(overrides));
+  }
+
+  @Test
+  public void redactCoversEverySecretName() {
+    for (String name : RedactingService.sensitiveNames(null, null)) {
+      assertEquals(
+          name,
+          "gflags:\n  " + name + ": REDACTED\n",
+          KubernetesOverridesRedactor.redact("gflags:\n  " + name + ": tserver-secret\n"));
+    }
+  }
+
+  @Test
+  public void redactCoversFlowStyle() {
+    String stored =
+        "gflags: {tserver: {ycql_ldap_bind_passwd: tserver-secret, ysql_hba_conf_csv: \"host all"
+            + " all 0.0.0.0/0 ldap ldapbindpasswd=hba-secret\", x: 1}}\n";
+    String redacted = KubernetesOverridesRedactor.redact(stored);
+    assertNoSecrets(redacted);
+    assertEquals("REDACTED", at(redacted, "gflags", "tserver", "ycql_ldap_bind_passwd"));
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=REDACTED",
+        at(redacted, "gflags", "tserver", "ysql_hba_conf_csv"));
+    assertEquals(1, at(redacted, "gflags", "tserver", "x"));
+    assertEquals(stored, KubernetesOverridesRedactor.restore(stored, redacted, "o"));
+  }
+
+  @Test
+  public void redactHidesOverLongTextThatCouldHoldASecret() {
+    String filler = "x: \"" + "a".repeat(3_200_000) + "\"\n";
+    assertEquals(
+        "REDACTED",
+        KubernetesOverridesRedactor.redact(filler + "ycql_ldap_bind_passwd: tserver-secret\n"));
+    assertEquals("REDACTED", KubernetesOverridesRedactor.redact(filler + "y: \"\\t\"\n"));
+    assertEquals(filler, KubernetesOverridesRedactor.redact(filler));
   }
 
   @Test
@@ -195,7 +243,9 @@ public class KubernetesOverridesRedactorTest {
           "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: master-secret\n"
               + "    ycql_ldap_bind_passwd: tserver-secret\n",
           "gflags:\n  \"ycql_ldap_bind_passwd=master-secret\": x\n",
-          "gflags:\n  tserver:\n    ycql_ldap_bind_passwd:\n      nested: master-secret\n");
+          "gflags:\n  tserver:\n    ycql_ldap_bind_passwd:\n      nested: master-secret\n",
+          "gflags:\n  ysql_hba_conf_csv:\n    - \"host all all 0.0.0.0/0 ldap"
+              + " ldapbindpasswd=master-secret\"\n");
 
   @Test
   public void redactHidesOverridesItCannotRewriteWhole() {
@@ -289,6 +339,40 @@ public class KubernetesOverridesRedactorTest {
     assertTrue(
         redacted,
         ((String) at(redacted, "gflags", "tserver", "note")).contains("ldapbindpasswd=REDACTED"));
+  }
+
+  @Test
+  public void redactHidesTheCommentsBelowACommentThatMentionsASecret() {
+    // A value can continue on the next line, as in commented-out YAML. Only blank space between
+    // comments keeps them together; YAML content and comments above are kept.
+    String overrides =
+        String.join(
+            "\n",
+            "# LDAP settings",
+            "# ldapbindpasswd:",
+            "#   comment-secret",
+            "",
+            "  #   comment-secret",
+            "x: y # kept",
+            "z: 1 # ycql_ldap_bind_passwd=\"inline-secret",
+            "#   inline-secret\"",
+            "w: 2",
+            "");
+    assertEquals(
+        String.join(
+            "\n",
+            "# LDAP settings",
+            "# REDACTED",
+            "# REDACTED",
+            "",
+            "  # REDACTED",
+            "x: y # kept",
+            "z: 1 # REDACTED",
+            "# REDACTED",
+            "w: 2",
+            ""),
+        KubernetesOverridesRedactor.redact(overrides));
+    assertEquals("# REDACTED\n", KubernetesOverridesRedactor.redact("# ldapbindpasswd=x\n"));
   }
 
   @Test

@@ -36,15 +36,18 @@ import play.libs.Json;
  * values back when overrides copied from a response are submitted. Only the secrets are rewritten,
  * located by parsing the YAML, so the rest of the user's text is kept: the UI shows it as typed,
  * and overrides sent back unchanged equal redact(stored) exactly. A secret is the value of a secret
- * gflag, the ldapbindpasswd fields of ysql_hba_conf_csv, any other string that mentions a secret,
- * and a comment that does; strings and comments are redacted as the logs redact text.
+ * gflag, the ldapbindpasswd fields of ysql_hba_conf_csv, and any other string that mentions a
+ * secret, which is redacted as the logs redact text. A comment that mentions a secret is replaced
+ * by "# REDACTED", and so are the comments below it up to the next YAML content, since a value can
+ * continue on the next line. Comments are never restored.
  *
- * <p>Overrides that hold a secret are hidden whole as REDACTED instead when they can't be parsed,
- * or when they use YAML the rewrite doesn't follow: anchors, aliases and tags, which can carry a
- * value to another key or change how it loads, keys that aren't strings, a repeated secret key, and
- * a key that mentions a secret. Overrides rarely use these, and hiding them whole fails closed.
- * Sent back unchanged, hidden overrides restore the stored text; an edit has to submit them in
- * full.
+ * <p>Overrides are hidden whole as REDACTED instead when they can't be parsed and could hold a
+ * secret: they name one, or hold a backslash, with which a quoted key can spell one. So are
+ * overrides that hold a secret and use YAML the rewrite doesn't follow: anchors, aliases and tags,
+ * which can carry a value to another key or change how it loads, keys that aren't strings, a secret
+ * or ysql_hba_conf_csv that isn't a scalar, a repeated secret key, and a key that mentions a
+ * secret. Overrides rarely use these, and hiding them whole fails closed. Sent back unchanged,
+ * hidden overrides restore the stored text; an edit has to submit them in full.
  */
 @Slf4j
 public final class KubernetesOverridesRedactor {
@@ -127,12 +130,8 @@ public final class KubernetesOverridesRedactor {
    * secret.
    */
   private static class HiddenException extends Exception {
-    // False when the text can't be parsed at all.
-    final boolean parsed;
-
-    HiddenException(String message, boolean parsed) {
+    HiddenException(String message) {
       super(message);
-      this.parsed = parsed;
     }
   }
 
@@ -153,20 +152,14 @@ public final class KubernetesOverridesRedactor {
     if (overrides == null) {
       return null;
     }
-    boolean mentionsSecret = mentionsSecret(overrides, secretKeys());
     // A double-quoted key can spell a secret name with escapes, so text with a backslash is parsed.
-    if (!mentionsSecret && overrides.indexOf('\\') < 0) {
+    if (overrides.indexOf('\\') < 0 && !mentionsSecret(overrides, secretKeys())) {
       return overrides;
     }
     Finder found;
     try {
       found = find(overrides);
     } catch (HiddenException e) {
-      // Escapes spell a name only once parsed, so text that can't be parsed holds a secret only if
-      // it names one as written, as above.
-      if (!e.parsed && !mentionsSecret) {
-        return overrides;
-      }
       log.debug("Hiding Kubernetes overrides whole because they {}", e.getMessage());
       return REDACTED;
     }
@@ -183,14 +176,16 @@ public final class KubernetesOverridesRedactor {
     // A block scalar's header comment goes with the scalar when the scalar is replaced.
     List<Replacement> scalars = new ArrayList<>(replacements);
     scalars.sort(Comparator.comparingInt((Replacement r) -> r.start));
-    for (int[] comment : found.comments()) {
-      if (insideAny(scalars, comment[0])) {
-        continue;
-      }
-      String text = overrides.substring(comment[0], comment[1]);
-      String redacted = RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS);
-      if (!redacted.equals(text)) {
-        replacements.add(new Replacement(comment[0], comment[1], redacted));
+    List<int[]> comments = found.comments();
+    boolean hiding = false;
+    for (int i = 0; i < comments.size(); i++) {
+      int[] comment = comments.get(i);
+      boolean below = i > 0 && overrides.substring(comments.get(i - 1)[1], comment[0]).isBlank();
+      hiding =
+          mentionsSecret(overrides.substring(comment[0], comment[1]), found.secretKeys)
+              || (hiding && below);
+      if (hiding && !insideAny(scalars, comment[0])) {
+        replacements.add(new Replacement(comment[0], comment[1], "# " + REDACTED));
       }
     }
     return apply(overrides, replacements);
@@ -320,8 +315,7 @@ public final class KubernetesOverridesRedactor {
   private static Finder find(String overrides) throws HiddenException {
     LoaderOptions options = new LoaderOptions();
     if (overrides.codePointCount(0, overrides.length()) > options.getCodePointLimit()) {
-      throw new HiddenException(
-          "are longer than " + options.getCodePointLimit() + " code points", false);
+      throw new HiddenException("are longer than " + options.getCodePointLimit() + " code points");
     }
     Node root;
     try {
@@ -335,10 +329,9 @@ public final class KubernetesOverridesRedactor {
               + e.getProblem()
               + (mark == null
                   ? ""
-                  : " at line " + (mark.getLine() + 1) + ", column " + (mark.getColumn() + 1)),
-          false);
+                  : " at line " + (mark.getLine() + 1) + ", column " + (mark.getColumn() + 1)));
     } catch (RuntimeException e) {
-      throw new HiddenException("cannot be parsed: " + e.getClass().getSimpleName(), false);
+      throw new HiddenException("cannot be parsed: " + e.getClass().getSimpleName());
     }
     Finder finder = new Finder(overrides, root);
     if (root != null) {
@@ -346,7 +339,7 @@ public final class KubernetesOverridesRedactor {
     }
     if (finder.unsupported != null
         && (!finder.secrets.isEmpty() || mentionsSecret(overrides, finder.secretKeys))) {
-      throw new HiddenException(finder.unsupported, true);
+      throw new HiddenException(finder.unsupported);
     }
     return finder;
   }
@@ -432,16 +425,21 @@ public final class KubernetesOverridesRedactor {
           List<String> childPath = new ArrayList<>(path);
           childPath.add(key);
           boolean hba = GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key);
-          if (hba || secretKeys.contains(key)) {
+          if (secretKeys.contains(key)) {
             if (!(value instanceof ScalarNode)) {
-              throw new HiddenException("hold a value of " + key + " that is not a scalar", true);
+              throw new HiddenException("hold a value of " + key + " that is not a scalar");
             }
             visit(value);
-            addSecret(
-                (ScalarNode) value, childPath, hba ? Kind.HBA : Kind.VALUE, childInFlow, inList);
+            addSecret((ScalarNode) value, childPath, Kind.VALUE, childInFlow, inList);
+          } else if (hba && value instanceof ScalarNode) {
+            visit(value);
+            addSecret((ScalarNode) value, childPath, Kind.HBA, childInFlow, inList);
           } else if (mentionsSecret(key, secretKeys)) {
-            throw new HiddenException("have a key that mentions a secret", true);
+            throw new HiddenException("have a key that mentions a secret");
           } else {
+            if (hba) {
+              unsupported = "hold a " + key + " that is not a scalar";
+            }
             collect(value, childPath, childInFlow, inList);
           }
         }
@@ -462,7 +460,7 @@ public final class KubernetesOverridesRedactor {
       Secret secret = new Secret(path, kind, scalar, span[0], span[1], inFlow, inList);
       secrets.add(secret);
       if (byPath.put(path, secret) != null) {
-        throw new HiddenException("repeat " + String.join(".", path), true);
+        throw new HiddenException("repeat " + String.join(".", path));
       }
     }
 
