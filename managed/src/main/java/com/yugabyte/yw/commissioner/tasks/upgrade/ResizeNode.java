@@ -368,6 +368,23 @@ public class ResizeNode extends UpgradeTaskBase {
                         .filter(n -> !nodesToApply.tserversToUpgradeGFlags.contains(n))
                         .collect(Collectors.toList()));
             if (!untouchedNodesToSetLive.isEmpty()) {
+              // Nothing restarted these nodes, so check their servers are up before setting Live.
+              List<NodeDetails> masters =
+                  untouchedNodesToSetLive.stream()
+                      .filter(n -> n.isMaster)
+                      .collect(Collectors.toList());
+              if (!masters.isEmpty()) {
+                createWaitForServersTasks(masters, ServerType.MASTER)
+                    .setSubTaskGroupType(getTaskSubGroupType());
+              }
+              List<NodeDetails> tservers =
+                  untouchedNodesToSetLive.stream()
+                      .filter(n -> n.isTserver)
+                      .collect(Collectors.toList());
+              if (!tservers.isEmpty()) {
+                createWaitForServersTasks(tservers, ServerType.TSERVER)
+                    .setSubTaskGroupType(getTaskSubGroupType());
+              }
               createSetNodeStateTasks(untouchedNodesToSetLive, NodeDetails.NodeState.Live)
                   .setSubTaskGroupType(getTaskSubGroupType());
             }

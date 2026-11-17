@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -24,6 +25,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -1070,6 +1072,23 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
             .map(t -> t.getTaskParams().path("nodeName").asText())
             .collect(Collectors.toList()));
     assertAllNodesLive();
+  }
+
+  @Test
+  public void testRollbackLeavesNodeResizingWhenItsTserverIsDown() {
+    NodeDetails downNode =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNode(firstNodeName());
+    when(mockClient.waitForServer(
+            eq(HostAndPort.fromParts(downNode.cloudInfo.private_ip, downNode.tserverRpcPort)),
+            anyLong()))
+        .thenReturn(false);
+    TaskInfo taskInfo = rollbackIopsOnlyResizeFailedInDiskUpdate(null);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertEquals(
+        NodeDetails.NodeState.Resizing,
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getNode(downNode.nodeName)
+            .state);
   }
 
   @Test
