@@ -12,6 +12,19 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
+func TestStorageConfigNotFoundMessage(t *testing.T) {
+	got := storageConfigNotFoundMessage("backup", "Azure")
+	want := "No Azure storage configurations with name: backup found\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	got = storageConfigNotFoundMessage("backup", "")
+	want = "No storage configurations with name: backup found\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func TestFilterStorageConfigs(t *testing.T) {
 	config := func(uuid, configType, code, name string) ybaclient.CustomerConfigUI {
 		return ybaclient.CustomerConfigUI{

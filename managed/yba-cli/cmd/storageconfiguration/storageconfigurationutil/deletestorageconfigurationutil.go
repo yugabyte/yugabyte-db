@@ -66,7 +66,7 @@ func DeleteStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode
 
 	if len(r) < 1 {
 		logrus.Fatalf(formatter.Colorize(
-			storageConfigNotFoundMessage(storageName, storageCode), formatter.RedColor))
+			storageConfigNotFoundMessage(storageName, commandCall), formatter.RedColor))
 	}
 
 	var storageUUID string

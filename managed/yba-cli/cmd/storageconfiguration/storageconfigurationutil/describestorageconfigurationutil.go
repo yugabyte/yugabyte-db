@@ -40,11 +40,13 @@ func FilterStorageConfigs(
 	return filtered
 }
 
-func storageConfigNotFoundMessage(name, storageCode string) string {
-	if util.IsEmptyString(storageCode) {
+// label is the word shown to the user. For Azure that is "Azure"; the stored
+// code used to filter remains "AZ" and is not this argument.
+func storageConfigNotFoundMessage(name, label string) string {
+	if util.IsEmptyString(label) {
 		return fmt.Sprintf("No storage configurations with name: %s found\n", name)
 	}
-	return fmt.Sprintf("No %s storage configurations with name: %s found\n", storageCode, name)
+	return fmt.Sprintf("No %s storage configurations with name: %s found\n", label, name)
 }
 
 func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode string) {
@@ -79,7 +81,7 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCo
 
 	if len(r) < 1 {
 		logrus.Fatalf(formatter.Colorize(
-			storageConfigNotFoundMessage(storageName, storageCode), formatter.RedColor))
+			storageConfigNotFoundMessage(storageName, commandCall), formatter.RedColor))
 	}
 
 	storageConfigCtx := formatter.Context{
