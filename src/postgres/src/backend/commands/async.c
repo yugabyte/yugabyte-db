@@ -3034,9 +3034,8 @@ ClearPendingActionsAndNotifies(void)
  * the tservers and CDC reads the records from WAL/intentsdb.
  *
  * The writes are transactional even outside a transaction block. A
- * single-shard write would commit at once, before YBCCommitTransaction, so
- * listeners could be notified of a transaction that then fails to commit, and
- * a query layer retry of the statement would deliver its notifications again.
+ * single-shard write would commit at once, so a query layer retry of the
+ * statement would deliver its notifications again.
  */
 static void
 ybInsertPendingNotifiesToTable(void)
