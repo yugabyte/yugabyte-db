@@ -702,8 +702,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 	 * Find the merge sort columns and the gap columns.  (Parts copied from
 	 * prepare_sort_from_pathkeys.)
 	 *
-	 * No check here keeps two pathkeys from resolving to the same index
-	 * column, so count one merge sort column for each pathkey, as
+	 * No check here keeps two pathkeys from resolving to the same index column
+	 * (see #38181), so count one merge sort column for each pathkey, as
 	 * prepare_sort_from_pathkeys does.  The gap columns are distinct, since
 	 * each pathkey looks for them only after the previous merge sort column,
 	 * and they are key columns, since each comes before a merge sort column,
@@ -733,6 +733,8 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 		 * Take the first tlist item found in the EC, skipping the SAOP columns
 		 * in stream_cols.  A SAOP column can belong to a sort EquivalenceClass
 		 * when a clause equates it to a sort column.
+		 * TODO(#38181): the match ignores collation, so it can take an earlier
+		 * index column that holds the same column in another collation.
 		 */
 		foreach(j, index->indextlist)
 		{
