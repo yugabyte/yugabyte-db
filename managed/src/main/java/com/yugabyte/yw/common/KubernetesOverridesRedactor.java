@@ -314,17 +314,15 @@ public final class KubernetesOverridesRedactor {
     try {
       root = new Yaml(new SafeConstructor(options)).compose(new StringReader(overrides));
     } catch (MarkedYAMLException e) {
-      // Its message quotes the line around the problem, which may hold a secret.
-      Mark mark = e.getProblemMark();
+      // SnakeYAML's messages can quote the text, such as an undefined alias's name or a character.
+      Mark mark = e.getProblemMark() != null ? e.getProblemMark() : e.getContextMark();
       throw new HiddenException(
-          "cannot be parsed: "
-              + (e.getContext() == null ? "" : e.getContext() + ": ")
-              + e.getProblem()
+          "cannot be parsed as YAML"
               + (mark == null
                   ? ""
                   : " at line " + (mark.getLine() + 1) + ", column " + (mark.getColumn() + 1)));
     } catch (RuntimeException e) {
-      throw new HiddenException("cannot be parsed: " + e.getClass().getSimpleName());
+      throw new HiddenException("cannot be parsed as YAML");
     }
     Finder finder = new Finder(overrides, root);
     if (root != null) {
