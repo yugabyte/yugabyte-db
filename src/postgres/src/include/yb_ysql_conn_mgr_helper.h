@@ -164,6 +164,8 @@ extern bool yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 
 extern void YbSendFatalForLogicalConnectionPacket();
 
+extern void YbSendConnMgrObjectDropped(char kind, Oid oid);
+
 extern bool YbGetNumYsqlConnMgrConnections(const Oid db_oid,
 										   const Oid user_oid,
 										   uint32_t *num_logical_conn,
