@@ -99,10 +99,14 @@ class AsyncRpc;
 
 // A call that carries the requests of several AsyncRpcs, see RpcCoalescer.
 struct CoalescedCall {
-  virtual ~CoalescedCall() = default;
+  CoalescedCall();
+  virtual ~CoalescedCall();
 
   rpc::RpcController controller;
 };
+
+// Number of CoalescedCall objects alive in this process.
+int64_t TEST_NumLiveCoalescedCalls();
 
 // Packs the first attempts of the Write and Read RPCs of one batcher flush that go to the same
 // tablet server into one WriteBatch or ReadBatch call. Each AsyncRpc still selects its tablet

@@ -13,6 +13,8 @@
 
 #include "yb/client/async_rpc.h"
 
+#include <atomic>
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/client/batcher.h"
@@ -1289,6 +1291,24 @@ void WaitForAsyncWriteRpc::Failed(const Status& status) {
 
 namespace {
 
+std::atomic<int64_t> num_live_coalesced_calls{0};
+
+} // namespace
+
+CoalescedCall::CoalescedCall() {
+  num_live_coalesced_calls.fetch_add(1, std::memory_order_relaxed);
+}
+
+CoalescedCall::~CoalescedCall() {
+  num_live_coalesced_calls.fetch_sub(1, std::memory_order_relaxed);
+}
+
+int64_t TEST_NumLiveCoalescedCalls() {
+  return num_live_coalesced_calls.load(std::memory_order_relaxed);
+}
+
+namespace {
+
 template <class Rpc, class BatchReq, class BatchResp>
 struct CoalescedCallImpl : public CoalescedCall {
   CoalescedCallImpl()
@@ -1320,8 +1340,11 @@ void SendCoalesced(
   call->controller.set_allow_local_calls_in_curr_thread(allow_local_calls_in_curr_thread);
   invoke(
       tserver->proxy().get(), *call->req, call->resp, &call->controller, [call] {
+    // Each rpc keeps the call, with the response it reads, until it is done. The call must not
+    // keep the rpcs in turn, or neither is ever freed.
+    auto rpcs = std::move(call->rpcs);
     auto status = call->controller.status();
-    const auto num_rpcs = call->rpcs.size();
+    const auto num_rpcs = rpcs.size();
     if (status.ok() && call->resp->has_error()) {
       status = StatusFromPB(call->resp->error().status());
     }
@@ -1333,7 +1356,7 @@ void SendCoalesced(
           call->resp->responses().size(), num_rpcs);
     }
     if (!status.ok()) {
-      for (auto& rpc : call->rpcs) {
+      for (auto& rpc : rpcs) {
         rpc->FinishCoalesced(call, /* sub_resp= */ nullptr, 0, 0, status);
       }
       return;
@@ -1341,7 +1364,7 @@ void SendCoalesced(
     auto sub_resp = call->resp->responses().begin();
     auto offset = call->resp->sidecar_offsets().begin();
     auto count = call->resp->sidecar_counts().begin();
-    for (auto& rpc : call->rpcs) {
+    for (auto& rpc : rpcs) {
       rpc->FinishCoalesced(call, &*sub_resp, *offset, *count, Status::OK());
       ++sub_resp;
       ++offset;

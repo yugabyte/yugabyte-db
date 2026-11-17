@@ -17,6 +17,8 @@
 #include <atomic>
 #include <thread>
 
+#include "yb/client/async_rpc.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 
 #include "yb/tablet/tablet_metadata.h"
@@ -24,6 +26,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_thread_holder.h"
 
@@ -264,6 +267,10 @@ TEST_P(PgBatchedRpcsTest, MultiTabletUpserts) {
   ASSERT_EQ(read_batch > 0, Enabled(feature, kBatchReads));
   ASSERT_EQ(multi_raft > 0,
             Enabled(feature, kMultiRaftHeartbeats) || Enabled(feature, kMultiRaftData));
+
+  // Coalesced calls are freed once their rpcs are done.
+  ASSERT_OK(WaitFor([] { return client::internal::TEST_NumLiveCoalescedCalls() == 0; },
+                    10s, "Coalesced calls freed"));
 }
 
 // Moves tablet leaders while the workload runs, so that batched requests hit NOT_THE_LEADER and
