@@ -14215,8 +14215,9 @@ Status CatalogManager::ValidateReplicationInfo(
 
   // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
   // but a tablet created on fewer tservers than its replication factor starts under-replicated,
-  // and the load balancer, which does not consider tiers, would add the missing replicas on
-  // tservers without the tier. So every replica needs a live tserver that registered a data
+  // and the load balancer may complete it on a tserver without the tier: CanAddTabletToTabletServer
+  // accepts one whose tiers are unknown, and any one while no eligible tserver in its placement
+  // block has the tier. So every replica needs a live tserver that registered a data
   // directory on the tier, within the placement blocks and under their maximums as
   // CountPlaceableReplicas bounds it, exactly unless the blocks overlap. Gated on
   // catalog_manager_check_ts_count_for_create_table like the live tablet server count.

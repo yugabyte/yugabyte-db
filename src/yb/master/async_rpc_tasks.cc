@@ -19,6 +19,7 @@
 #include "yb/consensus/consensus_meta.h"
 
 #include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_test.proxy.h"
@@ -92,15 +93,9 @@ std::string TargetStorageTierForPeer(
       if (!ts_desc.ok()) {
         return std::string();
       }
-      const auto& placement_uuid = (*ts_desc)->placement_uuid();
-      for (const auto& read_replicas : replication_info.read_replicas()) {
-        if (read_replicas.placement_uuid() == placement_uuid) {
-          return read_replicas.storage_tier();
-        }
-      }
-      // The balancer falls back to the first read replica placement too.
-      return replication_info.read_replicas().empty()
-          ? std::string() : replication_info.read_replicas(0).storage_tier();
+      const auto* placement = CatalogManagerUtil::FindReadReplicaPlacement(
+          replication_info, (*ts_desc)->placement_uuid());
+      return placement ? placement->storage_tier() : std::string();
     }
     return replication_info.live_replicas().storage_tier();
   }

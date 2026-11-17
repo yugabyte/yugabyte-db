@@ -2123,6 +2123,25 @@ TEST_F(LoadBalancerTierMigrationTest, ReplicaStuckOffItsTierHoldsNoSlot) {
   ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
 }
 
+// A replica with a target that is not open yet (still bootstrapping, or a FAILED peer) reports
+// the target alone, with no current tier and state NONE. Nothing is moving it, so it is neither
+// counted as in flight nor told again, and cannot hold a slot for good.
+TEST_F(LoadBalancerTierMigrationTest, UnopenedReplicaHoldsNoSlot) {
+  PrepareTieredState();
+  for (const auto& tablet : tablets_) {
+    for (const auto& ts_desc : ts_descs_) {
+      SetReplicaTier(tablet.get(), ts_desc->permanent_uuid(), "hdd", "hdd",
+                     tserver::TierMigrationStatusPB::DONE);
+    }
+  }
+  SetReplicaTier(tablets_[0].get(), ts_descs_[0]->permanent_uuid(), "", "hdd",
+                 tserver::TierMigrationStatusPB::NONE);
+  ASSERT_OK(ResetLoadBalancerAndAnalyzeTablets());
+  ASSERT_EQ(TotalTierMigrationsInFlight(), 0);
+  ASSERT_TRUE(ActivityInfoIsIdle());
+  ASSERT_EQ(ASSERT_RESULT(RunTierMigrations()), 0);
+}
+
 // A replica still moving keeps the balancer non-idle, like an ongoing remote bootstrap: with the
 // cap full it sends nothing, and an idle verdict would say the table is done when most of its
 // replicas were never told. A replica that can never get there does not.

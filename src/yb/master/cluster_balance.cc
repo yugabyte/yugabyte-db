@@ -476,6 +476,8 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
   int remaining_leader_moves = options->kMaxConcurrentLeaderMoves;
 
   // Loop over all tables to get the count of pending tasks.
+  // Whether any analyzed table's placement names a storage tier, for the tier step's loop guard.
+  bool any_tiered_placement = false;
   int pending_add_replica_tasks = 0;
   int pending_remove_replica_tasks = 0;
   int pending_stepdown_leader_tasks = 0;
@@ -546,6 +548,7 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     VLOG(2) << "Table " << table_id << " has " << pending_add_replica_tasks << " pending adds, "
             << pending_remove_replica_tasks << " pending removes, "
             << pending_stepdown_leader_tasks << " pending leader stepdowns";
+    any_tiered_placement = any_tiered_placement || !state_->placement_.storage_tier().empty();
   }
 
   if (pending_add_replica_tasks + pending_remove_replica_tasks + pending_stepdown_leader_tasks> 0) {
@@ -617,17 +620,24 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
   ProcessUnderReplicatedTablets(remaining_adds, task_added, out_tablet_id, out_to_ts);
 
   // Tier migrations have their own caps, so a run out of add/remove/leader budget still visits
-  // every table for them.
-  auto tier_migrations_have_budget = [this, options] {
-    return FLAGS_enable_tiered_storage &&
-           global_state_->total_tier_migrations_in_flight_ < options->kMaxConcurrentTierMigrations;
+  // every table for them: while some analyzed placement names a tier and the cap has room, and
+  // while there are retry or awaiting-report entries, which only a visit keeps alive
+  // (PruneTierMigrationRetries). An untiered cluster keeps the early break.
+  const auto tier_step_pending = [this, options, any_tiered_placement] {
+    if (!FLAGS_enable_tiered_storage) {
+      return false;
+    }
+    return (any_tiered_placement &&
+            global_state_->total_tier_migrations_in_flight_ <
+                options->kMaxConcurrentTierMigrations) ||
+           !tier_migration_retries_.empty() || !tier_migrations_awaiting_report_.empty();
   };
 
   // Iterate over all the tables to take actions based on the data collected on the previous loop.
   for (const auto& table : tables) {
     state_ = nullptr;
     if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0 &&
-        !tier_migrations_have_budget()) {
+        !tier_step_pending()) {
       break;
     }
     if (SkipLoadBalancing(*table)) {
@@ -2435,21 +2445,12 @@ Result<bool> ClusterLoadBalancer::IsConfigMemberInTransitionMode(const TabletId&
 
 const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
     const ReplicationInfoPB& replication_info) const {
-  // We assume we have an read replicas field in our replication info.
-  for (int i = 0; i < replication_info.read_replicas_size(); i++) {
-    const PlacementInfoPB& read_only_placement = replication_info.read_replicas(i);
-    if (read_only_placement.placement_uuid() == state_->options_->placement_uuid) {
-      VLOG(1) << "Found read only placement uuid " << read_only_placement.placement_uuid();
-      return read_only_placement;
-    }
-  }
-  // We can legitimately get here if the cluster's read-replica configuration changed (e.g. via
-  // yb-admin add_read_replica_placement_info / delete_read_replica_placement_info) between when
-  // the tablespace map was populated with this placement_uuid and now. Fall back to the first
-  // read-replica cluster; the next tablespace-map refresh will rebind to the current config.
-  LOG(WARNING) << "Could not find read only cluster with placement uuid: "
-               << state_->options_->placement_uuid;
-  return replication_info.read_replicas(0);
+  // The caller checked that the table has a read replica placement.
+  const auto* placement = CatalogManagerUtil::FindReadReplicaPlacement(
+      replication_info, state_->options_->placement_uuid);
+  CHECK(placement != nullptr) << "No read replica placement in "
+                              << replication_info.ShortDebugString();
+  return *placement;
 }
 
 const PlacementInfoPB& ClusterLoadBalancer::GetLiveClusterPlacementInfo() const {

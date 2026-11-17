@@ -294,15 +294,17 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
     }
     auto& meta_ts = per_ts_meta_[ts_uuid];
 
-    // Tiered storage: a replica still moving toward its target counts against the migration
-    // caps until the tserver reports it on the target tier, converged (DONE) or gave up (FAILED).
-    // DONE with another current tier is a replica on a tserver with no disk on its target, which
-    // runs on its home disk and never moves; like a replica on a dead tserver, it must not hold
-    // a slot.
+    // Tiered storage: a replica the tserver is moving toward its target (IN_PROGRESS) counts
+    // against the migration caps until the tserver reports it on the target tier, converged (DONE)
+    // or gave up (FAILED). NONE is a replica not open yet (still bootstrapping, or a FAILED peer)
+    // or one no pass has scanned since its tserver started, so nothing is moving it; DONE with
+    // another current tier is a replica on a tserver with no disk on its target, which runs on
+    // its home disk and never moves. Neither, like a replica on a dead tserver, may hold a slot.
+    // The Raft state is not consulted: a follower is UNKNOWN here for a heartbeat after every term
+    // or config change, and its migration does not pause for that.
     if (!replica.target_storage_tier.empty() &&
         replica.current_storage_tier != replica.target_storage_tier &&
-        replica.tier_migration_state != tserver::TierMigrationStatusPB::FAILED &&
-        replica.tier_migration_state != tserver::TierMigrationStatusPB::DONE &&
+        replica.tier_migration_state == tserver::TierMigrationStatusPB::IN_PROGRESS &&
         meta_ts.descriptor->HasStorageTier(replica.target_storage_tier) &&
         (!check_ts_liveness_ || meta_ts.descriptor->IsLiveAndHasReported())) {
       global_state_->AddTierMigrationInFlight(tablet_id, ts_uuid);
