@@ -26,7 +26,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.Universe;
+import io.ebean.DB;
 import io.ebean.Model;
+import io.ebean.Transaction;
+import io.ebean.TransactionCallbackAdapter;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -176,14 +179,19 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   }
 
   @Override
-  public synchronized void invalidateScope(UUID scopeUuid) {
-    removeCache(scopeUuid);
-    overriddenScopes.remove(scopeUuid);
+  public void invalidateScope(UUID scopeUuid) {
+    invalidateNowAndAfterTransaction(
+        () -> {
+          synchronized (this) {
+            removeCache(scopeUuid);
+            overriddenScopes.remove(scopeUuid);
+          }
+        });
   }
 
   @Override
   public void invalidateAllScopes() {
-    clearCache();
+    invalidateNowAndAfterTransaction(this::clearCache);
   }
 
   private Config globalConfig() {
@@ -328,10 +336,36 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
       if (type == ScopeType.GLOBAL || type == ScopeType.CUSTOMER) {
         // Finer grained invalidation can be implemented here if needed. For now we just clear the
         // cache to also remove the dependents due to fall-backs.
-        clearCache();
+        invalidateNowAndAfterTransaction(this::clearCache);
       } else {
-        removeCache(entry.getScopeUUID());
+        UUID scope = entry.getScopeUUID();
+        invalidateNowAndAfterTransaction(() -> removeCache(scope));
       }
     };
+  }
+
+  /**
+   * Runs the invalidation now and, when called inside a transaction, again once it commits or rolls
+   * back. Until the commit, other connections still read the old rows, so a concurrent request that
+   * loads a scope in between would put the old values back in the cache, where they would stay
+   * until the entry expires.
+   */
+  private void invalidateNowAndAfterTransaction(Runnable invalidation) {
+    invalidation.run();
+    Transaction transaction = DB.currentTransaction();
+    if (transaction != null && transaction.isActive()) {
+      transaction.register(
+          new TransactionCallbackAdapter() {
+            @Override
+            public void postCommit() {
+              invalidation.run();
+            }
+
+            @Override
+            public void postRollback() {
+              invalidation.run();
+            }
+          });
+    }
   }
 }

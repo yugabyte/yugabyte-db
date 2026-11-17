@@ -24,12 +24,16 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import io.ebean.DB;
 import io.ebean.Model;
+import io.ebean.Transaction;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -50,6 +54,7 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
   // Key not defined in any scope
   public static final String YB_NOT_PRESENT_KEY = "yb.not.present";
   public static final String TASK_GC_FREQUENCY = "taskGC.frequency";
+  private static final String YB_TXN_KEY = "yb.runtime.txn_test";
 
   enum Scope {
     STATIC,
@@ -252,6 +257,46 @@ public class SettableRuntimeConfigFactoryTest extends FakeDBApplication {
 
     assertTrue(cacheEnabledFactory.getCachedConfigs().isEmpty());
     assertTrue(cacheEnabledFactory.getOverriddenScopes().isEmpty());
+  }
+
+  @Test
+  public void testGlobalChangeVisibleAfterReadBeforeCommit() throws Exception {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+    ExecutorService otherRequest = Executors.newSingleThreadExecutor();
+    try {
+      try (Transaction transaction = DB.beginTransaction()) {
+        cacheEnabledFactory.globalRuntimeConf().setValue(YB_TXN_KEY, "389");
+        // Another request loads the global scope after the change listener cleared the cache but
+        // before this transaction commits, so it caches the old rows.
+        Config seenBeforeCommit =
+            otherRequest.submit(() -> cacheEnabledFactory.globalRuntimeConf()).get();
+        assertFalse(seenBeforeCommit.hasPath(YB_TXN_KEY));
+        transaction.commit();
+      }
+
+      assertEquals("389", cacheEnabledFactory.globalRuntimeConf().getString(YB_TXN_KEY));
+      assertEquals(
+          "389",
+          otherRequest
+              .submit(() -> cacheEnabledFactory.globalRuntimeConf().getString(YB_TXN_KEY))
+              .get());
+    } finally {
+      otherRequest.shutdownNow();
+    }
+  }
+
+  @Test
+  public void testGlobalChangeRolledBackAfterReadInsideTransaction() {
+    SettableRuntimeConfigFactory cacheEnabledFactory = createCacheEnabledFactory();
+
+    try (Transaction transaction = DB.beginTransaction()) {
+      cacheEnabledFactory.globalRuntimeConf().setValue(YB_TXN_KEY, "389");
+      // A read on the same connection sees the uncommitted row and caches it.
+      assertEquals("389", cacheEnabledFactory.globalRuntimeConf().getString(YB_TXN_KEY));
+      transaction.rollback();
+    }
+
+    assertFalse(cacheEnabledFactory.globalRuntimeConf().hasPath(YB_TXN_KEY));
   }
 
   @Test
