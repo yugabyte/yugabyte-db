@@ -11,10 +11,21 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <atomic>
+#include <future>
+#include <limits>
+#include <memory>
 #include <mutex>
 #include <optional>
+#include <ranges>
+#include <semaphore>
+#include <sstream>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "yb/client/client_fwd.h"
@@ -28,6 +39,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/ysql_utils.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_types.pb.h"
@@ -106,6 +118,7 @@ DECLARE_bool(TEST_pause_before_full_compaction);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_bool(TEST_skip_post_split_compaction);
+DECLARE_double(TEST_simulate_lookup_partition_list_mismatch_probability);
 DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_int32(TEST_partitioning_version);
 DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
@@ -174,8 +187,77 @@ Status SetEnableIndexScan(PGConn* conn, bool indexscan) {
   return conn->ExecuteFormat("SET enable_indexscan = $0", indexscan ? "on" : "off");
 }
 
-} // namespace
+class TabletLookupFailureEmulator {
+ public:
+  TabletLookupFailureEmulator(
+      PGConn conn, std::string&& update_query, std::atomic<size_t>& num_updates,
+      tserver::TabletServerIf& tserver)
+      : conn_(std::move(conn)), update_query_(std::move(update_query)),
+        num_updates_(num_updates), tserver_(tserver) {
+    update_thread_holder_.AddThread(
+        [this, &stop = update_thread_holder_.stop_flag()] {
+          SetFlagOnExit set_stop_on_exit(&stop);
+          for (;;) {
+            update_requests_.acquire();
+            if (stop.load(std::memory_order_acquire)) {
+              break;
+            }
+            ASSERT_OK(conn_.Execute(update_query_));
+            performed_updates_.release();
+        }
+    });
+    auto& sync_point = *SyncPoint::GetInstance();
+    sync_point.EnableProcessing();
+    sync_point.SetCallBack("BatcherFlushDone:Retry:1", [this](void*) {
+      if (update_on_retry_requested_.exchange(false)) {
+        PerformUpdate();
+      }
+    });
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability) =
+        0.6;
+  }
 
+  ~TabletLookupFailureEmulator() {
+    update_thread_holder_.stop_flag().store(true, std::memory_order_release);
+    update_requests_.release();
+    auto& sync_point = *SyncPoint::GetInstance();
+    sync_point.DisableProcessing();
+    sync_point.ClearAllCallBacks();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability) =
+        0;
+  }
+
+  Status RequestFailureOnNextQuery(const std::string& namespace_id) {
+    update_on_retry_requested_.store(true, std::memory_order_release);
+    SCHECK(
+        !update_thread_holder_.stop_flag().load(std::memory_order_acquire),
+        IllegalState, "Update thread stopped unexpectedly");
+    // Clear cache to trigger table lookups in next query.
+    return tserver_.ClearMetacache(namespace_id);
+  }
+
+ private:
+  using Semaphore = std::counting_semaphore<0xFFFF>;
+
+  void PerformUpdate() {
+    while (performed_updates_.try_acquire()) {}
+    update_requests_.release();
+    if (performed_updates_.try_acquire_for(10s * kTimeMultiplier)) {
+      ++num_updates_;
+    }
+  }
+
+  PGConn conn_;
+  const std::string update_query_;
+  std::atomic<size_t>& num_updates_;
+  tserver::TabletServerIf& tserver_;
+  std::atomic<bool> update_on_retry_requested_{false};
+  Semaphore update_requests_{0};
+  Semaphore performed_updates_{0};
+  TestThreadHolder update_thread_holder_;
+};
+
+} // namespace
 
 using TabletRecordsInfo =
     std::unordered_map<std::string, std::tuple<docdb::KeyBounds, ssize_t>>;
@@ -2672,6 +2754,48 @@ TEST_F(PgTabletSplitTest, BootstrapStateLoadRaceFlush) {
   }
   LOG(INFO) << "target row k=5001 locally: " << (found ? "YES" : "NO");
   EXPECT_TRUE(found) << "DATA LOSS: target row missing";
+}
+
+// The test checks the retried operations (after table lookup failures) use same read time as
+// succeeded operations (including case when read time was selected by remote t-server).
+TEST_F(PgTabletSplitTest, YB_DEBUG_ONLY_TEST(LookupFailureRetryReadsAtSameTime)) {
+  constexpr auto kIterationsLimit = 30;
+  constexpr auto kMaxNumUpdateDuringRetry = 10;
+  constexpr auto kMinNumUpdateDuringRetry = kMaxNumUpdateDuringRetry / 2;
+  static const std::string kTableName = "table_name";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(k INT PRIMARY KEY, v INT) SPLIT INTO 3 TABLETS;"
+      "INSERT INTO $0 SELECT i, 0 FROM generate_series(1, 1000) i", kTableName));
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName(kTableName));
+  const auto namespace_id = ASSERT_RESULT(GetNamespaceIdFromYsqlTableId(table_id));
+  std::atomic<size_t> num_updates_total{0};
+  const auto& servers = cluster_->mini_tablet_servers();
+  ASSERT_EQ(servers.size(), 1);
+  TabletLookupFailureEmulator lookup_failure_emulator{
+      ASSERT_RESULT(Connect()), Format("UPDATE $0 SET v = v + 1", kTableName), num_updates_total,
+      *servers.front()->server()};
+  const auto query = Format("SELECT min(v), max(v) FROM $0", kTableName);
+  for (const auto level : {IsolationLevel::SNAPSHOT_ISOLATION, IsolationLevel::READ_COMMITTED}) {
+    ASSERT_OK(SetDefaultTransactionIsolation(conn, level));
+    const auto initial_num_updates = num_updates_total.load(std::memory_order_acquire);
+    for (const auto i : std::views::iota(0, kIterationsLimit)) {
+      ASSERT_OK(lookup_failure_emulator.RequestFailureOnNextQuery(namespace_id));
+      const auto [min_v, max_v] = ASSERT_RESULT((conn.FetchRow<int32_t, int32_t>(query)));
+      ASSERT_EQ(min_v, max_v) << "Isolation: " << level << ", iteration: " << i;
+      const auto num_updates =
+          num_updates_total.load(std::memory_order_acquire) - initial_num_updates;
+      if (num_updates >= kMaxNumUpdateDuringRetry) {
+        break;
+      }
+    }
+    const auto num_updates =
+        num_updates_total.load(std::memory_order_acquire) - initial_num_updates;
+    ASSERT_GE(num_updates, kMinNumUpdateDuringRetry) << "Isolation: " << level;
+  }
+
+  ASSERT_GT(num_updates_total, 0);
 }
 
 // Regression tests for #34580: a hot key with many retained versions is one DocKey too large to

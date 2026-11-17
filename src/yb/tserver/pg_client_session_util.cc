@@ -19,6 +19,7 @@
 #include <set>
 
 #include "yb/client/batcher.h"
+#include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/yb_op.h"
@@ -130,7 +131,7 @@ Status AppendTxnErrorCode(const Status& status, const client::CollectedErrors& e
 Status ProcessUsedReadTime(uint64_t session_id,
                            const client::YBPgsqlOp& op,
                            PgPerformResponseMsg* resp,
-                           TabletReadTime* used_read_time) {
+                           client::TabletReadTime* used_read_time) {
   if (op.type() != client::YBOperation::PGSQL_READ) {
     return Status::OK();
   }
@@ -242,7 +243,7 @@ Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status
 Status HandleOperationResponse(uint64_t session_id,
                                const client::YBPgsqlOp& op,
                                PgPerformResponseMsg* resp,
-                               TabletReadTime* used_read_time) {
+                               client::TabletReadTime* used_read_time) {
   const auto& response = op.response();
   if (response.status() == PgsqlResponsePB::PGSQL_STATUS_OK) {
     return ProcessUsedReadTime(session_id, op, resp, used_read_time);

@@ -640,16 +640,24 @@ void Batcher::ExecuteOperations(Initial initial) {
         ash::WaitStateInfo::CurrentWaitState(), _1))) {
       return;
     }
-  } else if (force_consistent_read_ &&
-             ops_info_.groups.size() > 1 &&
-             read_point_ &&
-             !read_point_->GetReadTime()) {
-    // Read time is not set but consistent read from multiple tablets without
-    // transaction is required. Use current time as a read time.
-    // Note: read_point_ is null in case of initdb. Nothing to do in this case.
-    read_point_->SetCurrentReadTime();
-    VLOG_WITH_PREFIX_AND_FUNC(3) << "Set current read time as a read time: "
-                                 << read_point_->GetReadTime();
+  } else if (read_point_ && !read_point_->GetReadTime()) {
+    if (used_read_time_) {
+      SetReadPointTabletReadTime(*read_point_, *used_read_time_);
+      VLOG_WITH_PREFIX_AND_FUNC(3)
+          << "Set used read time as a read time: " << read_point_->GetReadTime();
+    } else if (force_consistent_read_) {
+      if (ops_info_.groups.size() > 1) {
+        // Read time is not set but consistent read from multiple tablets without
+        // transaction is required. Use current time as a read time.
+        // Note: read_point_ is null in case of initdb. Nothing to do in this case.
+        read_point_->SetCurrentReadTime();
+        VLOG_WITH_PREFIX_AND_FUNC(3)
+            << "Set current read time as a read time: " << read_point_->GetReadTime();
+      } else {
+        // Capture used read time in case of single tablet for further requests (if any).
+        is_interested_in_single_rpc_used_read_time_ = true;
+      }
+    }
   }
 
   if (state_ != BatcherState::kTransactionPrepare) {
@@ -837,6 +845,14 @@ void Batcher::Flushed(
   }
 
   if (--outstanding_rpcs_ == 0) {
+    if (is_interested_in_single_rpc_used_read_time_ && flush_extra_result.used_read_time) {
+      LOG_IF(DFATAL, used_read_time_ || ops_info_.groups.size() != 1)
+          << "Unexpected state to receive used read time: used_read_time_ = "
+          << AsString(used_read_time_)
+          << ", groups size = " << ops_info_.groups.size();
+      used_read_time_.emplace(
+          ops_queue_.front().tablet->tablet_id(), flush_extra_result.used_read_time);
+    }
     // A failed operation aborts the transaction, so its siblings could fail with a kAborted error,
     // which outranks the original failure. Restore the original failure for such operations.
     const auto flush_abort_cause =
@@ -982,6 +998,7 @@ void Batcher::InitFromFailedBatcher(const BatcherPtr& failed_batcher,
     Add(op);
   }
   SetSubTransactionMetadataPB(failed_batcher->GetSubTransactionMetadataPB());
+  used_read_time_ = std::move(failed_batcher->used_read_time_);
 }
 
 void Batcher::RecordAsyncWriteCompletion(

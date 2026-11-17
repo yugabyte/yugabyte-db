@@ -34,6 +34,7 @@
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
+#include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/namespace_alterer.h"
 #include "yb/client/session.h"
@@ -242,11 +243,11 @@ constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 const std::string kTxnLogPrefixTagSource("Session ");
 client::LogPrefixName kTxnLogPrefixTag = client::LogPrefixName::Build<&kTxnLogPrefixTagSource>();
 
-using UsedReadTimeApplier = std::function<void(TabletReadTime&&)>;
+using UsedReadTimeApplier = std::function<void(client::TabletReadTime&&)>;
 
 struct UsedReadTime {
   simple_spinlock lock;
-  std::optional<TabletReadTime> data GUARDED_BY(lock);
+  std::optional<client::TabletReadTime> data GUARDED_BY(lock);
   size_t signature GUARDED_BY(lock) = 0;
 };
 
@@ -432,7 +433,7 @@ class VectorIndexQuery {
   }
 
   Status ProcessResponse(
-      const PgClientSessionOperations& ops, TabletReadTime* used_read_time,
+      const PgClientSessionOperations& ops, client::TabletReadTime* used_read_time,
       PgPerformResponseMsg& resp, rpc::Sidecars& sidecars) {
     VLOG_WITH_FUNC(4) << "Resp: " << resp.ShortDebugString();
     active_ = false;
@@ -643,7 +644,7 @@ class VectorIndexQuery {
   }
 
   void ProcessOperationsResponse(
-      const PgClientSessionOperations& ops, TabletReadTime* used_read_time) {
+      const PgClientSessionOperations& ops, client::TabletReadTime* used_read_time) {
     for (const auto& op : ops) {
       auto op_sidecars = sidecars_->Extract(*op.op->sidecar_index());
       auto& op_resp = op.op->response();
@@ -848,7 +849,7 @@ struct QueryData<PerformQueryTraits> final : public QueryDataBase<PerformQueryTr
         table_cache(table_cache_) {}
 
   void FlushDone(client::FlushStatus* flush_status) {
-    TabletReadTime used_read_time;
+    client::TabletReadTime used_read_time;
     if (VLOG_IS_ON(3)) {
       std::vector<std::string> status_strings;
       for (const auto& error : flush_status->errors) {
@@ -897,7 +898,7 @@ struct QueryData<PerformQueryTraits> final : public QueryDataBase<PerformQueryTr
   }
 
  private:
-  Status ProcessResponse(TabletReadTime* used_read_time) {
+  Status ProcessResponse(client::TabletReadTime* used_read_time) {
     RETURN_NOT_OK(HandleResponse(used_read_time));
     if (used_in_txn_limit) {
       resp.set_used_in_txn_limit_ht(used_in_txn_limit.ToUint64());
@@ -945,7 +946,7 @@ struct QueryData<PerformQueryTraits> final : public QueryDataBase<PerformQueryTr
     return Status::OK();
   }
 
-  Status HandleResponse(TabletReadTime* used_read_time) {
+  Status HandleResponse(client::TabletReadTime* used_read_time) {
     int idx = -1;
     for (const auto& op : ops) {
       ++idx;
@@ -1249,7 +1250,7 @@ PgClientSessionKind GetSessionKindBasedOnDDLOptions(const PgFinishTransactionReq
 UsedReadTimeApplier BuildUsedReadTimeApplier(
     std::weak_ptr<UsedReadTime> used_read_time, size_t signature) {
   return [used_read_time_weak = std::move(used_read_time), signature](
-      TabletReadTime&& read_time_data) {
+      client::TabletReadTime&& read_time_data) {
     const auto used_read_time_ptr = used_read_time_weak.lock();
     if (!used_read_time_ptr) {
       return;
@@ -3817,7 +3818,7 @@ class PgClientSession::Impl {
     // request on this session. An empty read time is its "request has finished with error" case.
     CancelableScopeExit applier_se{[data] {
       if (data->used_read_time_applier) {
-        data->used_read_time_applier(TabletReadTime{});
+        data->used_read_time_applier(client::TabletReadTime{});
       }
     }};
     data->used_in_txn_limit = in_txn_limit;
@@ -4557,7 +4558,7 @@ class PgClientSession::Impl {
     if (!plain_session_used_read_time_.pending_update) {
       return Status::OK();
     }
-    TabletReadTime read_time_data;
+    client::TabletReadTime read_time_data;
     {
       auto& used_read_time = plain_session_used_read_time_.value;
       std::lock_guard guard(used_read_time.lock);

@@ -15,7 +15,6 @@
 
 #include <functional>
 #include <set>
-#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -24,6 +23,7 @@
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 
+#include "yb/common/consistent_read_point.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
@@ -39,13 +39,13 @@
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 
 DECLARE_bool(TEST_running_test);
 
-namespace yb {
-namespace client {
+namespace yb::client {
 
 constexpr int32_t kClientTimeoutSecs = 60;
 
@@ -94,5 +94,21 @@ std::vector<internal::RemoteTabletPtr> FilterTabletsByKeyRange(
   return filtered_results;
 }
 
-} // namespace client
-} // namespace yb
+std::string TabletReadTime::ToString() const {
+  return YB_STRUCT_TO_STRING(tablet_id, value);
+}
+
+void SetReadPointTabletReadTime(
+    ConsistentReadPoint& read_point, const ReadHybridTime& read_time, TabletIdView tablet_id) {
+  ConsistentReadPoint::HybridTimeMap local_limits;
+  if (!tablet_id.empty()) {
+    local_limits.emplace(tablet_id, read_time.local_limit);
+  }
+  read_point.SetReadTime(read_time, std::move(local_limits));
+}
+
+void SetReadPointTabletReadTime(ConsistentReadPoint& read_point, const TabletReadTime& read_time) {
+  SetReadPointTabletReadTime(read_point, read_time.value, read_time.tablet_id);
+}
+
+} // namespace yb::client
