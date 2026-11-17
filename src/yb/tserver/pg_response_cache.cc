@@ -600,9 +600,9 @@ class PgResponseCache::Impl : private GarbageCollector {
   // the connection start that took it and wait for whatever that session sent next.
   //
   // Every round of that last request carries the flag, so the flag alone does not say the
-  // prefetch is over. The callers that hold a response test it with EndsPrefetch before calling
-  // -- the setter, and the arm that serves a response already stored -- so a round that failed,
-  // or that still has paging state behind it, does not end the claim.
+  // prefetch is over. Every caller that holds a response tests it with EndsPrefetch before
+  // calling, so a round that failed, or that still has paging state behind it, does not end
+  // the claim.
   //
   // Two callers have nothing to test. A round queued behind another session's fill has no
   // response yet, and a round answered while the database's cache is disabled has read nothing

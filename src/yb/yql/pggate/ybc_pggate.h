@@ -1009,10 +1009,10 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-// part_of_connection_prefetch says this prefetch is a connection start's, which keeps the tserver
-// counting the database as busy for the whole of it rather than only while one of its requests is
-// in flight. A prefetch that reads without the cache sets it too: its rounds carry no caching
-// info, and without this the first of them would look like an ordinary read and drop the claim.
+// part_of_connection_prefetch says this prefetch is a connection start's. Its rounds carry no
+// caching info, so without it the first of them would look like an ordinary read and drop the
+// claim this connection's earlier cached attempt took. It holds that claim; it does not take
+// one, and a connection that starts here rather than falling through to it runs uncounted.
 void YBCStartSysTablePrefetchingNoCache(
     YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch);
 

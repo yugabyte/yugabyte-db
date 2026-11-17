@@ -981,18 +981,18 @@ message PgPerformOptionsPB {
   // Only applicable when historical_read_transaction_id is set.
   SubtxnSetPB historical_read_aborted_subtxns = 41;
 
-  // Every round of a connection start's prefetch carries this. It makes the database count as
-  // busy for the whole prefetch rather than only while one of its requests is in flight, so a
-  // connection arriving while this one builds its relcache -- seconds of CPU with nothing
-  // outstanding -- finds that fill instead of starting a second whole-catalog read.
+  // Every round of a connection start's prefetch carries this. Where the prefetch caches, that
+  // keeps its database counted busy for the whole prefetch rather than only while one of its
+  // requests is in flight, so a connection arriving while this one builds its relcache -- seconds
+  // of CPU with nothing outstanding -- finds that fill instead of starting a second whole-catalog
+  // read.
   //
   // Here rather than in caching_info because a connection start reading without the cache,
   // through YBCStartSysTablePrefetchingNoCache, sends no caching info and still holds the claim.
   bool part_of_connection_prefetch = 42;
 
   // The last request of that prefetch, carried by every round of it. The round of it that runs
-  // out of paging state releases the claim; which rounds the tserver can tell apart is
-  // EndPrefetchClaimIfComplete's business.
+  // out of paging state releases the claim.
   //
   // Where the request also caches, this is what lets the tserver record the catalog version:
   // once the request is cached the node holds every entry such a connection reads. A connection
