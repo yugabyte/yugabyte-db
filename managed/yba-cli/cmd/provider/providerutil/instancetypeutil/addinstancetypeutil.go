@@ -98,7 +98,11 @@ func AddInstanceTypeUtil(
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 
-	existing, cloudCodes := lookupInstanceType(authAPI, providerUUID, instanceTypeName, callSite)
+	existing, cloudCodes, err := lookupInstanceType(
+		authAPI, providerUUID, providerType, instanceTypeName, callSite)
+	if err != nil {
+		logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+	}
 	if existing != nil && len(cloudCodes) > 0 {
 		logrus.Fatalln(formatter.Colorize(
 			fmt.Sprintf("Instance type %s maps to cloud instance types %s, which yba-cli "+
@@ -159,40 +163,59 @@ func AddInstanceTypeUtil(
 
 // lookupInstanceType returns the active stored instance type, or nil if there is none,
 // and its cloudInstanceTypeCodes, which the Go client's InstanceTypeDetails does not
-// model and so cannot send back.
+// model and so cannot send back. It fails rather than return nil when the type exists
+// but its stored values can't be read, since the caller would then reset it.
 func lookupInstanceType(
 	authAPI *ybaAuthClient.AuthAPIClient,
-	providerUUID, instanceTypeName, callSite string,
-) (*ybaclient.InstanceTypeResp, []string) {
+	providerUUID, providerType, instanceTypeName, callSite string,
+) (*ybaclient.InstanceTypeResp, []string, error) {
 	// Look the type up by code: the list API hides AWS types whose arch differs from the
 	// default image bundle's, and types with unsupported prefixes.
 	existing, response, err := authAPI.InstanceTypeDetail(providerUUID, instanceTypeName).Execute()
 	if err == nil {
 		if !existing.GetActive() {
 			// The create API replaces an inactive type with a new one.
-			return nil, nil
+			return nil, nil, nil
 		}
-		return existing, cloudCodesFromDetail(readBody(response))
+		var stored storedInstanceType
+		if err := decodeBody(response, &stored); err != nil {
+			return nil, nil, err
+		}
+		return existing, stored.cloudCodes(), nil
 	}
 	// The provider was found above, so a 400 here means it has no such instance type.
 	if response != nil && response.StatusCode == http.StatusBadRequest {
-		return nil, nil
+		return nil, nil, nil
 	}
-	if response == nil || response.StatusCode < http.StatusInternalServerError {
-		util.FatalHTTPError(response, err, callSite, "Add - Get Instance Type")
+	detailErr := util.ErrorFromHTTPResponse(response, err, callSite, "Add - Get Instance Type")
+	// The detail API fails with a 500 for a cloud type stored without details or volumes.
+	// Outside AWS, the list API returns such a type as stored. On AWS it hides types by
+	// arch and prefix and fills in default volumes, so it can't stand in.
+	if response == nil || response.StatusCode < http.StatusInternalServerError ||
+		strings.EqualFold(providerType, util.AWSProviderType) {
+		return nil, nil, detailErr
 	}
-	// The detail API fails with a 500 for a cloud type stored without details or volumes,
-	// which the list API returns as stored.
 	instanceTypes, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
 	if err != nil {
-		util.FatalHTTPError(response, err, callSite, "Add - List Instance Types")
+		return nil, nil, util.ErrorFromHTTPResponse(
+			response, err, callSite, "Add - List Instance Types")
+	}
+	var stored []storedInstanceType
+	if err := decodeBody(response, &stored); err != nil {
+		return nil, nil, err
 	}
 	for i := range instanceTypes {
-		if instanceTypes[i].IdKey.InstanceTypeCode == instanceTypeName {
-			return &instanceTypes[i], cloudCodesFromList(readBody(response), instanceTypeName)
+		if instanceTypes[i].IdKey.InstanceTypeCode != instanceTypeName {
+			continue
+		}
+		for _, s := range stored {
+			if s.IdKey.InstanceTypeCode == instanceTypeName {
+				return &instanceTypes[i], s.cloudCodes(), nil
+			}
 		}
 	}
-	return nil, nil
+	// The detail API answered 5xx, not 400, so the type exists.
+	return nil, nil, detailErr
 }
 
 type storedInstanceType struct {
@@ -211,34 +234,18 @@ func (s storedInstanceType) cloudCodes() []string {
 	return s.InstanceTypeDetails.CloudInstanceTypeCodes
 }
 
-func readBody(response *http.Response) []byte {
+// decodeBody decodes a response body the generated client has already decoded; the
+// client puts the body back after reading it.
+func decodeBody(response *http.Response, v any) error {
 	if response == nil || response.Body == nil {
-		return nil
+		return errors.New("could not read the stored instance type: empty response")
 	}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil
+		return fmt.Errorf("could not read the stored instance type: %w", err)
 	}
-	return body
-}
-
-func cloudCodesFromDetail(body []byte) []string {
-	var stored storedInstanceType
-	if err := json.Unmarshal(body, &stored); err != nil {
-		return nil
-	}
-	return stored.cloudCodes()
-}
-
-func cloudCodesFromList(body []byte, instanceTypeName string) []string {
-	var stored []storedInstanceType
-	if err := json.Unmarshal(body, &stored); err != nil {
-		return nil
-	}
-	for _, s := range stored {
-		if s.IdKey.InstanceTypeCode == instanceTypeName {
-			return s.cloudCodes()
-		}
+	if err := json.Unmarshal(body, v); err != nil {
+		return fmt.Errorf("could not read the stored instance type: %w", err)
 	}
 	return nil
 }

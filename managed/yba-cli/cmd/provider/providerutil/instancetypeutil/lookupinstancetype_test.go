@@ -5,6 +5,8 @@
 package instancetypeutil
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,19 +14,22 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 )
 
 func TestLookupInstanceType(t *testing.T) {
 	const shape = "Standard_Test"
 	tests := []struct {
-		name       string
-		detail     int
-		detailBody string
-		listBody   string
-		wantFound  bool
-		wantCores  float64
-		wantCodes  []string
+		name         string
+		providerType string
+		detail       int
+		detailBody   string
+		listBody     string
+		wantFound    bool
+		wantCores    float64
+		wantCodes    []string
+		wantErr      bool
 	}{
 		{
 			name:       "active type",
@@ -71,9 +76,29 @@ func TestLookupInstanceType(t *testing.T) {
 			wantCodes: []string{"Standard_D4s_v5"},
 		},
 		{
-			name:     "detail error and type not in the list is new",
+			name:     "detail error and type not in the list fails",
 			detail:   http.StatusInternalServerError,
 			listBody: `[{"idKey":{"instanceTypeCode":"other"},"numCores":8}]`,
+			wantErr:  true,
+		},
+		{
+			name:     "detail error and unreadable list fails",
+			detail:   http.StatusInternalServerError,
+			listBody: `not json`,
+			wantErr:  true,
+		},
+		{
+			name:         "detail error on aws fails without the list",
+			providerType: util.AWSProviderType,
+			detail:       http.StatusInternalServerError,
+			listBody:     `[{"idKey":{"instanceTypeCode":"` + shape + `"},"active":true,"numCores":2}]`,
+			wantErr:      true,
+		},
+		{
+			name:       "detail error other than 5xx fails",
+			detail:     http.StatusForbidden,
+			detailBody: `{"success":false,"error":"forbidden"}`,
+			wantErr:    true,
 		},
 	}
 	for _, tc := range tests {
@@ -98,7 +123,21 @@ func TestLookupInstanceType(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got, codes := lookupInstanceType(authAPI, "provider-uuid", shape, "test")
+			providerType := tc.providerType
+			if providerType == "" {
+				providerType = util.AzureProviderType
+			}
+			got, codes, err := lookupInstanceType(
+				authAPI, "provider-uuid", providerType, shape, "test")
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("got %+v, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if (got != nil) != tc.wantFound {
 				t.Fatalf("found = %v, want %v", got != nil, tc.wantFound)
 			}
@@ -107,6 +146,50 @@ func TestLookupInstanceType(t *testing.T) {
 			}
 			if !reflect.DeepEqual(codes, tc.wantCodes) {
 				t.Errorf("cloud codes = %v, want %v", codes, tc.wantCodes)
+			}
+		})
+	}
+}
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+
+func TestDecodeBody(t *testing.T) {
+	var v storedInstanceType
+	tests := []struct {
+		name     string
+		response *http.Response
+		wantErr  bool
+	}{
+		{name: "nil response", wantErr: true},
+		{name: "nil body", response: &http.Response{}, wantErr: true},
+		{
+			name:     "read error",
+			response: &http.Response{Body: io.NopCloser(failingReader{})},
+			wantErr:  true,
+		},
+		{
+			name:     "bad json",
+			response: &http.Response{Body: io.NopCloser(strings.NewReader("{"))},
+			wantErr:  true,
+		},
+		{
+			name:     "empty body",
+			response: &http.Response{Body: io.NopCloser(strings.NewReader(""))},
+			wantErr:  true,
+		},
+		{
+			name: "valid body",
+			response: &http.Response{Body: io.NopCloser(strings.NewReader(
+				`{"instanceTypeDetails":{"cloudInstanceTypeCodes":["a"]}}`))},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := decodeBody(tc.response, &v)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want error %v", err, tc.wantErr)
 			}
 		})
 	}
