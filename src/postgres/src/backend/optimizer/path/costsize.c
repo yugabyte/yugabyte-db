@@ -283,7 +283,7 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
 static bool yb_derived_clause_is_redundant(RestrictInfo *rinfo, List *clauses);
-static List *yb_strip_redundant_derived_clauses(List *clauses);
+static List *yb_strip_redundant_derived_clauses(List *clauses, List *context);
 static List *yb_bitmap_and_rinfos(Path *bitmapqual, List *rinfos);
 
 
@@ -8366,7 +8366,8 @@ yb_bitmap_index_selectivity(IndexPath *path,
 	all_index_quals = list_concat(index_remote_quals, index_conds);
 
 	sel = clauselist_selectivity(root,
-								 yb_strip_redundant_derived_clauses(all_index_quals),
+								 yb_strip_redundant_derived_clauses(all_index_quals,
+																	all_index_quals),
 								 index->rel->relid, JOIN_INNER, NULL);
 
 	list_free(all_index_quals);
@@ -9246,9 +9247,13 @@ yb_distinct_rows_before_match(PlannerInfo *root, RelOptInfo *baserel,
  * that equalities alone pin is one group, which the scan leaves by a skip
  * like any other.
  *
- * 'index_conditions_selectivity' covers all index conditions,
- * 'storage_filter_selectivity' the storage filters DocDB evaluates on the
- * rows it reads, and 'backward' the scan direction.
+ * 'index_conditions' is the list of all index conditions, whose selectivity
+ * 'index_conditions_selectivity' is; a column's selectivity below leaves out
+ * the derived equalities that list makes redundant, so the prefix's
+ * selectivity divides it consistently, while the column's condition type and
+ * its values per group still see every clause.  'storage_filter_selectivity'
+ * is the storage filters DocDB evaluates on the rows it reads, and 'backward'
+ * the scan direction.
  *
  * Outputs: the seeks and the direction steps (nexts forward, prevs backward)
  * of the index walk, the groups the skip loop visits ('num_groups'), the
@@ -9262,6 +9267,7 @@ yb_estimate_distinct_index_scan(PlannerInfo *root,
 								RelOptInfo *baserel,
 								int prefixlen,
 								List **index_conditions_on_each_column,
+								List *index_conditions,
 								Selectivity index_conditions_selectivity,
 								Selectivity storage_filter_selectivity,
 								bool backward,
@@ -9326,9 +9332,11 @@ yb_estimate_distinct_index_scan(PlannerInfo *root,
 												conds, &cond_type,
 												&in_list_length);
 		if (conds != NIL)
-			col_selectivity = clauselist_selectivity(root, conds,
-													 baserel->relid,
-													 JOIN_INNER, NULL);
+			col_selectivity =
+				clauselist_selectivity(root,
+									   yb_strip_redundant_derived_clauses(conds,
+																		  index_conditions),
+									   baserel->relid, JOIN_INNER, NULL);
 
 		if (col == 0)
 		{
@@ -9830,7 +9838,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (list_length(index_conditions) > 0)
 		index_conditions_selectivity =
 			clauselist_selectivity(root,
-								   yb_strip_redundant_derived_clauses(index_conditions),
+								   yb_strip_redundant_derived_clauses(index_conditions,
+																	  index_conditions),
 								   baserel->relid, JOIN_INNER, NULL);
 	else
 		index_conditions_selectivity = 1.0;
@@ -9858,7 +9867,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (list_length(index_conditions_and_filters) > 0)
 		index_selectivity =
 			clauselist_selectivity(root,
-								   yb_strip_redundant_derived_clauses(index_conditions_and_filters),
+								   yb_strip_redundant_derived_clauses(index_conditions_and_filters,
+																	  index_conditions_and_filters),
 								   baserel->relid, JOIN_INNER, NULL);
 	else
 		index_selectivity = 1.0;
@@ -9901,6 +9911,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		yb_estimate_distinct_index_scan(root, index, baserel,
 										distinct_prefixlen,
 										index_conditions_on_each_column,
+										index_conditions,
 										index_conditions_selectivity,
 										storage_filter_selectivity,
 										path->indexscandir == BackwardScanDirection,
@@ -10121,7 +10132,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	if (list_length(all_conditions_and_remote_filters) > 0)
 		all_conditions_and_remote_filters_selectivity =
 			clauselist_selectivity(root,
-								   yb_strip_redundant_derived_clauses(all_conditions_and_remote_filters),
+								   yb_strip_redundant_derived_clauses(all_conditions_and_remote_filters,
+																	  all_conditions_and_remote_filters),
 								   baserel->relid, JOIN_INNER, NULL);
 	else
 		all_conditions_and_remote_filters_selectivity = 1.0;
@@ -10714,13 +10726,17 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
  * 'bitmapqual' is a tree of IndexPaths, BitmapAndPaths, and BitmapOrPaths
  * 'scan_clauses' is a list of all conditions given to the bitmap path
  * 'strip_redundant_derived' leaves out the derived equalities
- *		(yb_derive_equal_cond) that a path's other index clauses imply.
- *		Costing passes true, so the selectivity of the result does not count
- *		them; plan creation passes false and keeps every qual DocDB is given.
+ *		(yb_derive_equal_cond) that other index clauses imply: those of the
+ *		same path, and 'and_rinfos', the index clauses AND-ed with the whole
+ *		tree (yb_bitmap_and_rinfos), which bind a derived equality in a
+ *		sibling arm of a BitmapAnd just the same.  Costing passes true, so
+ *		the selectivity of the result does not count them; plan creation
+ *		passes false and keeps every qual DocDB is given.
  */
 List *
 yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
-						  List *scan_clauses, bool strip_redundant_derived)
+						  List *scan_clauses, bool strip_redundant_derived,
+						  List *and_rinfos)
 {
 	if (IsA(bitmapqual, BitmapAndPath))
 	{
@@ -10733,7 +10749,8 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 			List	   *subindexqual = yb_get_bitmap_index_quals(root,
 																 (Path *) lfirst(l),
 																 scan_clauses,
-																 strip_redundant_derived);
+																 strip_redundant_derived,
+																 and_rinfos);
 
 			subindexquals = list_concat_unique(subindexquals, subindexqual);
 		}
@@ -10751,7 +10768,8 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 			List	   *subindexqual = yb_get_bitmap_index_quals(root,
 																 (Path *) lfirst(l),
 																 scan_clauses,
-																 strip_redundant_derived);
+																 strip_redundant_derived,
+																 and_rinfos);
 
 			subindexquals = lappend(subindexquals,
 									make_ands_explicit(subindexqual));
@@ -10783,6 +10801,7 @@ yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 		index_rinfos = NIL;
 		if (strip_redundant_derived)
 		{
+			index_rinfos = list_copy(and_rinfos);
 			foreach(l, ipath->indexclauses)
 				index_rinfos = lappend(index_rinfos,
 									   ((IndexClause *) lfirst(l))->rinfo);
@@ -10930,9 +10949,18 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 		return;
 	}
 
+	/*
+	 * The index clauses AND-ed at the top of the bitmap tree bind derived
+	 * equalities anywhere in it, so the quals are collected without the
+	 * derived equalities those clauses or a path's own make redundant, and
+	 * tuples_fetched below does not count them.
+	 */
+	List	   *and_rinfos = yb_bitmap_and_rinfos(bitmapqual, NIL);
+
 	indexquals = yb_get_bitmap_index_quals(root, bitmapqual,
 										   baserel->baserestrictinfo,
-										   true /* strip_redundant_derived */ );
+										   true /* strip_redundant_derived */ ,
+										   and_rinfos);
 
 	/* Determine what clauses remain to be checked by this node */
 	foreach(l, baserel->baserestrictinfo)
@@ -10971,16 +10999,16 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 														  JOIN_INNER, NULL));
 
 	/*
-	 * yb_get_bitmap_index_quals dropped the derived equalities the index
-	 * clauses imply.  One derived from a table filter instead was kept, as
+	 * A derived equality whose source is a table filter was kept above, as
 	 * it bounds the index sweep, but the result counts that filter too, so
 	 * it is dropped from the result quals (cf. the all-conditions list of
 	 * yb_cost_index).  Only the quals AND-ed at the top of the bitmap tree
-	 * can be dropped: an OR arm's quals are nested in one expression, and
-	 * their sources sit in that arm anyway.
+	 * are examined.  A derived equality inside an OR arm whose source is a
+	 * table filter stays nested in the arm's expression and is still counted
+	 * here on top of that filter: a known limitation, confined to the result
+	 * size, since the fetches are sized by the index quals alone.
 	 */
 	List	   *result_quals = list_union(indexquals, remote_table_quals);
-	List	   *and_rinfos = yb_bitmap_and_rinfos(bitmapqual, NIL);
 	List	   *and_clauses = list_concat(list_copy(and_rinfos),
 										  remote_table_quals);
 
@@ -11413,9 +11441,13 @@ yb_derived_clause_is_redundant(RestrictInfo *rinfo, List *clauses)
 
 	foreach(lc, rinfo->yb_derived_source_vars)
 	{
-		Var		   *var = lfirst_node(Var, lc);
+		Var		   *var = (Var *) lfirst(lc);
 		bool		bound = false;
 		ListCell   *lc2;
+
+		/* A source translated to something other than a Var binds nothing. */
+		if (!IsA(var, Var))
+			return false;
 
 		foreach(lc2, clauses)
 		{
@@ -11453,15 +11485,16 @@ yb_derived_clause_is_redundant(RestrictInfo *rinfo, List *clauses)
 
 /*
  * yb_strip_redundant_derived_clauses
- *	  'clauses' without the derived equalities the rest of the list makes
- *	  redundant (see yb_derived_clause_is_redundant), for the list-level
- *	  selectivity estimates.  The per-column estimates of the seek models keep
- *	  every clause: a derived equality still pins one value of its own column,
- *	  it only adds no rows beyond its sources.  Returns 'clauses' itself when
- *	  nothing is stripped.
+ *	  'clauses' without the derived equalities that 'context' makes redundant
+ *	  (see yb_derived_clause_is_redundant), for the selectivity estimates.
+ *	  'context' is 'clauses' itself for a list-level estimate, or the list of
+ *	  all index conditions when 'clauses' are those on one index column.  The
+ *	  condition-type analysis of the seek models keeps every clause: a derived
+ *	  equality still pins one value of its own column, it only adds no rows
+ *	  beyond its sources.  Returns 'clauses' itself when nothing is stripped.
  */
 static List *
-yb_strip_redundant_derived_clauses(List *clauses)
+yb_strip_redundant_derived_clauses(List *clauses, List *context)
 {
 	List	   *result = NIL;
 	bool		stripped = false;
@@ -11472,7 +11505,7 @@ yb_strip_redundant_derived_clauses(List *clauses)
 		Node	   *node = lfirst(lc);
 
 		if (IsA(node, RestrictInfo) &&
-			yb_derived_clause_is_redundant((RestrictInfo *) node, clauses))
+			yb_derived_clause_is_redundant((RestrictInfo *) node, context))
 		{
 			stripped = true;
 			continue;

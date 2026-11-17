@@ -125,7 +125,8 @@ extern Scan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
 								   bool indexonly, bool bitmapindex);
 extern List *yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
 									   List *scan_clauses,
-									   bool strip_redundant_derived);
+									   bool strip_redundant_derived,
+									   List *and_rinfos);
 extern bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 										 bool bitmapindex);
 extern RestrictInfo *yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti,

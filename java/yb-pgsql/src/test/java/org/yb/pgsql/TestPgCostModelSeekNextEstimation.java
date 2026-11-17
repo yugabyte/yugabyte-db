@@ -1549,4 +1549,34 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
               NODE_INDEX_SCAN));
     }
   }
+
+  @Test
+  public void test37603DerivedEqualityDistinctScan() throws Exception {
+    /*
+     * #37603, distinct index scan: the prefix's selectivity is built from the per-column
+     * conditions, which must leave out a derived bucket the prefix's own source binds, or it
+     * no longer divides the index conditions' selectivity consistently.  The distinct scan on
+     * (bucket, c2, c3) must estimate the same seeks and nexts as the one on (c2, c3), which has
+     * no bucket to derive.
+     */
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute("CREATE TABLE t_37603 (id INT PRIMARY KEY, c2 INT, c3 INT) "
+          + "WITH (colocation = false)");
+      stmt.execute("CREATE INDEX t_37603_bucket_idx ON t_37603 "
+          + "((yb_hash_code(c2) % 16) ASC, c2 ASC, c3 ASC)");
+      stmt.execute("CREATE INDEX t_37603_plain_idx ON t_37603 (c2 ASC, c3 ASC)");
+      stmt.execute("INSERT INTO t_37603 SELECT s, s % 50, (s / 50) % 2 "
+          + "FROM generate_series(0, 9999) s");
+      stmt.execute("ANALYZE t_37603");
+      stmt.execute("SET yb_enable_derived_saops = false");
+      stmt.execute("SET yb_enable_derived_equalities = true");
+
+      String query = "SELECT DISTINCT c2 FROM t_37603 WHERE c2 = 7 AND c3 = 1";
+      assertSameSeeksAndNexts(
+          getPlanNode(stmt, "/*+ IndexScan(t_37603 t_37603_plain_idx) */ " + query,
+              "Distinct Index Scan"),
+          getPlanNode(stmt, "/*+ IndexScan(t_37603 t_37603_bucket_idx) */ " + query,
+              "Distinct Index Scan"));
+    }
+  }
 }

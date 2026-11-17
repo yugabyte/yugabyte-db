@@ -5068,7 +5068,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 	 */
 	allindexquals = yb_get_bitmap_index_quals(root, best_path->bitmapqual,
 											  scan_clauses,
-											  false /* strip_redundant_derived */ );
+											  false /* strip_redundant_derived */ ,
+											  NIL /* and_rinfos */ );
 	indexquals = allindexquals;
 
 	/*
