@@ -154,7 +154,7 @@ version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
 val bouncyCastleFipsVersion = "2.1.1"
-val bouncyCastleUtilFipsVersion = "2.1.7"
+val bouncyCastleUtilFipsVersion = "2.1.8"
 // Flyway 10+ ships database support as separate modules; the postgresql one is required.
 val flywayVersion = "13.8.0"
 

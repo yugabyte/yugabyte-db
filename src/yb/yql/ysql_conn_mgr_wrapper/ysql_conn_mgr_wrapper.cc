@@ -371,6 +371,19 @@ Status YsqlConnMgrWrapper::Start() {
                   std::to_string(FLAGS_TEST_ysql_conn_mgr_shutdown_delay_ms));
   }
 
+#ifdef THREAD_SANITIZER
+  // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.
+  // Worker threads may not be joined before exit(0) on SIGINT/SIGTERM shutdown.
+  // This mirrors the same approach used for the PostgreSQL process in pg_wrapper.cc.
+  {
+    static const std::string kTSANOptionsEnvName = "TSAN_OPTIONS";
+    const char* tsan_options = getenv(kTSANOptionsEnvName.c_str());
+    proc_->SetEnv(
+        kTSANOptionsEnvName, std::string(tsan_options ? tsan_options : "") +
+                                 " report_thread_leaks=0");
+  }
+#endif
+
   RETURN_NOT_OK(proc_->Start());
 
   LOG(INFO) << "Ysql Connection Manager process running as pid " << proc_->pid();

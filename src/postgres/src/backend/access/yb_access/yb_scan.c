@@ -819,7 +819,7 @@ YbIsScanningEmbeddedIdx(Relation table, Relation index)
 
 	/*
 	 * 3. Colocation: the table and index may be colocated to the same tablet:
-	 *    - If ysql_enable_colocated_tables_with_tablespaces, check that the
+	 *    - If yb_enable_colocated_tables_with_tablespaces, check that the
 	 *      table and index are in the same colocation tablet using
 	 *      tablegroup_oid.
 	 *      - TODO(#25940): index->rd_index->indisprimary seems irrelevant and
@@ -828,13 +828,13 @@ YbIsScanningEmbeddedIdx(Relation table, Relation index)
 	 *      should follow the table.
 	 *      - TODO(#25940): index being NULL or pk index should not be a pass
 	 *        condition.
-	 *    - TODO(#25940): the gflag could be turned on/off in the lifetime of
+	 *    - TODO(#25940): the GUC could be turned on/off in the lifetime of
 	 *      a cluster, so it shouldn't even be involved in this logic.
 	 *      Everything should be validated, likely using the tablegroup_oid
 	 *      check, assuming that holds even when indexes are created when the
 	 *      flag is false.
 	 */
-	if (*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces)
+	if (yb_enable_colocated_tables_with_tablespaces)
 		is_embedded |= (yb_table_properties_table->is_colocated &&
 						((index && index->rd_index->indisprimary) ||
 						 (index &&
@@ -1422,7 +1422,7 @@ YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
 	return false;
 }
 
-static bool
+bool
 YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val)
 {
 	return (YbShouldRecheckEquality(col_typid, val_typid) &&
@@ -1433,8 +1433,11 @@ YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val)
 
 /*
  * Return true if a scan key column type is compatible with value type.
+ *
+ * Single row UPDATE and DELETE also use this (yb_single_row_key_value): a pair
+ * marked compatible by mistake makes them change or delete the wrong row.
  */
-static bool
+bool
 YbIsScanCompatible(Oid column_typid,
 				   Oid value_typid,
 				   bool is_value_scalar,
@@ -4431,7 +4434,7 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					path->indexinfo->reltablespace);
 
 	/* Merge scan should not be possible in non-CBO mode. */
-	Assert(!path->yb_index_path_info.merge_scan_stream_cols);
+	Assert(!path->yb_index_path_info.merge_scan_info);
 
 	if (!yb_enable_optimizer_statistics)
 	{

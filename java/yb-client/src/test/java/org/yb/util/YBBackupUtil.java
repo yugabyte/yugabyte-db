@@ -143,6 +143,8 @@ public final class YBBackupUtil {
     String nfsDir = "", bucket = "", ns = "", ns_type = "", backup_command = "backup";
     String useTableSpacesFlag = "--use_tablespaces";
     boolean use_tablespaces = false;
+    String useRolesFlag = "--use_roles";
+    boolean use_roles = false;
     File backupDir = null;
     for (int idx = 0; idx < args.size(); idx++) {
       String arg = args.get(idx);
@@ -161,6 +163,9 @@ public final class YBBackupUtil {
         }
       } else if (arg.equals(useTableSpacesFlag)) {
         use_tablespaces = true;
+      } else if (arg.equals(useRolesFlag) ||
+            arg.equals("--backup_roles") || arg.equals("--restore_roles")) {
+        use_roles = true;
       } else if (arg.equals("create")) {
         backup_command = "backup";
       } else if (arg.equals("restore")) {
@@ -183,7 +188,6 @@ public final class YBBackupUtil {
         "--bucket=" + bucket,
         "--cloud_dir=yugabyte",
         "--cloud_type=nfs",
-        "--revert_to_pre_roles_behaviour=true",
         "--ns_type=" + ns_type,
         "--ns=" + ns,
         "--tserver_ip=" + ybControllerHostAndPort.getHost(),
@@ -192,6 +196,12 @@ public final class YBBackupUtil {
 
     if (use_tablespaces) {
       processCommand.add(useTableSpacesFlag);
+    }
+
+    if (use_roles) {
+      processCommand.add(useRolesFlag);
+    } else {
+      processCommand.add("--revert_to_pre_roles_behaviour=true");
     }
 
     LOG.info("Run YB Controller CLI: " + processCommand.toString());

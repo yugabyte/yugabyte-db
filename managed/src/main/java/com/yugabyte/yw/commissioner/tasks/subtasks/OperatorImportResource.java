@@ -271,15 +271,22 @@ public class OperatorImportResource extends UniverseTaskBase {
     if (x86_64Artifact == null) {
       throw new RuntimeException("x86_64 artifact not found");
     }
+    boolean imported = false;
     try {
-      operatorUtils.createReleaseCr(
-          release, releaseArtifact, x86_64Artifact, getNamespace(), taskParams().secretName);
+      imported =
+          operatorUtils.createReleaseCr(
+              release, releaseArtifact, x86_64Artifact, getNamespace(), taskParams().secretName);
     } catch (Exception e) {
       log.error("Failed to create release: {}", taskParams().releaseVersion, e);
       throw new RuntimeException("Failed to create release", e);
     }
-    release.setIsKubernetesOperatorControlled(true);
-    log.info("Release version {} imported successfully", taskParams().releaseVersion);
+    if (imported) {
+      release.setIsKubernetesOperatorControlled(true);
+      log.info("Release version {} imported successfully", taskParams().releaseVersion);
+    } else {
+      // Local files currently are not supported in the CRD, but are still valid as releases.
+      log.warn("skipping import of release - uses local files");
+    }
   }
 
   private void importStorageConfig() {

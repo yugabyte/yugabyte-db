@@ -17,7 +17,7 @@
 
 #include "yb/rocksdb/cache.h"
 
-#include "yb/util/polymorphic_iterator.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 
 #include "yb/vector_index/coordinate_types.h"
@@ -31,6 +31,45 @@ class MemTracker;
 }
 
 namespace yb::vector_index {
+
+// Iterates over the vectors of an index. A failure ends the iteration and is returned by status(),
+// so status() must be checked once Valid() returns false.
+template <IndexableVectorType Vector>
+class VectorIndexIterator {
+ public:
+  using EntryType = std::pair<VectorId, Vector>;
+
+  virtual ~VectorIndexIterator() {
+    DCHECK(!status_check_required_) << "Iterator reached the end, but its status was not checked";
+  }
+
+  bool Valid() const {
+    if (DoValid()) {
+      return true;
+    }
+    status_check_required_ = true;
+    return false;
+  }
+
+  // Next and Entry require Valid().
+  virtual void Next() = 0;
+  virtual EntryType Entry() const = 0;
+
+  Status status() const {
+    status_check_required_ = false;
+    return DoStatus();
+  }
+
+ protected:
+  virtual bool DoValid() const = 0;
+
+  virtual Status DoStatus() const {
+    return Status::OK();
+  }
+
+ private:
+  mutable bool status_check_required_ = false;
+};
 
 struct SearchOptions {
   size_t max_num_results;
@@ -50,7 +89,7 @@ class VectorIndexReaderIf {
  public:
   using SearchResult  = std::vector<VectorWithDistance<DistanceResult>>;
   using IteratorValue = std::pair<VectorId, Vector>;
-  using Iterator      = PolymorphicIterator<IteratorValue>;
+  using Iterator      = VectorIndexIterator<Vector>;
 
   virtual ~VectorIndexReaderIf() = default;
   virtual DistanceResult Distance(const Vector& lhs, const Vector& rhs) const = 0;
@@ -60,12 +99,8 @@ class VectorIndexReaderIf {
   // Returns the vector with the given id or NotFound error when vector is not found.
   virtual Result<Vector> GetVector(VectorId vector_id) const = 0;
 
-  virtual std::unique_ptr<AbstractIterator<IteratorValue>> BeginImpl() const = 0;
-  virtual std::unique_ptr<AbstractIterator<IteratorValue>> EndImpl()   const = 0;
+  virtual std::unique_ptr<Iterator> CreateIterator() const = 0;
   virtual std::string IndexStatsStr() const { return "N/A"; }
-
-  Iterator begin() const { return Iterator(BeginImpl()); }
-  Iterator end()   const { return Iterator(EndImpl()); }
 };
 
 template<IndexableVectorType Vector>

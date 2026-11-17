@@ -1180,6 +1180,12 @@ YbGetSessionReplicationOriginId(void)
 	return replorigin_session_origin;
 }
 
+bool
+YbHasReplicationOriginSetup(void)
+{
+	return replorigin_session_origin != InvalidRepOriginId;
+}
+
 void
 YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *init_info)
 {
@@ -2401,6 +2407,7 @@ bool		yb_alter_type_reuse_expr_and_partial_indexes = false;
 bool		yb_enable_inplace_index_update = true;
 bool		yb_ignore_freeze_with_copy = true;
 bool		yb_enable_docdb_vector_type = false;
+bool		yb_enable_colocated_tables_with_tablespaces = true;
 
 /* Deprecated; see pg_yb_utils.h. Value is not read for lock behavior. */
 bool		yb_silence_advisory_locks_not_supported_error = false;
@@ -8065,6 +8072,16 @@ bool		yb_ysql_conn_mgr_superuser_existed = false;
  */
 bool		yb_ysql_conn_mgr_sticky_locks = false;
 
+/*
+ * `yb_ysql_conn_mgr_sticky_nontxn_object` denotes whether the session created
+ * state that a rollback does not undo. It is never cleared once set.
+ */
+bool		yb_ysql_conn_mgr_sticky_nontxn_object = false;
+
+bool		yb_ysql_conn_mgr_sticky_replication_origin = false;
+
+bool		yb_conn_mgr_replication_origin_permanent_sticky = false;
+
 bool
 YbIsSuperuserConnSticky()
 {
@@ -8110,7 +8127,10 @@ YbIsStickyConnection(int *change)
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
 	return (ysql_conn_mgr_sticky_object_count > 0) ||
 		YbIsConnectionMadeStickyUsingGUC() ||
-		yb_ysql_conn_mgr_sticky_locks;
+		yb_ysql_conn_mgr_sticky_locks ||
+		yb_ysql_conn_mgr_sticky_nontxn_object ||
+		yb_ysql_conn_mgr_sticky_replication_origin ||
+		YbHasReplicationOriginSetup();
 }
 
 void	  **

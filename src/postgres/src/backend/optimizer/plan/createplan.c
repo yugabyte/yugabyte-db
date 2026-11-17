@@ -52,8 +52,8 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
-#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
+#include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
@@ -3488,6 +3488,47 @@ yb_fetch_subpaths(ModifyTablePath *path, IndexPath **index_path,
 }
 
 /*
+ * yb_single_row_key_value
+ *
+ * Helper function for yb_single_row_update_or_delete_path.  Return the
+ * expression for the one primary key value that "column = expr" can match, or
+ * NULL to use the scan path instead.  expr can be of another type than the
+ * column, as in int4_col = int8_value.
+ */
+static Expr *
+yb_single_row_key_value(Expr *expr, Oid coltype)
+{
+	Oid			valtype = exprType((Node *) expr);
+	Oid			basetype = getBaseType(coltype);
+
+	if (valtype == coltype)
+		return expr;
+
+	/*
+	 * True if the value's bytes mean the same value in the column's type: then
+	 * only the type label changes.
+	 */
+	if (IsBinaryCoercible(valtype, basetype))
+		return (Expr *) makeRelabelType(expr, coltype, -1,
+										get_typcollation(coltype),
+										COERCE_IMPLICIT_CAST);
+
+	/*
+	 * Otherwise:
+	 * (1) A value that scan keys bind with the column's type
+	 *     (YbIsScanCompatible): an integer of another width, a text, varchar
+	 *     or bpchar value for a column of another of these types, or an OID
+	 *     type value for a column of another OID type.  Keep it, and let
+	 *     YBCComputeYBTupleIdFromSlot bind it with the column's type.
+	 * (2) Any other type, such as a double for a real column: use the scan.
+	 */
+	if (!YbIsScanCompatible(basetype, valtype, false /* is_value_scalar */ ,
+							(Datum) 0))
+		return NULL;
+	return expr;
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -3989,17 +4030,12 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		var = castNode(Var, leftop);
 
-		/*
-		 * If const expression has a different type than the column (var), wrap in a relabel
-		 * expression with the proper type so it is coerced at execution time.
-		 */
-		if (IsA(expr, Const) && castNode(Const, expr)->consttype != var->vartype)
+		/* The value may be of another type than the column. */
+		expr = yb_single_row_key_value(expr, var->vartype);
+		if (expr == NULL)
 		{
-			expr = (Expr *) makeRelabelType(expr,
-											var->vartype,
-											-1,
-											get_typcollation(var->vartype),
-											COERCE_IMPLICIT_CAST);
+			RelationClose(relation);
+			return false;
 		}
 
 		tle = makeNode(TargetEntry);
@@ -4721,13 +4757,14 @@ create_indexscan_plan(PlannerInfo *root,
 
 	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
-	if (best_path->yb_index_path_info.merge_scan_stream_cols)
+	if (best_path->yb_index_path_info.merge_scan_info)
 	{
 		ListCell   *yb_lc;
 
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
 		/* setrefs.c repoints each entry's clause, so copy the entries. */
-		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		foreach(yb_lc,
+				best_path->yb_index_path_info.merge_scan_info->stream_cols)
 		{
 			YbMergeScanStreamColInfo *yb_info =
 				makeNode(YbMergeScanStreamColInfo);
@@ -4736,6 +4773,8 @@ create_indexscan_plan(PlannerInfo *root,
 			yb_merge_scan_info->stream_cols =
 				lappend(yb_merge_scan_info->stream_cols, yb_info);
 		}
+		yb_merge_scan_info->sort_cols =
+			best_path->yb_index_path_info.merge_scan_info->sort_cols;
 	}
 
 	/* Finally ready to build the plan node */
@@ -4788,34 +4827,6 @@ create_indexscan_plan(PlannerInfo *root,
 			index_scan_plan->yb_merge_scan_info = yb_merge_scan_info;
 
 		scan_plan = (Scan *) index_scan_plan;
-	}
-
-	if (yb_merge_scan_info)
-	{
-		Bitmapset  *yb_stream_col_idxs = NULL;
-		ListCell   *yb_lc;
-		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
-			makeNode(YbSortInfo);
-
-		foreach(yb_lc, yb_merge_scan_info->stream_cols)
-		{
-			YbMergeScanStreamColInfo *yb_stream_col_info =
-				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
-
-			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
-												yb_stream_col_info->indexcol);
-		}
-
-		yb_sort_info->type = T_YbSortInfo;
-		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
-									   best_path->path.pathkeys,
-									   best_path->path.parent->relids,
-									   yb_stream_col_idxs,
-									   &yb_sort_info->numCols,
-									   &yb_sort_info->sortColIdx,
-									   &yb_sort_info->sortOperators,
-									   &yb_sort_info->collations,
-									   &yb_sort_info->nullsFirst);
 	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
@@ -7318,6 +7329,9 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	List	   *fixed_indexquals;
 	ListCell   *lc;
 
+	YbMergeScanInfo *yb_merge_scan_info =
+		index_path->yb_index_path_info.merge_scan_info;
+
 	stripped_indexquals = fixed_indexquals = NIL;
 
 	yb_get_batched_indexquals(root, index_path, &stripped_indexquals,
@@ -7353,10 +7367,10 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * yb_index_path_info.merge_scan_info.  Add these to ..._indexquals
 	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
+	foreach(lc, yb_merge_scan_info ? yb_merge_scan_info->stream_cols : NIL)
 	{
 		YbMergeScanStreamColInfo *info =
 			lfirst_node(YbMergeScanStreamColInfo, lc);
