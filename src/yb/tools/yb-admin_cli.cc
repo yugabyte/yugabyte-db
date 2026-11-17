@@ -1422,6 +1422,13 @@ Status list_tablet_server_log_locations_action(
   return Status::OK();
 }
 
+const auto clear_rocksdb_cache_args = "";
+Status clear_rocksdb_cache_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK_PREPEND(client->ClearRocksDBCache(), "Unable to clear RocksDB cache");
+  return Status::OK();
+}
+
 const auto list_tablets_for_tablet_server_args = "<ts_uuid>";
 Status list_tablets_for_tablet_server_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -3557,6 +3564,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(change_master_config);
   REGISTER_COMMAND(dump_masters_state);
   REGISTER_COMMAND(list_tablet_server_log_locations);
+  REGISTER_COMMAND_HIDDEN(clear_rocksdb_cache);
   REGISTER_COMMAND(list_tablets_for_tablet_server);
   REGISTER_COMMAND(set_load_balancer_enabled);
   REGISTER_COMMAND(get_load_balancer_state);

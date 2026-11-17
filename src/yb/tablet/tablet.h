@@ -169,7 +169,7 @@ struct TierMigrationStatus {
 
   // True while a migration pass still has moves outstanding. Independent of `state`: a tablet
   // stays kInProgress between passes.
-  bool pass_in_flight = false;
+  bool migration_pass_in_flight = false;
 
   // Counters of the most recent pass.
   uint32_t files_total = 0;     // live SSTs its scan found outside the target directory
@@ -463,6 +463,11 @@ class Tablet : public AbstractTablet,
     return shutdown_requested_.load(std::memory_order::acquire);
   }
 
+  // Blocks until the WAL entry with op_id is durable, or WAL fsync failed, see WalAllowsPersist.
+  // Returns at once while the log is not open yet, e.g. during bootstrap.
+  // Log::Close appends the queued entries and fsyncs them, so the wait ends at shutdown too.
+  void WaitWalDurable(const OpId& op_id);
+
   // Complete the shutdown of this tablet. This includes shutdown of internal structures such as:
   // - transaction coordinator
   // - transaction participant
@@ -662,6 +667,10 @@ class Tablet : public AbstractTablet,
   Status MarkBackfillDone(
       const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
+  // Used to finalize the birth_time of a nonconcurrently built index on its tablets.
+  Status MarkNonConcurrentIndexDone(
+      const OpId& op_id, const TableId& table_id, uint64_t birth_time);
+
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
 
@@ -811,6 +820,11 @@ class Tablet : public AbstractTablet,
   bool ShouldDisableLbMove();
 
   Status ForceManualRocksDBCompact(docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
+
+  // Closes the open table readers of the regular and intents DBs; see
+  // rocksdb::DB::EvictTableReaders.
+  // Returns the number of readers evicted.
+  Result<size_t> EvictTableReaders();
 
   Status ForceRocksDBCompact(
       rocksdb::CompactionReason compaction_reason,
@@ -1716,6 +1730,12 @@ class Tablet : public AbstractTablet,
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
+  // Queries the WAL state of op_id, which starts its fsync if needed.
+  // Returns whether data with ops up to op_id may be persisted, i.e. the ops are durable in WAL,
+  // or WAL fsync failed.
+  // what names that data in the log message for the latter case.
+  bool WalAllowsPersist(const OpId& op_id, const char* what);
+
   Result<bool> RegularDbFlushFilter(const rocksdb::MemTable& memtable);
 
   struct IntentsDbFlushFilterState;
@@ -1838,9 +1858,9 @@ class Tablet : public AbstractTablet,
   // Tiered storage: serializes the target write (SetTierMigrationTargetUnlocked's in-flight check
   // + superblock write + SetOptions, so the persisted target and the regular DB's target_path_id
   // cannot diverge) against a pass claiming the tablet (RunTierMigrationPass's target read through
-  // pass_in_flight = true), so a pass always runs toward the current persisted target. Taken
-  // before tier_migration_mutex_, never inside it. Deliberately not tier_migration_mutex_: that
-  // one is taken by every move callback and by GetTierInfo, and must not be held across a
+  // migration_pass_in_flight = true), so a pass always runs toward the current persisted target.
+  // Taken before tier_migration_mutex_, never inside it. Deliberately not tier_migration_mutex_:
+  // that one is taken by every move callback and by GetTierInfo, and must not be held across a
   // superblock flush or a SetOptions call.
   std::mutex tier_target_mutex_;
 

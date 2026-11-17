@@ -33,7 +33,9 @@
 
 #include <crcutil/interface.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/once.h"
+#include "yb/util/crc32c_accelerated.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 
 namespace yb::crc {
@@ -54,15 +56,56 @@ Crc* GetCrc32cInstance() {
   return crc32c_instance;
 }
 
+namespace {
+
+uint32_t CrcutilExtend(uint32_t crc, const void* data, size_t length) {
+  uint64_t state = crc;
+  GetCrc32cInstance()->Compute(data, length, &state);
+  return narrow_cast<uint32_t>(state);
+}
+
+// Set before AbseilExtend is listed as an implementation.
+const internal::Crc32cEngine* abseil_engine = nullptr;
+
+uint32_t AbseilExtend(uint32_t crc, const void* data, size_t length) {
+  // The engine extends the raw CRC register, which is the CRC32C value inverted.
+  crc = ~crc;
+  abseil_engine->Extend(&crc, data, length);
+  return ~crc;
+}
+
+std::vector<Crc32cImplementation> DetectImplementations() {
+  std::vector<Crc32cImplementation> result;
+  abseil_engine = internal::TryNewCRC32AcceleratedX86ARMCombined();
+  if (abseil_engine) {
+    result.push_back({"abseil", &AbseilExtend});
+  }
+  result.push_back({"crcutil", &CrcutilExtend});
+  return result;
+}
+
+Crc32cExtendFunction BestExtend() {
+  static const Crc32cExtendFunction extend = Crc32cImplementations().front().extend;
+  return extend;
+}
+
+} // namespace
+
+const std::vector<Crc32cImplementation>& Crc32cImplementations() {
+  static const std::vector<Crc32cImplementation> implementations = DetectImplementations();
+  return implementations;
+}
+
 uint32_t Crc32c(const void* data, size_t length) {
-  uint64_t crc32 = 0;
-  GetCrc32cInstance()->Compute(data, length, &crc32);
-  // Only uses lower 32 bits, since top 32 bits are always zero.
-  return static_cast<uint32_t>(crc32);
+  return BestExtend()(0, data, length);
+}
+
+uint32_t Crc32cExtend(uint32_t crc, const void* data, size_t length) {
+  return BestExtend()(crc, data, length);
 }
 
 void Crc32Accumulator::Feed(const void* data, size_t length) {
-  GetCrc32cInstance()->Compute(data, length, &state_);
+  state_ = BestExtend()(state_, data, length);
 }
 
 } // namespace yb::crc

@@ -20,6 +20,7 @@
 
 #include "postgres.h"
 
+#include "commands/trigger.h"
 #include "nodes/pg_list.h"
 #include "utils/rel.h"
 
@@ -49,5 +50,12 @@ extern char *YbOscTransformDeparse(YbOscTransform *xf, Relation srcRel,
 extern char *YbOscTransformDeparseCall(YbOscTransform *xf,
 									   Relation srcRel);
 extern void YbOscForceSpeculativePl(void);
+
+
+/* ---- yb_osc_trigger.c ---- */
+
+extern void YbOscCreateTrigger(Relation srcRel, const char *triggerName,
+							   Oid targetOid, Oid transformOid);
+extern void YbOscDropTrigger(Relation srcRel);
 
 #endif							/* YB_OSC_INTERNAL_H */

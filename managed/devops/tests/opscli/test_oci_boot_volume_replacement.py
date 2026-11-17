@@ -38,6 +38,7 @@ class TestReplaceBootVolume(TestCase):
         self.compute = self.admin._compute_client
         self.blockstorage = self.admin._blockstorage_client
         self.compute.get_instance.return_value.data = SimpleNamespace(
+            id=INSTANCE_ID,
             availability_domain="AD-1",
             compartment_id="ocid1.compartment.oc1..yb",
             freeform_tags=dict(NODE_TAGS, Name="yb-n1"))
@@ -47,7 +48,15 @@ class TestReplaceBootVolume(TestCase):
         ]
         self.blockstorage.get_boot_volume.return_value.data = SimpleNamespace(
             id="current", freeform_tags={"team": "db"}, size_in_gbs=100,
-            kms_key_id="ocid1.key.oc1..cmk", image_id="ocid1.image.oc1..current")
+            kms_key_id="ocid1.key.oc1..cmk", image_id="ocid1.image.oc1..current",
+            vpus_per_gb=10, time_created=3)
+
+        def update_boot_volume(volume_id, details):
+            if details.vpus_per_gb is not None:
+                self.blockstorage.get_boot_volume(volume_id).data.vpus_per_gb = (
+                    details.vpus_per_gb)
+
+        self.blockstorage.update_boot_volume.side_effect = update_boot_volume
 
         def update_instance(*_):
             # The old volume must be tagged before OCI detaches it.
@@ -74,6 +83,103 @@ class TestReplaceBootVolume(TestCase):
         self.assertEqual("ocid1.key.oc1..cmk", details.source_details.kms_key_id)
         self.assertTrue(details.source_details.is_preserve_boot_volume_enabled)
         self.work_requests.get_work_request.assert_called_once_with("work-request-1")
+        # The new volume has the old one's VPUs, so only the tags were updated.
+        self.blockstorage.update_boot_volume.assert_called_once()
+
+    def test_restores_vpus_of_old_volume_on_new_volume(self):
+        current = self.blockstorage.get_boot_volume.return_value.data
+        current.vpus_per_gb = 20
+        volumes = {
+            "current": current,
+            "replacement": SimpleNamespace(
+                id="replacement", vpus_per_gb=10, lifecycle_state="AVAILABLE"),
+        }
+        self.blockstorage.get_boot_volume.side_effect = (
+            lambda volume_id: SimpleNamespace(data=volumes[volume_id]))
+        attached = ["current"]
+
+        def update_instance(*_):
+            attached[0] = "replacement"
+            return SimpleNamespace(headers={"opc-work-request-id": "work-request-1"})
+
+        self.compute.update_instance.side_effect = update_instance
+        self.compute.list_boot_volume_attachments.side_effect = lambda *_, **__: [
+            SimpleNamespace(lifecycle_state="ATTACHED", boot_volume_id=attached[0])]
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        (volume_id, details), _ = self.blockstorage.update_boot_volume.call_args
+        self.assertEqual("replacement", volume_id)
+        self.assertEqual(20, details.vpus_per_gb)
+
+    def replaced_earlier(self, *kept_boot_volumes):
+        """The attached volume is from IMAGE_ID at 10 VPUs/GB, the earlier ones were kept."""
+        current = self.blockstorage.get_boot_volume.return_value.data
+        current.image_id = IMAGE_ID
+        current.lifecycle_state = "AVAILABLE"
+        self.blockstorage.list_boot_volumes.return_value = [current] + [
+            SimpleNamespace(
+                id=volume_id, image_id=image_id, vpus_per_gb=vpus_per_gb,
+                time_created=time_created, lifecycle_state="AVAILABLE", freeform_tags=tags)
+            for volume_id, image_id, vpus_per_gb, time_created, tags in kept_boot_volumes]
+
+    def test_retry_restores_vpus_from_kept_volume(self):
+        # An earlier call replaced the volume but failed before setting its VPUs.
+        self.replaced_earlier(
+            ("old", "ocid1.image.oc1..current", 20, 1, NODE_TAGS),
+            ("other-node", "ocid1.image.oc1..current", 30, 2,
+             dict(NODE_TAGS, **{"node-uuid": "node-2"})))
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        self.compute.update_instance.assert_not_called()
+        self.blockstorage.update_boot_volume.assert_called_once()
+        (volume_id, details), _ = self.blockstorage.update_boot_volume.call_args
+        self.assertEqual("current", volume_id)
+        self.assertEqual(20, details.vpus_per_gb)
+
+    def test_forced_retry_restores_vpus_of_volume_from_same_image(self):
+        # A forced upgrade re-imaged a node already on IMAGE_ID and failed before setting VPUs.
+        # An older volume left by an earlier upgrade must not be used instead.
+        self.replaced_earlier(
+            ("stale", "ocid1.image.oc1..older", 30, 1, NODE_TAGS),
+            ("old", IMAGE_ID, 20, 2, NODE_TAGS))
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID, force=True)
+
+        self.compute.update_instance.assert_called_once()
+        (volume_id, details), _ = self.blockstorage.update_boot_volume.call_args
+        self.assertEqual("current", volume_id)
+        self.assertEqual(20, details.vpus_per_gb)
+
+    def test_retry_ignores_kept_volumes_without_node_uuid_on_instance(self):
+        # Volumes tagged only with the universe can be other nodes'.
+        self.compute.get_instance.return_value.data.freeform_tags = {
+            "universe-uuid": "universe-1"}
+        self.replaced_earlier(("other-node", "ocid1.image.oc1..current", 20, 1,
+                               dict(NODE_TAGS, **{"node-uuid": "node-2"})))
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        self.blockstorage.update_boot_volume.assert_not_called()
+
+    def test_retry_keeps_vpus_changed_after_replacement(self):
+        self.replaced_earlier(("old", "ocid1.image.oc1..current", 20, 1, NODE_TAGS))
+        self.blockstorage.get_boot_volume.return_value.data.vpus_per_gb = 30
+
+        self.admin.replace_boot_volume(INSTANCE_ID, IMAGE_ID)
+
+        self.blockstorage.update_boot_volume.assert_not_called()
+
+    @patch("ybops.cloud.oci.utils.time.sleep")
+    @patch("ybops.cloud.oci.utils.time.time", side_effect=[0, 300])
+    def test_vpus_update_that_never_applies_times_out(self, _, sleep):
+        self.blockstorage.update_boot_volume.side_effect = None
+        boot_volume = self.blockstorage.get_boot_volume.return_value.data
+
+        with self.assertRaises(YBOpsRuntimeError) as ctx:
+            self.admin._set_boot_volume_vpus(boot_volume, 20)
+        self.assertIn("to reach 20 VPUs/GB", str(ctx.exception))
 
     def test_raises_boot_volume_below_minimum_to_minimum(self):
         self.blockstorage.get_boot_volume.return_value.data.size_in_gbs = 47

@@ -253,7 +253,7 @@ func ValidateServerLogsSupport(
 	}
 	allowed, version, err := authAPI.ServerLogsExportYBAVersionCheck()
 	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
 	if !allowed {
 		logrus.Fatal(formatter.Colorize(
