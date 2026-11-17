@@ -747,34 +747,24 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                             ? Collections.emptySet()
                             : fullMoveMasterAZs;
                     if (!skipAZs.containsAll(curPlacement.placementInfo.getAllAZUUIDs())) {
-                      createMasterAddressesUpdateTask(
+                      createMasterAddressesRenderTask(
                           universe.getUniverseUUID(),
                           newCluster,
                           masterAddrRenderPlacement,
                           addrs,
-                          Collections.emptySet() /* mastersToAdd */,
-                          Collections.emptySet() /* mastersToRemove */,
-                          Collections.emptySet() /* tserversToAdd */,
-                          Collections.emptySet() /* tserversToRemove */,
                           skipAZs /* skipMasterAZs */,
                           skipAZs /* skipTserverAZs */,
-                          false /* includeUniverseNodes */,
                           keepDiskSpecAZs);
                     }
                     for (Cluster readReplica : readReplicas) {
-                      createMasterAddressesUpdateTask(
+                      createMasterAddressesRenderTask(
                           universe.getUniverseUUID(),
                           readReplica,
                           new KubernetesPlacement(
                               readReplica.placementInfo, true /* isReadOnlyCluster */),
                           addrs,
-                          Collections.emptySet() /* mastersToAdd */,
-                          Collections.emptySet() /* mastersToRemove */,
-                          Collections.emptySet() /* tserversToAdd */,
-                          Collections.emptySet() /* tserversToRemove */,
                           Collections.emptySet() /* skipMasterAZs */,
                           Collections.emptySet() /* skipTserverAZs */,
-                          false /* includeUniverseNodes */,
                           keepCurrentDiskSpec(readReplica));
                     }
                   }
@@ -1356,7 +1346,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   }
 
   /*
-   * Create master addresses update task
+   * Create master addresses update task. skipMasterAZs and skipTserverAZs only limit the render:
+   * the in-memory updates still reach their pods.
    */
   public void createMasterAddressesUpdateTask(
       UUID universeUUID,
@@ -1370,55 +1361,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Set<UUID> skipMasterAZs,
       Set<UUID> skipTserverAZs,
       boolean includeUniverseNodes) {
-    createMasterAddressesUpdateTask(
-        universeUUID,
-        newCluster,
-        newPlacement,
-        masterAddresses,
-        mastersToAdd,
-        mastersToRemove,
-        tserversToAdd,
-        tserversToRemove,
-        skipMasterAZs,
-        skipTserverAZs,
-        includeUniverseNodes,
-        Collections.emptyMap() /* keepDiskSpecAZs */);
-  }
-
-  /**
-   * Renders masterAddresses into the cluster's gflags Secrets without restarting pods, and sets it
-   * in memory on the given masters and tservers.
-   *
-   * @param skipMasterAZs AZs of the primary cluster not to render. The in-memory updates still
-   *     reach their pods. See upgradePodsNonRestart.
-   * @param skipTserverAZs AZs of a read replica not to render.
-   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now, mapped
-   *     to the original disk size per server type (empty when none was saved). See
-   *     upgradePodsNonRestart.
-   */
-  public void createMasterAddressesUpdateTask(
-      UUID universeUUID,
-      Cluster newCluster,
-      KubernetesPlacement newPlacement,
-      String masterAddresses,
-      Set<NodeDetails> mastersToAdd,
-      Set<NodeDetails> mastersToRemove,
-      Set<NodeDetails> tserversToAdd,
-      Set<NodeDetails> tserversToRemove,
-      Set<UUID> skipMasterAZs,
-      Set<UUID> skipTserverAZs,
-      boolean includeUniverseNodes,
-      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs) {
     Supplier<String> masterAddressesSupplier = () -> masterAddresses;
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    Cluster curPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    String universeOverridesStr = curPrimaryCluster.userIntent.universeOverrides;
-    Map<String, String> azOverrides = curPrimaryCluster.userIntent.azOverrides;
-    if (azOverrides == null) {
-      azOverrides = new HashMap<String, String>();
-    }
     boolean isReadOnlyCluster = newCluster.clusterType == ClusterType.ASYNC;
-    String softwareVersion = curPrimaryCluster.userIntent.ybSoftwareVersion;
 
     // .contains() will work for NodeDetails since .equals() is defined.
     Set<NodeDetails> tserversToModify =
@@ -1430,25 +1375,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                     : Stream.empty())
             .filter(n -> !tserversToRemove.contains(n))
             .collect(Collectors.toSet());
+    createMasterAddressesRenderTask(
+        universeUUID,
+        newCluster,
+        newPlacement,
+        masterAddresses,
+        skipMasterAZs,
+        skipTserverAZs,
+        Collections.emptyMap() /* keepDiskSpecAZs */);
     if (!isReadOnlyCluster) {
-      upgradePodsNonRestart(
-          universe.getName(),
-          newPlacement,
-          masterAddresses,
-          ServerType.EITHER,
-          softwareVersion,
-          universeOverridesStr,
-          azOverrides,
-          taskParams().useNewHelmNamingStyle,
-          isReadOnlyCluster,
-          universe.isYbcEnabled(),
-          ybcManager.getStableYbcVersion(),
-          null /* ysqlMajorVersionUpgradeState */,
-          null /* rootCAUUID */,
-          skipMasterAZs,
-          skipTserverAZs,
-          keepDiskSpecAZs);
-
       Set<NodeDetails> mastersToModify =
           Stream.concat(
                   mastersToAdd.stream(),
@@ -1469,48 +1404,62 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               params.masterAddrsOverride = masterAddressesSupplier;
             });
       }
-      // Set flag in memory for tserver
-      if (CollectionUtils.isNotEmpty(tserversToModify)) {
-        createSetFlagInMemoryTasks(
-            tserversToModify,
-            ServerType.TSERVER,
-            (node, params) -> {
-              params.force = true;
-              params.updateMasterAddrs = true;
-              params.masterAddrsOverride = masterAddressesSupplier;
-            });
-      }
-    } else {
-      upgradePodsNonRestart(
-          universe.getName(),
-          newPlacement,
-          masterAddresses,
-          ServerType.TSERVER,
-          softwareVersion,
-          universeOverridesStr,
-          azOverrides,
-          taskParams().useNewHelmNamingStyle,
-          isReadOnlyCluster,
-          universe.isYbcEnabled(),
-          ybcManager.getStableYbcVersion(),
-          null /* ysqlMajorVersionUpgradeState */,
-          null /* rootCAUUID */,
-          skipMasterAZs,
-          skipTserverAZs,
-          keepDiskSpecAZs);
-
-      // Set flag in memory for tserver
-      if (CollectionUtils.isNotEmpty(tserversToModify)) {
-        createSetFlagInMemoryTasks(
-            tserversToModify,
-            ServerType.TSERVER,
-            (node, params) -> {
-              params.force = true;
-              params.updateMasterAddrs = true;
-              params.masterAddrsOverride = masterAddressesSupplier;
-            });
-      }
     }
+    // Set flag in memory for tserver
+    if (CollectionUtils.isNotEmpty(tserversToModify)) {
+      createSetFlagInMemoryTasks(
+          tserversToModify,
+          ServerType.TSERVER,
+          (node, params) -> {
+            params.force = true;
+            params.updateMasterAddrs = true;
+            params.masterAddrsOverride = masterAddressesSupplier;
+          });
+    }
+  }
+
+  /**
+   * Renders masterAddresses into the cluster's gflags Secrets without restarting pods. It only
+   * renders: no server gets the list in memory, so callers that need that push it themselves.
+   *
+   * @param skipMasterAZs AZs of the primary cluster not to render. See upgradePodsNonRestart.
+   * @param skipTserverAZs AZs of a read replica not to render.
+   * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now, mapped
+   *     to the original disk size per server type (empty when none was saved). See
+   *     upgradePodsNonRestart.
+   */
+  private void createMasterAddressesRenderTask(
+      UUID universeUUID,
+      Cluster cluster,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs,
+      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    Cluster curPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    Map<String, String> azOverrides = curPrimaryCluster.userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
+    boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
+    upgradePodsNonRestart(
+        universe.getName(),
+        placement,
+        masterAddresses,
+        isReadOnlyCluster ? ServerType.TSERVER : ServerType.EITHER,
+        curPrimaryCluster.userIntent.ybSoftwareVersion,
+        curPrimaryCluster.userIntent.universeOverrides,
+        azOverrides,
+        taskParams().useNewHelmNamingStyle,
+        isReadOnlyCluster,
+        universe.isYbcEnabled(),
+        ybcManager.getStableYbcVersion(),
+        null /* ysqlMajorVersionUpgradeState */,
+        null /* rootCAUUID */,
+        skipMasterAZs,
+        skipTserverAZs,
+        keepDiskSpecAZs);
   }
 
   /*
