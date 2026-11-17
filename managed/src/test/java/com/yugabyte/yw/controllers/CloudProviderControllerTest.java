@@ -434,6 +434,15 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateKubernetesRejectsRedactedOverrides() {
+    JsonNode k8sProviderBody = getK8sProviderCreateBody();
+    ((ObjectNode) k8sProviderBody.get("config"))
+        .put("OVERRIDES", "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n");
+    Result result = assertPlatformException(() -> createKubernetesProvider(k8sProviderBody));
+    assertBadRequest(result, "Kubernetes provider overrides");
+  }
+
+  @Test
   public void testCreateKubernetesWithNonTokenKubeConfig() {
     JsonNode k8sProviderBody = getK8sProviderCreateBody();
     ObjectNode config = (ObjectNode) k8sProviderBody.get("config");

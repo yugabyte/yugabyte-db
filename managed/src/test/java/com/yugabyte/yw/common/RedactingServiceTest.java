@@ -725,16 +725,31 @@ public class RedactingServiceTest {
 
   @Test
   public void testLogsRedactionRedactsYamlOverridesInsideJson() {
+    String overrides =
+        "gflags:\n"
+            + "  tserver:\n"
+            + "    ycql_ldap_bind_passwd: plainSecret\n"
+            + "    webserver_port: 9100\n"
+            + "  master:\n"
+            + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapbindpasswd=hbaSecret"
+            + " ldapserver=ldap.example.com\"\n";
     ObjectNode payload = Json.newObject();
-    payload.put("universeOverrides", YAML_OVERRIDES);
+    payload.put("universeOverrides", overrides);
     payload.putObject("azOverrides").put("az-1", "ycql_ldap_bind_passwd: azSecret");
     payload.put("upgradeOption", "Rolling");
+    // Not YAML (a list item among map keys): the YAML-aware redaction hides it whole.
+    payload.put("helm_overrides", YAML_OVERRIDES);
 
     JsonNode redacted =
         RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, false);
 
     assertFalse(redacted.has("_redactionParseError"));
-    assertEquals(YAML_OVERRIDES_REDACTED, redacted.get("universeOverrides").asText());
+    assertEquals(
+        overrides
+            .replace("plainSecret", SECRET_REPLACEMENT)
+            .replace("hbaSecret", SECRET_REPLACEMENT),
+        redacted.get("universeOverrides").asText());
+    assertEquals(SECRET_REPLACEMENT, redacted.get("helm_overrides").asText());
     assertEquals(
         "ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
         redacted.get("azOverrides").get("az-1").asText());
@@ -1206,5 +1221,56 @@ public class RedactingServiceTest {
     assertEquals(
         redacted, out.at("/regions/0/zones/0/details/cloudInfo/kubernetes/overrides").asText());
     assertEquals(overrides, out.get("overrides").asText());
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisHidesOverridesWhoseRedactionFails() {
+    ObjectNode root = mapper.createObjectNode();
+    root.put("universeOverrides", "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: secret\n");
+    try (MockedStatic<KubernetesOverridesRedactor> redactor =
+        Mockito.mockStatic(KubernetesOverridesRedactor.class)) {
+      redactor
+          .when(() -> KubernetesOverridesRedactor.redact(anyString()))
+          .thenThrow(new RuntimeException("dummy"));
+      JsonNode out =
+          RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+      assertEquals(SECRET_REPLACEMENT, out.get("universeOverrides").asText());
+    }
+  }
+
+  @Test
+  public void testFilterSecretFieldsRedactsLegacyConfigOverridesAndAnchoredSecretsInLogs() {
+    String overrides = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    ObjectNode region = mapper.createObjectNode();
+    region.putObject("config").put("OVERRIDES", overrides).put("KUBENAMESPACE", "ns");
+    JsonNode out =
+        RedactingService.filterSecretFields(region, RedactionTarget.APIS, null, null, true);
+    assertFalse(out.toString(), out.toString().contains("tserver-secret"));
+    assertEquals("ns", out.at("/config/KUBENAMESPACE").asText());
+
+    // A text scan redacts only the alias; the YAML-aware redaction follows it to the anchor.
+    ObjectNode params = mapper.createObjectNode();
+    params
+        .putObject("userIntent")
+        .put(
+            "universeOverrides",
+            "shared: &pw anchored-secret\ngflags:\n  tserver:\n    ycql_ldap_bind_passwd: *pw\n");
+    out = RedactingService.filterSecretFields(params, RedactionTarget.LOGS, null, null, true);
+    assertFalse(out.toString(), out.toString().contains("anchored-secret"));
+  }
+
+  @Test
+  public void testFilterSecretFieldsApisHidesHbaWhoseRedactionFailsAndGoesOn() {
+    ObjectNode root = mapper.createObjectNode();
+    root.put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=hba-secret");
+    root.put("universeOverrides", "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: secret\n");
+    try (MockedStatic<HbaConfRedactor> redactor =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      redactor.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new RuntimeException());
+      JsonNode out =
+          RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+      assertEquals(SECRET_REPLACEMENT, out.get("ysql_hba_conf_csv").asText());
+      assertFalse(out.toString(), out.toString().contains("ycql_ldap_bind_passwd: secret"));
+    }
   }
 }

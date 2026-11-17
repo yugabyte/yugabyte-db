@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -157,6 +158,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone zone =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), AvailabilityZone.class);
+    CloudInfoInterface.checkNoRedactedZoneOverrides(zone);
     zone = availabilityZoneHandler.createZone(region, zone);
 
     auditService()
@@ -205,6 +207,7 @@ public class AvailabilityZoneController extends AuthenticatedController {
             zone -> {
               zone.setSubnet(raz.getSubnet());
               zone.setSecondarySubnet(raz.getSecondarySubnet());
+              CloudInfoInterface.restoreRedactedZoneOverrides(zone, raz);
               zone.setDetails(raz.getDetails());
             });
 

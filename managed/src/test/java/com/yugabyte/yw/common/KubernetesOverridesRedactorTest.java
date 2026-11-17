@@ -70,9 +70,11 @@ public class KubernetesOverridesRedactorTest {
   }
 
   @Test
-  public void redactFallsBackToTextScanForUnparsableYaml() {
+  public void redactHidesUnparsableTextThatMentionsASecret() {
     String overrides = "gflags: [\n  ycql_ldap_bind_passwd: tserver-secret\n";
-    assertNoSecrets(KubernetesOverridesRedactor.redact(overrides));
+    assertEquals("REDACTED", KubernetesOverridesRedactor.redact(overrides));
+    // Sent back unchanged, it restores the stored text.
+    assertEquals(overrides, KubernetesOverridesRedactor.restore(overrides, "REDACTED", "o"));
   }
 
   @Test
@@ -194,10 +196,8 @@ public class KubernetesOverridesRedactorTest {
   public void restoreSaysWhenStoredOverridesCannotBeParsed() {
     String stored =
         "gflags:\n  tserver:\n    ycql_ldap_bind_passwd:\n      nested: tserver-secret\n";
-    // Sent back unchanged, it equals redact(stored), which the text scan produced.
-    String unchanged = KubernetesOverridesRedactor.redact(stored);
-    assertEquals(stored, KubernetesOverridesRedactor.restore(stored, unchanged, "overrides"));
-    String edited = unchanged + "tserver:\n  podLabels:\n    env: test\n";
+    assertEquals(stored, KubernetesOverridesRedactor.restore(stored, "REDACTED", "overrides"));
+    String edited = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\nx: y\n";
     PlatformServiceException e =
         assertThrows(
             PlatformServiceException.class,
@@ -310,5 +310,54 @@ public class KubernetesOverridesRedactorTest {
         stored,
         KubernetesOverridesRedactor.restore(stored, redacted + "x: y\n", "overrides")
             .replace("x: y\n", ""));
+  }
+
+  @Test
+  public void restoreKeepsUnchangedOverridesWithAStoredRedactedSecret() {
+    // REDACTED can be stored when the redaction was off at save time. Edits and upgrades send the
+    // universe's own overrides back unchanged; that must not get a 400.
+    String stored =
+        "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n"
+            + "  master:\n    ycql_ldap_bind_passwd: master-secret\n";
+    assertEquals(stored, KubernetesOverridesRedactor.restore(stored, stored, "overrides"));
+    assertEquals(
+        stored,
+        KubernetesOverridesRedactor.restore(
+            stored, KubernetesOverridesRedactor.redact(stored), "overrides"));
+  }
+
+  @Test
+  public void redactDropsATagAfterTheAnchorAndRestorePutsItBack() {
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: &pw !!int 12345\n";
+    String redacted = KubernetesOverridesRedactor.redact(stored);
+    assertEquals("gflags:\n  tserver:\n    ycql_ldap_bind_passwd: &pw REDACTED\n", redacted);
+    assertEquals("REDACTED", at(redacted, "gflags", "tserver", "ycql_ldap_bind_passwd"));
+    String restored = KubernetesOverridesRedactor.restore(stored, redacted + "x: y\n", "o");
+    assertEquals(12345, at(restored, "gflags", "tserver", "ycql_ldap_bind_passwd"));
+  }
+
+  @Test
+  public void restoreQuotesAPlainValueMovedIntoAFlowCollection() {
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: pa,ss[1]\n";
+    String submitted = "gflags: {tserver: {ycql_ldap_bind_passwd: REDACTED}}\nx: y\n";
+    String restored = KubernetesOverridesRedactor.restore(stored, submitted, "o");
+    assertEquals("pa,ss[1]", at(restored, "gflags", "tserver", "ycql_ldap_bind_passwd"));
+  }
+
+  @Test
+  public void restoreTreatsAValueContainingRedactedAsRedacted() {
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    String submitted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: \"REDACTED \"\nx: y\n";
+    String restored = KubernetesOverridesRedactor.restore(stored, submitted, "o");
+    assertEquals("tserver-secret", at(restored, "gflags", "tserver", "ycql_ldap_bind_passwd"));
+  }
+
+  @Test
+  public void restoreFindsASecretInlinedWhereAnAliasWas() {
+    String stored =
+        "shared: &pw master-secret\ngflags:\n  master:\n    ycql_ldap_bind_passwd: *pw\n";
+    String submitted = "gflags:\n  master:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    String restored = KubernetesOverridesRedactor.restore(stored, submitted, "o");
+    assertEquals("master-secret", at(restored, "gflags", "master", "ycql_ldap_bind_passwd"));
   }
 }

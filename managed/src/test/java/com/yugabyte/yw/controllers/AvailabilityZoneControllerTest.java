@@ -29,12 +29,14 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.util.Set;
 import java.util.UUID;
 import org.hamcrest.CoreMatchers;
@@ -417,5 +419,70 @@ public class AvailabilityZoneControllerTest extends FakeDBApplication {
     }
     assertEquals(expectedStatus, result.status());
     return Json.parse(contentAsString(result));
+  }
+
+  private static final String K8S_STORED_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: zone-secret\n";
+
+  private static KubernetesRegionInfo k8sInfo(AvailabilityZone zone) {
+    if (zone.getDetails() == null) {
+      zone.setDetails(new AvailabilityZoneDetails());
+    }
+    if (zone.getDetails().getCloudInfo() == null) {
+      zone.getDetails().setCloudInfo(new AvailabilityZoneDetails.AZCloudInfo());
+    }
+    if (zone.getDetails().getCloudInfo().getKubernetes() == null) {
+      zone.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    }
+    return zone.getDetails().getCloudInfo().getKubernetes();
+  }
+
+  // A client GETs a Kubernetes zone, whose overrides come back redacted, and PUTs it back with a
+  // new subnet: the stored secret must survive.
+  @Test
+  public void testK8sZoneEditKeepsRedactedOverrides() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(defaultCustomer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    k8sInfo(zone).setOverrides(K8S_STORED_OVERRIDES);
+    zone.save();
+
+    String zonesUri =
+        String.format(
+            "/api/customers/%s/providers/%s/regions/%s/zones",
+            defaultCustomer.getUuid(), k8sProvider.getUuid(), region.getUuid());
+    JsonNode listed = Json.parse(contentAsString(doRequest("GET", zonesUri)));
+    ObjectNode body = (ObjectNode) listed.get(0);
+    assertFalse(body.toString(), body.toString().contains("zone-secret"));
+    body.put("subnet", "subnet-2");
+    // The zone list leaves out the region, which the edit form requires.
+    body.set("region", Json.toJson(region));
+    String editUri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions/%s/region_zones/%s",
+            defaultCustomer.getUuid(), k8sProvider.getUuid(), region.getUuid(), zone.getUuid());
+    Result result = doRequestWithBody("PUT", editUri, body);
+    assertEquals(OK, result.status());
+
+    zone = AvailabilityZone.getOrBadRequest(zone.getUuid());
+    assertEquals(K8S_STORED_OVERRIDES, k8sInfo(zone).getOverrides());
+    assertEquals("subnet-2", zone.getSubnet());
+  }
+
+  @Test
+  public void testK8sZoneCreateRejectsRedactedOverrides() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(defaultCustomer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    ObjectNode body = Json.newObject().put("code", "az-2").put("name", "AZ 2");
+    body.set("region", Json.toJson(region));
+    body.putObject("details")
+        .putObject("cloudInfo")
+        .putObject("kubernetes")
+        .put("overrides", "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n");
+    Result result =
+        assertPlatformException(() -> createZoneV2(k8sProvider.getUuid(), region.getUuid(), body));
+    assertEquals(BAD_REQUEST, result.status());
+    assertTrue(
+        contentAsString(result), contentAsString(result).contains("Kubernetes provider overrides"));
   }
 }

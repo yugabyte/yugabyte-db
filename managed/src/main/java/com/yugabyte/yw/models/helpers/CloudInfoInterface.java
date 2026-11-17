@@ -517,19 +517,64 @@ public interface CloudInfoInterface {
     return cloudInfo.getEnvVars();
   }
 
+  /*
+   * Kubernetes region and zone overrides are redacted in every API response that carries a region
+   * or zone (RedactingService), so every endpoint that stores them puts REDACTED back from the
+   * stored value, or rejects it where nothing is stored: provider create and edit, region create
+   * and edit, zone create and edit.
+   */
+
   /** A new provider, region or zone has nothing stored to restore REDACTED overrides from. */
   public static void checkNoRedactedKubernetesOverrides(Provider provider) {
     provider.getRegions().forEach(CloudInfoInterface::checkNoRedactedRegionOverrides);
   }
 
-  private static void checkNoRedactedRegionOverrides(Region region) {
-    checkNoRedactedOverrides(CloudInfoInterface.get(region));
-    region.getZones().forEach(az -> checkNoRedactedOverrides(CloudInfoInterface.get(az)));
+  public static void checkNoRedactedRegionOverrides(Region region) {
+    restoreOverrides(kubernetesInfo(region.getDetails()), null);
+    region.getZones().forEach(CloudInfoInterface::checkNoRedactedZoneOverrides);
   }
 
-  private static void checkNoRedactedOverrides(CloudInfoInterface cloudInfo) {
-    if (cloudInfo instanceof KubernetesRegionInfo) {
-      ((KubernetesRegionInfo) cloudInfo).restoreRedactedOverrides(null);
+  public static void checkNoRedactedZoneOverrides(AvailabilityZone zone) {
+    restoreOverrides(kubernetesInfo(zone.getDetails()), null);
+  }
+
+  /** For a region edit: the region's overrides and its zones', matched by code. */
+  public static void restoreRedactedRegionOverrides(Region stored, Region submitted) {
+    restoreOverrides(kubernetesInfo(submitted.getDetails()), kubernetesInfo(stored.getDetails()));
+    Map<String, AvailabilityZone> storedZones =
+        stored.getZones().stream().collect(Collectors.toMap(az -> az.getCode(), az -> az));
+    for (AvailabilityZone zone : submitted.getZones()) {
+      AvailabilityZone storedZone = storedZones.get(zone.getCode());
+      if (storedZone == null) {
+        checkNoRedactedZoneOverrides(zone);
+      } else {
+        restoreRedactedZoneOverrides(storedZone, zone);
+      }
+    }
+  }
+
+  public static void restoreRedactedZoneOverrides(
+      AvailabilityZone stored, AvailabilityZone submitted) {
+    restoreOverrides(kubernetesInfo(submitted.getDetails()), kubernetesInfo(stored.getDetails()));
+  }
+
+  // Read from the details: a region or zone from a request body has no provider for get() to use.
+  private static KubernetesRegionInfo kubernetesInfo(RegionDetails details) {
+    return details == null || details.getCloudInfo() == null
+        ? null
+        : details.getCloudInfo().getKubernetes();
+  }
+
+  private static KubernetesRegionInfo kubernetesInfo(AvailabilityZoneDetails details) {
+    return details == null || details.getCloudInfo() == null
+        ? null
+        : details.getCloudInfo().getKubernetes();
+  }
+
+  private static void restoreOverrides(
+      KubernetesRegionInfo submitted, KubernetesRegionInfo stored) {
+    if (submitted != null) {
+      submitted.restoreRedactedOverrides(stored == null ? null : stored.getOverrides());
     }
   }
 
@@ -591,7 +636,7 @@ public interface CloudInfoInterface {
       for (AvailabilityZone az : region.getZones()) {
         AvailabilityZone oldAZ = existingAZs.get(az.getCode());
         if (oldAZ == null) {
-          checkNoRedactedOverrides(CloudInfoInterface.get(az));
+          checkNoRedactedZoneOverrides(az);
           continue;
         }
         CloudInfoInterface azCloudInfo = CloudInfoInterface.get(az);

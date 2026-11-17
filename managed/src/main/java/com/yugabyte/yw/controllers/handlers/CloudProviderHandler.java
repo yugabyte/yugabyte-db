@@ -38,7 +38,9 @@ import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.EditAccessKeyRotationScheduleParams;
@@ -59,6 +61,7 @@ import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import jakarta.persistence.PersistenceException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -165,6 +168,26 @@ public class CloudProviderHandler {
     return provider;
   }
 
+  // The provider, region and zone OVERRIDES of a new provider have nothing stored to restore
+  // REDACTED from (CloudInfoInterface.checkNoRedactedKubernetesOverrides).
+  private static void checkNoRedactedOverrides(KubernetesProviderFormData formData) {
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      return;
+    }
+    List<Map<String, String>> configs = new ArrayList<>();
+    configs.add(formData.config);
+    for (KubernetesProviderFormData.RegionData rd : formData.regionList) {
+      configs.add(rd.config);
+      rd.zoneList.forEach(zd -> configs.add(zd.config));
+    }
+    for (Map<String, String> config : configs) {
+      if (config != null) {
+        KubernetesOverridesRedactor.restore(
+            null, config.get("OVERRIDES"), "Kubernetes provider overrides");
+      }
+    }
+  }
+
   public Provider createKubernetes(Customer customer, KubernetesProviderFormData formData) {
     Common.CloudType providerCode = formData.code;
     if (!providerCode.equals(kubernetes)) {
@@ -175,6 +198,7 @@ public class CloudProviderHandler {
     if (formData.regionList.isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Need regions in provider");
     }
+    checkNoRedactedOverrides(formData);
     for (KubernetesProviderFormData.RegionData rd : formData.regionList) {
       boolean hasConfig = formData.config.containsKey("KUBECONFIG_NAME");
       if (rd.config != null) {

@@ -328,6 +328,24 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     assertBadRequest(result, "Kubernetes universe overrides");
   }
 
+  // Edits and upgrades bind the universe's own overrides; a stored REDACTED there must not block.
+  @Test
+  public void editWithUnchangedOverridesHoldingAStoredRedactedValue() {
+    enableGFlagsSensitiveDataApiRedaction();
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    Universe universe =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
+            u -> u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides = stored);
+    UniverseDefinitionTaskParams params =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    UniverseDefinitionTaskParams merged =
+        UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+            params, universe, UniverseDefinitionTaskParams.class);
+    assertEquals(stored, merged.getPrimaryCluster().userIntent.universeOverrides);
+  }
+
   private void enableGFlagsSensitiveDataApiRedaction() {
     when(mockRuntimeConfig.getBoolean(
             GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))

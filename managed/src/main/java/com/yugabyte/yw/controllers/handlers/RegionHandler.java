@@ -97,6 +97,7 @@ public class RegionHandler {
       existingRegion.setLongitude(region.getLongitude());
     }
 
+    CloudInfoInterface.restoreRedactedRegionOverrides(existingRegion, region);
     existingRegion.setDetails(region.getDetails());
     existingRegion.save();
     modifyImageBundlesIfRequired(provider, existingRegion);
@@ -230,6 +231,7 @@ public class RegionHandler {
       modifyImageBundlesIfRequired(provider, region);
     } else {
       // Handle k8s region bootstrap.
+      CloudInfoInterface.checkNoRedactedRegionOverrides(region);
       Set<Region> regions = new HashSet<>();
       regions.add(region);
       CloudProviderHelper.editKubernetesProvider(provider, provider, regions);

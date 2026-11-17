@@ -1432,6 +1432,15 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     return subnet;
   }
 
+  @Test
+  public void testK8sProviderCreateRejectsRedactedOverrides() {
+    ObjectNode body = (ObjectNode) getK8sRequestBody();
+    ((ObjectNode) body.at("/regions/0/zones/0/details/cloudInfo/kubernetes"))
+        .put("overrides", "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n");
+    Result result = assertPlatformException(() -> createProvider(body));
+    assertBadRequest(result, "Kubernetes provider overrides");
+  }
+
   private JsonNode getK8sRequestBody() {
     ObjectNode bodyJson = Json.newObject();
     bodyJson.put("code", "kubernetes");

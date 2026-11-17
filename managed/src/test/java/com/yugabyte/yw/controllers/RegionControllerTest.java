@@ -2,8 +2,10 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
+import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
@@ -29,13 +31,16 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RegionDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -501,5 +506,67 @@ public class RegionControllerTest extends FakeDBApplication {
     result = listAllRegions();
     assertEquals(OK, result.status());
     return Json.fromJson(Json.parse(contentAsString(result)).get(0), Region.class);
+  }
+
+  private static final String K8S_STORED_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: region-secret\n";
+
+  private static KubernetesRegionInfo k8sInfo(Region region) {
+    if (region.getDetails() == null) {
+      region.setDetails(new RegionDetails());
+    }
+    if (region.getDetails().getCloudInfo() == null) {
+      region.getDetails().setCloudInfo(new RegionDetails.RegionCloudInfo());
+    }
+    if (region.getDetails().getCloudInfo().getKubernetes() == null) {
+      region.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    }
+    return region.getDetails().getCloudInfo().getKubernetes();
+  }
+
+  // A client GETs a Kubernetes region, whose overrides come back redacted, and PUTs it back with
+  // an edit: the stored secret must survive.
+  @Test
+  public void testK8sRegionEditKeepsRedactedOverrides() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    k8sInfo(region).setOverrides(K8S_STORED_OVERRIDES);
+    region.save();
+    // The region list leaves out regions without zones; the zone's overrides go round too.
+    AvailabilityZone zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    zone.setDetails(new AvailabilityZoneDetails());
+    zone.getDetails().setCloudInfo(new AvailabilityZoneDetails.AZCloudInfo());
+    zone.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    zone.getDetails().getCloudInfo().getKubernetes().setOverrides(K8S_STORED_OVERRIDES);
+    zone.save();
+
+    JsonNode listed = Json.parse(contentAsString(listRegions(k8sProvider.getUuid())));
+    ObjectNode body = (ObjectNode) listed.get(0);
+    assertFalse(body.toString(), body.toString().contains("region-secret"));
+    ((ObjectNode) body.at("/details/cloudInfo/kubernetes")).put("kubernetesStorageClass", "fast");
+    assertOk(editRegionV2(k8sProvider.getUuid(), region.getUuid(), body));
+
+    region = Region.getOrBadRequest(customer.getUuid(), k8sProvider.getUuid(), region.getUuid());
+    assertEquals(K8S_STORED_OVERRIDES, k8sInfo(region).getOverrides());
+    assertEquals("fast", k8sInfo(region).getKubernetesStorageClass());
+    assertEquals(
+        K8S_STORED_OVERRIDES,
+        AvailabilityZone.getOrBadRequest(zone.getUuid())
+            .getDetails()
+            .getCloudInfo()
+            .getKubernetes()
+            .getOverrides());
+  }
+
+  @Test
+  public void testK8sRegionCreateRejectsRedactedOverrides() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+    ObjectNode body = Json.newObject().put("code", "region-2").put("name", "Region 2");
+    body.putObject("details")
+        .putObject("cloudInfo")
+        .putObject("kubernetes")
+        .put("overrides", "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n");
+    Result result = assertPlatformException(() -> createRegionV2(k8sProvider.getUuid(), body));
+    assertBadRequest(result, "Kubernetes provider overrides");
   }
 }

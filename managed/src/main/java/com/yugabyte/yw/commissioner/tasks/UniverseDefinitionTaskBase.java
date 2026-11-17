@@ -76,6 +76,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
@@ -1930,7 +1931,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                     String.format(
                         "Kubernetes overrides can't be modified during the edit operation. "
                             + "For AZ %s, previous overrides: %s, new overrides: %s",
-                        az, curAZOverridesStr, newAZOverridesStr));
+                        az,
+                        // The overrides can hold secrets, and this goes to the client and log.
+                        KubernetesOverridesRedactor.redact(curAZOverridesStr),
+                        KubernetesOverridesRedactor.redact(newAZOverridesStr)));
               }
             }
           }

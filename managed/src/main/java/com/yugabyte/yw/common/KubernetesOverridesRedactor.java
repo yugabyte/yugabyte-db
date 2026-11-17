@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
+import org.yaml.snakeyaml.DumperOptions.FlowStyle;
 import org.yaml.snakeyaml.DumperOptions.ScalarStyle;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
@@ -88,8 +89,10 @@ public final class KubernetesOverridesRedactor {
       }
     }
 
+    // Contains, not equals, as RedactingService.isGFlagRedacted: "REDACTED " or a block scalar
+    // holding REDACTED must not be stored as the token.
     boolean holdsRedacted(String value) {
-      return this == VALUE ? REDACTED.equals(value) : value.contains(REDACTED);
+      return value.contains(REDACTED);
     }
   }
 
@@ -97,16 +100,23 @@ public final class KubernetesOverridesRedactor {
     final List<String> path;
     final Kind kind;
     final ScalarNode value;
-    // The scalar's own text in the overrides, as char offsets.
+    // The scalar's own text in the overrides, as char offsets, and whether it sits inside a flow
+    // collection ({...} or [...]), where a plain scalar can't hold a comma or brackets.
     final int start;
     final int end;
+    final boolean inFlow;
 
-    Secret(List<String> path, Kind kind, ScalarNode value, int start, int end) {
+    Secret(List<String> path, Kind kind, ScalarNode value, int start, int end, boolean inFlow) {
       this.path = path;
       this.kind = kind;
       this.value = value;
       this.start = start;
       this.end = end;
+      this.inFlow = inFlow;
+    }
+
+    Secret atPath(List<String> otherPath) {
+      return new Secret(otherPath, kind, value, start, end, inFlow);
     }
   }
 
@@ -165,10 +175,10 @@ public final class KubernetesOverridesRedactor {
     try {
       found = find(overrides);
     } catch (UnparsableException e) {
-      // The text scan errs towards redacting too much. Ordered as for shell output: the passes that
-      // can run on past an unclosed value run one line at a time.
-      log.debug("Redacting Kubernetes overrides as text: {}", e.getMessage());
-      return RedactingService.redactShellProcessOutput(overrides, RedactionTarget.LOGS);
+      // A text scan can't follow anchors and aliases, so text that mentions a secret but can't be
+      // parsed is hidden whole. Sent back unchanged, it still equals redact(stored).
+      log.debug("Hiding Kubernetes overrides that cannot be parsed: {}", e.getMessage());
+      return REDACTED;
     }
     List<Replacement> replacements = new ArrayList<>();
     for (Secret secret : found.secrets) {
@@ -201,13 +211,17 @@ public final class KubernetesOverridesRedactor {
    * same YAML path, following GFlagsUtil.mergeSensitiveGFlags: a 400 when nothing is stored there
    * or the stored value is itself REDACTED, and for ysql_hba_conf_csv and other strings also when
    * the rest of the value differs from the stored one. Comments are not restored. stored is null
-   * for a new universe or cluster.
+   * for a new universe or cluster. Overrides sent back unchanged, as stored or as redacted, are
+   * returned as stored, even when the stored text already holds REDACTED.
    */
   public static String restore(String stored, String submitted, String where) {
     if (submitted == null || !submitted.contains(REDACTED)) {
       return submitted;
     }
-    if (stored != null && submitted.equals(redact(stored))) {
+    // Unchanged overrides, as stored or as redacted, change nothing, even if the stored text
+    // already holds REDACTED: edits and upgrades send the universe's own overrides back, and a 400
+    // there would block every operation on that universe.
+    if (stored != null && (submitted.equals(stored) || submitted.equals(redact(stored)))) {
       return stored;
     }
     List<Secret> submittedSecrets;
@@ -224,7 +238,7 @@ public final class KubernetesOverridesRedactor {
     String storedParseError = null;
     if (stored != null) {
       try {
-        find(stored).secrets.forEach(s -> storedSecrets.put(s.path, s));
+        storedSecrets.putAll(find(stored).byPath);
       } catch (UnparsableException e) {
         storedParseError = e.getMessage();
       }
@@ -270,7 +284,8 @@ public final class KubernetesOverridesRedactor {
                     + " submit the value with the actual secret.",
                 name, REDACTED));
       }
-      replacements.add(replaceScalar(submitted, secret, storedScalarText(stored, storedSecret)));
+      replacements.add(
+          replaceScalar(submitted, secret, storedScalarText(stored, storedSecret, secret.inFlow)));
     }
     return apply(submitted, replacements);
   }
@@ -315,7 +330,7 @@ public final class KubernetesOverridesRedactor {
     }
     Finder finder = new Finder(overrides);
     if (root != null) {
-      finder.collect(root, new ArrayList<>());
+      finder.collect(root, new ArrayList<>(), false);
     }
     return finder;
   }
@@ -326,8 +341,10 @@ public final class KubernetesOverridesRedactor {
     final int[] charOffsets;
     final Set<String> secretKeys = secretKeys();
     final List<Secret> secrets = new ArrayList<>();
+    // Each secret by every path that reaches it, aliases included, for restore's lookup.
+    final Map<List<String>, Secret> byPath = new HashMap<>();
+    final Map<Node, Secret> secretByNode = new HashMap<>();
     final Set<Node> visited = new HashSet<>();
-    final Set<Node> secretNodes = new HashSet<>();
     // Every scalar's text, which no comment can be inside of.
     final List<int[]> scalarSpans = new ArrayList<>();
 
@@ -356,22 +373,23 @@ public final class KubernetesOverridesRedactor {
      * the anchor is. Secret nodes are tracked apart from visited, so a secret is still found when
      * its anchor sits under a key that is not secret.
      */
-    void collect(Node node, List<String> path) throws UnparsableException {
+    void collect(Node node, List<String> path, boolean inFlow) throws UnparsableException {
       if (!visited.add(node)) {
         return;
       }
       if (node instanceof ScalarNode) {
         ScalarNode scalar = (ScalarNode) node;
         if (mentionsSecret(scalar.getValue(), secretKeys)) {
-          addSecret(scalar, path, Kind.TEXT);
+          addSecret(scalar, path, Kind.TEXT, inFlow);
         } else {
           addSpan(scalar);
         }
       } else if (node instanceof MappingNode) {
+        boolean childInFlow = inFlow || ((MappingNode) node).getFlowStyle() == FlowStyle.FLOW;
         for (NodeTuple tuple : ((MappingNode) node).getValue()) {
           Node keyNode = tuple.getKeyNode();
           if (!(keyNode instanceof ScalarNode)) {
-            collect(keyNode, path);
+            collect(keyNode, path, childInFlow);
             continue;
           }
           addSpan((ScalarNode) keyNode);
@@ -385,25 +403,32 @@ public final class KubernetesOverridesRedactor {
               throw new UnparsableException(key + " is not a scalar");
             }
             visited.add(value);
-            addSecret((ScalarNode) value, childPath, hba ? Kind.HBA : Kind.VALUE);
+            addSecret((ScalarNode) value, childPath, hba ? Kind.HBA : Kind.VALUE, childInFlow);
           } else {
-            collect(value, childPath);
+            collect(value, childPath, childInFlow);
           }
         }
       } else if (node instanceof SequenceNode) {
+        boolean childInFlow = inFlow || ((SequenceNode) node).getFlowStyle() == FlowStyle.FLOW;
         List<Node> items = ((SequenceNode) node).getValue();
         for (int i = 0; i < items.size(); i++) {
           List<String> childPath = new ArrayList<>(path);
           childPath.add(String.valueOf(i));
-          collect(items.get(i), childPath);
+          collect(items.get(i), childPath, childInFlow);
         }
       }
     }
 
-    void addSecret(ScalarNode scalar, List<String> path, Kind kind) {
-      if (secretNodes.add(scalar)) {
+    void addSecret(ScalarNode scalar, List<String> path, Kind kind, boolean inFlow) {
+      Secret secret = secretByNode.get(scalar);
+      if (secret == null) {
         int[] span = addSpan(scalar);
-        secrets.add(new Secret(path, kind, scalar, span[0], span[1]));
+        secret = new Secret(path, kind, scalar, span[0], span[1], inFlow);
+        secretByNode.put(scalar, secret);
+        secrets.add(secret);
+        byPath.put(path, secret);
+      } else {
+        byPath.put(path, secret.atPath(path));
       }
     }
 
@@ -426,21 +451,31 @@ public final class KubernetesOverridesRedactor {
     }
 
     /**
-     * Where the scalar's own text starts. SnakeYAML starts the mark at an &anchor or !tag in front
-     * of the scalar, which is kept so aliases still resolve. A scalar cannot start with & or !
-     * itself: plain scalars may not, and the other styles start with a quote, | or >. An empty
-     * scalar ends at its properties, so the skip stops at the end.
+     * Where the text a replacement covers starts. SnakeYAML starts the mark at the &anchor and !tag
+     * in front of the scalar. The anchor is kept, so aliases still resolve; a tag after it is
+     * covered, so that "!!int 12345" doesn't become "!!int REDACTED", which can't be loaded, and
+     * restore puts the tag back with the stored text. A tag before the anchor is kept too. A scalar
+     * cannot start with & or ! itself: plain scalars may not, and the other styles start with a
+     * quote, | or >. An empty scalar ends at its properties, so the skip stops at the end.
      */
     int scalarStart(int start, int end) {
+      int tagStart = -1;
       while (start < end && (text.charAt(start) == '&' || text.charAt(start) == '!')) {
+        boolean anchor = text.charAt(start) == '&';
+        int tokenStart = start;
         while (start < end && !Character.isWhitespace(text.charAt(start))) {
           start++;
         }
         while (start < end && Character.isWhitespace(text.charAt(start))) {
           start++;
         }
+        if (anchor) {
+          tagStart = -1;
+        } else if (tagStart < 0) {
+          tagStart = tokenStart;
+        }
       }
-      return start;
+      return tagStart >= 0 ? tagStart : start;
     }
 
     /**
@@ -486,12 +521,15 @@ public final class KubernetesOverridesRedactor {
   }
 
   /**
-   * The stored scalar as the user wrote it, when it sits on one line; a multi-line scalar depends
-   * on its indentation, so it is quoted instead.
+   * The stored scalar as the user wrote it, when that reads the same where it goes. Quoted instead
+   * when it spans lines, which depend on its indentation, or when it is plain and goes into a flow
+   * collection, where a comma or bracket in it would end it.
    */
-  private static String storedScalarText(String stored, Secret secret) {
+  private static String storedScalarText(String stored, Secret secret, boolean intoFlow) {
     String text = stored.substring(secret.start, secret.end);
-    return text.indexOf('\n') < 0 && text.indexOf('\r') < 0 ? text : quote(secret.value.getValue());
+    boolean multiLine = text.indexOf('\n') >= 0 || text.indexOf('\r') >= 0;
+    boolean plain = secret.value.getScalarStyle() == ScalarStyle.PLAIN;
+    return multiLine || (plain && intoFlow) ? quote(secret.value.getValue()) : text;
   }
 
   /** A JSON string is a YAML double-quoted scalar. */
