@@ -367,14 +367,9 @@ func buildGCPImageBundles(imageBundles []string) []ybaclient.ImageBundle {
 					formatter.RedColor))
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
 		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

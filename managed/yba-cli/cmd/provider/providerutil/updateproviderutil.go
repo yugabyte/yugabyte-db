@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -507,6 +508,27 @@ func BuildImageBundleRegionOverrideMapFromString(
 	}
 
 	return override
+}
+
+// ImageBundleSSHPort parses ssh-port. An empty value is an omitted flag and
+// defaults to 22. Any other value must be an integer from 1 to 65535, so a
+// bad flag cannot be stored as 22 or truncated into the int32 the API stores.
+func ImageBundleSSHPort(bundle map[string]string) (int32, error) {
+	raw := bundle["ssh-port"]
+	if raw == "" {
+		return 22, nil
+	}
+	port, err := strconv.ParseUint(raw, 10, 16)
+	if err != nil || port == 0 {
+		id := bundle["name"]
+		if id == "" {
+			id = bundle["uuid"]
+		}
+		return 0, fmt.Errorf(
+			"invalid ssh-port %s for image bundle %s; provide a port between 1 and 65535",
+			raw, id)
+	}
+	return int32(port), nil
 }
 
 // DefaultImageBundleValues is to set default values for image bundle

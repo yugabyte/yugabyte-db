@@ -869,16 +869,11 @@ func editOCIImageBundles(
 						details.SetSshUser(imageBundle["ssh-user"])
 					}
 					if len(imageBundle["ssh-port"]) != 0 {
-						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						sshPort, err := providerutil.ImageBundleSSHPort(imageBundle)
 						if err != nil {
-							errMessage := err.Error() +
-								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-							logrus.Errorln(
-								formatter.Colorize(errMessage, formatter.YellowColor),
-							)
-							sshPort = 22
+							return nil, err
 						}
-						details.SetSshPort(int32(sshPort))
+						details.SetSshPort(sshPort)
 					}
 					if len(imageBundle["default"]) != 0 {
 						defaultBundle, err := strconv.ParseBool(imageBundle["default"])
@@ -961,10 +956,9 @@ func addOCIImageBundles(
 			regions[code] = ybaclient.BundleInfo{YbImage: util.GetStringPointer(image)}
 		}
 
-		sshPort, err := strconv.ParseUint(bundle["ssh-port"], 10, 16)
-		if err != nil || sshPort == 0 {
-			return nil, fmt.Errorf("invalid ssh-port %s for image bundle %s; "+
-				"provide a port between 1 and 65535", bundle["ssh-port"], bundle["name"])
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
+		if err != nil {
+			return nil, err
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

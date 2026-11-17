@@ -200,6 +200,47 @@ func TestEditOCIImageBundlesKeepsEarlierImage(t *testing.T) {
 	}
 }
 
+func TestEditOCIImageBundlesSSHPort(t *testing.T) {
+	regions := map[string]ybaclient.BundleInfo{
+		"us-ashburn-1": {YbImage: util.GetStringPointer("old")},
+	}
+	existing := func() []ybaclient.ImageBundle {
+		return []ybaclient.ImageBundle{{
+			Uuid: util.GetStringPointer("u1"),
+			Details: &ybaclient.ImageBundleDetails{
+				Regions: &regions,
+				SshPort: util.GetInt32Pointer(22),
+			},
+		}}
+	}
+
+	_, err := editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-port=abc",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "invalid ssh-port abc for image bundle u1")
+
+	_, err = editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-port=70000",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "invalid ssh-port 70000 for image bundle u1")
+
+	got, err := editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-port=2222",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "")
+	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 2222 {
+		t.Errorf("ssh port = %v, want 2222", got[0].GetDetails().SshPort)
+	}
+
+	got, err = editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-user=yb",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "")
+	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 22 {
+		t.Errorf("omitted ssh-port changed the stored port to %v", got[0].GetDetails().SshPort)
+	}
+}
+
 func TestApplyOCIRegionImageEdit(t *testing.T) {
 	details := ybaclient.ImageBundleDetails{}
 	details.SetRegions(map[string]ybaclient.BundleInfo{
