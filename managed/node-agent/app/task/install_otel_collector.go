@@ -330,16 +330,7 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 		},
 		{
 			"remove-otel-collector-aws-block-if-exists",
-			fmt.Sprintf(`if [ -f %s ]; then \
-		awk '/# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=1} \
-		/# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=0; next} \
-		!inblock' %s > %s && mv %s %s; fi`,
-				shellSingleQuote(awsCredsFile),
-				shellSingleQuote(awsCredsFile),
-				shellSingleQuote(awsCredsFile+".tmp"),
-				shellSingleQuote(awsCredsFile+".tmp"),
-				shellSingleQuote(awsCredsFile),
-			),
+			removeAwsCredsBlockCmd(awsCredsFile),
 		},
 		{
 			"remove-gcp-credentials",
@@ -449,6 +440,22 @@ func (h *InstallOtelCollector) checkCredentials() error {
 		}
 	}
 	return nil
+}
+
+// removeAwsCredsBlockCmd removes the collector profile from the AWS credentials file. The mv
+// gives the file the mode of the tmp file, so a new tmp file under umask 077 keeps it private.
+func removeAwsCredsBlockCmd(path string) string {
+	return fmt.Sprintf(`umask 077 && if [ -f %s ]; then rm -f %s && \
+		awk '/# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=1} \
+		/# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=0; next} \
+		!inblock' %s > %s && mv %s %s; fi`,
+		shellSingleQuote(path),
+		shellSingleQuote(path+".tmp"),
+		shellSingleQuote(path),
+		shellSingleQuote(path+".tmp"),
+		shellSingleQuote(path+".tmp"),
+		shellSingleQuote(path),
+	)
 }
 
 // appendAwsCredsBlock appends the collector profile to the AWS credentials file. An earlier

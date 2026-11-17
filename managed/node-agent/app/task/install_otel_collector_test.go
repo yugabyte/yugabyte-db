@@ -6,6 +6,7 @@ import (
 	"context"
 	pb "node-agent/generated/service"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"testing"
@@ -114,5 +115,39 @@ func TestAppendAwsCredsBlock(t *testing.T) {
 		"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
 	if string(content) != want {
 		t.Errorf("content = %q, want %q", content, want)
+	}
+}
+
+func TestRemoveAwsCredsBlockKeepsFilePrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials")
+	content := "[default]\n" +
+		"# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n" +
+		"[otel-collector]\n" +
+		"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// A tmp file left by an earlier run must not pass its mode on.
+	if err := os.WriteFile(path+".tmp", []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("bash", "-c", "umask 022 && "+removeAwsCredsBlockCmd(path)).
+		CombinedOutput()
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "[default]\n" {
+		t.Errorf("content = %q, want %q", got, "[default]\n")
 	}
 }

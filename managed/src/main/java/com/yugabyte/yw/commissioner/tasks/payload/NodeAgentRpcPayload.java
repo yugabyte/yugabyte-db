@@ -565,7 +565,8 @@ public class NodeAgentRpcPayload {
       // Checked before any upload, so a failure leaves nothing on the node.
       Map<String, String> secretEnv = new HashMap<>();
       for (UUID exporterUUID : OtelCollectorUtil.getVmConfigExporterUuids(telemetryConfig)) {
-        TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+        TelemetryProvider telemetryProvider =
+            telemetryProviderService.getOrBadRequest(exporterUUID);
         secretEnv.putAll(OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
       }
       checkNodeAgentReadsSecretEnv(nodeAgent, secretEnv);
@@ -779,7 +780,7 @@ public class NodeAgentRpcPayload {
       UUID exporterUUID,
       UUID universeUUID,
       UUID nodeUUID) {
-    TelemetryProvider telemetryProvider = telemetryProviderService.get(exporterUUID);
+    TelemetryProvider telemetryProvider = telemetryProviderService.getOrBadRequest(exporterUUID);
     installOtelCollectorInputBuilder.putAllOtelColSecretEnv(
         OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider));
     Pair<String, String> awsKeys = OtelCollectorConfigGenerator.getAwsKeys(telemetryProvider);
