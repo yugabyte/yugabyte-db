@@ -874,7 +874,8 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("COMMIT");
         assertNotificationsInOrder(listenerConn, "multi_", n);
 
-        // One autocommit statement.
+        // One autocommit statement. Must stay ordered whether its notifications stream as one
+        // transaction or one per row.
         stmt.execute(notifySeriesSql("auto_", n));
         assertNotificationsInOrder(listenerConn, "auto_", n);
       }

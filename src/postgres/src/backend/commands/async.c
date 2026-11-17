@@ -3588,8 +3588,6 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
  *
  * A transaction's rows all come from one backend, so either all of them carry
  * a seq or (older writer) none do and the arrival positions keep the order.
- * seq is not necessarily dense from 0: a notification written outside a
- * transaction block streams as its own single-row transaction.
  *
  * The order is deterministic, so a transaction replayed after a poller crash
  * is queued in the same order, as the listeners' duplicate-skipping requires.
