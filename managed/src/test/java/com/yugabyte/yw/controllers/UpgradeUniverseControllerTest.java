@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -548,6 +549,84 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         result,
         "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
             + " Kubernetes universe overrides (gflags.tserver) set it to false.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+
+  private Universe prepareK8sUniverseWithLdapOverrides(String universeName) {
+    when(mockConfig.getBoolean(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    Universe universe = prepareK8sUniverseForOverridesUpgrade(universeName);
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.universeOverrides = K8S_OVERRIDES;
+          userIntent.azOverrides = new HashMap<>(Map.of("az-1", K8S_OVERRIDES));
+        });
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRestoresRedactedLdapSecrets() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides LDAP Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    String edit = "tserver:\n  podLabels:\n    env: test\n";
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.universeOverrides = redacted + edit;
+              p.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+            },
+            KubernetesOverridesUpgradeParams.class,
+            "kubernetes_overrides");
+    assertOk(result);
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.KubernetesOverridesUpgrade), argCaptor.capture());
+    assertEquals(K8S_OVERRIDES + edit, argCaptor.getValue().universeOverrides);
+    assertEquals(Map.of("az-1", K8S_OVERRIDES), argCaptor.getValue().azOverrides);
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeWithRedactedOverridesUnchanged() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides Unchanged Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    // Restored first, they equal the stored overrides.
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> {
+                      p.universeOverrides = redacted;
+                      p.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+                    },
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "No kubernetes overrides modified.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRejectsRedactedInNewAz() {
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides New AZ Universe");
+    String redacted = KubernetesOverridesRedactor.redact(K8S_OVERRIDES);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> p.azOverrides = new HashMap<>(Map.of("az-1", redacted, "az-2", redacted)),
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "Kubernetes overrides of AZ az-2");
     verify(mockCommissioner, never()).submit(any(), any());
   }
 
