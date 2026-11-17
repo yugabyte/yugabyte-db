@@ -60,6 +60,7 @@ import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
@@ -239,6 +240,72 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .forUniverse(Universe.getUniverseByName("SingleUserUniverse"))
             .getString("yb.security.type"));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  // A sent otel port is kept. A left-out, 0 or default (8889) one takes the provider config.
+  // An out-of-range port or one that another service uses gives 400.
+  @Test
+  public void testUniverseCreateOtelPortFromRequestOrProviderConfig() {
+    Provider p = ModelFactory.awsProvider(customer);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8899);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    for (Integer requestedPort : new Integer[] {8897, 8889, 0, null, 70000, 9300}) {
+      when(mockCommissioner.submit(
+              ArgumentMatchers.any(TaskType.class),
+              ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
+          .thenReturn(FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse));
+      String name = "OtelPortUniverse" + requestedPort;
+      ObjectNode bodyJson = Json.newObject();
+      ObjectNode userIntentJson =
+          Json.newObject()
+              .put("universeName", name)
+              .put("instanceType", i.getInstanceTypeCode())
+              .put("replicationFactor", 3)
+              .put("numNodes", 3)
+              .put("provider", p.getUuid().toString())
+              .put("enableYSQL", "false")
+              .put("accessKeyCode", accessKeyCode)
+              .put("ybSoftwareVersion", "0.0.0.1-b1");
+      userIntentJson.set("regionList", Json.newArray().add(r.getUuid().toString()));
+      userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+      setClustersAndNodeDetailsSet(
+          bodyJson, userIntentJson, placement(p, 2), i.getInstanceTypeCode());
+      // Every other port is sent, as a client that copies configure output does.
+      ObjectNode ports = (ObjectNode) Json.toJson(new CommunicationPorts());
+      ports.remove("otelCollectorMetricsPort");
+      if (requestedPort != null) {
+        ports.put("otelCollectorMetricsPort", requestedPort);
+      }
+      bodyJson.set("communicationPorts", ports);
+
+      if (requestedPort != null && (requestedPort == 70000 || requestedPort == 9300)) {
+        // 9300 is the node exporter port.
+        Result bad = assertPlatformException(() -> sendCreateRequest(bodyJson));
+        assertBadRequest(
+            bad,
+            requestedPort == 70000
+                ? "otelCollectorMetricsPort must be between 1 and 65535."
+                : "otelCollectorMetricsPort must differ from the other ports.");
+        continue;
+      }
+      Result result = sendCreateRequest(bodyJson);
+      assertOk(result);
+      int stored =
+          getUniverseJson(result)
+              .get("universeDetails")
+              .get("communicationPorts")
+              .get("otelCollectorMetricsPort")
+              .asInt();
+      assertEquals(requestedPort != null && requestedPort == 8897 ? 8897 : 8899, stored);
+    }
   }
 
   @Test

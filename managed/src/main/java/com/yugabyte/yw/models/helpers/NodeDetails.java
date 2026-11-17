@@ -302,8 +302,10 @@ public class NodeDetails {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.2.0.0")
   public NodeExporterSystemdLevel nodeExporterSystemdLevel;
 
+  public static final int DEFAULT_OTEL_COLLECTOR_METRICS_PORT = 8889;
+
   @ApiModelProperty(value = "Otel collector metrics port")
-  public int otelCollectorMetricsPort = 8889;
+  public int otelCollectorMetricsPort = DEFAULT_OTEL_COLLECTOR_METRICS_PORT;
 
   // True if cronjobs were properly configured for this node.
   @ApiModelProperty(value = "True if cron jobs were properly configured for this node")
