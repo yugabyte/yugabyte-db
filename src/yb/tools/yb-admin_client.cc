@@ -4497,15 +4497,10 @@ Status ClusterAdminClient::DisableDynamicTableAdditionOnCDCSDKStream(const std::
 
 Status ClusterAdminClient::SetReplicationSlotCatalogBarrier(const std::string& slot_name) {
   master::SetReplicationSlotCatalogBarrierRequestPB req;
-  master::SetReplicationSlotCatalogBarrierResponsePB resp;
   req.set_replication_slot_name(slot_name);
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->SetReplicationSlotCatalogBarrier(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterReplicationProxy::SetReplicationSlotCatalogBarrier,
+      *master_replication_proxy_, req));
 
   cout << "Catalog barrier of replication slot " << slot_name << " is at "
        << HybridTime(resp.barrier_ht()) << endl;
@@ -4520,10 +4515,8 @@ Status ClusterAdminClient::PauseReplicationSlot(
   const auto deadline = CoarseMonoClock::Now() + timeout;
   bool waiting = false;
   while (true) {
-    master::PauseReplicationSlotResponsePB resp;
-    RpcController rpc;
-    rpc.set_timeout(timeout_);
-    RETURN_NOT_OK(master_replication_proxy_->PauseReplicationSlot(req, &resp, &rpc));
+    const auto resp = VERIFY_RESULT(InvokeRpcNoResponseCheck(
+        &master::MasterReplicationProxy::PauseReplicationSlot, *master_replication_proxy_, req));
     if (!resp.has_error()) {
       break;
     }
@@ -4550,15 +4543,9 @@ Status ClusterAdminClient::PauseReplicationSlot(
 
 Status ClusterAdminClient::ReleaseReplicationSlot(const std::string& slot_name) {
   master::ReleaseReplicationSlotRequestPB req;
-  master::ReleaseReplicationSlotResponsePB resp;
   req.set_replication_slot_name(slot_name);
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->ReleaseReplicationSlot(req, &resp, &rpc));
-  if (resp.has_error()) {
-    return StatusFromPB(resp.error().status());
-  }
+  RETURN_NOT_OK(InvokeRpc(
+      &master::MasterReplicationProxy::ReleaseReplicationSlot, *master_replication_proxy_, req));
 
   cout << "Released replication slot " << slot_name << endl;
   return Status::OK();

@@ -7492,7 +7492,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDd
       InitVirtualWAL(
           stream_id, {table.table_id()}, kVWALSessionId2, nullptr /* slot_hash_range */,
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
-          false /* pub_all_tables */, false /* retry */),
+          false /* pub_all_tables */, RetryInit::kFalse),
       "prepare_replication_slots_for_transactional_ddl");
 
   // The command fails naming the stopped master. Rerunning it once the master is back finishes the
@@ -7582,7 +7582,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
       InitVirtualWAL(
           stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
-          false /* pub_all_tables */, false /* retry */), "is paused");
+          false /* pub_all_tables */, RetryInit::kFalse), "is paused");
   ASSERT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {kUnpausedSlotName}));
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("pause_replication_slot", {kUnpausedSlotName, "1"}),
@@ -7611,7 +7611,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
       InitVirtualWAL(
           unpaused_stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
-          false /* pub_all_tables */, false /* retry */), "is unusable");
+          false /* pub_all_tables */, RetryInit::kFalse), "is unusable");
 
   // Rows kKeyAfterBarrier, 2, 3 and 4.
   constexpr int kExpectedDmlRecords = 4;
@@ -7653,6 +7653,17 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
   ASSERT_OK(ExecuteYBAdminCommand("release_replication_slot", {kSlotName}));
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("pause_replication_slot", {kSlotName}), "Set the catalog barrier");
+
+  // Release deletes the sys catalog entry also when the stream records no barrier, as after a
+  // barrier command that failed once the barrier was set.
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  cdc::CDCStateTableEntry sys_catalog_entry(master::kSysCatalogTabletId, stream_id);
+  sys_catalog_entry.checkpoint = OpId(1, 1);
+  sys_catalog_entry.active_time = GetCurrentTimeMicros();
+  ASSERT_OK(cdc_state_table.UpsertEntries({sys_catalog_entry}));
+  ASSERT_OK(ExecuteYBAdminCommand("release_replication_slot", {kSlotName}));
+  ASSERT_FALSE(ASSERT_RESULT(
+      cdc_state_table.TryFetchEntry({master::kSysCatalogTabletId, stream_id})).has_value());
   ASSERT_OK(InsertRow(&conn, 2));
   ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
       stream_id, {table.table_id()}, 1 /* expected_dml_records */, true /* init_virtual_wal */));
@@ -7669,7 +7680,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
       InitVirtualWAL(
           stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
-          false /* pub_all_tables */, false /* retry */), "is unusable");
+          false /* pub_all_tables */, RetryInit::kFalse), "is unusable");
   ASSERT_NOK_STR_CONTAINS(
       ExecuteYBAdminCommand("release_replication_slot", {kSlotName}),
       "is unusable with transactional DDL");
@@ -7692,6 +7703,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
   ASSERT_OK(SetBarrierAndPause(kSlotName, stream_id, table.table_id(), &conn, 1));
+  // Syncing the stream's cdc_state entries keeps the sys catalog entry holding its barrier, though
+  // the stream has no catalog tables yet.
+  ASSERT_OK(ExecuteYBAdminCommand(
+      "validate_and_sync_cdc_state_table_entries_on_change_data_stream", {stream_id.ToString()}));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ASSERT_STR_CONTAINS(
       ASSERT_RESULT(PrepareReplicationSlotsForTransactionalDDL(
@@ -7705,7 +7720,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
       InitVirtualWAL(
           stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
-          false /* pub_all_tables */, false /* retry */), "has been unqualified");
+          false /* pub_all_tables */, RetryInit::kFalse), "has been unqualified");
 
   cdc::CDCStateTableEntry entry(tablets[0].tablet_id(), stream_id);
   entry.active_time = GetCurrentTimeMicros();
@@ -7714,7 +7729,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
       InitVirtualWAL(
           stream_id, {table.table_id()}, kVWALSessionId1, nullptr /* slot_hash_range */,
           false /* include_oid_to_relfilenode */, kRpcTimeout, {} /* publication_oids */,
-          false /* pub_all_tables */, false /* retry */),
+          false /* pub_all_tables */, RetryInit::kFalse),
       Format("Cannot add tablet: $0", master::kSysCatalogTabletId));
 }
 

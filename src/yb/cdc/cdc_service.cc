@@ -3775,7 +3775,8 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     // 2. Logical replication streams which don't poll sys_catalog tablet.
     // 3. gRPC streams (which never poll sys_catalog tablet)
     // Streams of type 2 and 3 won't have stream_metadata.GetDetectPublicationChangesImplicitly()
-    // set to true.
+    // set to true. A type 2 stream being converted to type 1 also has a sys_catalog entry, holding
+    // its catalog barrier.
 
     const bool is_logical_replication_stream = stream_metadata.IsLogicalReplicationStream();
     // To update the restart time of a gRPC stream entry, we need to track min(cdc_sdk_safe_time)
@@ -3820,8 +3821,8 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
       continue;
     }
 
-    // sys_catalog tablet-stream entry which occurs only for 'Type 1' streams. Collect WAL, intent
-    // barriers and active_time.
+    // sys_catalog tablet-stream entry, of a 'Type 1' stream or a 'Type 2' stream being converted.
+    // Collect WAL, intent barriers and active_time.
     if (entry.key.tablet_id == master::kSysCatalogTabletId && entry.checkpoint.has_value() &&
         *entry.checkpoint != OpId::Invalid()) {
       int64_t last_active_time = static_cast<int64_t>(*entry.active_time);

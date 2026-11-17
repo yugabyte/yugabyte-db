@@ -5703,8 +5703,8 @@ Result<bool> CatalogManager::HasSysCatalogRetentionBarrier(const xrepl::StreamId
       cdc::CDCStateTableEntrySelector().IncludeCheckpoint().IncludeActiveTime()));
   return entry && entry->checkpoint && entry->checkpoint->valid() &&
          *entry->checkpoint != OpId::Max() && entry->active_time &&
-         static_cast<uint64_t>(GetCurrentTimeMicros()) <
-             *entry->active_time + 1000 * FLAGS_cdc_intent_retention_ms;
+         !IsCDCSDKTabletExpiredOrNotOfInterest(
+             HybridTime::FromMicros(*entry->active_time), std::nullopt /* stream_creation_time */);
 }
 
 Status CatalogManager::SetReplicationSlotCatalogBarrier(
@@ -5858,16 +5858,18 @@ Status CatalogManager::ClearImplicitConversionState(const CDCStreamInfoPtr& stre
   {
     auto l = stream->LockForWrite();
     auto& pb = l.mutable_data()->pb;
-    if (!pb.has_cdcsdk_implicit_conversion_barrier_ht() && !pb.cdcsdk_paused_for_upgrade()) {
-      return Status::OK();
+    if (pb.has_cdcsdk_implicit_conversion_barrier_ht() || pb.cdcsdk_paused_for_upgrade()) {
+      pb.clear_cdcsdk_implicit_conversion_barrier_ht();
+      pb.clear_cdcsdk_paused_for_upgrade();
+      RETURN_ACTION_NOT_OK(
+          sys_catalog_->Upsert(leader_ready_term(), stream),
+          "Updating CDC stream in system catalog");
+      l.Commit();
     }
-    pb.clear_cdcsdk_implicit_conversion_barrier_ht();
-    pb.clear_cdcsdk_paused_for_upgrade();
-    RETURN_ACTION_NOT_OK(
-        sys_catalog_->Upsert(leader_ready_term(), stream), "Updating CDC stream in system catalog");
-    l.Commit();
   }
-  // If this fails, the entry expires like any unused one.
+  // Deleted even when the stream records no barrier, since a barrier command that failed after
+  // setting the barrier leaves the entry without recording it. If this fails, the entry expires
+  // like any unused one.
   WARN_NOT_OK(
       cdc_state_table_->DeleteEntries({{kSysCatalogTabletId, stream->StreamId()}}),
       Format("Failed to delete the sys catalog entry of CDC stream $0", stream->id()));
@@ -6496,33 +6498,58 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
   const auto catalog_table_ids =
       VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(stream->namespace_id()));
 
-  std::vector<TableId> added_table_ids;
-  bool converted = false;
-  bool marked_unusable = false;
-  {
-    auto l = stream->LockForWrite();
+  const auto check_state = [](const auto& l) -> std::optional<PrepareSlotForTxnDdlResult> {
     if (l->started_deleting() || l->is_deleting_metadata()) {
       return PrepareSlotForTxnDdlResult::kDeleting;
     }
     if (l->pb.cdcsdk_unusable_with_transactional_ddl()) {
       return PrepareSlotForTxnDdlResult::kAlreadyUnusable;
     }
+    return std::nullopt;
+  };
+
+  // The cdc_state IO happens outside the stream lock, so the stream is rechecked under the write
+  // lock.
+  bool pub_refresh;
+  bool paused;
+  {
+    auto l = stream->LockForRead();
+    if (auto result = check_state(l)) {
+      return *result;
+    }
+    pub_refresh = !l->pb.detect_publication_changes_implicitly();
+    paused = l->pb.cdcsdk_paused_for_upgrade();
+  }
+  const bool convert =
+      pub_refresh && paused && VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId()));
+  if (convert) {
+    // The sys catalog entry was last active when the barrier was set. The converted slot's
+    // consumer gets cdc_intent_retention_ms from now to resume. If the conversion doesn't follow,
+    // this only extends the barrier.
+    cdc::CDCStateTableEntry entry(kSysCatalogTabletId, stream->StreamId());
+    entry.active_time = GetCurrentTimeMicros();
+    RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
+  }
+
+  std::vector<TableId> added_table_ids;
+  const bool marked_unusable = pub_refresh && !convert;
+  {
+    auto l = stream->LockForWrite();
+    if (auto result = check_state(l)) {
+      return *result;
+    }
     auto& pb = l.mutable_data()->pb;
-    if (!pb.detect_publication_changes_implicitly()) {
-      marked_unusable = !pb.cdcsdk_paused_for_upgrade() ||
-                        !VERIFY_RESULT(HasSysCatalogRetentionBarrier(stream->StreamId()));
+    SCHECK_FORMAT(
+        !pb.detect_publication_changes_implicitly() == pub_refresh &&
+            pb.cdcsdk_paused_for_upgrade() == paused,
+        TryAgain, "CDC stream $0 changed while being prepared. Rerun the command", stream->id());
+    if (pub_refresh) {
       if (marked_unusable) {
         // The sys catalog entry holding the barrier is deleted below.
         pb.clear_cdcsdk_implicit_conversion_barrier_ht();
         pb.set_cdcsdk_unusable_with_transactional_ddl(true);
       } else {
-        // The sys catalog entry was last active when the barrier was set. The converted slot's
-        // consumer gets cdc_intent_retention_ms from now to resume.
-        cdc::CDCStateTableEntry entry(kSysCatalogTabletId, stream->StreamId());
-        entry.active_time = GetCurrentTimeMicros();
-        RETURN_NOT_OK(cdc_state_table_->UpdateEntries({entry}));
         pb.set_detect_publication_changes_implicitly(true);
-        converted = true;
       }
       pb.clear_cdcsdk_paused_for_upgrade();
     }
@@ -6539,7 +6566,7 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
         added_table_ids.push_back(table_id);
       }
     }
-    if (!converted && !marked_unusable && added_table_ids.empty()) {
+    if (!pub_refresh && added_table_ids.empty()) {
       LOG_WITH_FUNC(INFO) << "Stream " << stream->id()
                           << " already contains all required PG catalog tables";
       return PrepareSlotForTxnDdlResult::kPrepared;
@@ -6568,7 +6595,7 @@ Result<PrepareSlotForTxnDdlResult> CatalogManager::PrepareStreamForTransactional
       }
     }
   }
-  LOG_WITH_FUNC(INFO) << (converted ? "Converted CDC stream to an implicit stream and added" :
+  LOG_WITH_FUNC(INFO) << (convert ? "Converted CDC stream to an implicit stream and added" :
                                       "Added")
                       << " catalog tables " << AsString(added_table_ids) << " to stream "
                       << stream->id();
@@ -7316,6 +7343,12 @@ Result<std::vector<cdc::CDCStateTableKey>> CatalogManager::SyncCDCStateTableEntr
     const auto& entry = *entry_result;
 
     if (entry.key.stream_id == stream_id) {
+      // A pub-refresh stream being converted to an implicit stream has a sys catalog entry holding
+      // its catalog barrier but none of the catalog tables, so the entry isn't checked here, as in
+      // CleanUpCDCSDKStreamsMetadata.
+      if (entry.key.tablet_id == kSysCatalogTabletId) {
+        continue;
+      }
       if (entry.key.colocated_table_id.empty()) {
         cdc_state_tablet_entries.push_back(entry.key.tablet_id);
       } else {

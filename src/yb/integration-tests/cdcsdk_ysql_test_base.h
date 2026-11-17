@@ -61,6 +61,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/tablet/tablet_types.pb.h"
@@ -189,6 +190,7 @@ namespace cdc {
 
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
+YB_STRONGLY_TYPED_BOOL(RetryInit);
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
@@ -568,7 +570,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       int timeout = kRpcTimeout,
       const std::vector<uint32_t>& publication_oids = {},
       bool pub_all_tables = false,
-      bool retry = true);
+      RetryInit retry = RetryInit::kTrue);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 

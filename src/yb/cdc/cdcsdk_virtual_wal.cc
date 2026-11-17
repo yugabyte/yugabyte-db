@@ -256,7 +256,10 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
       slot_name, IllegalState, Format("Stream $0 has no replication slot name", stream_id_));
   SCHECK_FORMAT(
       !stream->IsPausedForUpgrade(), IllegalState,
-      "Replication slot $0 is paused for conversion to an implicit slot", *slot_name);
+      "Replication slot $0 is paused for conversion to an implicit slot. Run 'yb-admin "
+      "prepare_replication_slots_for_transactional_ddl' after finalizing the upgrade to convert "
+      "it, or 'yb-admin release_replication_slot $0' to stream it without converting it",
+      *slot_name);
   SCHECK_FORMAT(
       !stream->IsUnusableWithTransactionalDdl(), IllegalState,
       "Replication slot $0 is unusable with transactional DDL replication, as it wasn't paused "
