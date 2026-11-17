@@ -2571,9 +2571,8 @@ void CDCSDKConsumptionConsistentChangesTest::TestCommitTimeTieWithPublicationRef
   uint64_t restart_lsn = 0;
   uint64_t last_record_lsn = 0;
 
-  // 2 transactions of BEGIN, INSERT and COMMIT, plus, without transactional DDL support, the
-  // per-tablet DDL record carrying the schema of test1. With it, the Virtual WAL emits DDL records
-  // only for DDL transactions, and none run after the slot is created.
+  // 2 transactions of BEGIN, INSERT and COMMIT, plus, without transactional DDL support, the DDL
+  // record carrying the schema of test1.
   ASSERT_EQ(
       change_resp.cdc_sdk_proto_records_size(),
       FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 6 : 7);
