@@ -337,7 +337,7 @@ yb_indexcol_can_merge_scan(PlannerInfo *root,
 
 	/*
 	 * If same expr already used in stream_cols, then redundant.  Every entry
-	 * here carries a SAOP, since yb_finalize_merge_scan_stream_cols adds the
+	 * here carries a SAOP, since yb_finalize_merge_scan_info adds the
 	 * single-value equality entries only after the pathkeys walk that calls
 	 * this function.
 	 */
@@ -482,7 +482,7 @@ ybFindPathkeyTle(List *tlist, EquivalenceClass *ec, Relids relids,
  *
  * (Parts copied from prepare_sort_from_pathkeys.)
  */
-void
+static void
 yb_get_sort_info_from_pathkeys(List *tlist,
 							   List *pathkeys,
 							   Relids relids,
@@ -627,8 +627,8 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
  * stream binds to one value.  stream_cols holds the SAOP columns the pathkeys
  * walk picked.  build_index_paths calls this after truncate_useless_pathkeys,
  * with the path's index clauses, so that the path's costing and its plan see
- * the same stream keys.  The pathkeys are final only after this call, which
- * can truncate them on an embedded index.
+ * the same stream keys and merge sort columns.  The pathkeys are final only
+ * after this call, which can truncate them on an embedded index.
  *
  * On an embedded index, pggate compares each merge sort value in the table
  * row, which has no value for an expression index column.  So when embedded,
@@ -663,20 +663,23 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
  * merge order does not depend on it.  That includes a SAOP column the pathkeys
  * walk picked there, whose streams the merge does not need.
  *
- * Returns a new list in index column order, which EXPLAIN shows, or NIL when
+ * Returns the merge scan info, whose stream keys EXPLAIN shows, or NULL when
  * no stream key column remains, and the path is then not a merge scan.
  */
-List *
-yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
-								   List *stream_cols, List *indexclauses,
-								   List **pathkeys, int *yb_distinct_nkeys,
-								   bool embedded)
+YbMergeScanInfo *
+yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
+							List *stream_cols, List *indexclauses,
+							List **pathkeys, int *yb_distinct_nkeys,
+							bool embedded)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
 	Bitmapset  *saop_idxs = NULL;
 	Bitmapset  *sort_idxs = NULL;
+	Bitmapset  *stream_col_idxs = NULL;
 	int			last_sort_indexcol = -1;
+	YbMergeScanInfo *merge_scan_info;
+	YbSortInfo *sort_info;
 
 	foreach(lc, stream_cols)
 	{
@@ -697,7 +700,7 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 
 		/* Not an ordering the merge can compare on. */
 		if (!tle)
-			return NIL;
+			return NULL;
 		if (embedded && index->indexkeys[tle->resno - 1] == 0)
 		{
 			*pathkeys = list_truncate(*pathkeys, foreach_current_index(lc));
@@ -746,5 +749,27 @@ yb_finalize_merge_scan_stream_cols(IndexOptInfo *index, Relids relids,
 		info->derived = false;
 		result = lappend(result, info);
 	}
-	return result;
+
+	if (result == NIL)
+		return NULL;
+
+	foreach(lc, result)
+	{
+		YbMergeScanStreamColInfo *info = lfirst_node(YbMergeScanStreamColInfo,
+													 lc);
+
+		stream_col_idxs = bms_add_member(stream_col_idxs, info->indexcol);
+	}
+	sort_info = makeNode(YbSortInfo);
+	yb_get_sort_info_from_pathkeys(index->indextlist, *pathkeys, relids,
+								   stream_col_idxs, &sort_info->numCols,
+								   &sort_info->sortColIdx,
+								   &sort_info->sortOperators,
+								   &sort_info->collations,
+								   &sort_info->nullsFirst);
+
+	merge_scan_info = makeNode(YbMergeScanInfo);
+	merge_scan_info->stream_cols = result;
+	merge_scan_info->sort_cols = sort_info;
+	return merge_scan_info;
 }

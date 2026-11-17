@@ -157,6 +157,7 @@ KIWI_API static inline uint32_t kiwi_read_startup_size(char *data,
 /* constants from PG sources */
 #define PQ_SMALL_MESSAGE_LIMIT 10000
 #define PQ_LARGE_MESSAGE_LIMIT ((size_t)0x3fffffff - 1)
+#define PG_MAX_AUTH_TOKEN_LENGTH 65535
 
 KIWI_API static inline int
 kiwi_validate_startup_header(char *data, uint32_t data_size, uint32_t *size)

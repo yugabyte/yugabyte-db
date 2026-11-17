@@ -209,6 +209,12 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     // Last request of a connection start's prefetch; see
     // CachingInfoPB.completes_connection_prefetch.
     bool completes_connection_prefetch;
+    // Return rather than wait behind a fill already under way; see
+    // CachingInfoPB.send_away_if_fill_in_flight.
+    bool send_away_if_fill_in_flight;
+    // Any round of a connection start's prefetch; see
+    // CachingInfoPB.part_of_connection_prefetch.
+    bool part_of_connection_prefetch;
   };
 
   Result<PerformFuture> RunAsync(

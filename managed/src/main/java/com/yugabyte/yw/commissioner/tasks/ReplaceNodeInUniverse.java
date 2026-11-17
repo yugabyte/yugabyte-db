@@ -68,10 +68,11 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
 
   @Override
   protected void freezeUniverseInTxn(Universe universe) {
-    super.freezeUniverseInTxn(universe);
+    // Set before the parent persists the task params, so that a retry resolves the same cluster.
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
     taskParams().azUuid = currentNode.azUuid;
     taskParams().placementUuid = currentNode.placementUuid;
+    super.freezeUniverseInTxn(universe);
   }
 
   @Override

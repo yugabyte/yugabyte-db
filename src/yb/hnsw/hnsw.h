@@ -22,6 +22,7 @@
 #include "yb/rocksdb/util/heap.h"
 
 #include "yb/util/misaligned_ptr.h"
+#include "yb/util/result.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
@@ -42,9 +43,16 @@ struct YbHnswVectorData;
 
 // Provides access to a raw bytes data for a single search.
 // Could be reused between searches using Bind/Release method.
+// After a block fails to load, the error is kept in status(), and no more blocks are loaded:
+// accessors return null pointers and empty ranges instead. A search stops after the neighbor list
+// it is visiting, and never passes a vector it failed to read to the filter.
 class SearchCache {
  public:
   const std::byte* Data(size_t index);
+
+  const Status& status() const {
+    return status_;
+  }
 
   void Bind(std::reference_wrapper<const Header> header, FileBlockCache& cache);
   void Release();
@@ -66,6 +74,7 @@ class SearchCache {
   FileBlockCache* file_block_cache_ = nullptr;
   std::vector<const std::byte*> blocks_;
   std::vector<size_t> used_blocks_;
+  Status status_;
 };
 
 class SearchCacheScope {
@@ -149,11 +158,11 @@ class YbHnsw {
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
   Status Init(const std::string& path);
 
-  SearchResult Search(
+  Result<SearchResult> Search(
       const std::byte* query_vector, const vector_index::SearchOptions& options,
       YbHnswSearchContext& context) const;
 
-  SearchResult Search(
+  Result<SearchResult> Search(
       const CoordinateType* query_vector, const vector_index::SearchOptions& options,
       YbHnswSearchContext& context) const {
     return Search(
@@ -175,10 +184,6 @@ class YbHnsw {
   SearchResult MakeResult(size_t max_results, YbHnswSearchContext& context) const;
 
   DistanceType Distance(const std::byte* lhs, size_t vector, SearchCache& cache) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> MakeCoordinates(
-      const std::byte* ptr) const;
-  boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(
-      size_t vector, SearchCache& cache) const;
 
   MetricPtr metric_;
   const BlockCachePtr block_cache_;

@@ -24,10 +24,11 @@ class CDCIntraTxBeforeImageTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   }
 };
 
-TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestTxnUpdatesAndDeleteBeforeImage)) {
+TEST_F(CDCIntraTxBeforeImageTest, TestTxnUpdatesAndDeleteBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -45,11 +46,9 @@ TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestTxnUpdatesAndDelet
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  // Create a stream and set an initial checkpoint
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  // Create a stream
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
   // Begin a transaction that inserts, updates multiple columns, then deletes the row and commits
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -104,8 +103,7 @@ TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestTxnUpdatesAndDelet
 }
 
 // Test scenario: Update across multiple transactions, then delete
-TEST_F(
-    CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestAcrossTxnUpdatesAndDeleteBeforeImage)) {
+TEST_F(CDCIntraTxBeforeImageTest, TestAcrossTxnUpdatesAndDeleteBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -121,10 +119,8 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
   // Transaction 1: INSERT
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -189,9 +185,7 @@ TEST_F(
 }
 
 // Test scenario: Multiple updates on different columns in single transaction
-TEST_F(
-    CDCIntraTxBeforeImageTest,
-    YB_DISABLE_TEST_IN_TSAN(TestIntraTxnMultipleColumnUpdatesBeforeImage)) {
+TEST_F(CDCIntraTxBeforeImageTest, TestIntraTxnMultipleColumnUpdatesBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
 
@@ -208,10 +202,8 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
   // Single transaction with INSERT and multiple updates on both columns
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -294,9 +286,7 @@ TEST_F(
 }
 
 // Test scenario: Insert, delete, re-insert same key within transaction
-TEST_F(
-    CDCIntraTxBeforeImageTest,
-    YB_DISABLE_TEST_IN_TSAN(TestIntraTxnInsertDeleteReinsertBeforeImage)) {
+TEST_F(CDCIntraTxBeforeImageTest, TestIntraTxnInsertDeleteReinsertBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -312,10 +302,8 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
   // Transaction: INSERT -> DELETE -> INSERT same key with different values
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -356,7 +344,7 @@ TEST_F(
 }
 
 // Test scenario: Multiple rows with mixed operations in single transaction
-TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestIntraTxnMultipleRowsBeforeImage)) {
+TEST_F(CDCIntraTxBeforeImageTest, TestIntraTxnMultipleRowsBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -372,10 +360,8 @@ TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestIntraTxnMultipleRo
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
   // Transaction with multiple rows: INSERT row1, INSERT row2, UPDATE row1, DELETE row2
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -427,8 +413,7 @@ TEST_F(CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestIntraTxnMultipleRo
 }
 
 // Test scenario: Update in txn1, delete in txn2 (across transactions)
-TEST_F(
-    CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestAcrossTxnUpdateThenDeleteBeforeImage)) {
+TEST_F(CDCIntraTxBeforeImageTest, TestAcrossTxnUpdateThenDeleteBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -444,10 +429,8 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
   // Transaction 1: INSERT and UPDATE
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -520,8 +503,7 @@ TEST_F(
 }
 
 // Test scenario: Multiple deletes across transactions
-TEST_F(
-    CDCIntraTxBeforeImageTest, YB_DISABLE_TEST_IN_TSAN(TestAcrossTxnMultipleDeletesBeforeImage)) {
+TEST_F(CDCIntraTxBeforeImageTest, TestAcrossTxnMultipleDeletesBeforeImage) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = true;
   ASSERT_OK(SetUpWithParams(1, 1, false));
@@ -537,10 +519,8 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::PG_FULL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
 
   // Transaction 1: INSERT three rows
   ASSERT_OK(conn.Execute("BEGIN"));
@@ -596,6 +576,168 @@ TEST_F(
   // Verify we got 3 inserts and 3 deletes
   ASSERT_EQ(count[1], 3);  // 3 INSERTs
   ASSERT_EQ(count[3], 3);  // 3 DELETEs
+}
+
+TEST_F(CDCIntraTxBeforeImageTest, TestIntraTxnBeforeImageWithSavepointRollback) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 ($1 INT PRIMARY KEY, $2 INT, $3 INT)", kTableName, kKeyColumnName,
+      kValueColumnName, kValue2ColumnName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, kTableName));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption::EXPORT_SNAPSHOT, CDCCheckpointType::EXPLICIT, CDCRecordType::PG_FULL));
+
+  // Txn 1: UPDATE after rolling back an UPDATE.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10, 20)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 11 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 12 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // BEGIN, INSERT, UPDATE, COMMIT.
+  auto txn1_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, /*cp=*/nullptr, /*tablet_idx=*/0, /*safe_hybrid_time=*/-1,
+      /*wal_segment_index=*/0, /*expected_records_count=*/4);
+  uint32_t txn1_count[6] = {0, 0, 0, 0, 0, 0};
+  for (const auto& rec : txn1_resp.records) {
+    switch (rec.row_message().op()) {
+      case RowMessage::INSERT:
+        CheckRecordWithThreeColumns(rec, {1, 10, 20}, txn1_count);
+        break;
+      case RowMessage::UPDATE:
+        CheckRecordWithThreeColumns(
+            rec, {1, 12, 20}, txn1_count, /*validate_old_tuple=*/true, {1, 10, 20},
+            /*validate_third_column=*/true);
+        break;
+      default:
+        break;
+    }
+  }
+  ASSERT_EQ(txn1_count[1], 1);
+  ASSERT_EQ(txn1_count[2], 1);
+
+  // Txn 2: DELETE after rolling back an UPDATE.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 10, 20)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 11 WHERE $2 = 2", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 2", kTableName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // BEGIN, INSERT, DELETE, COMMIT.
+  auto txn2_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, &txn1_resp.checkpoint, /*tablet_idx=*/0, txn1_resp.safe_hybrid_time,
+      /*wal_segment_index=*/0, /*expected_records_count=*/4);
+  uint32_t txn2_count[6] = {0, 0, 0, 0, 0, 0};
+  for (const auto& rec : txn2_resp.records) {
+    LOG(INFO) << "Txn 2 record: " << rec.DebugString();
+    switch (rec.row_message().op()) {
+      case RowMessage::INSERT:
+        CheckRecordWithThreeColumns(rec, {2, 10, 20}, txn2_count);
+        break;
+      case RowMessage::DELETE:
+        CheckRecordWithThreeColumns(
+            rec, {2, 10, 20}, txn2_count, /*validate_old_tuple=*/true, {2, 10, 20},
+            /*validate_third_column=*/true);
+        break;
+      default:
+        break;
+    }
+  }
+  ASSERT_EQ(txn2_count[1], 1);
+  ASSERT_EQ(txn2_count[3], 1);
+
+  // Txn 3: nested savepoints with only the inner one rolled back, so the UPDATE made under the
+  // outer savepoint stays visible to the before image.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 10, 20)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 11 WHERE $2 = 3", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s2"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 12 WHERE $2 = 3", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s2"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 13 WHERE $2 = 3", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // BEGIN, INSERT, 2 UPDATEs, COMMIT.
+  auto txn3_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, &txn2_resp.checkpoint, /*tablet_idx=*/0, txn2_resp.safe_hybrid_time,
+      /*wal_segment_index=*/0, /*expected_records_count=*/5);
+  uint32_t txn3_count[6] = {0, 0, 0, 0, 0, 0};
+  for (const auto& rec : txn3_resp.records) {
+    LOG(INFO) << "Txn 3 record: " << rec.DebugString();
+    switch (rec.row_message().op()) {
+      case RowMessage::INSERT:
+        CheckRecordWithThreeColumns(rec, {3, 10, 20}, txn3_count);
+        break;
+      case RowMessage::UPDATE:
+        if (txn3_count[2] == 0) {
+          CheckRecordWithThreeColumns(
+              rec, {3, 11, 20}, txn3_count, /*validate_old_tuple=*/true, {3, 10, 20},
+              /*validate_third_column=*/true);
+        } else {
+          CheckRecordWithThreeColumns(
+              rec, {3, 13, 20}, txn3_count, /*validate_old_tuple=*/true, {3, 11, 20},
+              /*validate_third_column=*/true);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  ASSERT_EQ(txn3_count[1], 1);
+  ASSERT_EQ(txn3_count[2], 2);
+
+  // Txn 4: UPDATE after rolling back a DELETE. Runs last because if the before image sees the
+  // rolled-back tombstone it finds no row and GetChanges fails, stalling the stream.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (4, 10, 20)", kTableName));
+  ASSERT_OK(conn.Execute("SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 4", kTableName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT s1"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 12 WHERE $2 = 4", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // BEGIN, INSERT, UPDATE, COMMIT.
+  auto txn4_resp = GetAllPendingChangesFromCdc(
+      stream_id, tablets, &txn3_resp.checkpoint, /*tablet_idx=*/0, txn3_resp.safe_hybrid_time,
+      /*wal_segment_index=*/0, /*expected_records_count=*/4);
+  uint32_t txn4_count[6] = {0, 0, 0, 0, 0, 0};
+  for (const auto& rec : txn4_resp.records) {
+    LOG(INFO) << "Txn 4 record: " << rec.DebugString();
+    switch (rec.row_message().op()) {
+      case RowMessage::INSERT:
+        CheckRecordWithThreeColumns(rec, {4, 10, 20}, txn4_count);
+        break;
+      case RowMessage::UPDATE:
+        CheckRecordWithThreeColumns(
+            rec, {4, 12, 20}, txn4_count, /*validate_old_tuple=*/true, {4, 10, 20},
+            /*validate_third_column=*/true);
+        break;
+      default:
+        break;
+    }
+  }
+  ASSERT_EQ(txn4_count[1], 1);
+  ASSERT_EQ(txn4_count[2], 1);
 }
 
 }  // namespace cdc

@@ -498,7 +498,13 @@ TEST_F(PgLibPqTest, ConcurrentInsertAndDeleteOnTablesWithForeignKey) {
 
     // Insert rows in t2 on a separate thread.
     std::thread insertion_thread([&conn2, &stop, &values_in_t1, &values_in_t2] {
-      while (!stop && values_in_t2 < values_in_t1 + 1) {
+      while (!stop) {
+        // Only reference keys already inserted in t1, i.e. 0 .. values_in_t1 - 1. Otherwise this
+        // thread fails the FK check whenever it gets ahead of the main thread.
+        if (values_in_t2 + 1 >= values_in_t1) {
+          std::this_thread::yield();
+          continue;
+        }
         ASSERT_OK(conn2.ExecuteFormat(
             "INSERT INTO t2 VALUES ($0, $1)", values_in_t2, values_in_t2 + 1));
         values_in_t2++;
@@ -1018,21 +1024,21 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   return Status::OK();
 }
 
-TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
-  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
-}
-
-class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+class PgLibPqColocatedTablesWithTablespacesOffTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    const auto flag = "--ysql_yb_enable_colocated_tables_with_tablespaces=false"s;
     options->extra_master_flags.push_back(flag);
     options->extra_tserver_flags.push_back(flag);
   }
 };
 
 TEST_F_EX(PgLibPqTest,
-          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
-          PgLibPqColocatedTablesWithTablespacesTest) {
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse,
+          PgLibPqColocatedTablesWithTablespacesOffTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue) {
   ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
