@@ -14,6 +14,8 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -26,11 +28,14 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -38,6 +43,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -275,6 +281,114 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
           intent.specificGFlags.setInheritFromPrimary(true);
         },
         true);
+  }
+
+  private static final String K8S_OVERRIDES =
+      "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: dummy-bind-pass\n";
+  private static final Map<String, String> K8S_AZ_OVERRIDES =
+      Map.of(
+          "az-1",
+          "gflags:\n  master:\n    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap"
+              + " ldapbindpasswd=dummy-hba-pass\"\n");
+
+  private Universe createUniverseWithK8sOverrides(String overrides, Map<String, String> az) {
+    return Universe.saveDetails(
+        ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides = overrides;
+          u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides =
+              az == null ? null : new HashMap<>(az);
+        });
+  }
+
+  /** The universe details as the API returns them, bound back as an edit request. */
+  private UniverseDefinitionTaskParams paramsFromResponse(Universe universe) {
+    JsonNode response =
+        RedactingService.filterSecretFields(
+            Json.toJson(universe.getUniverseDetails()), RedactionTarget.APIS);
+    return Json.fromJson(response, UniverseDefinitionTaskParams.class);
+  }
+
+  @Test
+  public void editRestoresTheKubernetesOverridesTheResponseRedacts() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe universe = createUniverseWithK8sOverrides(K8S_OVERRIDES, K8S_AZ_OVERRIDES);
+    UniverseDefinitionTaskParams params = paramsFromResponse(universe);
+    UserIntent sent = params.getPrimaryCluster().userIntent;
+    assertFalse(Json.toJson(sent).toString(), Json.toJson(sent).toString().contains("dummy-"));
+    String edit = "tserver:\n  podLabels:\n    env: test\n";
+    sent.universeOverrides += edit;
+
+    UserIntent merged =
+        UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+                params, universe, UniverseDefinitionTaskParams.class)
+            .getPrimaryCluster()
+            .userIntent;
+    assertEquals(K8S_OVERRIDES + edit, merged.universeOverrides);
+    assertEquals(K8S_AZ_OVERRIDES, merged.azOverrides);
+  }
+
+  @Test
+  public void editRejectsRedactedKubernetesOverridesWithNothingStoredToRestore() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe universe = createUniverseWithK8sOverrides("tserver:\n  cpu: 2\n", null);
+    UniverseDefinitionTaskParams params = paramsFromResponse(universe);
+    params.getPrimaryCluster().userIntent.universeOverrides =
+        K8S_OVERRIDES.replace("dummy-bind-pass", SECRET_REPLACEMENT);
+    Result result =
+        assertPlatformException(
+            () ->
+                UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+                    params, universe, UniverseDefinitionTaskParams.class));
+    assertBadRequest(result, "nothing is stored at the same place to restore it from");
+  }
+
+  @Test
+  public void addReadReplicaRejectsRedactedKubernetesOverrides() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe universe = createUniverseWithK8sOverrides(K8S_OVERRIDES, null);
+    UniverseDefinitionTaskParams params = paramsFromResponse(universe);
+    // A new cluster has nothing stored to restore from.
+    UniverseDefinitionTaskParams.Cluster readReplica =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            params.getPrimaryCluster().userIntent.clone());
+    readReplica.uuid = UUID.randomUUID();
+    readReplica.userIntent.universeOverrides =
+        params.getPrimaryCluster().userIntent.universeOverrides;
+    params.clusters.add(readReplica);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+                    params, universe, UniverseDefinitionTaskParams.class));
+    assertBadRequest(result, "Kubernetes universe overrides");
+  }
+
+  // Edits and upgrades bind the universe's own overrides; a stored REDACTED there must not block.
+  @Test
+  public void editWithUnchangedOverridesHoldingAStoredRedactedValue() {
+    enableGFlagsSensitiveDataApiRedaction();
+    String stored = K8S_OVERRIDES.replace("dummy-bind-pass", SECRET_REPLACEMENT);
+    Universe universe = createUniverseWithK8sOverrides(stored, null);
+    UniverseDefinitionTaskParams merged =
+        UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+            paramsFromResponse(universe), universe, UniverseDefinitionTaskParams.class);
+    assertEquals(stored, merged.getPrimaryCluster().userIntent.universeOverrides);
+  }
+
+  @Test
+  public void editLeavesKubernetesOverridesAsSentWithRedactionOff() {
+    Universe universe = createUniverseWithK8sOverrides(K8S_OVERRIDES, null);
+    UniverseDefinitionTaskParams params = paramsFromResponse(universe);
+    assertEquals(K8S_OVERRIDES, params.getPrimaryCluster().userIntent.universeOverrides);
+    String sent = K8S_OVERRIDES.replace("dummy-bind-pass", SECRET_REPLACEMENT);
+    params.getPrimaryCluster().userIntent.universeOverrides = sent;
+    UniverseDefinitionTaskParams merged =
+        UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+            params, universe, UniverseDefinitionTaskParams.class);
+    assertEquals(sent, merged.getPrimaryCluster().userIntent.universeOverrides);
   }
 
   private void enableGFlagsSensitiveDataApiRedaction() {

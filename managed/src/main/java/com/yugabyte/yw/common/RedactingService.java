@@ -187,6 +187,14 @@ public class RedactingService {
 
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
 
+  // Kubernetes overrides YAML text: the v1 userIntent and KubernetesOverridesUpgradeParams, node
+  // details (the node's live helm values or its stored overrides), and the v2 ClusterProviderSpec.
+  private static final Set<String> K8S_OVERRIDES_FIELDS =
+      Set.of("universeOverrides", "helm_overrides", "kubernetesOverrides");
+  // The same, per AZ. userIntentOverrides.azOverrides shares the name but holds objects.
+  private static final Set<String> K8S_AZ_OVERRIDES_FIELDS =
+      Set.of("azOverrides", "az_helm_overrides");
+
   /** Value fields of a gflag change in audit details: {"name": ..., "old": ..., "new": ...}. */
   private static final List<String> GFLAG_CHANGE_FIELDS = List.of("old", "new", "default");
 
@@ -1308,7 +1316,23 @@ public class RedactingService {
     return HbaConfRedactor.redact(input);
   }
 
-  /** Redacts ldapbindpasswd within ysql_hba_conf_csv fields in API response JSON. */
+  /**
+   * redactLdapBindPasswdInYsqlHbaConf stops and returns the response as it is on any exception, so
+   * overrides whose redaction fails are hidden whole instead.
+   */
+  private static String redactOverridesOrHide(String overrides) {
+    try {
+      return KubernetesOverridesRedactor.redact(overrides);
+    } catch (RuntimeException e) {
+      log.warn("Failed to redact Kubernetes overrides; hiding them.", e);
+      return SECRET_REPLACEMENT;
+    }
+  }
+
+  /**
+   * Redacts ldapbindpasswd within ysql_hba_conf_csv fields, and the LDAP secrets in Kubernetes
+   * overrides, in API response JSON.
+   */
   private static JsonNode redactLdapBindPasswdInYsqlHbaConf(JsonNode input) {
     if (input == null) {
       return input;
@@ -1337,7 +1361,23 @@ public class RedactingService {
                     String originalValue = fieldValue.asText();
                     String redactedValue = redactAllLdapBindPasswdHbaFormattedValues(originalValue);
                     objNode.put(fieldName, redactedValue);
+                  } else if (K8S_OVERRIDES_FIELDS.contains(fieldName)) {
+                    objNode.put(fieldName, redactOverridesOrHide(fieldValue.asText()));
                   }
+                } else if (fieldValue != null
+                    && fieldValue.isObject()
+                    && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
+                  fieldValue
+                      .fields()
+                      .forEachRemaining(
+                          az -> {
+                            if (az.getValue().isTextual()) {
+                              az.setValue(
+                                  TextNode.valueOf(redactOverridesOrHide(az.getValue().asText())));
+                            } else {
+                              redactLdapBindPasswdRecursive(az.getValue());
+                            }
+                          });
                 } else if (fieldValue != null && (fieldValue.isObject() || fieldValue.isArray())) {
                   redactLdapBindPasswdRecursive(fieldValue);
                 }
