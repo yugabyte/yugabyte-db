@@ -389,27 +389,35 @@ public class KubernetesOverridesRedactorTest {
 
   @Test
   public void parseErrorsDoNotQuoteTheText() {
-    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: \"stored-secret\n";
-    assertFalse(KubernetesOverridesRedactor.redact(stored).contains("stored-secret"));
-    PlatformServiceException e =
-        assertThrows(
-            PlatformServiceException.class,
-            () ->
-                KubernetesOverridesRedactor.restore(
-                    stored,
-                    "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\nx: y\n",
-                    "overrides"));
-    assertTrue(e.getMessage(), e.getMessage().contains("cannot be parsed"));
-    assertFalse(e.getMessage(), e.getMessage().contains("stored-secret"));
-    e =
-        assertThrows(
-            PlatformServiceException.class,
-            () ->
-                KubernetesOverridesRedactor.restore(
-                    stored,
-                    "gflags:\n  ycql_ldap_bind_passwd: REDACTED\n  ldap: \"submitted-secret\n",
-                    "overrides"));
-    assertFalse(e.getMessage(), e.getMessage().contains("submitted-secret"));
+    // Overrides that can't be parsed, and text from them that SnakeYAML's messages would quote.
+    Map<String, String> quotedByParser =
+        Map.of(
+            "ycql_ldap_bind_passwd: \"Xk9-secret\n", "Xk9-secret",
+            "ycql_ldap_bind_passwd: *Xk9pass\n", "Xk9pass",
+            "ycql_ldap_bind_passwd: !Xk9! x\n", "Xk9",
+            "ycql_ldap_bind_passwd: \"\\xXk9\"\n", "Xk",
+            "ycql_ldap_bind_passwd: \"\\UXk9pass12\"\n", "Xk9");
+    String edited = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\nx: y\n";
+    quotedByParser.forEach(
+        (overrides, quoted) -> {
+          String stored = "gflags:\n  tserver:\n    " + overrides;
+          assertEquals(stored, "REDACTED", KubernetesOverridesRedactor.redact(stored));
+          PlatformServiceException e =
+              assertThrows(
+                  stored,
+                  PlatformServiceException.class,
+                  () -> KubernetesOverridesRedactor.restore(stored, edited, "o"));
+          assertTrue(e.getMessage(), e.getMessage().contains("cannot be parsed as YAML at line"));
+          assertFalse(e.getMessage(), e.getMessage().contains(quoted));
+          String submitted = stored + "y: REDACTED\n";
+          e =
+              assertThrows(
+                  submitted,
+                  PlatformServiceException.class,
+                  () -> KubernetesOverridesRedactor.restore(STORED, submitted, "o"));
+          assertTrue(e.getMessage(), e.getMessage().contains("cannot be parsed as YAML at line"));
+          assertFalse(e.getMessage(), e.getMessage().contains(quoted));
+        });
   }
 
   @Test
