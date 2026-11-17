@@ -811,17 +811,6 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 	}
 
 	/*
-	 * YB: YB relations have no pages in shared buffers.  Only code that
-	 * assumes heap or index storage (such as the pageinspect or pgstattuple
-	 * extensions) gets here with one, and it would read garbage.
-	 */
-	if (IsYBRelation(reln))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot read pages of YugabyteDB relation \"%s\"",
-						RelationGetRelationName(reln))));
-
-	/*
 	 * Read the buffer, and update pgstat counters to reflect a cache hit or
 	 * miss.
 	 */

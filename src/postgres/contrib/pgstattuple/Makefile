@@ -15,6 +15,12 @@ PGFILEDESC = "pgstattuple - tuple-level statistics"
 
 REGRESS = pgstattuple
 
+# YB: Install only the library, not the control and SQL files, so that the
+# extension can no longer be created.  The library stays so that databases
+# that already have the extension, and backups of them, keep working.
+EXTENSION =
+DATA =
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
