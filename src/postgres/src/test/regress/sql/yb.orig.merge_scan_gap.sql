@@ -12,11 +12,15 @@
 SET enable_sort = off;
 
 -- Local filter: non-C collation
+--
+-- ord1 = gap compares text with a non-C collation, which is not pushed down, so
+-- the filter runs after the merge.
 CREATE TABLE gap_coll_tbl (bkt int, ord1 text COLLATE "en_US", gap text COLLATE "en_US",
     ord2 int, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
 INSERT INTO gap_coll_tbl VALUES
-    (1, 'b', 'a', 9), (1, 'b', 'b', 0), (2, 'b', 'b', 4), (1, 'e', 'e', 1),
-    (2, 'e', 'e', 2);
+    (1, 'b', 'b', 10), (1, 'b', 'b', 30),  -- stream bkt = 1
+    (2, 'b', 'b', 20),                     -- stream bkt = 2
+    (1, 'b', 'a', 99);                     -- decoy, fails ord1 = gap
 ANALYZE gap_coll_tbl;
 
 \set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
@@ -41,8 +45,9 @@ CREATE TABLE gap_idx_tbl (k int, bkt int, ord1 int, gap int, ord2 int, d int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_idx_tbl_idx ON gap_idx_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC);
 INSERT INTO gap_idx_tbl VALUES
-    (1, 1, 1, 0, 9, 1), (2, 1, 1, 1, 0, 1), (3, 2, 1, 1, 4, 1), (4, 1, 5, 5, 1, 5),
-    (5, 2, 5, 5, 2, 5);
+    (1, 1, 1, 1, 10, 1), (2, 1, 1, 1, 30, 1),  -- stream bkt = 1
+    (3, 2, 1, 1, 20, 1),                       -- stream bkt = 2
+    (4, 1, 1, 0, 99, 1);                       -- decoy, fails gap = d
 ANALYZE gap_idx_tbl;
 
 \set R1 'ord1 = d AND gap = d'

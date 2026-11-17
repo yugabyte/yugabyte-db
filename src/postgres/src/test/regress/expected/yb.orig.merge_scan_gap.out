@@ -25,11 +25,15 @@
 SET yb_fetch_row_limit = 16;
 SET enable_sort = off;
 -- Local filter: non-C collation
+--
+-- ord1 = gap compares text with a non-C collation, which is not pushed down, so
+-- the filter runs after the merge.
 CREATE TABLE gap_coll_tbl (bkt int, ord1 text COLLATE "en_US", gap text COLLATE "en_US",
     ord2 int, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
 INSERT INTO gap_coll_tbl VALUES
-    (1, 'b', 'a', 9), (1, 'b', 'b', 0), (2, 'b', 'b', 4), (1, 'e', 'e', 1),
-    (2, 'e', 'e', 2);
+    (1, 'b', 'b', 10), (1, 'b', 'b', 30),  -- stream bkt = 1
+    (2, 'b', 'b', 20),                     -- stream bkt = 2
+    (1, 'b', 'a', 99);                     -- decoy, fails ord1 = gap
 ANALYZE gap_coll_tbl;
 \set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;'
 \i :run_query
@@ -38,24 +42,24 @@ ANALYZE gap_coll_tbl;
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
- Sort (actual rows=4 loops=1)
+ Sort (actual rows=3 loops=1)
    Output: gap, ord1, ord2, bkt
    Sort Key: gap_coll_tbl.gap COLLATE "en_US", gap_coll_tbl.ord2
    Sort Method: quicksort
-   ->  Seq Scan on public.gap_coll_tbl (actual rows=4 loops=1)
+   ->  Seq Scan on public.gap_coll_tbl (actual rows=3 loops=1)
          Output: gap, ord1, ord2, bkt
          Storage Filter: (gap_coll_tbl.bkt = ANY ('{1,2}'::integer[]))
          Filter: (gap_coll_tbl.ord1 = gap_coll_tbl.gap)
          Rows Removed by Filter: 1
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 5
+         Storage Table Rows Scanned: 4
 (12 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
- Index Scan using gap_coll_tbl_pkey on public.gap_coll_tbl (actual rows=4 loops=1)
+ Index Scan using gap_coll_tbl_pkey on public.gap_coll_tbl (actual rows=3 loops=1)
    Output: gap, ord1, ord2, bkt
    Index Cond: (gap_coll_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_coll_tbl.ord1 COLLATE "en_US", gap_coll_tbl.gap COLLATE "en_US", gap_coll_tbl.ord2
@@ -66,17 +70,16 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Rows Removed by Filter: 1
    Storage Table Read Requests: 1
    Storage Table Read Ops: 2
-   Storage Table Rows Scanned: 5
+   Storage Table Rows Scanned: 4
 (12 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
  gap | ord1 | ord2 | bkt 
 -----+------+------+-----
- b   | b    |    0 |   1
- b   | b    |    4 |   2
- e   | e    |    1 |   1
- e   | e    |    2 |   2
-(4 rows)
+ b   | b    |   10 |   1
+ b   | b    |   20 |   2
+ b   | b    |   30 |   1
+(3 rows)
 
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
@@ -99,8 +102,9 @@ CREATE TABLE gap_idx_tbl (k int, bkt int, ord1 int, gap int, ord2 int, d int,
     PRIMARY KEY (k ASC));
 CREATE INDEX NONCONCURRENTLY gap_idx_tbl_idx ON gap_idx_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC);
 INSERT INTO gap_idx_tbl VALUES
-    (1, 1, 1, 0, 9, 1), (2, 1, 1, 1, 0, 1), (3, 2, 1, 1, 4, 1), (4, 1, 5, 5, 1, 5),
-    (5, 2, 5, 5, 2, 5);
+    (1, 1, 1, 1, 10, 1), (2, 1, 1, 1, 30, 1),  -- stream bkt = 1
+    (3, 2, 1, 1, 20, 1),                       -- stream bkt = 2
+    (4, 1, 1, 0, 99, 1);                       -- decoy, fails gap = d
 ANALYZE gap_idx_tbl;
 \set R1 'ord1 = d AND gap = d'
 \set R2 'ord1 = d AND ord1 = gap'
@@ -112,16 +116,16 @@ ANALYZE gap_idx_tbl;
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
                                                                      QUERY PLAN                                                                      
 -----------------------------------------------------------------------------------------------------------------------------------------------------
- Sort (actual rows=4 loops=1)
+ Sort (actual rows=3 loops=1)
    Output: d, gap, ord1, ord2, bkt
    Sort Key: gap_idx_tbl.d, gap_idx_tbl.ord2
    Sort Method: quicksort
-   ->  Seq Scan on public.gap_idx_tbl (actual rows=4 loops=1)
+   ->  Seq Scan on public.gap_idx_tbl (actual rows=3 loops=1)
          Output: d, gap, ord1, ord2, bkt
          Storage Filter: ((gap_idx_tbl.bkt = ANY ('{1,2}'::integer[])) AND (gap_idx_tbl.ord1 = gap_idx_tbl.d) AND (gap_idx_tbl.d = gap_idx_tbl.gap))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 5
+         Storage Table Rows Scanned: 4
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
@@ -129,22 +133,22 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
                                                                       QUERY PLAN                                                                       
 -------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort (actual rows=4 loops=1)
+ Sort (actual rows=3 loops=1)
    Output: d, gap, ord1, ord2, bkt
    Sort Key: gap_idx_tbl.d, gap_idx_tbl.ord2
    Sort Method: quicksort
-   ->  Seq Scan on public.gap_idx_tbl (actual rows=4 loops=1)
+   ->  Seq Scan on public.gap_idx_tbl (actual rows=3 loops=1)
          Output: d, gap, ord1, ord2, bkt
          Storage Filter: ((gap_idx_tbl.bkt = ANY ('{1,2}'::integer[])) AND (gap_idx_tbl.ord1 = gap_idx_tbl.gap) AND (gap_idx_tbl.gap = gap_idx_tbl.d))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 5
+         Storage Table Rows Scanned: 4
 (10 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
- Index Scan using gap_idx_tbl_idx on public.gap_idx_tbl (actual rows=4 loops=1)
+ Index Scan using gap_idx_tbl_idx on public.gap_idx_tbl (actual rows=3 loops=1)
    Output: d, gap, ord1, ord2, bkt
    Index Cond: (gap_idx_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_idx_tbl.ord1, gap_idx_tbl.gap, gap_idx_tbl.ord2
@@ -154,10 +158,10 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Storage Filter: ((gap_idx_tbl.ord1 = gap_idx_tbl.d) AND (gap_idx_tbl.d = gap_idx_tbl.gap))
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 5
+   Storage Table Rows Scanned: 4
    Storage Index Read Requests: 1
    Storage Index Read Ops: 2
-   Storage Index Rows Scanned: 5
+   Storage Index Rows Scanned: 4
 (14 rows)
 
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
@@ -165,7 +169,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- Index Scan using gap_idx_tbl_idx on public.gap_idx_tbl (actual rows=4 loops=1)
+ Index Scan using gap_idx_tbl_idx on public.gap_idx_tbl (actual rows=3 loops=1)
    Output: d, gap, ord1, ord2, bkt
    Index Cond: (gap_idx_tbl.bkt = ANY ('{1,2}'::integer[]))
    Merge Sort Key: gap_idx_tbl.ord1, gap_idx_tbl.gap, gap_idx_tbl.ord2
@@ -176,20 +180,19 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
    Storage Filter: (gap_idx_tbl.gap = gap_idx_tbl.d)
    Storage Table Read Requests: 1
    Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 4
+   Storage Table Rows Scanned: 3
    Storage Index Read Requests: 1
    Storage Index Read Ops: 2
-   Storage Index Rows Scanned: 5
+   Storage Index Rows Scanned: 4
 (15 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2;
  d | gap | ord1 | ord2 | bkt 
 ---+-----+------+------+-----
- 1 |   1 |    1 |    0 |   1
- 1 |   1 |    1 |    4 |   2
- 5 |   5 |    5 |    1 |   1
- 5 |   5 |    5 |    2 |   2
-(4 rows)
+ 1 |   1 |    1 |   10 |   1
+ 1 |   1 |    1 |   20 |   2
+ 1 |   1 |    1 |   30 |   1
+(3 rows)
 
 /*+Set(yb_max_merge_scan_streams 0)*/ SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2;
 (output identical to previous)
