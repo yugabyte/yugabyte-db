@@ -253,19 +253,26 @@ func TestChronyTemplate(t *testing.T) {
 		os.Getenv("PROJECT_DIR"), "resources/ynp/modules/provision/chrony/templates/run.j2")
 	const ntsRm = "rm -f /etc/chrony/sources.d/ubuntu-ntp-pools.sources"
 	tests := []struct {
-		name   string
-		values map[string]any
-		wantRm bool
+		name      string
+		values    map[string]any
+		wantRm    bool
+		wantWrite string
 	}{
-		{"custom servers", map[string]any{"chrony_servers": "10.0.0.1", "is_cloud": "False"}, true},
-		{"aws", map[string]any{"chrony_servers": "", "is_cloud": "True", "cloud_type": "aws"}, true},
-		{"onprem no servers", map[string]any{"chrony_servers": "", "is_cloud": "False"}, false},
+		{"custom servers", map[string]any{"chrony_servers": "10.0.0.1", "is_cloud": "False"},
+			true, "server 10.0.0.1 prefer iburst minpoll 4 maxpoll 4' \"${CHRONY_CONF}\""},
+		{"aws", map[string]any{"chrony_servers": "", "is_cloud": "True", "cloud_type": "aws"},
+			true, "server 169.254.169.123 prefer iburst minpoll 4 maxpoll 4' \"${CHRONY_CONF}\""},
+		{"onprem no servers", map[string]any{"chrony_servers": "", "is_cloud": "False"},
+			false, "systemctl restart chronyd"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			output, err := ResolveTemplate(context.TODO(), tc.values, templatePath)
 			if err != nil {
 				t.Fatalf("ResolveTemplate failed: %v", err)
+			}
+			if !strings.Contains(output, tc.wantWrite) {
+				t.Fatalf("Expected %q in output:\n%s", tc.wantWrite, output)
 			}
 			if strings.Contains(output, " /etc/chrony.conf\n") {
 				t.Fatalf("Expected writes to go through CHRONY_CONF:\n%s", output)
