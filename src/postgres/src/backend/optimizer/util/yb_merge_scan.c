@@ -529,11 +529,11 @@ ybEqualityIndexClause(IndexOptInfo *index, List *indexclauses, int indexcol)
 }
 
 /*
- * Whether index column indexcol, one the pathkeys walk skipped as redundant,
- * is a single-value stream key: a column with an equality index clause, or a
- * hash column (see yb_finalize_merge_scan_info).  Unless clause is NULL, sets
- * *clause to its equality index clause, or to NULL for a hash column without
- * one.
+ * Whether index column indexcol, one build_index_pathkeys skipped as
+ * redundant, is a single-value stream key: a column with an equality index
+ * clause, or a hash column (see yb_finalize_merge_scan_info).  Unless clause
+ * is NULL, sets *clause to its equality index clause, or to NULL for a hash
+ * column without one.
  */
 static bool
 ybIsSingleValueStreamCol(IndexOptInfo *index, List *indexclauses,
@@ -751,8 +751,9 @@ yb_finalize_merge_scan_info(IndexOptInfo *index, Relids relids,
 			return NULL;
 
 		/*
-		 * The pathkeys walk takes only key columns, so the gap columns before
-		 * this one are key columns too, as the merge sort arrays assume.
+		 * build_index_pathkeys makes pathkeys only from key columns, so this
+		 * column and the gap columns before it are key columns, as the merge
+		 * sort arrays assume.
 		 */
 		Assert(tle->resno <= index->nkeycolumns);
 
