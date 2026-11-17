@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -174,6 +175,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Throwable th = null;
     if (maybeRunOnlyPrechecks()) {
       return;
+    }
+    // Recorded before any planning: planning can fail, and a retry reads a missing stage as params
+    // from a YBA build without masterMoveStage (see editCluster).
+    Cluster paramsPrimaryCluster = taskParams().getPrimaryCluster();
+    if (paramsPrimaryCluster != null && isFirstTry()) {
+      paramsPrimaryCluster.setMasterMoveStage(MasterMoveStage.STARTED);
+      TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
     }
     try {
       checkUniverseVersion();
@@ -597,10 +605,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // Only the primary cluster has masters. Its pass also renders the read replica's Secrets.
     Cluster paramsCluster =
         isReadOnlyCluster ? null : taskParams().getClusterByUuid(newCluster.uuid);
-    if (paramsCluster != null && isFirstTry()) {
-      paramsCluster.setMasterMoveStage(MasterMoveStage.STARTED);
-      TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
-    }
     MasterMoveStage stage = paramsCluster == null ? null : paramsCluster.getMasterMoveStage();
     boolean propagateMasterAddrs =
         stage != null && stage.compareTo(MasterMoveStage.MASTERS_SETTLED) < 0;
@@ -640,7 +644,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // master_join_existing_universe on every master it adds. From OLD_MASTERS_REMOVED on, the list
     // is the final masters: the old ones are out of the Raft config, and their pods may be gone.
     String addedMasterAddrs =
-        joinMasterAddresses(
+        GFlagsUtil.mergeCSVs(
             existingMasterAddresses,
             KubernetesUtil.computeMasterAddresses(
                 newPlacement.placementInfo,
@@ -649,14 +653,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 universe.getName(),
                 provider,
                 universe.getUniverseDetails().communicationPorts.masterRpcPort,
-                newNamingStyle));
+                newNamingStyle),
+            false /* mergeKeyValues */);
     Function<MasterMoveStage, String> masterAddrsAt =
         s ->
             switch (s) {
               case STARTED -> existingMasterAddresses;
               case ADDED_MASTERS_RUNNING, ADDED_MASTERS_JOINED -> addedMasterAddrs;
-              case FULL_MOVE_MASTERS_RUNNING -> joinMasterAddresses(
-                  existingMasterAddresses, masterAddresses);
+              case FULL_MOVE_MASTERS_RUNNING -> GFlagsUtil.mergeCSVs(
+                  existingMasterAddresses, masterAddresses, false /* mergeKeyValues */);
               case OLD_MASTERS_REMOVED, MASTERS_SETTLED -> masterAddresses;
             };
     // The master lists the pods that create masters start with. The list goes into every gflags
@@ -696,11 +701,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // A stage render changes only the master list, so every AZ it writes renders the disk spec its
     // StatefulSets run with, not the edit's: K8s rejects a change to their volumeClaimTemplates.
     // No StatefulSet of a rendered AZ has been replaced yet: the master full-move AZs are rendered
-    // only before their full move, and tservers change only after the master steps. Master
-    // StatefulSets an AZ gains in place were created with the saved spec, too. Storage class and
-    // volume count come from the universe, and so does the size, which a resize in place has
-    // already saved. Where the resize skipped a server type's StatefulSet, in AZs the edit removes
-    // and in that type's full-move AZs, the value holds the original size the resize overwrote.
+    // only before their full move, and tservers change only after the master steps. Masters an AZ
+    // gains in place join its master StatefulSet, which keeps its spec. Storage class and volume
+    // count come from the universe, and so does the size, which a resize in place has already
+    // saved. Where the resize skipped a server type's StatefulSet, in AZs the edit removes and in
+    // that type's full-move AZs, the value holds the original size the resize overwrote.
+    // An AZ that had no masters has no master StatefulSet: the edit creates it with its own spec
+    // (see createPodsTask), so those AZs render that master spec (newMasterSpecAZs).
     Cluster clusterInParams = taskParams().getClusterByUuid(newCluster.uuid);
     Map<UUID, Map<ServerType, Integer>> originalDiskSizes =
         MapUtils.emptyIfNull(
@@ -722,6 +729,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           });
       keepDiskSpecAZs.put(az, kept);
     }
+    Set<UUID> newMasterSpecAZs =
+        curPlacement.placementInfo.getAllAZUUIDs().stream()
+            .filter(az -> curPlacement.masters.getOrDefault(az, 0) == 0)
+            .filter(az -> newPlacement.masters.getOrDefault(az, 0) > 0)
+            .collect(Collectors.toSet());
     // Read replica tservers need the same master lists as the primary's. The read replica's own
     // pass in run() comes after the whole primary edit, too late for that, so the primary's
     // renders include it. Any read replica resize runs in that later pass, so its StatefulSets
@@ -754,7 +766,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                           addrs,
                           skipAZs /* skipMasterAZs */,
                           skipAZs /* skipTserverAZs */,
-                          keepDiskSpecAZs);
+                          keepDiskSpecAZs,
+                          newMasterSpecAZs);
                     }
                     for (Cluster readReplica : readReplicas) {
                       createMasterAddressesRenderTask(
@@ -765,7 +778,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                           addrs,
                           Collections.emptySet() /* skipMasterAZs */,
                           Collections.emptySet() /* skipTserverAZs */,
-                          keepCurrentDiskSpec(readReplica));
+                          keepCurrentDiskSpec(readReplica),
+                          Collections.emptySet() /* newMasterSpecAZs */);
                     }
                   }
                   createMasterMoveStageTask(next);
@@ -805,9 +819,24 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newPlacement,
             curPlacement,
             false /* enableYbc */,
-            /* Use previous gflags checksum only if can use and no pod restart is required */
-            supportsNonRestartGflagsUpgrade && !restartAllPods /* usePreviousGflagsChecksum */,
+            // Use previous gflags checksum only if can use and no pod restart is required. A retry
+            // always keeps it, even with a master resource change: its list can differ from the
+            // earlier attempt's, and the masters that attempt added are above the partition, so a
+            // new checksum would restart them together. The end-of-edit roll restarts them one at
+            // a time.
+            (supportsNonRestartGflagsUpgrade && !restartAllPods)
+                || !isFirstTry() /* usePreviousGflagsChecksum */,
             fullMoveMasterAZs);
+      } else {
+        // Creating the master pods also adds the AZs it installs to activeZones, which makes the
+        // tserver add upgrade their releases instead of installing them. Their releases exist by
+        // now, and an install would upgrade them without partitions, restarting their masters.
+        for (UUID az : newPlacement.configs.keySet()) {
+          if (!curPlacement.configs.containsKey(az)
+              && newPlacement.masters.getOrDefault(az, 0) > 0) {
+            PlacementInfoUtil.addPlacementZone(az, activeZones);
+          }
+        }
       }
 
       // Update master addresses to the latest required ones,
@@ -1189,15 +1218,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     return task;
   }
 
-  /** Joins comma-separated master address lists, without repeats. */
-  private static String joinMasterAddresses(String... lists) {
-    return Arrays.stream(lists)
-        .flatMap(l -> Arrays.stream(l.split(",")))
-        .filter(StringUtils::isNotEmpty)
-        .distinct()
-        .collect(Collectors.joining(","));
-  }
-
   private Set<NodeDetails> filterMastersToAdd(Set<NodeDetails> mastersToAdd, Universe universe) {
     Set<NodeDetails> newMasters = new HashSet<>(mastersToAdd);
     // Filter the copy only on a retry.
@@ -1382,7 +1402,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         masterAddresses,
         skipMasterAZs,
         skipTserverAZs,
-        Collections.emptyMap() /* keepDiskSpecAZs */);
+        Collections.emptyMap() /* keepDiskSpecAZs */,
+        Collections.emptySet() /* newMasterSpecAZs */);
     if (!isReadOnlyCluster) {
       Set<NodeDetails> mastersToModify =
           Stream.concat(
@@ -1427,6 +1448,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    * @param keepDiskSpecAZs AZs to render with the disk spec their StatefulSets run with now, mapped
    *     to the original disk size per server type (empty when none was saved). See
    *     upgradePodsNonRestart.
+   * @param newMasterSpecAZs AZs of keepDiskSpecAZs that render the edit's master disk spec. See
+   *     upgradePodsNonRestart.
    */
   private void createMasterAddressesRenderTask(
       UUID universeUUID,
@@ -1435,7 +1458,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       String masterAddresses,
       Set<UUID> skipMasterAZs,
       Set<UUID> skipTserverAZs,
-      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs) {
+      Map<UUID, Map<ServerType, Integer>> keepDiskSpecAZs,
+      Set<UUID> newMasterSpecAZs) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Cluster curPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Map<String, String> azOverrides = curPrimaryCluster.userIntent.azOverrides;
@@ -1459,7 +1483,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         null /* rootCAUUID */,
         skipMasterAZs,
         skipTserverAZs,
-        keepDiskSpecAZs);
+        keepDiskSpecAZs,
+        newMasterSpecAZs);
   }
 
   /*
@@ -1582,8 +1607,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
    *
    * <ul>
    *   <li>Final Helm Upgrade - Applies new placement and device info to new StatefulSet
-   *   <li>Garbage Collect Volumes - Deletes the PVCs no pod of the server type uses (masters of the
-   *       primary cluster only)
+   *   <li>Garbage Collect Volumes - Deletes the PVCs no pod of the server type uses
    * </ul>
    *
    * @param universe The universe being edited

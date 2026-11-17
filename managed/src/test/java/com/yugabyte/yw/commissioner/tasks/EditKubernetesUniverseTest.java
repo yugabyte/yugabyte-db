@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.rollback.EditKubernetesUniverseRollbackComputer;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -3055,6 +3056,141 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     for (TaskInfo t : az1Helm) {
       assertEquals(2, helmAZ(t).path("numNodesInAZ").asInt());
     }
+  }
+
+  @Test
+  public void testMasterRetryAfterSettledUpgradesAddedZone() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    TaskInfo attempt = submitEdit(currentIntent(), zoneReplacePlacement(), null);
+    attempt =
+        retryEdit(
+            attempt,
+            p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.MASTERS_SETTLED));
+
+    // az-4's release runs its master by now. The tserver add upgrades it, holding the master at
+    // its partition, instead of installing it, which would restart that master.
+    List<TaskInfo> plan = plan(attempt);
+    assertTrue(
+        subtasks(
+                plan,
+                TaskType.KubernetesCommandExecutor,
+                p -> "HELM_INSTALL".equals(p.path("commandType").asText()))
+            .isEmpty());
+    List<TaskInfo> az4Helm = helmUpgradesInAZs(helmUpgrades(plan), ImmutableSet.of("az-4"));
+    assertFalse(az4Helm.isEmpty());
+    for (TaskInfo t : az4Helm) {
+      assertEquals(1, t.getTaskParams().path("masterPartition").asInt());
+    }
+  }
+
+  @Test
+  public void testZoneGainingFirstMasterCreatesItWithNewMasterSpec() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    // RF1 with the master in az-1: az-2 and az-3 run tservers only, so they have no master
+    // StatefulSet.
+    UUID az1 = AvailabilityZone.getByCode(kubernetesProvider, "az-1").getUuid();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.replicationFactor = 1;
+              details
+                  .getPrimaryCluster()
+                  .placementInfo
+                  .azStream()
+                  .forEach(az -> az.replicationFactor = az.uuid.equals(az1) ? 1 : 0);
+              details.nodeDetailsSet.removeIf(n -> n.isMaster && !az1.equals(n.azUuid));
+              u.setUniverseDetails(details);
+            });
+    // RF3 with a new master storage class: az-1 fully moves its master, and az-2 and az-3 get
+    // their first one.
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.replicationFactor = 3;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
+    PlacementInfo pi = currentPlacement();
+    pi.azStream()
+        .forEach(
+            az -> {
+              az.replicationFactor = 1;
+              if (az.uuid.equals(az1)) {
+                az.masterStsIndex = 1;
+              }
+            });
+
+    List<TaskInfo> plan = planEdit(newIntent, pi);
+
+    // The new master StatefulSets start with the new storage class, which every later render of
+    // their AZs keeps, the stage renders included. Their tserver StatefulSets keep their spec.
+    List<TaskInfo> adds = changeMasterConfigs(plan, "AddMaster");
+    List<TaskInfo> beforeAdds = between(helmUpgrades(plan), -1, firstPosition(adds));
+    for (String az : ImmutableList.of("az-2", "az-3")) {
+      List<TaskInfo> azHelm = helmUpgradesInAZs(beforeAdds, ImmutableSet.of(az));
+      assertEquals(az, 2, azHelm.size());
+      for (TaskInfo t : azHelm) {
+        assertTrue(az, t.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
+        assertFalse(az, t.getTaskParams().path("useNewTserverDeviceInfo").asBoolean());
+      }
+    }
+    for (TaskInfo t : helmUpgradesInAZs(helmUpgrades(plan), ImmutableSet.of("az-2", "az-3"))) {
+      assertTrue(t.getTaskParams().path("useNewMasterDeviceInfo").asBoolean());
+    }
+  }
+
+  @Test
+  public void testMasterRetryKeepsChecksumOfAddedMasters() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    factory.globalRuntimeConf().setValue(GlobalConfKeys.usek8sCustomResources.getKey(), "true");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.masterK8SNodeResourceSpec =
+                    new K8SNodeResourceSpec());
+    // A master resource change restarts every pod at the end of the edit, so the master pods are
+    // created without keeping the checksum.
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    newIntent.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    newIntent.masterK8SNodeResourceSpec.cpuCoreCount = 4.0;
+    PlacementInfo pi = zoneGainingMasterPlacement();
+    // Creates az-1's second master before any other az-1 helm upgrade.
+    Function<TaskInfo, TaskInfo> az1MasterCreate =
+        attempt -> helmUpgradesInAZs(helmUpgrades(plan(attempt)), ImmutableSet.of("az-1")).get(0);
+
+    TaskInfo attempt = submitEdit(newIntent, pi, null);
+    assertFalse(keepsGflagsChecksum(az1MasterCreate.apply(attempt)));
+
+    // The retry renders a later stage's list, so a new checksum would restart the az-1 master the
+    // first attempt added: it is above the partition, and may be a voter by now.
+    attempt =
+        retryEdit(
+            attempt,
+            p -> p.getPrimaryCluster().setMasterMoveStage(MasterMoveStage.ADDED_MASTERS_RUNNING));
+    TaskInfo create = az1MasterCreate.apply(attempt);
+    assertEquals(1, create.getTaskParams().path("masterPartition").asInt());
+    assertTrue(keepsGflagsChecksum(create));
+  }
+
+  @Test
+  public void testPlanningFailureOnFirstTryRecordsStarted() {
+    setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
+    int tserverSize = newIntent.deviceInfo.volumeSize;
+    TestUtils.updateDeviceInfo(newIntent, ServerType.TSERVER, d -> d.volumeSize = tserverSize + 10);
+    // The disk resize planning reads the gflags checksums from K8s.
+    when(mockKubernetesManager.getServerTypeGflagsChecksumMap(any(), any(), any(), anyBoolean()))
+        .thenThrow(new RuntimeException("kubectl failed"));
+
+    TaskInfo attempt = submitEdit(newIntent, zoneReplacePlacement(), null);
+
+    verify(mockKubernetesManager, atLeastOnce())
+        .getServerTypeGflagsChecksumMap(any(), any(), any(), anyBoolean());
+    assertTrue(changeMasterConfigs(plan(attempt), "AddMaster").isEmpty());
+    UniverseDefinitionTaskParams saved =
+        Json.fromJson(
+            TaskInfo.getOrBadRequest(attempt.getUuid()).getTaskParams(),
+            UniverseDefinitionTaskParams.class);
+    assertEquals(MasterMoveStage.STARTED, saved.getPrimaryCluster().getMasterMoveStage());
   }
 
   @Test
