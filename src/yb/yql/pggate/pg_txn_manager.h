@@ -90,7 +90,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status EnsureReadPoint();
   Status RestartReadPoint(SetupPerformOptionsAccessorTag tag);
   void ResetRetryReadTimeConstraints();
-  bool IsReadRestartRetryInProgress() const { return retry_global_limit_cap_.is_valid(); }
+  bool IsReadRestartRetryInProgress() const { return read_restart_retry_in_progress_; }
   void SetActiveSubTransactionId(SubTransactionId id);
   Status SetDdlStateInPlainTransaction();
   Status CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info);
@@ -300,6 +300,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // the statement being retried; read points picked for the retry are capped at them.
   HybridTime retry_global_limit_cap_;
   google::protobuf::Map<std::string, uint64_t> retry_local_limit_caps_;
+  bool read_restart_retry_in_progress_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   bool in_txn_blk_ = false;
   bool read_only_stmt_ = false;

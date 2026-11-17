@@ -483,6 +483,7 @@ Result<tserver::PgRestartTransactionForRetryResponsePB> PgTxnManager::RestartTra
 }
 
 void PgTxnManager::CapRetryReadLimits(const tserver::PgRestartTransactionForRetryResponsePB& resp) {
+  read_restart_retry_in_progress_ = true;
   const auto global_limit = HybridTime::FromPB(resp.global_limit_ht());
   if (!global_limit) {
     return;
@@ -501,6 +502,7 @@ void PgTxnManager::CapRetryReadLimits(const tserver::PgRestartTransactionForRetr
 void PgTxnManager::ResetRetryReadTimeConstraints() {
   retry_global_limit_cap_ = HybridTime::kInvalid;
   retry_local_limit_caps_.clear();
+  read_restart_retry_in_progress_ = false;
 }
 
 // Reset to a new read point. This corresponds to a new latest snapshot.
