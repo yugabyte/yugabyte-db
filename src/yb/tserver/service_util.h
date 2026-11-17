@@ -320,6 +320,11 @@ LeaderTabletPeer LookupLeaderTabletOrRespond(
 
 Status CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
 
+// Reject a successful operation if its tablet became a split parent while the operation was in
+// flight. Callers which only check the peer before waiting for safe time must check again before
+// returning their result.
+Status CheckTabletNotSplit(const tablet::Tablet& tablet);
+
 // Checks if the peer is ready for servicing IOs.
 // allow_split_tablet specifies whether to reject requests to tablets which have been already
 // split.

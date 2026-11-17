@@ -46,6 +46,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -271,6 +272,7 @@ Status ReadQuery::WaitForSafeTime() {
     if (metrics) {
       start_time = MonoTime::Now();
     }
+    TEST_SYNC_POINT("ReadQuery::WaitForSafeTime");
     safe_ht_to_read_ = VERIFY_RESULT(SafeTime(read_time_.read));
     if (metrics) {
       auto safe_time_wait = MonoTime::Now() - start_time;
@@ -651,6 +653,18 @@ Status ReadQuery::Complete() {
     auto result = VERIFY_RESULT(DoRead());
     if (!result.restart_time && ShouldInjectReadRestart(read_time_)) {
       InjectReadRestart(&result);
+    }
+    // A deferred read can wait for a future read time after GetTabletForRead accepted a parent.
+    // If the split completes during that wait, the parent cannot contain writes routed to its
+    // children below the requested read time. Returning its rows would therefore make the same
+    // snapshot change between statements. Report TABLET_SPLIT so the client retries on children.
+    if (!result.restart_time && !abstract_tablet_->system()) {
+      auto split_status = CheckTabletNotSplit(*tablet());
+      if (!split_status.ok()) {
+        resp_->Clear();
+        context_.sidecars().Reset();
+        return split_status;
+      }
     }
     if (allow_retry_ && read_time_ && read_time_ == result.restart_time) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5)
