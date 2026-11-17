@@ -82,7 +82,7 @@ public class RedactingServiceShellOutputTest extends FakeDBApplication {
     assertEquals("key:" + key, RedactingService.redactrootCAKeys("key:" + key));
   }
 
-  // The regex this replaced took 20 s for 64 KB of this.
+  // About 900 KB. The regex this replaced took 20 s on 64 KB of this; on this it would take hours.
   @Test(timeout = 10_000)
   public void testRedactRootCaKeysIsLinearInALongLine() {
     String line = "{a_key:[1,2]} ".repeat(1 << 16);

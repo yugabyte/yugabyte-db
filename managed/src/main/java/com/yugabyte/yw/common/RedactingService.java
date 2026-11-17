@@ -1591,62 +1591,69 @@ public class RedactingService {
   }
 
   public static String redactShellProcessOutput(String input, RedactionTarget target) {
-    String output = input;
     try {
-      // Redact based on target
-      switch (target) {
-        case QUERY_PARAMS:
-          if (SECRET_QUERY_PARAMS_FOR_LOGS.stream().anyMatch(p -> input.contains(p + "="))) {
-            output = redactEachLine(output, RedactingService::redactQueryParams);
-          }
-          break;
-        case HELM_VALUES:
-          output =
-              redactLinesContaining(output, List.of("key:"), RedactingService::redactrootCAKeys);
-          output = redactTelemetryCredentials(output);
-          break;
-        default:
-          break;
-      }
-      Set<String> names = sensitiveNames(null, null);
-      // YAML values and the ldapbindpasswd text Helm folds continue on the lines below their key,
-      // so these passes see the whole output. They run first: redactFreeText only follows a fold
-      // from a line it redacts itself.
-      output = HbaConfRedactor.redactFreeText(output);
-      for (String name : names) {
-        output = redactYamlKeyValue(output, name, SECRET_REPLACEMENT);
-      }
-      // The other passes run one line at a time. For ldapbindpasswd, redactPatternOccurrences is
-      // redactFreeText again, so it is left out.
-      String redacted = output;
-      List<String> lineNames =
-          names.stream()
-              .filter(name -> !name.equals("ldapbindpasswd") && redacted.contains(name))
-              .collect(Collectors.toList());
-      if (lineNames.isEmpty()) {
-        return redacted;
-      }
-      return redactLinesContaining(
-          redacted,
-          lineNames,
-          line -> {
-            String l = line;
-            for (String name : lineNames) {
-              l = redactPatternOccurrences(name, l);
-            }
-            return l;
-          });
-    } catch (Exception e) {
+      return redactShellOutput(input, target);
+    } catch (RuntimeException e) {
       log.error("Error redacting shell process output", e);
-      // Callers only log the result, so log none of it rather than all of it unredacted.
+      // Callers log the result, so log none of it rather than all of it unredacted.
       return SECRET_REPLACEMENT;
     }
   }
 
+  /** redactShellProcessOutput for a caller that must know when the redaction fails. */
+  static String redactShellOutput(String input, RedactionTarget target) {
+    if (input == null) {
+      return null;
+    }
+    String output = input;
+    // Redact based on target
+    switch (target) {
+      case QUERY_PARAMS:
+        if (SECRET_QUERY_PARAMS_FOR_LOGS.stream().anyMatch(p -> input.contains(p + "="))) {
+          output = redactEachLine(output, RedactingService::redactQueryParams);
+        }
+        break;
+      case HELM_VALUES:
+        output = redactLinesContaining(output, List.of("key:"), RedactingService::redactrootCAKeys);
+        output = redactTelemetryCredentials(output);
+        break;
+      default:
+        break;
+    }
+    Set<String> names = sensitiveNames(null, null);
+    // YAML values and the ldapbindpasswd text Helm folds continue on the lines below their key,
+    // so these passes see the whole output. They run first: redactFreeText only follows a fold
+    // from a line it redacts itself.
+    output = HbaConfRedactor.redactFreeText(output);
+    for (String name : names) {
+      output = redactYamlKeyValue(output, name, SECRET_REPLACEMENT);
+    }
+    // The other passes run one line at a time. For ldapbindpasswd, redactPatternOccurrences is
+    // redactFreeText again, so it is left out.
+    String redacted = output;
+    List<String> lineNames =
+        names.stream()
+            .filter(name -> !name.equals("ldapbindpasswd") && redacted.contains(name))
+            .collect(Collectors.toList());
+    if (lineNames.isEmpty()) {
+      return redacted;
+    }
+    return redactLinesContaining(
+        redacted,
+        lineNames,
+        line -> {
+          String l = line;
+          for (String name : lineNames) {
+            l = redactPatternOccurrences(name, l);
+          }
+          return l;
+        });
+  }
+
   /**
-   * For passes that must not run past a line end: redactrootCAKeys redacts one key per call, and
-   * redactQueryParams and several string-scan passes run to the end of their input when a value
-   * isn't closed.
+   * For a pass that must not run past a line end and may change any line: redactQueryParams runs to
+   * the end of its input when a value isn't closed. Passes that change only lines holding a marker
+   * use redactLinesContaining.
    */
   private static String redactEachLine(String input, UnaryOperator<String> redact) {
     return Arrays.stream(input.split("\n", -1)).map(redact).collect(Collectors.joining("\n"));

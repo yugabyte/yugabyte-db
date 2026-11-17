@@ -706,6 +706,25 @@ public class SupportBundleUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testWriteKubectlOutputToFileHandlesNullAndRedactionFailure() throws IOException {
+    String path = overriddenConfigTestDir.resolve("k8s_output.yaml").toString();
+    // NativeKubernetesManager returns null for these commands.
+    assertTrue(supportBundleUtil.writeKubectlOutputToFile(null, path));
+    assertEquals("", Files.readString(Paths.get(path)));
+
+    try (org.mockito.MockedStatic<HbaConfRedactor> redactor =
+        org.mockito.Mockito.mockStatic(
+            HbaConfRedactor.class, org.mockito.Mockito.CALLS_REAL_METHODS)) {
+      redactor
+          .when(() -> HbaConfRedactor.redactFreeText(org.mockito.ArgumentMatchers.anyString()))
+          .thenThrow(new RuntimeException("dummy"));
+      assertFalse(supportBundleUtil.writeKubectlOutputToFile("ycql_ldap_bind_passwd: s\n", path));
+    }
+    assertEquals(
+        "Output withheld: redaction failed, see the YBA log.\n", Files.readString(Paths.get(path)));
+  }
+
+  @Test
   public void testWriteKubectlOutputToFileRedactsRootCaKey() throws IOException {
     String cert = java.util.Base64.getEncoder().encodeToString("dummy cert".getBytes());
     String key = java.util.Base64.getEncoder().encodeToString("dummy root CA key".getBytes());

@@ -64,6 +64,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -583,9 +584,12 @@ public class SupportBundleUtil {
     }
   }
 
+  /**
+   * For the metadata JSON, which the tree redaction has already handled; it can still carry the
+   * telemetry exporter credentials (PLAT-22613). Raw kubectl/helm output goes through
+   * writeKubectlOutputToFile instead, which also redacts the gflags and the root CA key.
+   */
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
-    // Bundle files hold raw kubectl/helm output -- "helm get values" and the pod specs both
-    // inline the telemetry exporter credentials (PLAT-22613).
     return write(RedactingService.redactTelemetryCredentials(message), localFilePath, append);
   }
 
@@ -612,10 +616,19 @@ public class SupportBundleUtil {
    * metadata JSON, which the tree redaction has already handled.
    */
   public boolean writeKubectlOutputToFile(String output, String localFilePath) {
-    return write(
-        RedactingService.redactShellProcessOutput(output, RedactionTarget.HELM_VALUES),
-        localFilePath,
-        false);
+    String redacted;
+    try {
+      // NativeKubernetesManager returns null for these commands; the file is left empty.
+      redacted =
+          RedactingService.redactShellOutput(
+              Objects.toString(output, ""), RedactionTarget.HELM_VALUES);
+    } catch (RuntimeException e) {
+      log.error(
+          "Failed to redact the output for {}; leaving it out of the bundle.", localFilePath, e);
+      write("Output withheld: redaction failed, see the YBA log.\n", localFilePath, false);
+      return false;
+    }
+    return write(redacted, localFilePath, false);
   }
 
   /**
