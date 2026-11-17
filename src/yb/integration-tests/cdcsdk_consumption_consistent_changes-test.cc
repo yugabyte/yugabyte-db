@@ -3045,6 +3045,7 @@ TEST_F(
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestBeforeImageNotExistErrorPropagation) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_intra_transactional_before_image) = false;
   ASSERT_OK(SetUpWithParams(1, 1, false));
   uint32_t num_cols = 3;
   auto table = ASSERT_RESULT(CreateTable(

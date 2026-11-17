@@ -156,6 +156,12 @@
         flex-flow: column;
         min-width: 268px;
         padding-top: 24px;
+
+        // The product switcher carries this inset itself so it can stick to the
+        // top of the scrollport without a gap above it.
+        &:has(> .products-dropdown) {
+          padding-top: 0;
+        }
       }
 
       &.collapse {
@@ -623,9 +629,23 @@
   }
 
   .products-dropdown {
-    margin: 0 0 16px;
-    padding: 0 10px 0 16px;
-    position: relative;
+    // Pin the switcher over the scrolling nav list. Padding lives here so its
+    // background covers the gap; the menu is positioned against the inner box,
+    // which does not include that padding.
+    position: sticky;
+    top: 0;
+    // Above nav row markers (the current-page bar is 9999, disclosure icons are 9)
+    // so those paint under the switcher instead of through it.
+    z-index: 10000;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 24px 0 16px;
+    background: #fff;
+
+    .products-dropdown-inner {
+      position: relative;
+      padding: 0 10px 0 16px;
+    }
 
     .selected {
       > div {
