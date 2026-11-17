@@ -5,6 +5,8 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.io.StringReader;
 import java.util.ArrayList;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
@@ -37,6 +40,17 @@ import play.libs.Json;
 public final class KubernetesOverridesRedactor {
 
   private static final String REDACTED = RedactingService.SECRET_REPLACEMENT;
+
+  /**
+   * Every universe GET, and each poll of the universe list, redacts the same stored overrides, and
+   * parsing those that hold secrets costs about 40 us each. The redacted text is cached under a
+   * digest of the overrides, so the cache holds no secret. Bounded at 8M chars (16 MB).
+   */
+  private static final Cache<String, String> REDACTED_BY_DIGEST =
+      CacheBuilder.newBuilder()
+          .maximumWeight(8_000_000)
+          .<String, String>weigher((digest, redacted) -> digest.length() + redacted.length())
+          .build();
 
   private KubernetesOverridesRedactor() {}
 
@@ -94,6 +108,16 @@ public final class KubernetesOverridesRedactor {
             && !HbaConfRedactor.mentionsLdapBindPasswd(overrides))) {
       return overrides;
     }
+    String digest = DigestUtils.sha256Hex(overrides);
+    String redacted = REDACTED_BY_DIGEST.getIfPresent(digest);
+    if (redacted == null) {
+      redacted = redactUncached(overrides);
+      REDACTED_BY_DIGEST.put(digest, redacted);
+    }
+    return redacted;
+  }
+
+  private static String redactUncached(String overrides) {
     try {
       List<Replacement> replacements = new ArrayList<>();
       for (Secret secret : findSecrets(overrides)) {

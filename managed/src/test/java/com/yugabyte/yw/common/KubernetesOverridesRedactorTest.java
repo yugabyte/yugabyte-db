@@ -203,4 +203,18 @@ public class KubernetesOverridesRedactorTest {
             () -> KubernetesOverridesRedactor.restore(stored, edited, "overrides"));
     assertTrue(e.getMessage(), e.getMessage().contains("cannot be parsed"));
   }
+
+  @Test
+  public void redactCacheIsKeyedByContent() {
+    // An equal text from a new response hits the cache; any change to the text misses it.
+    assertEquals(
+        KubernetesOverridesRedactor.redact(STORED),
+        KubernetesOverridesRedactor.redact(new String(STORED.toCharArray())));
+    String other = STORED.replace("tserver-secret", "other-secret");
+    String redacted = KubernetesOverridesRedactor.redact(other);
+    assertFalse(redacted, redacted.contains("other-secret"));
+    assertEquals(KubernetesOverridesRedactor.redact(STORED), redacted);
+    String edited = STORED.replace("env: test", "env: prod");
+    assertTrue(KubernetesOverridesRedactor.redact(edited).contains("env: prod"));
+  }
 }
