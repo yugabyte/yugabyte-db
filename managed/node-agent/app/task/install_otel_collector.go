@@ -330,7 +330,7 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 		},
 		{
 			"remove-otel-collector-aws-block-if-exists",
-			removeAwsCredsBlockCmd(awsCredsFile),
+			removeManagedBlockCmd(awsCredsFile, otelAwsBlockBegin, otelAwsBlockEnd),
 		},
 		{
 			"remove-gcp-credentials",
@@ -442,30 +442,14 @@ func (h *InstallOtelCollector) checkCredentials() error {
 	return nil
 }
 
-// removeAwsCredsBlockCmd removes the collector profile from the AWS credentials file. The mv
-// gives the file the mode of the tmp file, so a new tmp file under umask 077 keeps it private.
-func removeAwsCredsBlockCmd(path string) string {
-	return fmt.Sprintf(`umask 077 && if [ -f %s ]; then rm -f %s && \
-		awk '/# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=1} \
-		/# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=0; next} \
-		!inblock' %s > %s && mv %s %s; fi`,
-		shellSingleQuote(path),
-		shellSingleQuote(path+".tmp"),
-		shellSingleQuote(path),
-		shellSingleQuote(path+".tmp"),
-		shellSingleQuote(path+".tmp"),
-		shellSingleQuote(path),
-	)
-}
-
 // appendAwsCredsBlock appends the collector profile to the AWS credentials file. An earlier
 // step removes the old block.
 func (h *InstallOtelCollector) appendAwsCredsBlock(ctx context.Context, path string) error {
-	block := "# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n" +
+	block := otelAwsBlockBegin + "\n" +
 		"[otel-collector]\n" +
 		"aws_access_key_id = " + h.param.GetOtelColAwsAccessKey() + "\n" +
 		"aws_secret_access_key = " + h.param.GetOtelColAwsSecretKey() + "\n" +
-		"# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n"
+		otelAwsBlockEnd + "\n"
 	cmd := fmt.Sprintf("umask 077 && printf '%%s' \"$%s\" >> %s && chmod 440 %s",
 		otelColFileContentEnv, shellSingleQuote(path), shellSingleQuote(path))
 	return h.writeAsUser(ctx, "append-otel-collector-creds", cmd, block)
@@ -573,6 +557,22 @@ func logCleanupEnvSteps(
 			fmt.Sprintf(`chmod 0440 %s`, quotedEnvPath),
 		},
 	}
+}
+
+const (
+	otelAwsBlockBegin = "# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS"
+	otelAwsBlockEnd   = "# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS"
+)
+
+// removeManagedBlockCmd removes a YB managed block from a file and keeps the rest. The mv gives
+// the file the mode of the tmp file, so the tmp file is created new under umask 077.
+func removeManagedBlockCmd(path, begin, end string) string {
+	tmp := shellSingleQuote(path + ".tmp")
+	return fmt.Sprintf(
+		`umask 077 && if [ -f %s ]; then rm -f %s && `+
+			`awk '/%s/ {inblock=1} /%s/ {inblock=0; next} !inblock' %s > %s && mv %s %s; fi`,
+		shellSingleQuote(path), tmp, begin, end, shellSingleQuote(path), tmp, tmp,
+		shellSingleQuote(path))
 }
 
 // shellSingleQuote wraps s in single quotes, escaping embedded single quotes,

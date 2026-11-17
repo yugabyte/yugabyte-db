@@ -118,7 +118,7 @@ func TestAppendAwsCredsBlock(t *testing.T) {
 	}
 }
 
-func TestRemoveAwsCredsBlockKeepsFilePrivate(t *testing.T) {
+func TestRemoveManagedBlockKeepsFilePrivate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "credentials")
 	content := "[default]\n" +
 		"# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS\n" +
@@ -131,8 +131,8 @@ func TestRemoveAwsCredsBlockKeepsFilePrivate(t *testing.T) {
 	if err := os.WriteFile(path+".tmp", []byte("old"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command("bash", "-c", "umask 022 && "+removeAwsCredsBlockCmd(path)).
-		CombinedOutput()
+	cmd := removeManagedBlockCmd(path, otelAwsBlockBegin, otelAwsBlockEnd)
+	out, err := exec.Command("bash", "-c", "umask 022 && "+cmd).CombinedOutput()
 	if err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
@@ -149,5 +149,35 @@ func TestRemoveAwsCredsBlockKeepsFilePrivate(t *testing.T) {
 	}
 	if string(got) != "[default]\n" {
 		t.Errorf("content = %q, want %q", got, "[default]\n")
+	}
+}
+
+func TestRemoveFederationBlockKeepsOtherProfiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	content := "[default]\n" + awsConfigBlockBegin + "\n[profile x]\n" + awsConfigBlockEnd + "\n" +
+		"[profile y]\n"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".tmp", []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := removeManagedBlockCmd(path, awsConfigBlockBegin, awsConfigBlockEnd)
+	if out, err := exec.Command("bash", "-c", "umask 022 && "+cmd).CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("mode = %v, want 0600", info.Mode().Perm())
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "[default]\n[profile y]\n"; string(got) != want {
+		t.Errorf("content = %q, want %q", got, want)
 	}
 }
