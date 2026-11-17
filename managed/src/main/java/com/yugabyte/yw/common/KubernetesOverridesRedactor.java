@@ -5,7 +5,6 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.io.StringReader;
 import java.util.ArrayList;
@@ -36,18 +35,18 @@ import play.libs.Json;
  * values back when overrides copied from a response are submitted. Only the secrets are rewritten,
  * located by parsing the YAML, so the rest of the user's text is kept: the UI shows it as typed,
  * and overrides sent back unchanged equal redact(stored) exactly. A secret is the value of a secret
- * gflag, the ldapbindpasswd fields of ysql_hba_conf_csv, and any other string that mentions a
- * secret, which is redacted as the logs redact text. A comment that mentions a secret is replaced
- * by "# REDACTED", and so are the comments below it up to the next YAML content, since a value can
- * continue on the next line. Comments are never restored.
+ * gflag or an ldapbindpasswd field of ysql_hba_conf_csv. A comment that mentions a secret is
+ * replaced by "# REDACTED", and so are the comments below it up to the next YAML content, since a
+ * value can continue on the next line. Comments are never restored.
  *
  * <p>Overrides are hidden whole as REDACTED instead when they can't be parsed and could hold a
  * secret: they name one, or hold a backslash, with which a quoted key can spell one. So are
- * overrides that hold a secret and use YAML the rewrite doesn't follow: anchors, aliases and tags,
- * which can carry a value to another key or change how it loads, keys that aren't strings, a secret
- * or ysql_hba_conf_csv that isn't a scalar, a repeated secret key, and a key that mentions a
- * secret. Overrides rarely use these, and hiding them whole fails closed. Sent back unchanged,
- * hidden overrides restore the stored text; an edit has to submit them in full.
+ * overrides with a key or any other string that mentions a secret, whose value could be anywhere in
+ * that string or in the ones after it, and overrides that hold a secret and use YAML the rewrite
+ * doesn't follow: anchors, aliases and tags, which can carry a value to another key or change how
+ * it loads, keys that aren't strings, a secret or ysql_hba_conf_csv that isn't a scalar, and a
+ * repeated secret key. Overrides rarely use these, and hiding them whole fails closed. Sent back
+ * unchanged, hidden overrides restore the stored text; an edit has to submit them in full.
  */
 @Slf4j
 public final class KubernetesOverridesRedactor {
@@ -60,20 +59,14 @@ public final class KubernetesOverridesRedactor {
     /** Under a secret gflag name: the whole value. */
     VALUE,
     /** ysql_hba_conf_csv: the ldapbindpasswd fields. */
-    HBA,
-    /** Any other string that mentions a secret, redacted as the logs redact text. */
-    TEXT;
+    HBA;
 
     String redact(String value) {
-      switch (this) {
-        case VALUE:
-          // An empty value has no span to replace; REDACTED would be glued to the key's colon.
-          return value.isEmpty() ? value : REDACTED;
-        case HBA:
-          return HbaConfRedactor.redact(value);
-        default:
-          return RedactingService.redactShellProcessOutput(value, RedactionTarget.LOGS);
+      if (this == HBA) {
+        return HbaConfRedactor.redact(value);
       }
+      // An empty value has no span to replace; REDACTED would be glued to the key's colon.
+      return value.isEmpty() ? value : REDACTED;
     }
 
     // Contains, not equals, as RedactingService.isGFlagRedacted: "REDACTED " or a block scalar
@@ -136,8 +129,8 @@ public final class KubernetesOverridesRedactor {
   }
 
   /**
-   * Whole-value secrets: the names RedactingService redacts in text when no DB version is given, as
-   * PlatformResults redacts API responses.
+   * Whole-value secrets: the names RedactingService redacts in logs and text when no DB version is
+   * given.
    */
   private static Set<String> secretKeys() {
     return RedactingService.sensitiveNames(null, null);
@@ -194,11 +187,11 @@ public final class KubernetesOverridesRedactor {
   /**
    * Returns the submitted overrides with each REDACTED secret replaced by the stored value at the
    * same YAML path, following GFlagsUtil.mergeSensitiveGFlags: a 400 when nothing is stored there
-   * or the stored value is itself REDACTED, and for ysql_hba_conf_csv and other strings also when
-   * the rest of the value differs from the stored one. Also a 400 for REDACTED in overrides that
-   * are hidden whole or under a list item, which can't be matched to a stored value. Comments are
-   * not restored. stored is null for new overrides. Overrides sent back unchanged, as stored or as
-   * redacted, are returned as stored, even when the stored text already holds REDACTED.
+   * or the stored value is itself REDACTED, and for ysql_hba_conf_csv also when the rest of the
+   * value differs from the stored one. Also a 400 for REDACTED in overrides that are hidden whole
+   * or under a list item, which can't be matched to a stored value. Comments are not restored.
+   * stored is null for new overrides. Overrides sent back unchanged, as stored or as redacted, are
+   * returned as stored, even when the stored text already holds REDACTED.
    */
   public static String restore(String stored, String submitted, String where) {
     if (submitted == null || !submitted.contains(REDACTED)) {
@@ -280,7 +273,7 @@ public final class KubernetesOverridesRedactor {
                     + " recovered. Submit the actual value.",
                 name, REDACTED, REDACTED));
       }
-      if (secret.kind != Kind.VALUE && !secret.kind.redact(storedValue).equals(value)) {
+      if (secret.kind == Kind.HBA && !secret.kind.redact(storedValue).equals(value)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
@@ -404,10 +397,9 @@ public final class KubernetesOverridesRedactor {
       if (node instanceof ScalarNode) {
         ScalarNode scalar = (ScalarNode) node;
         if (mentionsSecret(scalar.getValue(), secretKeys)) {
-          addSecret(scalar, path, Kind.TEXT, inFlow, inList);
-        } else {
-          addSpan(scalar);
+          throw new HiddenException("hold a string that mentions a secret");
         }
+        addSpan(scalar);
       } else if (node instanceof MappingNode) {
         boolean childInFlow = inFlow || ((MappingNode) node).getFlowStyle() == FlowStyle.FLOW;
         for (NodeTuple tuple : ((MappingNode) node).getValue()) {
