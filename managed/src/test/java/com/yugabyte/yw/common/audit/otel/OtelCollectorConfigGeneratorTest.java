@@ -13,29 +13,41 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -59,12 +71,15 @@ import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
 import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumSet;
@@ -1879,20 +1894,52 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             false,
             false,
             -1);
-    String vmConfig = generateConfig(auditLogConfig, queryLogConfig, null);
-    // The paused audit exporter is still rendered.
-    assertThat(vmConfig, containsString("_DD_API_KEY}"));
+    // Build the payload as the VM install does, and resolve the config it uploads.
+    when(mockFileHelperService.createTempFile(any(), any()))
+        .thenAnswer(
+            i ->
+                Files.createTempFile(
+                    Paths.get(OTEL_COL_TMP_PATH), i.getArgument(0), i.getArgument(1)));
+    NodeAgentClient nodeAgentClient = mock(NodeAgentClient.class);
+    List<String> uploaded = new ArrayList<>();
+    doAnswer(
+            i ->
+                uploaded.add(
+                    FileUtils.readFileToString(
+                        new File((String) i.getArgument(1)), StandardCharsets.UTF_8)))
+        .when(nodeAgentClient)
+        .uploadFile(any(), contains("otel_collector_config_"), any(), any(), anyInt(), any());
+    NodeAgentRpcPayload payload =
+        new NodeAgentRpcPayload(
+            mockReleaseManager,
+            app.config(),
+            app.injector().instanceOf(RuntimeConfGetter.class),
+            generator,
+            mockTelemetryProviderService,
+            mockFileHelperService,
+            nodeAgentClient,
+            null,
+            null);
+    universe.getUniverseDetails().arch = Architecture.x86_64;
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.otelCollectorEnabled = true;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.mountPoints = "/mnt/d0";
+    params.gflags = new HashMap<>();
+    params.telemetryConfig = TelemetryConfig.of(auditLogConfig, queryLogConfig, null);
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setVersion(Util.getYbaVersion());
 
-    Map<UUID, TelemetryProvider> providers =
-        ImmutableMap.of(
-            auditProvider.getUuid(), auditProvider, queryProvider.getUuid(), queryProvider);
-    Map<String, String> env = new HashMap<>();
-    for (UUID uuid :
-        OtelCollectorUtil.getVmConfigExporterUuids(
-            TelemetryConfig.of(auditLogConfig, queryLogConfig, null))) {
-      env.putAll(OtelCollectorConfigGenerator.getCredentialEnv(providers.get(uuid)));
-    }
-    String resolved = resolveEnvRefs(vmConfig, env);
+    InstallOtelCollectorInput input =
+        payload.setupInstallOtelCollectorBits(universe, node, params, nodeAgent);
+
+    assertEquals(1, uploaded.size());
+    // The paused audit exporter is still rendered.
+    assertThat(uploaded.get(0), containsString("_DD_API_KEY}"));
+    String resolved = resolveEnvRefs(uploaded.get(0), input.getOtelColSecretEnvMap());
     assertThat(resolved, containsString(dataDog.getApiKey()));
     assertThat(resolved, containsString(splunk.getToken()));
   }

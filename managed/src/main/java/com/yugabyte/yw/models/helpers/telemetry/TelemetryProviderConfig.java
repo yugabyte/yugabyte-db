@@ -79,8 +79,8 @@ public class TelemetryProviderConfig {
   }
 
   /**
-   * Removes line breaks, which a pasted credential often has. No credential can hold one, and on VM
-   * nodes it would add a line to a credential file.
+   * Removes line breaks from a single-line credential, which a paste often adds. A value that holds
+   * line breaks, such as a GCP private key, must keep its original form too.
    */
   public static String removeLineBreaks(String value) {
     return StringUtils.replaceChars(value, "\r\n", "");
