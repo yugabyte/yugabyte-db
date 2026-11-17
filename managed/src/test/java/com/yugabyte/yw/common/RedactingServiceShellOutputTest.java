@@ -62,4 +62,34 @@ public class RedactingServiceShellOutputTest extends FakeDBApplication {
             "run --ycql_ldap_bind_passwd dummySecret\nerror: next line\n",
             RedactionTarget.QUERY_PARAMS));
   }
+
+  @Test
+  public void testRedactRootCaKeysTakesTheLastKeyWithAValue() {
+    String key = Base64.getEncoder().encodeToString("dummy key".getBytes(StandardCharsets.UTF_8));
+    assertEquals(
+        "  key: " + SECRET_REPLACEMENT, RedactingService.redactrootCAKeys("  key: " + key));
+    assertEquals(
+        "tls.key: " + SECRET_REPLACEMENT + "  # node",
+        RedactingService.redactrootCAKeys("tls.key: \t" + key + "  # node"));
+    assertEquals(
+        "a key: x key: " + SECRET_REPLACEMENT,
+        RedactingService.redactrootCAKeys("a key: x key: " + key));
+    assertEquals(
+        "key: " + SECRET_REPLACEMENT + " key:",
+        RedactingService.redactrootCAKeys("key: " + key + " key:"));
+    // Not base64, or no value after the last key: with one.
+    assertEquals("  - key: dedicated", RedactingService.redactrootCAKeys("  - key: dedicated"));
+    assertEquals("key:" + key, RedactingService.redactrootCAKeys("key:" + key));
+  }
+
+  // The regex this replaced took 20 s for 64 KB of this.
+  @Test(timeout = 10_000)
+  public void testRedactRootCaKeysIsLinearInALongLine() {
+    String line = "{a_key:[1,2]} ".repeat(1 << 16);
+    assertEquals(line, RedactingService.redactrootCAKeys(line));
+    assertEquals(
+        "data:\n  dashboard: '" + line + "'\n",
+        RedactingService.redactShellProcessOutput(
+            "data:\n  dashboard: '" + line + "'\n", RedactionTarget.HELM_VALUES));
+  }
 }

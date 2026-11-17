@@ -37,8 +37,6 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.UnaryOperator;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -197,11 +195,6 @@ public class RedactingService {
     fallback.put(REDACTED_PAYLOAD_KEY, redactedPayload);
     return fallback;
   }
-
-  // Used to redact root CA keys in the helm values
-  // Regex pattern to match "<Any_String>key: <Base64_encoded_string>"
-  private static final String KEY_REGEX = "(.*key):\\s+(\\S+)";
-  private static final Pattern KEY_SEARCH_PATTERN = Pattern.compile(KEY_REGEX);
 
   public static JsonNode filterSecretFields(JsonNode input, RedactionTarget target) {
     return filterSecretFields(input, target, null, null);
@@ -1480,21 +1473,41 @@ public class RedactingService {
     return output;
   }
 
-  public static String redactrootCAKeys(String input) {
-    // KEY_REGEX backtracks from every position of a line, so skip text it can't match.
-    if (!input.contains("key:")) {
-      return input;
-    }
-    String output = input;
-    Matcher matcher = KEY_SEARCH_PATTERN.matcher(input);
-    if (matcher.find()) {
-      String base64String = matcher.group(2);
-      if (isBase64Encoded(base64String)) {
-        String redactedString = "$1: " + SECRET_REPLACEMENT;
-        output = output.replaceAll(KEY_REGEX, redactedString);
+  /**
+   * Redacts a base64 value after "key:" in one line of helm values, such as the root CA's private
+   * key: the last "key:" on the line that whitespace and a value follow, as the regex {@code
+   * (.*key):\s+(\S+)} matched. That regex retried its greedy prefix from every position, which took
+   * 20 s for a 64 KB line holding many "key:" with no value after them.
+   */
+  public static String redactrootCAKeys(String line) {
+    for (int at = line.lastIndexOf("key:"); at >= 0; at = line.lastIndexOf("key:", at - 1)) {
+      int valueStart = at + "key:".length();
+      while (valueStart < line.length() && isRegexSpace(line.charAt(valueStart))) {
+        valueStart++;
       }
+      if (valueStart == at + "key:".length()
+          || valueStart == line.length()
+          || isRegexSpace(line.charAt(valueStart))) {
+        continue;
+      }
+      int valueEnd = valueStart;
+      while (valueEnd < line.length() && !isRegexSpace(line.charAt(valueEnd))) {
+        valueEnd++;
+      }
+      if (!isBase64Encoded(line.substring(valueStart, valueEnd))) {
+        return line;
+      }
+      return line.substring(0, at + "key".length())
+          + ": "
+          + SECRET_REPLACEMENT
+          + line.substring(valueEnd);
     }
-    return output;
+    return line;
+  }
+
+  /** \s in a Java regex. */
+  private static boolean isRegexSpace(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\u000B' || c == '\f' || c == '\r';
   }
 
   /** Shorter values are too likely to occur by chance to replace everywhere. */
@@ -1588,9 +1601,8 @@ public class RedactingService {
           }
           break;
         case HELM_VALUES:
-          if (output.contains("key:")) {
-            output = redactEachLine(output, RedactingService::redactrootCAKeys);
-          }
+          output =
+              redactLinesContaining(output, List.of("key:"), RedactingService::redactrootCAKeys);
           output = redactTelemetryCredentials(output);
           break;
         default:
@@ -1614,8 +1626,9 @@ public class RedactingService {
       if (lineNames.isEmpty()) {
         return redacted;
       }
-      return redactEachLine(
+      return redactLinesContaining(
           redacted,
+          lineNames,
           line -> {
             String l = line;
             for (String name : lineNames) {
@@ -1631,12 +1644,57 @@ public class RedactingService {
   }
 
   /**
-   * For passes that must not run past a line end: redactrootCAKeys checks only its first match, and
-   * its regex, redactQueryParams and several string-scan passes run to the end of their input when
-   * a value isn't closed.
+   * For passes that must not run past a line end: redactrootCAKeys redacts one key per call, and
+   * redactQueryParams and several string-scan passes run to the end of their input when a value
+   * isn't closed.
    */
   private static String redactEachLine(String input, UnaryOperator<String> redact) {
     return Arrays.stream(input.split("\n", -1)).map(redact).collect(Collectors.joining("\n"));
+  }
+
+  /**
+   * redactEachLine for a pass that leaves a line without any of the markers as it is: only the
+   * lines holding one are split out, so a multi-MB command output is not turned into a list of
+   * every line.
+   */
+  private static String redactLinesContaining(
+      String input, List<String> markers, UnaryOperator<String> redact) {
+    // The next occurrence of each marker, found again only once the scan has passed it.
+    int[] next = new int[markers.size()];
+    for (int i = 0; i < markers.size(); i++) {
+      next[i] = input.indexOf(markers.get(i));
+    }
+    StringBuilder out = null;
+    int copied = 0;
+    int lineStart = 0;
+    while (lineStart <= input.length()) {
+      int at = -1;
+      for (int i = 0; i < markers.size(); i++) {
+        if (next[i] >= 0 && next[i] < lineStart) {
+          next[i] = input.indexOf(markers.get(i), lineStart);
+        }
+        if (next[i] >= 0 && (at < 0 || next[i] < at)) {
+          at = next[i];
+        }
+      }
+      if (at < 0) {
+        break;
+      }
+      int start = input.lastIndexOf('\n', at - 1) + 1;
+      int end = input.indexOf('\n', at);
+      end = end < 0 ? input.length() : end;
+      String line = input.substring(start, end);
+      String redacted = redact.apply(line);
+      if (!redacted.equals(line)) {
+        if (out == null) {
+          out = new StringBuilder(input.length());
+        }
+        out.append(input, copied, start).append(redacted);
+        copied = end;
+      }
+      lineStart = end + 1;
+    }
+    return out == null ? input : out.append(input, copied, input.length()).toString();
   }
 
   private static boolean isBase64Encoded(String str) {

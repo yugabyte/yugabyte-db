@@ -584,14 +584,15 @@ public class SupportBundleUtil {
   }
 
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
+    // Bundle files hold raw kubectl/helm output -- "helm get values" and the pod specs both
+    // inline the telemetry exporter credentials (PLAT-22613).
+    return write(RedactingService.redactTelemetryCredentials(message), localFilePath, append);
+  }
+
+  private boolean write(String content, String localFilePath, boolean append) {
     try {
-      // Bundle files hold raw kubectl/helm output -- "helm get values" and the pod specs both
-      // inline the telemetry exporter credentials (PLAT-22613).
       FileUtils.writeStringToFile(
-          new File(localFilePath),
-          RedactingService.redactTelemetryCredentials(message),
-          Charset.forName("UTF-8"),
-          append);
+          new File(localFilePath), content, Charset.forName("UTF-8"), append);
       return true;
     } catch (IOException e) {
       log.error("Failed writing output string to file: ", e);
@@ -604,14 +605,17 @@ public class SupportBundleUtil {
   }
 
   /**
-   * Writes raw kubectl/helm output, which carries the universe gflags: "helm get values" always,
-   * and the pod specs as container args with charts before PLAT-13974. The free-text redaction cuts
-   * an HBA line from ldapbindpasswd to its end, so it is not for the metadata JSON, which the tree
-   * redaction has already handled.
+   * Writes raw kubectl/helm output, which carries the universe gflags ("helm get values" always,
+   * and the pod specs as container args with charts before PLAT-13974), the root CA private key and
+   * the telemetry credentials. Redacted as KubernetesManager redacts the same output for the log.
+   * The free-text redaction cuts an HBA line from ldapbindpasswd to its end, so it is not for the
+   * metadata JSON, which the tree redaction has already handled.
    */
   public boolean writeKubectlOutputToFile(String output, String localFilePath) {
-    return writeStringToFile(
-        RedactingService.redactSensitiveInfoInString(output), localFilePath, false);
+    return write(
+        RedactingService.redactShellProcessOutput(output, RedactionTarget.HELM_VALUES),
+        localFilePath,
+        false);
   }
 
   /**
