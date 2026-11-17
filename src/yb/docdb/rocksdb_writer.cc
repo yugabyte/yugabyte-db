@@ -954,14 +954,17 @@ Result<bool> ApplyIntentsContext::Entry(
       handler.Put(key_parts, value_parts);
     }
 
-    // See NonTransactionalBatchWriter::Apply.
+    // See NonTransactionalBatchWriter::Apply. The xCluster consumer applies replicated
+    // transactions there, so these are local ones.
     const auto decode_row =
         ApplyToRegularDB() ||
         (vector_indexes_updater_ &&
-         vector_indexes_updater_->AppliesToRow(intent.doc_path, commit_ht_));
+         vector_indexes_updater_->AppliesToRow(
+             intent.doc_path, commit_ht_, XClusterTargetApplied::kFalse));
     if (vector_indexes_updater_ && decode_row) {
       RETURN_NOT_OK(vector_indexes_updater_->Feed(
-          handler, intent.doc_path, decoded_value.body, DocHybridTime(commit_ht_, write_id_)));
+          handler, intent.doc_path, decoded_value.body, DocHybridTime(commit_ht_, write_id_),
+          XClusterTargetApplied::kFalse));
     }
 
     ++write_id_;
@@ -1500,6 +1503,9 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   FlushSchemaVersion();
   if (vector_indexes_updater_) {
     RETURN_NOT_OK(vector_indexes_updater_->Complete());
+    // The indexes copied the vectors, so do not keep them while the op waits for its intents DB
+    // write.
+    vector_indexes_updater_.reset();
   }
 
   if (put_batch_.has_delete_vector_ids()) {

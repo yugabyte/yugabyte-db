@@ -41,12 +41,13 @@ static const char* kTxnId = "0000000000000001";
 // else is unreachable on this path and fatal if called.
 class CountingVectorIndex : public DocVectorIndex {
  public:
-  CountingVectorIndex(Slice table_key_prefix, ColumnId column_id)
-      : table_key_prefix_(table_key_prefix.ToBuffer()), column_id_(column_id) {}
+  CountingVectorIndex(Slice table_key_prefix, ColumnId column_id, HybridTime hybrid_time)
+      : table_key_prefix_(table_key_prefix.ToBuffer()), column_id_(column_id),
+        hybrid_time_(hybrid_time) {}
 
   Slice indexed_table_key_prefix() const override { return table_key_prefix_; }
   ColumnId column_id() const override { return column_id_; }
-  HybridTime hybrid_time() const override { return HybridTime::kMin; }
+  HybridTime hybrid_time() const override { return hybrid_time_; }
   uint64_t split_generation() const override { return 0; }
   Status Insert(
       const DocVectorIndexInsertEntries& entries, const InsertOptions& options) override {
@@ -109,6 +110,7 @@ class CountingVectorIndex : public DocVectorIndex {
  private:
   const std::string table_key_prefix_;
   const ColumnId column_id_;
+  const HybridTime hybrid_time_;
   size_t inserted_entries_ = 0;
   size_t insert_calls_ = 0;
 };
@@ -209,8 +211,10 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
     CHECK_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT, vector_indexes, apply_to_storages));
   }
 
-  static std::shared_ptr<CountingVectorIndex> MakeCountingIndex() {
-    return std::make_shared<CountingVectorIndex>(/* table_key_prefix = */ Slice(), ColumnId(11));
+  static std::shared_ptr<CountingVectorIndex> MakeCountingIndex(
+      HybridTime hybrid_time = HybridTime::kMin) {
+    return std::make_shared<CountingVectorIndex>(
+        /* table_key_prefix = */ Slice(), ColumnId(11), hybrid_time);
   }
 
  protected:
@@ -939,6 +943,47 @@ TEST_F(NonTransactionalBatchWriterTest, ApplyInsertsOpVectorsAtOnce) {
 
   ASSERT_EQ(index->inserted_entries(), 2 * kRowsPerTxn + 1);
   ASSERT_EQ(index->insert_calls(), 1);
+}
+
+// GH#34697: an xCluster target writes a row at its source hybrid time, which can be below the
+// hybrid time of a vector index that was backfilled before the row arrived, and the index must
+// still take the row. External intents come from an xCluster source only, while a plain write is
+// one only when the consumer marks it with XClusterTargetApplied.
+TEST_F(NonTransactionalBatchWriterTest, XClusterWriteBelowIndexHybridTime) {
+  // Above the hybrid time of every write below.
+  const auto kIndexHT = 7000_usec_ht;
+  // The regular bit is left clear, so the apply doesn't also write the regular-DB reverse mapping,
+  // which would need a real encoded vector value; only the vector feed is exercised.
+  StorageSet apply_to_storages;
+  apply_to_storages.Resize(1);
+  apply_to_storages.SetVectorIndex(0);
+  auto make_indexes = [](const std::shared_ptr<CountingVectorIndex>& index) {
+    auto indexes = std::make_shared<DocVectorIndexes>();
+    indexes->push_back(index);
+    return indexes;
+  };
+
+  auto external_index = MakeCountingIndex(kIndexHT);
+  ApplyExternalVectorColumnWrite(
+      make_indexes(external_index), apply_to_storages, "0000000000000001", 0);
+  ASSERT_EQ(external_index->inserted_entries(), 1);
+
+  auto plain_write_entries = [&](XClusterTargetApplied xcluster_target_applied) -> size_t {
+    auto index = MakeCountingIndex(kIndexHT);
+    const DocKey doc_key(static_cast<uint16_t>(1), MakeKeyEntryValues("row1"));
+    docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+    auto* write_pair = put_batch.add_write_pairs();
+    write_pair->dup_key(EncodeDocPathKey(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)))).AsSlice());
+    write_pair->dup_value(EncodeValue(QLValue::Primitive("vec")));
+    CHECK_OK(SendWriteBatch(
+        put_batch, 6000_usec_ht, 5000_usec_ht, make_indexes(index), apply_to_storages,
+        TableType::PGSQL_TABLE_TYPE, /* can_advance_intents_flush_op_id= */ nullptr,
+        xcluster_target_applied));
+    return index->inserted_entries();
+  };
+  ASSERT_EQ(plain_write_entries(XClusterTargetApplied::kFalse), 0);
+  ASSERT_EQ(plain_write_entries(XClusterTargetApplied::kTrue), 1);
 }
 
 }  // namespace yb::docdb

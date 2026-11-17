@@ -291,17 +291,16 @@ class VectorIndexesUpdater {
 
   // write_time is the time the regular record is written at. The reverse mapping entry is written
   // at the same time, and the vector index feed is gated by it. An xCluster target record is
-  // indexed even below the index hybrid time, see IntentApplyShouldUpdateVectorIndex.
+  // indexed even below the index hybrid time, see IntentApplyShouldUpdateVectorIndex. A caller
+  // passes the same xcluster_target for a record here and to AppliesToRow.
   Status Feed(
       rocksdb::DirectWriteHandler& handler, Slice key, Slice value, DocHybridTime write_time,
-      XClusterTargetApplied xcluster_target = XClusterTargetApplied::kFalse);
+      XClusterTargetApplied xcluster_target);
   Status Complete();
 
   // Whether an index this update applies to takes the row with the specified key, written at
   // write_ht.
-  bool AppliesToRow(
-      Slice key, HybridTime write_ht,
-      XClusterTargetApplied xcluster_target = XClusterTargetApplied::kFalse) const;
+  bool AppliesToRow(Slice key, HybridTime write_ht, XClusterTargetApplied xcluster_target) const;
 
  private:
   template <class Decoder>
