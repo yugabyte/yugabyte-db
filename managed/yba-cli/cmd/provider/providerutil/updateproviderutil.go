@@ -525,3 +525,24 @@ func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
 	}
 	return imageBundle
 }
+
+// ValidateUpdateAddZoneRegions rejects an --add-zone whose region-name is neither a
+// region of the provider nor in --add-region. The update commands skip unmatched
+// zones, so a typo would otherwise exit 0 without adding the zone.
+func ValidateUpdateAddZoneRegions(
+	addRegions, addZones []string,
+	providerRegions []ybaclient.Region,
+) error {
+	knownRegions := make(map[string]bool, len(addRegions)+len(providerRegions))
+	for _, regionString := range addRegions {
+		knownRegions[BuildRegionMapFromString(regionString, "add")["name"]] = true
+	}
+	for _, region := range providerRegions {
+		knownRegions[region.GetCode()] = true
+	}
+	if unknown := UnknownZoneRegions(addZones, "add", knownRegions); len(unknown) > 0 {
+		return fmt.Errorf("region %s in --add-zone is not in the provider or in --add-region",
+			strings.Join(unknown, ", "))
+	}
+	return nil
+}

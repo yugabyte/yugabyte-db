@@ -234,6 +234,12 @@ var updateOnpremProviderCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
+		if err := providerutil.ValidateUpdateAddZoneRegions(
+			addRegions, addZones, providerRegions,
+		); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+
 		providerRegions = removeOnpremRegions(removeRegions, providerRegions)
 
 		providerRegions = editOnpremRegions(editRegions, addZones, removeZones, providerRegions)
