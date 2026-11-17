@@ -2424,7 +2424,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     // upgrade_ysql applies migrations through a single tserver. Other tservers learn about new
     // catalog versions from master only on their next heartbeat.
     // Wait for the heartbeat to propagate to ensure that backends on other tservers don't have a
-    // stale catalog version. This is useful in tests where such backends issue DDLs so after the
+    // stale catalog version. This is useful in tests where such backends issue DDLs soon after the
     // migrations to test the upgrade.
     waitForTServerHeartbeat();
   }
