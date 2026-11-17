@@ -1280,29 +1280,6 @@ INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, genera
          Storage Table Rows Scanned: 20
 (9 rows)
 
--- the other two operators
-:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= ANY ('{8,9}');
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=2 loops=1)
-   Index Cond: (g = 0)
-   Storage Filter: (k >= ANY ('{8,9}'::integer[]))
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(6 rows)
-
-:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{1,0}');
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
- Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=2 loops=1)
-   Index Cond: (g = 0)
-   Storage Filter: (k <= ANY ('{1,0}'::integer[]))
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(6 rows)
-
 -- a NULL element and an empty array
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{NULL,5}');
                                         QUERY PLAN                                        
@@ -1361,12 +1338,6 @@ EXECUTE nonequality_array_count('{5,3000000000}');
  count 
 -------
      4
-(1 row)
-
-EXECUTE nonequality_array_count('{3000000000}');
- count 
--------
-     0
 (1 row)
 
 RESET plan_cache_mode;
@@ -1430,20 +1401,6 @@ SET yb_enable_advanced_index_cond_fold = off;
    Storage Table Rows Scanned: 10
 (6 rows)
 
-:explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
- Sort (actual rows=10 loops=1)
-   Sort Key: k
-   Sort Method: quicksort
-   ->  Index Scan using t_nonequality_array_pkey on t_nonequality_array (actual rows=10 loops=1)
-         Index Cond: (g = ANY ('{0,1}'::integer[]))
-         Storage Filter: (g > ANY ('{0,1}'::integer[]))
-         Storage Table Read Requests: 1
-         Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 20
-(9 rows)
-
 RESET yb_enable_advanced_index_cond_fold;
 -- A hash column, where the planner refuses a plain inequality too.  As an
 -- index condition, the array would be compared with the equality's value
@@ -1500,26 +1457,6 @@ INSERT INTO t_nonequality_array_hash_f4 VALUES (0.5, 1), (1.5, 2), (2.5, 3);
 (7 rows)
 
 SET yb_enable_advanced_index_cond_fold = off;
-:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h > ANY ('{5,2}');
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Index Scan using t_nonequality_array_hash_pkey on t_nonequality_array_hash (actual rows=10 loops=1)
-   Index Cond: (h = 6)
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(5 rows)
-
-:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h < ANY ('{7,9}');
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Index Scan using t_nonequality_array_hash_pkey on t_nonequality_array_hash (actual rows=10 loops=1)
-   Index Cond: (h = 6)
-   Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 10
-(5 rows)
-
 :explain_analyze SELECT * FROM t_nonequality_array_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------

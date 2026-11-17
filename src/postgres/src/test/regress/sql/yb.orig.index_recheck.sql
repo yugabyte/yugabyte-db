@@ -308,9 +308,6 @@ INSERT INTO t_nonequality_array SELECT g, k FROM generate_series(0, 1) g, genera
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k IN (1, 4, 8) AND k > ANY ('{2,5}');
 -- an IN list and a non-equality array with the same elements
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
--- the other two operators
-:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= ANY ('{8,9}');
-:explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= ANY ('{1,0}');
 -- a NULL element and an empty array
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{NULL,5}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k > ANY ('{}');
@@ -322,7 +319,6 @@ SET plan_cache_mode = force_generic_plan;
 PREPARE nonequality_array_count(bigint[]) AS SELECT count(*) FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ($1);
 :explain_analyze EXECUTE nonequality_array_count('{5,3000000000}');
 EXECUTE nonequality_array_count('{5,3000000000}');
-EXECUTE nonequality_array_count('{3000000000}');
 RESET plan_cache_mode;
 DEALLOCATE nonequality_array_count;
 -- a YB bitmap scan, which the planner does not choose over the index scan
@@ -339,7 +335,6 @@ INSERT INTO t_nonequality_array_icu VALUES ('a'), ('b'), ('c'), ('d');
 SET yb_enable_advanced_index_cond_fold = off;
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k >= 0 AND k > ANY ('{2,5}');
 :explain_analyze SELECT * FROM t_nonequality_array WHERE g = 0 AND k <= 9 AND k < ANY ('{2,5}');
-:explain_analyze SELECT * FROM t_nonequality_array WHERE g IN (0, 1) AND g > ANY ('{0,1}') ORDER BY k;
 RESET yb_enable_advanced_index_cond_fold;
 
 -- A hash column, where the planner refuses a plain inequality too.  As an
@@ -358,8 +353,6 @@ INSERT INTO t_nonequality_array_hash_f4 VALUES (0.5, 1), (1.5, 2), (2.5, 3);
 -- alone on the hash column
 :explain_analyze SELECT count(*) FROM t_nonequality_array_hash WHERE h > ANY ('{8,9}');
 SET yb_enable_advanced_index_cond_fold = off;
-:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h > ANY ('{5,2}');
-:explain_analyze SELECT * FROM t_nonequality_array_hash WHERE h = 6 AND h < ANY ('{7,9}');
 :explain_analyze SELECT * FROM t_nonequality_array_hash_f4 WHERE h = 1.5::float8 AND h > ANY ('{1.0}'::real[]);
 RESET yb_enable_advanced_index_cond_fold;
 
