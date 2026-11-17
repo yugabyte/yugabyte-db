@@ -239,10 +239,17 @@ public class KubernetesOverridesRedactorTest {
           // Keys that aren't strings.
           "? [a, b]\n: c\ngflags:\n  tserver:\n    ycql_ldap_bind_passwd: master-secret\n",
           "? [a]\n: \"--ycql_ldap_bind_passwd=master-secret\"\n",
-          // A repeated secret key, a key that mentions a secret, and a secret that isn't a scalar.
+          // A key or other string that mentions a secret: in any form, more than once, or with the
+          // value in the next item.
+          "gflags:\n  \"ycql_ldap_bind_passwd=master-secret\": x\n",
+          "gflags:\n  note: ycql_ldap_bind_passwd master-secret\n",
+          "note: \"ycql_ldap_bind_passwd=tserver-secret, ycql_ldap_bind_passwd master-secret\"\n",
+          "args: [\"--ycql_ldap_bind_passwd\", master-secret]\n",
+          "note: \"--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap"
+              + " ldapbindpasswd=master-secret\"\n",
+          // A repeated secret key, and a secret that isn't a scalar.
           "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: master-secret\n"
               + "    ycql_ldap_bind_passwd: tserver-secret\n",
-          "gflags:\n  \"ycql_ldap_bind_passwd=master-secret\": x\n",
           "gflags:\n  tserver:\n    ycql_ldap_bind_passwd:\n      nested: master-secret\n",
           "gflags:\n  ysql_hba_conf_csv:\n    - \"host all all 0.0.0.0/0 ldap"
               + " ldapbindpasswd=master-secret\"\n");
@@ -311,8 +318,6 @@ public class KubernetesOverridesRedactorTest {
           "gflags:",
           "  tserver:",
           "    ycql_ldap_bind_passwd: tserver-secret  # was ycql_ldap_bind_passwd: inline-secret",
-          "    note: \"--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap"
-              + " ldapbindpasswd=text-secret\"",
           "  master: # ldapbindpasswd=key-comment-secret",
           "    extra: |  # ycql_ldap_bind_passwd: header-secret",
           "      plain block content",
@@ -321,14 +326,13 @@ public class KubernetesOverridesRedactorTest {
           "");
 
   @Test
-  public void redactCoversCommentsAndOtherStrings() {
+  public void redactCoversComments() {
     String redacted = KubernetesOverridesRedactor.redact(WITH_COMMENTS);
     for (String secret :
         List.of(
             "comment-secret",
             "tserver-secret",
             "inline-secret",
-            "text-secret",
             "key-comment-secret",
             "header-secret",
             "other-secret")) {
@@ -336,9 +340,6 @@ public class KubernetesOverridesRedactorTest {
     }
     assertEquals("plain block content\n", at(redacted, "gflags", "master", "extra"));
     assertEquals("REDACTED", at(redacted, "other", "ycql_ldap_bind_passwd"));
-    assertTrue(
-        redacted,
-        ((String) at(redacted, "gflags", "tserver", "note")).contains("ldapbindpasswd=REDACTED"));
   }
 
   @Test
@@ -376,20 +377,14 @@ public class KubernetesOverridesRedactorTest {
   }
 
   @Test
-  public void restorePutsBackOtherStringsButNotComments() {
+  public void restorePutsBackSecretsButNotComments() {
     String submitted =
         KubernetesOverridesRedactor.redact(WITH_COMMENTS)
             + "tserver:\n  podLabels:\n    env: test\n";
     String restored = KubernetesOverridesRedactor.restore(WITH_COMMENTS, submitted, "overrides");
-    assertEquals(
-        at(WITH_COMMENTS, "gflags", "tserver", "note"), at(restored, "gflags", "tserver", "note"));
+    assertEquals("tserver-secret", at(restored, "gflags", "tserver", "ycql_ldap_bind_passwd"));
     assertEquals("other-secret", at(restored, "other", "ycql_ldap_bind_passwd"));
     assertFalse(restored, restored.contains("comment-secret"));
-
-    String changed = submitted.replace("0.0.0.0/0", "10.0.0.0/8");
-    assertThrows(
-        PlatformServiceException.class,
-        () -> KubernetesOverridesRedactor.restore(WITH_COMMENTS, changed, "overrides"));
   }
 
   @Test
