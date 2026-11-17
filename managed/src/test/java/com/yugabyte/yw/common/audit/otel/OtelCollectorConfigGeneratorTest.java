@@ -1374,6 +1374,31 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     generateAndAssertConfig(null, queryLogConfig, null, "audit/aws_query_log_config.yml");
   }
 
+  // Charts below the passthrough version read exporters and secretEnv as separate values.
+  @Test
+  @SuppressWarnings("unchecked")
+  public void generateOtelHelmValuesDataDogUsesSecretEnv() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey123");
+    TelemetryProvider dd = createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), config);
+
+    Map<String, Object> overrides =
+        generator.getOtelHelmValues(
+            createAuditLogConfigWithYSQL(dd.getUuid(), ImmutableMap.of()), "%m [%p] ");
+
+    String exporters = new Yaml().dump(overrides.get("exporters"));
+    assertFalse(exporters.contains("apikey123"));
+    List<Map<String, String>> secretEnv = (List<Map<String, String>>) overrides.get("secretEnv");
+    assertEquals(1, secretEnv.size());
+    assertThat(exporters, containsString("${env:" + secretEnv.get(0).get("envName") + "}"));
+    assertEquals(
+        "apikey123",
+        new String(
+            Base64.getDecoder().decode(secretEnv.get(0).get("envValue")), StandardCharsets.UTF_8));
+  }
+
   @Test
   public void generateOtelHelmValuesYsqlPlusAWS() {
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
