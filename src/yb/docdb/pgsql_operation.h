@@ -256,6 +256,9 @@ class PgsqlReadOperation : public DocExprExecutor {
   PgsqlResponsePB response_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
+  // Read restart data of the vector search intents scan, filter and reverse mapping reader, which
+  // table_iter_ does not cover.
+  ReadRestartData vector_search_read_restart_data_;
   uint64_t scanned_table_rows_ = 0;
   uint64_t scanned_index_rows_ = 0;
   Status delayed_failure_;
