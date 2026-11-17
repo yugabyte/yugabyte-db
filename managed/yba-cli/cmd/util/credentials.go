@@ -237,7 +237,7 @@ func OCIS3CredentialsFromEnv() (accessKeyID, secretAccessKey string, err error) 
 	accessKeyID, accessPresent := os.LookupEnv(OCIS3AccessKeyIDField)
 	secretAccessKey, secretPresent := os.LookupEnv(OCIS3SecretAccessKeyField)
 	if !accessPresent || !secretPresent ||
-		len(accessKeyID) == 0 || len(secretAccessKey) == 0 {
+		IsEmptyString(accessKeyID) || IsEmptyString(secretAccessKey) {
 		return "", "", fmt.Errorf(
 			"%s and %s environment variables must both be set",
 			OCIS3AccessKeyIDField, OCIS3SecretAccessKeyField)

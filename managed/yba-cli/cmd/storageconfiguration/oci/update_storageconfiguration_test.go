@@ -93,6 +93,15 @@ func TestApplyOCIS3Keys(t *testing.T) {
 			wantErr: "environment variables must both be set",
 		},
 		{
+			name:   "switching off IAM with a blank key in env",
+			wasIAM: true,
+			env: map[string]string{
+				util.OCIS3AccessKeyIDField:     envAccess,
+				util.OCIS3SecretAccessKeyField: "  ",
+			},
+			wantErr: "environment variables must both be set",
+		},
+		{
 			name:            "switching off IAM with flag keys",
 			accessKeyID:     newAccess,
 			secretAccessKey: newSecret,

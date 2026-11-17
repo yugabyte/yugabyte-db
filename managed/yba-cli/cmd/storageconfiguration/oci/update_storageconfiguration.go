@@ -224,8 +224,7 @@ func applyOCIS3Keys(
 		if err != nil {
 			return err
 		}
-	}
-	if util.IsEmptyString(accessKeyID) || util.IsEmptyString(secretAccessKey) {
+	} else if util.IsEmptyString(accessKeyID) || util.IsEmptyString(secretAccessKey) {
 		return fmt.Errorf("--access-key-id and --secret-access-key must both be non-empty")
 	}
 	data[util.OCIS3AccessKeyIDField] = accessKeyID
