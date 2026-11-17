@@ -660,11 +660,12 @@ typedef struct
 
 	/*
 	 * Identifies the poller started for the node's current listeners; zero
-	 * when there are none, or when the poller failed to start. Protected by NotifyQueueLock. The postmaster
-	 * restarts a poller after a crash even if nothing tracks it any more, so
-	 * a poller whose id no longer matches exits instead of running. A poller
-	 * writes the fields above, and to the queue, only while it holds
-	 * NotifyQueueLock exclusively and its id matches.
+	 * when there are none, or once the LISTEN that started a poller which
+	 * failed to initialize has unregistered. Protected by NotifyQueueLock.
+	 * The postmaster restarts a poller after a crash even if nothing tracks
+	 * it any more, so a poller whose id no longer matches exits instead of
+	 * running. A poller writes the fields above, and to the queue, only
+	 * while it holds NotifyQueueLock exclusively and its id matches.
 	 */
 	TimestampTz poller_id;
 
@@ -3263,7 +3264,8 @@ ybStartNotifsPollerBgWorker(void)
  * Wait for the node's notifications poller to initialize, and fail if it does
  * not. The poller reports how its initialization went in init_status, and so
  * does ybCleanupListenState if the listener starting the poller unregisters
- * first. A failed poller is terminated when this LISTEN aborts.
+ * first. A failed poller is terminated by ybCleanupListenState when the
+ * LISTEN that started it unregisters, not by the LISTENs that joined it.
  */
 static void
 ybWaitForNotifsPollerInit(void)
