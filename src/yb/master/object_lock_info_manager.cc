@@ -60,6 +60,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
 
@@ -2145,6 +2146,7 @@ void UpdateAllTServers<Req>::Done(size_t i, const Status& s) {
   if constexpr (kIsReleaseRequest<Req>) {
     object_lock_info_manager_.RecordReleaseOutcome(
         ts_descriptors_[i]->id(), req_.request_id(), statuses_[i]);
+    TEST_SYNC_POINT("ObjectLockInfoManager::RecordReleaseOutcome:Done");
   }
   TRACE_TO(
       trace(), "Done $0 ($1) : $2", i, ts_descriptors_[i]->permanent_uuid(),

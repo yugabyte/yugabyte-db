@@ -82,6 +82,7 @@ DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pause_session_lock_before_release);
 DECLARE_bool(TEST_pause_session_lock_after_release);
+DECLARE_uint64(TEST_delay_before_release_object_locks_response_ms);
 
 METRIC_DECLARE_counter(object_locking_lock_acquires);
 METRIC_DECLARE_counter(object_locking_lock_releases);
@@ -2542,6 +2543,42 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ASSERT_OK(conn.Execute("INSERT INTO pk VALUES(3000, 0)"));
   ASSERT_EQ(num_initial_locks, NumGrantedLocks());
   ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+TEST_F(PgObjectLocksTestRF1, TestSubtxnReacquireExclusiveInProgressRelease) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test(k INT)"));
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"ObjectLockInfoManager::RecordReleaseOutcome:Done",
+        "TestSubtxnReacquireExclusiveInProgressRelease"}});
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT save"));
+  ASSERT_OK(conn.Execute("LOCK TABLE test IN EXCLUSIVE MODE"));
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // The bug being reproduced here (#37812) needs LOCK TABLE to run before the release object locks
+  // response is processed on master. The fix (making release on subtransaction finish synchronous)
+  // makes this impossible. So this cannot be done via a sync point.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_release_object_locks_response_ms) = 4000;
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT save"));
+  ASSERT_OK(conn.Execute("LOCK TABLE test IN EXCLUSIVE MODE"));
+  TEST_SYNC_POINT("TestSubtxnReacquireExclusiveInProgressRelease");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_release_object_locks_response_ms) = 0;
+
+  std::stringstream ts_locks_ss;
+  ts_lock_manager_->DumpLocksToHtml(ts_locks_ss);
+  std::string ts_locks = ts_locks_ss.str();
+
+  std::stringstream master_locks_ss;
+  master_lock_manager_->DumpLocksToHtml(master_locks_ss);
+  std::string master_locks = master_locks_ss.str();
+
+  LOG(INFO) << "TServer locks:\n" << ts_locks;
+  LOG(INFO) << "Master locks:\n" << master_locks;
+  ASSERT_EQ(ts_locks, master_locks);
+  ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
 class PgObjectLocksBothPathsTest : public PgObjectLocksTestRF1,

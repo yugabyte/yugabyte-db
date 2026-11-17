@@ -358,6 +358,10 @@ DEFINE_test_flag(uint64, persistence_reject_stamped_before_ht, 0,
 DEFINE_test_flag(bool, persistence_dfatal_unstamped_pgsql_write, false,
     "DFATAL on a YSQL write without an origination stamp to a table outside template1.");
 
+DEFINE_test_flag(uint64, delay_before_release_object_locks_response_ms, 0,
+    "Used in tests to sleep the specified number of milliseconds after releasing locks in "
+    "the local lock manager, before responding to the ReleaseObjectLock RPC.");
+
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_active_table_metrics_filtering);
@@ -4308,6 +4312,10 @@ void TabletServiceImpl::ReleaseObjectLocks(
   }
   auto res = ts_local_lock_manager->ReleaseObjectLocks(*req, context.GetClientDeadline());
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
+
+  if (PREDICT_FALSE(FLAGS_TEST_delay_before_release_object_locks_response_ms > 0)) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_delay_before_release_object_locks_response_ms));
+  }
   if (!res.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
   } else {

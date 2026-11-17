@@ -2376,7 +2376,7 @@ class PgClientSession::Impl {
     }
 
     return ReleaseObjectLocksIfNecessary(
-        transaction, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kAsync, subtxn_id);
+        transaction, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kSync, subtxn_id);
   }
 
   void FinishTransaction(
