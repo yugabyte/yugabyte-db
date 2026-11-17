@@ -640,8 +640,10 @@ static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 };
 
 /*
- * Shared memory state used to communicate the initialization status of the
- * 'notifications poller' background worker back to the process that started it.
+ * Shared memory state reporting how the node's 'notifications poller' bg
+ * worker initialized. Every LISTEN waits on it. The poller sets SUCCESS or
+ * FAILED, and ybCleanupListenState sets FAILED if the LISTEN starting the
+ * poller ends first.
  */
 typedef enum
 {
@@ -658,7 +660,7 @@ typedef struct
 
 	/*
 	 * Identifies the poller started for the node's current listeners; zero
-	 * when there are none. Protected by NotifyQueueLock. The postmaster
+	 * when there are none, or when the poller failed to start. Protected by NotifyQueueLock. The postmaster
 	 * restarts a poller after a crash even if nothing tracks it any more, so
 	 * a poller whose id no longer matches exits instead of running. A poller
 	 * writes the fields above, and to the queue, only while it holds
@@ -1788,8 +1790,7 @@ ybCleanupListenState(BackendId leaving)
 		{
 			yb_poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
 			strlcpy(yb_poller_data->error_message,
-					"the LISTEN starting the notifications poller did not "
-					"complete",
+					"The LISTEN that was starting it did not complete.",
 					sizeof(yb_poller_data->error_message));
 		}
 	}
@@ -3273,23 +3274,24 @@ ybWaitForNotifsPollerInit(void)
 
 	for (;;)
 	{
-		YbNotifsPollerInitStatus init_status;
-
-		LWLockAcquire(NotifyQueueLock, LW_SHARED);
-		init_status = poller_data->init_status;
-		strlcpy(error_message, poller_data->error_message,
-				sizeof(error_message));
-		LWLockRelease(NotifyQueueLock);
+		YbNotifsPollerInitStatus init_status = poller_data->init_status;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
 			return;
 
 		if (init_status == YB_NOTIFS_POLLER_INIT_FAILED)
+		{
+			/* FAILED and error_message are set under the lock. */
+			LWLockAcquire(NotifyQueueLock, LW_SHARED);
+			strlcpy(error_message, poller_data->error_message,
+					sizeof(error_message));
+			LWLockRelease(NotifyQueueLock);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("notifications poller background worker "
 							"failed to initialize"),
 					 (error_message[0] ? errdetail("%s", error_message) : 0)));
+		}
 
 		CHECK_FOR_INTERRUPTS();
 		pg_usleep(10000L);
