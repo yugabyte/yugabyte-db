@@ -14,10 +14,11 @@ menu:
     identifier: explore-change-data-capture-logical-replication
     parent: explore-change-data-capture
     weight: 240
-type: indexpage
+showRightNav: true
 rightNav:
   hideH3: true
   hideH4: true
+type: indexpage
 ---
 
 ## Overview
@@ -134,7 +135,7 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
     To handle updates/deletes with a non-CHANGE replica identity when no before image is available, set the YB-TServer flag [cdc_send_null_before_image_if_not_exists](../../../reference/configuration/yb-tserver/#cdc-send-null-before-image-if-not-exists) to true. With this flag enabled, CDC sends a null before-image instead of failing with an error.
 
-- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To have CDC proceed by skipping unqualified tables, set the the [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) YB-TServer flag to `true`.
+- Adding an expired or not-of-interest (unqualified) table to a publication being polled causes streaming errors. To have CDC proceed by skipping unqualified tables, set the [cdc_skip_unqualified_tables_for_polling](../../../reference/configuration/yb-tserver/#cdc-skip-unqualified-tables-for-polling) YB-TServer flag to `true`.
  
     When the flag is set to `true`, the virtual WAL skips unqualified tables and keeps streaming the qualified ones. A skipped table is not polled again, so its changes are never streamed by this slot.
 
