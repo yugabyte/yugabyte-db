@@ -13510,9 +13510,9 @@ Status CatalogManager::GetTableLocations(
   }
 
   // The virtual WAL always sets include_inactive
-  HybridTime min_restart_time;
+  std::unordered_set<TabletId> tablets_released_by_cdc;
   if (req->include_inactive() && table_started_hiding) {
-    min_restart_time = GetMinRestartTimeAcrossSlotsForTable(table->id());
+    tablets_released_by_cdc = GetHiddenTabletsReleasedByCDCSDK(table->id());
   }
 
   std::vector<TabletInfoPtr> tablets = VERIFY_RESULT(table->GetTabletsInRange(req));
@@ -13540,13 +13540,8 @@ Status CatalogManager::GetTableLocations(
       resp->mutable_tablet_locations()->RemoveLast();
       continue;
     }
-    if (min_restart_time.is_valid()) {
-      auto l_tablet = tablet->LockForRead();
-      // Same condition the CDC deletion task uses.
-      if (l_tablet->is_hidden() && l_tablet->pb.has_hide_hybrid_time() &&
-          HybridTime(l_tablet->pb.hide_hybrid_time()) < min_restart_time) {
-        locs_pb->set_hidden_table_released_by_cdc(true);
-      }
+    if (tablets_released_by_cdc.contains(tablet->id())) {
+      locs_pb->set_hidden_table_released_by_cdc(true);
     }
   }
 

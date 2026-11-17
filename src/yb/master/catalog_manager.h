@@ -3392,6 +3392,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DoProcessCDCSDKTabletDeletion(
       std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets);
 
+  // Returns true if no CDC stream needs the hidden tablet any more.
+  Result<bool> IsHiddenTabletReleasedByCDCSDK(
+      const TabletId& tablet_id, const HiddenReplicationTabletInfo& hidden_tablet,
+      const std::unordered_set<xrepl::StreamId>& stream_ids,
+      HybridTime min_restart_time_across_slots,
+      const std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>&
+          stream_creation_time_map,
+      std::vector<cdc::CDCStateTableKey>* entries_to_delete);
+
   Status DoProcessCDCSDKColocatedTableDeletion(
       const std::unordered_map<TableId, std::pair<TabletId, HybridTime>>& hidden_colocated_tables)
       EXCLUDES(mutex_);
@@ -3420,9 +3429,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
 
-  // Min restart time across the logical slots on table_id, or invalid if there are none or the
-  // cdc_state read fails.
-  HybridTime GetMinRestartTimeAcrossSlotsForTable(const TableId& table_id) EXCLUDES(mutex_);
+  // Hidden tablets of table_id that the CDC deletion task would delete now. Empty if the table has
+  // no logical replication streams or a read fails.
+  std::unordered_set<TabletId> GetHiddenTabletsReleasedByCDCSDK(const TableId& table_id)
+      EXCLUDES(mutex_);
 
   bool CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) EXCLUDES(mutex_);
 
