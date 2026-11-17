@@ -18,6 +18,19 @@ func PostgresMajorVersion(version string) int {
 	return major
 }
 
+// PgQuoteIdent quotes a postgres identifier, like quote_ident().
+func PgQuoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// PgQuoteLiteral quotes a postgres string literal, like quote_literal(). As an escape string
+// constant it reads the same whatever standard_conforming_strings is set to.
+func PgQuoteLiteral(value string) string {
+	escaped := strings.ReplaceAll(value, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `''`)
+	return `E'` + escaped + `'`
+}
+
 // InstalledPostgresDataDir returns the data directory set in the active install's postgresql.conf.
 func InstalledPostgresDataDir() (string, error) {
 	confPath := filepath.Join(GetActiveSymlink(), "pgsql/conf/postgresql.conf")

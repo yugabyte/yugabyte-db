@@ -33,7 +33,7 @@
  * last used OID (<system_catalog>.<object_name>). This is intended to act as a
  * safeguard against silent rebases.
  */
-#define YB_LAST_USED_OID 8117 /* corresponds to pg_authid.yb_global_views_user */
+#define YB_LAST_USED_OID 8120 /* corresponds to pg_yb_password_history_pwdhstrole_pwdhstchangetime_index */
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);

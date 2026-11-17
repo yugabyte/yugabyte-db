@@ -320,6 +320,7 @@ static bool yb_check_extra_commands_to_retry_in_proc(char **newval,
 													 GucSource source);
 static void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 													  void *extra);
+static void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra);
 static bool yb_disable_auto_analyze_check_hook(bool *newval, void **extra, GucSource source);
 static const char *show_tcmalloc_sample_period(void);
 static const char *yb_show_maxconnections(void);
@@ -2689,11 +2690,12 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Let a connection start from a catalog version this node already has "
 						 "cached."),
 			gettext_noop("A connection beginning while the master leader reports that it is "
-						 "shedding catalog prefetches reads the catalog at a version this node "
-						 "already holds, rather than fetching the whole catalog from the leader, "
-						 "and applies the invalidation messages in between before it runs "
-						 "anything. Turning this off makes every connection fetch from the "
-						 "leader as before, and returns the read a backend makes ahead of "
+						 "shedding catalog prefetches, or while another connection is already "
+						 "filling the catalog for its database, reads the catalog at a version "
+						 "this node already holds, rather than fetching the whole catalog from "
+						 "the leader, and applies the invalidation messages in between before "
+						 "it runs anything. Turning this off makes every connection fetch from "
+						 "the leader as before, and returns the read a backend makes ahead of "
 						 "authentication to the ordinary admission priority on the master."),
 			GUC_NOT_IN_SAMPLE
 		},
@@ -4208,6 +4210,20 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_conn_mgr_replication_origin_permanent_sticky", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Keeps a Connection Manager connection that sets up a "
+						 "replication origin in its session sticky until disconnect "
+						 "instead of unsticking it once the origin is reset."),
+			gettext_noop("Set through the ysql_yb_conn_mgr_reversible_stickiness_exclusions "
+						 "gflag."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_conn_mgr_replication_origin_permanent_sticky,
+		false,
+		NULL, yb_assign_conn_mgr_replication_origin_permanent_sticky, NULL
+	},
+
+	{
 		{"yb_enable_mage", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the use of mage extension. "
 						 "NOTE: This is for internal use only."),
@@ -4252,6 +4268,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_new_relation_fastpath_write_in_txn_blocks,
 		false,
 		check_yb_enable_new_relation_fastpath_write_in_txn_blocks, NULL, NULL
+	},
+
+	{
+		{"yb_enable_colocated_tables_with_tablespaces", PGC_SIGHUP, CUSTOM_OPTIONS,
+			gettext_noop("Place a colocated table or index that is created with a tablespace "
+						 "in an implicit tablegroup of that tablespace."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_colocated_tables_with_tablespaces,
+		true,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -7043,6 +7071,13 @@ static struct config_string ConfigureNamesString[] =
 		{"default_table_access_method", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the default table access method for new tables."),
 			NULL,
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The access method might have been dropped
+			 * between the SET and the replay, making the replay fail. So,
+			 * setting this GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY |
 			GUC_IS_NAME
 		},
 		&default_table_access_method,
@@ -7558,7 +7593,14 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"default_text_search_config", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets default text search configuration."),
-			NULL
+			NULL,
+			/*
+			 * YB: ConnMgr can't replay this safely since the check hook looks
+			 * up the name again. The config might have been dropped between
+			 * the SET and the replay, making the replay fail. So, setting this
+			 * GUC makes the connection sticky.
+			 */
+			GUC_YB_CONN_MGR_STICKY
 		},
 		&TSCurrentConfig,
 		"pg_catalog.simple",
@@ -12338,15 +12380,6 @@ set_config_option_ext(const char *name, const char *value,
 													 true,
 													 elevel,
 													 false);
-
-					if ((conf->gen.flags & GUC_YB_CUSTOM_STICKY) &&
-						(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
-						action == GUC_ACTION_SET &&
-						YbIsClientYsqlConnMgr())
-					{
-						elog(LOG, "Making connection sticky for setting %s", name);
-						yb_ysql_conn_mgr_sticky_guc = true;
-					}
 				}
 
 				if (makeDefault)
@@ -12539,6 +12572,23 @@ set_config_option_ext(const char *name, const char *value,
 		GetUserId() != GetSessionUserId())
 	{
 		elog(LOG, "Making connection sticky for setting %s as a user other than the session user",
+			 name);
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
+
+	/*
+	 * YB: Only a session-level SET or a startup-packet value of a
+	 * GUC_YB_CONN_MGR_STICKY variable is replayed by ConnMgr, so only those
+	 * make the connection sticky. SET LOCAL and function-level SET don't
+	 * outlive the transaction or call.
+	 */
+	if (changeVal &&
+		(record->flags & GUC_YB_CONN_MGR_STICKY) &&
+		(source == PGC_S_SESSION || source == PGC_S_CLIENT) &&
+		action == GUC_ACTION_SET &&
+		YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for setting %s, which is marked GUC_YB_CONN_MGR_STICKY",
 			 name);
 		yb_ysql_conn_mgr_sticky_guc = true;
 	}
@@ -13875,7 +13925,7 @@ DefineCustomStringVariable(const char *name,
 	define_custom_variable(&var->gen);
 
 	/* YB: make custom string variables sticky for connection manager */
-	var->gen.flags |= GUC_YB_CUSTOM_STICKY;
+	var->gen.flags |= GUC_YB_CONN_MGR_STICKY;
 }
 
 void
@@ -18034,6 +18084,13 @@ static void
 yb_assign_extra_commands_to_retry_in_proc(const char *newval, void *extra)
 {
 	yb_extra_commands_to_retry_in_proc = (bool *) extra;
+}
+
+static void
+yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval, void *extra)
+{
+	if (newval && YbHasReplicationOriginSetup())
+		yb_ysql_conn_mgr_sticky_replication_origin = true;
 }
 
 static bool

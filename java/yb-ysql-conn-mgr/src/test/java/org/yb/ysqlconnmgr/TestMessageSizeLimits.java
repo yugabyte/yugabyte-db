@@ -26,6 +26,7 @@ import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -46,6 +47,10 @@ public class TestMessageSizeLimits extends BaseYsqlConnMgr {
 
   private interface MessageReader {
     PgMessage read() throws Exception;
+  }
+
+  private interface ResponseCheck {
+    void verify(DataInputStream in) throws Exception;
   }
 
   @Override
@@ -87,12 +92,73 @@ public class TestMessageSizeLimits extends BaseYsqlConnMgr {
 
   @Test
   public void testOversizedMessageBeforeAuth() throws Exception {
-    forEachAuthMode(header('Q', 0x7fffffff, 1));
+    forEachAuthMode(header('Q', 0x7fffffff, 1), TestMessageSizeLimits::expectDropped);
+  }
+
+  // 'p' is the frontend PasswordMessage type, which also carries SASLInitialResponse and
+  // SASLResponse. Without the cap, ConnMgr waits up to the 15s auth timeout for the declared
+  // body, so the 5s socket timeout fails the test.
+  @Test
+  public void testAuthMessageOverTokenLimit() throws Exception {
+    forEachAuthMode(header('p', 65536, 0), TestMessageSizeLimits::expectDropped);
+  }
+
+  @Test
+  public void testAuthMessageAtTokenLimit() throws Exception {
+    forEachAuthMode(passwordMessage(65535), in -> {
+      PgMessage msg = PgWireProtocol.readMessage(in);
+      assertEquals("Expected PG to reject the password with an error, got " + msg,
+          PgWireProtocol.BE_ERROR_RESPONSE, msg.type);
+    });
+  }
+
+  // A SCRAM client sends a 1100-byte SASLInitialResponse, over PG's 1024-byte SASL limit, in auth
+  // passthrough mode with a single control connection. PG rejects it, and the next logins through
+  // that same control connection still succeed.
+  @Test
+  public void testOversizedSaslResponseInAuthPassthrough() throws Exception {
+    markClusterNeedsRecreation();
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ysql_enable_auth", "true");
+    flags.put("ysql_conn_mgr_use_auth_backend", "false");
+    flags.put("ysql_conn_mgr_control_connection_pool_size", "1");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
+
+    try (Connection conn = connectBystander();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET password_encryption = 'scram-sha-256'");
+      stmt.execute("CREATE ROLE scram_user LOGIN PASSWORD 'scram_pw'");
+    }
+
+    try (Socket socket = openSocket()) {
+      DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+      DataInputStream in = new DataInputStream(socket.getInputStream());
+      out.write(PgWireProtocol.buildStartupMessage("scram_user", "yugabyte", null));
+      out.flush();
+      PgMessage authRequest = PgWireProtocol.readMessage(in);
+      assertEquals("Expected an authentication request, got " + authRequest,
+          PgWireProtocol.BE_AUTHENTICATION, authRequest.type);
+      assertEquals("Expected AuthenticationSASL", 10,
+          ByteBuffer.wrap(authRequest.body).getInt());
+      out.write(passwordMessage(1100));
+      out.flush();
+      expectDropped(in);
+    }
+
+    for (int i = 0; i < 5; i++) {
+      try (Connection conn = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .withUser("scram_user")
+               .withPassword("scram_pw")
+               .connect()) {
+        assertAlive(conn);
+      }
+    }
   }
 
   // Sends the probe in place of the client's password/SASL response, in both auth modes; the
   // mode is not runtime settable.
-  private void forEachAuthMode(byte[] probe) throws Exception {
+  private void forEachAuthMode(byte[] probe, ResponseCheck check) throws Exception {
     markClusterNeedsRecreation();
     for (boolean useAuthBackend : new boolean[] {false, true}) {
       LOG.info("Running with ysql_conn_mgr_use_auth_backend={}", useAuthBackend);
@@ -112,7 +178,7 @@ public class TestMessageSizeLimits extends BaseYsqlConnMgr {
             PgWireProtocol.BE_AUTHENTICATION, authRequest.type);
         out.write(probe);
         out.flush();
-        expectDropped(() -> PgWireProtocol.readMessage(in));
+        check.verify(in);
         assertAlive(bystander);
       }
     }
@@ -137,6 +203,16 @@ public class TestMessageSizeLimits extends BaseYsqlConnMgr {
     buf.put((byte) type);
     buf.putInt(len);
     return buf.array();
+  }
+
+  private static byte[] passwordMessage(int len) {
+    byte[] msg = header('p', len, len - 4);
+    Arrays.fill(msg, 5, msg.length - 1, (byte) 'a');
+    return msg;
+  }
+
+  private static void expectDropped(DataInputStream in) throws Exception {
+    expectDropped(() -> PgWireProtocol.readMessage(in));
   }
 
   private static void expectDropped(MessageReader reader) throws Exception {

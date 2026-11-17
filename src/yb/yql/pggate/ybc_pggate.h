@@ -961,11 +961,24 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
 
 void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
+// send_away_if_fill_in_flight asks the tserver to answer Incomplete rather than queue this
+// prefetch behind a fill already under way -- another connection's anywhere in the same database,
+// or any session's on the entry this round wants -- so the caller reads the older version this
+// node holds instead. The caller must have somewhere to try: whether that read will work is
+// settled by making it, not before. It must not set this on the attempt that follows one, or the
+// two would answer each other. It reaches the wire only on the prefetch's opening round; a round
+// after that has fetched data a send-away would throw away.
+//
+// part_of_connection_prefetch says this prefetch is a connection start's, which keeps the tserver
+// counting the database as busy for the whole of it rather than only while one of its requests is
+// in flight.
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,
     YbcPgSysTablePrefetcherCacheMode cache_mode,
-    YbcPgSysTablePrefetchKind kind);
+    YbcPgSysTablePrefetchKind kind,
+    bool send_away_if_fill_in_flight,
+    bool part_of_connection_prefetch);
 
 void YBCStopSysTablePrefetching();
 

@@ -946,6 +946,8 @@ extern bool yb_enable_inplace_index_update;
  */
 extern bool yb_enable_advisory_locks;
 
+extern bool yb_enable_colocated_tables_with_tablespaces;
+
 /*
  * Enable invalidation messages.
  */
@@ -1549,6 +1551,8 @@ extern void decrement_sticky_object_count();
  * Check if there exists a database object that requires a sticky connection.
  */
 extern bool YbIsStickyConnection(int *change);
+
+extern bool YbHasReplicationOriginSetup(void);
 
 /*
  * Creates a shallow copy of the pointer list.
