@@ -3933,6 +3933,18 @@ YbIsViewImplicitlyTemp(PlannedStmt *pstmt, const char *queryString,
 	return isQueryUsingTempRelation(query);
 }
 
+/*
+ * Mark the current DDL as touching only temp relations, which never need a
+ * catalog version increment.
+ */
+static void
+YbMarkDdlTempOnly(bool *is_version_increment, bool *is_altering_existing_data)
+{
+	*is_version_increment = false;
+	*is_altering_existing_data = true;
+	YBMarkTxnUsesTempRelAndSetTxnId();
+}
+
 YbDdlModeOptional
 YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 			 ProcessUtilityContext context,
@@ -4056,9 +4068,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 			if (YbAreAllRangeVarsTemp(castNode(TruncateStmt, parsetree)->relations))
 			{
 				is_breaking_change = false;
-				is_version_increment = false;
-				is_altering_existing_data = true;
-				YBMarkTxnUsesTempRelAndSetTxnId();
+				YbMarkDdlTempOnly(&is_version_increment,
+								  &is_altering_existing_data);
 				break;
 			}
 
@@ -4092,9 +4103,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 				YbIsViewImplicitlyTemp(pstmt, queryString,
 									   castNode(ViewStmt, parsetree)))
 			{
-				is_version_increment = false;
-				is_altering_existing_data = true;
-				YBMarkTxnUsesTempRelAndSetTxnId();
+				YbMarkDdlTempOnly(&is_version_increment,
+								  &is_altering_existing_data);
 				break;
 			}
 
@@ -4189,9 +4199,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 				if (YbIsNewRangeVarTemp(stmt->relation) &&
 					YbAreAllRangeVarsTemp(stmt->inhRelations))
 				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
+					YbMarkDdlTempOnly(&is_version_increment,
+									  &is_altering_existing_data);
 					break;
 				}
 
@@ -4264,9 +4273,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 				if (stmt->into && stmt->into->rel &&
 					YbIsNewRangeVarTemp(stmt->into->rel))
 				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
+					YbMarkDdlTempOnly(&is_version_increment,
+									  &is_altering_existing_data);
 				}
 				else
 				{
@@ -4282,9 +4290,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 			/* Also covers the sequences of SERIAL and identity columns. */
 			if (YbIsNewRangeVarTemp(castNode(CreateSeqStmt, parsetree)->sequence))
 			{
-				is_version_increment = false;
-				is_altering_existing_data = true;
-				YBMarkTxnUsesTempRelAndSetTxnId();
+				YbMarkDdlTempOnly(&is_version_increment,
+								  &is_altering_existing_data);
 				break;
 			}
 
@@ -4437,9 +4444,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 			if (YbIsRangeVarTempRelation(castNode(AlterSeqStmt, parsetree)->sequence))
 			{
 				is_breaking_change = false;
-				is_version_increment = false;
-				is_altering_existing_data = true;
-				YBMarkTxnUsesTempRelAndSetTxnId();
+				YbMarkDdlTempOnly(&is_version_increment,
+								  &is_altering_existing_data);
 			}
 			break;
 
@@ -4479,9 +4485,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 
 				if (YbIsRangeVarTempRelation(stmt->relation))
 				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
+					YbMarkDdlTempOnly(&is_version_increment,
+									  &is_altering_existing_data);
 					break;
 				}
 
@@ -4525,9 +4530,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 				if (stmt->relation && YbIsRangeVarTempRelation(stmt->relation))
 				{
 					is_breaking_change = false;
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
+					YbMarkDdlTempOnly(&is_version_increment,
+									  &is_altering_existing_data);
 				}
 				break;
 			}
@@ -4555,9 +4559,8 @@ YbGetDdlMode(PlannedStmt *pstmt, const char *queryString,
 				 */
 				if (YbIsRangeVarTempRelation(stmt->relation))
 				{
-					is_version_increment = false;
-					is_altering_existing_data = true;
-					YBMarkTxnUsesTempRelAndSetTxnId();
+					YbMarkDdlTempOnly(&is_version_increment,
+									  &is_altering_existing_data);
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
