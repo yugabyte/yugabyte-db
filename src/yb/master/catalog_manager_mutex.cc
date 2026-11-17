@@ -13,16 +13,35 @@
 
 #include "yb/master/catalog_manager_mutex.h"
 
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 
-DEFINE_NON_RUNTIME_bool(catalog_manager_use_blocking_mutex, false,
-    "Use a writer-preferring pthread rwlock for the catalog manager's locks instead of "
-    "rw_spinlock, so threads waiting for them sleep instead of polling.");
-TAG_FLAG(catalog_manager_use_blocking_mutex, advanced);
+static constexpr char kSpinlock[] = "spinlock";
+static constexpr char kRWMutex[] = "rwmutex";
+static constexpr char kAbsl[] = "absl";
+
+DEFINE_NON_RUNTIME_string(catalog_manager_mutex_type, kSpinlock,
+    "Lock type for the catalog manager's locks: \"spinlock\" (rw_spinlock, waiters poll), "
+    "\"rwmutex\" (writer-preferring pthread rwlock) or \"absl\" (absl::Mutex).");
+DEFINE_validator(catalog_manager_mutex_type, FLAG_IN_SET_VALIDATOR(kSpinlock, kRWMutex, kAbsl));
+TAG_FLAG(catalog_manager_mutex_type, advanced);
 
 namespace yb::master {
 
-CatalogManagerMutex::CatalogManagerMutex()
-    : blocking_(FLAGS_catalog_manager_use_blocking_mutex) {}
+namespace {
+
+CatalogManagerMutex::Type TypeFromFlag() {
+  if (FLAGS_catalog_manager_mutex_type == kRWMutex) {
+    return CatalogManagerMutex::Type::kRWMutex;
+  }
+  if (FLAGS_catalog_manager_mutex_type == kAbsl) {
+    return CatalogManagerMutex::Type::kAbsl;
+  }
+  return CatalogManagerMutex::Type::kSpinlock;
+}
+
+} // namespace
+
+CatalogManagerMutex::CatalogManagerMutex() : type_(TypeFromFlag()) {}
 
 } // namespace yb::master

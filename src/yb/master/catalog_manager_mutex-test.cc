@@ -17,6 +17,7 @@
 #include <atomic>
 #include <iostream>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -28,7 +29,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/test_util.h"
 
-DECLARE_bool(catalog_manager_use_blocking_mutex);
+DECLARE_string(catalog_manager_mutex_type);
 
 DEFINE_test_flag(int32, catalog_mutex_test_waiters, 2000,
     "Number of threads that queue for the lock behind the writer in the convoy test.");
@@ -57,23 +58,23 @@ uint64_t Spin(uint64_t iterations) {
 
 } // namespace
 
-class CatalogManagerMutexTest : public YBTest, public ::testing::WithParamInterface<bool> {
+class CatalogManagerMutexTest : public YBTest, public ::testing::WithParamInterface<std::string> {
  protected:
   void SetUp() override {
     YBTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_use_blocking_mutex) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_mutex_type) = GetParam();
   }
 };
 
-INSTANTIATE_TEST_SUITE_P(, CatalogManagerMutexTest, ::testing::Bool(),
-    [](const auto& info) { return info.param ? "Blocking" : "Spinlock"; });
+INSTANTIATE_TEST_SUITE_P(, CatalogManagerMutexTest,
+    ::testing::Values("spinlock", "rwmutex", "absl"),
+    [](const auto& info) { return info.param; });
 
 // The CE-1824 convoy: a long shared holder (the backup repack), a queued writer (the bg task) and
 // thousands of RPC threads queued behind the writer. Measures how long the holder's fixed amount of
 // work takes and how much CPU the process burns while the waiters wait.
 TEST_P(CatalogManagerMutexTest, Convoy) {
   CatalogManagerMutex mutex;
-  ASSERT_EQ(mutex.is_blocking(), GetParam());
 
   constexpr uint64_t kWork = 2'000'000'000ULL;
   std::atomic<uint64_t> sink{0};
@@ -119,7 +120,7 @@ TEST_P(CatalogManagerMutexTest, Convoy) {
     t.join();
   }
 
-  std::cerr << (GetParam() ? "Blocking" : "Spinlock") << " convoy with "
+  std::cerr << GetParam() << " convoy with "
             << FLAGS_TEST_catalog_mutex_test_waiters << " waiters: holder work took "
             << held.ToSeconds() << " s (alone " << alone.ToSeconds() << " s, "
             << held.ToSeconds() / alone.ToSeconds() << "x), process CPU during the hold "
@@ -175,7 +176,7 @@ TEST_P(CatalogManagerMutexTest, Throughput) {
   auto pct = [&](double p) {
     return writer_wait_us.empty() ? 0 : writer_wait_us[(writer_wait_us.size() - 1) * p];
   };
-  std::cerr << (GetParam() ? "Blocking" : "Spinlock") << " throughput with " << kReaders
+  std::cerr << GetParam() << " throughput with " << kReaders
             << " readers: " << shared_ops / kDuration.ToSeconds() << " shared ops/s, "
             << writer_wait_us.size() << " exclusive acquisitions, writer wait p50 " << pct(0.5)
             << " us p99 " << pct(0.99) << " us max " << pct(1.0) << " us, CPU " << cpu << " s"
@@ -216,7 +217,7 @@ TEST_P(CatalogManagerMutexTest, ReleaseToWaiters) {
       }
       auto cpu = ProcessCpuSeconds() - cpu_start;
       std::sort(acquired.begin(), acquired.end());
-      std::cerr << (GetParam() ? "Blocking" : "Spinlock") << " release to " << waiters
+      std::cerr << GetParam() << " release to " << waiters
                 << " waiters: unlock() " << unlock_us << " us, first waiter in "
                 << (acquired.front() - t0).ToMicroseconds() << " us, median "
                 << (acquired[waiters / 2] - t0).ToMicroseconds() << " us, last "
@@ -255,7 +256,7 @@ TEST_P(CatalogManagerMutexTest, ReaderHandoffToWriter) {
       }
       auto all_us = (MonoTime::Now() - t0).ToMicroseconds();
       auto cpu = ProcessCpuSeconds() - cpu_start;
-      std::cerr << (GetParam() ? "Blocking" : "Spinlock") << " reader->writer handoff with "
+      std::cerr << GetParam() << " reader->writer handoff with "
                 << waiters << " queued readers: unlock_shared() " << unlock_us
                 << " us, writer in " << writer_us << " us, all done " << all_us << " us, CPU "
                 << cpu * 1000 << " ms" << std::endl;
