@@ -167,6 +167,17 @@ DEFINE_test_flag(bool, fail_create_table_rpc, false,
 DEFINE_test_flag(bool, pause_session_lock_before_release, false,
     "Pause before releasing session object lock.");
 
+DEFINE_test_flag(bool, fail_cached_connection_prefetch, false,
+    "Fail every caching round of a connection start's prefetch with a snapshot-too-old error, "
+    "once it has taken its claim on the database. PG then falls through its cached prefetch "
+    "starters to the one that reads without the cache, which otherwise needs a real read to run "
+    "out of snapshot three times over.");
+
+DEFINE_test_flag(bool, pause_uncached_connection_prefetch, false,
+    "Hold every round of a connection start's prefetch that carries no caching info, so a test "
+    "can let another connection arrive while such a read is in flight. Pauses after the claim "
+    "has been settled for the round, which is what that other connection reads.");
+
 DEFINE_test_flag(bool, pause_perform_with_paging_state, false,
     "Pause Perform requests that contain a read operation with a "
     "paging state, until the flag is reset.");
@@ -836,6 +847,9 @@ struct QueryData<PerformQueryTraits> final : public QueryDataBase<PerformQueryTr
   SubTransactionId subtxn_id;
   UsedReadTimeApplier used_read_time_applier;
   PgResponseCache::Setter cache_setter;
+  // Set only for the last request of a connection start that reads without the cache, which has
+  // no setter to end its claim.
+  PgResponseCache::FillTokenPtr completes_prefetch_token;
   HybridTime used_in_txn_limit;
   VectorIndexQueryPtr vector_index_query;
 
@@ -875,6 +889,7 @@ struct QueryData<PerformQueryTraits> final : public QueryDataBase<PerformQueryTr
     if (cache_setter) {
       cache_setter({resp, ExtractRowsSidecar(resp, sidecars)});
     }
+    PgResponseCache::EndConnectionPrefetchClaim(resp, completes_prefetch_token);
     if (used_read_time_applier) {
       used_read_time_applier(std::move(used_read_time));
     }
@@ -3701,29 +3716,15 @@ class PgClientSession::Impl {
     // still in flight holds the same token, so the database stays counted until that round
     // lands. Such a request usually means the prefetch is over, having finished or given up.
     //
-    // The exception is a read of a sys table the prefetch did not register, which carries no
-    // caching info either: it drops the claim while the prefetch is still running, so the gaps
-    // between its remaining requests go uncounted until its next fill takes a fresh token.
-    // What is lost is the gap cover, not the protection while a round is filling. pggate logs
-    // such a read as not prefetched, and the answer to it is to register the table.
-    //
-    // TODO(#34309): a connection start whose last YbPrefetch has nothing registered issues no
-    // request at all -- the preload note beside that call in relcache.c -- so no completing
-    // round reaches the cache and no round ends its claim. A pooled backend idle after startup
-    // sends nothing outside a prefetch either, so its database stays counted until the session
-    // exits. In that configuration nothing records a version either, so nothing asks and the
-    // held claim costs nothing; it bites only on a node that recorded one before the preload
-    // list grew to cover that round.
-    //
-    // TODO(#34309): the no-cache starter is the wider case. It runs a connection start's
-    // rounds with no caching info at all -- YBCStartSysTablePrefetchingNoCache passes none --
-    // so its first round ends the claim and the whole uncached catalog read runs uncounted,
-    // not just the gaps. Reaching it needs the earlier starters to fail on a snapshot too old
-    // in turn, which is why this is a note rather than a fix: carrying
-    // part_of_connection_prefetch there means giving a prefetch that wants no cache something
-    // to put it in.
-    if (!options.has_caching_info() ||
-        !options.caching_info().part_of_connection_prefetch()) {
+    // The exception is a read of a sys table the prefetch did not register: it drops the claim
+    // while the prefetch is still running, so the gaps between its remaining requests go
+    // uncounted until its next fill takes a fresh token. What is lost is the gap cover, not the
+    // protection while a round is filling. pggate logs such a read as not prefetched, and the
+    // answer to it is to register the table.
+    const PgResponseCache::ConnectionPrefetchInfo prefetch{
+        .part_of_connection_prefetch = options.part_of_connection_prefetch(),
+        .completes_connection_prefetch = options.completes_connection_prefetch()};
+    if (!prefetch.part_of_connection_prefetch) {
       prefetch_fill_token_.reset();
     }
 
@@ -3731,10 +3732,33 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
-          options.mutable_caching_info(), deadline, data, &prefetch_fill_token_));
+          options.mutable_caching_info(), prefetch, deadline, data, &prefetch_fill_token_));
       if (!data->cache_setter) {
         return Status::OK();
       }
+    } else if (prefetch.completes_connection_prefetch) {
+      // A connection start that reads without the cache leaves the cache no setter and no stored
+      // response to test, so the claim is ended from FlushDone instead. The token is whatever an
+      // earlier cached attempt of this session left in the slot: nothing when the connection
+      // started at the no-cache starter rather than falling through to it, and nothing counted
+      // when that attempt released it on the way out.
+      data->completes_prefetch_token = prefetch_fill_token_;
+    }
+
+    // After the cache has handed out the setter, so the round counted its database before it
+    // failed, which is what a real snapshot-too-old partway through a prefetch leaves behind.
+    // The setter is destroyed un-invoked on the way out, and its abandon guard completes the
+    // entry for whoever queued on it.
+    if (PREDICT_FALSE(FLAGS_TEST_fail_cached_connection_prefetch) &&
+        prefetch.part_of_connection_prefetch && options.has_caching_info()) {
+      return STATUS(
+          InternalError, "TEST_fail_cached_connection_prefetch",
+          TransactionError(TransactionErrorCode::kSnapshotTooOld));
+    }
+
+    if (PREDICT_FALSE(FLAGS_TEST_pause_uncached_connection_prefetch) &&
+        prefetch.part_of_connection_prefetch && !options.has_caching_info()) {
+      TEST_PAUSE_IF_FLAG(TEST_pause_uncached_connection_prefetch);
     }
 
     const auto in_txn_limit = GetInTxnLimit(options, clock().get());

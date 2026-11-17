@@ -190,16 +190,20 @@ void TEST_UpdateCatalogReadTime(
 // and each round is cached under a key of its own, so a round with paging state left has later
 // rounds still to come. A failed round holds no rows and no paging state, so it must not be
 // mistaken for the last one.
-[[nodiscard]] bool EndsPrefetch(const PgResponseCache::Response& resp) {
-  if (!IsOk(resp)) {
+[[nodiscard]] bool EndsPrefetch(const LWPgPerformResponsePB& response) {
+  if (response.has_status()) {
     return false;
   }
-  for (const auto& op_response : resp.response->responses()) {
+  for (const auto& op_response : response.responses()) {
     if (op_response.has_paging_state()) {
       return false;
     }
   }
   return true;
+}
+
+[[nodiscard]] bool EndsPrefetch(const PgResponseCache::Response& resp) {
+  return IsOk(resp) && EndsPrefetch(*resp.response);
 }
 
 class MetricContext {
@@ -604,13 +608,13 @@ class PgResponseCache::Impl : private GarbageCollector {
   // response yet, and a round answered while the database's cache is disabled has read nothing
   // at all. Both end the claim whatever the round turns out to be, so a claim can end a round
   // or two early there; the next round that fills takes a fresh token, and the database is
-  // uncounted only in between.
+  // uncounted until one does.
   static void EndPrefetchClaimIfComplete(
-      const LWPgPerformOptionsPB::LWCachingInfoPB& cache_info, FillTokenPtr* token) {
+      const ConnectionPrefetchInfo& prefetch, FillTokenPtr* token) {
     if (FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
       return;
     }
-    if (cache_info.completes_connection_prefetch() && token && *token) {
+    if (prefetch.completes_connection_prefetch && token && *token) {
       (*token)->Release();
     }
   }
@@ -686,8 +690,8 @@ class PgResponseCache::Impl : private GarbageCollector {
 
  public:
   Result<Setter> Get(
-      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, CoarseTimePoint deadline,
-      const PgResponseCacheWaiterPtr& waiter,
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, const ConnectionPrefetchInfo& prefetch,
+      CoarseTimePoint deadline, const PgResponseCacheWaiterPtr& waiter,
       FillTokenPtr* token) EXCLUDES(mutex_) {
     // The last request of a connection start's prefetch is one of its requests, so the two fields
     // have three valid combinations between them and the wire allows a fourth. Only a bug on the
@@ -697,13 +701,13 @@ class PgResponseCache::Impl : private GarbageCollector {
     // cost is a wasted attempt rather than a catalog read at the wrong version. DFATAL rather
     // than FATAL: a debug build fails on it, since only a bug produces it, while a release
     // tserver logs it and carries on.
-    LOG_IF(DFATAL, cache_info->completes_connection_prefetch() &&
-                       !cache_info->part_of_connection_prefetch())
+    LOG_IF(DFATAL, prefetch.completes_connection_prefetch &&
+                       !prefetch.part_of_connection_prefetch)
         << "Request completes a connection prefetch it is not part of, key group "
         << cache_info->key_group() << ", catalog version " << cache_info->catalog_version();
 
     if (cache_info->lookup_only()) {
-      return LookupOnlyGet(cache_info, waiter);
+      return LookupOnlyGet(cache_info, prefetch, waiter);
     }
     const auto group = cache_info->key_group();
     queries_->Increment();
@@ -774,7 +778,7 @@ class PgResponseCache::Impl : private GarbageCollector {
       // Nothing has been read yet, so unlike the setter and the arm below this cannot tell a
       // round that is finishing the prefetch from one that will fail and be retried. It ends
       // the claim either way, and the retry's first fill takes a fresh token.
-      EndPrefetchClaimIfComplete(*cache_info, token);
+      EndPrefetchClaimIfComplete(prefetch, token);
       return [](Response&& response) {};
     }
     auto join = data->RegisterWaiter(waiter, SendAway(cache_info->send_away_if_fill_in_flight()));
@@ -785,7 +789,7 @@ class PgResponseCache::Impl : private GarbageCollector {
         // one this caller produced: a round that failed, or that still has paging state behind
         // it, is not the end of the prefetch and must not end the claim.
         if (EndsPrefetch(*join.response)) {
-          EndPrefetchClaimIfComplete(*cache_info, token);
+          EndPrefetchClaimIfComplete(prefetch, token);
         }
         waiter->Apply(*join.response);
         return Setter();
@@ -793,7 +797,7 @@ class PgResponseCache::Impl : private GarbageCollector {
         hits_->Increment();
         // No response yet, so the outcome cannot be checked as it is above, and a completing
         // round that goes on to fail ends the claim here all the same.
-        EndPrefetchClaimIfComplete(*cache_info, token);
+        EndPrefetchClaimIfComplete(prefetch, token);
         return Setter();
       case Data::JoinState::kSentAway:
         // Not a hit: nothing was served. The caller reads the version this node already holds
@@ -818,13 +822,12 @@ class PgResponseCache::Impl : private GarbageCollector {
             abandon_guard =
                 std::make_shared<CancelableScopeExit<decltype(abandon)>>(std::move(abandon)),
             fill = TakeFillToken(
-                PartOfConnectionPrefetch(cache_info->part_of_connection_prefetch()),
-                group, token),
+                PartOfConnectionPrefetch(prefetch.part_of_connection_prefetch), group, token),
             observer = fill_observer_,
             group,
             version,
             completes_connection_prefetch =
-                cache_info->completes_connection_prefetch()](Response&& response) {
+                prefetch.completes_connection_prefetch](Response&& response) {
       TEST_PAUSE_IF_FLAG(TEST_pg_response_cache_pause_fill);
       // A prefetch is paged. pggate keeps issuing reads while any operation still returns paging
       // state, and each round is cached under a key of its own, so an observer told about the
@@ -874,7 +877,7 @@ class PgResponseCache::Impl : private GarbageCollector {
   // a miss: an entry claimed for a fill that is not coming makes every later query on that key
   // wait out the RPC deadline.
   Result<Setter> LookupOnlyGet(
-      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
+      LWPgPerformOptionsPB::LWCachingInfoPB* cache_info, const ConnectionPrefetchInfo& prefetch,
       const PgResponseCacheWaiterPtr& waiter) EXCLUDES(mutex_) {
     auto data = FindEntryData(cache_info);
     queries_->Increment();
@@ -887,7 +890,7 @@ class PgResponseCache::Impl : private GarbageCollector {
     if (!response || !IsOk(*response) ||
         PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss) ||
         PREDICT_FALSE(FLAGS_TEST_pg_response_cache_force_lookup_only_miss_on_final_request &&
-                      cache_info->completes_connection_prefetch())) {
+                      prefetch.completes_connection_prefetch)) {
       lookup_only_misses_->Increment();
       return STATUS(Incomplete, "Response is not cached");
     }
@@ -1030,12 +1033,21 @@ PgResponseCache::PgResponseCache(
 
 PgResponseCache::~PgResponseCache() = default;
 
+void PgResponseCache::EndConnectionPrefetchClaim(
+    const LWPgPerformResponsePB& response, const FillTokenPtr& token) {
+  if (token && !FLAGS_TEST_pg_response_cache_keep_claim_past_completion &&
+      EndsPrefetch(response)) {
+    token->Release();
+  }
+}
+
 Result<PgResponseCache::Setter> PgResponseCache::Get(
     LWPgPerformOptionsPB::LWCachingInfoPB* cache_info,
+    const ConnectionPrefetchInfo& prefetch,
     CoarseTimePoint deadline,
     const PgResponseCacheWaiterPtr& waiter,
     FillTokenPtr* token) {
-  return impl_->Get(cache_info, deadline, waiter, token);
+  return impl_->Get(cache_info, prefetch, deadline, waiter, token);
 }
 
 PgResponseCache::FillToken::FillToken(Impl* impl, KeyGroup group)

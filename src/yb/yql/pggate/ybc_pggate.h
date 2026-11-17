@@ -1009,7 +1009,12 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
+// part_of_connection_prefetch says this prefetch is a connection start's, which keeps the tserver
+// counting the database as busy for the whole of it rather than only while one of its requests is
+// in flight. A prefetch that reads without the cache sets it too: its rounds carry no caching
+// info, and without this the first of them would look like an ordinary read and drop the claim.
+void YBCStartSysTablePrefetchingNoCache(
+    YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch);
 
 // send_away_if_fill_in_flight asks the tserver to answer Incomplete rather than queue this
 // prefetch behind a fill already under way in the same database, so the caller reads the older
@@ -1018,9 +1023,7 @@ void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 // one, or the two would answer each other. It reaches the wire only on the prefetch's opening
 // round; a round after that has fetched data a send-away would throw away.
 //
-// part_of_connection_prefetch says this prefetch is a connection start's, which keeps the tserver
-// counting the database as busy for the whole of it rather than only while one of its requests is
-// in flight.
+// part_of_connection_prefetch is as above.
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,

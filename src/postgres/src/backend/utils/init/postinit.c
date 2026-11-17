@@ -1205,7 +1205,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 										YbAuthPrefetchKind(), false, false);
 		}
 		else
-			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind());
+			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind(), false);
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 

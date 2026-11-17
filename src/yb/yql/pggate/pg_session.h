@@ -50,6 +50,13 @@ namespace yb::pggate {
 
 class PgFlushDebugContext;
 
+// What a request says about the connection start it belongs to. Carried outside CacheOptions
+// because a connection start reading without the cache sets it too. See PgPerformOptionsPB.
+struct PgConnectionPrefetchOptions {
+  bool part_of_connection_prefetch = false;
+  bool completes_connection_prefetch = false;
+};
+
 struct PgSessionRunOptions {
   HybridTime in_txn_limit{};
   ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
@@ -158,15 +165,9 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
     uint64_t catalog_version;
     // Do not fill on a miss; see CachingInfoPB.lookup_only.
     bool lookup_only;
-    // Last request of a connection start's prefetch; see
-    // CachingInfoPB.completes_connection_prefetch.
-    bool completes_connection_prefetch;
     // Return rather than wait behind a fill already under way; see
     // CachingInfoPB.send_away_if_fill_in_flight.
     bool send_away_if_fill_in_flight;
-    // Any round of a connection start's prefetch; see
-    // CachingInfoPB.part_of_connection_prefetch.
-    bool part_of_connection_prefetch;
   };
 
   Result<PerformFuture> RunAsync(
@@ -176,7 +177,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
       const OperationGenerator& generator, const RunOptions& options = {});
 
   Result<PerformFuture> RunAsync(
-      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options = {});
+      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options = {},
+      const PgConnectionPrefetchOptions& connection_prefetch = {});
 
   std::string GenerateNewYbrowid();
 
@@ -257,6 +259,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
     bool has_catalog_ops = false;
     std::optional<ReadTimeAction> read_time_action = {};
     std::optional<CacheOptions> cache_options = std::nullopt;
+    PgConnectionPrefetchOptions connection_prefetch = {};
     HybridTime in_txn_limit = {};
   };
 
@@ -271,7 +274,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
       const Generator& generator, const RunOptions& options,
-      std::optional<CacheOptions>&& cache_options = std::nullopt);
+      std::optional<CacheOptions>&& cache_options = std::nullopt,
+      const PgConnectionPrefetchOptions& connection_prefetch = {});
 
   template <class... Args>
   auto SetupPerformOptions(Args&&... args) {

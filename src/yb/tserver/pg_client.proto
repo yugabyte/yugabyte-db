@@ -879,16 +879,6 @@ message PgPerformOptionsPB {
     // catalog to be read afresh and then stored under that older version's key.
     bool lookup_only = 5;
 
-    // This request is the last of a connection start's prefetch, so once it is cached this node
-    // holds every entry such a connection needs at catalog_version. The tserver records the
-    // version only for these, because the load worth sparing the master leader is the large
-    // catalog read a connection start makes, and a connection skips it only when the whole set
-    // is cached: it reads every request back, and a partial set sends it to the leader anyway.
-    // The small prefetches elsewhere -- the pre-auth pair of tables, the few read after a
-    // relcache preload -- cost the leader little, so a version recorded from one of them would
-    // advertise a saving that does not exist.
-    bool completes_connection_prefetch = 6;
-
     // If a fill is already under way anywhere in this key group, answer Incomplete rather than
     // queueing this caller behind it. The caller then reads the older version this node holds
     // and catches up from there.
@@ -905,13 +895,9 @@ message PgPerformOptionsPB {
     // so a prefetch that keeps failing cannot bounce between the two.
     bool send_away_if_fill_in_flight = 7;
 
-    // Every round of a connection start's prefetch carries this; completes_connection_prefetch
-    // marks the last request of it, every round of that one included, so the round that ends
-    // the prefetch is the one that also runs out of paging state. It makes the database count
-    // as busy for the whole prefetch rather than only while one of its requests is in flight,
-    // so a connection arriving while this one is building its relcache -- seconds of CPU with
-    // nothing outstanding -- finds that fill instead of starting a second whole-catalog read.
-    bool part_of_connection_prefetch = 8;
+    // 6 and 8 moved to PgPerformOptionsPB as completes_connection_prefetch and
+    // part_of_connection_prefetch, which a connection start reading without the cache also sets.
+    reserved 6, 8;
   }
 
   message ReadTimeOptionsPB {
@@ -994,6 +980,26 @@ message PgPerformOptionsPB {
   // Subtransactions of historical_read_transaction_id rolled back to a savepoint.
   // Only applicable when historical_read_transaction_id is set.
   SubtxnSetPB historical_read_aborted_subtxns = 41;
+
+  // Every round of a connection start's prefetch carries this. It makes the database count as
+  // busy for the whole prefetch rather than only while one of its requests is in flight, so a
+  // connection arriving while this one builds its relcache -- seconds of CPU with nothing
+  // outstanding -- finds that fill instead of starting a second whole-catalog read.
+  //
+  // Here rather than in caching_info because a connection start reading without the cache,
+  // through YBCStartSysTablePrefetchingNoCache, sends no caching info and still holds the claim.
+  bool part_of_connection_prefetch = 42;
+
+  // The last request of that prefetch, carried by every round of it. The round of it that runs
+  // out of paging state releases the claim; which rounds the tserver can tell apart is
+  // EndPrefetchClaimIfComplete's business.
+  //
+  // Where the request also caches, this is what lets the tserver record the catalog version:
+  // once the request is cached the node holds every entry such a connection reads. A connection
+  // reads every request back, so a partial set would send it to the master leader anyway. The
+  // small prefetches elsewhere -- the pre-auth pair of tables, the few read after a relcache
+  // preload -- do not carry it, so no version is recorded from them.
+  bool completes_connection_prefetch = 43;
 }
 
 message PgRequestSequenceNumPB {

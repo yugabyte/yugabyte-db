@@ -287,7 +287,7 @@ Status GetSplitPoints(YbcPgTableDesc table_desc,
 
 void YBCStartSysTablePrefetchingImpl(
     std::optional<PrefetcherOptions::CachingInfo> caching_info,
-    YbcPgSysTablePrefetchKind kind) {
+    YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch) {
   const auto* flags = YBCGetGFlags();
   const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
   const auto max_size_limit = YBCGetMaxRpcResponseSize();
@@ -295,7 +295,8 @@ void YBCStartSysTablePrefetchingImpl(
       caching_info,
       *flags->ysql_catalog_prefetch_row_limit,
       kind,
-      configured_size_limit ? std::min(configured_size_limit, max_size_limit) : max_size_limit});
+      configured_size_limit ? std::min(configured_size_limit, max_size_limit) : max_size_limit,
+      part_of_connection_prefetch});
 }
 
 PrefetchingCacheMode YBCMapPrefetcherCacheMode(YbcPgSysTablePrefetcherCacheMode mode) {
@@ -2624,8 +2625,9 @@ void* YBCPgGetThreadLocalErrStatus() {
   return PgGetThreadLocalErrStatus();
 }
 
-void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind) {
-  YBCStartSysTablePrefetchingImpl(std::nullopt, kind);
+void YBCStartSysTablePrefetchingNoCache(
+    YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch) {
+  YBCStartSysTablePrefetchingImpl(std::nullopt, kind, part_of_connection_prefetch);
 }
 
 void YBCStartSysTablePrefetching(
@@ -2643,8 +2645,8 @@ void YBCStartSysTablePrefetching(
               version_info.is_db_catalog_version_mode
           },
           database_oid, YBCMapPrefetcherCacheMode(cache_mode),
-          send_away_if_fill_in_flight, part_of_connection_prefetch},
-      kind);
+          send_away_if_fill_in_flight},
+      kind, part_of_connection_prefetch);
 }
 
 void YBCStopSysTablePrefetching() {

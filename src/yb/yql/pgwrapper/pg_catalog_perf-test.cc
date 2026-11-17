@@ -41,6 +41,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -84,6 +85,8 @@ DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss);
 DECLARE_bool(TEST_pg_response_cache_force_lookup_only_miss_on_final_request);
 DECLARE_bool(TEST_pg_response_cache_keep_claim_past_completion);
 DECLARE_bool(TEST_pg_response_cache_pause_fill);
+DECLARE_bool(TEST_fail_cached_connection_prefetch);
+DECLARE_bool(TEST_pause_uncached_connection_prefetch);
 DECLARE_bool(ysql_yb_enable_stale_catalog_prefetch);
 DECLARE_uint64(ysql_catalog_prefetch_row_limit);
 DECLARE_string(ysql_pg_conf_csv);
@@ -2065,6 +2068,141 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
       << "the connection queued behind the fill rather than being sent away from it";
   ASSERT_GT(delta.cache.lookup_only_hits, 0)
       << "the connection was sent away but did not read the version this node already held";
+}
+
+// Fails every caching round of a connection start's prefetch as a snapshot too old, which is how
+// PG falls through its cached starters to the one that reads without the cache. Falling through
+// without this needs three catalog reads to run out of snapshot in turn.
+class CachedPrefetchFailing {
+ public:
+  CachedPrefetchFailing() { Set(true); }
+
+  ~CachedPrefetchFailing() { Stop(); }
+
+  // Lets caching rounds through again, so a connection arriving later prefetches as it otherwise
+  // would. Static, for the reason PausedFills gives.
+  static void Stop() { Set(false); }
+
+  CachedPrefetchFailing(const CachedPrefetchFailing&) = delete;
+  CachedPrefetchFailing& operator=(const CachedPrefetchFailing&) = delete;
+
+ private:
+  static void Set(bool failing) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_cached_connection_prefetch) = failing;
+  }
+};
+
+// Holds every round that carries no caching info, so another connection can arrive while one of
+// them is in flight.
+class UncachedRoundsPaused {
+ public:
+  UncachedRoundsPaused() { Set(true); }
+
+  ~UncachedRoundsPaused() { Resume(); }
+
+  // Static, for the reason PausedFills gives.
+  static void Resume() { Set(false); }
+
+  UncachedRoundsPaused(const UncachedRoundsPaused&) = delete;
+  UncachedRoundsPaused& operator=(const UncachedRoundsPaused&) = delete;
+
+ private:
+  static void Set(bool paused) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_uncached_connection_prefetch) = paused;
+  }
+};
+
+// A connection start that falls through to the starter reading without the cache keeps its claim
+// on the database for that whole read. Those rounds carry no caching info, so until
+// part_of_connection_prefetch moved to the perform options there was nothing on them to say they
+// belonged to a prefetch: the first of them dropped the claim, and a connection arriving during
+// the catalog read that followed read the whole catalog itself rather than being sent away.
+//
+// The leader is pinned at LOW for the reason DefersToAFillAlreadyUnderWay gives.
+TEST_F(PgStaleCatalogPrefetchTest, AnUncachedPrefetchKeepsItsClaim) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_uncached (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version for the sent-away connection to fall back to"));
+
+  // Moves the catalog on, so the connections below need entries this node does not hold.
+  ASSERT_OK(conn.Execute("ALTER TABLE t_uncached ADD COLUMN v INT"));
+
+  StringWaiterLogSink paused("Pausing due to flag TEST_pause_uncached_connection_prefetch");
+  // Both after the thread holder, so they are destroyed first: an assertion that returns early
+  // has to lift the pause before JoinAll waits on a connection still held in it.
+  TestThreadHolder threads;
+  CachedPrefetchFailing failing;
+  UncachedRoundsPaused held;
+  threads.AddThreadFunctor([this] {
+    auto uncached = ASSERT_RESULT(Connect());
+    ASSERT_OK(uncached.FetchRow<int32_t>("SELECT 1"));
+  });
+  ASSERT_OK(paused.WaitFor(60s));
+  CachedPrefetchFailing::Stop();
+
+  // The uncached read is in flight and still holds the claim, so this connection is sent away
+  // from it and reads the version this node already holds.
+  const auto delta = ASSERT_RESULT(metrics_->Delta([this]() -> Status {
+    auto deferred = VERIFY_RESULT(Connect());
+    return ResultToStatus(deferred.FetchRow<int32_t>("SELECT 1"));
+  }));
+
+  UncachedRoundsPaused::Resume();
+  threads.JoinAll();
+
+  ASSERT_GT(delta.cache.send_aways, 0)
+      << "the connection reading without the cache dropped its claim, so the next connection "
+      << "read the whole catalog itself instead of being sent away";
+  ASSERT_GT(delta.cache.lookup_only_hits, 0)
+      << "the connection was sent away but did not read the version this node already held";
+}
+
+// The other half: a connection start that read without the cache has to end its claim when its
+// last round runs out of paging state. No setter runs for those rounds, so pg_client_session
+// ends the claim from FlushDone instead. Without that the database stays counted for as long as
+// the connection sits idle, and every later connection start on it is sent away to an older
+// version with nothing filling at all.
+//
+// 1. Record a version for the connections below to ask about, and move the catalog on.
+// 2. Fail every caching round, so a connection start falls through to the uncached read, and
+//    let that read finish.
+// 3. Leave that connection open and idle. SELECT 1 is answered inside PG and sends nothing, so
+//    nothing of its own reaches the reset in DoPerform.
+// 4. A connection arriving now must be answered rather than sent away.
+//
+// The leader is pinned at LOW for the reason DefersToAFillAlreadyUnderWay gives.
+TEST_F(PgStaleCatalogPrefetchTest, AnUncachedPrefetchEndsItsClaim) {
+  // Step 1
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t_uncached_end (k INT)"));
+  ASSERT_OK(SetPrefetchLoad(master::YSQL_CATALOG_PREFETCH_LOAD_LOW));
+  ASSERT_OK(LoggedWaitFor([this, &conn]() -> Result<bool> {
+    return VERIFY_RESULT(RecordedCatalogVersion(&conn)) != 0;
+  }, 60s, "a version for the next connection to ask about"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t_uncached_end ADD COLUMN v INT"));
+
+  // Steps 2 and 3. The uncached read caches nothing, so it records no version and the connection
+  // in step 4 still wants entries this node does not hold.
+  std::optional<PGConn> idle;
+  {
+    CachedPrefetchFailing failing;
+    idle = ASSERT_RESULT(Connect());
+    ASSERT_OK(idle->FetchRow<int32_t>("SELECT 1"));
+  }
+
+  // Step 4. Retried for the reason AnOrdinaryRequestEndsAClaimNoRoundEnded gives: a fill of
+  // someone else's can be in flight for a moment and send one away legitimately, while a claim
+  // that outlived its prefetch sends every one of these away until the idle session ends.
+  ASSERT_OK(LoggedWaitFor([this]() -> Result<bool> {
+    const auto delta = VERIFY_RESULT(metrics_->Delta([this]() -> Status {
+      auto later = VERIFY_RESULT(Connect());
+      return ResultToStatus(later.FetchRow<int32_t>("SELECT 1"));
+    }));
+    return delta.cache.send_away_asks > 0 && delta.cache.send_aways == 0;
+  }, 60s, "a connection that asked to be answered rather than sent away"));
 }
 
 // Only the opening round of a prefetch asks to be sent away. A connection start pages through
