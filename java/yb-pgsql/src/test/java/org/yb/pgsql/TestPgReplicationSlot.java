@@ -8063,4 +8063,100 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
     conn.close();
   }
+
+  // The master leaves the yb_xcluster_ddl_replication tables out of every CDC stream, so a slot
+  // that covers all tables streams only once its walsender leaves them out of its table list too.
+  @Test
+  public void allTablesSlotsSkipXClusterDdlReplicationTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables",
+          new Row("public", "t1"));
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_decoding_slot", "test_decoding");
+    createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName("test_decoding_slot")
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .start();
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:1", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    stream.close();
+    conn.close();
+
+    conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    stream = openStream(conn, "yboutput_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("1")));
+    stream.close();
+    conn.close();
+  }
+
+  // Adding a database to xCluster creates the extension while its slots stream.
+  @Test
+  public void allTablesSlotKeepsStreamingWhenXClusterDdlReplicationExtensionIsCreated()
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", "test_decoding");
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO t1 VALUES (1)");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName("test_slot")
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:1", "COMMIT"),
+        receiveStringMessages(stream, 3));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("INSERT INTO t1 VALUES (2)");
+    }
+    assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:2", "COMMIT"),
+        receiveStringMessages(stream, 3));
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void xClusterDdlReplicationTablesCannotBeAddedToPublication() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
+      stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
+    }
+
+    for (String table : Arrays.asList("ddl_queue", "replicated_ddls")) {
+      String error = "cannot add relation \"" + table + "\" to publication";
+      executeExpectingError(connection,
+          "CREATE PUBLICATION pub2 FOR TABLE yb_xcluster_ddl_replication." + table, error);
+      executeExpectingError(connection,
+          "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication." + table, error);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables",
+          new Row("public", "t1"));
+    }
+  }
 }

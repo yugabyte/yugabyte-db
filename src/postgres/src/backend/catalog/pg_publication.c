@@ -49,7 +49,9 @@
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
+
 static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);
+static bool yb_is_internal_table_to_be_excluded_from_cdc(Relation rel);
 
 static void publication_translate_columns(Relation targetrel, List *columns,
 										  int *natts, AttrNumber **attrs);
@@ -99,6 +101,14 @@ check_publication_add_relation(Relation targetrel)
 				 errmsg("table \"%s\" cannot be replicated",
 						RelationGetRelationName(targetrel)),
 				 errdetail("Replicating tables without primary key is not yet supported.")));
+
+	if (IsYugaByteEnabled() &&
+		yb_is_internal_table_to_be_excluded_from_cdc(targetrel))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot add relation \"%s\" to publication",
+						RelationGetRelationName(targetrel)),
+				 errdetail("This operation is not supported for tables internal to YugabyteDB.")));
 }
 
 /*
@@ -1382,14 +1392,36 @@ yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid)
 /*
  * Similar to is_publishable_relation but with additional check for user defined
  * primary key when GUC variable 'yb_cdcsdk_stream_tables_without_primary_key'
- * is set to false.
+ * is set to false, and excludes tables internal to YugabyteDB.
  */
 bool
 yb_is_publishable_relation(Relation rel)
 {
 	return (is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
 			(yb_cdcsdk_stream_tables_without_primary_key ||
-			 YBRelationHasPrimaryKey(rel)));
+			 YBRelationHasPrimaryKey(rel)) &&
+			!yb_is_internal_table_to_be_excluded_from_cdc(rel));
+}
+
+/*
+ * Returns true if the table is created internally by a YugabyteDB
+ * feature/extension and CDC must never stream it.
+ */
+static bool
+yb_is_internal_table_to_be_excluded_from_cdc(Relation rel)
+{
+	char	   *nspname;
+	bool		result;
+
+
+	nspname = get_namespace_name(RelationGetNamespace(rel));
+	if (nspname == NULL)
+		return false;
+
+
+	result = strcmp(nspname, "yb_xcluster_ddl_replication") == 0;
+	pfree(nspname);
+	return result;
 }
 
 /*
