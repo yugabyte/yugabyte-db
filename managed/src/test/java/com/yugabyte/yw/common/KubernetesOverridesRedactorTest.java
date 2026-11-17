@@ -8,6 +8,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 import org.yaml.snakeyaml.Yaml;
@@ -206,15 +207,96 @@ public class KubernetesOverridesRedactorTest {
 
   @Test
   public void redactCacheIsKeyedByContent() {
+    String text = STORED + "# " + java.util.UUID.randomUUID() + "\n";
+    long hits = KubernetesOverridesRedactor.cacheStats().hitCount();
+    long misses = KubernetesOverridesRedactor.cacheStats().missCount();
+    String redacted = KubernetesOverridesRedactor.redact(text);
+    assertEquals(misses + 1, KubernetesOverridesRedactor.cacheStats().missCount());
     // An equal text from a new response hits the cache; any change to the text misses it.
+    assertEquals(redacted, KubernetesOverridesRedactor.redact(new String(text.toCharArray())));
+    assertEquals(hits + 1, KubernetesOverridesRedactor.cacheStats().hitCount());
+    String edited = KubernetesOverridesRedactor.redact(text.replace("env: test", "env: prod"));
+    assertEquals(misses + 2, KubernetesOverridesRedactor.cacheStats().missCount());
+    assertTrue(edited, edited.contains("env: prod"));
+  }
+
+  private static final String WITH_COMMENTS =
+      String.join(
+          "\n",
+          "# ycql_ldap_bind_passwd: comment-secret",
+          "gflags:",
+          "  tserver:",
+          "    ycql_ldap_bind_passwd: tserver-secret  # was ycql_ldap_bind_passwd: inline-secret",
+          "    note: \"--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap"
+              + " ldapbindpasswd=text-secret\"",
+          "  master: # ldapbindpasswd=key-comment-secret",
+          "    extra: |  # ycql_ldap_bind_passwd: header-secret",
+          "      plain block content",
+          "shared: &pw anchored-secret",
+          "other:",
+          "  ycql_ldap_bind_passwd: *pw",
+          "");
+
+  @Test
+  public void redactCoversCommentsAndOtherStrings() {
+    String redacted = KubernetesOverridesRedactor.redact(WITH_COMMENTS);
+    for (String secret :
+        List.of(
+            "comment-secret",
+            "tserver-secret",
+            "inline-secret",
+            "text-secret",
+            "key-comment-secret",
+            "header-secret",
+            "anchored-secret")) {
+      assertFalse(redacted, redacted.contains(secret));
+    }
+    assertEquals("plain block content\n", at(redacted, "gflags", "master", "extra"));
+    assertEquals("REDACTED", at(redacted, "other", "ycql_ldap_bind_passwd"));
+    assertTrue(
+        redacted,
+        ((String) at(redacted, "gflags", "tserver", "note")).contains("ldapbindpasswd=REDACTED"));
+  }
+
+  @Test
+  public void restorePutsBackOtherStringsButNotComments() {
+    String submitted =
+        KubernetesOverridesRedactor.redact(WITH_COMMENTS)
+            + "tserver:\n  podLabels:\n    env: test\n";
+    String restored = KubernetesOverridesRedactor.restore(WITH_COMMENTS, submitted, "overrides");
     assertEquals(
-        KubernetesOverridesRedactor.redact(STORED),
-        KubernetesOverridesRedactor.redact(new String(STORED.toCharArray())));
-    String other = STORED.replace("tserver-secret", "other-secret");
-    String redacted = KubernetesOverridesRedactor.redact(other);
-    assertFalse(redacted, redacted.contains("other-secret"));
-    assertEquals(KubernetesOverridesRedactor.redact(STORED), redacted);
-    String edited = STORED.replace("env: test", "env: prod");
-    assertTrue(KubernetesOverridesRedactor.redact(edited).contains("env: prod"));
+        at(WITH_COMMENTS, "gflags", "tserver", "note"), at(restored, "gflags", "tserver", "note"));
+    assertEquals("anchored-secret", at(restored, "other", "ycql_ldap_bind_passwd"));
+    assertFalse(restored, restored.contains("comment-secret"));
+
+    String changed = submitted.replace("0.0.0.0/0", "10.0.0.0/8");
+    assertThrows(
+        PlatformServiceException.class,
+        () -> KubernetesOverridesRedactor.restore(WITH_COMMENTS, changed, "overrides"));
+  }
+
+  @Test
+  public void parseErrorsDoNotQuoteTheText() {
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: \"stored-secret\n";
+    assertFalse(KubernetesOverridesRedactor.redact(stored).contains("stored-secret"));
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                KubernetesOverridesRedactor.restore(
+                    stored,
+                    "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\nx: y\n",
+                    "overrides"));
+    assertTrue(e.getMessage(), e.getMessage().contains("cannot be parsed"));
+    assertFalse(e.getMessage(), e.getMessage().contains("stored-secret"));
+    e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                KubernetesOverridesRedactor.restore(
+                    stored,
+                    "gflags:\n  ycql_ldap_bind_passwd: REDACTED\n  ldap: \"submitted-secret\n",
+                    "overrides"));
+    assertFalse(e.getMessage(), e.getMessage().contains("submitted-secret"));
   }
 }

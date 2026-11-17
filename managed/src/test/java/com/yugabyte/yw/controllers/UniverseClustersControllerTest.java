@@ -300,6 +300,32 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     assertEquals(stored + edit, merged.getPrimaryCluster().userIntent.universeOverrides);
   }
 
+  @Test
+  public void addReadReplicaRestoresRedactedKubernetesOverridesFromThePrimary() {
+    enableGFlagsSensitiveDataApiRedaction();
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    Universe universe =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
+            u -> u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides = stored);
+    UniverseDefinitionTaskParams params =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    // The UI copies the primary's intent, overrides redacted as GET returned them.
+    UniverseDefinitionTaskParams.Cluster readReplica =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.ASYNC,
+            params.getPrimaryCluster().userIntent.clone());
+    readReplica.uuid = UUID.randomUUID();
+    readReplica.userIntent.universeOverrides = KubernetesOverridesRedactor.redact(stored);
+    params.clusters.add(readReplica);
+
+    UniverseDefinitionTaskParams merged =
+        UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+            params, universe, UniverseDefinitionTaskParams.class);
+    assertEquals(stored, merged.getClusterByUuid(readReplica.uuid).userIntent.universeOverrides);
+  }
+
   private void enableGFlagsSensitiveDataApiRedaction() {
     when(mockRuntimeConfig.getBoolean(
             GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))

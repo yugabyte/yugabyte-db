@@ -5,8 +5,10 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheStats;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import java.io.StringReader;
 import java.util.ArrayList;
@@ -19,9 +21,12 @@ import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
+import org.yaml.snakeyaml.DumperOptions.ScalarStyle;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.error.Mark;
+import org.yaml.snakeyaml.error.MarkedYAMLException;
 import org.yaml.snakeyaml.nodes.MappingNode;
 import org.yaml.snakeyaml.nodes.Node;
 import org.yaml.snakeyaml.nodes.NodeTuple;
@@ -32,9 +37,11 @@ import play.libs.Json;
 /**
  * Redacts the LDAP secrets in Kubernetes overrides (userIntent universeOverrides and azOverrides)
  * for API responses, and puts the stored values back when overrides copied from a response are
- * submitted. Only the secret scalars are rewritten, located by parsing the YAML, so the rest of the
- * user's text, comments included, is kept: the UI shows it as typed, and overrides sent back
- * unchanged equal redact(stored) exactly.
+ * submitted. Only the secrets are rewritten, located by parsing the YAML, so the rest of the user's
+ * text is kept: the UI shows it as typed, and overrides sent back unchanged equal redact(stored)
+ * exactly. A secret is the value of a secret gflag, the ldapbindpasswd fields of ysql_hba_conf_csv,
+ * any other string that mentions a secret, and a comment that does; strings and comments are
+ * redacted as the logs redact text.
  */
 @Slf4j
 public final class KubernetesOverridesRedactor {
@@ -50,28 +57,55 @@ public final class KubernetesOverridesRedactor {
       CacheBuilder.newBuilder()
           .maximumWeight(8_000_000)
           .<String, String>weigher((digest, redacted) -> digest.length() + redacted.length())
+          .recordStats()
           .build();
 
   private KubernetesOverridesRedactor() {}
 
+  @VisibleForTesting
+  static CacheStats cacheStats() {
+    return REDACTED_BY_DIGEST.stats();
+  }
+
+  private enum Kind {
+    /** Under a secret gflag name: the whole value. */
+    VALUE,
+    /** ysql_hba_conf_csv: the ldapbindpasswd fields. */
+    HBA,
+    /** Any other string that mentions a secret, redacted as the logs redact text. */
+    TEXT;
+
+    String redact(String value) {
+      switch (this) {
+        case VALUE:
+          // An empty value has no span to replace; REDACTED would be glued to the key's colon.
+          return value.isEmpty() ? value : REDACTED;
+        case HBA:
+          return HbaConfRedactor.redact(value);
+        default:
+          return RedactingService.redactSensitiveInfoInString(value);
+      }
+    }
+
+    boolean holdsRedacted(String value) {
+      return this == VALUE ? REDACTED.equals(value) : value.contains(REDACTED);
+    }
+  }
+
   private static class Secret {
     final List<String> path;
-    final String key;
+    final Kind kind;
     final ScalarNode value;
     // The scalar's own text in the overrides, as char offsets.
     final int start;
     final int end;
 
-    Secret(List<String> path, String key, ScalarNode value, int start, int end) {
+    Secret(List<String> path, Kind kind, ScalarNode value, int start, int end) {
       this.path = path;
-      this.key = key;
+      this.kind = kind;
       this.value = value;
       this.start = start;
       this.end = end;
-    }
-
-    boolean isHba() {
-      return GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key);
     }
   }
 
@@ -87,10 +121,13 @@ public final class KubernetesOverridesRedactor {
     }
   }
 
-  /** Thrown when the text is not one YAML document whose secrets are all scalars. */
+  /**
+   * Thrown when the text is not one YAML document whose secret gflags are all scalars. The message
+   * never quotes the text, which may hold a secret.
+   */
   private static class UnparsableException extends Exception {
-    UnparsableException(String message, Throwable cause) {
-      super(message, cause);
+    UnparsableException(String message) {
+      super(message);
     }
   }
 
@@ -102,10 +139,13 @@ public final class KubernetesOverridesRedactor {
     return RedactingService.sensitiveNames(null, null);
   }
 
+  private static boolean mentionsSecret(String text, Set<String> secretKeys) {
+    return secretKeys.stream().anyMatch(text::contains)
+        || HbaConfRedactor.mentionsLdapBindPasswd(text);
+  }
+
   public static String redact(String overrides) {
-    if (overrides == null
-        || (secretKeys().stream().noneMatch(overrides::contains)
-            && !HbaConfRedactor.mentionsLdapBindPasswd(overrides))) {
+    if (overrides == null || !mentionsSecret(overrides, secretKeys())) {
       return overrides;
     }
     String digest = DigestUtils.sha256Hex(overrides);
@@ -118,33 +158,46 @@ public final class KubernetesOverridesRedactor {
   }
 
   private static String redactUncached(String overrides) {
+    Finder found;
     try {
-      List<Replacement> replacements = new ArrayList<>();
-      for (Secret secret : findSecrets(overrides)) {
-        String value = secret.value.getValue();
-        if (secret.isHba()) {
-          String redacted = HbaConfRedactor.redact(value);
-          if (!redacted.equals(value)) {
-            replacements.add(replaceScalar(overrides, secret, quote(redacted)));
-          }
-        } else if (!value.isEmpty() && !REDACTED.equals(value)) {
-          // An empty value has no span to replace; REDACTED would be glued to the key's colon.
-          replacements.add(replaceScalar(overrides, secret, REDACTED));
-        }
-      }
-      return apply(overrides, replacements);
+      found = find(overrides);
     } catch (UnparsableException e) {
-      // Not one YAML document with scalar secrets; the text scan errs towards redacting too much.
+      // The text scan errs towards redacting too much.
       log.debug("Redacting Kubernetes overrides as text: {}", e.getMessage());
       return RedactingService.redactSensitiveInfoInString(overrides);
     }
+    List<Replacement> replacements = new ArrayList<>();
+    for (Secret secret : found.secrets) {
+      String value = secret.value.getValue();
+      String redacted = secret.kind.redact(value);
+      if (!redacted.equals(value)) {
+        replacements.add(
+            replaceScalar(
+                overrides, secret, secret.kind == Kind.VALUE ? redacted : quote(redacted)));
+      }
+    }
+    // A block scalar's header comment goes with the scalar when the scalar is replaced.
+    List<Replacement> scalars = new ArrayList<>(replacements);
+    scalars.sort(Comparator.comparingInt((Replacement r) -> r.start));
+    for (int[] comment : found.comments()) {
+      if (insideAny(scalars, comment[0])) {
+        continue;
+      }
+      String text = overrides.substring(comment[0], comment[1]);
+      String redacted = RedactingService.redactSensitiveInfoInString(text);
+      if (!redacted.equals(text)) {
+        replacements.add(new Replacement(comment[0], comment[1], redacted));
+      }
+    }
+    return apply(overrides, replacements);
   }
 
   /**
    * Returns the submitted overrides with each REDACTED secret replaced by the stored value at the
    * same YAML path, following GFlagsUtil.mergeSensitiveGFlags: a 400 when nothing is stored there
-   * or the stored value is itself REDACTED, and for ysql_hba_conf_csv also when its other fields
-   * differ from the stored value. stored is null for a new universe or cluster.
+   * or the stored value is itself REDACTED, and for ysql_hba_conf_csv and other strings also when
+   * the rest of the value differs from the stored one. Comments are not restored. stored is null
+   * for a new universe or cluster.
    */
   public static String restore(String stored, String submitted, String where) {
     if (submitted == null || !submitted.contains(REDACTED)) {
@@ -155,7 +208,7 @@ public final class KubernetesOverridesRedactor {
     }
     List<Secret> submittedSecrets;
     try {
-      submittedSecrets = findSecrets(submitted);
+      submittedSecrets = find(submitted).secrets;
     } catch (UnparsableException e) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -167,7 +220,7 @@ public final class KubernetesOverridesRedactor {
     String storedParseError = null;
     if (stored != null) {
       try {
-        findSecrets(stored).forEach(s -> storedSecrets.put(s.path, s));
+        find(stored).secrets.forEach(s -> storedSecrets.put(s.path, s));
       } catch (UnparsableException e) {
         storedParseError = e.getMessage();
       }
@@ -175,8 +228,7 @@ public final class KubernetesOverridesRedactor {
     List<Replacement> replacements = new ArrayList<>();
     for (Secret secret : submittedSecrets) {
       String value = secret.value.getValue();
-      boolean redacted = secret.isHba() ? value.contains(REDACTED) : REDACTED.equals(value);
-      if (!redacted) {
+      if (!secret.kind.holdsRedacted(value)) {
         continue;
       }
       String name = where + " at " + String.join(".", secret.path);
@@ -206,12 +258,12 @@ public final class KubernetesOverridesRedactor {
                     + " recovered. Submit the actual value.",
                 name, REDACTED, REDACTED));
       }
-      if (secret.isHba() && !HbaConfRedactor.redact(storedValue).equals(value)) {
+      if (secret.kind != Kind.VALUE && !secret.kind.redact(storedValue).equals(value)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "%s contain %s in ldapbindpasswd but differ from the stored value in other"
-                    + " fields. To change them, submit the value with the actual ldapbindpasswd.",
+                "%s contain %s but differ from the stored value in the rest of it. To change it,"
+                    + " submit the value with the actual secret.",
                 name, REDACTED));
       }
       replacements.add(replaceScalar(submitted, secret, storedScalarText(stored, storedSecret)));
@@ -237,19 +289,31 @@ public final class KubernetesOverridesRedactor {
     return restored;
   }
 
-  private static List<Secret> findSecrets(String overrides) throws UnparsableException {
+  private static Finder find(String overrides) throws UnparsableException {
+    LoaderOptions options = new LoaderOptions();
+    if (overrides.codePointCount(0, overrides.length()) > options.getCodePointLimit()) {
+      throw new UnparsableException("longer than " + options.getCodePointLimit() + " code points");
+    }
     Node root;
     try {
-      root =
-          new Yaml(new SafeConstructor(new LoaderOptions())).compose(new StringReader(overrides));
+      root = new Yaml(new SafeConstructor(options)).compose(new StringReader(overrides));
+    } catch (MarkedYAMLException e) {
+      // Its message quotes the line around the problem, which may hold a secret.
+      Mark mark = e.getProblemMark();
+      throw new UnparsableException(
+          (e.getContext() == null ? "" : e.getContext() + ": ")
+              + e.getProblem()
+              + (mark == null
+                  ? ""
+                  : " at line " + (mark.getLine() + 1) + ", column " + (mark.getColumn() + 1)));
     } catch (RuntimeException e) {
-      throw new UnparsableException(e.getMessage(), e);
+      throw new UnparsableException(e.getClass().getSimpleName());
     }
     Finder finder = new Finder(overrides);
     if (root != null) {
       finder.collect(root, new ArrayList<>());
     }
-    return finder.secrets;
+    return finder;
   }
 
   private static class Finder {
@@ -260,6 +324,8 @@ public final class KubernetesOverridesRedactor {
     final List<Secret> secrets = new ArrayList<>();
     final Set<Node> visited = new HashSet<>();
     final Set<Node> secretNodes = new HashSet<>();
+    // Every scalar's text, which no comment can be inside of.
+    final List<int[]> scalarSpans = new ArrayList<>();
 
     Finder(String text) {
       this.text = text;
@@ -290,24 +356,32 @@ public final class KubernetesOverridesRedactor {
       if (!visited.add(node)) {
         return;
       }
-      if (node instanceof MappingNode) {
+      if (node instanceof ScalarNode) {
+        ScalarNode scalar = (ScalarNode) node;
+        if (mentionsSecret(scalar.getValue(), secretKeys)) {
+          addSecret(scalar, path, Kind.TEXT);
+        } else {
+          addSpan(scalar);
+        }
+      } else if (node instanceof MappingNode) {
         for (NodeTuple tuple : ((MappingNode) node).getValue()) {
-          if (!(tuple.getKeyNode() instanceof ScalarNode)) {
+          Node keyNode = tuple.getKeyNode();
+          if (!(keyNode instanceof ScalarNode)) {
+            collect(keyNode, path);
             continue;
           }
-          String key = ((ScalarNode) tuple.getKeyNode()).getValue();
+          addSpan((ScalarNode) keyNode);
+          String key = ((ScalarNode) keyNode).getValue();
           List<String> childPath = new ArrayList<>(path);
           childPath.add(key);
           Node value = tuple.getValueNode();
-          if (secretKeys.contains(key) || GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key)) {
+          boolean hba = GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key);
+          if (hba || secretKeys.contains(key)) {
             if (!(value instanceof ScalarNode)) {
-              throw new UnparsableException(key + " is not a scalar", null);
+              throw new UnparsableException(key + " is not a scalar");
             }
-            if (secretNodes.add(value)) {
-              int end = charOffset(value.getEndMark().getIndex());
-              int start = scalarStart(charOffset(value.getStartMark().getIndex()), end);
-              secrets.add(new Secret(childPath, key, (ScalarNode) value, start, end));
-            }
+            visited.add(value);
+            addSecret((ScalarNode) value, childPath, hba ? Kind.HBA : Kind.VALUE);
           } else {
             collect(value, childPath);
           }
@@ -320,6 +394,31 @@ public final class KubernetesOverridesRedactor {
           collect(items.get(i), childPath);
         }
       }
+    }
+
+    void addSecret(ScalarNode scalar, List<String> path, Kind kind) {
+      if (secretNodes.add(scalar)) {
+        int[] span = addSpan(scalar);
+        secrets.add(new Secret(path, kind, scalar, span[0], span[1]));
+      }
+    }
+
+    /**
+     * Records where the scalar's text is, and returns it. A block scalar's header line can end in a
+     * comment, so only the lines below it are recorded as scalar text.
+     */
+    int[] addSpan(ScalarNode scalar) {
+      int end = charOffset(scalar.getEndMark().getIndex());
+      int start = scalarStart(charOffset(scalar.getStartMark().getIndex()), end);
+      boolean block =
+          scalar.getScalarStyle() == ScalarStyle.LITERAL
+              || scalar.getScalarStyle() == ScalarStyle.FOLDED;
+      int headerEnd = block ? text.indexOf('\n', start) : -1;
+      scalarSpans.add(
+          new int[] {
+            headerEnd < 0 || headerEnd >= end ? (block ? end : start) : headerEnd + 1, end
+          });
+      return new int[] {start, end};
     }
 
     /**
@@ -338,6 +437,33 @@ public final class KubernetesOverridesRedactor {
         }
       }
       return start;
+    }
+
+    /**
+     * The comments, outside every scalar: from a # at the start of a line or after a blank to the
+     * end of the line. A # inside an anchor, tag or alias name follows no blank.
+     */
+    List<int[]> comments() {
+      scalarSpans.sort(Comparator.comparingInt((int[] span) -> span[0]));
+      List<int[]> comments = new ArrayList<>();
+      int from = 0;
+      for (int i = 0; i <= scalarSpans.size(); i++) {
+        int to = i < scalarSpans.size() ? scalarSpans.get(i)[0] : text.length();
+        for (int at = from; at < to; at++) {
+          if (text.charAt(at) == '#' && (at == 0 || Character.isWhitespace(text.charAt(at - 1)))) {
+            int lineEnd = at;
+            while (lineEnd < to && text.charAt(lineEnd) != '\n' && text.charAt(lineEnd) != '\r') {
+              lineEnd++;
+            }
+            comments.add(new int[] {at, lineEnd});
+            at = lineEnd;
+          }
+        }
+        if (i < scalarSpans.size()) {
+          from = Math.max(from, scalarSpans.get(i)[1]);
+        }
+      }
+      return comments;
     }
   }
 
@@ -373,7 +499,25 @@ public final class KubernetesOverridesRedactor {
     }
   }
 
-  /** Replacements do not overlap: each is a distinct secret node's span. */
+  /** Whether at falls inside one of the replacements, sorted by start and not overlapping. */
+  private static boolean insideAny(List<Replacement> sorted, int at) {
+    int lo = 0;
+    int hi = sorted.size() - 1;
+    while (lo <= hi) {
+      int mid = (lo + hi) >>> 1;
+      Replacement r = sorted.get(mid);
+      if (at < r.start) {
+        hi = mid - 1;
+      } else if (at >= r.end) {
+        lo = mid + 1;
+      } else {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Replacements do not overlap: each is a distinct secret node's span or a comment. */
   private static String apply(String text, List<Replacement> replacements) {
     if (replacements.isEmpty()) {
       return text;
