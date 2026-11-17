@@ -73,7 +73,9 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 \set query ':P :Q1 SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;'
 \i :run_query
 
-\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;'
+-- The ::int8 casts give the second arm on each column a different operator, so
+-- the planner does not group the equalities into one = ANY per index.
+\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2::int8 OR ind_a = 4 OR ind_a = 6::int8 ORDER BY k;'
 \i :run_query
 
 -- test non-existent results

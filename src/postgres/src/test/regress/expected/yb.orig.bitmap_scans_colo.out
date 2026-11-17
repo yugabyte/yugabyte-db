@@ -403,35 +403,46 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(simple) */ SELECT
  3 |     6 |     9
 (3 rows)
 
-\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;'
+-- The ::int8 casts give the second arm on each column a different operator, so
+-- the planner does not group the equalities into one = ANY per index.
+\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2::int8 OR ind_a = 4 OR ind_a = 6::int8 ORDER BY k;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(simple) */ SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(simple) */ SELECT * FROM simple WHERE k = 1 OR k = 2::int8 OR ind_a = 4 OR ind_a = 6::int8 ORDER BY k;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Sort (actual rows=3.00 loops=1)
    Sort Key: k
    Sort Method: quicksort
    ->  YB Bitmap Table Scan on simple (actual rows=3.00 loops=1)
-         Storage Filter: ((k = 1) OR (k = 2) OR (ind_a = 4) OR (ind_a = 6))
          Storage Table Read Requests: 1
          Storage Table Read Ops: 1
          Storage Table Rows Scanned: 3
          ->  BitmapOr (actual rows=3.00 loops=1)
-               ->  Bitmap Index Scan on simple_pkey (actual rows=2.00 loops=1)
-                     Index Cond: (k = ANY ('{1,2}'::integer[]))
+               ->  Bitmap Index Scan on simple_pkey (actual rows=1.00 loops=1)
+                     Index Cond: (k = 1)
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 2
-               ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=2.00 loops=1)
-                     Index Cond: (ind_a = ANY ('{4,6}'::integer[]))
+                     Storage Table Rows Scanned: 1
+               ->  Bitmap Index Scan on simple_pkey (actual rows=1.00 loops=1)
+                     Index Cond: (k = '2'::bigint)
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 1
+               ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1.00 loops=1)
+                     Index Cond: (ind_a = 4)
                      Storage Index Read Requests: 1
                      Storage Index Read Ops: 1
-                     Storage Index Rows Scanned: 2
-(19 rows)
+                     Storage Index Rows Scanned: 1
+               ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1.00 loops=1)
+                     Index Cond: (ind_a = '6'::bigint)
+                     Storage Index Read Requests: 1
+                     Storage Index Read Ops: 1
+                     Storage Index Rows Scanned: 1
+(28 rows)
 
-/*+ BitmapScan(simple) */ SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;
+/*+ BitmapScan(simple) */ SELECT * FROM simple WHERE k = 1 OR k = 2::int8 OR ind_a = 4 OR ind_a = 6::int8 ORDER BY k;
  k | ind_a | ind_b 
 ---+-------+-------
  1 |     2 |     3
