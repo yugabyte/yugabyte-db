@@ -309,10 +309,13 @@ class PgRelcacheFaultToleranceTest : public PgMiniTestBase {
   }
 
   /*
-   * A column with atthasdef but no pg_attrdef row, plus another table whose corruption makes the
-   * preload fail. Like upstream PostgreSQL, building the entry only warns and leaves the missing
-   * default out, so the retry's relcache teardown can free it. Before the fix, the preload left a
-   * NULL adbin in the DEFAULT array, and the teardown crashed the backend freeing it.
+   * A column with atthasdef but no pg_attrdef row, plus another table whose corruption makes a
+   * preload of user tables fail. Like upstream PostgreSQL, building the entry only warns and
+   * leaves the missing default out, so the retry's relcache teardown can free it. Before the fix,
+   * the preload left a NULL adbin in the DEFAULT array, and the teardown crashed the backend
+   * freeing it. Only PgRelcacheFaultToleranceWithPreloadTest preloads user tables at connection
+   * startup; in the base fixture nothing fails at startup, and the test checks only the lazy
+   * upstream build of the entry.
    */
   void RunAttrdefMissingTest(const std::string& table_name) {
     auto setup_conn = ASSERT_RESULT(Connect());
