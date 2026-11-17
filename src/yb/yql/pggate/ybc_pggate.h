@@ -1009,10 +1009,9 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
                                       uint64_t* num_rows_read_from_table,
                                       double* num_rows_backfilled, int num_indexes);
 
-// part_of_connection_prefetch says this prefetch is a connection start's. Its rounds carry no
+// part_of_connection_prefetch says this prefetch is a connection start's. These rounds carry no
 // caching info, so without it the first of them would look like an ordinary read and drop the
-// claim this connection's earlier cached attempt took. It holds that claim; it does not take
-// one, and a connection that starts here rather than falling through to it runs uncounted.
+// claim. See PgPerformOptionsPB.part_of_connection_prefetch.
 void YBCStartSysTablePrefetchingNoCache(
     YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch);
 
@@ -1023,9 +1022,8 @@ void YBCStartSysTablePrefetchingNoCache(
 // one, or the two would answer each other. It reaches the wire only on the prefetch's opening
 // round; a round after that has fetched data a send-away would throw away.
 //
-// part_of_connection_prefetch says this prefetch is a connection start's. The first of its
-// rounds that the cache fills takes the session's claim on the database, and the flag keeps that
-// claim across the rounds that follow.
+// part_of_connection_prefetch says this prefetch is a connection start's.
+// See PgPerformOptionsPB.part_of_connection_prefetch.
 void YBCStartSysTablePrefetching(
     YbcPgOid database_oid,
     YbcPgLastKnownCatalogVersionInfo catalog_version,

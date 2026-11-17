@@ -2070,9 +2070,9 @@ TEST_F(PgStaleCatalogPrefetchTest, DefersToAFillAlreadyUnderWay) {
       << "the connection was sent away but did not read the version this node already held";
 }
 
-// Fails every caching round of a connection start's prefetch as a snapshot too old, which is how
-// PG falls through its cached starters to the one that reads without the cache. Falling through
-// without this needs three catalog reads to run out of snapshot in turn.
+// Fails the rounds of a connection start's prefetch that the cache asks to fill, as a snapshot
+// too old, which is how PG falls through its cached starters to the one that reads without the
+// cache. Falling through without this needs three catalog reads to run out of snapshot in turn.
 class CachedPrefetchFailing {
  public:
   CachedPrefetchFailing() { Set(true); }
@@ -2092,8 +2092,8 @@ class CachedPrefetchFailing {
   }
 };
 
-// Holds every round that carries no caching info, so another connection can arrive while one of
-// them is in flight.
+// Holds every round of a connection start's prefetch that carries no caching info, so another
+// connection can arrive while one of them is in flight.
 class UncachedRoundsPaused {
  public:
   UncachedRoundsPaused() { Set(true); }

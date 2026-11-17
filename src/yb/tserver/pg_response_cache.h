@@ -84,19 +84,19 @@ class PgResponseCache {
     bool completes_connection_prefetch = false;
   };
 
-  // token is the caller's slot for a connection start's claim, kept across that prefetch's
-  // requests and released on its last one. The claim ends when its last holder lets go, so a
-  // session that goes away cannot leave its database looking busy. Sharing a slot is all that
+  // token is the caller's slot for a connection start's claim. The claim ends when its last
+  // holder lets go, so a session that goes away cannot leave its database looking busy.
+  // Sharing a slot is all that
   // ties a caller to another's claim: parallel workers share their leader's, and nothing else
   // here distinguishes one caller from another.
   Result<Setter> Get(
       LWPgPerformOptionsPB_LWCachingInfoPB* cache_info, ConnectionPrefetchInfo prefetch,
       CoarseTimePoint deadline, const PgResponseCacheWaiterPtr& waiter, FillTokenPtr* token);
 
-  // Ends a connection start's claim on the round of its last request that runs out of paging
-  // state. The response cache does this itself for a request that caches, from the setter and
-  // from the arms of Get that do not fill. A connection start reading without the cache gets no
-  // setter, so pg_client_session calls this with the response it is about to send.
+  // Ends a connection start's claim for a request that does not cache, which gets no setter, so
+  // pg_client_session calls this with the response it is about to send. The response cache does
+  // it itself for a request that caches.
+  // See PgPerformOptionsPB.completes_connection_prefetch.
   static void EndConnectionPrefetchClaim(
       const LWPgPerformResponsePB& response, const FillTokenPtr& token);
 

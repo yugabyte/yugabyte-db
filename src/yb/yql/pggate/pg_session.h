@@ -177,8 +177,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
       const OperationGenerator& generator, const RunOptions& options = {});
 
   Result<PerformFuture> RunAsync(
-      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options = {},
-      PgConnectionPrefetchOptions connection_prefetch = {});
+      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options,
+      PgConnectionPrefetchOptions connection_prefetch);
 
   std::string GenerateNewYbrowid();
 
@@ -274,8 +274,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
       const Generator& generator, const RunOptions& options,
-      std::optional<CacheOptions>&& cache_options = std::nullopt,
-      PgConnectionPrefetchOptions connection_prefetch = {});
+      std::optional<CacheOptions>&& cache_options, PgConnectionPrefetchOptions connection_prefetch);
 
   template <class... Args>
   auto SetupPerformOptions(Args&&... args) {

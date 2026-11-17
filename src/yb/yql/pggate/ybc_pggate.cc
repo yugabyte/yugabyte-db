@@ -287,7 +287,7 @@ Status GetSplitPoints(YbcPgTableDesc table_desc,
 
 void YBCStartSysTablePrefetchingImpl(
     std::optional<PrefetcherOptions::CachingInfo> caching_info,
-    YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch) {
+    YbcPgSysTablePrefetchKind kind, PartOfConnectionPrefetch part_of_connection_prefetch) {
   const auto* flags = YBCGetGFlags();
   const auto configured_size_limit = *flags->ysql_catalog_prefetch_size_limit;
   const auto max_size_limit = YBCGetMaxRpcResponseSize();
@@ -2627,7 +2627,8 @@ void* YBCPgGetThreadLocalErrStatus() {
 
 void YBCStartSysTablePrefetchingNoCache(
     YbcPgSysTablePrefetchKind kind, bool part_of_connection_prefetch) {
-  YBCStartSysTablePrefetchingImpl(std::nullopt, kind, part_of_connection_prefetch);
+  YBCStartSysTablePrefetchingImpl(
+      std::nullopt, kind, PartOfConnectionPrefetch(part_of_connection_prefetch));
 }
 
 void YBCStartSysTablePrefetching(
@@ -2646,7 +2647,7 @@ void YBCStartSysTablePrefetching(
           },
           database_oid, YBCMapPrefetcherCacheMode(cache_mode),
           send_away_if_fill_in_flight},
-      kind, part_of_connection_prefetch);
+      kind, PartOfConnectionPrefetch(part_of_connection_prefetch));
 }
 
 void YBCStopSysTablePrefetching() {

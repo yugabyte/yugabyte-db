@@ -1385,12 +1385,12 @@ Result<PerformFuture> PgSession::RunAsync(
       using TO = TableOperation<PgsqlOpPtr>;
       return i != end ? TO{.operation = &*i++, .table = t} : TO();
   };
-  return DoRunAsync(make_lw_function(generator), options);
+  return DoRunAsync(make_lw_function(generator), options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(
     const OperationGenerator& generator, const RunOptions& options) {
-  return DoRunAsync(generator, options);
+  return DoRunAsync(generator, options, std::nullopt, {});
 }
 
 Result<PerformFuture> PgSession::RunAsync(

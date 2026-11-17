@@ -3739,9 +3739,7 @@ class PgClientSession::Impl {
     } else if (prefetch.completes_connection_prefetch) {
       // A connection start that reads without the cache leaves the cache no setter and no stored
       // response to test, so the claim is ended from FlushDone instead. The token is whatever an
-      // earlier cached attempt of this session left in the slot: nothing when the connection
-      // started at the no-cache starter rather than falling through to it, and nothing counted
-      // when that attempt released it on the way out.
+      // earlier caching attempt of this session left in the slot, which may be nothing.
       data->completes_prefetch_token = prefetch_fill_token_;
     }
 
