@@ -44,6 +44,8 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -251,7 +253,8 @@ public class UniverseCRUDHandler {
                 && !isSameInstanceTypes(
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
-                != currentCluster.userIntent.enableExposingService;
+                != currentCluster.userIntent.enableExposingService
+            || ManagedLoadBalancerUtil.isTurnedOnOrOff(currentCluster, cluster);
 
     boolean nodeSettingsChanges =
         isAwsArnChanged(cluster, currentCluster)
@@ -945,6 +948,10 @@ public class UniverseCRUDHandler {
           taskParams.fipsEnabled,
           taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
           taskParams.nodeDetailsSet);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+          c.userIntent,
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+          gFlagsValidation);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
@@ -2612,7 +2619,10 @@ public class UniverseCRUDHandler {
   public UUID tlsConfigUpdate(
       Customer customer, Universe universe, TlsConfigUpdateParams taskParams) {
 
-    LOG.info("tlsConfigUpdate: {}", Json.toJson(CommonUtils.maskObject(taskParams)));
+    LOG.info(
+        "tlsConfigUpdate: {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(taskParams)), RedactionTarget.LOGS));
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
@@ -2745,7 +2755,10 @@ public class UniverseCRUDHandler {
     } catch (JsonProcessingException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
+    LOG.info(
+        "CertsRotateParams : {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(certsRotateParams)), RedactionTarget.LOGS));
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }
 
@@ -2953,6 +2966,13 @@ public class UniverseCRUDHandler {
               universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
+    for (Cluster cluster : taskParams.clusters) {
+      cluster.userIntent.setManagedLoadBalancer(
+          ManagedLoadBalancerUtil.getEditedSetting(
+              universe.getCluster(cluster.uuid).userIntent.getManagedLoadBalancer(),
+              cluster.userIntent.getManagedLoadBalancer()));
+    }
+
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
         getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
@@ -3002,8 +3022,6 @@ public class UniverseCRUDHandler {
       // Fixed at creation. Clients that predate the field send false, so keep the current value.
       newCluster.userIntent.useNodeToNodeClientCerts =
           curCluster.userIntent.useNodeToNodeClientCerts;
-      ManagedLoadBalancerUtil.validateEditedCluster(
-          universe.getUniverseDetails().getPrimaryCluster(), curCluster, newCluster);
       UserIntent newIntent = newCluster.userIntent;
       UserIntent curIntent = curCluster.userIntent;
       for (UUID providerUUID : newIntent.getAllProviderUUIDs()) {
@@ -3014,14 +3032,7 @@ public class UniverseCRUDHandler {
           ImageBundle newBundle =
               ImageBundle.getOrBadRequest(
                   provider.getUuid(), newIntent.getImageBundleUUIDForProvider(providerUUID));
-          if (newBundle.getDetails().getArch() != universe.getUniverseDetails().arch) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Cannot change arch from "
-                    + universe.getUniverseDetails().arch
-                    + " to "
-                    + newBundle.getDetails().getArch());
-          }
+          ImageBundleUtil.checkArchMatchesUniverse(universe, newBundle);
         }
       }
 

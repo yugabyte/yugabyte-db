@@ -27,6 +27,10 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
@@ -106,6 +110,16 @@ class XClusterFailoverWithDDLTest : public XClusterDDLReplicationTestBase {
     for (const auto& ns : namespace_ids) {
       RETURN_NOT_OK(
           WaitForReadOnlyModeOnAllTServers(ns, /*is_read_only=*/false, &consumer_cluster_));
+      // AUTOMATIC_TARGET and UNAVAILABLE roles also refuse DMLs and reach TServers via their own
+      // heartbeat.
+      for (auto& tserver : consumer_cluster_.mini_cluster_->mini_tablet_servers()) {
+        RETURN_NOT_OK(WaitFor(
+            [&]() -> Result<bool> {
+              return tserver->server()->GetXClusterContext().GetXClusterRole(ns) ==
+                     XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE;
+            },
+            kTimeout, Format("Wait for namespace $0 to drop target role", ns)));
+      }
     }
     RETURN_NOT_OK(WaitForSnapshotCleanup());
     RETURN_NOT_OK(WaitForFailoverCleanup());

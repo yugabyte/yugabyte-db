@@ -68,6 +68,9 @@ public class LogUtil {
    * */
   public static final String CORRELATION_ID = "correlation-id";
 
+  // MDC key for the caller-supplied request ID (yb.cloud.requestIdHeader).
+  public static final String REQUEST_ID = "request-id";
+
   /**
    * Applies the persisted application and audit logging configuration, reloading logback once for
    * both. Needed at startup because logback resolves these values from system properties when it

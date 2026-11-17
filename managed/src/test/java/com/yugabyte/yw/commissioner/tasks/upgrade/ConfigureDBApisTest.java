@@ -6,16 +6,20 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
@@ -126,6 +130,14 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
     params.ysqlPassword = "foo";
     params.ycqlPassword = "foo";
     params.communicationPorts.ysqlServerRpcPort = 5434;
+    // Refused before it starts while a load balancer can't forward the new ports.
+    doThrow(new PlatformServiceException(BAD_REQUEST, "add port 5434"))
+        .doNothing()
+        .when(cloudAPI)
+        .validateManagedLoadBalancerPorts(any(), eq("region-1"), any(), eq(List.of(5434, 9042)));
+    assertThrows(
+        PlatformServiceException.class,
+        () -> submitTask(params, TaskType.ConfigureDBApis, commissioner, -1));
 
     TaskInfo taskInfo = submitTask(params, TaskType.ConfigureDBApis, commissioner, -1);
 

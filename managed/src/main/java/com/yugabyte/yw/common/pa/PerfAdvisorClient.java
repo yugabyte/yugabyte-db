@@ -1,55 +1,98 @@
 package com.yugabyte.yw.common.pa;
 
 import static play.mvc.Http.Status.BAD_GATEWAY;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.troubleshoot.pa.client.v2.ApiClient;
+import com.yugabyte.troubleshoot.pa.client.v2.ApiException;
+import com.yugabyte.troubleshoot.pa.client.v2.api.CustomerApi;
+import com.yugabyte.troubleshoot.pa.client.v2.api.ExportConfigApi;
+import com.yugabyte.troubleshoot.pa.client.v2.api.SupportBundleApi;
+import com.yugabyte.troubleshoot.pa.client.v2.api.UniverseApi;
+import com.yugabyte.troubleshoot.pa.client.v2.model.Credentials;
+import com.yugabyte.troubleshoot.pa.client.v2.model.CustomerSpec;
+import com.yugabyte.troubleshoot.pa.client.v2.model.Endpoint;
+import com.yugabyte.troubleshoot.pa.client.v2.model.ExportConfigMetrics;
+import com.yugabyte.troubleshoot.pa.client.v2.model.ExportConfigPagedResp;
+import com.yugabyte.troubleshoot.pa.client.v2.model.ExportConfigSpec;
+import com.yugabyte.troubleshoot.pa.client.v2.model.ExportConfigValidation;
+import com.yugabyte.troubleshoot.pa.client.v2.model.ExportConfigValidationSpec;
+import com.yugabyte.troubleshoot.pa.client.v2.model.PageRequest;
+import com.yugabyte.troubleshoot.pa.client.v2.model.ScrapedMetricsEndpoint;
+import com.yugabyte.troubleshoot.pa.client.v2.model.SupportBundleMetricFormat;
+import com.yugabyte.troubleshoot.pa.client.v2.model.SupportBundleSizeEstimate;
+import com.yugabyte.troubleshoot.pa.client.v2.model.SupportBundleSpec;
+import com.yugabyte.troubleshoot.pa.client.v2.model.TimeWindow;
+import com.yugabyte.troubleshoot.pa.client.v2.model.Universe;
+import com.yugabyte.troubleshoot.pa.client.v2.model.UniverseMetricsExportSpec;
+import com.yugabyte.troubleshoot.pa.client.v2.model.UniversePagedResp;
+import com.yugabyte.troubleshoot.pa.client.v2.model.UniverseSpec;
+import com.yugabyte.troubleshoot.pa.client.v2.model.YbmProject;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.WSClientRefresher;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PACollectorExt;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import java.io.File;
+import java.io.IOException;
+import java.net.http.HttpClient;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.security.cert.X509Certificate;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
-import play.libs.ws.WSClient;
 
+/** Talks to a Perf Advisor collector through its v2 API, with the generated v2 client. */
 @Singleton
 @Slf4j
 public class PerfAdvisorClient {
 
   public static final String WS_CLIENT_KEY = "yb.pa.ws";
   public static final String TP_API_TOKEN_HEADER = "X-AUTH-TP-API-TOKEN";
-  private final WSClientRefresher wsClientRefresher;
+  private static final int PAGE_SIZE = 500;
+
+  // The export config fields a validation check names, from the v2 spec's names to ExportConfig's.
+  private static final Map<String, String> EXPORT_CONFIG_FIELDS =
+      Map.of(
+          "metrics.url", "metricsEndpoint",
+          "metrics.protocol", "metricsType",
+          "metrics.credentials", "metricsAuth",
+          "metrics.include_global_pa_metrics", "includeGlobalPaMetrics",
+          "collection.url", "collectionEndpoint",
+          "collection.credentials", "collectionAuth",
+          "ybm.account_id", "ybmAccountId",
+          "ybm.project_id", "ybmProjectId");
   private final RuntimeConfGetter confGetter;
 
   @Inject
-  public PerfAdvisorClient(WSClientRefresher wsClientRefresher, RuntimeConfGetter confGetter) {
-    this.wsClientRefresher = wsClientRefresher;
+  public PerfAdvisorClient(RuntimeConfGetter confGetter) {
     this.confGetter = confGetter;
   }
 
   /**
    * The body a PUT would carry for this collector. Exposed so PACollectorSync can build it once,
-   * push that same object and remember it: collection_enabled and proxy_mode are read from live
-   * state here, so a second build could differ from what was sent.
+   * push that same object and remember it: collection_enabled is read from live state here, so a
+   * second build could differ from what was sent.
    */
   public CustomerMetadata buildCustomerMetadata(PACollector collector) {
     // collection_enabled is derived from local HA state at PUT time - never persisted on
@@ -66,7 +109,6 @@ public class PerfAdvisorClient {
         .setMetricsPassword(collector.getMetricsPassword())
         .setMetricsScrapePeriodSec(collector.getMetricsScrapePeriodSecs())
         .setApiToken(collector.getApiToken())
-        .setProxyMode(confGetter.getGlobalConf(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled))
         .setCollectionEnabled(collectionEnabled);
   }
 
@@ -74,115 +116,83 @@ public class PerfAdvisorClient {
     return putCustomerMetadata(collector, buildCustomerMetadata(collector));
   }
 
-  /** Sends a body the caller has already built. Returns the collector's response. */
+  /** Sends a body the caller has already built. */
   public CustomerMetadata putCustomerMetadata(
       PACollector collector, CustomerMetadata customerMetadata) {
-    String customerMetadataUrl =
-        collector.getPaUrl() + "/api/customer/" + collector.getCustomerUUID() + "/metadata";
-    try {
-      JsonNode result =
-          getApiHelper()
-              .putRequest(
-                  customerMetadataUrl, Json.toJson(customerMetadata), authHeader(collector));
-      handleError(result);
-      return Json.fromJson(result, CustomerMetadata.class);
-    } catch (Exception e) {
-      log.error("Failed to put customer metadata at " + customerMetadataUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to put customer metadata at " + customerMetadataUrl);
-    }
+    call(
+        collector,
+        "register customer " + collector.getCustomerUUID(),
+        () ->
+            new CustomerApi(apiClient(collector))
+                .registerCustomer(collector.getCustomerUUID(), toSpec(customerMetadata)));
+    return customerMetadata;
   }
 
   public void deleteCustomerMetadata(PACollector collector) {
-    String customerMetadataUrl =
-        collector.getPaUrl() + "/api/customer/" + collector.getCustomerUUID() + "/metadata";
-    try {
-      JsonNode result = getApiHelper().deleteRequest(customerMetadataUrl, authHeader(collector));
-      handleError(result);
-    } catch (Exception e) {
-      log.error("Failed to delete customer metadata at " + customerMetadataUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to delete customer metadata at " + customerMetadataUrl);
-    }
+    call(
+        collector,
+        "delete customer " + collector.getCustomerUUID(),
+        () -> {
+          new CustomerApi(apiClient(collector)).deleteCustomer(collector.getCustomerUUID());
+          return null;
+        });
   }
 
+  /** The universe's registration, or null when the collector has none for this customer. */
   public UniverseMetadata getUniverseMetadata(PACollector collector, UUID universeUuid) {
-    String universeMetadataUrl = collector.getPaUrl() + "/api/universe/metadata";
     try {
-      JsonNode result =
-          getApiHelper()
-              .getRequest(
-                  universeMetadataUrl,
-                  authHeader(collector),
-                  ImmutableMap.of(
-                      "customer_uuid", collector.getCustomerUUID().toString(),
-                      "universe_uuid", universeUuid.toString()));
-      handleError(result);
-      if (!result.isArray()) {
-        throw new RuntimeException("Unexpected response received " + result);
-      }
-      if (result.isEmpty()) {
+      Universe universe = new UniverseApi(apiClient(collector)).getUniverse(universeUuid);
+      UniverseMetadata metadata = toUniverseMetadata(universe);
+      return collector.getCustomerUUID().equals(metadata.getCustomerId()) ? metadata : null;
+    } catch (ApiException e) {
+      if (e.getCode() == NOT_FOUND) {
         return null;
-      } else {
-        return Json.fromJson((result).get(0), UniverseMetadata.class);
       }
-    } catch (Exception e) {
-      log.error("Failed to get universe metadata from " + universeMetadataUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to get universe metadata from " + universeMetadataUrl);
+      throw failure(collector, "get universe " + universeUuid, e);
     }
   }
 
   public UniverseMetadata putUniverseMetadata(
       PACollector collector, UniverseMetadata universeMetadata) {
-    String universeMetadataUrl =
-        collector.getPaUrl() + "/api/universe/" + universeMetadata.getId() + "/metadata";
-    try {
-      JsonNode result =
-          getApiHelper()
-              .putRequest(
-                  universeMetadataUrl, Json.toJson(universeMetadata), authHeader(collector));
-      handleError(result);
-      return Json.fromJson(result, UniverseMetadata.class);
-    } catch (Exception e) {
-      log.error("Failed to put universe metadata at " + universeMetadataUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to put universe metadata at " + universeMetadataUrl);
-    }
+    Universe universe =
+        call(
+            collector,
+            "register universe " + universeMetadata.getId(),
+            () ->
+                new UniverseApi(apiClient(collector))
+                    .registerUniverse(universeMetadata.getId(), toSpec(universeMetadata)));
+    return toUniverseMetadata(universe);
   }
 
   public void deleteUniverseMetadata(PACollector collector, UUID universeUuid) {
-    String universeMetadataUrl =
-        collector.getPaUrl() + "/api/universe/" + universeUuid + "/metadata";
-    try {
-      JsonNode result = getApiHelper().deleteRequest(universeMetadataUrl, authHeader(collector));
-      handleError(result);
-    } catch (Exception e) {
-      log.error("Failed to delete universe metadata at " + universeMetadataUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to delete universe metadata at " + universeMetadataUrl);
-    }
+    call(
+        collector,
+        "delete universe " + universeUuid,
+        () -> {
+          new UniverseApi(apiClient(collector)).deleteUniverse(universeUuid, null);
+          return null;
+        });
   }
 
   public List<UniverseMetadata> listUniverseMetadata(PACollector collector) {
-    String universeMetadataUrl = collector.getPaUrl() + "/api/universe/metadata";
-    try {
-      JsonNode result =
-          getApiHelper()
-              .getRequest(
-                  universeMetadataUrl,
-                  authHeader(collector),
-                  ImmutableMap.of("customer_uuid", collector.getCustomerUUID().toString()));
-      handleError(result);
-      if (!result.isArray()) {
-        throw new RuntimeException("Unexpected response received " + result);
-      }
-      return Json.mapper().convertValue(result, new TypeReference<List<UniverseMetadata>>() {});
-    } catch (Exception e) {
-      log.error("Failed to list universe metadata from " + universeMetadataUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to list universe metadata from " + universeMetadataUrl);
-    }
+    UniverseApi api = new UniverseApi(apiClient(collector));
+    List<UniverseMetadata> result = new ArrayList<>();
+    UniversePagedResp page;
+    do {
+      int offset = result.size();
+      page =
+          call(
+              collector,
+              "list universes",
+              () ->
+                  api.listUniverses(
+                      new PageRequest().offset(offset).limit(PAGE_SIZE),
+                      collector.getCustomerUUID(),
+                      null,
+                      null));
+      page.getEntities().forEach(universe -> result.add(toUniverseMetadata(universe)));
+    } while (Boolean.TRUE.equals(page.getHasNext()) && !page.getEntities().isEmpty());
+    return result;
   }
 
   public PACollectorExt.InUseStatus getInUseStatus(PACollector collector) {
@@ -197,35 +207,55 @@ public class PerfAdvisorClient {
   }
 
   public List<ExportConfig> listExportConfigs(PACollector collector) {
-    String url = exportConfigUrl(collector, null);
-    JsonNode result = paRequest(getApiHelper().getHttpRequest(url, authHeader(collector), null));
-    return Json.mapper().convertValue(result, new TypeReference<List<ExportConfig>>() {});
+    ExportConfigApi api = new ExportConfigApi(apiClient(collector));
+    List<ExportConfig> result = new ArrayList<>();
+    ExportConfigPagedResp page;
+    do {
+      int offset = result.size();
+      page =
+          call(
+              collector,
+              "list export configs",
+              () -> api.listExportConfigs(new PageRequest().offset(offset).limit(PAGE_SIZE)));
+      page.getEntities().forEach(config -> result.add(toExportConfig(config)));
+    } while (Boolean.TRUE.equals(page.getHasNext()) && !page.getEntities().isEmpty());
+    return result;
   }
 
   public ExportConfig getExportConfig(PACollector collector, UUID configUuid) {
-    String url = exportConfigUrl(collector, configUuid);
-    JsonNode result = paRequest(getApiHelper().getHttpRequest(url, authHeader(collector), null));
-    return Json.fromJson(result, ExportConfig.class);
+    return toExportConfig(
+        call(
+            collector,
+            "get export config " + configUuid,
+            () -> new ExportConfigApi(apiClient(collector)).getExportConfig(configUuid)));
   }
 
   public ExportConfig createExportConfig(PACollector collector, ExportConfig config) {
-    String url = exportConfigUrl(collector, null);
-    JsonNode result =
-        paRequest(
-            getApiHelper().postHttpRequest(url, Json.toJson(config), authHeader(collector), null));
-    return Json.fromJson(result, ExportConfig.class);
+    return toExportConfig(
+        call(
+            collector,
+            "create export config " + config.getName(),
+            () -> new ExportConfigApi(apiClient(collector)).createExportConfig(toSpec(config))));
   }
 
   public ExportConfig updateExportConfig(PACollector collector, ExportConfig config) {
-    String url = exportConfigUrl(collector, config.getId());
-    JsonNode result =
-        paRequest(getApiHelper().putHttpRequest(url, Json.toJson(config), authHeader(collector)));
-    return Json.fromJson(result, ExportConfig.class);
+    return toExportConfig(
+        call(
+            collector,
+            "update export config " + config.getId(),
+            () ->
+                new ExportConfigApi(apiClient(collector))
+                    .editExportConfig(config.getId(), toSpec(config))));
   }
 
   public void deleteExportConfig(PACollector collector, UUID configUuid) {
-    String url = exportConfigUrl(collector, configUuid);
-    paRequest(getApiHelper().deleteHttpRequest(url, authHeader(collector)));
+    call(
+        collector,
+        "delete export config " + configUuid,
+        () -> {
+          new ExportConfigApi(apiClient(collector)).deleteExportConfig(configUuid);
+          return null;
+        });
   }
 
   /**
@@ -235,76 +265,27 @@ public class PerfAdvisorClient {
    */
   public ExportConfigValidationReport validateExportConfig(
       PACollector collector, ExportConfig config) {
-    String url = collector.getPaUrl() + "/api/export/config/validate";
-    JsonNode result =
-        paRequest(
-            getApiHelper().postHttpRequest(url, Json.toJson(config), authHeader(collector), null));
-    return Json.fromJson(result, ExportConfigValidationReport.class);
-  }
-
-  private static String exportConfigUrl(PACollector collector, UUID configUuid) {
-    return collector.getPaUrl()
-        + "/api/export/config"
-        + (configUuid == null ? "" : "/" + configUuid);
-  }
-
-  /**
-   * PA writes its failures for an operator to read - an unreachable collection endpoint, a name
-   * already taken, the universes still using a config that can't be deleted. Those messages are the
-   * whole value of the round trip, so they are passed through with PA's own status rather than
-   * collapsed into a 500 the way {@code getBodyOrThrow} would.
-   */
-  private JsonNode paRequest(ApiHelper.HttpResponse response) {
-    JsonNode body = response.getBody();
-    if (response.getStatus() >= 200 && response.getStatus() < 300) {
-      handleError(body);
-      return body;
+    ExportConfigValidation validation =
+        call(
+            collector,
+            "validate export config " + config.getName(),
+            () ->
+                new ExportConfigApi(apiClient(collector))
+                    .validateExportConfig(new ExportConfigValidationSpec().spec(toSpec(config))));
+    List<ExportConfigValidationCheck> checks = new ArrayList<>();
+    if (validation.getChecks() != null) {
+      validation
+          .getChecks()
+          .forEach(
+              check ->
+                  checks.add(
+                      new ExportConfigValidationCheck()
+                          .setField(
+                              EXPORT_CONFIG_FIELDS.getOrDefault(check.getField(), check.getField()))
+                          .setOk(Boolean.TRUE.equals(check.getOk()))
+                          .setMessage(check.getMessage())));
     }
-    String detail = describeErrors(body);
-    log.warn(
-        "PA request to {} failed with status {}: {}",
-        response.getUrl(),
-        response.getStatus(),
-        detail);
-    // A 5xx from PA is not this server failing, so it reaches the caller as a bad gateway.
-    int status = response.getStatus() < 500 ? response.getStatus() : BAD_GATEWAY;
-    throw new PlatformServiceException(status, detail);
-  }
-
-  /**
-   * Flattens a Spring {@code ProblemDetail} body into one operator-facing line. Its {@code errors}
-   * property is serialized inline, but older PA builds nested it under {@code properties}, and
-   * validation failures carry a field name per message while other failures are plain strings.
-   */
-  private static String describeErrors(JsonNode body) {
-    if (body == null || body.isMissingNode()) {
-      return "Perf Advisor Collector request failed";
-    }
-    JsonNode errors = body.get("errors");
-    if (errors == null && body.has("properties")) {
-      errors = body.get("properties").get("errors");
-    }
-    if (errors == null || !errors.isArray() || errors.isEmpty()) {
-      JsonNode detail = body.get("detail");
-      return detail != null ? detail.asText() : body.toString();
-    }
-    List<String> messages = new ArrayList<>();
-    for (JsonNode error : errors) {
-      if (error.isTextual()) {
-        messages.add(error.asText());
-        continue;
-      }
-      String field = error.path("propertyPath").asText("");
-      JsonNode fieldErrors = error.get("errors");
-      if (fieldErrors == null || !fieldErrors.isArray()) {
-        messages.add(error.toString());
-        continue;
-      }
-      for (JsonNode message : fieldErrors) {
-        messages.add(field.isEmpty() ? message.asText() : field + ": " + message.asText());
-      }
-    }
-    return String.join("; ", messages);
+    return new ExportConfigValidationReport().setChecks(checks);
   }
 
   public SupportBundle scheduleSupportBundle(
@@ -313,116 +294,391 @@ public class PerfAdvisorClient {
       Instant startTime,
       Instant endTime,
       PrometheusMetricsFormat metricFormat) {
-    String scheduleBundleUrl =
-        collector.getPaUrl() + "/api/universe/" + universeUuid + "/support_bundle";
-    try {
-      ImmutableMap.Builder<String, String> queryParamsBuilder =
-          ImmutableMap.<String, String>builder()
-              .put("startTime", startTime.toString())
-              .put("endTime", endTime.toString());
-
-      if (metricFormat != null) {
-        queryParamsBuilder.put("metricFormat", metricFormat.name());
-      }
-
-      JsonNode result =
-          getApiHelper()
-              .postWithoutBody(
-                  scheduleBundleUrl, authHeader(collector), queryParamsBuilder.build());
-      handleError(result);
-
-      return Json.fromJson(result, SupportBundle.class);
-    } catch (Exception e) {
-      log.error("Failed to schedule support bundle at " + scheduleBundleUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to schedule support bundle at " + scheduleBundleUrl);
+    SupportBundleSpec spec = new SupportBundleSpec().timeWindow(window(startTime, endTime));
+    if (metricFormat != null) {
+      spec.metricFormat(SupportBundleSpec.MetricFormatEnum.fromValue(metricFormat.name()));
     }
+    return toSupportBundle(
+        call(
+            collector,
+            "schedule support bundle for universe " + universeUuid,
+            () ->
+                new SupportBundleApi(apiClient(collector))
+                    .createSupportBundle(universeUuid, spec)));
   }
 
   public SupportBundle getSupportBundle(PACollector collector, UUID universeUuid, UUID bundleUuid) {
-    String getSupportBundleUrl =
-        collector.getPaUrl() + "/api/universe/" + universeUuid + "/support_bundle/" + bundleUuid;
-    try {
-      JsonNode result = getApiHelper().getRequest(getSupportBundleUrl, authHeader(collector));
-      handleError(result);
-
-      return Json.fromJson(result, SupportBundle.class);
-    } catch (Exception e) {
-      log.error("Failed to get support bundle from " + getSupportBundleUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to get support bundle from " + getSupportBundleUrl);
-    }
+    return toSupportBundle(
+        call(
+            collector,
+            "get support bundle " + bundleUuid,
+            () ->
+                new SupportBundleApi(apiClient(collector))
+                    .getSupportBundle(universeUuid, bundleUuid)));
   }
 
   public File downloadSupportBundle(
       PACollector collector, UUID universeUuid, UUID bundleUuid, File directory) {
-    String downloadUrl =
-        collector.getPaUrl()
-            + "/api/universe/"
-            + universeUuid
-            + "/support_bundle/"
-            + bundleUuid
-            + "/download";
+    File downloaded =
+        call(
+            collector,
+            "download support bundle " + bundleUuid,
+            () ->
+                new SupportBundleApi(apiClient(collector))
+                    .downloadSupportBundle(universeUuid, bundleUuid));
+    File target = new File(directory, downloaded.getName());
     try {
-      return getApiHelper().downloadFile(downloadUrl, authHeader(collector), directory);
-    } catch (Exception e) {
-      log.error("Failed to download support bundle from " + downloadUrl, e);
+      Files.move(downloaded.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+    } catch (IOException e) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to download support bundle from " + downloadUrl);
+          BAD_GATEWAY, "Failed to store support bundle " + bundleUuid + ": " + e.getMessage());
     }
+    return target;
   }
 
   public void deleteSupportBundle(PACollector collector, UUID universeUuid, UUID bundleUuid) {
-    String deleteSupportBundleUrl =
-        collector.getPaUrl() + "/api/universe/" + universeUuid + "/support_bundle/" + bundleUuid;
-    try {
-      JsonNode result = getApiHelper().deleteRequest(deleteSupportBundleUrl, authHeader(collector));
-      handleError(result);
-    } catch (Exception e) {
-      log.error("Failed to delete support bundle at " + deleteSupportBundleUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to delete support bundle at " + deleteSupportBundleUrl);
-    }
+    call(
+        collector,
+        "delete support bundle " + bundleUuid,
+        () -> {
+          new SupportBundleApi(apiClient(collector))
+              .deleteSupportBundle(universeUuid, bundleUuid, null);
+          return null;
+        });
   }
 
+  /**
+   * Estimated sizes by part, {@code metadata} and, when the collector can tell, {@code metrics}.
+   */
   public Map<String, Long> estimateSupportBundleSize(
       PACollector collector,
       UUID universeUuid,
       Instant startTime,
       Instant endTime,
       PrometheusMetricsFormat metricsFormat) {
-    String estimateSizeUrl =
-        collector.getPaUrl() + "/api/universe/" + universeUuid + "/support_bundle/estimate_size";
+    SupportBundleSizeEstimate estimate =
+        call(
+            collector,
+            "estimate support bundle size for universe " + universeUuid,
+            () ->
+                new SupportBundleApi(apiClient(collector))
+                    .estimateSupportBundleSize(
+                        universeUuid,
+                        window(startTime, endTime),
+                        SupportBundleMetricFormat.fromValue(metricsFormat.name())));
+    Map<String, Long> sizes = new HashMap<>();
+    sizes.put("metadata", estimate.getMetadataBytes());
+    if (estimate.getMetricsBytes() != null) {
+      sizes.put("metrics", estimate.getMetricsBytes());
+    }
+    return sizes;
+  }
+
+  private ApiClient apiClient(PACollector collector) {
+    HttpClient.Builder http =
+        HttpClient.newBuilder()
+            .sslContext(acceptAnyCertificate())
+            .connectTimeout(timeout("connection"));
+    ApiClient client =
+        new ApiClient(
+            http,
+            ApiClient.createDefaultObjectMapper(),
+            StringUtils.removeEnd(collector.getPaUrl(), "/") + "/api/v2");
+    client.setReadTimeout(timeout("idle"));
+    String token = collector.getPaApiToken();
+    if (StringUtils.isNotEmpty(token)) {
+      client.setRequestInterceptor(request -> request.header(TP_API_TOKEN_HEADER, token));
+    }
+    return client;
+  }
+
+  private Duration timeout(String name) {
+    return confGetter.getStaticConf().getDuration(WS_CLIENT_KEY + ".timeout." + name);
+  }
+
+  // As yb.pa.ws.ssl.loose.acceptAnyCertificate: a collector's certificate is not validated.
+  private static SSLContext acceptAnyCertificate() {
     try {
-      Map<String, String> queryParams =
-          ImmutableMap.<String, String>builder()
-              .put("startTime", startTime.toString())
-              .put("endTime", endTime.toString())
-              .put("metricFormat", metricsFormat.name())
-              .build();
+      SSLContext context = SSLContext.getInstance("TLS");
+      context.init(
+          null,
+          new TrustManager[] {
+            new X509TrustManager() {
+              @Override
+              public void checkClientTrusted(X509Certificate[] chain, String authType) {}
 
-      JsonNode result =
-          getApiHelper().getRequest(estimateSizeUrl, authHeader(collector), queryParams);
-      handleError(result);
+              @Override
+              public void checkServerTrusted(X509Certificate[] chain, String authType) {}
 
-      return Json.mapper().convertValue(result, new TypeReference<>() {});
+              @Override
+              public X509Certificate[] getAcceptedIssuers() {
+                return new X509Certificate[0];
+              }
+            }
+          },
+          null);
+      return context;
     } catch (Exception e) {
-      log.error("Failed to estimate support bundle size from " + estimateSizeUrl, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Failed to estimate support bundle size from " + estimateSizeUrl);
+      throw new IllegalStateException("Failed to set up TLS for Perf Advisor", e);
     }
   }
 
-  private ApiHelper getApiHelper() {
-    WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
-    return new ApiHelper(wsClient, wsClientRefresher.getMaterializer());
+  private interface Call<T> {
+    T run() throws ApiException;
   }
 
-  private Map<String, String> authHeader(PACollector collector) {
-    if (StringUtils.isEmpty(collector.getPaApiToken())) {
-      return Collections.emptyMap();
+  private <T> T call(PACollector collector, String action, Call<T> call) {
+    try {
+      return call.run();
+    } catch (ApiException e) {
+      throw failure(collector, action, e);
     }
-    return ImmutableMap.of(TP_API_TOKEN_HEADER, collector.getPaApiToken());
+  }
+
+  /**
+   * PA writes its failures for an operator to read - an unreachable collection endpoint, a name
+   * already taken, the universes still using a config that can't be deleted. Those messages are the
+   * whole value of the round trip, so they are passed through with PA's own status. A 5xx from PA,
+   * or no answer at all, is not this server failing, so it reaches the caller as a bad gateway.
+   */
+  private static PlatformServiceException failure(
+      PACollector collector, String action, ApiException e) {
+    String detail =
+        e.getCode() == 0
+            ? "Failed to reach Perf Advisor Collector at "
+                + collector.getPaUrl()
+                + ": "
+                + e.getMessage()
+            : describeErrors(e.getResponseBody());
+    log.warn("Perf Advisor request to {} failed with status {}: {}", action, e.getCode(), detail);
+    int status = e.getCode() > 0 && e.getCode() < 500 ? e.getCode() : BAD_GATEWAY;
+    return new PlatformServiceException(status, detail);
+  }
+
+  /** Flattens a v2 error body (RFC 7807 with Perf Advisor's errors) into one line. */
+  private static String describeErrors(String responseBody) {
+    JsonNode body;
+    try {
+      body = StringUtils.isEmpty(responseBody) ? null : Json.parse(responseBody);
+    } catch (RuntimeException e) {
+      return responseBody;
+    }
+    if (body == null || !body.isObject()) {
+      return "Perf Advisor Collector request failed";
+    }
+    List<String> messages = new ArrayList<>();
+    body.path("errors").forEach(error -> messages.add(error.asText()));
+    body.path("field_errors")
+        .forEach(
+            fieldError ->
+                fieldError
+                    .path("messages")
+                    .forEach(
+                        message ->
+                            messages.add(
+                                fieldError.path("field").asText() + ": " + message.asText())));
+    if (messages.isEmpty()) {
+      return body.path("detail").asText(body.toString());
+    }
+    return String.join("; ", messages);
+  }
+
+  private static CustomerSpec toSpec(CustomerMetadata customer) {
+    CustomerSpec spec =
+        new CustomerSpec()
+            .metrics(
+                new ScrapedMetricsEndpoint()
+                    .url(customer.getMetricsUrl())
+                    .credentials(
+                        basic(customer.getMetricsUsername(), customer.getMetricsPassword()))
+                    .scrapePeriodSec(customer.getMetricsScrapePeriodSec()))
+            .collectionEnabled(customer.isCollectionEnabled());
+    if (customer.getPlatformUrl() != null || StringUtils.isNotEmpty(customer.getApiToken())) {
+      spec.platform(
+          new Endpoint()
+              .url(customer.getPlatformUrl())
+              .credentials(
+                  new Credentials()
+                      .type(Credentials.TypeEnum.TOKEN)
+                      .token(customer.getApiToken())));
+    }
+    return spec;
+  }
+
+  private static UniverseSpec toSpec(UniverseMetadata universe) {
+    return new UniverseSpec()
+        .customerUuid(universe.getCustomerId())
+        .collectionMode(
+            UniverseSpec.CollectionModeEnum.fromValue(universe.getCollectionMode().name()))
+        .metricsExport(
+            new UniverseMetricsExportSpec()
+                .exportConfigIds(
+                    universe.getExportConfigIds() == null
+                        ? new ArrayList<>()
+                        : new ArrayList<>(universe.getExportConfigIds()))
+                .prometheusEnabled(universe.isMetricsExportToPrometheusEnabled())
+                .jsonlEnabled(universe.isMetricsExportJsonlEnabled()))
+        .activeTableMetricsEnabled(universe.isActiveTableMetricsEnabled());
+  }
+
+  private static UniverseMetadata toUniverseMetadata(Universe universe) {
+    UniverseMetadata metadata = new UniverseMetadata();
+    if (universe.getInfo() != null) {
+      metadata.setId(universe.getInfo().getUniverseUuid());
+    }
+    UniverseSpec spec = universe.getSpec();
+    if (spec == null) {
+      return metadata;
+    }
+    metadata
+        .setCustomerId(spec.getCustomerUuid())
+        .setActiveTableMetricsEnabled(Boolean.TRUE.equals(spec.getActiveTableMetricsEnabled()));
+    if (spec.getCollectionMode() != null) {
+      metadata.setCollectionMode(CollectionMode.valueOf(spec.getCollectionMode().getValue()));
+    }
+    UniverseMetricsExportSpec export = spec.getMetricsExport();
+    if (export != null) {
+      metadata
+          .setMetricsExportToPrometheusEnabled(Boolean.TRUE.equals(export.getPrometheusEnabled()))
+          .setMetricsExportJsonlEnabled(Boolean.TRUE.equals(export.getJsonlEnabled()))
+          .setExportConfigIds(export.getExportConfigIds());
+    }
+    return metadata;
+  }
+
+  private static ExportConfigSpec toSpec(ExportConfig config) {
+    ExportConfigSpec spec =
+        new ExportConfigSpec()
+            .name(config.getName())
+            .metrics(
+                new ExportConfigMetrics()
+                    .url(config.getMetricsEndpoint())
+                    .protocol(
+                        ExportConfigMetrics.ProtocolEnum.fromValue(
+                            config.getMetricsType().name().toUpperCase()))
+                    .credentials(credentials(config.getMetricsAuth()))
+                    .includeGlobalPaMetrics(config.isIncludeGlobalPaMetrics()))
+            .collection(
+                new Endpoint()
+                    .url(config.getCollectionEndpoint())
+                    .credentials(credentials(config.getCollectionAuth())));
+    if (config.getYbmAccountId() != null || config.getYbmProjectId() != null) {
+      spec.ybm(
+          new YbmProject()
+              .accountId(uuid(config.getYbmAccountId(), "ybm_account_id"))
+              .projectId(uuid(config.getYbmProjectId(), "ybm_project_id")));
+    }
+    return spec;
+  }
+
+  private static ExportConfig toExportConfig(
+      com.yugabyte.troubleshoot.pa.client.v2.model.ExportConfig config) {
+    ExportConfig result = new ExportConfig();
+    if (config.getInfo() != null) {
+      result.setId(config.getInfo().getExportConfigUuid());
+    }
+    ExportConfigSpec spec = config.getSpec();
+    if (spec == null) {
+      return result;
+    }
+    result.setName(spec.getName());
+    if (spec.getMetrics() != null) {
+      result
+          .setMetricsEndpoint(spec.getMetrics().getUrl())
+          .setMetricsAuth(exportAuth(spec.getMetrics().getCredentials()))
+          .setIncludeGlobalPaMetrics(
+              Boolean.TRUE.equals(spec.getMetrics().getIncludeGlobalPaMetrics()));
+      if (spec.getMetrics().getProtocol() != null) {
+        result.setMetricsType(
+            ExportMetricsType.valueOf(spec.getMetrics().getProtocol().getValue().toLowerCase()));
+      }
+    }
+    if (spec.getCollection() != null) {
+      result
+          .setCollectionEndpoint(spec.getCollection().getUrl())
+          .setCollectionAuth(exportAuth(spec.getCollection().getCredentials()));
+    }
+    if (spec.getYbm() != null) {
+      result
+          .setYbmAccountId(string(spec.getYbm().getAccountId()))
+          .setYbmProjectId(string(spec.getYbm().getProjectId()));
+    }
+    return result;
+  }
+
+  private static SupportBundle toSupportBundle(
+      com.yugabyte.troubleshoot.pa.client.v2.model.SupportBundle bundle) {
+    SupportBundle result = new SupportBundle();
+    if (bundle.getInfo() != null) {
+      result
+          .setId(bundle.getInfo().getUuid())
+          .setUniverseId(bundle.getInfo().getUniverseUuid())
+          .setErrorMessage(bundle.getInfo().getErrorMessage());
+      if (bundle.getInfo().getState() != null) {
+        result.setState(SupportBundleState.valueOf(bundle.getInfo().getState().getValue()));
+      }
+      if (bundle.getInfo().getScheduledTime() != null) {
+        result.setScheduledTime(bundle.getInfo().getScheduledTime().toInstant());
+      }
+    }
+    if (bundle.getSpec() != null) {
+      TimeWindow window = bundle.getSpec().getTimeWindow();
+      if (window != null) {
+        result
+            .setStartTime(window.getStartTime() == null ? null : window.getStartTime().toInstant())
+            .setEndTime(window.getEndTime() == null ? null : window.getEndTime().toInstant());
+      }
+      if (bundle.getSpec().getMetricFormat() != null) {
+        result.setMetricFormat(
+            PrometheusMetricsFormat.valueOf(bundle.getSpec().getMetricFormat().getValue()));
+      }
+    }
+    return result;
+  }
+
+  private static TimeWindow window(Instant start, Instant end) {
+    return new TimeWindow()
+        .startTime(start == null ? null : OffsetDateTime.ofInstant(start, ZoneOffset.UTC))
+        .endTime(end == null ? null : OffsetDateTime.ofInstant(end, ZoneOffset.UTC));
+  }
+
+  private static Credentials basic(String username, String password) {
+    if (username == null && password == null) {
+      return new Credentials().type(Credentials.TypeEnum.NONE);
+    }
+    return new Credentials().type(Credentials.TypeEnum.BASIC).username(username).password(password);
+  }
+
+  private static Credentials credentials(ExportAuth auth) {
+    if (auth == null || auth.getType() == ExportAuthType.none) {
+      return new Credentials().type(Credentials.TypeEnum.NONE);
+    }
+    return basic(auth.getUsername(), auth.getPassword());
+  }
+
+  private static ExportAuth exportAuth(Credentials credentials) {
+    if (credentials == null || credentials.getType() != Credentials.TypeEnum.BASIC) {
+      return new ExportAuth();
+    }
+    return new ExportAuth()
+        .setType(ExportAuthType.basic)
+        .setUsername(credentials.getUsername())
+        .setPassword(credentials.getPassword());
+  }
+
+  private static UUID uuid(String value, String field) {
+    if (StringUtils.isEmpty(value)) {
+      return null;
+    }
+    try {
+      return UUID.fromString(value);
+    } catch (IllegalArgumentException e) {
+      throw new PlatformServiceException(BAD_REQUEST, field + " must be a UUID, got " + value);
+    }
+  }
+
+  private static String string(UUID value) {
+    return value == null ? null : value.toString();
   }
 
   @Data
@@ -435,15 +691,6 @@ public class PerfAdvisorClient {
     String metricsUsername;
     String metricsPassword;
     long metricsScrapePeriodSec;
-
-    /**
-     * When true, PA Collector should accept the pre-shared {@code X-AUTH-TP-API-TOKEN} service
-     * token as full user-request authentication and skip re-validating any {@code X-AUTH-TOKEN}
-     * against YBA. YBA has already authenticated the user and enforced RBAC before proxying the
-     * request. See {@code yb.pa.embedded_ui.reverse_proxy.enabled} and {@link
-     * com.yugabyte.yw.controllers.PAProxyController}.
-     */
-    boolean proxyMode;
 
     /**
      * When false, PA skips scraping, anomaly detection, and task-runner tasks against this
@@ -591,17 +838,5 @@ public class PerfAdvisorClient {
     IN_PROGRESS,
     COMPLETED,
     FAILED
-  }
-
-  private void handleError(JsonNode result) {
-    if (result.has("status")) {
-      int status = result.get("status").asInt();
-      String url = result.get("instance").asText();
-      JsonNode errors = result.get("properties").get("errors");
-      throw new RuntimeException(
-          "Request to " + url + " returned status " + status + ": " + errors);
-    } else if (result.has("error")) {
-      throw new RuntimeException("Request failed: " + result.get("error").asText());
-    }
   }
 }

@@ -365,6 +365,11 @@ class YBClient {
       bool wait = true,
       CoarseTimePoint deadline = CoarseTimePoint());
 
+  Status StartTableBackfill(
+      const TableId& source_table_id, uint32_t target_table_oid,
+      uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
+      CoarseTimePoint deadline = CoarseTimePoint());
+
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>*
@@ -1071,8 +1076,10 @@ class YBClient {
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
 
-  // Provide the completion status of 'txn' to the YB-Master.
-  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
+  // Provide the completion status of 'txn' to the YB-Master. propagated_hybrid_time is the caller's
+  // hybrid time; it should be >= the commit time of 'txn' when is_committed is true.
+  Status ReportYsqlDdlTxnStatus(
+      const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time);
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
 

@@ -1493,6 +1493,12 @@ exec_simple_query(const char *query_string, CommandTag yb_command_tag)
 							"commands ignored until end of transaction block"),
 					 errdetail_abort()));
 
+		/*
+		 * YB: Reject the statement while the catalog is unreadable as of
+		 * yb_read_time; only SET/RESET yb_read_time and SHOW get through.
+		 */
+		YbCheckReadTimeTooOld(parsetree->stmt);
+
 		/* Make sure we are in a transaction command */
 		yb_start_xact_command_internal(yb_skip_read_committed_internal_savepoint(commandTag));
 
@@ -1915,6 +1921,9 @@ exec_parse_message(const char *query_string,	/* string to execute */
 							"commands ignored until end of transaction block"),
 					 errdetail_abort()));
 
+		/* YB: same treatment while the catalog is unreadable as of yb_read_time */
+		YbCheckReadTimeTooOld(raw_parse_tree->stmt);
+
 		/*
 		 * Create the CachedPlanSource before we do parse analysis, since it
 		 * needs to see the unmodified raw parse tree.
@@ -2203,6 +2212,10 @@ exec_bind_message(StringInfo input_message)
 				 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block"),
 				 errdetail_abort()));
+
+	/* YB: same treatment while the catalog is unreadable as of yb_read_time */
+	if (psrc->raw_parse_tree)
+		YbCheckReadTimeTooOld(psrc->raw_parse_tree->stmt);
 
 	/*
 	 * Create the portal.  Allow silent replacement of an existing portal only
@@ -3149,6 +3162,10 @@ exec_describe_statement_message(const char *stmt_name)
 				 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block"),
 				 errdetail_abort()));
+
+	/* YB: same treatment while the catalog is unreadable as of yb_read_time */
+	if (psrc->raw_parse_tree)
+		YbCheckReadTimeTooOld(psrc->raw_parse_tree->stmt);
 
 	if (whereToSendOutput != DestRemote)
 		return;					/* can't actually do anything... */
@@ -4827,6 +4844,12 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 	/* The reason that we need a full catalog cache refresh. */
 	int			reason = 0;
 
+	if (YbIsCatalogPinnedToReadTime())
+	{
+		yb_need_cache_refresh = false;
+		return false;
+	}
+
 	if (enable_inval_messages)
 	{
 		if (is_retry &&
@@ -5150,8 +5173,12 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
+		{
 			YBStopAuthPrefetcherAndRefreshCache(catalog_master_version,
 												true /* is_retry */ );
+			/* The refresh may have moved past the catalog read time. */
+			YbInvalidateCatalogSnapshot();
+		}
 
 		*need_retry = true;
 	}
@@ -5330,6 +5357,34 @@ yb_check_retry_allowed(const char *query_string)
 	return yb_is_dml_command_ext(query_string, true);
 }
 
+/*
+ * YBStopAuthPrefetcherAndRefreshCache() for the refreshes that run between
+ * statements: the one before each message and the one deferred to
+ * ReadyForQuery.  With
+ * yb_read_time set, the refresh reads the catalog as of that time and fails
+ * with "Snapshot too old" once it is older than the sys catalog's history
+ * cutoff.  Left alone, the failure would repeat before every later statement
+ * (or, at ReadyForQuery, before any statement is read at all), RESET
+ * yb_read_time included; see yb_read_time_too_old_detail in pg_yb_utils.c.
+ */
+static void
+YbRefreshCacheBetweenStatements(uint64_t catalog_master_version, bool is_retry)
+{
+	MemoryContext oldcontext = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		YBStopAuthPrefetcherAndRefreshCache(catalog_master_version, is_retry);
+	}
+	PG_CATCH();
+	{
+		MemoryContextSwitchTo(oldcontext);
+		YbHandleReadTimeSnapshotTooOld();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+}
+
 static void
 YBCheckSharedCatalogCacheVersion()
 {
@@ -5361,8 +5416,8 @@ YBCheckSharedCatalogCacheVersion()
 						__func__, shared_catalog_version)));
 	}
 	if (need_global_cache_refresh)
-		YBStopAuthPrefetcherAndRefreshCache(YB_CATCACHE_VERSION_UNINITIALIZED,
-											false /* is_retry */ );
+		YbRefreshCacheBetweenStatements(YB_CATCACHE_VERSION_UNINITIALIZED,
+										false /* is_retry */ );
 	else
 	{
 		yb_pgstat_set_catalog_version(local_catalog_version);
@@ -7006,8 +7061,8 @@ PostgresMain(const char *dbname, const char *username)
 				long		stats_timeout;
 
 				if (yb_need_cache_refresh)
-					YBStopAuthPrefetcherAndRefreshCache(YB_CATCACHE_VERSION_UNINITIALIZED,
-														true /* is_retry */ );
+					YbRefreshCacheBetweenStatements(YB_CATCACHE_VERSION_UNINITIALIZED,
+													true /* is_retry */ );
 
 				/*
 				 * Process incoming notifies (including self-notifies), if
@@ -7078,6 +7133,13 @@ PostgresMain(const char *dbname, const char *username)
 
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
+
+			/*
+			 * YB: ReadyForQuery flushed the reply, so the client does not
+			 * wait for the release.
+			 */
+			if (IsYugaByteEnabled())
+				YbReleaseTCMallocMemoryAfterStatement();
 
 			yb_refresh_stats_before_exec = true;
 
@@ -8005,6 +8067,12 @@ PostgresMain(const char *dbname, const char *username)
 					int			conn_salen = MyProcPort->raddr.salen;
 					List	   *guc_options = MyProcPort->guc_options;
 					char	   *cmdline_options = MyProcPort->cmdline_options;
+					char	   *app_name = MyProcPort->application_name;
+					char	   *hostname = MyProcPort->remote_hostname;
+					int			hostname_resolv =
+						MyProcPort->remote_hostname_resolv;
+					int			hostname_errcode =
+						MyProcPort->remote_hostname_errcode;
 
 					/*
 					 * Clear guc_options sent in startup packet for
@@ -8018,6 +8086,21 @@ PostgresMain(const char *dbname, const char *username)
 					 * NULL before that
 					 */
 					MyProcPort->authn_id = NULL;
+
+					/*
+					 * The startup packet sets application_name only if the
+					 * client sent one, and check_hostname() caches the
+					 * client's reverse-resolved name and its verdict.  Both
+					 * names are allocated in the transaction context below.
+					 * Clear them so that each client is logged with its own
+					 * application_name and its hostname-based pg_hba rules
+					 * are evaluated against its own address, not a previous
+					 * client's freed values.
+					 */
+					MyProcPort->application_name = NULL;
+					MyProcPort->remote_hostname = NULL;
+					MyProcPort->remote_hostname_resolv = 0;
+					MyProcPort->remote_hostname_errcode = 0;
 #ifdef USE_SSL
 					/*
 					 * YB: Reset the TLS connection state of the logical connection.
@@ -8145,6 +8228,10 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->raddr.salen = conn_salen;
 					MyProcPort->guc_options = guc_options;
 					MyProcPort->cmdline_options = cmdline_options;
+					MyProcPort->application_name = app_name;
+					MyProcPort->remote_hostname = hostname;
+					MyProcPort->remote_hostname_resolv = hostname_resolv;
+					MyProcPort->remote_hostname_errcode = hostname_errcode;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 
@@ -8744,4 +8831,14 @@ void
 YbIncrementHintCacheMisses()
 {
 	YbNumHintCacheMisses++;
+}
+
+/*
+ * YB: True from the moment start_xact_command starts a statement's
+ * transaction until finish_xact_command or error recovery ends it.
+ */
+bool
+YbIsStatementTransactionStarted(void)
+{
+	return xact_started;
 }

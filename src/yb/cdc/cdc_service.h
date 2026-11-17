@@ -209,6 +209,10 @@ class CDCServiceImpl : public CDCServiceIf {
     const UpdatePublicationTableListRequestPB* req,
     UpdatePublicationTableListResponsePB* resp, rpc::RpcContext context) override;
 
+  void InvalidateStreamMetadataCache(
+      const InvalidateStreamMetadataCacheRequestPB* req,
+      InvalidateStreamMetadataCacheResponsePB* resp, rpc::RpcContext context) override;
+
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 

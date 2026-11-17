@@ -1,0 +1,6 @@
+# SHA-256 of HbaConfRedactor's output over the hba_pg_rules.jsonl lines and two sets of generated
+# cases, checked by HbaConfRedactorTest.testOutputMatchesGoPort and by its Go port in
+# managed/devops/supportbundle/serverconfredact (hba_conf_test.go).
+golden 01500716ad4a779ed71fded53e42b13613ed58293f6e33d865353a24dde50f3e
+generated 4008042c9ab1e22c4afcd1d1c1c6d6022ce76fb33d34afabfdb77d3f17862205
+free_text 4e7257a073cc787558b8c3c10d6c620f30b0a5661ae97aa48ae28c46740286f0

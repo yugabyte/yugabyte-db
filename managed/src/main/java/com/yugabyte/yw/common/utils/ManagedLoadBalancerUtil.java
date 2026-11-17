@@ -16,7 +16,9 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.ManagedLoad
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
+import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -110,14 +113,26 @@ public class ManagedLoadBalancerUtil {
    * the CloudAPI implementations. A load balancer for each zone, or several for a region that each
    * serve some of its zones, changes this method and {@link #getPrivateName}, and nothing else.
    *
+   * <p>Name: the saved state's, so a taken-over load balancer keeps its name; else the zones'
+   * lbName, set only in the edit that turns this on; else {@link #getPrivateName(UUID, Region)}.
+   *
    * @return nothing for a null cluster or one without a managed load balancer.
    */
-  public static List<ManagedLoadBalancer> planLoadBalancers(@Nullable Cluster cluster) {
+  public static List<ManagedLoadBalancer> planLoadBalancers(
+      @Nullable Cluster cluster, @Nullable ManagedLoadBalancerState state) {
     PlacementInfo placement = cluster == null ? null : cluster.getOverallPlacement();
     // validateNewCluster rejects enablePublic until PLAT-22813 adds public load balancers.
     if (placement == null || !isPrivateEnabled(cluster)) {
       return Collections.emptyList();
     }
+    Map<UUID, String> names = new HashMap<>();
+    if (state != null) {
+      state.getLoadBalancers().stream()
+          .filter(lb -> lb.getClusterUuid().equals(cluster.uuid))
+          .filter(lb -> lb.getScheme() == ManagedLoadBalancer.Scheme.PRIVATE)
+          .forEach(lb -> names.putIfAbsent(lb.getRegionUuid(), lb.getName()));
+    }
+    names.putAll(getTakeoverNames(cluster));
     List<ManagedLoadBalancer> lbs = new ArrayList<>();
     Set<UUID> regionUuids = new HashSet<>();
     for (PlacementInfo.PlacementCloud cloud : placement.cloudList) {
@@ -138,11 +153,44 @@ public class ManagedLoadBalancerUtil {
                 region.uuid,
                 ManagedLoadBalancer.Scheme.PRIVATE,
                 azUuids,
-                getPrivateName(cluster.uuid, regionModel),
+                names.getOrDefault(region.uuid, getPrivateName(cluster.uuid, regionModel)),
                 null));
       }
     }
     return lbs;
+  }
+
+  // Throws if a region's zones disagree: one managed load balancer serves the whole region.
+  private static Map<UUID, String> getTakeoverNames(Cluster cluster) {
+    Map<UUID, Set<String>> namesByRegion = new HashMap<>();
+    Map<UUID, String> regionCodes = new HashMap<>();
+    getRegions(cluster)
+        .forEach(
+            region -> {
+              regionCodes.put(region.uuid, region.code);
+              Set<String> names = namesByRegion.computeIfAbsent(region.uuid, r -> new TreeSet<>());
+              region.azList.forEach(az -> names.add(StringUtils.defaultString(az.lbName)));
+            });
+    Map<UUID, String> takeoverNames = new HashMap<>();
+    namesByRegion.forEach(
+        (regionUuid, names) -> {
+          if (names.size() > 1) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "The zones of region %s set different load balancers: %s. Set the same lbName"
+                        + " in every zone of the region, or none.",
+                    regionCodes.get(regionUuid),
+                    names.stream()
+                        .map(name -> name.isEmpty() ? "(none)" : name)
+                        .collect(Collectors.joining(", "))));
+          }
+          names.stream()
+              .filter(StringUtils::isNotEmpty)
+              .findFirst()
+              .ifPresent(name -> takeoverNames.put(regionUuid, name));
+        });
+    return takeoverNames;
   }
 
   public static Map<String, String> getTags(
@@ -168,6 +216,11 @@ public class ManagedLoadBalancerUtil {
     if (!isEnabled(cluster)) {
       return;
     }
+    validateCanEnable(cluster, confGetter, cloudAPIFactory);
+  }
+
+  private static void validateCanEnable(
+      Cluster cluster, RuntimeConfGetter confGetter, CloudAPI.Factory cloudAPIFactory) {
     if (cluster.clusterType != ClusterType.PRIMARY) {
       throw new PlatformServiceException(
           BAD_REQUEST, "A managed load balancer is available only for the primary cluster");
@@ -203,22 +256,91 @@ public class ManagedLoadBalancerUtil {
   }
 
   /**
-   * Rejects an edit that changes which load balancers YBA manages, or that adds a load balancer
-   * name to a universe with managed load balancers.
+   * An edit may turn the managed load balancer on or off. Turning it on takes over the load
+   * balancer that each region's zones name with lbName; otherwise lbName stays out of a managed
+   * universe.
    */
   public static void validateEditedCluster(
-      @Nullable Cluster primaryCluster, Cluster current, Cluster updated) {
-    validateEnablesSomething(updated);
-    if (isPrivateEnabled(current) != isPrivateEnabled(updated)
-        || isPublicEnabled(current) != isPublicEnabled(updated)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "The managed load balancer settings cannot be changed after the cluster is created");
+      Universe universe,
+      @Nullable Cluster primaryAfterEdit,
+      Cluster current,
+      Cluster updated,
+      RuntimeConfGetter confGetter,
+      CloudAPI.Factory cloudAPIFactory) {
+    if (!isEnabled(current) && isEnabled(updated)) {
+      validateCanEnable(updated, confGetter, cloudAPIFactory);
+      // Only the primary's load balancers can be taken over.
+      for (Cluster other : universe.getUniverseDetails().clusters) {
+        if (!other.uuid.equals(updated.uuid)) {
+          validateNoLbNames(updated, other);
+        }
+      }
+      // The freeze names them on the saved zones (nameTakeoversOnZones); a new region has none.
+      Map<UUID, String> takeoverNames = getTakeoverNames(updated);
+      Set<UUID> currentRegions =
+          getRegions(current).map(region -> region.uuid).collect(Collectors.toSet());
+      getRegions(updated)
+          .filter(
+              region ->
+                  takeoverNames.containsKey(region.uuid) && !currentRegions.contains(region.uuid))
+          .findFirst()
+          .ifPresent(
+              region -> {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Region %s is new in this edit. Take over its load balancer in a later"
+                            + " edit.",
+                        region.code));
+              });
+      return;
     }
-    validateNoLbNames(primaryCluster, updated);
+    if (isEnabled(current) && !isEnabled(updated)) {
+      ManagedLoadBalancerState state = universe.getUniverseDetails().getManagedLoadBalancerState();
+      Set<String> deletedNames =
+          state == null
+              ? Collections.emptySet()
+              : state.getLoadBalancers().stream()
+                  .filter(lb -> lb.getClusterUuid().equals(current.uuid))
+                  .map(ManagedLoadBalancer::getName)
+                  .collect(Collectors.toSet());
+      getPlacements(updated)
+          .flatMap(PlacementInfo::azStream)
+          .map(az -> az.lbName)
+          .filter(deletedNames::contains)
+          .findFirst()
+          .ifPresent(
+              name -> {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "Turning off the managed load balancer deletes %s, so lbName can't name it",
+                        name));
+              });
+    }
+    if (isPublicEnabled(current) != isPublicEnabled(updated)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Public load balancers are not supported yet");
+    }
+    validateNoLbNames(primaryAfterEdit, updated);
   }
 
-  /** An empty managedLoadBalancer is a mistake, so YBA rejects it rather than ignores it. */
+  /** Missing keeps the setting (older clients omit it); one that enables nothing turns it off. */
+  @Nullable
+  public static ManagedLoadBalancerConfig getEditedSetting(
+      @Nullable ManagedLoadBalancerConfig current, @Nullable ManagedLoadBalancerConfig requested) {
+    if (requested == null) {
+      return current;
+    }
+    return requested.isEnablePrivate() || requested.isEnablePublic() ? requested : null;
+  }
+
+  public static boolean isTurnedOnOrOff(Cluster current, Cluster updated) {
+    return isPrivateEnabled(current) != isPrivateEnabled(updated)
+        || isPublicEnabled(current) != isPublicEnabled(updated);
+  }
+
+  /** At create, an empty config is a mistake; in an edit it means off (see getEditedSetting). */
   private static void validateEnablesSomething(Cluster cluster) {
     ManagedLoadBalancerConfig config = cluster.userIntent.getManagedLoadBalancer();
     if (config != null && !config.isEnablePrivate() && !config.isEnablePublic()) {
@@ -237,12 +359,7 @@ public class ManagedLoadBalancerUtil {
     if (primaryCluster == null || !isEnabled(primaryCluster)) {
       return;
     }
-    // getOverallPlacement() drops lbName, so read the placements directly.
-    Stream.concat(
-            Stream.ofNullable(cluster.placementInfo),
-            CollectionUtils.emptyIfNull(cluster.getPartitions()).stream()
-                .map(UniverseDefinitionTaskParams.PartitionInfo::getPlacement))
-        .filter(Objects::nonNull)
+    getPlacements(cluster)
         .flatMap(PlacementInfo::azStream)
         .filter(az -> StringUtils.isNotEmpty(az.lbName))
         .findFirst()
@@ -255,5 +372,64 @@ public class ManagedLoadBalancerUtil {
                           + " load balancer cannot also use its own load balancers.",
                       az.name, az.lbName));
             });
+  }
+
+  public static boolean usesOwnLoadBalancer(Cluster cluster) {
+    return cluster.userIntent.enableLB
+        || getPlacements(cluster)
+            .flatMap(PlacementInfo::azStream)
+            .anyMatch(az -> StringUtils.isNotEmpty(az.lbName));
+  }
+
+  public static void clearTakenOverNames(Cluster cluster) {
+    cluster.userIntent.enableLB = false;
+    getPlacements(cluster).flatMap(PlacementInfo::azStream).forEach(az -> az.lbName = null);
+  }
+
+  public static boolean isNamedByZones(@Nullable Cluster cluster, ManagedLoadBalancer lb) {
+    return cluster != null
+        && getRegions(cluster)
+            .filter(region -> lb.getRegionUuid().equals(region.uuid))
+            .flatMap(region -> region.azList.stream())
+            .anyMatch(az -> lb.getName().equals(az.lbName));
+  }
+
+  /**
+   * Names the load balancers that the edit takes over on the zones of the saved cluster, so that no
+   * rollback, destroy or later edit deletes them before the takeover clears lbName.
+   */
+  public static void nameTakeoversOnZones(Cluster edited, Cluster saved) {
+    Map<UUID, String> names = getTakeoverNames(edited);
+    getRegions(saved)
+        .filter(region -> names.containsKey(region.uuid))
+        .forEach(region -> region.azList.forEach(az -> az.lbName = names.get(region.uuid)));
+  }
+
+  /** Throws, before the task changes anything, if ensure would fail to forward the ports. */
+  public static void validatePorts(
+      Universe universe, Cluster cluster, List<Integer> ports, CloudAPI.Factory cloudAPIFactory) {
+    for (ManagedLoadBalancer lb :
+        planLoadBalancers(cluster, universe.getUniverseDetails().getManagedLoadBalancerState())) {
+      Region region = Region.getOrBadRequest(lb.getRegionUuid());
+      Provider provider = region.getProvider();
+      cloudAPIFactory
+          .get(provider.getCloudCode().name())
+          .validateManagedLoadBalancerPorts(provider, region.getCode(), lb.getName(), ports);
+    }
+  }
+
+  // getOverallPlacement() drops lbName.
+  private static Stream<PlacementInfo> getPlacements(Cluster cluster) {
+    return Stream.concat(
+            Stream.ofNullable(cluster.placementInfo),
+            CollectionUtils.emptyIfNull(cluster.getPartitions()).stream()
+                .map(UniverseDefinitionTaskParams.PartitionInfo::getPlacement))
+        .filter(Objects::nonNull);
+  }
+
+  private static Stream<PlacementInfo.PlacementRegion> getRegions(Cluster cluster) {
+    return getPlacements(cluster)
+        .flatMap(placement -> placement.cloudList.stream())
+        .flatMap(cloud -> cloud.regionList.stream());
   }
 }

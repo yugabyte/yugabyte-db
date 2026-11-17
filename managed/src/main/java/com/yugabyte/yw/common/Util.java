@@ -69,12 +69,12 @@ import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -82,6 +82,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,7 +91,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -294,7 +294,14 @@ public class Util {
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
   public static List<InetSocketAddress> getNodesAsInet(UUID universeUUID) {
-    Universe universe = Universe.getOrBadRequest(universeUUID);
+    return getNodesAsInet(Universe.getOrBadRequest(universeUUID));
+  }
+
+  /**
+   * Returns a list of Inet address objects in the proxy tier of the given universe snapshot. This
+   * is needed by Cassandra clients.
+   */
+  public static List<InetSocketAddress> getNodesAsInet(Universe universe) {
     List<InetSocketAddress> inetAddrs = new ArrayList<>();
     for (String address : universe.getYQLServerAddresses().split(",")) {
       String[] splitAddress = address.split(":");
@@ -305,9 +312,18 @@ public class Util {
     return inetAddrs;
   }
 
+  // A '"'"'-escaped, doubled (inside format('...')) or plain password literal, ';' optional. The
+  // lookaheads keep a quote in the password from ending the match or making a plain one doubled.
+  private static final Pattern YSQL_PASSWORD_LITERAL =
+      Pattern.compile(
+          "(?i)"
+              + YSQL_PASSWORD_KEYWORD
+              + "\\s+(?:'\"'\"'.*?'\"'\"'(?=[;\\s\"]|$)"
+              + "|''(?=[^'])(?:[^']|'''')*''"
+              + "|'(?:[^']|'')*')");
+
   public static String redactYsqlQuery(String input) {
-    return input.replaceAll(
-        YSQL_PASSWORD_KEYWORD + " (.+?)';", String.format("%s %s;", YSQL_PASSWORD_KEYWORD, REDACT));
+    return YSQL_PASSWORD_LITERAL.matcher(input).replaceAll(YSQL_PASSWORD_KEYWORD + " " + REDACT);
   }
 
   /**
@@ -945,6 +961,30 @@ public class Util {
     return Stream.of(node.cloudInfo.private_ip, node.cloudInfo.secondary_private_ip)
         .filter(ip -> StringUtils.isNotBlank(ip) && !"null".equals(ip))
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Maps each node's {@code secondary_private_ip} to its {@code private_ip}. Dual-NIC servers
+   * advertise their secondary IP, while YBA reaches them by their private IP. Nodes without a
+   * secondary IP, or with the same IP for both, are skipped.
+   */
+  public static Map<String, String> getSecondaryToPrivateIps(Collection<NodeDetails> nodes) {
+    Map<String, String> result = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      if (node == null || node.cloudInfo == null) {
+        continue;
+      }
+      String primaryIp = node.cloudInfo.private_ip;
+      String secondaryIp = node.cloudInfo.secondary_private_ip;
+      if (StringUtils.isNotBlank(primaryIp)
+          && !"null".equals(primaryIp)
+          && StringUtils.isNotBlank(secondaryIp)
+          && !"null".equals(secondaryIp)
+          && !secondaryIp.equals(primaryIp)) {
+        result.put(secondaryIp, primaryIp);
+      }
+    }
+    return result;
   }
 
   // Generate a deterministic node UUID from the universe UUID and the node name.
@@ -2074,22 +2114,34 @@ public class Util {
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 
-  /** Get randomly generated password inline with YB's password policy */
+  private static final String RANDOM_PASSWORD_CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+  private static final SecureRandom RANDOM_PASSWORD_SOURCE = new SecureRandom();
+
+  /**
+   * A random password that meets the default password policy: 16 letters and digits plus a special
+   * character, a lower and an upper case letter and a digit, in random order. Decoding random bytes
+   * as UTF-8 instead produced the default disallowed character (`) in about 6% of passwords.
+   */
   public static String getRandomPassword() {
-    byte[] password = new byte[16];
-    new Random().nextBytes(password);
-    String generatedPassword = new String(password, Charset.forName("UTF-8"));
-    // To be consistent with password policy
-    Integer randomInt = new Random().nextInt(26);
-    String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
-    String uppercaseLetter = lowercaseLetter.toUpperCase();
-    generatedPassword +=
-        (SPECIAL_CHARACTERS_STRING_LIST.get(
-                new Random().nextInt(SPECIAL_CHARACTERS_STRING_LIST.size()))
-            + lowercaseLetter
-            + uppercaseLetter
-            + String.valueOf(randomInt));
-    return generatedPassword;
+    List<String> chars = new ArrayList<>();
+    for (int i = 0; i < 16; i++) {
+      chars.add(randomCharOf(RANDOM_PASSWORD_CHARS));
+    }
+    // One of each kind the password policy requires.
+    chars.add(
+        SPECIAL_CHARACTERS_STRING_LIST.get(
+            RANDOM_PASSWORD_SOURCE.nextInt(SPECIAL_CHARACTERS_STRING_LIST.size())));
+    chars.add(randomCharOf("abcdefghijklmnopqrstuvwxyz"));
+    chars.add(randomCharOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+    chars.add(randomCharOf("0123456789"));
+    Collections.shuffle(chars, RANDOM_PASSWORD_SOURCE);
+    return String.join("", chars);
+  }
+
+  private static String randomCharOf(String alphabet) {
+    return String.valueOf(alphabet.charAt(RANDOM_PASSWORD_SOURCE.nextInt(alphabet.length())));
   }
 
   /**
