@@ -14,6 +14,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -24,6 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
@@ -275,6 +277,27 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
           intent.specificGFlags.setInheritFromPrimary(true);
         },
         true);
+  }
+
+  @Test
+  public void editRestoresRedactedSecretsInKubernetesOverrides() {
+    enableGFlagsSensitiveDataApiRedaction();
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    Universe universe =
+        Universe.saveDetails(
+            ModelFactory.createUniverse(customer.getId()).getUniverseUUID(),
+            u -> u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides = stored);
+    UniverseDefinitionTaskParams params =
+        Json.fromJson(
+            Json.toJson(universe.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+    String edit = "tserver:\n  podLabels:\n    env: test\n";
+    params.getPrimaryCluster().userIntent.universeOverrides =
+        KubernetesOverridesRedactor.redact(stored) + edit;
+
+    UniverseDefinitionTaskParams merged =
+        UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+            params, universe, UniverseDefinitionTaskParams.class);
+    assertEquals(stored + edit, merged.getPrimaryCluster().userIntent.universeOverrides);
   }
 
   private void enableGFlagsSensitiveDataApiRedaction() {

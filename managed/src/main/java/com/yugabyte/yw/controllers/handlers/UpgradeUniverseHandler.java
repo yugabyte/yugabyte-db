@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -561,6 +562,16 @@ public class UpgradeUniverseHandler {
     if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
         && requestParams.getReadOnlyClusters().size() == 0) {
       requestParams.clusters.add(universe.getUniverseDetails().getReadOnlyClusters().get(0));
+    }
+    if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      UserIntent stored = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      requestParams.universeOverrides =
+          KubernetesOverridesRedactor.restore(
+              stored.universeOverrides,
+              requestParams.universeOverrides,
+              "Kubernetes universe overrides");
+      requestParams.azOverrides =
+          KubernetesOverridesRedactor.restoreAz(stored.azOverrides, requestParams.azOverrides);
     }
     requestParams.verifyParams(universe, true);
     return submitUpgradeTask(

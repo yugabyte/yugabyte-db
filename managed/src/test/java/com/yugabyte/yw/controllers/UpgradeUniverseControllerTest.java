@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -548,6 +549,65 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
         result,
         "A FIPS enabled universe needs openssl_require_fips set to true or left unset, but the"
             + " Kubernetes universe overrides (gflags.tserver) set it to false.");
+    verify(mockCommissioner, never()).submit(any(), any());
+  }
+
+  private Universe prepareK8sUniverseWithLdapOverrides(String universeName, String overrides) {
+    when(mockConfig.getBoolean(GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+    Universe universe = prepareK8sUniverseForOverridesUpgrade(universeName);
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UserIntent userIntent = u.getUniverseDetails().getPrimaryCluster().userIntent;
+          userIntent.universeOverrides = overrides;
+          userIntent.azOverrides = new HashMap<>(Map.of("az-1", overrides));
+        });
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRestoresRedactedLdapSecrets() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides LDAP Universe", stored);
+    String edit = "tserver:\n  podLabels:\n    env: test\n";
+    String redacted = KubernetesOverridesRedactor.redact(stored);
+
+    Result result =
+        runUpgrade(
+            universe,
+            p -> {
+              p.universeOverrides = redacted + edit;
+              p.azOverrides = new HashMap<>(Map.of("az-1", redacted));
+            },
+            KubernetesOverridesUpgradeParams.class,
+            "kubernetes_overrides");
+    assertOk(result);
+
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.KubernetesOverridesUpgrade), argCaptor.capture());
+    assertEquals(stored + edit, argCaptor.getValue().universeOverrides);
+    assertEquals(Map.of("az-1", stored), argCaptor.getValue().azOverrides);
+  }
+
+  @Test
+  public void testKubernetesOverridesUpgradeRejectsRedactedInNewAz() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.KubernetesOverridesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    Universe universe = prepareK8sUniverseWithLdapOverrides("Overrides New AZ Universe", stored);
+    String redacted = KubernetesOverridesRedactor.redact(stored);
+    Result result =
+        assertPlatformException(
+            () ->
+                runUpgrade(
+                    universe,
+                    p -> p.azOverrides = new HashMap<>(Map.of("az-1", redacted, "az-2", redacted)),
+                    KubernetesOverridesUpgradeParams.class,
+                    "kubernetes_overrides"));
+    assertBadRequest(result, "Kubernetes overrides of AZ az-2");
     verify(mockCommissioner, never()).submit(any(), any());
   }
 

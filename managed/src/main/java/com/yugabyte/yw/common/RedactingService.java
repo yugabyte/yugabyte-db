@@ -186,6 +186,11 @@ public class RedactingService {
           SECRET_PATHS_FOR_LOGS.stream().map(JsonPath::compile).collect(Collectors.toList()));
 
   private static final String REDACTED_PAYLOAD_KEY = "_redactedPayload";
+  // Kubernetes overrides YAML text in v1 userIntent and v2 ClusterProviderSpec.
+  private static final Set<String> K8S_OVERRIDES_FIELDS =
+      Set.of("universeOverrides", "helm_overrides");
+  private static final Set<String> K8S_AZ_OVERRIDES_FIELDS =
+      Set.of("azOverrides", "az_helm_overrides");
 
   /** Value fields of a gflag change in audit details: {"name": ..., "old": ..., "new": ...}. */
   private static final List<String> GFLAG_CHANGE_FIELDS = List.of("old", "new", "default");
@@ -1338,7 +1343,26 @@ public class RedactingService {
                     String originalValue = fieldValue.asText();
                     String redactedValue = redactAllLdapBindPasswdHbaFormattedValues(originalValue);
                     objNode.put(fieldName, redactedValue);
+                  } else if (K8S_OVERRIDES_FIELDS.contains(fieldName)) {
+                    objNode.put(fieldName, KubernetesOverridesRedactor.redact(fieldValue.asText()));
                   }
+                } else if (fieldValue != null
+                    && fieldValue.isObject()
+                    && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
+                  // Holds overrides text per AZ, except userIntentOverrides.azOverrides, which
+                  // shares the name but holds objects.
+                  fieldValue
+                      .fields()
+                      .forEachRemaining(
+                          az -> {
+                            if (az.getValue().isTextual()) {
+                              az.setValue(
+                                  TextNode.valueOf(
+                                      KubernetesOverridesRedactor.redact(az.getValue().asText())));
+                            } else {
+                              redactLdapBindPasswdRecursive(az.getValue());
+                            }
+                          });
                 } else if (fieldValue != null && (fieldValue.isObject() || fieldValue.isArray())) {
                   redactLdapBindPasswdRecursive(fieldValue);
                 }

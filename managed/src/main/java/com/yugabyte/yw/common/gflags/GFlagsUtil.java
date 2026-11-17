@@ -22,6 +22,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
+import com.yugabyte.yw.common.KubernetesOverridesRedactor;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -1520,7 +1521,8 @@ public class GFlagsUtil {
    * REDACTED, so a gflag copied from an API response would otherwise be applied and stored as the
    * literal token. Checks the same gflags as mergeSensitiveGFlags: the version's sensitive gflags,
    * which must not contain REDACTED, and ysql_hba_conf_csv, which must not contain it anywhere.
-   * Other gflags may contain the word.
+   * Other gflags may contain the word. Kubernetes overrides get the KubernetesOverridesRedactor
+   * restore check against nothing stored.
    */
   public static void checkNoRedactedGFlagsOnCreate(
       UniverseDefinitionTaskParams.UserIntent userIntent,
@@ -1549,6 +1551,9 @@ public class GFlagsUtil {
         }
       }
     }
+    KubernetesOverridesRedactor.restore(
+        null, userIntent.universeOverrides, "Kubernetes universe overrides");
+    KubernetesOverridesRedactor.restoreAz(null, userIntent.azOverrides);
   }
 
   /**

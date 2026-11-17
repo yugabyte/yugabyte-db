@@ -1137,4 +1137,42 @@ public class RedactingServiceTest {
     String input = "key: abc, other: abc";
     assertEquals(input, RedactingService.redactValues(input, List.of("abc")));
   }
+
+  @Test
+  public void testFilterSecretFieldsApisRedactsKubernetesOverrides() {
+    String overrides = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: tserver-secret\n";
+    String redacted = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: REDACTED\n";
+    ObjectNode userIntent = mapper.createObjectNode();
+    userIntent.put("universeOverrides", overrides);
+    userIntent.putObject("azOverrides").put("az-1", overrides);
+    // userIntentOverrides.azOverrides shares the name but holds objects keyed by AZ UUID.
+    userIntent
+        .putObject("userIntentOverrides")
+        .putObject("azOverrides")
+        .putObject("8d6f9c2e-0000-0000-0000-000000000000")
+        .put("instanceType", "c5.large");
+    ObjectNode v2Provider = mapper.createObjectNode();
+    v2Provider.put("helm_overrides", overrides);
+    v2Provider.putObject("az_helm_overrides").put("az-1", overrides);
+    ObjectNode root = mapper.createObjectNode();
+    root.set("userIntent", userIntent);
+    root.set("provider", v2Provider);
+
+    JsonNode out =
+        RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
+    assertEquals(redacted, out.at("/userIntent/universeOverrides").asText());
+    assertEquals(redacted, out.at("/userIntent/azOverrides/az-1").asText());
+    assertEquals(
+        "c5.large",
+        out.at("/userIntent/userIntentOverrides/azOverrides")
+            .elements()
+            .next()
+            .get("instanceType")
+            .asText());
+    assertEquals(redacted, out.at("/provider/helm_overrides").asText());
+    assertEquals(redacted, out.at("/provider/az_helm_overrides/az-1").asText());
+
+    out = RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, false);
+    assertEquals(overrides, out.at("/userIntent/universeOverrides").asText());
+  }
 }
