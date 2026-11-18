@@ -46,15 +46,21 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
   }
 
   @Test
-  public void consistentOrNull_noUpdate() {
-    for (ObjectNode details :
-        new ObjectNode[] {
-          details("kubernetes", "MASTER", "TSERVER"), details("kubernetes", null, null)
-        }) {
-      ObjectNode before = details.deepCopy();
-      assertFalse(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
-      assertEquals(before, details);
-    }
+  public void allPodsNull_bothSet() {
+    ObjectNode details = details("kubernetes", null, null);
+
+    assertTrue(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertEquals("MASTER", dedicatedTo(details, "yb-master-0"));
+    assertEquals("TSERVER", dedicatedTo(details, "yb-tserver-0"));
+  }
+
+  @Test
+  public void consistent_noUpdate() {
+    ObjectNode details = details("kubernetes", "MASTER", "TSERVER");
+    ObjectNode before = details.deepCopy();
+
+    assertFalse(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertEquals(before, details);
   }
 
   @Test
@@ -67,11 +73,42 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
   }
 
   @Test
+  public void nonDedicatedK8s_noUpdate() {
+    ObjectNode details = details("kubernetes", null, "MASTER");
+    ((ObjectNode) details.get("clusters").get(0).get("userIntent")).put("dedicatedNodes", false);
+    ObjectNode before = details.deepCopy();
+
+    assertFalse(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertEquals(before, details);
+  }
+
+  @Test
   public void migrate_tserverPodGetsTserverInstanceType() throws SQLException {
+    UUID universeUUID = createK8sUniverse("v478-master", ServerType.MASTER);
+    assertEquals("xsmall", instanceTypeForNode(universeUUID, "yb-tserver-0"));
+
+    runMigration();
+
+    assertEquals("small", instanceTypeForNode(universeUUID, "yb-tserver-0"));
+    assertEquals("xsmall", instanceTypeForNode(universeUUID, "yb-master-0"));
+  }
+
+  @Test
+  public void migrate_nullMasterPodGetsMasterInstanceType() throws SQLException {
+    UUID universeUUID = createK8sUniverse("v478-null", null);
+    assertEquals("small", instanceTypeForNode(universeUUID, "yb-master-0"));
+
+    runMigration();
+
+    assertEquals("xsmall", instanceTypeForNode(universeUUID, "yb-master-0"));
+    assertEquals("small", instanceTypeForNode(universeUUID, "yb-tserver-0"));
+  }
+
+  // Every pod gets podsDedicatedTo, as pre-2025.1 POD_INFO left them after cloning one node.
+  private static UUID createK8sUniverse(String name, ServerType podsDedicatedTo) {
     Customer customer = ModelFactory.testCustomer();
     UUID universeUUID =
-        ModelFactory.createUniverse("v476", customer.getId(), CloudType.kubernetes)
-            .getUniverseUUID();
+        ModelFactory.createUniverse(name, customer.getId(), CloudType.kubernetes).getUniverseUUID();
     Universe.saveDetails(
         universeUUID,
         u -> {
@@ -80,11 +117,17 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
           intent.instanceType = "small";
           intent.masterInstanceType = "xsmall";
           UUID clusterUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
-          u.getUniverseDetails().nodeDetailsSet.add(pod("yb-master-0", clusterUuid, true));
-          u.getUniverseDetails().nodeDetailsSet.add(pod("yb-tserver-0", clusterUuid, false));
+          u.getUniverseDetails()
+              .nodeDetailsSet
+              .add(pod("yb-master-0", clusterUuid, true, podsDedicatedTo));
+          u.getUniverseDetails()
+              .nodeDetailsSet
+              .add(pod("yb-tserver-0", clusterUuid, false, podsDedicatedTo));
         });
-    assertEquals("xsmall", instanceTypeForNode(universeUUID, "yb-tserver-0"));
+    return universeUUID;
+  }
 
+  private static void runMigration() throws SQLException {
     Transaction transaction = DB.beginTransaction();
     try {
       V478__Fix_K8s_Node_DedicatedTo.migrate(transaction.connection());
@@ -92,9 +135,6 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
     } finally {
       DB.endTransaction();
     }
-
-    assertEquals("small", instanceTypeForNode(universeUUID, "yb-tserver-0"));
-    assertEquals("xsmall", instanceTypeForNode(universeUUID, "yb-master-0"));
   }
 
   private static String instanceTypeForNode(UUID universeUUID, String nodeName) {
@@ -106,14 +146,14 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
         .getInstanceTypeForNode(universe.getNode(nodeName));
   }
 
-  // Shaped as a pre-2025.1 POD_INFO left it after cloning a dedicated master node.
-  private static NodeDetails pod(String nodeName, UUID placementUuid, boolean isMaster) {
+  private static NodeDetails pod(
+      String nodeName, UUID placementUuid, boolean isMaster, ServerType dedicatedTo) {
     NodeDetails node = new NodeDetails();
     node.nodeName = nodeName;
     node.placementUuid = placementUuid;
     node.isMaster = isMaster;
     node.isTserver = !isMaster;
-    node.dedicatedTo = ServerType.MASTER;
+    node.dedicatedTo = dedicatedTo;
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.instance_type = "xsmall";
     return node;

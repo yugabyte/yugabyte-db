@@ -19,15 +19,18 @@ import play.libs.Json;
 
 /**
  * Before 2025.1, POD_INFO built every Kubernetes node by cloning one node of the cluster without
- * resetting dedicatedTo, so all pods of a dedicated universe carry the same value: MASTER or
- * TSERVER, whichever node the HashSet returned first. getInstanceTypeForNode and
- * getDeviceInfoForNode key off dedicatedTo. Once V459 set masterInstanceType, editing the tserver
- * instance type compares tserver pods against the master type, so they are not replaced and
- * universe_configure fails with an instance type mismatch.
+ * resetting dedicatedTo, so all pods of a universe carry the same value: MASTER, TSERVER, or null
+ * when the cloned node never had one (V403 made Kubernetes clusters dedicated without setting it).
+ * In a dedicated cluster getInstanceTypeForNode and evaluateDeviceInfoForNode resolve the server
+ * type from dedicatedTo, reading null as TSERVER. Once V459 set masterInstanceType and
+ * masterDeviceInfo, a pod with the wrong value gets the other server's instance type and device
+ * info. Release branches without the Kubernetes skip in finalSanityCheckConfigure (2025.2) then
+ * reject a tserver instance type edit in universe_configure.
  *
- * <p>A Kubernetes pod runs exactly one server, so dedicatedTo is derived from isTserver, as
- * PlacementInfoUtil.dedicateNodes does. A null dedicatedTo is left alone: non-dedicated universes
- * created before 2025.1 have it, and it is read as TSERVER.
+ * <p>A Kubernetes pod runs exactly one server, so dedicatedTo is set from isTserver, as POD_INFO
+ * and PlacementInfoUtil.dedicateNodes do. Only dedicated clusters are touched: in a non-dedicated
+ * one dedicatedTo is not used for these lookups, and MASTER on a master pod marks it for
+ * replacement.
  */
 @Slf4j
 public class V478__Fix_K8s_Node_DedicatedTo extends BaseJavaMigration {
@@ -69,9 +72,12 @@ public class V478__Fix_K8s_Node_DedicatedTo extends BaseJavaMigration {
     }
     Set<String> k8sClusterUuids = new HashSet<>();
     for (JsonNode cluster : clusters) {
-      String providerType = cluster.path("userIntent").path("providerType").asText(null);
+      JsonNode userIntent = cluster.path("userIntent");
+      String providerType = userIntent.path("providerType").asText(null);
       String clusterUuid = cluster.path("uuid").asText(null);
-      if (clusterUuid != null && Common.CloudType.kubernetes.name().equals(providerType)) {
+      if (clusterUuid != null
+          && Common.CloudType.kubernetes.name().equals(providerType)
+          && userIntent.path("dedicatedNodes").asBoolean(false)) {
         k8sClusterUuids.add(clusterUuid);
       }
     }
@@ -87,7 +93,7 @@ public class V478__Fix_K8s_Node_DedicatedTo extends BaseJavaMigration {
       String dedicatedTo = node.path("dedicatedTo").asText(null);
       boolean isMaster = node.path("isMaster").asBoolean(false);
       boolean isTserver = node.path("isTserver").asBoolean(true);
-      if (dedicatedTo == null || isMaster == isTserver) {
+      if (isMaster == isTserver) {
         continue;
       }
       String expected = isTserver ? TSERVER : MASTER;
