@@ -13,6 +13,8 @@
 
 #include "yb/gen_yrpc/model.h"
 
+#include <unordered_set>
+
 #include <boost/algorithm/string/predicate.hpp>
 
 #include <google/protobuf/descriptor.h>
@@ -209,6 +211,44 @@ bool IsMessage(const google::protobuf::FieldDescriptor* field) {
 
 bool IsSimple(const google::protobuf::FieldDescriptor* field) {
   return !field->is_repeated() && !IsMessage(field);
+}
+
+bool FieldTraceEnabled(const google::protobuf::FieldDescriptor* field) {
+  return field->options().GetExtension(rpc::trace).enabled();
+}
+
+bool FieldTraceBytesAsString(const google::protobuf::FieldDescriptor* field) {
+  return field->options().GetExtension(rpc::trace).bytes_as_string();
+}
+
+namespace {
+
+bool MessageHasTracingAttributesImpl(
+    const google::protobuf::Descriptor* message,
+    std::unordered_set<const google::protobuf::Descriptor*>* visiting) {
+  // Break recursion on self-referential messages: a field reachable only through a cycle still
+  // gets picked up on the path that first reaches it directly.
+  if (!visiting->insert(message).second) {
+    return false;
+  }
+  bool result = false;
+  for (int i = 0; i != message->field_count() && !result; ++i) {
+    const auto* field = message->field(i);
+    if (FieldTraceEnabled(field)) {
+      result = true;
+    } else if (IsMessage(field)) {
+      result = MessageHasTracingAttributesImpl(field->message_type(), visiting);
+    }
+  }
+  visiting->erase(message);
+  return result;
+}
+
+} // namespace
+
+bool MessageHasTracingAttributes(const google::protobuf::Descriptor* message) {
+  std::unordered_set<const google::protobuf::Descriptor*> visiting;
+  return MessageHasTracingAttributesImpl(message, &visiting);
 }
 
 bool NeedArena(const google::protobuf::Descriptor* message) {

@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import java.util.List;
+import java.util.Map;
+
 public class CustomerConfigConsts {
   public static final String BACKUP_LOCATION_FIELDNAME = "BACKUP_LOCATION";
 
@@ -44,4 +47,9 @@ public class CustomerConfigConsts {
   public static final String NAME_AZURE = "AZ";
 
   public static final String NAME_OCI = "OCI";
+
+  // A region's secret belongs to its LOCATION as much as to its REGION, so an element keeps its
+  // secret when either one changes.
+  public static final Map<String, List<String>> STORAGE_CONFIG_ARRAY_MERGE_FIELDS =
+      Map.of(REGION_LOCATIONS_FIELDNAME, List.of(REGION_FIELDNAME, REGION_LOCATION_FIELDNAME));
 }

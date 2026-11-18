@@ -295,9 +295,13 @@ public class CustomerConfigController extends AuthenticatedController {
     customerConfig.setCustomerUUID(customerUUID);
 
     CustomerConfig existingConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
-    CustomerConfig unmaskedConfig = CommonUtils.unmaskObject(existingConfig, customerConfig);
+    customerConfig.setData(
+        CommonUtils.unmaskJsonObject(
+            existingConfig.getData(),
+            customerConfig.getData(),
+            CustomerConfig.ARRAY_IDENTITY_FIELDS));
 
-    customerConfigService.edit(unmaskedConfig);
+    customerConfigService.edit(customerConfig);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -305,7 +309,7 @@ public class CustomerConfigController extends AuthenticatedController {
             Audit.TargetType.CustomerConfig,
             Objects.toString(customerConfig.getConfigUUID(), null),
             Audit.ActionType.Update);
-    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
   }
 
   @ApiOperation(
@@ -337,8 +341,13 @@ public class CustomerConfigController extends AuthenticatedController {
     CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
     customerConfig.setConfigUUID(configUUID);
     customerConfig.setCustomerUUID(customerUUID);
-    CustomerConfig unmaskedConfig = CommonUtils.unmaskObject(existingConfig, customerConfig);
-    customerConfigService.edit(unmaskedConfig);
+    customerConfig.setData(
+        CommonUtils.unmaskJsonObject(
+            existingConfig.getData(),
+            customerConfig.getData(),
+            CustomerConfig.ARRAY_IDENTITY_FIELDS));
+
+    customerConfigService.edit(customerConfig);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -346,7 +355,7 @@ public class CustomerConfigController extends AuthenticatedController {
             Audit.TargetType.CustomerConfig,
             Objects.toString(customerConfig.getConfigUUID(), null),
             Audit.ActionType.Update);
-    return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
+    return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
   }
 
   @ApiOperation(
