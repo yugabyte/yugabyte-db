@@ -559,7 +559,7 @@ $$ AS query \gset
 
 -- SQL value functions in predicates: all SQLValueFunction nodes
 -- (time/date, identity, and catalog variants) are pushed down as remote
--- params — the coordinator evaluates and ships the concrete value.
+-- params: the coordinator evaluates and ships the concrete value.
 CREATE VIEW sqlvalue_function_test AS
     SELECT
         yb_get_local_tserver_uuid() AS server_uuid,

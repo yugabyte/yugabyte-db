@@ -958,7 +958,8 @@ foreign_expr_walker(Node *node,
 					state = FDW_COLLATE_UNSAFE;
 			}
 			break;
-		case T_SQLValueFunction:
+
+		case T_SQLValueFunction:	/* YB */
 			{
 				/*
 				 * YB: For federated YugabyteDB, allow all SQLValueFunction
@@ -975,6 +976,7 @@ foreign_expr_walker(Node *node,
 				state = FDW_COLLATE_NONE;
 			}
 			break;
+
 		default:
 
 			/*
@@ -1083,7 +1085,8 @@ is_foreign_param(PlannerInfo *root,
 		case T_Param:
 			/* Params always have to be sent to the foreign server */
 			return true;
-		case T_FuncExpr:
+
+		case T_FuncExpr:	/* YB */
 			{
 				/*
 				 * YB: For federated YugabyteDB, stable functions on the
@@ -1106,7 +1109,7 @@ is_foreign_param(PlannerInfo *root,
 					return true;
 				return false;
 			}
-		case T_SQLValueFunction:
+		case T_SQLValueFunction:	/* YB */
 			{
 				PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) baserel->fdw_private;
 				if (fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB &&
@@ -1114,6 +1117,7 @@ is_foreign_param(PlannerInfo *root,
 					return true;
 				return false;
 			}
+
 		default:
 			break;
 	}
@@ -2787,9 +2791,11 @@ deparseExpr(Expr *node, deparse_expr_cxt *context)
 		case T_Aggref:
 			deparseAggref((Aggref *) node, context);
 			break;
-		case T_SQLValueFunction:
+
+		case T_SQLValueFunction:	/* YB */
 			YbDeparseSqlValueFunction((SQLValueFunction *) node, context);
 			break;
+
 		default:
 			elog(ERROR, "unsupported expression type for deparse: %d",
 				 (int) nodeTag(node));
@@ -3092,20 +3098,13 @@ deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context)
 	PgFdwRelationInfo *yb_fpinfo;
 
 	/*
-	 * YB: For federated YugabyteDB, defer evaluation of stable functions
-	 * (e.g. now()) to execution time by emitting them as remote params.
-	 *
-	 * We previously folded the FuncExpr into a Const at deparse time, but
-	 * that breaks PG's promise that stable functions in a prepared statement
-	 * are re-evaluated on every EXECUTE: once the plan cache promotes the
-	 * statement to a generic plan, the constified literal stays frozen and
-	 * every subsequent EXECUTE ships the same stale value.
-	 *
-	 * By registering the original FuncExpr in context->params_list, the
-	 * executor's process_query_params() will call ExecEvalExpr() on it for
-	 * each scan -- giving correct semantics for both custom and generic
-	 * plans, and also keeping the value consistent across all tservers
-	 * because the coordinator (not the remotes) computes it.
+	 * YB: For federated YugabyteDB, emit stable functions (e.g. now()) as
+	 * remote params rather than folding them into a Const here.  A Const
+	 * would be frozen into a generic plan, so every later EXECUTE of a
+	 * prepared statement would ship the same stale value.  A param in
+	 * context->params_list is evaluated by process_query_params() for each
+	 * scan, and by the coordinator rather than the remotes, so all tservers
+	 * see the same value.
 	 *
 	 * Any stable FuncExpr reaching here has already been approved by
 	 * is_foreign_expr (it is on yb_pushdown_funcs_to_constify), so a
@@ -4169,12 +4168,16 @@ yb_deparse_as_remote_param(Expr *expr, deparse_expr_cxt *context)
 	ListCell   *lc;
 
 	/*
-	 * This function is only called from federated YugabyteDB deparse paths,
-	 * which always supply a params_list (the NULL case only arises during
-	 * use_remote_estimate cost estimation over libpq, which federated
-	 * YugabyteDB servers never use).
+	 * There is no params_list when deparsing the EXPLAIN for a remote
+	 * estimate (use_remote_estimate), so emit a placeholder as deparseParam
+	 * does.
 	 */
-	Assert(context->params_list);
+	if (context->params_list == NULL)
+	{
+		printRemotePlaceholder(exprType((Node *) expr),
+							   exprTypmod((Node *) expr), context);
+		return;
+	}
 
 	foreach(lc, *context->params_list)
 	{

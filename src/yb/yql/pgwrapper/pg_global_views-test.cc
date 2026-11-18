@@ -349,7 +349,8 @@ TEST_F(PgGlobalViewsTest, TestLimitIsNotPushedDown) {
 }
 
 TEST_F(PgGlobalViewsTest, TestPushedDownNowDuringExecution) {
-  constexpr int kNowThresholdDelaySeconds = 1;
+  // Must outlast the setup and the first EXECUTE below, so it scales with slow builds.
+  constexpr int kNowThresholdDelaySeconds = 5 * kTimeMultiplier;
   constexpr auto kExecutePreparedQuery = "EXECUTE now_execution_query";
   constexpr auto kPushedDownNowFilter =
       "WHERE ((updated_at < $1::timestamp with time zone))";
@@ -391,7 +392,10 @@ TEST_F(PgGlobalViewsTest, TestPushedDownNowDuringExecution) {
       ASSERT_RESULT(conn_->FetchRow<int64_t>(kExecutePreparedQuery));
   ASSERT_EQ(count_before_threshold, 0);
 
-  SleepFor((kNowThresholdDelaySeconds + 1) * kTimeMultiplier * 1s);
+  // Wait with a separate query, so the prepared statement still runs exactly twice.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    return conn_->FetchRow<bool>("SELECT NOW() > updated_at FROM now_execution_test");
+  }, 60s * kTimeMultiplier, "NOW() to pass the view's updated_at"));
 
   const auto count_after_threshold =
       ASSERT_RESULT(conn_->FetchRow<int64_t>(kExecutePreparedQuery));
