@@ -23,6 +23,9 @@ How the master runs background work.
   starts after it. C++ counts a throttled send as a failed attempt and backs off, so drops of
   tables with many tablets ran out of time (#24013). A waiter that is cancelled passes its turn on.
 - **`TaskRegistry`**: running tasks by name, for metrics and tests.
+- **`TableTasks`**: the tserver RPC tasks in flight for each table, listed on the table page as C++
+  `TableInfo::GetTasks` lists them. A task is listed while its `TableTaskGuard` lives;
+  `TableLifecycle::track_task` names the task after the table, as C++ descriptions do.
 
 ## Layer-2 work
 

@@ -107,8 +107,8 @@ pub(crate) fn stateful_services_json(view: &View, _args: &Args) -> Vec<u8> {
 pub(crate) fn hybrid_time_string(ht: u64) -> String {
     const LOGICAL_BITS: u32 = 12;
     match ht {
-        u64::MAX => "<invalid>".into(),
-        0xFFFF_FFFF_FFFF_FFFE => "<max>".into(),
+        u64::MAX => "<max>".into(),
+        0xFFFF_FFFF_FFFF_FFFE => "<invalid>".into(),
         0 => "<min>".into(),
         1 => "<initial>".into(),
         _ => {

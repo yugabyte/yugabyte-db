@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useJson } from '../api';
 import { Badge, Load, Mono, Tabs } from '../components/Common';
 import { Column, DataTable } from '../components/DataTable';
-import { formatBytes, formatNumber, unescapeHtml } from '../format';
+import { formatBytes, formatNumber } from '../format';
 import { Link, tableHref } from '../router';
 import { TableRow, TablesJson } from '../types';
 
@@ -148,8 +148,8 @@ function TablesView({ json }: { json: TablesJson }) {
         rows.push({
           category: key,
           table,
-          name: unescapeHtml(table.table_name),
-          keyspace: unescapeHtml(table.keyspace),
+          name: table.table_name ?? '',
+          keyspace: table.keyspace ?? '',
         });
       }
     }

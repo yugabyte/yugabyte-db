@@ -697,3 +697,48 @@ async fn a_rebuilt_replica_map_keeps_each_peers_own_state() {
     assert_eq!(state("ts2"), RaftGroupStatePB::RUNNING);
     assert_eq!(state("ts3"), RaftGroupStatePB::UNKNOWN);
 }
+
+#[tokio::test]
+async fn heartbeats_carry_the_cluster_ysql_pins_once_every_live_tserver_reported() {
+    use yb_proto::pb::master_heartbeat::YsqlDbOldestPinnedReadTime;
+    let pin = |ht: u64| {
+        let mut p = YsqlDbOldestPinnedReadTime::new();
+        p.set_db_level_oldest_read_time(ht);
+        p
+    };
+    let s = setup(true).await;
+    // Each heartbeat replaces the tserver's pins.
+    let mut ts1 = request("ts1", 1, 1);
+    ts1.ts_ysql_db_oldest_pinned_read_times
+        .insert(16384, pin(100));
+    ts1.ts_ysql_db_oldest_pinned_read_times
+        .insert(16385, pin(300));
+    let mut req = ts1.clone();
+    req.registration = Some(registration(9100)).into();
+    s.heartbeat(&req).await.unwrap();
+    let mut req = request("ts2", 1, 2);
+    req.registration = Some(registration(9101)).into();
+    req.ts_ysql_db_oldest_pinned_read_times
+        .insert(16384, pin(50));
+    // An invalid pin is no pin.
+    req.ts_ysql_db_oldest_pinned_read_times
+        .insert(16386, pin(crate::pins::INVALID_HYBRID_TIME));
+    s.heartbeat(&req).await.unwrap();
+
+    // The aggregate is reused for up to 100 ms.
+    std::thread::sleep(Duration::from_millis(150));
+    let resp = s.heartbeat(&ts1).await.unwrap();
+    assert!(resp.cluster_ysql_db_pins_ready());
+    let pins: BTreeMap<u32, u64> = resp
+        .cluster_ysql_db_oldest_pinned_read_times
+        .iter()
+        .map(|(db, p)| (*db, p.db_level_oldest_read_time()))
+        .collect();
+    assert_eq!(pins, BTreeMap::from([(16384, 50), (16385, 300)]));
+    assert_eq!(s.ts.cluster_ysql_pins().oldest(), Some(50));
+
+    // A new term forgets the pins: until ts2 reports again the map is not ready.
+    s.ts.on_leader_ready(&s.catalog.snapshot());
+    let resp = s.heartbeat(&ts1).await.unwrap();
+    assert!(!resp.cluster_ysql_db_pins_ready());
+}

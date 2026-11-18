@@ -399,6 +399,9 @@ static NUM_ADVISORY_LOCKS_TABLETS: FlagRef<u32> = FlagRef::new("num_advisory_loc
 static YSQL_ENABLE_AUTO_ANALYZE_INFRA: FlagRef<bool> =
     FlagRef::new("ysql_enable_auto_analyze_infra");
 static ENABLE_PG_CRON: FlagRef<bool> = FlagRef::new("enable_pg_cron");
+static TEST_ECHO_SERVICE_ENABLED: FlagRef<bool> = FlagRef::new("TEST_echo_service_enabled");
+static TEST_SLEEP_BEFORE_REPORTING_LB_UI_MS: FlagRef<i32> =
+    FlagRef::new("TEST_sleep_before_reporting_lb_ui_ms");
 static HEARTBEAT_INTERVAL_MS: FlagRef<i32> = FlagRef::new("heartbeat_interval_ms");
 static PG_CATALOG_VERSIONS_CACHE_RETRY_MS: FlagRef<i32> =
     FlagRef::new("pg_catalog_versions_cache_retry_ms");
@@ -476,6 +479,10 @@ static STEPDOWN_TO_PREFERRED_LEADER_ON_REMOVE: FlagRef<bool> =
 static LB_UNDER_REPLICATED_ONLY: FlagRef<bool> =
     FlagRef::new("TEST_load_balancer_handle_under_replicated_tablets_only");
 static BG_TASK_WAIT_MS: FlagRef<i32> = FlagRef::new("catalog_manager_bg_task_wait_ms");
+static ENABLE_DB_HISTORY_RETENTION_PINS: FlagRef<bool> =
+    FlagRef::new("enable_db_history_retention_pins");
+static INITIAL_TSERVER_REGISTRATION_DURATION_SECS: FlagRef<u32> =
+    FlagRef::new("initial_tserver_registration_duration_secs");
 static MASTER_TS_RPC_TIMEOUT_MS: FlagRef<i32> = FlagRef::new("master_ts_rpc_timeout_ms");
 static RETRY_MAX_DELAY_MS: FlagRef<i32> = FlagRef::new("retrying_ts_rpc_max_delay_ms");
 static RETRY_LIMIT: FlagRef<i32> = FlagRef::new("unresponsive_ts_rpc_retry_limit");
@@ -533,6 +540,10 @@ fn ts_manager_options() -> TsManagerOptions {
         },
         use_private_ip: || USE_PRIVATE_IP.get(),
         send_leader_blacklisted_tservers: || SEND_LEADER_BLACKLISTED_TSERVERS.get(),
+        ysql_db_pins: || ENABLE_DB_HISTORY_RETENTION_PINS.get(),
+        initial_registration_duration: || {
+            Duration::from_secs(INITIAL_TSERVER_REGISTRATION_DURATION_SECS.get().into())
+        },
     }
 }
 
@@ -1720,6 +1731,34 @@ fn start_term(
         TransactionTableController::new(leader.tables.clone()),
         leader.ts_manager.subscribe(),
     );
+    let pin_host = host.clone();
+    run_controller(
+        scope,
+        master_ts_manager::pins::YsqlPinPublisher::new(
+            leader.ts_manager.clone(),
+            leader.catalog.clone(),
+            leader.writer.clone(),
+            leader.leadership.clone(),
+            || millis(BG_TASK_WAIT_MS.get()),
+            Arc::new(move |pin, valid_for| {
+                let mut req = yb_proto::pb::master_rust_peer::SetLiveYsqlHistoryPinRequestPB::new();
+                req.pin = pin;
+                req.set_valid_for_ms(valid_for.as_millis().min(u32::MAX as u128) as u32);
+                let result = req
+                    .write_to_bytes()
+                    .map_err(|e| e.to_string())
+                    .and_then(|bytes| {
+                        pin_host
+                            .call("SetLiveYsqlHistoryPin", &bytes)
+                            .map_err(|s| s.to_string())
+                    });
+                if let Err(e) = result {
+                    tracing::warn!("Failed to give the host the live ysql history pin: {e}");
+                }
+            }),
+        ),
+        watch::channel(0).1,
+    );
     run_controller(
         scope,
         TablespaceController::new(leader.tables.clone()),
@@ -1734,6 +1773,7 @@ fn start_term(
                 num_advisory_locks_tablets: || NUM_ADVISORY_LOCKS_TABLETS.get(),
                 auto_analyze: || YSQL_ENABLE_AUTO_ANALYZE_INFRA.get(),
                 pg_cron: || ENABLE_PG_CRON.get(),
+                test_echo: || TEST_ECHO_SERVICE_ENABLED.get(),
             },
             Arc::new(move |snapshot| {
                 master_ysql_manager::upgrade::major_upgrade_in_progress(
@@ -1780,6 +1820,7 @@ fn start_term(
                     })
                 },
                 tablespaces: Some(leader.tables.tablespaces()),
+                table_tasks: leader.tables.table_tasks(),
             },
             leader.balancer.clone(),
         ),
@@ -1876,6 +1917,25 @@ fn start_term(
                 deletes_scope.entity().spawn("delete-replica", async move {
                     let _sent = sent;
                     let ts_uuid = delete.ts_uuid.clone();
+                    let table_id = leader
+                        .catalog
+                        .snapshot()
+                        .get(
+                            yb_proto::pb::master_types::SysRowEntryType::TABLET,
+                            &delete.tablet_id,
+                        )
+                        .and_then(|t| t.tablet().map(|h| h.table_id.clone()))
+                        .unwrap_or_default();
+                    let _task = leader
+                        .tables
+                        .track_task(&table_id, "Delete Tablet", |name| {
+                            format!(
+                                "{}Tablet RPC for tablet {} ({name}) on TS={}",
+                                if delete.hide_only { "Hide" } else { "Delete" },
+                                String::from_utf8_lossy(&delete.tablet_id),
+                                String::from_utf8_lossy(&ts_uuid)
+                            )
+                        });
                     let result = executor
                         .run(&ts_uuid, "DeleteTablet", &retry_policy(false), |_| {
                             let current = leader.leadership.check(&delete.token);
@@ -2105,6 +2165,9 @@ pub(crate) fn web_options() -> master_web::WebOptions {
         hide_dead_node_threshold_mins: || HIDE_DEAD_NODE_THRESHOLD_MINS.get(),
         https_links: || {
             !WEBSERVER_CERTIFICATE_FILE.get().is_empty() && MASTER_WEBSERVER_REQUIRE_HTTPS.get()
+        },
+        sleep_before_reporting_lb_ui: || {
+            Duration::from_millis(TEST_SLEEP_BEFORE_REPORTING_LB_UI_MS.get().max(0) as u64)
         },
     }
 }

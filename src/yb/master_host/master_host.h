@@ -283,6 +283,8 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   bool IsLeaderInList(const Result<std::vector<ServerEntryPB>>& masters) const;
   Result<std::vector<ServerEntryPB>> ListMastersForWeb() const;
   docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
+  Status InformRemovedMaster(const HostPortPB& hp_pb);
+  void RenderObjectLocksPage(std::stringstream* output);
   void RefreshHistoryRetentionPinLoop();
   // PopulatePgCatalogVersionInfo of the C++ heartbeat service, from the cache or the sys catalog.
   void FillYsqlCatalogVersions(
@@ -347,8 +349,11 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<ThreadPool> leadership_pool_;
 
-  // Published by the C++ master leader; followers hold their pg catalog history back to it.
+  // Published by the master leader; followers hold their pg catalog history back to it.
   master::HistoryRetentionPinInfo ysql_history_retention_pin_;
+  // The Rust leader's live cluster pin (SetLiveYsqlHistoryPin) and until when it counts.
+  std::atomic<HybridTimeRepr> live_ysql_pin_{kInvalidHybridTimeValue};
+  std::atomic<CoarseTimePoint::rep> live_ysql_pin_valid_until_{0};
   scoped_refptr<Thread> pin_refresh_thread_;
   std::unique_ptr<server::TotalMemWatcher> total_mem_watcher_;
   scoped_refptr<Thread> total_mem_watcher_thread_;

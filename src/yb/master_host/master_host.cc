@@ -62,6 +62,7 @@
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/ysql_sequence_util.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
@@ -167,6 +168,7 @@ METRIC_DECLARE_gauge_uint32(num_tablet_servers_dead);
 METRIC_DECLARE_gauge_uint64(max_follower_heartbeat_delay);
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_bool(emergency_repair_mode);
@@ -580,8 +582,7 @@ class MasterHost::SysCatalogContextImpl : public master::SysCatalogContext {
     return host_.ResetMemoryState(config);
   }
   Status InformRemovedMaster(const HostPortPB& hp_pb) override {
-    // Only the leader informs removed peers, and this host never leads.
-    return STATUS(NotSupported, "The Rust master does not lead in layer 1");
+    return host_.InformRemovedMaster(hp_pb);
   }
 
   tablet::SnapshotCoordinator* SnapshotCoordinator() override {
@@ -683,7 +684,9 @@ class MasterHost::SnapshotContextImpl : public master::SnapshotCoordinatorContex
 
  private:
   static Status NotLeader() {
-    return STATUS(IllegalState, "Not supported on a follower-only Rust master");
+    // The host's C++ snapshot coordinator always runs as a follower; the Rust leader does the
+    // leader's part in master-snapshot-coordinator.
+    return STATUS(IllegalState, "Not supported by the Rust master's C++ snapshot coordinator");
   }
 
   MasterHost& host_;
@@ -755,7 +758,8 @@ MasterHost::~MasterHost() {
 }
 
 std::unique_ptr<MasterHost> CreateMasterHost() {
-  // Without TEST_rust_master_allow_leadership this peer must never become the sys catalog leader.
+  // With TEST_rust_master_allow_leadership=false this peer must never become the sys catalog
+  // leader.
   // Without failure detection it never starts an election on its own; ElectedAsLeader() steps it
   // down if an explicit leader transfer elects it anyway.
   if (!FLAGS_TEST_rust_master_allow_leadership && FLAGS_enable_leader_failure_detection) {
@@ -833,6 +837,8 @@ void MasterHost::RegisterWebPages() {
     bool is_styled;
     bool is_on_nav_bar;
     const char* icon;
+    // Renders the page on the leader when this host, not Rust, has what it shows.
+    void (MasterHost::*render_on_leader)(std::stringstream* output) = nullptr;
   };
   static const LeaderPage kLeaderPages[] = {
       {"/", "Home", true, true, "fa fa-home"},
@@ -847,7 +853,8 @@ void MasterHost::RegisterWebPages() {
       {"/tablet-replication", "Tablet Replication Health", true, false, ""},
       {"/load-distribution", "Cluster Balancer View", true, false, ""},
       {"/stateful-services", "Stateful Services", true, false, ""},
-      {"/ObjectLockManager", "Object Lock Manager", true, false, ""},
+      {"/ObjectLockManager", "Object Lock Manager", true, false, "",
+       &MasterHost::RenderObjectLocksPage},
       {"/api/v1/tablet-servers", "Tserver Statuses", false, false, ""},
       {"/api/v1/health-check", "Cluster Health Check", false, false, ""},
       {"/api/v1/tablet-replication", "Tablet Replication Health", false, false, ""},
@@ -868,22 +875,12 @@ void MasterHost::RegisterWebPages() {
   for (const auto& page : kLeaderPages) {
     web_server_->RegisterPathHandler(
         page.path, page.alias,
-        [this, path = std::string(page.path)](
+        [this, render = page.render_on_leader](
             const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
           auto masters = ListMastersForWeb();
           if (IsLeaderInList(masters)) {
-            if (path == "/ObjectLockManager") {
-              // MasterPathHandlers::HandleObjectLocksPage: the lock manager is the host's.
-              std::shared_ptr<tserver::TSLocalLockManager> lock_manager;
-              {
-                std::lock_guard lock(local_lock_manager_mutex_);
-                lock_manager = local_lock_manager_;
-              }
-              if (!lock_manager) {
-                resp->output << "<h2>Could not locate the object lock manager...</h2>\n";
-                return;
-              }
-              lock_manager->DumpLocksToHtml(resp->output);
+            if (render) {
+              (this->*render)(&resp->output);
               return;
             }
             // Rust serves every other leader page on a ready leader; this master only gets here
@@ -1360,9 +1357,38 @@ Status MasterHost::RunYsqlPgUpgrade(const master::RunYsqlPgUpgradeRequestPB& req
       });
 }
 
+void MasterHost::RenderObjectLocksPage(std::stringstream* output) {
+  // MasterPathHandlers::HandleObjectLocksPage: the lock manager is the host's.
+  std::shared_ptr<tserver::TSLocalLockManager> lock_manager;
+  {
+    std::lock_guard lock(local_lock_manager_mutex_);
+    lock_manager = local_lock_manager_;
+  }
+  if (!lock_manager) {
+    *output << "<h2>Could not locate the object lock manager...</h2>\n";
+    return;
+  }
+  lock_manager->DumpLocksToHtml(*output);
+}
+
+Status MasterHost::InformRemovedMaster(const HostPortPB& hp_pb) {
+  // Master::InformRemovedMaster: the removed master goes back to shell mode.
+  master::MasterClusterProxy proxy(&proxy_cache(), HostPort(hp_pb.host(), hp_pb.port()));
+  master::RemovedMasterUpdateRequestPB req;
+  master::RemovedMasterUpdateResponsePB resp;
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms));
+  RETURN_NOT_OK(proxy.RemovedMasterUpdate(req, &resp, &controller));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 docdb::HistoryCutoff MasterHost::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
-  // The follower half of CatalogManager::AllowedHistoryCutoffProvider: a follower has no tserver
-  // heartbeats, so it holds the pg catalog back to the pin the leader published.
+  // CatalogManager::AllowedHistoryCutoffProvider. A follower has no tserver heartbeats, so it
+  // holds the pg catalog back to the pin the leader published; the Rust leader also passes its
+  // live pin (SetLiveYsqlHistoryPin).
   auto cutoff = snapshot_coordinator_->AllowedHistoryCutoffProvider(metadata);
   const auto now = clock()->Now();
   const auto retention_sec =
@@ -1374,6 +1400,11 @@ docdb::HistoryCutoff MasterHost::AllowedHistoryCutoff(tablet::RaftGroupMetadata*
   cutoff.MakeAtMost({metadata->cdc_sdk_safe_time(), metadata->cdc_sdk_safe_time()});
   if (FLAGS_enable_db_history_retention_pins) {
     auto pin = ysql_history_retention_pin_.ysql_pin();
+    // On the leader, also the live picture from tserver heartbeats, while it is fresh.
+    if (CoarseMonoClock::Now().time_since_epoch().count() <
+        live_ysql_pin_valid_until_.load(std::memory_order_acquire)) {
+      pin.MakeAtMost(HybridTime(live_ysql_pin_.load(std::memory_order_acquire)));
+    }
     if (pin.is_valid()) {
       pin.MakeAtLeast(now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec));
       cutoff.cotables_cutoff_ht.MakeAtMost(pin);
@@ -2008,6 +2039,18 @@ rust::Vec<uint8_t> MasterHost::HandleOnHost(
             }
             RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table_id, req.term()));
           }
+          return Status::OK();
+        });
+  }
+  if (name == "SetLiveYsqlHistoryPin") {
+    return HandleRequest<
+        master::SetLiveYsqlHistoryPinRequestPB, master::SetLiveYsqlHistoryPinResponsePB>(
+        request, [this](const auto& req, auto*) -> Status {
+          live_ysql_pin_.store(
+              req.has_pin() ? req.pin() : kInvalidHybridTimeValue, std::memory_order_release);
+          live_ysql_pin_valid_until_.store(
+              (CoarseMonoClock::Now() + req.valid_for_ms() * 1ms).time_since_epoch().count(),
+              std::memory_order_release);
           return Status::OK();
         });
   }

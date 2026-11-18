@@ -86,11 +86,16 @@ pub struct Tablespaces {
 }
 
 /// `TableInfo::TableTypeUsesTablespacesForPlacement`: a YSQL table outside the sequences database
-/// that is not a colocated child or a colocation parent, or a transaction status table of a
-/// tablespace.
+/// that is not a colocated child or a colocation parent, a tablegroup's parent, or a transaction
+/// status table of a tablespace.
 pub fn uses_tablespaces(table_id: &[u8], pb: &SysTablesEntryPB) -> bool {
     if pb.table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE {
         return pb.transaction_table_tablespace_id.is_some();
+    }
+    // A tablegroup's parent, including the per-tablespace tablegroups of a colocated database,
+    // places the group's tablet; only the legacy colocated database's parent does not.
+    if crate::ysql::is_tablegroup_parent_table_id(table_id) {
+        return true;
     }
     pb.table_type() == TableType::PGSQL_TABLE_TYPE
         && crate::ysql::pg_database_oid(pb.namespace_id()) != Some(SEQUENCES_DATA_DATABASE_OID)
@@ -938,6 +943,16 @@ mod tests {
         assert!(!uses_tablespaces(b"txn", &global_txn));
         global_txn.set_transaction_table_tablespace_id(CUSTOM.to_vec());
         assert!(uses_tablespaces(b"txn", &global_txn));
+    }
+
+    #[test]
+    fn tablegroup_parents_use_tablespaces_but_the_legacy_colocated_parent_does_not() {
+        let mut parent = ysql_table();
+        parent.set_colocated(true);
+        let id = |suffix: &str| format!("{}{suffix}", "0".repeat(32)).into_bytes();
+        assert!(uses_tablespaces(&id(".colocation.parent.uuid"), &parent));
+        assert!(uses_tablespaces(&id(".tablegroup.parent.uuid"), &parent));
+        assert!(!uses_tablespaces(&id(".colocated.parent.uuid"), &parent));
     }
 
     #[test]

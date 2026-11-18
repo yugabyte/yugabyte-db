@@ -22,10 +22,12 @@
 
 mod blocking;
 mod retry;
+mod table_tasks;
 mod ts_rpc;
 
 pub use blocking::BlockingPool;
 pub use retry::{Attempt, RetryPolicy};
+pub use table_tasks::{TableTask, TableTaskGuard, TableTasks};
 pub use ts_rpc::TsRpcExecutor;
 
 use std::collections::BTreeMap;

@@ -21,6 +21,7 @@ mod deletes;
 mod heartbeat;
 mod order;
 mod peer;
+pub mod pins;
 pub mod placement;
 mod report;
 
@@ -90,6 +91,10 @@ pub struct TsManagerOptions {
     pub use_private_ip: fn() -> String,
     /// `send_leader_blacklisted_tservers_on_heartbeat`.
     pub send_leader_blacklisted_tservers: fn() -> bool,
+    /// `enable_db_history_retention_pins`.
+    pub ysql_db_pins: fn() -> bool,
+    /// `initial_tserver_registration_duration_secs`.
+    pub initial_registration_duration: fn() -> Duration,
 }
 
 impl Default for TsManagerOptions {
@@ -109,6 +114,8 @@ impl Default for TsManagerOptions {
             max_leader_lease_expired: || Duration::from_secs(120),
             use_private_ip: || "never".to_string(),
             send_leader_blacklisted_tservers: || true,
+            ysql_db_pins: || true,
+            initial_registration_duration: || Duration::from_secs(60),
         }
     }
 }
@@ -138,6 +145,9 @@ pub struct TsDescriptor {
     pub metrics: Option<TServerMetricsPB>,
     /// A heartbeat reported a faulty drive (`has_faulty_drive_`); kept until it registers again.
     pub has_faulty_drive: bool,
+    /// The oldest read time its live YSQL transactions pin, by database, from its last heartbeat
+    /// in this term; None until one arrives (`has_ysql_db_pins_`).
+    pub ysql_db_pins: Option<BTreeMap<u32, u64>>,
     /// The row last written for it, to skip unchanged writes.
     persisted_row: Option<Vec<u8>>,
 }
@@ -156,6 +166,7 @@ impl TsDescriptor {
             leader_count: 0,
             metrics: None,
             has_faulty_drive: false,
+            ysql_db_pins: None,
             persisted_row: None,
         }
     }
@@ -236,6 +247,11 @@ pub struct TsManager {
     /// This master's placement, from its registration (not the gflags, which an embedded master
     /// shares with the others in its process).
     local_cloud_info: RwLock<CloudInfoPB>,
+    /// When this master last became a ready leader.
+    leader_ready_at: Mutex<Option<Instant>>,
+    /// The last aggregate of the tservers' YSQL pins, and when it was taken.
+    /// With the membership version it was taken at.
+    pins_cache: Mutex<Option<(Instant, u64, Arc<pins::ClusterYsqlPins>)>>,
 }
 
 impl TsManager {
@@ -258,6 +274,8 @@ impl TsManager {
             heartbeat_order: Default::default(),
             options,
             local_cloud_info: RwLock::default(),
+            leader_ready_at: Mutex::default(),
+            pins_cache: Mutex::default(),
         })
     }
 
@@ -465,8 +483,11 @@ impl TsManager {
             descriptor.receiving_full_report_seq_no = None;
             descriptor.last_heartbeat = Some(now);
             descriptor.last_lease_report = None;
+            descriptor.ysql_db_pins = None;
         }
         drop(descriptors);
+        *self.leader_ready_at.lock().unwrap() = Some(now);
+        *self.pins_cache.lock().unwrap() = None;
         self.sent_key_registry.lock().unwrap().clear();
         self.locations.mark_all_unconfirmed();
         self.bump_membership();

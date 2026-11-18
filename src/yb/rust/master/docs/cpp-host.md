@@ -34,10 +34,10 @@ master and so must be the same code as on a C++ peer:
 - PITR restores of the sys catalog through `RestoreSysCatalogOnApply`
   (`src/yb/master/sys_catalog_restore.cc`), shared with `CatalogManager`.
 - `MasterAutoFlagsManager` for `auto_flags_config` and AutoFlags ops.
-- The follower half of the sys-catalog history cutoff: snapshot retention,
+- The sys-catalog history cutoff: snapshot retention,
   `timestamp_syscatalog_history_retention_interval_sec`, CDCSDK safe time, and the YSQL history
   retention pin the leader publishes, which the host reloads every
-  `catalog_manager_bg_task_wait_ms`.
+  `catalog_manager_bg_task_wait_ms` (and, on the leader, the live pin; see Leading below).
 
 It also runs the C++ `Webserver`, on loopback behind the Rust web port, with the pages a C++
 follower master serves (see [web.md](web.md)).
@@ -106,8 +106,14 @@ never starts an election; if an explicit leader transfer elects it, the state-ch
 steps it down at once, retrying while the step-down is refused, and `GetMasterRegistration`
 reports FOLLOWER meanwhile, as a C++ leader that is not ready does.
 
-A Rust leader leaves these C++ leader duties undone, so leading stays test-only: a removed master
-is not told (`InformRemovedMaster`), and the YSQL history retention pin is not published.
+The host also does two leader duties for a Rust leader: it tells a master removed from the
+quorum to go back to shell mode (`InformRemovedMaster`, a `RemovedMasterUpdate` call), and it holds
+the pg catalog history back to the live YSQL history retention pin. The Rust leader aggregates the
+pins from tserver heartbeats (`master-ts-manager` `pins.rs`), answers each heartbeat with the
+cluster pins, publishes the oldest to the `HISTORY_RETENTION_PIN` row each
+`catalog_manager_bg_task_wait_ms` when it changed, and hands it to the host
+(`SetLiveYsqlHistoryPin`), which uses it for three intervals, so a master that stopped leading
+falls back to the published pin.
 
 **Snapshot operations.** The host's coordinator applies snapshot operations as a follower on every
 Rust master: `SysCatalogTap` passes it leader term -1 even on the master that submitted them, and

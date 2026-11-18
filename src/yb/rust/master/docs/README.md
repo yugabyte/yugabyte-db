@@ -56,7 +56,7 @@ Shared Rust pieces (build, bridges, protobuf, flags) are documented in
 | `master-xcluster` | xCluster: the source's outbound replication groups and calls to the other universe |
 | `master-ysql-manager` | YSQL on the leader: the initial sys catalog snapshot, `IsInitDbDone`, YSQL operation leases, the YSQL major upgrade |
 | `master-leadership` | Leader phases and `LeaderToken` |
-| `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools |
+| `master-task-runtime` | Term and entity scopes, controllers, retries, blocking pools, per-table tasks |
 | `master-table-lifecycle` | Namespace and table DDL on the leader, and the controllers that create tablets |
 | `master-tablet-locations` | Observed replica locations |
 | `master-ts-manager` | Tserver registry, `TSHeartbeat`, tablet reports, the location stream |

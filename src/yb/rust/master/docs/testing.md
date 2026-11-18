@@ -48,16 +48,16 @@ re-serialize identically. That check is manual: the release binary is not part o
 | `WebServerHttps` | With the webserver TLS flags the Rust master serves HTTPS with HSTS, refuses plain HTTP, fetches leader pages from an HTTP leader, and advertises the configured interface. |
 | `TserverSimulator` | `master-tserver-sim` registers ten fake tservers with the leader of a quorum that has a Rust follower, and the leader lists them. |
 | `FollowerCatalogMatchesRandomWorkload` | The Rust follower's in-memory catalog (`MasterRustPeer.DumpCatalog`) equals the C++ leader's sys catalog row for row after seeded random YCQL DDL, a snapshot schedule and a PITR restore; the restore reloaded the catalog and the self-check never disagreed. The seed is logged. |
-| `RustLeaderServesCoreRpcs` | With `TEST_rust_master_allow_leadership`, the Rust master takes leadership; real tservers register and report to it; it serves table locations with leaders, `IsMasterLeaderServiceReady`, a cluster config change, and `NotSupported` for a never-served method. After failing back, the C++ leader reads the change, and every master's rows match. |
+| `RustLeaderServesCoreRpcs` | The Rust master takes leadership; real tservers register and report to it; it serves table locations with leaders, `IsMasterLeaderServiceReady`, a cluster config change, and `NotSupported` for a never-served method. After failing back, the C++ leader reads the change, and every master's rows match. |
 | `WarmFailover` | Two Rust masters: the leader's location stream reaches the other, which, after a failover with every tserver stopped, serves non-stale locations and the tserver list. |
+| `RustLeaderInformsRemovedMaster` | A C++ master removed while the Rust master leads goes back to shell mode. |
 | `LiveTserverListVersion` | Tservers echo the live-list version and the Rust leader answers "unchanged"; after a tserver stops, the others get the new list and keep heartbeating. |
 | `CreatesUniverseLikeCpp` | A quorum of Rust masters creates a universe whose default rows equal those of a universe C++ masters created (random ids, uuids and the password salt aside), and every master holds them. |
 
 ### Running existing tests against Rust masters
 
-`ExternalMiniClusterOptions::rust_masters` starts masters as `yb-master-rs` with
-`--TEST_rust_master_allow_leadership`: `kAll` for every master, `kFirst` for one Rust master among
-C++ ones. Its default comes from `YB_RUST_MASTER` (`1` or `all`, `mixed`), so an existing
+`ExternalMiniClusterOptions::rust_masters` starts masters as `yb-master-rs`, which may lead:
+`kAll` for every master, `kFirst` for one Rust master among C++ ones. Its default comes from `YB_RUST_MASTER` (`1` or `all`, `mixed`), so an existing
 ExternalMiniCluster test runs against Rust masters with, for example:
 
 ```bash

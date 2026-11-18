@@ -1,7 +1,7 @@
 import { useJson } from '../api';
 import { Load, Mono, Section } from '../components/Common';
 import { DataTable } from '../components/DataTable';
-import { plural, unescapeHtml } from '../format';
+import { plural } from '../format';
 import { NamespaceRow, NamespacesJson } from '../types';
 
 function NamespaceTable({ rows }: { rows: NamespaceRow[] }) {
@@ -10,12 +10,12 @@ function NamespaceTable({ rows }: { rows: NamespaceRow[] }) {
       rows={rows}
       rowKey={(n) => n.id}
       filter={(n, needle) =>
-        unescapeHtml(n.name).toLowerCase().includes(needle) || n.id.toLowerCase().includes(needle)
+        (n.name ?? '').toLowerCase().includes(needle) || n.id.toLowerCase().includes(needle)
       }
       filterPlaceholder="Filter by name or id"
       initialSort={{ key: 'name' }}
       columns={[
-        { key: 'name', header: 'Name', sort: (n) => unescapeHtml(n.name), render: (n) => unescapeHtml(n.name) },
+        { key: 'name', header: 'Name', sort: (n) => n.name ?? '', render: (n) => n.name ?? '' },
         { key: 'id', header: 'ID', sort: (n) => n.id, render: (n) => <Mono>{n.id}</Mono> },
         { key: 'language', header: 'Language', sort: (n) => n.language, render: (n) => n.language },
         { key: 'state', header: 'State', sort: (n) => n.state, render: (n) => n.state },

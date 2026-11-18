@@ -604,6 +604,12 @@ impl Alterer {
                 return;
             };
             req.set_dest_uuid(leader.clone());
+            let _task = lifecycle.track_task(&key.0, "Alter Table", |name| {
+                format!(
+                    "Alter Table RPC for tablet {} ({name})",
+                    String::from_utf8_lossy(&tablet_id)
+                )
+            });
             let rpc_timeout = (this.rpc_timeout)();
             let result = this
                 .executor

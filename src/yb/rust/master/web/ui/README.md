@@ -50,3 +50,18 @@ The dev server serves the app at the page URLs and proxies `/api` and the server
 an endpoint (a C++ leader, for the Rust-only ones) only blanks that section. Tables sort, filter
 and page over the fetched arrays and render one page of rows, which keeps 1M tables or 5000 tablet
 servers usable.
+
+## Scale test
+
+`scale-test/scale-test.mjs` serves `dist/` with synthetic JSON for 5000 tablet servers and 1M
+tables (`TSERVERS`, `TABLES`), loads every page in headless Chromium (`CHROME`, default
+Playwright's headless shell under `~/.cache/ms-playwright`), and fails when a page shows an error
+or does not render within `LIMIT_SECS` (60). On `/tables` it also filters, clears and pages.
+
+```bash
+npm run build && npm run scale-test
+```
+
+Measured on an 8-core dev server: `/api/v1/tables` is 296 MB and `/api/v1/load-distribution` 325 MB
+at that size; `/tables` rendered in 2.8 s, `/load-distribution` in 3.9 s, every other page in about
+0.1 s, and filtering 1M tables took 0.26 s.

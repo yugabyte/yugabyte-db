@@ -186,6 +186,8 @@ impl TsManager {
             self.record_full_compactions(req);
         }
 
+        self.fill_ysql_pins(&mut resp);
+
         let (version, list) = self.live_list(ctx.token.term());
         if req.live_tservers_version.as_ref() == Some(&version) {
             resp.set_live_tservers_unchanged(true);
@@ -532,6 +534,7 @@ impl TsManager {
                 if let Some(metrics) = req.metrics.as_ref() {
                     d.metrics = Some(metrics.clone());
                 }
+                d.ysql_db_pins = Some(TsManager::pins_from_heartbeat(req));
                 let before = d.pb.clone();
                 if !d.is_live() {
                     became_live = true;

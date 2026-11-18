@@ -255,6 +255,7 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
             gate.clone(),
         )),
         tasks: registry.clone(),
+        rpc: Some(rpc.clone()),
     });
     host.pin_mut().start().map_err(|e| e.what().to_string())?;
     core.run(runtime.handle(), sys_catalog, info.clone(), rpc.clone());

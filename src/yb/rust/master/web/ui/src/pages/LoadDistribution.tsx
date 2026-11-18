@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo, useState } from 'react';
 import { useJson } from '../api';
 import { Badge, Load, Mono, Section } from '../components/Common';
 import { DataTable, Pager } from '../components/DataTable';
-import { formatNumber, serverUrl, unescapeHtml } from '../format';
+import { formatNumber, serverUrl } from '../format';
 import { Link, tableHref } from '../router';
 import { LoadDistributionJson } from '../types';
 
@@ -38,8 +38,8 @@ function Matrix({ dist }: { dist: Distribution }) {
       deferred
         ? tables.filter(
             (t) =>
-              unescapeHtml(t.table_name).toLowerCase().includes(deferred) ||
-              unescapeHtml(t.keyspace).toLowerCase().includes(deferred) ||
+              (t.table_name ?? '').toLowerCase().includes(deferred) ||
+              (t.keyspace ?? '').toLowerCase().includes(deferred) ||
               t.table_id.toLowerCase().includes(deferred),
           )
         : tables,
@@ -102,7 +102,7 @@ function Matrix({ dist }: { dist: Distribution }) {
                 <tr key={table.table_id}>
                   <td>
                     <Link href={tableHref(table.table_id)}>
-                      {unescapeHtml(table.keyspace)}.{unescapeHtml(table.table_name)}
+                      {table.keyspace ?? ''}.{table.table_name ?? ''}
                     </Link>
                   </td>
                   {cols.map((ts) => {
@@ -149,7 +149,7 @@ function LoadView({ json }: { json: LoadDistributionJson }) {
           empty="None."
           columns={[
             { key: 'tablet', header: 'Tablet', sort: (r) => r.tablet_id, render: (r) => <Mono>{r.tablet_id}</Mono> },
-            { key: 'table', header: 'Table', sort: (r) => r.table, render: (r) => unescapeHtml(r.table) },
+            { key: 'table', header: 'Table', sort: (r) => r.table, render: (r) => r.table ?? '' },
             { key: 'source', header: 'Source', render: (r) => <Mono>{r.source_ts_uuid}</Mono> },
             { key: 'dest', header: 'Destination', render: (r) => <Mono>{r.dest_ts_uuid}</Mono> },
             { key: 'progress', header: 'Progress', render: (r) => String(r.progress ?? '') },

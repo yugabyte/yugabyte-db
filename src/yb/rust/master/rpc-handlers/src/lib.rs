@@ -17,7 +17,7 @@
 //! the C++ host serves with the C++ master's code. `TSHeartbeat` returns the master Raft config
 //! when the tserver's is older.
 //!
-//! On a ready Rust leader (`TEST_rust_master_allow_leadership`),
+//! On a ready Rust leader (unless `TEST_rust_master_allow_leadership` is false),
 //! `MasterServiceHandler::leader_call` serves every leader method except
 //! [`leader::NEVER_SERVED`], which answer `NotSupported` with the reason. Elsewhere every leader
 //! method gets `NOT_THE_LEADER`, which makes clients rerun leader discovery.

@@ -325,6 +325,67 @@ pub fn format_double(d: f64) -> String {
     out
 }
 
+/// `HumanReadableElapsedTime::ToShortString`.
+pub fn short_elapsed(seconds: f64) -> String {
+    let (sign, mut v) = if seconds < 0.0 {
+        ("-", -seconds)
+    } else {
+        ("", seconds)
+    };
+    let (value, unit) = if v < 0.000001 {
+        (v * 1e9, "ns")
+    } else if v < 0.001 {
+        (v * 1e6, "us")
+    } else if v < 1.0 {
+        (v * 1e3, "ms")
+    } else if v < 60.0 {
+        (v, "s")
+    } else {
+        v /= 60.0;
+        if v < 60.0 {
+            (v, "min")
+        } else {
+            v /= 60.0;
+            if v < 24.0 {
+                (v, "h")
+            } else {
+                v /= 24.0;
+                if v < 30.0 {
+                    (v, "days")
+                } else if v < 365.2425 {
+                    (v / 30.436875, "months")
+                } else {
+                    (v / 365.2425, "years")
+                }
+            }
+        }
+    };
+    format!("{sign}{} {unit}", format_g3(value))
+}
+
+/// printf's `%0.3g` for a non-negative value.
+fn format_g3(value: f64) -> String {
+    if value == 0.0 {
+        return "0".to_string();
+    }
+    // The exponent after rounding to three significant digits, as %g decides it.
+    let scientific = format!("{value:.2e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let trim = |s: String| {
+        if s.contains('.') {
+            s.trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s
+        }
+    };
+    if !(-4..3).contains(&exponent) {
+        let sign = if exponent < 0 { '-' } else { '+' };
+        return format!("{}e{sign}{:02}", trim(mantissa.to_string()), exponent.abs());
+    }
+    trim(format!("{value:.*}", (2 - exponent) as usize))
+}
+
 /// `HumanizeBytes` (`gutil/strings/numbers.cc`): decimal units, two decimals.
 pub fn humanize_bytes(bytes: u64) -> String {
     const UNITS: [&str; 7] = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];

@@ -398,6 +398,8 @@ pub struct TableLifecycle {
     pub(crate) backfill_requesters: std::sync::Mutex<
         std::collections::HashMap<Vec<u8>, (u32, yb_proto::pb::common::TransactionMetadataPB)>,
     >,
+    /// The tserver RPC tasks in flight, by table, for the table page.
+    pub(crate) table_tasks: Arc<master_task_runtime::TableTasks>,
 }
 
 impl TableLifecycle {
@@ -523,6 +525,29 @@ impl TableLifecycle {
         self.tablespaces.clone()
     }
 
+    /// The tserver RPC tasks in flight, by table (`TableInfo::GetTasks`).
+    pub fn table_tasks(&self) -> Arc<master_task_runtime::TableTasks> {
+        self.table_tasks.clone()
+    }
+
+    /// Lists a tserver RPC task of the table until the guard drops; `description` gets the
+    /// table as C++ task descriptions show it (`TableInfo::ToString`: `name [id=...]`).
+    pub fn track_task(
+        &self,
+        table_id: &[u8],
+        type_name: &'static str,
+        description: impl FnOnce(&str) -> String,
+    ) -> master_task_runtime::TableTaskGuard {
+        let snapshot = self.catalog.snapshot();
+        let name = snapshot
+            .get(yb_proto::pb::master_types::SysRowEntryType::TABLE, table_id)
+            .and_then(|t| t.table().map(|h| h.name.clone()))
+            .unwrap_or_default();
+        let table = format!("{name} [id={}]", String::from_utf8_lossy(table_id));
+        self.table_tasks
+            .track(table_id, type_name, description(&table))
+    }
+
     /// Creates the leader's DDL service.
     pub fn new(
         catalog: Arc<Catalog>,
@@ -551,6 +576,7 @@ impl TableLifecycle {
             retention: std::sync::OnceLock::new(),
             xrepl_hooks: std::sync::OnceLock::new(),
             create_errors: Default::default(),
+            table_tasks: Default::default(),
         })
     }
 

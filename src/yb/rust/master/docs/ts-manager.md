@@ -51,7 +51,15 @@ with a numbered copy of that information (`FillXClusterGuardedInfo`): the xClust
 per-namespace info, the cluster config's `oid_cache_invalidations_count` and the persistence block
 map. It is filled after the tserver's row records MAYBE_HAS_LEASE, and the heartbeat fails if the
 xCluster config or persistence block map row is missing, as in C++. A tserver without a current
-lease refuses to allocate PG OIDs. Not filled yet: history pins (W9), xCluster safe times (W11).
+lease refuses to allocate PG OIDs. xCluster safe times come from `master-xcluster`'s contributor.
+
+Each heartbeat's per-database YSQL history pins (`ts_ysql_db_oldest_pinned_read_times`) replace the
+tserver's, which a new term forgets. Responses carry the minimum per database over the live
+tservers and `cluster_ysql_db_pins_ready`, which stays false until every live tserver reported in
+this term and, without persisted registrations, `initial_tserver_registration_duration_secs` have
+passed since the term began; tservers ignore a map that is not ready. The aggregate is reused for
+100 ms: C++ recomputes it on every heartbeat, which is O(live tservers) each time
+(`pins.rs`, see [cpp-host.md](cpp-host.md) for the publishing).
 
 ## Tablet reports (L6)
 

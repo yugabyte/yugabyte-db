@@ -923,3 +923,17 @@ message WebTableLayoutResponsePB {
   repeated Column columns = 2;
   repeated bytes partitions = 3;
 }
+
+// The leader half of CatalogManager::AllowedHistoryCutoffProvider: the oldest read time live YSQL
+// transactions pin across the cluster, as the Rust leader aggregates it from tserver heartbeats.
+// The host holds the sys catalog's pg catalog cotables back to it until it is older than
+// `valid_for_ms`, after which only the published pin counts (a master that stopped leading stops
+// refreshing it). Unset `pin` means nothing is pinned.
+message SetLiveYsqlHistoryPinRequestPB {
+  optional fixed64 pin = 1;
+  optional uint32 valid_for_ms = 2;
+}
+
+message SetLiveYsqlHistoryPinResponsePB {
+  optional MasterErrorPB error = 1;
+}

@@ -210,7 +210,17 @@ impl Truncates {
                 rpc_timeout: (self.options.rpc_timeout)(),
             };
             tokio::spawn(async move {
-                if let Err(status) = truncate_tablet(&ctx, &token, &tablet_id, this.options).await {
+                let task = ctx
+                    .lifecycle
+                    .track_task(&table_id, "Truncate Tablet", |name| {
+                        format!(
+                            "Truncate Tablet RPC for tablet {} ({name})",
+                            String::from_utf8_lossy(&tablet_id)
+                        )
+                    });
+                let result = truncate_tablet(&ctx, &token, &tablet_id, this.options).await;
+                drop(task);
+                if let Err(status) = result {
                     tracing::warn!(
                         "Truncate of tablet {} failed: {status}",
                         String::from_utf8_lossy(&tablet_id)

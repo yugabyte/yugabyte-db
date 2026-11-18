@@ -470,6 +470,13 @@ impl TabletAssigner {
             let hook = hook.clone();
             let table_id = request.table_id().to_vec();
             scope.entity().spawn("create-tablet", async move {
+                let _task = lifecycle.track_task(&table_id, "Create Tablet", |name| {
+                    format!(
+                        "CreateTablet RPC for tablet {} ({name}) on TS={}",
+                        String::from_utf8_lossy(&tablet_id),
+                        String::from_utf8_lossy(&ts_uuid)
+                    )
+                });
                 let result = executor
                     .run(&ts_uuid, "CreateTablet", &policy, |attempt| {
                         let current = lifecycle.leadership.check(&token);

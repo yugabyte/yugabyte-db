@@ -1088,6 +1088,22 @@ TEST_F(RustMasterTest, LiveTserverListVersion) {
       kTimeout, "the remaining tservers to hold the new list"));
 }
 
+// A master removed while a Rust master leads is told to go back to shell mode
+// (SysCatalogTable's InformRemovedMaster, through the host).
+TEST_F(RustMasterTest, RustLeaderInformsRemovedMaster) {
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
+      {"TEST_rust_master_allow_leadership", "true"},
+  }));
+  auto* rust_master = cluster_->master(rust_index);
+  ASSERT_OK(WaitForMastersToCatchUp());
+  ASSERT_OK(TransferLeadershipTo(rust_master));
+  ASSERT_OK(WaitForLeaderReady());
+
+  ExternalMasterPtr removed = cluster_->master((rust_index + 1) % cluster_->num_masters());
+  ASSERT_OK(cluster_->ChangeConfig(removed, consensus::REMOVE_SERVER));
+  ASSERT_OK(WaitForRole(removed.get(), PeerRole::NON_PARTICIPANT));
+}
+
 namespace {
 
 constexpr std::string_view kSystemNamespaceIds[] = {

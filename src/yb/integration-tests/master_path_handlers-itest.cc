@@ -135,6 +135,8 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
   virtual void InitCluster() = 0;
 
   virtual void SetMasterHTTPURL() = 0;
+  // The current master leader's web address.
+  virtual Result<std::string> LeaderHttpUrl() = 0;
 
   void SetUp() override {
     YBMiniClusterTestBase<T>::SetUp();
@@ -152,13 +154,24 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
  protected:
   Status GetUrl(const std::string& query_path, faststring* result) {
-    return path_handlers_util::GetUrl(master_http_url_ + query_path, result);
+    RETURN_NOT_OK(path_handlers_util::GetUrl(master_http_url_ + query_path, result));
+    // A Rust master answers a UI page with the web UI even as a follower; under a C++ leader the
+    // test reads the leader's own HTML instead.
+    if (IsUiPage(query_path) && result->ToString().find("<div id=\"root\">") != std::string::npos &&
+        !VERIFY_RESULT(LeaderIsRust())) {
+      return path_handlers_util::GetUrl(VERIFY_RESULT(LeaderHttpUrl()) + query_path, result);
+    }
+    return Status::OK();
   }
 
   Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
       const std::string& url, const std::string& html_table_tag_id) {
-    if (IsUiPage(url) && VERIFY_RESULT(LeaderIsRust())) {
-      return RustTableRows(url, html_table_tag_id);
+    if (IsUiPage(url)) {
+      if (VERIFY_RESULT(LeaderIsRust())) {
+        return RustTableRows(url, html_table_tag_id);
+      }
+      return path_handlers_util::GetHtmlTableRows(
+          VERIFY_RESULT(LeaderHttpUrl()) + url, html_table_tag_id);
     }
     return path_handlers_util::GetHtmlTableRows(master_http_url_ + url, html_table_tag_id);
   }
@@ -166,8 +179,12 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
   Result<std::vector<std::string>> GetHtmlTableColumn(
       const std::string& url, const std::string& html_table_tag_id,
       const std::string& column_header) {
-    if (IsUiPage(url) && VERIFY_RESULT(LeaderIsRust())) {
-      return RustTableColumn(url, html_table_tag_id, column_header);
+    if (IsUiPage(url)) {
+      if (VERIFY_RESULT(LeaderIsRust())) {
+        return RustTableColumn(url, html_table_tag_id, column_header);
+      }
+      return path_handlers_util::GetHtmlTableColumn(
+          VERIFY_RESULT(LeaderHttpUrl()) + url, html_table_tag_id, column_header);
     }
     return path_handlers_util::GetHtmlTableColumn(
         master_http_url_ + url, html_table_tag_id, column_header);
@@ -392,6 +409,10 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
     Endpoint master_http_endpoint =
         ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->bound_http_addr();
     master_http_url_ = "http://" + AsString(master_http_endpoint);
+  }
+
+  Result<std::string> LeaderHttpUrl() override {
+    return "http://" + AsString(VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_http_addr());
   }
 
   void SetUp() override {
@@ -1144,6 +1165,12 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
   void SetMasterHTTPURL() override {
     HostPort master_http_endpoint = cluster_->master(0)->bound_http_hostport();
     master_http_url_ = "http://" + ToString(master_http_endpoint);
+  }
+
+  Result<std::string> LeaderHttpUrl() override {
+    auto* leader = cluster_->GetLeaderMaster();
+    SCHECK(leader, IllegalState, "No master leader");
+    return "http://" + ToString(leader->bound_http_hostport());
   }
 
  protected:
@@ -2511,11 +2538,16 @@ TEST_F(MasterPathHandlersItest, StatefulServices) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const auto service_name = StatefulServiceKind_Name(StatefulServiceKind::TEST_ECHO);
   JsonDocument doc;
+  // A Rust leader's page is the web UI, which renders the JSON checked below.
+  const bool html = !ASSERT_RESULT(LeaderIsRust());
 
   faststring out;
-  ASSERT_OK(GetUrl("/stateful-services", &out));
-  auto out_str = out.ToString();
-  ASSERT_STR_NOT_CONTAINS(out_str, service_name);
+  std::string out_str;
+  if (html) {
+    ASSERT_OK(GetUrl("/stateful-services", &out));
+    out_str = out.ToString();
+    ASSERT_STR_NOT_CONTAINS(out_str, service_name);
+  }
 
   ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
   {
@@ -2528,9 +2560,11 @@ TEST_F(MasterPathHandlersItest, StatefulServices) {
   ASSERT_OK(client->WaitForCreateTableToFinish(
       stateful_service::GetStatefulServiceTableName(StatefulServiceKind::TEST_ECHO)));
 
-  ASSERT_OK(GetUrl("/stateful-services", &out));
-  out_str = out.ToString();
-  ASSERT_STR_CONTAINS(out_str, service_name);
+  if (html) {
+    ASSERT_OK(GetUrl("/stateful-services", &out));
+    out_str = out.ToString();
+    ASSERT_STR_CONTAINS(out_str, service_name);
+  }
 
   ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
   {

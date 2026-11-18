@@ -52,10 +52,85 @@ use crate::{
 
 const CONSENSUS_SERVICE: &str = "yb.consensus.ConsensusService";
 
+/// `MonitoredTaskState` of a balancer task.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TaskState {
+    /// The RPC has been issued.
+    Running,
+    /// It completed successfully.
+    Complete,
+    /// It completed with a failure.
+    Failed,
+    /// It was aborted before it completed.
+    Aborted,
+}
+
+impl TaskState {
+    /// The C++ enum value's name.
+    pub fn name(self) -> &'static str {
+        match self {
+            TaskState::Running => "kRunning",
+            TaskState::Complete => "kComplete",
+            TaskState::Failed => "kFailed",
+            TaskState::Aborted => "kAborted",
+        }
+    }
+
+    /// `MonitoredTask::IsStateTerminal`.
+    pub fn is_terminal(self) -> bool {
+        self != TaskState::Running
+    }
+}
+
+/// A task the balancer sent, as `ClusterBalancerActivityInfo` keeps it: its state changes as the
+/// RPC ends, and pages read it then.
+#[derive(Debug)]
+pub struct BalancerTask {
+    /// What was sent.
+    pub action: Action,
+    /// `MonitoredTask::type_name`.
+    pub type_name: &'static str,
+    /// `MonitoredTask::description`.
+    pub description: String,
+    outcome: Mutex<(TaskState, String)>,
+}
+
+impl BalancerTask {
+    fn new(action: Action, (type_name, description): (&'static str, String)) -> Arc<BalancerTask> {
+        Arc::new(BalancerTask {
+            action,
+            type_name,
+            description,
+            outcome: Mutex::new((TaskState::Running, String::new())),
+        })
+    }
+
+    /// The state, and the status once it is terminal (`OK` on success).
+    pub fn outcome(&self) -> (TaskState, String) {
+        self.outcome.lock().unwrap().clone()
+    }
+
+    fn set(&self, state: TaskState, status: String) {
+        *self.outcome.lock().unwrap() = (state, status);
+    }
+
+    fn finish(&self, result: &Result<(), Status>) {
+        match result {
+            Ok(()) => self.set(TaskState::Complete, "OK".to_string()),
+            Err(status) if status.code == StatusCode::Aborted => {
+                self.set(TaskState::Aborted, status.to_string())
+            }
+            Err(status) => self.set(TaskState::Failed, status.to_string()),
+        }
+    }
+}
+
 /// What the balancer RPCs read: the recent runs and the last run's metrics.
 #[derive(Debug)]
 pub struct BalancerStatus {
     activities: Mutex<ActivityBuffer>,
+    /// The tasks of the latest placement run.
+    latest_tasks: Mutex<Vec<Arc<BalancerTask>>>,
     metrics: Mutex<RunMetrics>,
     /// When this master's current leader term began (`TimeSinceElectedLeader`).
     leader_since: Mutex<Option<Instant>>,
@@ -66,6 +141,7 @@ impl BalancerStatus {
     pub fn new(num_idle_runs: usize) -> BalancerStatus {
         BalancerStatus {
             activities: Mutex::new(ActivityBuffer::new(num_idle_runs)),
+            latest_tasks: Mutex::default(),
             metrics: Mutex::default(),
             leader_since: Mutex::default(),
         }
@@ -89,6 +165,11 @@ impl BalancerStatus {
     /// The last placement run.
     pub fn latest(&self) -> Option<crate::Activity> {
         self.activities.lock().unwrap().latest().cloned()
+    }
+
+    /// The tasks the last placement run sent (`ClusterBalancerActivityInfo::tasks_`).
+    pub fn latest_tasks(&self) -> Vec<Arc<BalancerTask>> {
+        self.latest_tasks.lock().unwrap().clone()
     }
 
     fn record(&self, result: &crate::RunResult, num_idle_runs: usize) {
@@ -128,6 +209,8 @@ pub struct BalancerFlags {
     pub report: MetricsReporter,
     /// YSQL tables' placement by tablespace.
     pub tablespaces: Option<Arc<master_table_lifecycle::Tablespaces>>,
+    /// Where tasks in flight are listed by table, for the table page.
+    pub table_tasks: Arc<master_task_runtime::TableTasks>,
 }
 
 /// See [`BalancerFlags::report`].
@@ -209,8 +292,22 @@ impl Controller for BalancerController {
             else {
                 return;
             };
-            for action in result.actions() {
-                self.0.send(scope, token, action.clone());
+            // Pages show the tasks of the last placement run, as C++ shows its latest activity's.
+            let last = result.activities.len().saturating_sub(1);
+            let mut latest = Vec::new();
+            let mut tasks = Vec::new();
+            for (i, activity) in result.activities.iter().enumerate() {
+                for action in &activity.actions {
+                    let task = BalancerTask::new(action.clone(), self.0.describe(action));
+                    if i == last {
+                        latest.push(task.clone());
+                    }
+                    tasks.push(task);
+                }
+            }
+            *self.0.status.latest_tasks.lock().unwrap() = latest;
+            for task in tasks {
+                self.0.send(scope, token, task);
             }
             wait_while(self.0.flags.pause_after_run).await;
         })
@@ -409,9 +506,19 @@ impl Inner {
     }
 
     /// Tracks the action as a task of its table and sends it.
-    fn send(self: &Arc<Self>, scope: &TermScope, token: LeaderToken, action: Action) {
+    fn send(self: &Arc<Self>, scope: &TermScope, token: LeaderToken, task: Arc<BalancerTask>) {
         let this = self.clone();
-        match action {
+        let table_id = match &task.action {
+            Action::AddReplica { table_id, .. }
+            | Action::RemoveReplica { table_id, .. }
+            | Action::MoveLeader { table_id, .. } => table_id,
+        };
+        let listed = self.flags.table_tasks.track(
+            table_id.as_bytes(),
+            task.type_name,
+            task.description.clone(),
+        );
+        match task.action.clone() {
             Action::AddReplica {
                 table_id,
                 tablet_id,
@@ -421,9 +528,11 @@ impl Inner {
             } => {
                 self.track(&table_id, |t| &mut t.adds, &tablet_id, &ts_uuid);
                 scope.entity().spawn("add-server", async move {
+                    let _listed = listed;
                     let result = this
                         .change_config(token, &tablet_id, &ts_uuid, Some(member_type))
                         .await;
+                    task.finish(&result);
                     this.log_change_config("ADD_SERVER", &tablet_id, &ts_uuid, result);
                     this.untrack(&table_id, |t| &mut t.adds, &tablet_id);
                 });
@@ -436,7 +545,9 @@ impl Inner {
             } => {
                 self.track(&table_id, |t| &mut t.removes, &tablet_id, &ts_uuid);
                 scope.entity().spawn("remove-server", async move {
+                    let _listed = listed;
                     let result = this.change_config(token, &tablet_id, &ts_uuid, None).await;
+                    task.finish(&result);
                     this.log_change_config("REMOVE_SERVER", &tablet_id, &ts_uuid, result);
                     this.untrack(&table_id, |t| &mut t.removes, &tablet_id);
                 });
@@ -451,7 +562,13 @@ impl Inner {
             } => {
                 self.track(&table_id, |t| &mut t.stepdowns, &tablet_id, &to_ts);
                 scope.entity().spawn("try-step-down", async move {
-                    let responded = this.step_down(token, &tablet_id, &from_ts, &to_ts).await;
+                    let _listed = listed;
+                    let stepped = this.step_down(token, &tablet_id, &from_ts, &to_ts).await;
+                    match &stepped {
+                        Ok(()) => task.finish(&stepped),
+                        Err(status) => task.set(TaskState::Aborted, status.to_string()),
+                    }
+                    let responded = stepped.is_ok();
                     // As `AsyncTryStepDown`, the removal follows a stepdown the leader answered,
                     // even with an error; it is tracked before the stepdown stops being, so no
                     // planner run sees the tablet with nothing in flight.
@@ -466,6 +583,72 @@ impl Inner {
                     }
                 });
             }
+        }
+    }
+
+    /// The task's type and description, as `AsyncChangeConfigTask` and `AsyncTryStepDown`
+    /// describe themselves; the table page and the tasks summary show them.
+    fn describe(&self, action: &Action) -> (&'static str, String) {
+        let snapshot = self.catalog.snapshot();
+        let table = |table_id: &str| {
+            let name = snapshot
+                .get(SysRowEntryType::TABLE, table_id.as_bytes())
+                .and_then(|t| t.table().map(|h| h.name.clone()))
+                .unwrap_or_default();
+            format!("{name} [id={table_id}]")
+        };
+        let cas = |tablet_id: &str| {
+            snapshot
+                .get(SysRowEntryType::TABLET, tablet_id.as_bytes())
+                .and_then(|t| t.parse::<SysTabletsEntryPB>().ok())
+                .map_or(0, |pb| {
+                    pb.committed_consensus_state.config.committed_op_index()
+                })
+        };
+        match action {
+            Action::AddReplica {
+                table_id,
+                tablet_id,
+                ts_uuid,
+                reason,
+                ..
+            } => (
+                "AddServer ChangeConfig",
+                format!(
+                    "AddServer ChangeConfig RPC for tablet {tablet_id} ({}) on peer {ts_uuid} with \
+                     cas_config_opid_index {}. Reason: {reason}",
+                    table(table_id),
+                    cas(tablet_id)
+                ),
+            ),
+            Action::RemoveReplica {
+                table_id,
+                tablet_id,
+                ts_uuid,
+                reason,
+            } => (
+                "RemoveServer ChangeConfig",
+                format!(
+                    "RemoveServer ChangeConfig RPC for tablet {tablet_id} ({}) on peer {ts_uuid} \
+                     with cas_config_opid_index {}. Reason: {reason}",
+                    table(table_id),
+                    cas(tablet_id)
+                ),
+            ),
+            Action::MoveLeader {
+                table_id,
+                tablet_id,
+                from_ts,
+                reason,
+                ..
+            } => (
+                "Stepdown Leader",
+                format!(
+                    "Stepdown Leader RPC for tablet {tablet_id} ({}) on peer {from_ts}. Reason: \
+                     {reason}",
+                    table(table_id)
+                ),
+            ),
         }
     }
 
@@ -672,20 +855,26 @@ impl Inner {
 
     /// `AsyncTryStepDown`: one `LeaderStepDown` to the leader; a failed stepdown keeps the
     /// planner from nominating the same new leader for `min_leader_stepdown_retry_interval_ms`.
-    /// Whether the leader answered: not when `from` no longer leads (C++ aborts the task before
-    /// sending) or the call failed.
+    /// Ok when the leader answered, even with an error, which completes the C++ task; an error,
+    /// which aborts it, when `from` no longer leads (C++ aborts before sending) or the call failed.
     async fn step_down(
         self: &Arc<Self>,
         token: LeaderToken,
         tablet_id: &str,
         from: &str,
         to: &str,
-    ) -> bool {
+    ) -> Result<(), Status> {
         if self.leader_of(tablet_id).as_deref() != Some(from.as_bytes()) {
             tracing::warn!(
                 "Not stepping down {from} for tablet {tablet_id}: it is no longer the leader"
             );
-            return false;
+            return Err(Status::new(
+                StatusCode::IllegalState,
+                format!(
+                    "Incorrect state config leader does not match target uuid {from} for a leader \
+                     step down op"
+                ),
+            ));
         }
         let mut req = LeaderStepDownRequestPB::new();
         req.set_dest_uuid(from.as_bytes().to_vec());
@@ -760,13 +949,13 @@ impl Inner {
                 tracing::info!(
                     "Leader step down of tablet {tablet_id} from {from} done, failed: {failed}"
                 );
-                true
+                Ok(())
             }
             Err(status) => {
                 tracing::warn!(
                     "Leader step down of tablet {tablet_id} from {from} failed: {status}"
                 );
-                false
+                Err(status)
             }
         }
     }

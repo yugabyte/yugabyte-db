@@ -395,7 +395,9 @@ pub(crate) fn health_check(view: &View, args: &Args) -> Vec<u8> {
                 .filter(|r| {
                     !dead_nodes.iter().any(|d| {
                         d.uuid == r.ts_uuid
-                            && time_since_heartbeat(view, d).as_millis() as i64 > death_interval_ms
+                            && i64::try_from(time_since_heartbeat(view, d).as_millis())
+                                .unwrap_or(i64::MAX)
+                                > death_interval_ms
                     })
                 })
                 .count();

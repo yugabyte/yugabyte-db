@@ -221,9 +221,19 @@ pub(crate) fn table(view: &View, args: &Args) -> Vec<u8> {
     }
     jw.end_array();
 
-    // A Rust leader keeps no per-table MonitoredTasks.
+    // JsonOutputTasks: the table's tasks in flight.
     jw.string("Tasks");
     jw.start_array();
+    for task in view.table_tasks.of(table.id()) {
+        let running = crate::json::short_elapsed(task.started.elapsed().as_secs_f64());
+        jw.start_object();
+        jw.field("task_type", task.type_name);
+        jw.field("task_state", "kRunning");
+        jw.field("task_time_since_started", &running);
+        jw.field("task_running_secs", &running);
+        jw.field("task_description", &task.description);
+        jw.end_object();
+    }
     jw.end_array();
     jw.end_object();
     jw.into_bytes()

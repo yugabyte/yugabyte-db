@@ -102,7 +102,7 @@ function TableView({ table, showDeleted, toggleHref }: {
   toggleHref: string;
 }) {
   const info: [ReactNode, ReactNode][] = [
-    ['Name', unescapeHtml(table.table_name)],
+    ['Name', table.table_name ?? ''],
     ['ID', <Mono>{table.table_id}</Mono>],
     ['Version', table.table_version],
     ['Type', table.table_type],

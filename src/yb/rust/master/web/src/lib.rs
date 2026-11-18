@@ -50,10 +50,13 @@ use master_rpc_handlers::LeaderServices;
 use master_table_lifecycle::SchemaHost;
 use master_tablet_locations::TabletLocations;
 use master_ts_manager::TsDescriptor;
+use protobuf::Message;
+use yb_host_api::rpc::RpcClient;
 use yb_host_api::Status;
 use yb_proto::pb::master_replication::{
     GetReplicationStatusRequestPB, GetReplicationStatusResponsePB,
 };
+use yb_proto::pb::tserver_admin::{GetActiveRbsInfoRequestPB, GetActiveRbsInfoResponsePB};
 
 pub use ui::UiAssets;
 
@@ -82,6 +85,9 @@ pub struct WebOptions {
     /// `GetProtocol`: links to tserver pages use https (`webserver_certificate_file` set and
     /// `master_webserver_require_https`).
     pub https_links: fn() -> bool,
+    /// `TEST_sleep_before_reporting_lb_ui_ms`: between reading the balancer's tasks and showing
+    /// their states.
+    pub sleep_before_reporting_lb_ui: fn() -> Duration,
 }
 
 /// A tserver's YSQL lease deadline in the current term.
@@ -109,6 +115,8 @@ pub struct BalancerView {
     pub idle: bool,
     /// The last recorded run's activity.
     pub activities: Vec<master_cluster_balancer::Activity>,
+    /// The tasks that run sent, whose states change as they end.
+    pub tasks: Vec<Arc<master_cluster_balancer::controller::BalancerTask>>,
 }
 
 /// What one request reads: a consistent catalog snapshot and the tserver registry, at `now`.
@@ -137,6 +145,11 @@ pub struct View {
     pub balancer: BalancerView,
     /// The leader's running tasks by name.
     pub running_tasks: BTreeMap<&'static str, usize>,
+    /// The tserver RPC tasks in flight, by table.
+    pub table_tasks: Arc<master_task_runtime::TableTasks>,
+    /// `FetchRbsInfo`: each answering tserver's remote bootstraps, by its uuid; fetched only for
+    /// the pages that show them.
+    pub remote_bootstraps: Vec<(Vec<u8>, GetActiveRbsInfoResponsePB)>,
     /// The flags.
     pub options: WebOptions,
 }
@@ -237,9 +250,60 @@ pub struct MasterWeb {
     pub host: Arc<dyn SchemaHost>,
     /// The leader's running tasks.
     pub tasks: Arc<master_task_runtime::TaskRegistry>,
+    /// Calls to tservers; None in tests.
+    pub rpc: Option<Arc<dyn RpcClient>>,
 }
 
 impl MasterWeb {
+    /// `FetchRbsInfo`: `GetActiveRbsInfo` from every live tserver, keeping the answers that
+    /// arrive within 5 seconds.
+    async fn fetch_remote_bootstraps(
+        &self,
+        view: &View,
+    ) -> Vec<(Vec<u8>, GetActiveRbsInfoResponsePB)> {
+        const TIMEOUT: Duration = Duration::from_secs(5);
+        let Some(rpc) = &self.rpc else {
+            return Vec::new();
+        };
+        let Ok(request) = GetActiveRbsInfoRequestPB::new().write_to_bytes() else {
+            return Vec::new();
+        };
+        let mut calls = tokio::task::JoinSet::new();
+        for desc in view.tservers.iter().filter(|d| d.is_live()) {
+            let Some((host, port)) = self.leader.ts_manager.rpc_address(&desc.uuid) else {
+                continue;
+            };
+            let call = rpc.call(
+                &host,
+                port,
+                "yb.tserver.TabletServerAdminService",
+                "GetActiveRbsInfo",
+                &request,
+                TIMEOUT,
+            );
+            let uuid = desc.uuid.to_vec();
+            calls.spawn(async move { (uuid, call.await) });
+        }
+        let mut responses = Vec::new();
+        let _ = tokio::time::timeout(TIMEOUT, async {
+            while let Some(joined) = calls.join_next().await {
+                let Ok((uuid, result)) = joined else {
+                    continue;
+                };
+                if let Ok(response) = result.and_then(|bytes| {
+                    GetActiveRbsInfoResponsePB::parse_from_bytes(&bytes).map_err(|e| {
+                        Status::new(yb_host_api::StatusCode::Corruption, e.to_string())
+                    })
+                }) {
+                    responses.push((uuid, response));
+                }
+            }
+        })
+        .await;
+        responses.sort_by(|a, b| a.0.cmp(&b.0));
+        responses
+    }
+
     /// The view for one request, if this master is a ready leader.
     fn view(&self) -> Option<View> {
         let (token, snapshot) = self.leader.ready().ok()?;
@@ -274,8 +338,11 @@ impl MasterWeb {
                     && self.leader.load_balancer_enabled.load(Ordering::Acquire),
                 idle: self.leader.balancer.is_idle(),
                 activities: self.leader.balancer.latest().into_iter().collect(),
+                tasks: self.leader.balancer.latest_tasks(),
             },
             running_tasks: self.tasks.running(),
+            table_tasks: self.leader.tables.table_tasks(),
+            remote_bootstraps: Vec::new(),
             options: self.options,
         })
     }
@@ -288,16 +355,24 @@ pub fn routes(web: Arc<MasterWeb>) -> Router {
         let web = web.clone();
         router = router.route(
             path,
-            get(move |request: Request| serve_json(web.clone(), render, request)),
+            get(move |request: Request| serve_json(web.clone(), path, render, request)),
         );
     }
     ui::routes(router, web)
 }
 
-async fn serve_json(web: Arc<MasterWeb>, render: Render, request: Request) -> Response {
-    let Some(view) = web.view() else {
+async fn serve_json(
+    web: Arc<MasterWeb>,
+    path: &'static str,
+    render: Render,
+    request: Request,
+) -> Response {
+    let Some(mut view) = web.view() else {
         return pass_to_host();
     };
+    if path == "/api/v1/load-distribution" {
+        view.remote_bootstraps = web.fetch_remote_bootstraps(&view).await;
+    }
     let args = Args::parse(request.uri().query());
     // A page walks the whole catalog; keep it off the async workers.
     match tokio::task::spawn_blocking(move || render(&view, &args)).await {

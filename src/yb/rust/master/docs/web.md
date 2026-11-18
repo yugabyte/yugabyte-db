@@ -38,13 +38,17 @@ are sorted by id. Where only C++ code can render a value (column types and parti
 `/api/v1/table`), `master-web` calls the host method `WebTableLayout`. `RustMasterTest.RustLeaderServesWebJson`
 diffs every C++ JSON page between a C++ leader and the Rust leader that follows it.
 
-What the Rust leader does not have yet: per-table `Tasks` on `/api/v1/table` (empty), split parents
-already removed from the catalog on the table page, the remote bootstraps in progress on
-`/api/v1/load-distribution` (empty), and task outcomes in its tasks summary (the balancer records
-what it sent, as `kScheduled`). `/api/v1/tablet-replication` follows the leaderless check of
-`master-tablet-locations` (K7): while a leader's tserver is live, a tablet's leaderless time ends at
-that tserver's last heartbeat, so a tablet whose leader just stopped heartbeating is reported only
-once the tserver is marked unresponsive, later than C++ reports it.
+`/api/v1/table` lists the table's tserver RPC tasks in flight (create, delete, alter and truncate
+of its tablets, and the balancer's), from the `TableTasks` registry in `master-task-runtime`.
+`/api/v1/load-distribution` asks every live tserver for its remote bootstraps (`GetActiveRbsInfo`,
+5 s), and its tasks summary shows the latest balancer run's tasks with their live states. Unlike
+C++, the table page does not show split parents already deleted: the Rust catalog drops a deleted
+tablet's row, while C++ keeps the deleted TabletInfo in memory until a restart.
+
+`/api/v1/tablet-replication` follows the leaderless check of `master-tablet-locations` (K7): while a
+leader's tserver is live, a tablet's leaderless time ends at that tserver's last heartbeat, so a
+tablet whose leader just stopped heartbeating is reported only once the tserver is marked
+unresponsive, later than C++ reports it.
 
 ## The web UI
 
@@ -72,7 +76,9 @@ Authentication and the HTTPS redirect follow squeasel, the C++ server's HTTP lib
   proxied ones alike. The file is htdigest format (`user:realm:md5(user:realm:password)`), checked
   at startup (missing: `InvalidArgument`) and read on every request. The realm is
   `webserver_authentication_domain`, `mydomain.com` when empty; the domain alone does nothing. The
-  loopback C++ server runs without either, since `yb-web` authenticates in front of it. Unlike
+  loopback C++ server runs without either, since `yb-web` authenticates in front of it, so a
+  process on the same host can still read the proxied pages through its ephemeral 127.0.0.1 port
+  without credentials (the C++ server cannot keep the file: see below). Unlike
   squeasel, an unreadable file refuses requests instead of admitting them, and PUT and DELETE need
   credentials too. A follower's `RedirectToLeader` fetch sends no credentials, so with
   authentication on the leader those pages show "HTTP 401". The C++ `Webserver` hands squeasel the

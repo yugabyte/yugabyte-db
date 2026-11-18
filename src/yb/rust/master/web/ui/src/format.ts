@@ -7,20 +7,21 @@ const ENTITIES: Record<string, string> = {
   '&#x27;': "'",
 };
 
-// The C++ pages HTML-escape some names inside their JSON (table and column names), and the Rust
-// master keeps those bytes; React escapes again, so undo it for display.
+// The C++ table page HTML-escapes column names inside its JSON, and the Rust master keeps those
+// bytes; React escapes again, so undo it for display. Other names in the JSON are raw.
 export function unescapeHtml(s: string | undefined | null): string {
   if (!s) return '';
   return s.indexOf('&') < 0 ? s : s.replace(/&(amp|lt|gt|quot|#39|#x27);/g, (m) => ENTITIES[m]);
 }
 
+// Decimal units, as the server's sizes (HumanizeBytes) are.
 export function formatBytes(n: number | undefined | null): string {
   if (n === undefined || n === null || !Number.isFinite(n)) return '';
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   let v = n;
   let i = 0;
-  while (Math.abs(v) >= 1024 && i < units.length - 1) {
-    v /= 1024;
+  while (Math.abs(v) >= 1000 && i < units.length - 1) {
+    v /= 1000;
     i++;
   }
   return `${i === 0 ? v : v.toFixed(v < 10 ? 2 : 1)} ${units[i]}`;

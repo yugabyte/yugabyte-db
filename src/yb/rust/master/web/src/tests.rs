@@ -276,6 +276,8 @@ async fn view() -> View {
         host_call: Box::new(|_, _| Ok(Vec::new())),
         balancer: Default::default(),
         running_tasks: Default::default(),
+        table_tasks: Default::default(),
+        remote_bootstraps: Vec::new(),
         options: WebOptions {
             enable_ysql: || false,
             ysql_lease_enabled: || false,
@@ -287,6 +289,7 @@ async fn view() -> View {
             tablet_replicas_per_gib_limit: || 0,
             enforce_tablet_replica_limits: || false,
             hide_dead_node_threshold_mins: || 0,
+            sleep_before_reporting_lb_ui: || std::time::Duration::ZERO,
         },
     }
 }
@@ -442,5 +445,54 @@ async fn table_json() {
             Some("keyspace_name=ks&table_name=t&keyspace_type=x")
         ),
         r#"{"error":"Wrong keyspace_type found 'x'. Possible values are: ycql, ysql, yedis"}"#
+    );
+}
+
+#[test]
+fn short_elapsed_matches_printf_g() {
+    use crate::json::short_elapsed;
+    // Values from C's "%0.3g" of the same inputs.
+    for (seconds, expected) in [
+        (0.5, "500 ms"),
+        (1.234, "1.23 s"),
+        (59.99, "60 s"),
+        (90.0, "1.5 min"),
+        (0.0000012, "1.2 us"),
+        (0.9999, "1e+03 ms"),
+        (12.0, "12 s"),
+        (0.0, "0 ns"),
+    ] {
+        assert_eq!(short_elapsed(seconds), expected, "{seconds}");
+    }
+}
+
+#[tokio::test]
+async fn table_json_lists_tasks_in_flight() {
+    let view = view().await;
+    let _task =
+        view.table_tasks
+            .track(TABLE.as_bytes(), "Create Tablet", "CreateTablet RPC".into());
+    let json = render(crate::table::table, &view, Some(&format!("id={TABLE}")));
+    assert!(
+        json.contains(r#""Tasks":[{"task_type":"Create Tablet","task_state":"kRunning","#),
+        "{json}"
+    );
+    assert!(
+        json.contains(r#""task_description":"CreateTablet RPC"}]"#),
+        "{json}"
+    );
+}
+
+#[test]
+fn hybrid_time_sentinels_read_as_in_cpp() {
+    use crate::config::hybrid_time_string;
+    // kMaxHybridTimeValue is u64::MAX and kInvalidHybridTimeValue one less.
+    assert_eq!(hybrid_time_string(u64::MAX), "<max>");
+    assert_eq!(hybrid_time_string(u64::MAX - 1), "<invalid>");
+    assert_eq!(hybrid_time_string(0), "<min>");
+    assert_eq!(hybrid_time_string(1), "<initial>");
+    assert_eq!(
+        hybrid_time_string(5 << 12 | 3),
+        "{ physical: 5 logical: 3 }"
     );
 }

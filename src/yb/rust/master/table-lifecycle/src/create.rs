@@ -887,6 +887,8 @@ pub struct YsqlSystemTablesOptions {
     pub auto_analyze: fn() -> bool,
     /// `enable_pg_cron`.
     pub pg_cron: fn() -> bool,
+    /// `TEST_echo_service_enabled`.
+    pub test_echo: fn() -> bool,
 }
 
 /// `GetStatefulServiceTableName`: the table of a stateful service, in the system namespace.
@@ -900,7 +902,8 @@ pub const ADVISORY_LOCKS_TABLE: &str = "pg_advisory_locks";
 /// The `ysql-system-tables` controller for one term: the tables `YsqlManager::RunBgTasks` creates
 /// with YSQL on, once `system.transactions` exists, except during a YSQL major upgrade:
 /// `system.pg_advisory_locks` (`CreateYbAdvisoryLocksTableIfNeeded`) and the auto analyze
-/// service's table (`CreatePgAutoAnalyzeService`).
+/// service's table (`CreatePgAutoAnalyzeService`). It also creates the test echo service's table,
+/// which `CatalogManagerBgTasks::RunOnceAsLeader` creates with or without YSQL.
 pub struct YsqlSystemTablesController {
     tables: Arc<TableLifecycle>,
     options: YsqlSystemTablesOptions,
@@ -979,6 +982,52 @@ impl YsqlSystemTablesController {
         req
     }
 
+    /// `CreateTestEchoService`.
+    fn test_echo() -> CreateTableRequestPB {
+        let kind = StatefulServiceKind::TEST_ECHO;
+        let mut req = Self::system_table(&stateful_service_table_name(kind), 1);
+        req.hosted_stateful_services.push(EnumOrUnknown::new(kind));
+        let schema = req.schema.mut_or_insert_default();
+        schema.columns.push(Self::column(
+            "timestamp",
+            PersistentDataType::TIMESTAMP,
+            true,
+        ));
+        for name in ["node_id", "message"] {
+            schema
+                .columns
+                .push(Self::column(name, PersistentDataType::STRING, false));
+        }
+        req
+    }
+
+    /// The YSQL system tables wanted now.
+    fn ysql_tables(&self, snapshot: &CatalogSnapshot) -> Vec<CreateTableRequestPB> {
+        if !(self.tables.options.enable_ysql)() || (self.major_upgrade_in_progress)(snapshot) {
+            return vec![];
+        }
+        // These tables are transactional, so creating one creates `system.transactions` with
+        // whatever tservers have registered. Wait for the `transaction-table` controller, which
+        // waits for enough tservers to replicate it fully, as C++'s does from its tserver count
+        // callback, which in practice runs before the YSQL background tasks do.
+        if snapshot
+            .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
+            .is_none()
+        {
+            return vec![];
+        }
+        let mut wanted = vec![self.advisory_locks()];
+        if (self.options.auto_analyze)() {
+            wanted.push(self.auto_analyze());
+        }
+        // `CreatePgCronService`: C++ creates it when `cron.job` is created (IsPgCronJobTable,
+        // whose fallback matches the name and PG schema as here).
+        if (self.options.pg_cron)() && has_pg_cron_job_table(snapshot) {
+            wanted.push(self.pg_cron_leader());
+        }
+        wanted
+    }
+
     fn auto_analyze(&self) -> CreateTableRequestPB {
         let kind = StatefulServiceKind::PG_AUTO_ANALYZE;
         let mut req = Self::system_table(&stateful_service_table_name(kind), 1);
@@ -1022,31 +1071,10 @@ impl Controller for YsqlSystemTablesController {
 
     fn reconcile<'a>(&'a self, _scope: &'a TermScope) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            if !(self.tables.options.enable_ysql)() {
-                return;
-            }
             let snapshot = self.tables.catalog.snapshot();
-            if (self.major_upgrade_in_progress)(&snapshot) {
-                return;
-            }
-            // These tables are transactional, so creating one creates `system.transactions` with
-            // whatever tservers have registered. Wait for the `transaction-table` controller, which
-            // waits for enough tservers to replicate it fully, as C++'s does from its tserver count
-            // callback, which in practice runs before the YSQL background tasks do.
-            if snapshot
-                .table_by_name(SYSTEM_NAMESPACE_ID, TRANSACTIONS_TABLE)
-                .is_none()
-            {
-                return;
-            }
-            let mut wanted = vec![self.advisory_locks()];
-            if (self.options.auto_analyze)() {
-                wanted.push(self.auto_analyze());
-            }
-            // `CreatePgCronService`: C++ creates it when `cron.job` is created (IsPgCronJobTable,
-            // whose fallback matches the name and PG schema as here).
-            if (self.options.pg_cron)() && has_pg_cron_job_table(&snapshot) {
-                wanted.push(self.pg_cron_leader());
+            let mut wanted = self.ysql_tables(&snapshot);
+            if (self.options.test_echo)() {
+                wanted.push(Self::test_echo());
             }
             wanted.retain(|req| {
                 snapshot

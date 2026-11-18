@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "scale-test": "node --max-old-space-size=12000 scale-test/scale-test.mjs"
   },
   "dependencies": {
     "react": "18.3.1",
