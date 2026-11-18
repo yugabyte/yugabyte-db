@@ -205,6 +205,11 @@ const useStyles = makeStyles((theme) => ({
     lineHeight: '16px',
     marginBottom: theme.spacing(1)
   },
+  // Matches the card header so the label stays beside the toggle however tall the cards grow.
+  servicesLabel: {
+    alignSelf: 'flex-start',
+    height: 52
+  },
   divider: {
     margin: theme.spacing(3, 0),
     backgroundColor: theme.palette.grey[300]
@@ -490,7 +495,7 @@ export const CrossCloudFederatedIamFields = ({
 
   const services = (
     <FormField>
-      <FieldLabel>Services</FieldLabel>
+      <FieldLabel className={classes.servicesLabel}>Services</FieldLabel>
       <div className={classes.cards}>
         {providerCloud !== 'aws' && (
           <ServiceCard
