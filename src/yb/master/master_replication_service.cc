@@ -53,6 +53,9 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (CleanupStaleCDCStreams)
     (RemoveTablesFromCDCSDKStream)
     (PrepareReplicationSlotsForTransactionalDDL)
+    (SetReplicationSlotCatalogBarrier)
+    (PauseReplicationSlot)
+    (ReleaseReplicationSlot)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

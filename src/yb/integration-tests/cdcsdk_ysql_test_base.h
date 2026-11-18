@@ -61,6 +61,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/tablet/tablet_types.pb.h"
@@ -174,6 +175,7 @@ DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
 DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 
@@ -189,6 +191,7 @@ namespace cdc {
 
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
+YB_STRONGLY_TYPED_BOOL(RetryInit);
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
@@ -567,7 +570,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       bool include_oid_to_relfilenode = false,
       int timeout = kRpcTimeout,
       const std::vector<uint32_t>& publication_oids = {},
-      bool pub_all_tables = false);
+      bool pub_all_tables = false,
+      RetryInit retry = RetryInit::kTrue);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -941,6 +945,17 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Result<std::string> PrepareReplicationSlotsForTransactionalDDL(
       const std::string& master_addresses, const std::string& slot_name);
+
+  // Creates a slot that detects publication changes through publication refresh, as on a
+  // release without implicit detection.
+  Result<xrepl::StreamId> CreatePubRefreshSlot(const std::string& slot_name);
+
+  // Inserts key, sets the catalog barrier with the consumer stopped, optionally inserts
+  // key_after_barrier once the barrier time has passed, and then streams and acknowledges until the
+  // slot pauses. Returns the records streamed.
+  Result<std::vector<CDCSDKProtoRecordPB>> SetBarrierAndPause(
+      const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
+      pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier = std::nullopt);
 
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

@@ -433,6 +433,11 @@ class CDCSDKVirtualWAL {
   // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
   // tablet for determining changes to the publication.
   bool detect_publication_changes_implicitly_ = false;
+
+  // Set on a pub-refresh slot that is being prepared for conversion to an implicit slot. No change
+  // committed after it is shipped, since it would be shipped again after the conversion with an
+  // LSN computed for an implicit slot.
+  HybridTime implicit_conversion_stop_time_ = HybridTime::kInvalid;
 };
 
 }  // namespace cdc
