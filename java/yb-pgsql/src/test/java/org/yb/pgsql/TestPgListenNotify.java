@@ -583,12 +583,11 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       waitForPollerStartedAfter(admin, firstQuery);
 
       Thread joinThread = startListen(joinStmt, joinQuery, joinError);
+      // Wait until the joining LISTEN has registered as a listener and waits for the poller.
+      // Failed before then, the first LISTEN would leave an empty listener list, and the joining
+      // LISTEN would start its own poller instead of joining.
       waitForCondition(admin, "SELECT (EXISTS (SELECT 1 FROM pg_stat_activity"
-          + " WHERE query = '" + joinQuery + "' AND state = 'active'))::int");
-      // Give the joining LISTEN time to register as a listener (it then waits for the poller,
-      // without committing). Cancelled before then, the first LISTEN would leave an empty
-      // listener list, and the joining LISTEN would start its own poller and succeed.
-      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+          + " WHERE query = '" + joinQuery + "' AND wait_event = 'BgWorkerStartup'))::int");
 
       if (cancelFirst)
         cancelListen(admin, firstQuery);

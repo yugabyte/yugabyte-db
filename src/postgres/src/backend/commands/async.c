@@ -163,6 +163,7 @@
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 /*
@@ -1530,10 +1531,9 @@ Exec_ListenPreCommit(void)
 	}
 
 	/*
-	 * YB: Every LISTEN, not just the first, waits for the poller to
-	 * initialize. A LISTEN that joined while the first listener was still
-	 * starting the poller would otherwise commit, and get no notifications
-	 * if the poller never came up.
+	 * YB: Wait for the poller to initialize, and fail if it does not, even
+	 * when another LISTEN is starting it. A LISTEN must not commit without a
+	 * poller to deliver its notifications.
 	 */
 	ybWaitForNotifsPollerInit();
 
@@ -3284,9 +3284,15 @@ ybStartNotifsPollerBgWorker(void)
 static void
 ybWaitForNotifsPollerInit(void)
 {
-	bool		found;
-	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+	static YbNotifsPollerShmemData *poller_data = NULL;
 	char		error_message[sizeof(poller_data->error_message)];
+
+	if (poller_data == NULL)
+	{
+		bool		found;
+
+		poller_data = ybShmemNotifsPollerData(&found);
+	}
 
 	for (;;)
 	{
@@ -3309,8 +3315,15 @@ ybWaitForNotifsPollerInit(void)
 					 (error_message[0] ? errdetail("%s", error_message) : 0)));
 		}
 
+		/*
+		 * Poll: the poller can exit without reporting, and cleanup may run in
+		 * the postmaster, so nothing reliably wakes this backend. Tests look
+		 * for this wait event to tell that a LISTEN has joined.
+		 */
+		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
+						 10L, WAIT_EVENT_BGWORKER_STARTUP);
+		ResetLatch(MyLatch);
 		CHECK_FOR_INTERRUPTS();
-		pg_usleep(10000L);
 	}
 }
 
