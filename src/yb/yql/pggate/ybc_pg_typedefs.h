@@ -315,12 +315,14 @@ typedef struct YbcPgExecOutParamValue {
 // Structure to hold the execution-control parameters.
 typedef struct YbcPgExecParameters {
   // - plan_limit is the limit imposed by the upper plan, most commonly by the Limit node.
+  // - vector_limit is the limit to use in vector index scans.
   // - out_param is an output parameter of an execution while all other parameters are IN params.
   //
   // For now we only support one rowmark.
 
 #ifdef __cplusplus
   uint64_t plan_limit = 0;
+  uint64_t vector_limit = 0;
   int rowmark = YBC_NO_ROW_MARK;
   // Cast these *_wait_policy fields to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.
@@ -338,6 +340,7 @@ typedef struct YbcPgExecParameters {
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
 #else
   uint64_t plan_limit;
+  uint64_t vector_limit;
   int rowmark;
   // Cast these *_wait_policy fields to LockWaitPolicy for C use.
   // Note that WAIT_ERROR has a different meaning between pg_wait_policy and docdb_wait_policy.

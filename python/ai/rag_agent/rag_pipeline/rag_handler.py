@@ -1,4 +1,5 @@
 from embeddings import EmbeddingsGenerator
+from embeddings.embed import embed_concurrency_from_env
 from db import YugabyteDBVectorStore, PipelineTracking, PipelineStatus
 from source_location_crawlers import S3BucketCrawler
 from observability import meko_observe
@@ -88,7 +89,8 @@ class RagPipelineHandler:
         embedder = EmbeddingsGenerator(
             embedding_model=embedding_model,
             embedding_model_params=embedding_model_params,
-            ai_provider=ai_provider
+            ai_provider=ai_provider,
+            embed_concurrency=embed_concurrency_from_env(),
         )
         # 1. Process file and Generate embeddings
         embedding_iterator = embedder.generate_embeddings(
@@ -166,13 +168,16 @@ class RagPipelineHandler:
             # it added a second HNSW index under a different name.
             self.logger.info(f"Processing of document: {document_uri} completed")
 
-            self.pipeline_tracking.update_pipeline_status(
-                pipeline_id=pipeline_id,
-                pipeline_status=PipelineStatus.COMPLETED.value)
+            # mark_pipeline_completed also sets completed_at, which the ingest
+            # duration (completed_at - last_started_at) and the "last indexed"
+            # time of a document are read from.
+            self.pipeline_tracking.mark_pipeline_completed(pipeline_id)
             return True
         except Exception as e:
             self.logger.error(f"Error during RAG pipeline processing: {str(e)}")
             if pipeline_id is not None:
+                # No completed_at on failure: readers take a non-NULL
+                # completed_at to mean the document was indexed then.
                 self.pipeline_tracking.update_pipeline_status(
                     pipeline_id=pipeline_id,
                     pipeline_status=PipelineStatus.FAILED.value)

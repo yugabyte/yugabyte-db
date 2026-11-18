@@ -185,7 +185,7 @@ schema-detect-drift:
   object-type-list:
 ```
 
-| Object types to compare: `TABLE`, `COLUMN`. Default: both. Can't be combined with `--exclude-object-type-list`. |
+| Object types to compare: `TABLE`, `COLUMN`, `CONSTRAINT`, `INDEX`. Default: all. Can't be combined with `--exclude-object-type-list`. |
 
 | --exclude-object-type-list |
 
@@ -194,7 +194,7 @@ schema-detect-drift:
   exclude-object-type-list:
 ```
 
-| Object types to leave out: `TABLE`, `COLUMN`. Can't be combined with `--object-type-list`. |
+| Object types to leave out: `TABLE`, `COLUMN`, `CONSTRAINT`, `INDEX`. Can't be combined with `--object-type-list`. |
 
 | -l, --log-level |
 
@@ -253,7 +253,7 @@ yb-voyager schema detect-drift --export-dir /dir/export-dir \
 ## Limitations
 
 - Applicable to PostgreSQL sources only.
-- Only tables and columns are compared. Indexes, constraints, views, functions, and other objects are not.
+- Only tables, columns, constraints (primary key, unique, check, and foreign key), and indexes are compared. Sequences, views, functions, types, triggers, and other objects are not.
 - Only source-side changes are reported, and only up to cutover to the target. Changes after cutover is completed are not reported.
 - The report says what to do; it doesn't generate or apply DDL.
 - With [iterative cutover](../../iterative-cutover/), each iteration records its snapshots in its own export directory, and the command reports only on the directory passed in `--export-dir`. The main export directory covers the first iteration. To report on a later iteration, pass that iteration's export directory: `<export-dir>/live-data-migration-iterations/live-data-migration-iteration-<N>/export-dir`. There is no single report across iterations.

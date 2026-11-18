@@ -596,11 +596,9 @@ std::unordered_set<TabletServerId> GetReplicasWithOutstandingCompaction(
     const TabletReplicaMap& replicas) {
   std::unordered_set<TabletServerId> tservers_with_outstanding_compaction;
   for (const auto& [ts_uuid, replica] : replicas) {
-    // Don't count split child RBSing peers towards outstanding post-split compaction,
-    // because Cluster Balancer ideally schedules move on a split child only after the peer
-    // resets should_disable_lb_move as part of the tablet report (GH#12362).
-    //
-    // TODO(#33766): Prevent RBSing split child with pending post-split compaction.
+    // Don't count split child RBSing peers towards outstanding post-split compaction.
+    // Load-balancing moves skip a peer that hasn't reset should_disable_lb_move (GH#12362), and
+    // the leader prefers an RBS source that has finished compaction (GH#33766).
     if (replica.member_type != consensus::VOTER && replica.member_type != consensus::OBSERVER) {
       continue;
     }

@@ -1422,6 +1422,13 @@ Status list_tablet_server_log_locations_action(
   return Status::OK();
 }
 
+const auto clear_rocksdb_cache_args = "";
+Status clear_rocksdb_cache_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK_PREPEND(client->ClearRocksDBCache(), "Unable to clear RocksDB cache");
+  return Status::OK();
+}
+
 const auto list_tablets_for_tablet_server_args = "<ts_uuid>";
 Status list_tablets_for_tablet_server_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2462,6 +2469,20 @@ Status get_change_data_stream_info_action(
   RETURN_NOT_OK_PREPEND(
       client->GetCDCDBStreamInfo(db_stream_id),
       Format("Unable to list CDC stream info for database stream $0", db_stream_id));
+  return Status::OK();
+}
+
+const auto prepare_replication_slots_for_transactional_ddl_args = "[<replication_slot_name>]";
+Status prepare_replication_slots_for_transactional_ddl_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string slot_name = args.empty() ? "" : args[0];
+  RETURN_NOT_OK_PREPEND(
+      client->PrepareReplicationSlotsForTransactionalDDL(slot_name),
+      "Failed to prepare replication slots for transactional DDL");
   return Status::OK();
 }
 
@@ -3543,6 +3564,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(change_master_config);
   REGISTER_COMMAND(dump_masters_state);
   REGISTER_COMMAND(list_tablet_server_log_locations);
+  REGISTER_COMMAND_HIDDEN(clear_rocksdb_cache);
   REGISTER_COMMAND(list_tablets_for_tablet_server);
   REGISTER_COMMAND(set_load_balancer_enabled);
   REGISTER_COMMAND(get_load_balancer_state);
@@ -3606,6 +3628,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(delete_change_data_stream);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
+  REGISTER_COMMAND(prepare_replication_slots_for_transactional_ddl);
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);

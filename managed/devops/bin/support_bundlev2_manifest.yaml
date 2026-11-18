@@ -95,7 +95,7 @@ spec:
     UniverseLogs:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_universe_logs_bundle"
 
       params:
@@ -190,7 +190,7 @@ spec:
       # same settings. Files are picked by regex and mtime, which is why no log name or rotation
       # cadence appears here.
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_system_logs_bundle"
       params:
         logDir: "/var/log"
@@ -205,7 +205,7 @@ spec:
       redactServerConf: true
       # Collected from tserver pods only on Kubernetes: the ybc controller lives with the tserver.
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_ybc_logs_bundle"
       params:
         # Resolved on the server: getDataDirPath()/ybc-data for the data dir, the log_dir gflag for
@@ -218,7 +218,7 @@ spec:
     OutputFiles:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_output_files_bundle"
       params:
         dirFlag: "--node_home_dir"
@@ -232,7 +232,7 @@ spec:
     ErrorFiles:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_error_files_bundle"
       params:
         dirFlag: "--node_home_dir"
@@ -247,7 +247,7 @@ spec:
       enabled: true
       redactServerConf: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_gflags_bundle"
       params:
         # v1 uses provider getYbHomeDir() at runtime (SupportBundleScriptParamResolver).
@@ -262,7 +262,7 @@ spec:
     Instance:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_instance_bundle"
       params:
         dirFlag: "--node_data_dir"
@@ -275,7 +275,7 @@ spec:
     ConsensusMeta:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_consensus_meta_bundle"
       params:
         dirFlag: "--node_data_dir"
@@ -289,7 +289,7 @@ spec:
     TabletMeta:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_tablet_meta_bundle"
       params:
         dirFlag: "--node_data_dir"
@@ -305,7 +305,7 @@ spec:
       # Not supported on Kubernetes: pods run no node agent, so the server drops this
       # sub-component for those universes.
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_node_agent_bundle"
       params:
         dirFlag: "--node_agent_home_dir"
@@ -319,7 +319,7 @@ spec:
     CoreFiles:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "create_core_files_bundle"
       params:
         # Resolved on the server from the provider's getYbHomeDir(), plus /cores.
@@ -334,7 +334,7 @@ spec:
     collect_top_ps_pmap_stats:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "collect_top_ps_pmap_stats"
       params:
         remoteTarPathTemplate: "${defaults.remoteTmpDir}/top-ps-pmap-stats-\
@@ -344,7 +344,7 @@ spec:
     collect_thp_and_timezone_settings:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "collect_thp_and_timezone_settings"
       params:
         remoteTarPathTemplate: "${defaults.remoteTmpDir}/thp-and-timezone-settings-\
@@ -354,7 +354,7 @@ spec:
     collect_data_dir_map:
       enabled: true
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "collect_data_dir_map"
       params:
         # Lines per directory listing; the walk stops there and the file notes the cut.
@@ -367,7 +367,7 @@ spec:
       enabled: true
       # Collected from tserver pods only on Kubernetes: curls the tserver http port.
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "collect_threadz_memz_rpcz_stats"
       params:
         remoteTarPathTemplate: "${defaults.remoteTmpDir}/threadz-memz-rpcz-stats-\
@@ -379,7 +379,7 @@ spec:
       # The server sets --collect_master / --collect_tserver from the node's role, so a pod only
       # curls the endpoints its own process serves.
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "collect_heap_snapshot"
       params:
         remoteTarPathTemplate: "${defaults.remoteTmpDir}/heap-snapshot-\
@@ -390,7 +390,7 @@ spec:
       enabled: true
       # Collected from tserver pods only on Kubernetes: dials the tserver rpc port.
       script:
-        scriptFile: "bin/node_utils.sh"
+        scriptFile: "bin/support_bundle_utils.sh"
         entrypoint: "collect_cdc_state"
       params:
         remoteTarPathTemplate: "${defaults.remoteTmpDir}/cdc-state-${bundleUuid}-${nodeName}.tar.gz"

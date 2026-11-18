@@ -180,6 +180,7 @@ CreateExecutorState(void)
 	estate->yb_es_in_txn_limit_ht_for_reads = 0;
 
 	estate->yb_exec_params.plan_limit = 0;
+	estate->yb_exec_params.vector_limit = 0;
 	estate->yb_exec_params.rowmark = YBC_NO_ROW_MARK;
 	estate->yb_exec_params.is_index_backfill = false;
 

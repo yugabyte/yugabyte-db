@@ -44,6 +44,8 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -946,6 +948,10 @@ public class UniverseCRUDHandler {
           taskParams.fipsEnabled,
           taskParams.getPrimaryCluster().userIntent.useNodeToNodeClientCerts,
           taskParams.nodeDetailsSet);
+      GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+          c.userIntent,
+          taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+          gFlagsValidation);
       ManagedLoadBalancerUtil.validateNewCluster(
           c, taskParams.getPrimaryCluster(), confGetter, cloudAPIFactory);
       // Enforce user tags.
@@ -1541,6 +1547,16 @@ public class UniverseCRUDHandler {
 
     // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
     taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
+
+    // Only the cross-cloud federation API changes it on an existing cluster, and clients such as
+    // the CLI omit it. The edit would then clear it, and with it federation on the nodes later
+    // edits add, so keep each existing cluster's stored value.
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster stored = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      if (stored != null) {
+        cluster.userIntent.setFederationConfigured(stored.userIntent.isFederationConfigured());
+      }
+    }
 
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
@@ -2613,7 +2629,10 @@ public class UniverseCRUDHandler {
   public UUID tlsConfigUpdate(
       Customer customer, Universe universe, TlsConfigUpdateParams taskParams) {
 
-    LOG.info("tlsConfigUpdate: {}", Json.toJson(CommonUtils.maskObject(taskParams)));
+    LOG.info(
+        "tlsConfigUpdate: {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(taskParams)), RedactionTarget.LOGS));
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
@@ -2746,7 +2765,10 @@ public class UniverseCRUDHandler {
     } catch (JsonProcessingException e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
     }
-    LOG.info("CertsRotateParams : {}", Json.toJson(CommonUtils.maskObject(certsRotateParams)));
+    LOG.info(
+        "CertsRotateParams : {}",
+        RedactingService.filterSecretFields(
+            Json.toJson(CommonUtils.maskObject(certsRotateParams)), RedactionTarget.LOGS));
     return upgradeUniverseHandler.rotateCerts(certsRotateParams, customer, universe);
   }
 
@@ -3020,14 +3042,7 @@ public class UniverseCRUDHandler {
           ImageBundle newBundle =
               ImageBundle.getOrBadRequest(
                   provider.getUuid(), newIntent.getImageBundleUUIDForProvider(providerUUID));
-          if (newBundle.getDetails().getArch() != universe.getUniverseDetails().arch) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Cannot change arch from "
-                    + universe.getUniverseDetails().arch
-                    + " to "
-                    + newBundle.getDetails().getArch());
-          }
+          ImageBundleUtil.checkArchMatchesUniverse(universe, newBundle);
         }
       }
 

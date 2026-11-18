@@ -37,6 +37,15 @@ class ClusterBalancerActivityInfo {
     return warnings_.size() == 0 && tasks_.empty() && !has_ongoing_remote_bootstraps_;
   }
 
+  // Whether this run allows global balancing to be enabled: no tasks and no ongoing remote
+  // bootstraps. Unlike IsIdle(), warnings do not count, unless
+  // FLAGS_load_balancer_allow_global_balancing_with_warnings is false: a warning is work the
+  // balancer could not do, and one that repeats every run (e.g. no valid tserver for a replica)
+  // must not keep global balancing disabled.
+  // This only covers enabling. Once enabled, global balancing stays enabled until the balancer
+  // makes a non-global move (see ClusterLoadBalancer::can_perform_global_operations_).
+  bool CanPerformGlobalMoves() const;
+
   // Aggregate the tasks by {type, state}, and store the count and an example message for each.
   using TaskTypeAndState = std::pair<server::MonitoredTaskType, server::MonitoredTaskState>;
   struct TaskTypeAndStateHash {

@@ -37,10 +37,10 @@ import org.apache.commons.lang3.StringUtils;
  * Base class for node-level components that run a bash script on a DB node, copy back the tar it
  * produces, and untar it into that node's bundle directory.
  *
- * <p><b>Stdout marker protocol.</b> The entrypoints in {@code devops/bin/node_utils.sh} report
- * their outcome as {@code KEY=value} lines on stdout, because the exit code alone is ambiguous:
- * "ran fine and matched no files" is a success, not a failure. {@link #extractScriptMarkers} reads
- * three keys, each with a fail-safe default:
+ * <p><b>Stdout marker protocol.</b> The entrypoints in {@code devops/bin/support_bundle_utils.sh}
+ * report their outcome as {@code KEY=value} lines on stdout, because the exit code alone is
+ * ambiguous: "ran fine and matched no files" is a success, not a failure. {@link
+ * #extractScriptMarkers} reads three keys, each with a fail-safe default:
  *
  * <ul>
  *   <li>{@code BUNDLE_STATUS} - one of {@code OK}, {@code EMPTY}, {@code FAILED}. Absent is read as
