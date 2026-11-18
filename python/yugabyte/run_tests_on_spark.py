@@ -152,7 +152,14 @@ NEW_TEST_MIN_KNOWN_RATIO = 0.9
 # have are then not to be trusted either.
 PACK_MIN_KNOWN_RATIO = 0.9
 
-# How long to wait for the Spark master's status page when asking how large the cluster is.
+# The largest job, in test attempts, that is packed (see plan_spark_tasks). A job this small is
+# what packing is for: with one test per task it asks for an executor per test, and each sets up a
+# build tree to run a handful of them. A larger job keeps every executor it gets busy for long, so
+# one test per task wastes little there, and it is where a lost executor would cost a packed job
+# the most.
+PACK_MAX_TESTS = 1000
+
+# How long to wait for the Spark master's status page when asking how many cores are free.
 SPARK_MASTER_UI_TIMEOUT_SEC = 10
 
 # The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
@@ -619,7 +626,12 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     try:
         start_time_sec = time.time()
 
-        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt, rerun)
+        csi_id, failed_in_earlier_task_attempt = csi_report.create_test(
+            test_descriptor, start_time_sec, attempt, rerun)
+        if failed_in_earlier_task_attempt:
+            logging.info(
+                f"{job_log_prefix}Test {test_descriptor} failed in an earlier attempt of this "
+                f"Spark task (this is attempt {attempt}); it counts as failed whatever it does now")
 
         error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
         file_util.mkdir_p(error_log_dir_path)
@@ -672,8 +684,10 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             f"{elapsed_time_sec:.2f} seconds, exit code: {exit_code}{additional_log_message}")
         csi_result = 'passed'
         if exit_code != 0:
-            fail_count.add(1)
             csi_result = 'failed'
+        if exit_code != 0 or failed_in_earlier_task_attempt:
+            # The count of the earlier attempt was dropped with the rest of its results.
+            fail_count.add(1)
 
         artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
         spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
@@ -746,7 +760,8 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             artifact_paths=rel_artifact_paths,
             artifact_copy_result=artifact_copy_result,
             spark_error_copy_result=spark_error_copy_result,
-            skipped=csi_result == 'skipped'))
+            skipped=csi_result == 'skipped',
+            failed_in_earlier_task_attempt=failed_in_earlier_task_attempt))
         return None
     finally:
         delete_if_exists_log_errors(test_tmp_dir)
@@ -765,8 +780,13 @@ def run_spark_task(test_descriptor_strs: List[str], fail_count: Any, test_result
                    job_log_prefix: str) -> None:
     """
     Runs the test attempts of one Spark task in sequence on this executor: one attempt, or the
-    several that plan_spark_tasks packed together. An attempt that raises fails the task, and Spark
-    then runs the whole task again, as it does for a task of one.
+    several that plan_spark_tasks packed together.
+
+    The results of a task reach the driver only when the whole task finishes. When an attempt
+    raises or the executor is lost, Spark runs the whole task again, and the results of the
+    attempts that had already finished are dropped with it: those tests run and report once more.
+    What a test did before the loss is still in CSI, and a test that had failed stays a failed one
+    (TestResult.failed_in_earlier_task_attempt).
     """
     for test_descriptor_str in test_descriptor_strs:
         parallel_run_test(test_descriptor_str, fail_count, test_results, rerun, conf, env_vars,
@@ -1403,11 +1423,12 @@ def parse_csi_time(value: str) -> float:
 # previous CSI launch of the lane. One test per line: its uniqueId (the descriptor without the
 # attempt index), and the start and end time CSI recorded for it, separated by tabs. Lines that do
 # not parse are skipped: an estimate is then missing for that test, which only leaves it alone in
-# its task.
+# its task. Bytes that are not UTF-8 are replaced and cannot fail the read: such a line then names
+# no test, or does not parse.
 def load_test_durations(path: str) -> Dict[str, float]:
     durations: Dict[str, float] = {}
     num_bad_lines = 0
-    with open(path, 'r') as input_file:
+    with open(path, 'r', encoding='utf-8', errors='replace') as input_file:
         for line in input_file:
             line = line.strip()
             if not line:
@@ -1428,19 +1449,21 @@ def load_test_durations(path: str) -> Dict[str, float]:
     return durations
 
 
-# The cores of the cluster's alive workers as the Spark master reports them, or None when the
-# master's web UI is not known or does not answer. A worker has one core here, so this is also the
-# number of tasks the cluster can run at once.
-def get_cluster_cores() -> Optional[int]:
+# The cores of the cluster's alive workers that no application holds, as the Spark master reports
+# them, or None when the master's web UI is not known or does not answer. A worker has one core
+# here, so this is the number of tasks the cluster can start now without growing. Executors this
+# application still holds from an earlier job count as used, which errs toward not packing.
+def get_free_cluster_cores() -> Optional[int]:
     import urllib.request
     if not g_spark_master_ui_url:
         return None
     status_url = g_spark_master_ui_url.rstrip('/') + '/json/'
     try:
         with urllib.request.urlopen(status_url, timeout=SPARK_MASTER_UI_TIMEOUT_SEC) as response:
-            return int(json.loads(response.read().decode('utf-8'))['cores'])
+            status = json.loads(response.read().decode('utf-8'))
+        return max(0, int(status['cores']) - int(status['coresused']))
     except Exception as ex:
-        logging.warning("Could not read the cluster size from %s: %s", status_url, ex)
+        logging.warning("Could not read the free cores of the cluster from %s: %s", status_url, ex)
         return None
 
 
@@ -1489,18 +1512,26 @@ def pack_tests(
 # means its executor takes fewer of them.
 #
 # Every rule falls back to one test per task, which is exactly a job without packing:
+#   - A job of more than PACK_MAX_TESTS test attempts is not packed.
 #   - A test with no expected run time, or one at least as long as the target, is alone in its task
 #     (pack_tests). Tests in one task run in a fixed sequence, so an estimate that is too low makes
 #     the tests behind a slow one wait, where a test alone costs at most one setup.
 #   - A job is packed only if at least PACK_MIN_KNOWN_RATIO of its tests have an expected run time.
 #   - Two attempts of one test never share a task (pack_tests), so repetitions of a test keep being
 #     spread over executors the way separate tasks are.
-#   - A job is packed only if the cluster already has a core for each of its tasks. The cluster
+#   - A job is packed only if the cluster has a free core for each of its tasks now. The cluster
 #     scaling daemon adds nodes by the number of tasks running and waiting, at a fixed number of
 #     tasks per node that assumes one test per task. A packed job that needs the cluster to grow
 #     would get far too few nodes; one test per task is what the daemon sizes correctly. A job
-#     that shares the Spark context with another one (shares_context) counts half the cluster as
-#     its own.
+#     that shares the Spark context with another one (shares_context) counts half the free cores
+#     as its own.
+#
+# What a packed task changes when its executor is lost (a worker can go away under a running task):
+# Spark runs the task again, as it does for a task of one, but the results of the tests that had
+# finished in it never reached the driver, so those run and report a second time. A test that
+# failed before the loss still counts as failed, from what CSI recorded (csi_report.create_test);
+# without CSI, a test that fails and then passes in the second run is taken as passed. A pack's
+# failures also reach the failure limit only when the pack ends.
 #
 # Expected run times come from --test_durations_file for the main pass. For the jobs after it (the
 # re-runs of failed tests, on the diff and on the baseline, and the new-test repetitions) they are
@@ -1525,6 +1556,9 @@ def plan_spark_tasks(
                      job_group, num_tests, reason)
         return one_test_per_task
 
+    if num_tests > PACK_MAX_TESTS:
+        return not_packed("more than %d" % PACK_MAX_TESTS)
+
     known_sec = [
         g_expected_test_time_sec[test_descriptor.descriptor_str_without_attempt_index]
         for test_descriptor in test_descriptors
@@ -1532,27 +1566,21 @@ def plan_spark_tasks(
     if len(known_sec) < PACK_MIN_KNOWN_RATIO * num_tests:
         return not_packed("only %d of them have an expected run time" % len(known_sec))
 
-    cluster_cores = get_cluster_cores()
-    if cluster_cores is None:
-        return not_packed("the size of the cluster is not known")
+    free_cores = get_free_cluster_cores()
+    if free_cores is None:
+        return not_packed("the free cores of the cluster are not known")
     if shares_context:
-        cluster_cores //= 2
-    # No packing can do with fewer tasks than this, so a job far larger than the cluster is turned
-    # down here, before any packing is tried.
-    min_num_tasks = num_tests - len(known_sec) + math.ceil(sum(known_sec) / g_pack_target_sec)
-    if min_num_tasks > cluster_cores:
-        return not_packed("at least %d tasks of %d sec would be more than its %d cores" %
-                          (min_num_tasks, g_pack_target_sec, cluster_cores))
+        free_cores //= 2
 
     packs = pack_tests(test_descriptors, g_expected_test_time_sec, g_pack_target_sec)
-    if len(packs) > cluster_cores:
-        return not_packed("%d tasks of %d sec would be more than its %d cores" %
-                          (len(packs), g_pack_target_sec, cluster_cores))
+    if len(packs) > free_cores:
+        return not_packed("%d tasks of %d sec would be more than the %d free cores it can have" %
+                          (len(packs), g_pack_target_sec, free_cores))
     logging.info(
-        "Job %s: %d tests packed into %d tasks of at most %d sec of expected run time each "
-        "(%.0f sec expected for %d tests, %d tests without an expected run time, %d cores of "
-        "the cluster to run on)", job_group, num_tests, len(packs), g_pack_target_sec,
-        sum(known_sec), len(known_sec), num_tests - len(known_sec), cluster_cores)
+        "Job %s: %d tests packed into %d task(s) of at most %d sec of expected run time each "
+        "(%.0f sec expected for %d tests, %d tests without an expected run time, %d free cores "
+        "of the cluster to run on)", job_group, num_tests, len(packs), g_pack_target_sec,
+        sum(known_sec), len(known_sec), num_tests - len(known_sec), free_cores)
     return packs
 
 
@@ -2167,7 +2195,7 @@ def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
     suite_var_name = 'YB_CSI_' + test_descriptor.language
     skip_time = time.time()
     os.environ[suite_var_name] = propagated_env_vars[suite_var_name]
-    csi_id = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
+    csi_id, _ = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
     csi_report.close_item(csi_id, skip_time, 'skipped', ['muted'],
                           launch=csi_report.env_launch())
 
@@ -2248,7 +2276,7 @@ def run_new_test_repetitions(args: argparse.Namespace,
             # repeating it would hang reps - 1 executions of nothing on a skipped item while the
             # tag told readers its first attempt passed.
             num_new_skipped += 1
-        elif result.exit_code == 0:
+        elif not result.failed:
             new_passed.append(result.test_descriptor)
         else:
             num_new_failed += 1
@@ -2430,8 +2458,8 @@ def main() -> None:
                              'the main pass.')
     parser.add_argument('--spark_master_ui_url',
                         help='URL of the Spark master\'s web UI, e.g. http://host:8080. '
-                             '--pack_target_sec asks it for the size of the cluster, and packs a '
-                             'job only if the cluster already has a core for each of its tasks.')
+                             '--pack_target_sec asks it for the free cores of the cluster, and '
+                             'packs a job only if there is one for each of its tasks.')
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')
@@ -2796,9 +2824,11 @@ def main() -> None:
     total_test_run_time_sec: float = 0.0
     for result in results:
         test_language = result.test_descriptor.language
-        if result.exit_code != 0:
+        if result.failed:
             how_test_failed = ""
-            if result.failed_without_output:
+            if result.exit_code == 0:
+                how_test_failed = " in an earlier attempt of its Spark task"
+            elif result.failed_without_output:
                 how_test_failed = " without any output"
             logging.info("Test failed%s: %s", how_test_failed, result.test_descriptor)
             failures_by_language[test_language] += 1

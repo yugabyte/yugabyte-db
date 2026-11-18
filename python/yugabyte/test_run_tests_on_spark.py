@@ -64,7 +64,8 @@ def make_attempts(base: str, num_repetitions: int) -> List[test_descriptor.TestD
 
 
 def make_result(descriptor_str: str, exit_code: int = 0,
-                skipped: bool = False) -> yb_dist_tests.TestResult:
+                skipped: bool = False,
+                failed_in_earlier_task_attempt: bool = False) -> yb_dist_tests.TestResult:
     """A minimal TestResult carrying only the fields the re-run orchestration reads."""
     return yb_dist_tests.TestResult(
         test_descriptor=test_descriptor.TestDescriptor(descriptor_str),
@@ -74,7 +75,8 @@ def make_result(descriptor_str: str, exit_code: int = 0,
         artifact_paths=None,
         artifact_copy_result=None,
         spark_error_copy_result=None,
-        skipped=skipped)
+        skipped=skipped,
+        failed_in_earlier_task_attempt=failed_in_earlier_task_attempt)
 
 
 def results_for(
@@ -1808,6 +1810,32 @@ def test_a_new_test_that_skipped_itself_is_not_repeated(monkeypatch: pytest.Monk
         "tests-x/a-test:::A.New:::attempt_2", "tests-x/a-test:::A.New:::attempt_3"}
 
 
+def test_a_test_that_failed_in_a_lost_task_attempt_is_a_failed_one(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    A test that failed, lost its results with the executor, and passed when Spark ran the task
+    again: its exit code is 0, and it is still failed for what acts on a failure. As a new test it
+    is not repeated as one whose first attempt passed.
+    """
+    passed = make_result("tests-x/a-test:::A.New")
+    failed_before = make_result("tests-x/a-test:::A.NewFailedBefore",
+                                failed_in_earlier_task_attempt=True)
+    assert not passed.failed
+    assert failed_before.exit_code == 0 and failed_before.failed
+    assert make_result("tests-x/a-test:::A.NewBroken", exit_code=1).failed
+
+    known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
+    submissions = capture_submissions(monkeypatch, known)
+    results = [make_result(uid) for uid in sorted(known)] + [failed_before, passed]
+
+    rts.run_new_test_repetitions(make_args(new_test_repetitions=3), FAKE_CONF, results, FAKE_ENV,
+                                 False)
+
+    [(descriptors, _, _)] = submissions
+    assert descriptor_strs(descriptors) == {
+        "tests-x/a-test:::A.New:::attempt_2", "tests-x/a-test:::A.New:::attempt_3"}
+
+
 def test_two_results_for_one_test_repeat_it_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """A Spark task that reported and was then resubmitted leaves two results for one test."""
     known = {"tests-x/a-test:::A.T%d" % i for i in range(20)}
@@ -1944,25 +1972,29 @@ def pack_names(packs: List[List[test_descriptor.TestDescriptor]]) -> List[List[s
 
 
 def use_packing(monkeypatch: pytest.MonkeyPatch, target_sec: float, expected_sec: Any,
-                cluster_cores: Any) -> None:
+                free_cores: Any) -> None:
     monkeypatch.setattr(rts, "g_pack_target_sec", target_sec)
     monkeypatch.setattr(rts, "g_expected_test_time_sec", dict(expected_sec))
-    monkeypatch.setattr(rts, "get_cluster_cores", lambda: cluster_cores)
+    monkeypatch.setattr(rts, "get_free_cluster_cores", lambda: free_cores)
 
 
 def test_load_test_durations_skips_what_it_cannot_parse(tmp_path: Any) -> None:
     """The file is what the pipeline writes from CSI: uniqueId, start time, end time."""
     path = tmp_path / "test_durations.txt"
-    path.write_text(
-        "tests-x/a-test:::A.Quick\t2026-01-31T10:20:30.250Z\t2026-01-31T10:20:31.750Z\n\n"
-        "org.yb.SomeTest#testIt\t2026-01-31T23:58:00Z\t2026-02-01T00:02:00Z\n"
-        "tests-x/a-test:::A.NoTimes\n"
-        "tests-x/a-test:::A.NoEnd\t2026-01-31T10:20:30.250Z\n"
-        "tests-x/a-test:::A.NotATime\tsoon\tlater\n"
-        "tests-x/a-test:::A.EndsBeforeItStarts\t2026-01-31T10:20:31Z\t2026-01-31T10:20:30Z\n")
+    path.write_bytes(
+        b"tests-x/a-test:::A.Quick\t2026-01-31T10:20:30.250Z\t2026-01-31T10:20:31.750Z\n\n"
+        b"org.yb.SomeTest#testIt\t2026-01-31T23:58:00Z\t2026-02-01T00:02:00Z\n"
+        b"tests-x/a-test:::A.NoTimes\n"
+        b"tests-x/a-test:::A.NoEnd\t2026-01-31T10:20:30.250Z\n"
+        b"tests-x/a-test:::A.NotATime\tsoon\tlater\n"
+        b"tests-x/a-test:::A.EndsBeforeItStarts\t2026-01-31T10:20:31Z\t2026-01-31T10:20:30Z\n"
+        # Bytes that are not UTF-8 must not fail the read: the line is one that does not parse.
+        b"tests-x/a-test:::A.NotUtf8\t2026-01-31T10:20:30Z\t2026-01-31T10:20:\xff\xfe\n"
+        b"tests-x/a-test:::A.AfterIt\t2026-01-31T10:20:30Z\t2026-01-31T10:20:33Z\n")
 
     assert rts.load_test_durations(str(path)) == {
-        "tests-x/a-test:::A.Quick": 1.5, "org.yb.SomeTest#testIt": 240.0}
+        "tests-x/a-test:::A.Quick": 1.5, "org.yb.SomeTest#testIt": 240.0,
+        "tests-x/a-test:::A.AfterIt": 3.0}
 
 
 def test_short_tests_share_tasks_up_to_the_target() -> None:
@@ -2015,30 +2047,31 @@ def test_packing_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_a_job_that_fits_the_cluster_is_packed(monkeypatch: pytest.MonkeyPatch) -> None:
     tests = cpp_tests(["A", "B", "C", "D"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, cluster_cores=2)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores=2)
 
     packs = rts.plan_spark_tasks(tests, "a-job", False)
 
     assert sorted(len(pack) for pack in packs) == [1, 3]
 
 
-@pytest.mark.parametrize("cluster_cores", [None, 1])
+@pytest.mark.parametrize("free_cores", [None, 0, 1])
 def test_a_job_the_cluster_cannot_hold_is_not_packed(
-        monkeypatch: pytest.MonkeyPatch, cluster_cores: Any) -> None:
+        monkeypatch: pytest.MonkeyPatch, free_cores: Any) -> None:
     """
-    Unknown cluster size, or fewer cores than the packed job has tasks: one test per task, which
+    Unknown free cores, or fewer of them than the packed job has tasks: one test per task, which
     is what the cluster scaling daemon knows how to grow a cluster for.
     """
     tests = cpp_tests(["A", "B", "C", "D"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, cluster_cores)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores)
 
     assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
 
 
-def test_a_job_beside_another_counts_half_the_cluster(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two tasks fit a cluster of three cores, but not the half of it a shared context leaves."""
+def test_a_job_beside_another_counts_half_the_free_cores(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two tasks fit three free cores, but not the half of them a shared context leaves."""
     tests = cpp_tests(["A", "B", "C", "D"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, cluster_cores=3)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 30.0 for td in tests}, free_cores=3)
 
     assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 2
     assert rts.plan_spark_tasks(tests, "a-job", True) == [[td] for td in tests]
@@ -2047,12 +2080,36 @@ def test_a_job_beside_another_counts_half_the_cluster(monkeypatch: pytest.Monkey
 def test_a_job_with_little_history_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
     """8 of 10 tests have an expected run time, under PACK_MIN_KNOWN_RATIO: none are packed."""
     tests = cpp_tests([str(i) for i in range(10)])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests[:8]}, cluster_cores=100)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests[:8]}, free_cores=100)
 
     assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
 
 
-def test_cluster_size_is_read_from_the_master_status_page(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_job_over_the_size_limit_is_not_packed(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests = cpp_tests(["A", "B", "C", "D"])
+    use_packing(monkeypatch, 100, {td.descriptor_str: 1.0 for td in tests}, free_cores=100)
+
+    monkeypatch.setattr(rts, "PACK_MAX_TESTS", 4)
+    assert len(rts.plan_spark_tasks(tests, "a-job", False)) == 1
+    monkeypatch.setattr(rts, "PACK_MAX_TESTS", 3)
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+def test_a_long_test_costs_the_job_one_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    300 one-second tests and 50 tests of twice the target make 3 + 50 tasks, which 60 free cores
+    hold: a long test is alone in a task however long it is.
+    """
+    quick = cpp_tests(["Quick%d" % i for i in range(300)])
+    slow = cpp_tests(["Slow%d" % i for i in range(50)])
+    expected_sec = {td.descriptor_str: 1.0 for td in quick}
+    expected_sec.update({td.descriptor_str: 200.0 for td in slow})
+    use_packing(monkeypatch, 100, expected_sec, free_cores=60)
+
+    assert len(rts.plan_spark_tasks(quick + slow, "a-job", False)) == 53
+
+
+def test_free_cores_are_read_from_the_master_status_page(monkeypatch: pytest.MonkeyPatch) -> None:
     asked: List[str] = []
 
     class FakeResponse:
@@ -2072,21 +2129,22 @@ def test_cluster_size_is_read_from_the_master_status_page(monkeypatch: pytest.Mo
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080/")
 
-    assert rts.get_cluster_cores() == 180
+    # The cores other applications hold are not this job's to count on.
+    assert rts.get_free_cluster_cores() == 168
     assert asked == ["http://spark-master.example.com:8080/json/"]
 
 
-def test_an_unreachable_master_leaves_the_cluster_size_unknown(
+def test_an_unreachable_master_leaves_the_free_cores_unknown(
         monkeypatch: pytest.MonkeyPatch) -> None:
     def failing_urlopen(url: str, timeout: float) -> Any:
         raise OSError("connection refused")
 
     monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
     monkeypatch.setattr(rts, "g_spark_master_ui_url", "http://spark-master.example.com:8080")
-    assert rts.get_cluster_cores() is None
+    assert rts.get_free_cluster_cores() is None
 
     monkeypatch.setattr(rts, "g_spark_master_ui_url", None)
-    assert rts.get_cluster_cores() is None
+    assert rts.get_free_cluster_cores() is None
 
 
 class RecordingSparkContext(FakeSparkContext):
@@ -2131,7 +2189,7 @@ def test_without_packing_a_job_has_one_task_per_test(
 def test_a_packed_job_has_one_task_per_pack(
         monkeypatch: pytest.MonkeyPatch, fake_pyspark: None, fake_py4j: Any) -> None:
     tests = cpp_tests(["A", "B", "C"])
-    use_packing(monkeypatch, 100, {td.descriptor_str: 10.0 for td in tests}, cluster_cores=5)
+    use_packing(monkeypatch, 100, {td.descriptor_str: 10.0 for td in tests}, free_cores=5)
 
     spark_context = run_job_recording_its_tasks(monkeypatch, tests)
 

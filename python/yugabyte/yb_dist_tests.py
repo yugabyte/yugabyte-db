@@ -112,6 +112,17 @@ class TestResult:
     # was reported to CSI as skipped. Not a pass, for anything that would repeat a pass.
     skipped: bool = False
 
+    # CSI has a failed execution of this test from an earlier attempt of its Spark task, whose
+    # results Spark dropped when the executor was lost (csi_report.create_test). Whatever this
+    # execution's exit code is, the test has failed in this build.
+    failed_in_earlier_task_attempt: bool = False
+
+    # Whether the test counts as failed for what acts on a failure: the failed-test list, the fail
+    # repetitions and the runs on the baseline.
+    @property
+    def failed(self) -> bool:
+        return self.exit_code != 0 or self.failed_in_earlier_task_attempt
+
     def log_artifact_upload_errors(self) -> None:
         for copy_result in [self.artifact_copy_result, self.spark_error_copy_result]:
             if copy_result is not None and copy_result.has_errors():
