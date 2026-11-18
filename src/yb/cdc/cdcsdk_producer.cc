@@ -3082,15 +3082,20 @@ Status GetChangesForCDCSDK(
         // In case of a connector failure we may get a wal_segment_index that is obsolete.
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
-        // safe_hybrid_time_req.
+        // safe_hybrid_time_req, and CHANGE_METADATA_OP messages above the consistent snapshot time:
+        // they are not MVCC-tracked, so a previous response's safe time can pass one that was not
+        // yet committed. Skipping it would leave a stale schema in cached_schema_details.
+        // Processing one again only resends its DDL record.
         uint64_t commit_time_threshold =
             GetCommitTimeThreshold(consistent_snapshot_time, safe_hybrid_time_req);
+        const auto commit_time = GetTransactionCommitTime(msg);
         VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
-        VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
+        VLOG(3) << "Txn commit time       = " << commit_time;
 
-        if (FLAGS_cdc_enable_consistent_records &&
-            GetTransactionCommitTime(msg) <= commit_time_threshold &&
-            msg->op_type() != yb::consensus::OperationType::SPLIT_OP) {
+        if (FLAGS_cdc_enable_consistent_records && commit_time <= commit_time_threshold &&
+            msg->op_type() != yb::consensus::OperationType::SPLIT_OP &&
+            (msg->op_type() != yb::consensus::OperationType::CHANGE_METADATA_OP ||
+             (consistent_snapshot_time && commit_time <= *consistent_snapshot_time))) {
           VLOG_WITH_FUNC(2)
               << "Received a message in wal_segment with commit_time <= request safe time."
                  " Will ignore this message. consistent_stream_safe_time: "
