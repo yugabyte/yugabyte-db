@@ -51,7 +51,7 @@
 
 
 static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);
-static bool yb_is_internal_table_to_be_excluded_from_cdc(Relation rel);
+static bool yb_is_internal_table_to_be_excluded_from_cdc(Oid relid);
 
 static void publication_translate_columns(Relation targetrel, List *columns,
 										  int *natts, AttrNumber **attrs);
@@ -103,7 +103,7 @@ check_publication_add_relation(Relation targetrel)
 				 errdetail("Replicating tables without primary key is not yet supported.")));
 
 	if (IsYugaByteEnabled() &&
-		yb_is_internal_table_to_be_excluded_from_cdc(targetrel))
+		yb_is_internal_table_to_be_excluded_from_cdc(RelationGetRelid(targetrel)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("cannot add relation \"%s\" to publication",
@@ -1346,6 +1346,13 @@ yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables)
 			Oid			rel = lfirst_oid(lc_tables);
 			bool		found;
 
+			/*
+			 * A publication can list these tables if they were added before
+			 * adding them was rejected.
+			 */
+			if (!has_alltables && yb_is_internal_table_to_be_excluded_from_cdc(rel))
+				continue;
+
 			hash_search(seen_tables, &rel, HASH_ENTER, &found);
 			if (!found)
 				tables = lappend_oid(tables, rel);
@@ -1400,7 +1407,7 @@ yb_is_publishable_relation(Relation rel)
 	return (is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
 			(yb_cdcsdk_stream_tables_without_primary_key ||
 			 YBRelationHasPrimaryKey(rel)) &&
-			!yb_is_internal_table_to_be_excluded_from_cdc(rel));
+			!yb_is_internal_table_to_be_excluded_from_cdc(RelationGetRelid(rel)));
 }
 
 /*
@@ -1412,23 +1419,15 @@ yb_is_publishable_relation(Relation rel)
  * to stream if it asks for a table that the master left out of its stream.
  */
 static bool
-yb_is_internal_table_to_be_excluded_from_cdc(Relation rel)
+yb_is_internal_table_to_be_excluded_from_cdc(Oid relid)
 {
-	const char *relname = RelationGetRelationName(rel);
-	char	   *nspname;
-	bool		result;
+	char	   *relname = get_rel_name(relid);
+	char	   *nspname = get_namespace_name(get_rel_namespace(relid));
 
-	if (strcmp(relname, "ddl_queue") != 0 &&
-		strcmp(relname, "replicated_ddls") != 0)
-		return false;
-
-	nspname = get_namespace_name(RelationGetNamespace(rel));
-	if (nspname == NULL)
-		return false;
-
-	result = strcmp(nspname, "yb_xcluster_ddl_replication") == 0;
-	pfree(nspname);
-	return result;
+	return relname != NULL && nspname != NULL &&
+		strcmp(nspname, "yb_xcluster_ddl_replication") == 0 &&
+		(strcmp(relname, "ddl_queue") == 0 ||
+		 strcmp(relname, "replicated_ddls") == 0);
 }
 
 /*
