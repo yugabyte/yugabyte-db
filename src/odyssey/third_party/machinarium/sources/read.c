@@ -95,6 +95,17 @@ MACHINE_API ssize_t machine_read_raw(machine_io_t *obj, void *buf, size_t size)
 	return mm_io_read(io, buf, size);
 }
 
+MACHINE_API ssize_t yb_machine_peek_raw(machine_io_t *obj, void *buf,
+					size_t size)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	mm_errno_set(0);
+	ssize_t rc = recv(io->fd, buf, size, MSG_PEEK);
+	if (rc < 0)
+		mm_errno_set(errno);
+	return rc;
+}
+
 static inline int machine_read_to(machine_io_t *obj, machine_msg_t *msg,
 				  size_t size, uint32_t time_ms)
 {
