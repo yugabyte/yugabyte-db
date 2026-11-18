@@ -61,15 +61,10 @@ static XLogRecPtr last_filtered_commit_lsn = InvalidXLogRecPtr;
  * GetConsistentChanges responses. In the case of commit time ties between
  * different DocDB transactions, the virtual WAL combines them into a single
  * BEGIN/COMMIT block, so a streamed transaction can have several entries.
- *
- * An entry is dropped once a COMMIT at or after its commit time has been
- * streamed. The transaction is replayed while its COMMIT is decoded, which is
- * done before the next record is read, so the entries are dropped at that
- * read: last_streamed_commit_time_ht is the commit time of the COMMIT last
- * returned, or 0.
+ * They are dropped by commit time, not by DocDB transaction id, because the
+ * COMMIT of such a block carries the id of only one of them.
  */
 static List *aborted_subtxn_sets = NIL;
-static uint64_t last_streamed_commit_time_ht = 0;
 
 /*
  * Marker to refresh publication's tables list. If set to true call
@@ -158,7 +153,6 @@ static void PreProcessBeforeFetchingNextBatch();
 
 static void TrackUnackedTransaction(YbVirtualWalRecord *record);
 static void AddAbortedSubtxnSets(YbcPgChangeRecordBatch *batch);
-static void DropAbortedSubtxnSetsOfStreamedCommit(void);
 static void AckFilteredTransactions(void);
 static XLogRecPtr CalculateRestartLSN(XLogRecPtr confirmed_flush);
 static void CleanupAckedTransactions(XLogRecPtr confirmed_flush);
@@ -221,7 +215,6 @@ YBCInitVirtualWal(List *yb_publication_names)
 														"context",
 														ALLOCSET_DEFAULT_SIZES);
 	aborted_subtxn_sets = NIL;
-	last_streamed_commit_time_ht = 0;
 	/*
 	 * Reset cached state for a fresh start. Ensures we don't use stale data
 	 * from a previous session if Init is ever called without Destroy.
@@ -328,7 +321,6 @@ YBCDestroyVirtualWal()
 	publication_refresh_record.lsn = InvalidXLogRecPtr;
 	publication_refresh_record.xid = InvalidTransactionId;
 	aborted_subtxn_sets = NIL;
-	last_streamed_commit_time_ht = 0;
 
 	/* Reset catalog snapshot set by InitVirtualWal. */
 	YbResetVirtualWalCatalogSnapshot();
@@ -629,8 +621,6 @@ YBCReadRecord(List *publication_names)
 
 	elog(DEBUG4, "YBCReadRecord");
 
-	DropAbortedSubtxnSetsOfStreamedCommit();
-
 	caller_context = MemoryContextSwitchTo(cached_records_context);
 
 	/* Fetch a batch of changes from CDC service if needed. */
@@ -783,8 +773,6 @@ YBCReadRecord(List *publication_names)
 	if (record)
 	{
 		TrackUnackedTransaction(record);
-		if (record->action == YB_PG_ROW_MESSAGE_ACTION_COMMIT)
-			last_streamed_commit_time_ht = record->commit_time_ht;
 	}
 
 	return record;
@@ -933,26 +921,23 @@ AddAbortedSubtxnSets(YbcPgChangeRecordBatch *batch)
 	MemoryContextSwitchTo(caller_context);
 }
 
-static void
-DropAbortedSubtxnSetsOfStreamedCommit(void)
+/* Drop the aborted subtxn sets of the transactions committed by a decoded COMMIT. */
+void
+YBCDropAbortedSubtxnSets(uint64_t commit_time_ht)
 {
 	ListCell   *lc;
-
-	if (last_streamed_commit_time_ht == 0)
-		return;
 
 	foreach(lc, aborted_subtxn_sets)
 	{
 		YbcPgAbortedSubtxnSet *entry = (YbcPgAbortedSubtxnSet *) lfirst(lc);
 
-		if (entry->commit_time_ht <= last_streamed_commit_time_ht)
+		if (entry->commit_time_ht <= commit_time_ht)
 		{
 			aborted_subtxn_sets = foreach_delete_current(aborted_subtxn_sets, lc);
 			pfree(entry->set);
 			pfree(entry);
 		}
 	}
-	last_streamed_commit_time_ht = 0;
 }
 
 /* Get the aborted subtxn set of a DocDB transaction being decoded. */
