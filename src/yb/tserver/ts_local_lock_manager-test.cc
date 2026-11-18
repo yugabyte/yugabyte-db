@@ -193,6 +193,31 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
     return lock_owner_registry_->Register(state, txn_id, TabletId());
   }
 
+  struct TransactionRegistrator {
+    std::promise<Result<TransactionMetadata>> promise;
+    TransactionId txn_id;
+
+    void resolve() {
+      promise.set_value(TransactionMetadata(txn_id));
+    }
+    void fail() {
+      promise.set_value(STATUS(RuntimeError, "Simulating failure to get metadata"));
+    }
+  };
+
+  Result<std::pair<docdb::ObjectLockOwnerRegistry::RegistrationGuard, TransactionRegistrator>>
+  RegisterTransactionDeferred(TransactionId txn_id) {
+    ParentProcessGuard g;
+    auto shared_state = VERIFY_RESULT(shared_manager_->AllocateShared());
+    auto& state = *shared_state.get();
+    shared_mem_states_.try_emplace(txn_id, std::move(shared_state));
+    std::promise<Result<TransactionMetadata>> promise;
+    std::shared_future future = promise.get_future();
+    return std::make_pair(
+      lock_owner_registry_->Register(state, std::move(future)),
+      TransactionRegistrator(std::move(promise), txn_id));
+  }
+
   bool LockRelationPgFastpath(
       TransactionId txn_id, SubTransactionId subtxn_id, uint32_t database_id, uint32_t relation_id,
       ObjectLockFastpathLockType lock_type) {
@@ -1411,6 +1436,52 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathDeferredTransaction) {
+  {
+    auto [txn1, register_txn1] = ASSERT_RESULT(RegisterTransactionDeferred(kTxn1.txn_id));
+    // Typical fastpath, transaction id/status tablet never checked.
+    ASSERT_TRUE(LockRelationTServerFastpath(
+        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kRowShare));
+    ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn1.txn_id));
+
+    ASSERT_TRUE(LockRelationTServerFastpath(
+        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kAccessShare));
+    register_txn1.fail();
+    // Case where registration fails (e.g., because transaction was aborted, so metadata not
+    // available). Fastpath is disabled if locks are consumed.
+    ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
+    ASSERT_FALSE(LockRelationTServerFastpath(
+        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject2,
+        ObjectLockFastpathLockType::kRowShare));
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  }
+
+  auto [txn2, register_txn2] = ASSERT_RESULT(RegisterTransactionDeferred(kTxn2.txn_id));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowShare));
+  // Acquire via slow path should resolve the registration.
+  register_txn2.resolve();
+  ASSERT_OK(LockRelation(
+      kTxn2, kDatabase1, kObject2, TableLockType::ROW_SHARE, /*deadline=*/{}));
+
+  auto [txn3, register_txn3] = ASSERT_RESULT(RegisterTransactionDeferred(kTxn3.txn_id));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn3.txn_id, kTxn3.subtxn_id, kDatabase1, kObject3,
+      ObjectLockFastpathLockType::kAccessShare));
+  // Consumption by unrelated process should wait for registration to resolve.
+  std::jthread t([&register_txn3] {
+    std::this_thread::sleep_for(1s);
+    register_txn3.resolve();
+  });
+  ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject3, TableLockType::EXCLUSIVE));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
 }
 
 // A release naming specific objects leaves the subtxn's other locks held, so it must keep the
