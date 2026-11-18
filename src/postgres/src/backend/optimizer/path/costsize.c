@@ -10259,9 +10259,6 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 * Serial: pggate receives base-table ybctids, not the wider
 		 * secondary-index entries.  Size byte-pagination by the
 		 * base-table ybctid width.
-		 *
-		 * TODO(#38313): a merge scan's index request also returns its merge
-		 * sort columns.
 		 */
 		int32		tmp_ybctid_width =
 			yb_get_base_table_ybctid_width(baserel_oid);
