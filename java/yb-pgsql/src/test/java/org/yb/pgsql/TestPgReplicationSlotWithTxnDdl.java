@@ -105,10 +105,13 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
     return PgOutputRelationMessageColumn.CreateForComparison(name, dataTypeOid);
   }
 
+  // A null value is a NULL column.
   private static PgOutputInsertMessage insert(String... values) {
     List<PgOutputMessageTupleColumn> columnValues = new ArrayList<>();
     for (String value : values) {
-      columnValues.add(new PgOutputMessageTupleColumnValue(value));
+      columnValues.add(value == null
+          ? new PgOutputMessageTupleColumnNull()
+          : new PgOutputMessageTupleColumnValue(value));
     }
     return PgOutputInsertMessage.CreateForComparison(
         new PgOutputMessageTuple((short) values.length, columnValues));
@@ -2119,6 +2122,49 @@ public class TestPgReplicationSlotWithTxnDdl extends BasePgSQLTest {
         insert("1", "before_create"),
         relation("t3", column("a", INT4_OID), column("b", TEXT_OID)),
         insert("1", "after_drop"),
+        commitMessage());
+    assertMessages(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // A DROP COLUMN rolled back to a savepoint, then a CREATE TABLE under FOR ALL TABLES, which
+  // refreshes the publication at the commit time. Neither the refresh nor the decoding of the
+  // INSERT after it may see the dropped column as gone.
+  @Test
+  public void createTableAfterDropColumnRolledBackToSavepointForAllTables() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (id int primary key, val1 int, val2 int)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("SAVEPOINT sp");
+      stmt.execute("ALTER TABLE t1 DROP COLUMN val2");
+      stmt.execute("ROLLBACK TO SAVEPOINT sp");
+      stmt.execute("CREATE TABLE t2 (id int primary key)");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      stmt.execute("COMMIT");
+
+      stmt.execute("INSERT INTO t1 VALUES (2, 2, 2)");
+    }
+
+    PGReplicationStream stream = startStream(replConnection, "test_slot", "pub");
+    List<PgOutputMessage> result = receiveMessage(stream, 7);
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        beginMessage(2),
+        relation("t1", column("id", INT4_OID), column("val1", INT4_OID), column("val2", INT4_OID)),
+        insert("1", "1", null),
+        commitMessage(),
+        beginMessage(3),
+        insert("2", "2", "2"),
         commitMessage());
     assertMessages(expectedResult, result);
 
