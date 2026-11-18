@@ -294,8 +294,10 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitStartingFromTime,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
           TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<TaskType> KUBERNETES_UPGRADE_GFLAG_TASKS =
@@ -351,6 +353,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitStartingFromTime,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static List<JsonNode> createUpgradeSoftwareResult(boolean isSingleAZ) {
@@ -447,6 +451,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }
 
@@ -524,6 +530,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
                 "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
