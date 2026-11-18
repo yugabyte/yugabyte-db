@@ -3350,11 +3350,10 @@ ybHasSeparateIndexRequest(YbOpaque ybScan)
 }
 
 /*
- * The position at which a merge scan finds the value of merge sort column
- * indexattno, an index column number, in the rows that the merge compares.
- * Those are the rows of the separate index request if the scan has one, the
- * index rows of an index-only scan, or else table rows, which hold the column
- * at its table attribute number.
+ * Map merge sort column indexattno to the attno of its value in the rows that
+ * the merge compares:
+ * - index attno: an index-only scan or a scan with a separate index request
+ * - table attno: otherwise
  *
  * TODO(#38296): share this mapping with ybcSetupScanPlan.
  */
