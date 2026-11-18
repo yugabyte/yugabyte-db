@@ -25,13 +25,13 @@ import java.util.UUID;
 import org.junit.Test;
 import play.libs.Json;
 
-public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
+public class V479__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
 
   @Test
   public void allPodsMaster_tserverFixed() {
     ObjectNode details = details("kubernetes", "MASTER", "MASTER");
 
-    assertTrue(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertTrue(V479__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
     assertEquals("MASTER", dedicatedTo(details, "yb-master-0"));
     assertEquals("TSERVER", dedicatedTo(details, "yb-tserver-0"));
   }
@@ -40,7 +40,7 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
   public void allPodsTserver_masterFixed() {
     ObjectNode details = details("kubernetes", "TSERVER", "TSERVER");
 
-    assertTrue(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertTrue(V479__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
     assertEquals("MASTER", dedicatedTo(details, "yb-master-0"));
     assertEquals("TSERVER", dedicatedTo(details, "yb-tserver-0"));
   }
@@ -49,7 +49,7 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
   public void allPodsNull_bothSet() {
     ObjectNode details = details("kubernetes", null, null);
 
-    assertTrue(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertTrue(V479__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
     assertEquals("MASTER", dedicatedTo(details, "yb-master-0"));
     assertEquals("TSERVER", dedicatedTo(details, "yb-tserver-0"));
   }
@@ -59,7 +59,7 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
     ObjectNode details = details("kubernetes", "MASTER", "TSERVER");
     ObjectNode before = details.deepCopy();
 
-    assertFalse(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertFalse(V479__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
     assertEquals(before, details);
   }
 
@@ -68,7 +68,7 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
     ObjectNode details = details("aws", "MASTER", "MASTER");
     ObjectNode before = details.deepCopy();
 
-    assertFalse(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertFalse(V479__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
     assertEquals(before, details);
   }
 
@@ -78,13 +78,13 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
     ((ObjectNode) details.get("clusters").get(0).get("userIntent")).put("dedicatedNodes", false);
     ObjectNode before = details.deepCopy();
 
-    assertFalse(V478__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
+    assertFalse(V479__Fix_K8s_Node_DedicatedTo.processUniverse(details, "u"));
     assertEquals(before, details);
   }
 
   @Test
   public void migrate_tserverPodGetsTserverInstanceType() throws SQLException {
-    UUID universeUUID = createK8sUniverse("v478-master", ServerType.MASTER);
+    UUID universeUUID = createK8sUniverse("v479-master", ServerType.MASTER);
     assertEquals("xsmall", instanceTypeForNode(universeUUID, "yb-tserver-0"));
 
     runMigration();
@@ -95,7 +95,7 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
 
   @Test
   public void migrate_nullMasterPodGetsMasterInstanceType() throws SQLException {
-    UUID universeUUID = createK8sUniverse("v478-null", null);
+    UUID universeUUID = createK8sUniverse("v479-null", null);
     assertEquals("small", instanceTypeForNode(universeUUID, "yb-master-0"));
 
     runMigration();
@@ -130,7 +130,7 @@ public class V478__Fix_K8s_Node_DedicatedToTest extends FakeDBApplication {
   private static void runMigration() throws SQLException {
     Transaction transaction = DB.beginTransaction();
     try {
-      V478__Fix_K8s_Node_DedicatedTo.migrate(transaction.connection());
+      V479__Fix_K8s_Node_DedicatedTo.migrate(transaction.connection());
       DB.commitTransaction();
     } finally {
       DB.endTransaction();
