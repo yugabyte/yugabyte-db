@@ -1283,4 +1283,34 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       assertEquals(Arrays.asList(new Pair<>("TimeZone", "UTC")), r.parameterStatuses());
     }
   }
+
+  // The transaction priority bounds check each other on SET, so replaying them is
+  // order-sensitive. A's upper bound starts at 0.5 from a startup parameter, and A then sets
+  // lower 0.1, upper 0.8, lower 0.6, which lists the lower bound first. B's query resets the only
+  // backend to defaults, so A's next query replays its bounds onto a backend whose upper bound is
+  // the startup 0.5 again. Sending lower = 0.6 first would fail that deploy.
+  @Test
+  public void testTxnPriorityBoundsDeploy() throws Exception {
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), SINGLE_BACKEND_FLAGS);
+
+    try (WireConn a = rawConnBuilder()
+             .startupParam("yb_transaction_priority_upper_bound", "0.5").connect();
+         WireConn b = rawConnBuilder().connect()) {
+      a.createPipeline()
+          .query("SET yb_transaction_priority_lower_bound = 0.1")
+          .query("SET yb_transaction_priority_upper_bound = 0.8")
+          .query("SET yb_transaction_priority_lower_bound = 0.6")
+          .run();
+
+      // B must see the reset backend, or A's next query would not have to replay its bounds.
+      b.createPipeline()
+          .query("SHOW yb_transaction_priority_upper_bound").row("1")
+          .run();
+
+      a.createPipeline()
+          .query("SHOW yb_transaction_priority_lower_bound").row("0.6")
+          .query("SHOW yb_transaction_priority_upper_bound").row("0.8")
+          .run();
+    }
+  }
 }
