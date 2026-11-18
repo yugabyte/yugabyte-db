@@ -21,6 +21,8 @@ namespace {
 
 constexpr auto kCreatedDb = "created_before_finalize";
 constexpr auto kDroppedDb = "dropped_before_finalize";
+constexpr auto kOldVersionDb = "created_on_old_version";
+constexpr auto kAfterRollbackDb = "created_after_rollback";
 
 } // namespace
 
@@ -44,14 +46,26 @@ class LogicalClientVersionUpgradeTest : public UpgradeTestBase {
 // Databases created and dropped on the current version before finalize must leave
 // pg_yb_logical_client_version as the old version expects it after rollback: the created database
 // is reachable (the old version FATALs on connect if its row is missing), and every database has
-// exactly one row with no row left behind for the dropped one.
+// exactly one row with no row left behind for the dropped ones. The old version must still be able
+// to CREATE/DROP DATABASE after rollback.
 TEST_F(LogicalClientVersionUpgradeTest, CreateDatabaseBeforeRollback) {
   ASSERT_OK(StartClusterInOldVersion());
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kOldVersionDb));
+  }
   ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
   ASSERT_OK(CreateAndDropDatabases());
+  {
+    auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kOldVersionDb));
+  }
   ASSERT_OK(RollbackClusterToOldVersion(kNoDelayBetweenNodes));
 
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB(kCreatedDb));
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kAfterRollbackDb));
+  ASSERT_RESULT(cluster_->ConnectToDB(kAfterRollbackDb));
+  ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kAfterRollbackDb));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<pgwrapper::PGUint64>(
       "SELECT COUNT(*) FROM pg_yb_logical_client_version v FULL JOIN pg_database d "
       "ON v.db_oid = d.oid WHERE v.db_oid IS NULL OR d.oid IS NULL")), 0);

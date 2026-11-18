@@ -260,8 +260,8 @@ YbNeedsLegacyPerDbLogicalClientVersionRows()
 {
 	return (IsYugaByteEnabled() &&
 			!IsBootstrapProcessingMode() &&
-			YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_UNSET &&
-			YbLogicalClientVersionTableExists());
+			YbLogicalClientVersionTableExists() &&
+			YbGetLogicalClientVersionType() == LOGICAL_CLIENT_VERSION_UNSET);
 }
 
 void
