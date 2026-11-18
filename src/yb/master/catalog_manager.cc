@@ -973,10 +973,6 @@ void InitializeTabletLocationsPB(
   locs_pb->mutable_partition()->CopyFrom(pb.partition());
   locs_pb->set_split_depth(pb.split_depth());
   locs_pb->set_split_parent_tablet_id(pb.split_parent_tablet_id());
-  // Not set for a split parent.
-  if (pb.has_hide_hybrid_time() && pb.split_tablet_ids().empty()) {
-    locs_pb->set_hide_hybrid_time(pb.hide_hybrid_time());
-  }
 }
 
 IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {
@@ -13545,7 +13541,7 @@ Status CatalogManager::GetTableLocations(
       continue;
     }
     if (tablets_released_by_cdc.contains(tablet->id())) {
-      locs_pb->set_hidden_tablet_released_by_cdcsdk(true);
+      locs_pb->set_hidden_table_released_by_cdc(true);
     }
   }
 

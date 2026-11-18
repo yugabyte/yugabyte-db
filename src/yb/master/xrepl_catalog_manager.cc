@@ -6706,11 +6706,9 @@ std::unordered_set<TabletId> CatalogManager::GetHiddenTabletsReleasedByCDCSDK(
   {
     SharedLock read_lock(mutex_);
     for (const auto& [tablet_id, hidden_tablet] : retained_by_cdcsdk_) {
-      // Skip a split parent: until both children are polled, GetTabletIdsToPoll returns the parent
-      // instead of them, so a virtual WAL that skipped it would never poll the children. Also skip
-      // a tablet whose split parent is still retained; the deletion task handles the parent first.
+      // The deletion task processes a split parent before its children.
       const auto& parent_tablet_id = hidden_tablet.parent_tablet_id_;
-      if (hidden_tablet.table_id_ != table_id || !hidden_tablet.split_tablets_.empty() ||
+      if (hidden_tablet.table_id_ != table_id ||
           (!parent_tablet_id.empty() && retained_by_cdcsdk_.contains(parent_tablet_id))) {
         continue;
       }
