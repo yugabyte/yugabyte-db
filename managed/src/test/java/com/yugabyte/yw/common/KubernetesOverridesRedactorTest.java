@@ -241,9 +241,11 @@ public class KubernetesOverridesRedactorTest {
         "gflags:\n  tserver:\n    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap"
             + " ldapbindpasswd=xREDACTEDy\n";
     String submittedHba = KubernetesOverridesRedactor.redact(storedHba) + "x: y\n";
-    assertThrows(
-        PlatformServiceException.class,
-        () -> KubernetesOverridesRedactor.restore(storedHba, submittedHba, "o"));
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> KubernetesOverridesRedactor.restore(storedHba, submittedHba, "o"));
+    assertTrue(e.getMessage(), e.getMessage().contains("the stored value holds REDACTED too"));
   }
 
   @Test
@@ -261,6 +263,13 @@ public class KubernetesOverridesRedactorTest {
           Map.of("az-1", stored),
           KubernetesOverridesRedactor.restoreAz(
               Map.of("az-1", stored), Map.of("az-1", "REDACTED")));
+      // Edited, with the secret REDACTED: the stored value can't be compared with it.
+      String edited = stored.replace("hba-secret", "REDACTED").replace("fails", "edited");
+      PlatformServiceException e =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> KubernetesOverridesRedactor.restore(stored, edited, "o"));
+      assertTrue(e.getMessage(), e.getMessage().contains("cannot be compared"));
     }
   }
 
@@ -294,7 +303,7 @@ public class KubernetesOverridesRedactorTest {
           "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: !!str master-secret\n",
           "x: &a 1\ngflags:\n  tserver:\n    ycql_ldap_bind_passwd: master-secret\n",
           "gflags:\n  note: &a # ycql_ldap_bind_passwd: master-secret\n    value\n",
-          // Keys that aren't strings.
+          // Keys that aren't scalars.
           "? [a, b]\n: c\ngflags:\n  tserver:\n    ycql_ldap_bind_passwd: master-secret\n",
           "? [a]\n: \"--ycql_ldap_bind_passwd=master-secret\"\n",
           // A key or other string that mentions a secret: in any form, more than once, or with the
