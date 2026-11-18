@@ -229,13 +229,6 @@ YB_DEFINE_ENUM(PgClientSessionKind,
     (kPlain)(kAutonomousDdl)(kLegacyCatalog)(kSequence)(kPgSession)(kHistoricalRead));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
 
-void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
-  read_point.SetReadTime(
-      ReadHybridTime::SingleTime(
-          read_point.Now().AddMilliseconds(-static_cast<int64_t>(staleness_ms))),
-      {});
-}
-
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 const std::string kTxnLogPrefixTagSource("Session ");
@@ -3524,9 +3517,7 @@ class PgClientSession::Impl {
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
-          // This tserver's clock was updated from the commit response, so it is past the commit
-          // time; propagate it to the master.
-          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit, clock()->Now()),
+          WARN_NOT_OK(client_.ReportYsqlDdlTxnStatus(*metadata, *commit),
                       Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", *commit));
         }
 

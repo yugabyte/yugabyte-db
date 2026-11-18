@@ -2839,10 +2839,9 @@ Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
   return data_->GetTableDiskSize(table_id, deadline);
 }
 
-Status YBClient::ReportYsqlDdlTxnStatus(
-    const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time) {
+Status YBClient::ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed) {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
-  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, propagated_hybrid_time, deadline);
+  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, deadline);
 }
 
 Status YBClient::WaitForDdlVerificationToFinish(const TransactionMetadata& txn) {
