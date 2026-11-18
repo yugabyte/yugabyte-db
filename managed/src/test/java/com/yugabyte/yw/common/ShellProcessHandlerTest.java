@@ -257,6 +257,13 @@ public class ShellProcessHandlerTest extends TestCase {
     assertFalse(loggedRun(command, false).contains("sentinel_output"));
   }
 
+  @Test
+  public void testUnloggedCommandDoesNotLogItsOutputFiles() {
+    List<String> command = List.of("echo", "output");
+    assertTrue(loggedRun(command, true).contains("logging stdout=/tmp/shell_process_out"));
+    assertFalse(loggedRun(command, false).contains("shell_process_"));
+  }
+
   private String loggedRun(List<String> command, boolean logCmdOutput) {
     Logger logger = (Logger) LoggerFactory.getLogger(ShellProcessHandler.class);
     Level level = logger.getLevel();

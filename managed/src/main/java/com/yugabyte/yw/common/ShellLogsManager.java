@@ -202,13 +202,14 @@ public class ShellLogsManager {
   }
 
   /**
-   * @param forceDelete delete the output files even when a retention policy would keep them, for
+   * @param skipRetention delete the output files even when a retention policy would keep them, for
    *     output that must not stay on disk, such as the output of commands that are not logged.
+   *     Setting yb.logs.cmdOutputDelete to false still keeps them.
    */
-  public void onProcessStop(UUID processUUID, boolean forceDelete) {
+  public void onProcessStop(UUID processUUID, boolean skipRetention) {
     Pair<File, File> pair = currentProcesses.remove(processUUID);
     if (pair != null) {
-      if (forceDelete || (config.getBoolean(COMMAND_OUTPUT_LOGS_DELETE_KEY) && !isRetainLogs())) {
+      if (config.getBoolean(COMMAND_OUTPUT_LOGS_DELETE_KEY) && (skipRetention || !isRetainLogs())) {
         if (pair.getLeft().exists()) {
           pair.getLeft().delete();
         }

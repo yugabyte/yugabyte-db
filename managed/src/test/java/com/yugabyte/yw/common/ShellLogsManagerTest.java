@@ -138,7 +138,7 @@ public class ShellLogsManagerTest extends TestCase {
   }
 
   @Test
-  public void testForceDeleteRemovesOutputDespiteRetentionPolicy() throws IOException {
+  public void testSkipRetentionRemovesOutputDespiteRetentionPolicy() throws IOException {
     when(mockConfig.getBoolean(ShellLogsManager.COMMAND_OUTPUT_LOGS_DELETE_KEY)).thenReturn(true);
     when(mockConfig.hasPath(ShellLogsManager.YB_LOGS_SHELL_OUTPUT_RETENTION_HOURS_KEY))
         .thenReturn(true);
@@ -147,16 +147,29 @@ public class ShellLogsManagerTest extends TestCase {
     ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
     UUID retained = UUID.randomUUID();
     Pair<File, File> retainedFiles = manager.createFilesForProcess(retained);
-    UUID forceDeleted = UUID.randomUUID();
-    Pair<File, File> forceDeletedFiles = manager.createFilesForProcess(forceDeleted);
+    UUID deleted = UUID.randomUUID();
+    Pair<File, File> deletedFiles = manager.createFilesForProcess(deleted);
 
     manager.onProcessStop(retained, false);
-    manager.onProcessStop(forceDeleted, true);
+    manager.onProcessStop(deleted, true);
 
     assertTrue(retainedFiles.getLeft().exists());
     assertTrue(retainedFiles.getRight().exists());
-    assertFalse(forceDeletedFiles.getLeft().exists());
-    assertFalse(forceDeletedFiles.getRight().exists());
+    assertFalse(deletedFiles.getLeft().exists());
+    assertFalse(deletedFiles.getRight().exists());
+  }
+
+  @Test
+  public void testSkipRetentionKeepsOutputWhenDeleteIsDisabled() throws IOException {
+    when(mockConfig.getBoolean(ShellLogsManager.COMMAND_OUTPUT_LOGS_DELETE_KEY)).thenReturn(false);
+    ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
+    UUID pid = UUID.randomUUID();
+    Pair<File, File> files = manager.createFilesForProcess(pid);
+
+    manager.onProcessStop(pid, true);
+
+    assertTrue(files.getLeft().exists());
+    assertTrue(files.getRight().exists());
   }
 
   @Test

@@ -180,10 +180,13 @@ public class ShellProcessHandler {
       if (appConfig.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
-      logMsg =
-          String.format(
-              "Starting proc (full cmd) - %s - logging stdout=%s, stderr=%s",
-              fullCommand, tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath());
+      String outputDestination =
+          context.isLogCmdOutput()
+              ? String.format(
+                  "logging stdout=%s, stderr=%s",
+                  tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath())
+              : "output not logged";
+      logMsg = String.format("Starting proc (full cmd) - %s - %s", fullCommand, outputDestination);
       if (context.isTraceLogging()) {
         log.trace(logMsg);
       } else {
