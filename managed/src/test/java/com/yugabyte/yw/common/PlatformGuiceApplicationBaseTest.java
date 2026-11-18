@@ -11,7 +11,6 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
-import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -378,11 +377,6 @@ public abstract class PlatformGuiceApplicationBaseTest {
       app.injector().instanceOf(SettableRuntimeConfigFactory.class).clearCache();
     } catch (RuntimeException ignore) {
       // Runtime config factory not bound for this app - nothing to clear.
-    }
-    try {
-      app.injector().instanceOf(RuntimeConfigCache.class).invalidateCache();
-    } catch (RuntimeException ignore) {
-      // Runtime config cache not bound for this app - nothing to clear.
     }
     try {
       app.injector().instanceOf(com.yugabyte.yw.common.metrics.MetricStorage.class).clear();
