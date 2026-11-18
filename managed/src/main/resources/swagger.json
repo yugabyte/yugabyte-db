@@ -921,7 +921,8 @@
             "CDCSDK_EXPIRY",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1108,7 +1109,8 @@
             "CDCSDK_EXPIRY",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1391,7 +1393,8 @@
             "CDCSDK_EXPIRY",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
