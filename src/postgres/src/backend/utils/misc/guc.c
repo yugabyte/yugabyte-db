@@ -4364,6 +4364,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_notifs_poller_error_holding_queue_lock", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When true, the notifications poller raises an ERROR "
+						 "while holding NotifyQueueLock, before writing to the "
+						 "async queue."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_notifs_poller_error_holding_queue_lock,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_skip_ensure_read_time_in_parallel_execution", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Skip forcing ENSURE_READ_TIME_IS_SET during parallel execution."),
 			gettext_noop("When true, parallel execution will not force read time to be "

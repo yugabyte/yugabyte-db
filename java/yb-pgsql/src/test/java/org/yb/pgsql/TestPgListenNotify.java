@@ -1667,6 +1667,41 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     });
   }
 
+  /**
+   * An ERROR the poller raises while holding NotifyQueueLock must not leave it waiting on that
+   * lock in its error handler: the poller must still terminate the listeners and exit, and
+   * LISTEN on the node must not block behind it.
+   */
+  @Test
+  public void testPollerErrorHoldingQueueLock() throws Exception {
+    Connection listener = getConnectionBuilder().withTServer(0).connect();
+    listener.createStatement().execute("LISTEN ch1");
+
+    try (Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = nonListener.createStatement()) {
+      getPollerPid(stmt);
+
+      setPollerErrorHoldingQueueLockFlag(true);
+      Thread.sleep(2000);
+
+      stmt.execute("NOTIFY ch1, 'x'");
+
+      waitForPollerAndSlotCleanup(nonListener);
+      assertConnectionDead(listener, "listener");
+    } finally {
+      setPollerErrorHoldingQueueLockFlag(false);
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  private void setPollerErrorHoldingQueueLockFlag(boolean value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_notifs_poller_error_holding_queue_lock",
+          value ? "true" : "false");
+    }
+  }
+
   private void setCdcIntentRetentionMs(String value) throws Exception {
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
       miniCluster.getClient().setFlag(tserver, "cdc_intent_retention_ms", value);
