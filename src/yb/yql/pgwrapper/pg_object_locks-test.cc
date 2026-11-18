@@ -2808,9 +2808,14 @@ class PgObjectLocksRetryTest : public PgObjectLocksTestRF1,
     }
     before_statement();
     TestThreadHolder thread_holder;
-    thread_holder.AddThreadFunctor([&writer, &retry_case, &stmt_format] {
-      ASSERT_OK(writer.ExecuteFormat(
-          stmt_format, retry_case.in_txn_block ? "true" : "pg_sleep(10) IS NOT NULL"));
+    const auto stmt =
+        Format(stmt_format, retry_case.in_txn_block ? "true" : "pg_sleep(10) IS NOT NULL");
+    thread_holder.AddThreadFunctor([&writer, &stmt] {
+      if (stmt.starts_with("SELECT")) {
+        ASSERT_OK(writer.Fetch(stmt));
+      } else {
+        ASSERT_OK(writer.Execute(stmt));
+      }
     });
     while_running(conn, writer_pid);
     if (!retry_case.in_txn_block) {
