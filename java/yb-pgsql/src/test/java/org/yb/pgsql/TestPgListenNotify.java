@@ -649,10 +649,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
          Statement stmt = listener.createStatement()) {
       stmt.execute("LISTEN " + channel);
 
-      List<Row> pollers = getRowList(stmt,
-          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
-      assertEquals("Expected exactly one notifications poller, got " + pollers,
-          1, pollers.size());
+      // A poller stopped by an earlier, failed LISTEN may still be exiting: terminating a bg
+      // worker only signals it. A poller that never exits fails this wait.
+      waitForCondition(listener, "SELECT (count(*) = 1)::int FROM pg_stat_activity"
+          + " WHERE backend_type = 'notifications poller'");
 
       try (Connection notifier = getConnectionBuilder().connect();
            Statement notifierStmt = notifier.createStatement()) {
