@@ -3158,7 +3158,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change master gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curMasterGFlags, newMasterGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curMasterGFlags, curIntent),
+                    redactGFlags(newMasterGFlags, curIntent)));
           }
           if (!Objects.equals(curTserverGFlags, newTserverGFlags)) {
             throw new PlatformServiceException(
@@ -3166,7 +3168,9 @@ public class UniverseCRUDHandler {
                 String.format(
                     "Cannot change tserver gflags for existing node %s"
                         + " through EditUniverse: from %s to %s",
-                    nodeDetails.nodeName, curTserverGFlags, newTserverGFlags));
+                    nodeDetails.nodeName,
+                    redactGFlags(curTserverGFlags, curIntent),
+                    redactGFlags(newTserverGFlags, curIntent)));
           }
 
           if (!Objects.equals(curIntent.useSystemd, newIntent.useSystemd)) {
@@ -3214,6 +3218,10 @@ public class UniverseCRUDHandler {
         newCluster.validateProxyConfig(newIntent, toBeAdded);
       }
     }
+  }
+
+  private Map<String, String> redactGFlags(Map<String, String> gflags, UserIntent userIntent) {
+    return RedactingService.redactGFlags(gflags, userIntent.ybSoftwareVersion, gFlagsValidation);
   }
 
   private void verifyDeviceUnchanged(

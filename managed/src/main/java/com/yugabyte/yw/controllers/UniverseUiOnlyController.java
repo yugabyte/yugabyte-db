@@ -145,12 +145,15 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.TargetType.Universe,
             Objects.toString(taskParams.getUniverseUUID(), null),
             Audit.ActionType.Configure);
-    // Never redact configure's API response. For CREATE operation, we do not have universe model to
-    // get gflags from. To keep clients consistent, we will not redact CREATE. For EDIT, the payload
-    // is formed from GET universe's API response which will already be redacted. So no need to do
-    // it here.
     Util.convertSingleProviderSpecsToOldSchema(confGetter, taskParams);
-    return PlatformResults.withData(taskParams, false /* enableGFlagsSensitiveDataApiRedaction */);
+    // A create's response holds only the client's own gflags, and redacting them would make the
+    // create send REDACTED, which it rejects. An edit's response can hold the universe's stored
+    // gflags, such as after a reset of its configuration, and the edit restores redacted values.
+    if (taskParams.clusterOperation == UniverseConfigureTaskParams.ClusterOperationType.CREATE) {
+      return PlatformResults.withData(
+          taskParams, false /* enableGFlagsSensitiveDataApiRedaction */);
+    }
+    return PlatformResults.withData(taskParams);
   }
 
   @ApiOperation(

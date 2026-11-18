@@ -10,6 +10,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.PlacementInfoUtil.getAzUuidToNumNodes;
 import static com.yugabyte.yw.common.PlacementInfoUtil.updateUniverseDefinition;
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static org.hamcrest.CoreMatchers.allOf;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -94,6 +96,9 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 @Slf4j
 public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBase {
+
+  private static final String LDAP_HBA =
+      "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass";
 
   @Override
   public Result sendCreateRequest(ObjectNode bodyJson) {
@@ -375,6 +380,44 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     ArrayNode updateOptionsJson = (ArrayNode) json.get("updateOptions");
     assertEquals(1, updateOptionsJson.size());
     assertEquals("FULL_MOVE", updateOptionsJson.get(0).asText());
+  }
+
+  @Test
+  public void testConfigureEditResetRedactsStoredLdapGFlags() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithLdapGFlags();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    // A reset returns the stored clusters, whatever gflags the request has.
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Collections.emptyMap(), Collections.emptyMap());
+    taskParams.resetAZConfig = true;
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-bind-pass"));
+    assertFalse(body, body.contains("dummy-hba-pass"));
+    JsonNode tserverGFlags =
+        Json.parse(body).at("/clusters/0/userIntent/specificGFlags/perProcessFlags/value/TSERVER");
+    assertEquals(SECRET_REPLACEMENT, tserverGFlags.get("ycql_ldap_bind_passwd").asText());
+    assertEquals(
+        LDAP_HBA.replace("dummy-hba-pass", SECRET_REPLACEMENT),
+        tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+  }
+
+  @Test
+  public void testConfigureCreateKeepsTheRequestsLdapGFlags() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverse();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    UserIntent readOnlyIntent = taskParams.getPrimaryCluster().userIntent.clone();
+    readOnlyIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(), Map.of("ycql_ldap_bind_passwd", "dummy-bind-pass"));
+    taskParams.upsertCluster(readOnlyIntent, null, null, UUID.randomUUID());
+    Result result = sendAsyncCreateConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertTrue(body, body.contains("dummy-bind-pass"));
   }
 
   @Test
@@ -2221,6 +2264,28 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
+  public void testUniverseUpdateChangeGFlagsErrorRedactsLdapGFlags() {
+    Universe u = setUpUniverseWithLdapGFlags();
+    u = addNode(u);
+    u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(),
+            Map.of(
+                "ycql_ldap_bind_passwd", "dummy-new-pass", GFlagsUtil.YSQL_HBA_CONF_CSV, LDAP_HBA));
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertErrorResponse(result, "Cannot change tserver gflags for existing node");
+    String body = contentAsString(result);
+    for (String secret : List.of("dummy-bind-pass", "dummy-new-pass", "dummy-hba-pass")) {
+      assertFalse(body, body.contains(secret));
+    }
+    assertTrue(body, body.contains("ldapbindpasswd=" + SECRET_REPLACEMENT));
+  }
+
+  @Test
   public void testUniverseUpdateFipsGFlagDisabledFail() {
     Universe u = setUpUniverse();
     u =
@@ -2302,6 +2367,27 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   private Universe setUpUniverse() {
     return setUpUniverse(CloudType.aws);
+  }
+
+  private Universe setUpUniverseWithLdapGFlags() {
+    Universe u = setUpUniverse();
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ ->
+            univ.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                SpecificGFlags.construct(
+                    Collections.emptyMap(),
+                    Map.of(
+                        "ycql_ldap_bind_passwd",
+                        "dummy-bind-pass",
+                        GFlagsUtil.YSQL_HBA_CONF_CSV,
+                        LDAP_HBA)));
+  }
+
+  private void enableGFlagsSensitiveDataApiRedaction() {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
   }
 
   private Universe setUpUniverse(CloudType providerType) {
