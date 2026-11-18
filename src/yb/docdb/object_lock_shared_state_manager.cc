@@ -69,67 +69,142 @@ class ObjectLockOwnerRegistry::Impl {
       ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id) {
     ParentProcessGuard g;
     std::lock_guard lock(mutex_);
-    owners_.insert(std::make_shared<OwnerInfo>(shared, id, tablet_id));
+    [[maybe_unused]] auto added = owners_.insert(
+        std::make_shared<OwnerInfo>(shared, id, tablet_id)).second;
+    DCHECK(added);
+    DCHECK(!futures_.contains(&shared));
     shared.Enable();
-    return {*this, id};
+    return {*this, shared, id};
   }
 
-  void Unregister(TransactionId id) {
+  RegistrationGuard Register(ObjectLockSharedState& shared, TransactionMetadataFuture future) {
     ParentProcessGuard g;
     std::lock_guard lock(mutex_);
-    const auto i = owners_.find(id);
-    DCHECK(i != owners_.end());
-    (*i)->shared->Disable();
-    owners_.erase(i);
+    [[maybe_unused]] auto added = futures_.try_emplace(&shared, std::move(future)).second;
+    DCHECK(added);
+    DCHECK(!owners_.contains(&shared));
+    shared.Enable();
+    return {*this, shared};
+  }
+
+  void Unregister(ObjectLockSharedState& state) {
+    std::lock_guard lock(mutex_);
+    const auto future_it = futures_.find(&state);
+    if (future_it != futures_.end()) [[likely]] {
+      futures_.erase(future_it);
+    } else {
+      const auto it = owners_.find(&state);
+      if (it != owners_.end()) {
+        owners_.erase(it);
+      }
+    }
+    ParentProcessGuard g;
+    state.Disable();
   }
 
   void UpdateRegistrationStatusTablet(const RegistrationGuard& guard, const TabletId& tablet_id) {
     std::lock_guard l1(mutex_);
-    const auto i = owners_.find(guard.txn_id());
-    DCHECK(i != owners_.end());
-    std::lock_guard l2((*i)->status_tablet_mutex);
-    (*i)->status_tablet = tablet_id;
+    const auto result = ResolveOwnerInfo(guard.shared_);
+    if (!result.ok()) {
+      LOG(DFATAL) << "Failed to resolve owner information while updating status tablet: "
+                  << result.status();
+      return;
+    }
+    const auto it = std::move(*result);
+    std::lock_guard l2((*it)->status_tablet_mutex);
+    (*it)->status_tablet = tablet_id;
   }
 
+  // This does not resolve from owner info futures, and it is expected that the future for the
+  // transaction is already resolved.
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const {
     std::lock_guard lock(mutex_);
-    const auto i = owners_.find(id);
-    if (PREDICT_TRUE(i != owners_.end())) {
+    const auto& index = owners_.get<TransactionIdTag>();
+    const auto i = index.find(id);
+    if (i != index.end()) [[likely]]  {
       return *i;
     }
     return {};
   }
 
-  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(ObjectLockSharedState& state) const {
+  [[nodiscard]] std::shared_ptr<OwnerInfo> ResolveAndGetOwnerInfo(ObjectLockSharedState& state) {
     std::lock_guard lock(mutex_);
-    const auto& index = owners_.get<SharedTag>();
-    const auto i = index.find(&state);
-    if (PREDICT_TRUE(i != index.end())) {
-      return *i;
+    auto result = ResolveOwnerInfo(state);
+    if (!result.ok()) {
+      // Something has gone wrong with the transaction for its metadata to not be available.
+      // Transaction should be aborted, and we aren't getting a transaction id, so drop its locks
+      // and disable fastpath.
+      LOG(WARNING) << "Failed to resolve owner info, dropping locks: " << result.status();
+      ParentProcessGuard g;
+      state.Disable();
+      return nullptr;
     }
-    return {};
+    auto it = std::move(*result);
+    if (it != owners_.end()) [[likely]] {
+      return *it;
+    }
+    return nullptr;
   }
 
  private:
-  mutable std::mutex mutex_;
-  struct SharedTag;
-  boost::multi_index_container<std::shared_ptr<OwnerInfo>,
+  struct TransactionIdTag;
+  using OwnersMap = boost::multi_index_container<std::shared_ptr<OwnerInfo>,
       boost::multi_index::indexed_by<
           boost::multi_index::hashed_unique<
-              boost::multi_index::member<OwnerInfo, TransactionId, &OwnerInfo::txn_id>
+              boost::multi_index::member<OwnerInfo, ObjectLockSharedState*, &OwnerInfo::shared>
           >,
           boost::multi_index::hashed_unique<
-              boost::multi_index::tag<SharedTag>,
-              boost::multi_index::member<OwnerInfo, ObjectLockSharedState*, &OwnerInfo::shared>
+              boost::multi_index::tag<TransactionIdTag>,
+              boost::multi_index::member<OwnerInfo, TransactionId, &OwnerInfo::txn_id>
           >
       >
-  > owners_ GUARDED_BY(mutex_);
+  >;
+
+  Result<OwnersMap::hashed_index::iterator> ResolveOwnerInfo(
+      ObjectLockSharedState& state) REQUIRES(mutex_) {
+    auto it = owners_.find(&state);
+    if (it != owners_.end()) {
+      return it;
+    }
+    auto future_it = futures_.find(&state);
+    if (future_it == futures_.end()) {
+      return owners_.end();
+    }
+    auto future = std::move(future_it->second);
+    futures_.erase(future_it);
+    auto result = future.get();
+    RETURN_NOT_OK(result);
+    auto [itr, added] = owners_.insert(std::make_shared<OwnerInfo>(
+        state, result->transaction_id, result->status_tablet));
+    DCHECK(added);
+    return itr;
+  }
+
+  mutable std::mutex mutex_;
+  OwnersMap owners_ GUARDED_BY(mutex_);
+  std::unordered_map<ObjectLockSharedState*, TransactionMetadataFuture> futures_
+      GUARDED_BY(mutex_);
 };
 
 ObjectLockOwnerRegistry::RegistrationGuard::~RegistrationGuard() {
   if (registry_) {
-    registry_->Unregister(id_);
+    registry_->Unregister(shared_);
   }
+}
+
+void ObjectLockOwnerRegistry::RegistrationGuard::ResolveOwnerInfo() const {
+  if (!id_) {
+    auto owner_info = registry_->ResolveAndGetOwnerInfo(shared_);
+    if (!owner_info) {
+      return;
+    }
+    id_ = owner_info->txn_id;
+  }
+}
+
+TransactionId ObjectLockOwnerRegistry::RegistrationGuard::txn_id() const {
+  ResolveOwnerInfo();
+  return id_;
 }
 
 ObjectLockOwnerRegistry::ObjectLockOwnerRegistry() : impl_(std::make_unique<Impl>()) {}
@@ -139,6 +214,11 @@ ObjectLockOwnerRegistry::~ObjectLockOwnerRegistry() = default;
 ObjectLockOwnerRegistry::RegistrationGuard ObjectLockOwnerRegistry::Register(
     ObjectLockSharedState& shared, TransactionId id, const TabletId& status_tablet) {
   return impl_->Register(shared, id, status_tablet);
+}
+
+ObjectLockOwnerRegistry::RegistrationGuard ObjectLockOwnerRegistry::Register(
+    ObjectLockSharedState& shared, TransactionMetadataFuture future) {
+  return impl_->Register(shared, std::move(future));
 }
 
 void ObjectLockOwnerRegistry::UpdateRegistrationStatusTablet(
@@ -152,8 +232,8 @@ ObjectLockOwnerRegistry::GetOwnerInfo(TransactionId id) const {
 }
 
 std::shared_ptr<ObjectLockOwnerRegistry::OwnerInfo>
-ObjectLockOwnerRegistry::GetOwnerInfo(ObjectLockSharedState& state) const {
-  return impl_->GetOwnerInfo(state);
+ObjectLockOwnerRegistry::ResolveAndGetOwnerInfo(ObjectLockSharedState& state) {
+  return impl_->ResolveAndGetOwnerInfo(state);
 }
 
 ObjectLockSharedStateHolder::~ObjectLockSharedStateHolder() {
@@ -395,7 +475,7 @@ bool ObjectLockSharedStateManager::TEST_has_exclusive_intents() const {
 template<typename ConsumeMethod>
 void ObjectLockSharedStateManager::CallWithRequestConsumer(
     ObjectLockSharedState& shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {
-  auto owner_info = registry_.GetOwnerInfo(shared);
+  auto owner_info = registry_.ResolveAndGetOwnerInfo(shared);
   std::optional<std::lock_guard<std::mutex>> lock;
   if (owner_info) {
     lock.emplace(owner_info->status_tablet_mutex);
