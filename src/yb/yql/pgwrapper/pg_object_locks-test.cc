@@ -46,6 +46,7 @@
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(enable_object_lock_fastpath);
+DECLARE_double(TEST_inject_read_restart_with_probability);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
 DECLARE_bool(force_global_transactions);
@@ -2623,6 +2624,34 @@ TEST_P(PgObjectLocksBothPathsTest, TestLocalLockTransactionPromotion) {
   ASSERT_OK(conn.CommitTransaction());
 }
 
+// A read restart on the first statement of a transaction restarts the whole transaction. Postgres
+// releases its locks and re-acquires them in the retry, and the tserver releases all object locks
+// of the transaction when it restarts it. The locks re-acquired by the retry must survive the
+// restart.
+TEST_P(PgObjectLocksBothPathsTest, TestReadRestartRetryKeepsObjectLocks) {
+  auto conn = ASSERT_RESULT(Connect());
+  // A read spanning multiple tablets surfaces the restart to the query layer, which retries it.
+  ASSERT_OK(conn.Execute("CREATE TABLE test (k INT, PRIMARY KEY(k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10)"));
+  ASSERT_OK(conn.Fetch("SELECT COUNT(*) FROM test"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("SET lock_timeout = '1s'"));
+  for (int i = 0; i < 6; ++i) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.5));
+    ASSERT_OK(conn.Fetch("SELECT COUNT(*) FROM test"));
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+
+    // conn still holds ACCESS SHARE on test, so this must time out.
+    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    ASSERT_NOK_STR_CONTAINS(
+        conn2.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"), "lock timeout");
+    ASSERT_OK(conn2.RollbackTransaction());
+    ASSERT_OK(conn.CommitTransaction());
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(
     Fastpath, PgObjectLocksBothPathsTest, ::testing::Bool(),
     [](const ::testing::TestParamInfo<bool>& info) {
@@ -2788,6 +2817,35 @@ TEST_F(PgObjectLocksFastpathTest, TestTServerLockManagerRelease) {
   {
     auto g = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_releases, /*delta=*/1);
     ASSERT_OK(conn1.CommitTransaction());
+  }
+}
+
+// A read restart on the first statement of a transaction that already has a distributed transaction
+// replaces the distributed transaction with a restarted one. The restarted transaction should be
+// registered as the object lock owner, so that later locks can still use the fastpath.
+TEST_F(PgObjectLocksFastpathTest, TestFastpathUsableAfterTransactionRestart) {
+  auto conn = ASSERT_RESULT(Connect());
+  // A read spanning multiple tablets surfaces the restart to the query layer, which retries it.
+  ASSERT_OK(conn.Execute("CREATE TABLE multi (k INT, PRIMARY KEY(k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO multi SELECT generate_series(1, 10)"));
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
+  ASSERT_OK(conn.Fetch("SELECT * FROM multi FOR UPDATE"));
+  ASSERT_OK(conn.Fetch("SELECT pg_relation_size('test'::regclass)"));
+
+  for (int i = 0; i < 6; ++i) {
+    ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    // Row locks start a distributed transaction. A lower probability than for a plain read, since
+    // each attempt of a multi-tablet FOR UPDATE does several reads that can restart.
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.2));
+    ASSERT_OK(conn.Fetch("SELECT * FROM multi FOR UPDATE"));
+    ASSERT_OK(SET_FLAG(TEST_inject_read_restart_with_probability, 0.0));
+    {
+      auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+          METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+      auto g2 = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_acquires, /*delta=*/0);
+      ASSERT_OK(conn.Fetch("SELECT pg_relation_size('test'::regclass)"));
+    }
+    ASSERT_OK(conn.CommitTransaction());
   }
 }
 
