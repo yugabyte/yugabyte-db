@@ -1379,7 +1379,7 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, TestChainedTxnKeepsMode) {
   ASSERT_OK(holder.Execute("ROLLBACK"));
 }
 
-// Test for #36572 and #32224.
+// Test for #32224.
 //
 // A transaction without global object locks keeps the tablets' catalog version check. Usually its
 // next new lock refreshes its catalog cache first, so this
