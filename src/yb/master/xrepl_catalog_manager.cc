@@ -6053,16 +6053,8 @@ std::unordered_set<xrepl::StreamId> CatalogManager::GetAllCDCSDKStreamsForNamesp
 
 Result<HybridTime> CatalogManager::GetMinRestartTimeAcrossSlots(
     const std::unordered_set<xrepl::StreamId>& stream_ids) {
-  if (!AreLogicalReplicationStreams(stream_ids)) {
-    return HybridTime::kInvalid;
-  }
-  return ReadMinRestartTimeAcrossSlots(stream_ids);
-}
-
-bool CatalogManager::AreLogicalReplicationStreams(
-    const std::unordered_set<xrepl::StreamId>& stream_ids) {
   if (stream_ids.empty()) {
-    return false;
+    return HybridTime::kInvalid;
   }
 
   // stream_ids are CDCSDK-only (from GetCDCSDKStreamsForTable), so no xCluster check is needed. A
@@ -6070,14 +6062,13 @@ bool CatalogManager::AreLogicalReplicationStreams(
   // whole DB is gRPC.
   for (const auto stream_id : stream_ids) {
     if (cdc_stream_map_.contains(stream_id)) {
-      return IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id]);
+      if (!IsCdcLogicalReplicationStream(*cdc_stream_map_[stream_id])) {
+        return HybridTime::kInvalid;
+      }
+      break;
     }
   }
-  return true;
-}
 
-Result<HybridTime> CatalogManager::ReadMinRestartTimeAcrossSlots(
-    const std::unordered_set<xrepl::StreamId>& stream_ids) {
   HybridTime min_restart_time_across_all_slots;
   for (const auto& stream_id : stream_ids) {
     auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
@@ -6399,7 +6390,6 @@ void CatalogManager::ProcessXReplHiddenObjectDeletionPeriodically() {
 }
 
 void CatalogManager::DoProcessCDCSDKHiddenObjectDeletion() {
-  TEST_SYNC_POINT("DoProcessCDCSDKHiddenObjectDeletion::Start");
   std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets;
   std::unordered_map<TableId, std::pair<TabletId, HybridTime>> hidden_colocated_tables;
   {
@@ -6421,133 +6411,6 @@ void CatalogManager::DoProcessCDCSDKHiddenObjectDeletion() {
   }
 }
 
-Status CatalogManager::GetCDCSDKStreamsInfoForHiddenTable(
-    const TableId& table_id, std::unordered_set<xrepl::StreamId>* stream_ids,
-    HybridTime* min_restart_time_across_slots,
-    std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>* stream_creation_time_map) {
-  {
-    SharedLock lock(mutex_);
-    *stream_ids = GetCDCSDKStreamsForTable(table_id);
-    if (!AreLogicalReplicationStreams(*stream_ids)) {
-      *min_restart_time_across_slots = HybridTime::kInvalid;
-      return Status::OK();
-    }
-    *stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(*stream_ids));
-  }
-  *min_restart_time_across_slots = VERIFY_RESULT(ReadMinRestartTimeAcrossSlots(*stream_ids));
-  return Status::OK();
-}
-
-Result<bool> CatalogManager::IsHiddenTabletReleasedByCDCSDK(
-    const TabletId& tablet_id, const HiddenReplicationTabletInfo& hidden_tablet,
-    const std::unordered_set<xrepl::StreamId>& stream_ids,
-    HybridTime min_restart_time_across_slots,
-    const std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>& stream_creation_time_map,
-    std::vector<cdc::CDCStateTableKey>* entries_to_delete) {
-  size_t count_tablet_streams_to_delete = 0;
-  size_t count_streams_already_deleted = 0;
-
-  for (const auto& stream_id : stream_ids) {
-    // Case 1: If the entry for the tablet does not exist in cdc state table, then we can go ahead
-    // with deletion of the tablet. This can happen when:
-    //   a. The stream was deleted, and hence the entry was deleted.
-    //   b. The entry was deleted as per the Case 3 & 4.
-    auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-        {tablet_id, stream_id}, cdc::CDCStateTableEntrySelector()
-                                    .IncludeCheckpoint()
-                                    .IncludeLastReplicationTime()
-                                    .IncludeActiveTime()));
-
-    // This means we already deleted the entry for this stream in a previous iteration.
-    if (!entry_opt) {
-      VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
-              << ", and stream: " << stream_id << ", in the cdc_state table";
-      ++count_streams_already_deleted;
-      continue;
-    }
-
-    // Handling cases exclusive to scenario when the tablet is retained due to table splitting
-    if (hidden_tablet.hide_reason_ == HiddenReplicationTabletInfo::HideReason::kTabletSplit) {
-      // Case 2: We check if there is any stream where the CDCSDK client has started streaming
-      // from the hidden tablet, if not we can delete the tablet. There are two ways to verify
-      // that the client has not started streaming:
-      // 1. The checkpoint is -1.-1 (which is the case when a stream is bootstrapped)
-      // 2. The checkpoint is 0.0 and 'CdcLastReplicationTime' is Null (when the tablet was a
-      // result of a tablet split, and was added to the cdc_state table when the tablet split is
-      // initiated.)
-      if (entry_opt->checkpoint) {
-        auto& checkpoint = *entry_opt->checkpoint;
-
-        if (checkpoint == OpId::Invalid() ||
-            (checkpoint == OpId::Min() && !entry_opt->last_replication_time)) {
-          VLOG(2) << "The stream: " << stream_id << ", is not active for tablet: " << tablet_id;
-          count_tablet_streams_to_delete++;
-          continue;
-        }
-      }
-
-      // Case 3: This means there was an active stream for the source tablet. In which case if we
-      // see that all children tablet entries have started streaming, we can delete the parent
-      // tablet.
-      bool found_all_children = true;
-      for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
-        auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
-            {child_tablet_id, stream_id},
-            cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
-
-        // Check CdcLastReplicationTime to ensure that there has been a poll for this tablet, or
-        // if the split has been reported.
-        if (!entry_opt || !entry_opt->last_replication_time) {
-          VLOG(2) << "The stream: " << stream_id
-                  << ", has not started polling for the child tablet: " << child_tablet_id
-                  << ". Hence we will not delete the hidden parent tablet: " << tablet_id;
-          found_all_children = false;
-          break;
-        }
-      }
-      if (found_all_children) {
-        if (entries_to_delete) {
-          LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
-                    << ". Reason: Consumer finished processing parent tablet after split.";
-
-          // Also delete the parent tablet from cdc_state for all completed streams.
-          entries_to_delete->emplace_back(tablet_id, stream_id);
-        }
-        count_tablet_streams_to_delete++;
-        continue;
-      }
-    }
-
-    // Case 4: This is the case where the tablet is not being polled by the replication slot
-    // corresponding to the stream id. We can delete the hidden tablet if:
-    //   a. The min_restart_time_across_slots is greater than the hide time of the hidden tablet.
-    //   b. If the tablet has expired or become not of interest. This is because if a tablet
-    //   has expired or become not of interest, all its barriers will be lifted, hence making it
-    //   unconsumable for CDC.
-    // Also delete the parent tablet entry from cdc_state table.
-    DCHECK(entry_opt->active_time);
-    auto last_active_time = HybridTime::FromMicros(*entry_opt->active_time);
-    if (min_restart_time_across_slots.is_valid() &&
-        (hidden_tablet.hide_time_ < min_restart_time_across_slots ||
-         IsCDCSDKTabletExpiredOrNotOfInterest(
-             last_active_time, stream_creation_time_map.at(stream_id)))) {
-      VLOG(2) << "Hidden tablet " << tablet_id
-              << " no longer required by any CDC stream. restart time across all slots: "
-              << min_restart_time_across_slots
-              << ", tablet hide time: " << hidden_tablet.hide_time_
-              << ", tablet expired or became not of interest: "
-              << IsCDCSDKTabletExpiredOrNotOfInterest(
-                     last_active_time, stream_creation_time_map.at(stream_id));
-      if (entries_to_delete) {
-        entries_to_delete->emplace_back(tablet_id, stream_id);
-      }
-      count_tablet_streams_to_delete++;
-    }
-  }
-
-  return count_tablet_streams_to_delete + count_streams_already_deleted == stream_ids.size();
-}
-
 Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets) {
   std::unordered_set<TabletId> tablets_to_delete;
@@ -6564,13 +6427,113 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     std::unordered_set<xrepl::StreamId> stream_ids;
     HybridTime min_restart_time_across_slots;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
-    RETURN_NOT_OK(GetCDCSDKStreamsInfoForHiddenTable(
-        hidden_tablet.table_id_, &stream_ids, &min_restart_time_across_slots,
-        &stream_creation_time_map));
+    {
+      SharedLock lock(mutex_);
+      stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
+      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
+      if (min_restart_time_across_slots.is_valid()) {
+        stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
+      }
+    }
 
-    if (VERIFY_RESULT(IsHiddenTabletReleasedByCDCSDK(
-            tablet_id, hidden_tablet, stream_ids, min_restart_time_across_slots,
-            stream_creation_time_map, &entries_to_delete))) {
+    size_t count_tablet_streams_to_delete = 0;
+    size_t count_streams_already_deleted = 0;
+
+    for (const auto& stream_id : stream_ids) {
+      // Case 1: If the entry for the tablet does not exist in cdc state table, then we can go ahead
+      // with deletion of the tablet. This can happen when:
+      //   a. The stream was deleted, and hence the entry was deleted.
+      //   b. The entry was deleted as per the Case 3 & 4.
+      auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+          {tablet_id, stream_id}, cdc::CDCStateTableEntrySelector()
+                                      .IncludeCheckpoint()
+                                      .IncludeLastReplicationTime()
+                                      .IncludeActiveTime()));
+
+      // This means we already deleted the entry for this stream in a previous iteration.
+      if (!entry_opt) {
+        VLOG(2) << "Did not find an entry corresponding to the tablet: " << tablet_id
+                << ", and stream: " << stream_id << ", in the cdc_state table";
+        ++count_streams_already_deleted;
+        continue;
+      }
+
+      // Handling cases exclusive to scenario when the tablet is retained due to table splitting
+      if (hidden_tablet.hide_reason_ == HiddenReplicationTabletInfo::HideReason::kTabletSplit) {
+        // Case 2: We check if there is any stream where the CDCSDK client has started streaming
+        // from the hidden tablet, if not we can delete the tablet. There are two ways to verify
+        // that the client has not started streaming:
+        // 1. The checkpoint is -1.-1 (which is the case when a stream is bootstrapped)
+        // 2. The checkpoint is 0.0 and 'CdcLastReplicationTime' is Null (when the tablet was a
+        // result of a tablet split, and was added to the cdc_state table when the tablet split is
+        // initiated.)
+        if (entry_opt->checkpoint) {
+          auto& checkpoint = *entry_opt->checkpoint;
+
+          if (checkpoint == OpId::Invalid() ||
+              (checkpoint == OpId::Min() && !entry_opt->last_replication_time)) {
+            VLOG(2) << "The stream: " << stream_id << ", is not active for tablet: " << tablet_id;
+            count_tablet_streams_to_delete++;
+            continue;
+          }
+        }
+
+        // Case 3: This means there was an active stream for the source tablet. In which case if we
+        // see that all children tablet entries have started streaming, we can delete the parent
+        // tablet.
+        bool found_all_children = true;
+        for (auto& child_tablet_id : hidden_tablet.split_tablets_) {
+          auto entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+              {child_tablet_id, stream_id},
+              cdc::CDCStateTableEntrySelector().IncludeLastReplicationTime()));
+
+          // Check CdcLastReplicationTime to ensure that there has been a poll for this tablet, or
+          // if the split has been reported.
+          if (!entry_opt || !entry_opt->last_replication_time) {
+            VLOG(2) << "The stream: " << stream_id
+                    << ", has not started polling for the child tablet: " << child_tablet_id
+                    << ". Hence we will not delete the hidden parent tablet: " << tablet_id;
+            found_all_children = false;
+            break;
+          }
+        }
+        if (found_all_children) {
+          LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
+                    << ". Reason: Consumer finished processing parent tablet after split.";
+
+          // Also delete the parent tablet from cdc_state for all completed streams.
+          entries_to_delete.emplace_back(tablet_id, stream_id);
+          count_tablet_streams_to_delete++;
+          continue;
+        }
+      }
+
+      // Case 4: This is the case where the tablet is not being polled by the replication slot
+      // corresponding to the stream id. We can delete the hidden tablet if:
+      //   a. The min_restart_time_across_slots is greater than the hide time of the hidden tablet.
+      //   b. If the tablet has expired or become not of interest. This is because if a tablet
+      //   has expired or become not of interest, all its barriers will be lifted, hence making it
+      //   unconsumable for CDC.
+      // Also delete the parent tablet entry from cdc_state table.
+      DCHECK(entry_opt->active_time);
+      auto last_active_time = HybridTime::FromMicros(*entry_opt->active_time);
+      if (min_restart_time_across_slots.is_valid() &&
+          (hidden_tablet.hide_time_ < min_restart_time_across_slots ||
+           IsCDCSDKTabletExpiredOrNotOfInterest(
+               last_active_time, stream_creation_time_map.at(stream_id)))) {
+        VLOG(2) << "Hidden tablet " << tablet_id
+                << " no longer required by any CDC stream. restart time across all slots: "
+                << min_restart_time_across_slots
+                << ", tablet hide time: " << hidden_tablet.hide_time_
+                << ", tablet expired or became not of interest: "
+                << IsCDCSDKTabletExpiredOrNotOfInterest(
+                       last_active_time, stream_creation_time_map.at(stream_id));
+        entries_to_delete.emplace_back(tablet_id, stream_id);
+        count_tablet_streams_to_delete++;
+      }
+    }
+
+    if (count_tablet_streams_to_delete + count_streams_already_deleted == stream_ids.size()) {
       tablets_to_delete.insert(tablet_id);
     }
   }
@@ -6698,57 +6661,6 @@ Status CatalogManager::FillHeartbeatResponseCDC(
 bool CatalogManager::CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) {
   SharedLock read_lock(mutex_);
   return retained_by_cdcsdk_.contains(tablet_id);
-}
-
-std::unordered_set<TabletId> CatalogManager::GetHiddenTabletsReleasedByCDCSDK(
-    const TableId& table_id) {
-  std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets;
-  {
-    SharedLock read_lock(mutex_);
-    for (const auto& [tablet_id, hidden_tablet] : retained_by_cdcsdk_) {
-      // The deletion task processes a split parent before its children.
-      const auto& parent_tablet_id = hidden_tablet.parent_tablet_id_;
-      if (hidden_tablet.table_id_ != table_id ||
-          (!parent_tablet_id.empty() && retained_by_cdcsdk_.contains(parent_tablet_id))) {
-        continue;
-      }
-      hidden_tablets.emplace(tablet_id, hidden_tablet);
-    }
-  }
-  if (hidden_tablets.empty()) {
-    return {};
-  }
-
-  std::unordered_set<xrepl::StreamId> stream_ids;
-  HybridTime min_restart_time_across_slots;
-  std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
-  auto s = GetCDCSDKStreamsInfoForHiddenTable(
-      table_id, &stream_ids, &min_restart_time_across_slots, &stream_creation_time_map);
-  if (!s.ok()) {
-    LOG(WARNING) << "Failed to get the CDCSDK streams info for table " << table_id << ": " << s;
-    return {};
-  }
-  // The virtual WAL is only used with logical replication streams.
-  if (!min_restart_time_across_slots.is_valid()) {
-    return {};
-  }
-
-  std::unordered_set<TabletId> released_tablets;
-  for (const auto& [tablet_id, hidden_tablet] : hidden_tablets) {
-    // Only the deletion task deletes cdc_state rows.
-    auto released_result = IsHiddenTabletReleasedByCDCSDK(
-        tablet_id, hidden_tablet, stream_ids, min_restart_time_across_slots,
-        stream_creation_time_map, nullptr /* entries_to_delete */);
-    if (!released_result.ok()) {
-      LOG(WARNING) << "Failed to check whether CDC released hidden tablet " << tablet_id << ": "
-                   << released_result.status();
-      continue;
-    }
-    if (*released_result) {
-      released_tablets.insert(tablet_id);
-    }
-  }
-  return released_tablets;
 }
 
 bool CatalogManager::CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) {

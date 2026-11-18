@@ -3348,12 +3348,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Result<HybridTime> GetMinRestartTimeAcrossSlots(
       const std::unordered_set<xrepl::StreamId>& stream_ids) REQUIRES_SHARED(mutex_);
 
-  bool AreLogicalReplicationStreams(const std::unordered_set<xrepl::StreamId>& stream_ids)
-      REQUIRES_SHARED(mutex_);
-
-  Result<HybridTime> ReadMinRestartTimeAcrossSlots(
-      const std::unordered_set<xrepl::StreamId>& stream_ids);
-
   Result<std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>>
   GetCDCSDKStreamCreationTimeMap(const std::unordered_set<xrepl::StreamId>& stream_ids)
       REQUIRES_SHARED(mutex_);
@@ -3392,22 +3386,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DoProcessCDCSDKTabletDeletion(
       std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets);
 
-  Status GetCDCSDKStreamsInfoForHiddenTable(
-      const TableId& table_id, std::unordered_set<xrepl::StreamId>* stream_ids,
-      HybridTime* min_restart_time_across_slots,
-      std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>* stream_creation_time_map)
-      EXCLUDES(mutex_);
-
-  // Returns true if no CDC stream needs the hidden tablet any more. If entries_to_delete is set,
-  // appends the tablet's cdc_state rows to delete.
-  Result<bool> IsHiddenTabletReleasedByCDCSDK(
-      const TabletId& tablet_id, const HiddenReplicationTabletInfo& hidden_tablet,
-      const std::unordered_set<xrepl::StreamId>& stream_ids,
-      HybridTime min_restart_time_across_slots,
-      const std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>&
-          stream_creation_time_map,
-      std::vector<cdc::CDCStateTableKey>* entries_to_delete);
-
   Status DoProcessCDCSDKColocatedTableDeletion(
       const std::unordered_map<TableId, std::pair<TabletId, HybridTime>>& hidden_colocated_tables)
       EXCLUDES(mutex_);
@@ -3435,12 +3413,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status LoadUniverseReplicationBootstrap() REQUIRES(mutex_);
 
   bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
-
-  // Hidden tablets of table_id that the CDC deletion task would delete now. Empty if the table has
-  // no logical replication streams or reading its streams fails; a tablet whose own check fails is
-  // left out.
-  std::unordered_set<TabletId> GetHiddenTabletsReleasedByCDCSDK(const TableId& table_id)
-      EXCLUDES(mutex_);
 
   bool CDCSDKShouldRetainHiddenColocatedTable(const TableId& table_id) EXCLUDES(mutex_);
 

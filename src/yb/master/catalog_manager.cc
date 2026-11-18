@@ -13496,7 +13496,6 @@ Status CatalogManager::GetTableLocations(
   // Don't return TabletLocations for deleted tables as they may not exist.
   // However, do return the TabletLocations for hidden tables as those are
   // needed for supporting SELECT AS-OF, DB-Clone, XCluster, PITR.
-  bool table_started_hiding;
   {
     auto table_lock = table->LockForRead();
     if (table_lock->started_deleting()) {
@@ -13506,13 +13505,6 @@ Status CatalogManager::GetTableLocations(
     }
     resp->set_table_type(table_lock->pb.table_type());
     resp->set_partition_list_version(table_lock->pb.partition_list_version());
-    table_started_hiding = table_lock->started_hiding();
-  }
-
-  // The virtual WAL always sets include_inactive
-  std::unordered_set<TabletId> tablets_released_by_cdc;
-  if (req->include_inactive() && table_started_hiding) {
-    tablets_released_by_cdc = GetHiddenTabletsReleasedByCDCSDK(table->id());
   }
 
   std::vector<TabletInfoPtr> tablets = VERIFY_RESULT(table->GetTabletsInRange(req));
@@ -13538,10 +13530,6 @@ Status CatalogManager::GetTableLocations(
         return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, status);
       }
       resp->mutable_tablet_locations()->RemoveLast();
-      continue;
-    }
-    if (tablets_released_by_cdc.contains(tablet->id())) {
-      locs_pb->set_hidden_table_released_by_cdc(true);
     }
   }
 

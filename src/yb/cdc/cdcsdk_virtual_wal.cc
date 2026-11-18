@@ -502,12 +502,6 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
       }
     }
 
-    if (tablet_checkpoint_pair.tablet_locations().hidden_table_released_by_cdc()) {
-      LOG_WITH_PREFIX(INFO) << "Not adding tablet " << tablet_id
-                            << " of a hidden table released by CDC";
-      continue;
-    }
-
     tablet_id_to_table_id_map_[tablet_id].insert(table_id);
     auto checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
     if (!tablet_next_req_map_.contains(tablet_id)) {
@@ -2184,7 +2178,9 @@ Result<std::optional<TableId>> CDCSDKVirtualWAL::GetPublishedTableIdFromPgCatalo
 
 bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record) {
   auto row_message = record->row_message();
-  auto oid = GetPgCatalogUint32Column(row_message, "oid", true /* use_new_tuple */);
+  // A DELETE record carries the row's key only in the old tuple.
+  auto oid = GetPgCatalogUint32Column(
+      row_message, "oid", row_message.op() != RowMessage_Op_DELETE /* use_new_tuple */);
   if (!oid || !oid_to_relfilenode_.contains(*oid)) {
     return false;
   }

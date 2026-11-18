@@ -93,10 +93,6 @@ message TabletLocationsPB {
   // -cache refresh. This OpId helps the tablet server determine if its meta-cache entry
   // is stale by comparing this against its current raft_config_opid_index
   optional int64 raft_config_opid_index = 15;
-
-  // Set only for hidden tablets: the table is dropped or rewritten, and CDC has cleared this
-  // tablet for deletion.
-  optional bool hidden_table_released_by_cdc = 16;
 }
 
 message GetIndexBackfillProgressRequestPB {
