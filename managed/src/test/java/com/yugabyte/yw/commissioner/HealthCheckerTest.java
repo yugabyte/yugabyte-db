@@ -12,6 +12,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.atLeastOnce;
@@ -452,6 +453,42 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     // A check that hangs from here on is reported once this time is old enough.
     assertNotNull(duringCheck.get());
+  }
+
+  @Test
+  public void testUniverseThatIsNotCheckedHasNoHealthCheckClock() throws Exception {
+    Universe u = setupUniverse("univ1");
+    Universe.saveDetails(
+        u.getUniverseUUID(), univ -> univ.getUniverseDetails().creationSucceeded = false);
+    AlertingData alertingData = setupAlertingData(null, false, false);
+
+    healthChecker.checkAllUniverses(defaultCustomer, alertingData, false, false);
+
+    // Started when the check was queued, and dropped when the check skipped the universe.
+    long deadline = System.currentTimeMillis() + 30000;
+    while (lastCompletedTime(u) != null && System.currentTimeMillis() < deadline) {
+      Thread.sleep(50);
+    }
+    assertNull(lastCompletedTime(u));
+  }
+
+  @Test
+  public void testRemovedUniverseGetsNoCompletionTime() throws Exception {
+    Universe u = setupUniverse("univ1");
+    setupAlertingData(null, false, false);
+    doAnswer(
+            i -> {
+              // As RemoveUniverseEntry does while the check runs.
+              metricService.delete(MetricFilter.builder().sourceUuid(u.getUniverseUUID()).build());
+              Universe.delete(u.getUniverseUUID());
+              return null;
+            })
+        .when(mockNodeUniverseManager)
+        .uploadFileToNode(any(), any(), any(), any(), any(), any());
+
+    healthChecker.runHealthCheck(checkParams(u), true).get();
+
+    assertNull(lastCompletedTime(u));
   }
 
   @Test

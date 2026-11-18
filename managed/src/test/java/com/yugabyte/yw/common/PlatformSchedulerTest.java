@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
+import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.Duration;
 import java.time.Instant;
@@ -120,7 +121,7 @@ public class PlatformSchedulerTest extends FakeDBApplication {
             });
 
     assertTrue(started.await(30, TimeUnit.SECONDS));
-    // Later ticks are skipped as in progress.
+    // With a fixed delay, no later tick arrives while the run hangs.
     Thread.sleep(1000);
     assertEquals(0D, metric(PlatformMetrics.SCHEDULER_LAST_OK_TIME, "test-schedule"), 0);
   }
@@ -162,6 +163,82 @@ public class PlatformSchedulerTest extends FakeDBApplication {
     others.add(
         scheduler.schedule("test-schedule", Duration.ofHours(1), Duration.ofMinutes(3), () -> {}));
     assertEquals(180D, metric(PlatformMetrics.SCHEDULER_INTERVAL, "test-schedule"), 0);
+  }
+
+  @Test
+  public void testSecondCancelKeepsTheMetricsOfALaterScheduleWithTheName() {
+    PlatformScheduler scheduler = app.injector().instanceOf(PlatformScheduler.class);
+    Cancellable first =
+        scheduler.schedule("test-schedule", Duration.ofHours(1), Duration.ofMinutes(1), () -> {});
+    first.cancel();
+    cancellable =
+        scheduler.schedule("test-schedule", Duration.ofHours(1), Duration.ofMinutes(2), () -> {});
+
+    first.cancel();
+
+    assertEquals(120D, metric(PlatformMetrics.SCHEDULER_INTERVAL, "test-schedule"), 0);
+    others.add(
+        scheduler.schedule("test-schedule", Duration.ofHours(1), Duration.ofMinutes(3), () -> {}));
+    assertEquals(180D, metric(PlatformMetrics.SCHEDULER_INTERVAL, "test-schedule-2"), 0);
+  }
+
+  @Test
+  public void testRunThatCancelsItsScheduleLeavesNoMetrics() throws Exception {
+    PlatformScheduler scheduler = app.injector().instanceOf(PlatformScheduler.class);
+    CountDownLatch ran = new CountDownLatch(1);
+    Cancellable[] self = new Cancellable[1];
+    CountDownLatch registered = new CountDownLatch(1);
+    self[0] =
+        scheduler.schedule(
+            "test-schedule",
+            Duration.ofMillis(100),
+            Duration.ofHours(1),
+            () -> {
+              try {
+                registered.await();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+              self[0].cancel();
+              ran.countDown();
+            });
+    registered.countDown();
+
+    assertTrue(ran.await(30, TimeUnit.SECONDS));
+    // The run returns after cancelling; give its metric write time to happen.
+    Thread.sleep(500);
+    assertNull(metricOrNull(PlatformMetrics.SCHEDULER_LAST_OK_TIME, "test-schedule"));
+    assertNull(metricOrNull(PlatformMetrics.SCHEDULER_INTERVAL, "test-schedule"));
+  }
+
+  @Test
+  public void testRunRefreshesTheInterval() throws Exception {
+    PlatformScheduler scheduler = app.injector().instanceOf(PlatformScheduler.class);
+    MetricService metricService = app.injector().instanceOf(MetricService.class);
+    CountDownLatch secondRun = new CountDownLatch(2);
+    cancellable =
+        scheduler.schedule(
+            "test-schedule",
+            Duration.ZERO,
+            Duration.ofMillis(100),
+            () -> {
+              if (secondRun.getCount() == 2) {
+                // Stands in for the interval series expiring.
+                metricService.delete(
+                    MetricFilter.builder()
+                        .keys(
+                            List.of(
+                                MetricKey.from(
+                                    schedulerMetric(
+                                        PlatformMetrics.SCHEDULER_INTERVAL, "test-schedule"))))
+                        .build());
+              }
+              secondRun.countDown();
+            });
+
+    assertTrue(secondRun.await(30, TimeUnit.SECONDS));
+    Thread.sleep(200);
+    assertEquals(0.1D, metric(PlatformMetrics.SCHEDULER_INTERVAL, "test-schedule"), 0);
   }
 
   @Test

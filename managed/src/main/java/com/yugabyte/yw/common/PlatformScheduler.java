@@ -78,7 +78,8 @@ public class PlatformScheduler {
       boolean runOnFollower,
       Duration initialDelay,
       Duration interval) {
-    final String metricName = interval == null ? null : registerMetricName(name);
+    final LivenessMetrics metrics =
+        interval == null ? null : new LivenessMetrics(registerMetricName(name), interval);
     final AtomicBoolean isRunning = new AtomicBoolean();
     final Object lock = new Object();
     Runnable wrappedRunnable =
@@ -100,7 +101,7 @@ public class PlatformScheduler {
             if (shouldRun) {
               try {
                 runnable.run();
-                setLastOkTime(metricName, Instant.now());
+                setLastOkTime(metrics, Instant.now());
               } finally {
                 isRunning.set(false);
                 if (shutdownHookHandler.isShutdownInitiated()) {
@@ -112,7 +113,7 @@ public class PlatformScheduler {
             } else {
               if (!isRunning.get()) {
                 // Skipped as expected rather than stuck behind a run in progress.
-                setLastOkTime(metricName, Instant.now());
+                setLastOkTime(metrics, Instant.now());
               }
               log.warn(
                   "Previous run of scheduler {} is in progress, is being shut down, or YBA is in"
@@ -123,12 +124,9 @@ public class PlatformScheduler {
             log.error("Scheduler run '{}' failed; it will be retried on the next tick.", name, t);
           }
         };
-    if (metricName != null) {
+    if (metrics != null) {
       // The first run is due after the initial delay.
-      setLastOkTime(metricName, Instant.now().plus(initialDelay));
-      metricService.setMetric(
-          schedulerMetric(PlatformMetrics.SCHEDULER_INTERVAL, metricName),
-          interval.toMillis() / 1000.0);
+      metrics.setLastOkTime(Instant.now().plus(initialDelay));
     }
     Cancellable cancellable = scheduleFactory.apply(wrappedRunnable);
     shutdownHookHandler.addShutdownHook(
@@ -151,14 +149,14 @@ public class PlatformScheduler {
             log.debug("Shutdown status for scheduler - {} is {}", name, isCancelled);
           }
         });
-    if (metricName == null) {
+    if (metrics == null) {
       return cancellable;
     }
     return new Cancellable() {
       @Override
       public boolean cancel() {
         boolean cancelled = cancellable.cancel();
-        removeMetrics(metricName);
+        metrics.remove();
         return cancelled;
       }
 
@@ -181,25 +179,50 @@ public class PlatformScheduler {
     return metricName;
   }
 
-  private void setLastOkTime(String metricName, Instant time) {
-    if (metricName != null) {
-      metricService.setMetric(
-          schedulerMetric(PlatformMetrics.SCHEDULER_LAST_OK_TIME, metricName),
-          time.getEpochSecond());
+  private static void setLastOkTime(LivenessMetrics metrics, Instant time) {
+    if (metrics != null) {
+      metrics.setLastOkTime(time);
     }
   }
 
-  private void removeMetrics(String metricName) {
-    metricService.delete(
-        MetricFilter.builder()
-            .keys(
-                Arrays.asList(
-                    MetricKey.from(
-                        schedulerMetric(PlatformMetrics.SCHEDULER_LAST_OK_TIME, metricName)),
-                    MetricKey.from(
-                        schedulerMetric(PlatformMetrics.SCHEDULER_INTERVAL, metricName))))
-            .build());
-    metricNames.remove(metricName);
+  /** The liveness metrics of one periodic schedule. */
+  private class LivenessMetrics {
+    private final String name;
+    private final double intervalSec;
+    private boolean removed;
+
+    LivenessMetrics(String name, Duration interval) {
+      this.name = name;
+      this.intervalSec = interval.toMillis() / 1000.0;
+    }
+
+    // Writes the interval too, so it expires no earlier than the last OK time. A run that cancels
+    // its own schedule must not bring the metrics back.
+    synchronized void setLastOkTime(Instant time) {
+      if (removed) {
+        return;
+      }
+      metricService.setMetric(
+          schedulerMetric(PlatformMetrics.SCHEDULER_LAST_OK_TIME, name), time.getEpochSecond());
+      metricService.setMetric(
+          schedulerMetric(PlatformMetrics.SCHEDULER_INTERVAL, name), intervalSec);
+    }
+
+    // Once only: after that, the name may belong to another schedule.
+    synchronized void remove() {
+      if (removed) {
+        return;
+      }
+      removed = true;
+      metricService.delete(
+          MetricFilter.builder()
+              .keys(
+                  Arrays.asList(
+                      MetricKey.from(schedulerMetric(PlatformMetrics.SCHEDULER_LAST_OK_TIME, name)),
+                      MetricKey.from(schedulerMetric(PlatformMetrics.SCHEDULER_INTERVAL, name))))
+              .build());
+      metricNames.remove(name);
+    }
   }
 
   @VisibleForTesting

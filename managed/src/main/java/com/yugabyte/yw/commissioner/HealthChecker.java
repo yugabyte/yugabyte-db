@@ -64,6 +64,7 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -625,6 +626,7 @@ public class HealthChecker {
       // The universe is loaded by the check itself, so that only the universes being checked are
       // in memory, and their details are current when the check starts.
       scheduleHealthCheck(
+          c,
           summary.universeUUID(),
           summary.name(),
           false /*ignoreLastCheck*/,
@@ -745,6 +747,7 @@ public class HealthChecker {
   public CompletableFuture<Void> runHealthCheck(
       CheckSingleUniverseParams params, boolean ignoreLastCheck) {
     return scheduleHealthCheck(
+        params.customer,
         params.universe.getUniverseUUID(),
         params.universe.getName(),
         ignoreLastCheck,
@@ -759,6 +762,7 @@ public class HealthChecker {
    *     to skip the check
    */
   private CompletableFuture<Void> scheduleHealthCheck(
+      Customer customer,
       UUID universeUuid,
       String universeName,
       boolean ignoreLastCheck,
@@ -771,6 +775,11 @@ public class HealthChecker {
     }
 
     log.debug("Scheduling health check for universe: {}", universeName);
+    // Started on queueing, not when the check begins: a check can wait behind hung ones forever.
+    Metric queuedClock = lastCompletedTimeMetric(customer, universeUuid, universeName);
+    if (metricService.get(MetricKey.from(queuedClock)) == null) {
+      metricService.setMetric(queuedClock, Instant.now().getEpochSecond());
+    }
     long scheduled = System.currentTimeMillis();
     CompletableFuture<Void> task =
         CompletableFuture.runAsync(
@@ -782,13 +791,10 @@ public class HealthChecker {
               try {
                 params = paramsSupplier.get();
                 if (params == null) {
+                  // Not checked, so not expected to complete either.
+                  metricService.delete(
+                      MetricFilter.builder().keys(List.of(MetricKey.from(queuedClock))).build());
                   return;
-                }
-                // Start the clock for a universe with no completed check since YBA started, so that
-                // a first check that never completes is reported too.
-                Metric lastCompleted = lastCompletedTimeMetric(params);
-                if (metricService.get(MetricKey.from(lastCompleted)) == null) {
-                  metricService.setMetric(lastCompleted, Instant.now().getEpochSecond());
                 }
                 log.info("Running health check for universe: {}", universeName);
                 checkSingleUniverse(params);
@@ -803,7 +809,9 @@ public class HealthChecker {
                 }
               } finally {
                 runningHealthChecks.remove(universeUuid);
-                if (params != null) {
+                // Not after the universe is removed, which deletes its metrics. A check that threw
+                // counts as completed: HEALTH_CHECK_ERROR reports it.
+                if (params != null && Universe.maybeGet(universeUuid).isPresent()) {
                   metricService.setMetric(
                       lastCompletedTimeMetric(params), Instant.now().getEpochSecond());
                 }
@@ -1575,6 +1583,22 @@ public class HealthChecker {
         params.customer,
         params.universe,
         HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC);
+  }
+
+  // The same key as above, from what is known before the universe is loaded; a completed check
+  // replaces the labels with the full set.
+  private static Metric lastCompletedTimeMetric(
+      Customer customer, UUID universeUuid, String universeName) {
+    return buildMetricTemplate(
+            PlatformMetrics.HEALTH_CHECK_LAST_COMPLETED_TIME,
+            customer,
+            HEALTH_CHECK_PROGRESS_METRIC_EXPIRY_SEC)
+        .setSourceUuid(universeUuid)
+        .setLabel(KnownAlertLabels.UNIVERSE_UUID, universeUuid.toString())
+        .setLabel(KnownAlertLabels.UNIVERSE_NAME, universeName)
+        .setLabel(KnownAlertLabels.SOURCE_UUID, universeUuid.toString())
+        .setLabel(KnownAlertLabels.SOURCE_NAME, universeName)
+        .setLabel(KnownAlertLabels.SOURCE_TYPE, "universe");
   }
 
   private void setHealthCheckFailedMetric(Customer customer, Universe universe) {
