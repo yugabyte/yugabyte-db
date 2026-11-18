@@ -1315,7 +1315,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     final String payload = "payload";
 
     try {
-      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", true);
+      setFatalAfterNotifsQueueWriteFlag(true);
       Thread.sleep(2000);
 
       try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
@@ -1339,7 +1339,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
             "Old notifications should not be re-delivered after poller restart");
       }
     } finally {
-      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", false);
+      setFatalAfterNotifsQueueWriteFlag(false);
     }
 
     verifyListenNotifyWorks();
@@ -1425,7 +1425,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     try {
       // The poller now crashes after every queue write, before the CDC ack, so it keeps
       // replaying the same transaction.
-      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", true);
+      setFatalAfterNotifsQueueWriteFlag(true);
       Thread.sleep(2000);
 
       try (Connection aConn = getConnectionBuilder().withTServer(0).connect();
@@ -1447,7 +1447,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
             "Replay of a transaction received before UNLISTEN was delivered again");
       }
     } finally {
-      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", false);
+      setFatalAfterNotifsQueueWriteFlag(false);
     }
 
     verifyListenNotifyWorks();
@@ -1757,6 +1757,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
       waitForNotification(listenerConn, channel, "after_update");
       LOG.info("Received notification after UPDATE on pg_yb_notifications");
+    }
+  }
+
+  private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
+    String v = value ? "true" : "false";
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_fatal_after_notifs_queue_write", v);
     }
   }
 
