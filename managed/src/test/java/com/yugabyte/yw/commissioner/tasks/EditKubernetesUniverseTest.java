@@ -2568,7 +2568,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             ImmutableSet.of("yb-master-0_az-1", "yb-master-0_az-2", "yb-master-0_az-4"),
             ImmutableSet.of("yb-tserver-0_az-1", "yb-tserver-0_az-2", "yb-tserver-0_az-3"));
     assertEquals(ImmutableSet.of("az-1", "az-2", "az-3"), azCodes(earlySecretUpdate(plan)));
-    // It records that the new masters joined, that the old ones are removed, then that it is done.
+    // It records that the new masters run, that the old ones are removed, then that it is done.
     assertEquals(3, subtasks(plan, TaskType.UpdateParentTaskParams, p -> true).size());
   }
 

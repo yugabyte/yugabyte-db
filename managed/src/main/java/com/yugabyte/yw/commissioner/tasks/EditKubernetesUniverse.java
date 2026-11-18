@@ -617,13 +617,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             .map(n -> n.nodeName)
             .collect(Collectors.toSet());
     Function<Collection<NodeDetails>, Collection<NodeDetails>> mastersRunningWith =
-        added -> {
-          Map<String, NodeDetails> masters = new LinkedHashMap<>();
-          Stream.concat(current.getMasters().stream(), added.stream())
-              .filter(n -> !leavingMasters.contains(n.nodeName))
-              .forEach(n -> masters.putIfAbsent(n.nodeName, n));
-          return masters.values();
-        };
+        added ->
+            distinctByName(
+                Stream.concat(current.getMasters().stream(), added.stream())
+                    .filter(n -> !leavingMasters.contains(n.nodeName)));
     // Tservers this edit removes, read replicas included, since the pushes reach every tserver. A
     // failed push to one of them does not fail the edit: they may be down, which is often why they
     // are removed. If one restarts, it reads the rendered Secret.
@@ -1322,6 +1319,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
   }
 
+  /**
+   * The first node of each name, in order. Nodes must be matched by name, not by
+   * NodeDetails.equals: that compares node UUIDs, which differ between a planned pod and its
+   * universe node, and POD_INFO can give a universe node another node's UUID when the AZs' pods
+   * share hostnames (old helm naming).
+   */
+  private static Collection<NodeDetails> distinctByName(Stream<NodeDetails> nodes) {
+    Map<String, NodeDetails> byName = new LinkedHashMap<>();
+    nodes.forEach(n -> byName.putIfAbsent(n.nodeName, n));
+    return byName.values();
+  }
+
   /** Adds to zones the AZs the edit adds with masters, which run once the master step has. */
   private static void addNewMasterAZs(
       KubernetesPlacement curPlacement, KubernetesPlacement newPlacement, PlacementInfo zones) {
@@ -1392,26 +1401,21 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     boolean isReadOnlyCluster = newCluster.clusterType == ClusterType.ASYNC;
 
-    // Match nodes by name: NodeDetails.equals compares node UUIDs, which differ between a planned
-    // pod and its universe node, and POD_INFO can give a universe node another node's UUID when
-    // the AZs' pods share hostnames (old helm naming). A removed node kept that way gets a push,
+    // Match removed nodes by name (see distinctByName). A removed node kept by UUID gets a push,
     // which fails on a retry once its pod is gone.
     Set<String> tserverNamesToRemove =
         tserversToRemove.stream().map(n -> n.nodeName).collect(Collectors.toSet());
     Set<String> masterNamesToRemove =
         mastersToRemove.stream().map(n -> n.nodeName).collect(Collectors.toSet());
-    Set<NodeDetails> tserversToModify =
-        Stream.concat(
-                tserversToAdd.stream(),
-                includeUniverseNodes
-                    ? universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
-                        .filter(n -> n.isTserver)
-                    : Stream.empty())
-            .filter(n -> !tserverNamesToRemove.contains(n.nodeName))
-            .collect(Collectors.toMap(n -> n.nodeName, n -> n, (a, b) -> a))
-            .values()
-            .stream()
-            .collect(Collectors.toSet());
+    Collection<NodeDetails> tserversToModify =
+        distinctByName(
+            Stream.concat(
+                    tserversToAdd.stream(),
+                    includeUniverseNodes
+                        ? universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
+                            .filter(n -> n.isTserver)
+                        : Stream.empty())
+                .filter(n -> !tserverNamesToRemove.contains(n.nodeName)));
     createMasterAddressesRenderTask(
         universeUUID,
         newCluster,
@@ -1422,18 +1426,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         Collections.emptyMap() /* keepDiskSpecAZs */,
         Collections.emptySet() /* newMasterSpecAZs */);
     if (!isReadOnlyCluster) {
-      Set<NodeDetails> mastersToModify =
-          Stream.concat(
-                  mastersToAdd.stream(),
-                  includeUniverseNodes
-                      ? universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
-                          .filter(n -> n.isMaster)
-                      : Stream.empty())
-              .filter(n -> !masterNamesToRemove.contains(n.nodeName))
-              .collect(Collectors.toMap(n -> n.nodeName, n -> n, (a, b) -> a))
-              .values()
-              .stream()
-              .collect(Collectors.toSet());
+      Collection<NodeDetails> mastersToModify =
+          distinctByName(
+              Stream.concat(
+                      mastersToAdd.stream(),
+                      includeUniverseNodes
+                          ? universe
+                              .getUniverseDetails()
+                              .getNodesInCluster(newCluster.uuid)
+                              .stream()
+                              .filter(n -> n.isMaster)
+                          : Stream.empty())
+                  .filter(n -> !masterNamesToRemove.contains(n.nodeName)));
       // Set flag in memory for master
       if (CollectionUtils.isNotEmpty(mastersToModify)) {
         createSetFlagInMemoryTasks(
