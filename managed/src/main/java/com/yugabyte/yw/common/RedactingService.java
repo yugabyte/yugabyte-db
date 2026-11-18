@@ -1339,6 +1339,21 @@ public class RedactingService {
                     String redactedValue = redactAllLdapBindPasswdHbaFormattedValues(originalValue);
                     objNode.put(fieldName, redactedValue);
                   }
+                } else if (fieldName.equals("ysql_hba_conf_csv")
+                    && fieldValue != null
+                    && fieldValue.isObject()) {
+                  // A universe state transition delta holds the old and new values in an object.
+                  ObjectNode values = (ObjectNode) fieldValue;
+                  values
+                      .fieldNames()
+                      .forEachRemaining(
+                          name -> {
+                            JsonNode value = values.get(name);
+                            if (value.isTextual()) {
+                              values.put(
+                                  name, redactAllLdapBindPasswdHbaFormattedValues(value.asText()));
+                            }
+                          });
                 } else if (fieldValue != null && (fieldValue.isObject() || fieldValue.isArray())) {
                   redactLdapBindPasswdRecursive(fieldValue);
                 }
