@@ -107,8 +107,8 @@ RESET SESSION AUTHORIZATION;
 \c - regress_pw_scope_role
 ALTER ROLE regress_pw_scope_role PASSWORD 'secret2';
 \c - :cur_user
-SELECT valuntil BETWEEN now() + interval '29 days'
-                    AND now() + interval '31 days' AS expires_in_30_days
+SELECT rolvaliduntil BETWEEN now() + interval '29 days'
+                         AND now() + interval '31 days' AS expires_in_30_days
   FROM pg_roles WHERE rolname = 'regress_pw_scope_role';
 
 SET SESSION AUTHORIZATION regress_pw_dbadmin;
