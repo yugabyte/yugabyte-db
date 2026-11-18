@@ -8664,6 +8664,17 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_pg_stat_plans_show_max_exec_params",
 };
 
+/*
+ * YB: PGC_SUSET variables that the yb_db_admin role can set for one specific
+ * role through ALTER ROLE ... SET, without being a superuser.  See
+ * YbDbAdminCanSetRoleSetting.
+ */
+static const char *const YbDbAdminRoleSettingVariables[] = {
+	"yb_password_reuse_history",
+	"yb_password_reuse_interval",
+	"yb_password_validity",
+};
+
 
 /*
  * Actual lookup of variables is done through this single, sorted array.
@@ -16311,8 +16322,6 @@ validate_option_array_item(const char *name, const char *value,
 {
 	struct config_generic *gconf;
 
-	bool		yb_db_admin_can_set;
-
 	/*
 	 * There are three cases to consider:
 	 *
@@ -16355,9 +16364,6 @@ validate_option_array_item(const char *name, const char *value,
 				 errmsg("permission denied to set parameter \"%s\"", name)));
 	}
 
-	yb_db_admin_can_set = (gconf->context == PGC_SUSET &&
-						   YbDbAdminCanSetRoleSetting(gconf->name));
-
 	/* manual permissions check so we can avoid an error being thrown */
 	if (gconf->context == PGC_USERSET)
 		 /* ok */ ;
@@ -16365,16 +16371,13 @@ validate_option_array_item(const char *name, const char *value,
 			 (superuser() ||
 			  pg_parameter_aclcheck(name, GetUserId(), ACL_SET) == ACLCHECK_OK))
 		 /* ok */ ;
-	else if (yb_db_admin_can_set)
-		 /* YB: ok */ ;
 	else if (skipIfNoPermissions)
 		return false;
 	/* if a permissions error should be thrown, let set_config_option do it */
 
 	/* test for permissions and valid option value */
 	(void) set_config_option(name, value,
-							 (superuser() || yb_db_admin_can_set) ?
-							 PGC_SUSET : PGC_USERSET,
+							 superuser() ? PGC_SUSET : PGC_USERSET,
 							 PGC_S_TEST, GUC_ACTION_SET, false, 0, false);
 
 	return true;
@@ -18049,30 +18052,27 @@ check_yb_allow_prehashed_passwords(bool *newVal, void **extra, GucSource source)
 }
 
 /*
- * Whether the current user may set this parameter through ALTER ROLE ... SET
- * as a member of yb_db_admin, without superuser, CREATEROLE, or SET privilege
- * on the parameter.  Per-role password policy is account management that
- * yb_db_admin does on clusters that do not hand out superuser (for example,
- * YugabyteDB Aeon).  The role-level checks in AlterRoleSet still apply:
- * superuser targets and ALTER ROLE ALL SET stay superuser-only, which also
- * keeps yb_allow_prehashed_passwords (settable only for all roles) out of
- * yb_db_admin's reach.
+ * Whether the current user (GetUserId(): the effective user, after SET ROLE,
+ * SET SESSION AUTHORIZATION and SECURITY DEFINER) is a member of yb_db_admin
+ * and name is one of YbDbAdminRoleSettingVariables.  Per-role password policy
+ * is account management that yb_db_admin does on clusters that do not hand
+ * out superuser (for example, YugabyteDB Aeon).
+ *
+ * This only identifies the parameter.  AlterRoleSet decides whether the
+ * statement qualifies (ALTER ROLE <non-superuser role> SET/RESET, without
+ * IN DATABASE) and then runs it as superuser, so the GUC permission checks
+ * shared with ALTER DATABASE ... SET and CREATE/ALTER FUNCTION ... SET are
+ * unchanged.
  */
 bool
 YbDbAdminCanSetRoleSetting(const char *name)
 {
-	static const char *const role_settings[] = {
-		"yb_password_reuse_history",
-		"yb_password_reuse_interval",
-		"yb_password_validity",
-	};
-
 	if (name == NULL || !IsYbDbAdminUser(GetUserId()))
 		return false;
 
-	for (size_t i = 0; i < lengthof(role_settings); i++)
+	for (size_t i = 0; i < lengthof(YbDbAdminRoleSettingVariables); i++)
 	{
-		if (guc_name_compare(name, role_settings[i]) == 0)
+		if (guc_name_compare(name, YbDbAdminRoleSettingVariables[i]) == 0)
 			return true;
 	}
 	return false;

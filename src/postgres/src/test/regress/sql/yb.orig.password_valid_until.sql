@@ -57,6 +57,10 @@ ALTER ROLE regress_pw_scope_role RESET yb_password_validity;
 -- yb_db_admin cannot set the GUC for its session either.
 CREATE ROLE regress_pw_dbadmin LOGIN;
 GRANT yb_db_admin TO regress_pw_dbadmin;
+CREATE FUNCTION regress_pw_fn() RETURNS int LANGUAGE sql AS 'SELECT 1';
+ALTER FUNCTION regress_pw_fn() OWNER TO regress_pw_dbadmin;
+-- A superuser's per-role setting, which yb_db_admin overrides below.
+ALTER ROLE regress_pw_scope_role SET yb_password_validity = '25d';
 SET SESSION AUTHORIZATION regress_pw_dbadmin;
 SET yb_password_validity = '30d'; -- error: session-scoped
 
@@ -66,25 +70,53 @@ SET yb_password_validity = '30d'; -- error: session-scoped
 ALTER ROLE regress_pw_scope_role SET yb_password_validity = '30d';
 ALTER ROLE regress_pw_scope_role SET yb_password_reuse_history = 0;
 ALTER ROLE regress_pw_scope_role SET yb_password_reuse_interval = 0;
+-- Parameter names match case-insensitively; the stored name is normalized.
+ALTER ROLE regress_pw_scope_role SET "Yb_Password_Validity" = '30d';
 SELECT unnest(setconfig) AS setting FROM pg_db_role_setting
   WHERE setrole = 'regress_pw_scope_role'::regrole ORDER BY 1;
-ALTER ROLE regress_pw_scope_role RESET yb_password_validity;
-ALTER ROLE regress_pw_scope_role RESET yb_password_reuse_history;
-ALTER ROLE regress_pw_scope_role RESET yb_password_reuse_interval;
-SELECT count(*) FROM pg_db_role_setting
-  WHERE setrole = 'regress_pw_scope_role'::regrole;
 
--- The scope-role rules still apply.
+-- And its own.
+ALTER ROLE regress_pw_dbadmin SET yb_password_validity = '30d';
+ALTER ROLE regress_pw_dbadmin RESET yb_password_validity;
+
+-- The exception is for ALTER ROLE <role> SET only.
 ALTER ROLE regress_pw_scope_role IN DATABASE :cur_db
-  SET yb_password_validity = '30d'; -- error: role-scoped only
+  SET yb_password_validity = '30d'; -- error
+ALTER ROLE regress_pw_scope_role IN DATABASE :cur_db
+  SET "YB_PASSWORD_VALIDITY" = '30d'; -- error
+ALTER FUNCTION regress_pw_fn() SET yb_password_validity = '30d'; -- error
 
 -- Superuser targets and ALTER ROLE ALL SET remain superuser-only.
 ALTER ROLE :cur_user SET yb_password_validity = '30d'; -- error
 ALTER ROLE ALL SET yb_password_validity = '30d'; -- error
 
 -- The exception covers only the per-role password policy settings.
-ALTER ROLE ALL SET yb_allow_prehashed_passwords = off; -- error
+ALTER ROLE regress_pw_scope_role SET yb_allow_prehashed_passwords = off; -- error
 ALTER ROLE regress_pw_scope_role SET log_statement = 'all'; -- error
+
+-- yb_db_admin is not left as superuser after the statement, whether it
+-- succeeded or failed (a negative value fails validation inside it).
+SELECT current_user, usesuper FROM pg_user WHERE usename = current_user;
+ALTER ROLE regress_pw_scope_role SET yb_password_reuse_history = -1; -- error
+SELECT current_user, usesuper FROM pg_user WHERE usename = current_user;
+SET yb_password_validity = '30d'; -- error: still not superuser
+RESET SESSION AUTHORIZATION;
+
+-- The policy set by yb_db_admin is enforced when the role changes its own
+-- password.
+\c - regress_pw_scope_role
+ALTER ROLE regress_pw_scope_role PASSWORD 'secret2';
+\c - :cur_user
+SELECT valuntil BETWEEN now() + interval '29 days'
+                    AND now() + interval '31 days' AS expires_in_30_days
+  FROM pg_roles WHERE rolname = 'regress_pw_scope_role';
+
+SET SESSION AUTHORIZATION regress_pw_dbadmin;
+ALTER ROLE regress_pw_scope_role RESET yb_password_validity;
+ALTER ROLE regress_pw_scope_role RESET yb_password_reuse_history;
+ALTER ROLE regress_pw_scope_role RESET yb_password_reuse_interval;
+SELECT count(*) FROM pg_db_role_setting
+  WHERE setrole = 'regress_pw_scope_role'::regrole;
 RESET SESSION AUTHORIZATION;
 
 -- Without yb_db_admin, the same role is refused.
@@ -93,6 +125,7 @@ SET SESSION AUTHORIZATION regress_pw_dbadmin;
 ALTER ROLE regress_pw_scope_role SET yb_password_validity = '30d'; -- error
 ALTER ROLE regress_pw_scope_role SET yb_password_reuse_history = 0; -- error
 RESET SESSION AUTHORIZATION;
+DROP FUNCTION regress_pw_fn();
 DROP ROLE regress_pw_dbadmin;
 
 -- ALTER ROLE ALL SET establishes a default for every role's future
