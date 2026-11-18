@@ -557,15 +557,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     }
     TaskInfo taskInfo = submitTask(taskParams);
     if (newNamingStyle) {
-      verify(mockKubernetesManager, times(3)).createNamespace(config1, ns1);
+      verify(mockKubernetesManager, times(3)).createNamespace(eq(config1), eq(ns1), any());
     } else if (setNamespace) {
-      verify(mockKubernetesManager, times(0)).createNamespace(config1, ns1);
-      verify(mockKubernetesManager, times(0)).createNamespace(config2, ns2);
-      verify(mockKubernetesManager, times(1)).createNamespace(config3, ns3);
+      verify(mockKubernetesManager, times(0)).createNamespace(eq(config1), eq(ns1), any());
+      verify(mockKubernetesManager, times(0)).createNamespace(eq(config2), eq(ns2), any());
+      verify(mockKubernetesManager, times(1)).createNamespace(eq(config3), eq(ns3), any());
     } else {
-      verify(mockKubernetesManager, times(1)).createNamespace(config1, ns1);
-      verify(mockKubernetesManager, times(1)).createNamespace(config2, ns2);
-      verify(mockKubernetesManager, times(1)).createNamespace(config3, ns3);
+      verify(mockKubernetesManager, times(1)).createNamespace(eq(config1), eq(ns1), any());
+      verify(mockKubernetesManager, times(1)).createNamespace(eq(config2), eq(ns2), any());
+      verify(mockKubernetesManager, times(1)).createNamespace(eq(config3), eq(ns3), any());
     }
 
     verify(mockKubernetesManager, times(1))
@@ -703,9 +703,9 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = submitTask(taskParams);
 
     if (setNamespace) {
-      verify(mockKubernetesManager, times(0)).createNamespace(config, ns);
+      verify(mockKubernetesManager, times(0)).createNamespace(eq(config), eq(ns), any());
     } else {
-      verify(mockKubernetesManager, times(1)).createNamespace(config, ns);
+      verify(mockKubernetesManager, times(1)).createNamespace(eq(config), eq(ns), any());
     }
 
     verify(mockKubernetesManager, times(1))
@@ -735,6 +735,34 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         getTaskPositionsToSkip(setNamespace /* skip namespace task */, true /* skipPDBTask */),
         getTaskCountPerPosition(numNamespaces, 1));
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testCreateKubernetesUniverseLabelsNamespaceAndPullSecret() {
+    setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true, false);
+    setupCommon();
+    config.put("KUBECONFIG_IMAGE_PULL_SECRET_NAME", "registry");
+    config.put("KUBECONFIG_PULL_SECRET", "/path/to/pull-secret.yml");
+    kubernetesProvider.setConfigMap(config);
+    kubernetesProvider.save();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.universeOverrides =
+                  "commonLabels:\n  team: db\n";
+              u.setUniverseDetails(details);
+            },
+            false);
+
+    TaskInfo taskInfo = submitTask(new UniverseDefinitionTaskParams());
+
+    assertEquals(Success, taskInfo.getTaskState());
+    Map<String, String> labels = ImmutableMap.of("team", "db");
+    verify(mockKubernetesManager, times(1)).createNamespace(any(), eq(ns), eq(labels));
+    verify(mockKubernetesManager, times(1))
+        .applySecret(any(), eq(ns), eq("/path/to/pull-secret.yml"), eq(labels));
   }
 
   @Test

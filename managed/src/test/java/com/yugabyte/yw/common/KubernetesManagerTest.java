@@ -748,23 +748,25 @@ public class KubernetesManagerTest extends FakeDBApplication {
     universe.save();
   }
 
-  private void validatePDBApplyCommand(
-      Universe universe, List<String> policyFiles, List<String> namespaceList) {
-    List<List<String>> expectedShellCommands = new ArrayList<>();
-    for (String namespace : namespaceList) {
-      for (String policyFile : policyFiles) {
-        expectedShellCommands.add(
-            ImmutableList.of("kubectl", "apply", "-f", policyFile, "--namespace", namespace));
-      }
+  // Each AZ applies its own policy file, so every PDB is applied once to each namespace.
+  private void validatePDBApplyCommand(List<String> policyFiles, List<String> namespaceList) {
+    List<List<String>> capturedCommands = command.getAllValues();
+    assertEquals(policyFiles.size(), capturedCommands.size());
+    Map<String, Set<String>> namespacesPerPdb = new HashMap<>();
+    for (List<String> c : capturedCommands) {
+      assertEquals(6, c.size());
+      assertEquals(ImmutableList.of("kubectl", "apply", "-f"), c.subList(0, 3));
+      assertTrue(policyFiles.contains(c.get(3)));
+      assertEquals("--namespace", c.get(4));
+      String pdb =
+          ImmutableList.of("primary-master", "primary-tserver", "replica-tserver").stream()
+              .filter(c.get(3)::contains)
+              .findFirst()
+              .orElseThrow();
+      assertTrue(namespacesPerPdb.computeIfAbsent(pdb, k -> new HashSet<>()).add(c.get(5)));
     }
-    List<String> capturedCommands =
-        command.getAllValues().stream().map(c -> String.join(" ", c)).collect(Collectors.toList());
-    List<String> expectedCommands =
-        expectedShellCommands.stream().map(c -> String.join(" ", c)).collect(Collectors.toList());
-    assertEquals(expectedCommands.size(), capturedCommands.size());
-    for (String expectedCommand : expectedCommands) {
-      assertTrue(capturedCommands.contains(expectedCommand));
-    }
+    assertEquals(3, namespacesPerPdb.size());
+    namespacesPerPdb.values().forEach(ns -> assertEquals(new HashSet<>(namespaceList), ns));
   }
 
   private void validatePolicyFiles(Universe universe, List<String> policyFiles) {
@@ -849,7 +851,195 @@ public class KubernetesManagerTest extends FakeDBApplication {
     Mockito.verify(shellProcessHandler, times(3)).run(command.capture(), context.capture());
     assertEquals(3, policyFiles.size());
     validatePolicyFiles(universe, policyFiles);
-    validatePDBApplyCommand(universe, policyFiles, ImmutableList.of("demo-universe"));
+    validatePDBApplyCommand(policyFiles, ImmutableList.of("demo-universe"));
+  }
+
+  @Test
+  public void testCreatePodDisruptionBudgetGetsHelmCommonLabels() throws IOException {
+    setupUniverse();
+    universe.updateConfig(ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, "true"));
+    universe.save();
+    // Only the primary cluster's overrides apply, read replica included, as in helm.
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.universeOverrides =
+                  "commonLabels:\n  env: universe\n";
+              u.setUniverseDetails(details);
+            },
+            false);
+    List<String> policyFiles = new ArrayList<>();
+    when(fileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(
+            i -> {
+              Path path = Files.createTempFile(Paths.get("/tmp"), i.getArgument(0), ".yml");
+              policyFiles.add(path.toString());
+              return path;
+            });
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenReturn(ShellResponse.create(0, "{}"));
+
+    kubernetesManager.createPodDisruptionBudget(universe);
+
+    assertEquals(3, policyFiles.size());
+    AvailabilityZone az = AvailabilityZone.getByCode(kubernetesProvider, "az-1");
+    for (String policyFile : policyFiles) {
+      Map<String, Object> pdb = new Yaml().load(Files.readString(Path.of(policyFile)));
+      assertEquals(
+          policyFile,
+          ImmutableMap.of(
+              "env", "universe",
+              "yugabyte.io/universe-name", "demo-universe",
+              "app.kubernetes.io/part-of", "demo-universe",
+              "yugabyte.io/zone", az.getCode()),
+          ((Map<String, Object>) pdb.get("metadata")).get("labels"));
+    }
+  }
+
+  // Runs the manager call with the shell mocked, handing each kubectl command and the manifest it
+  // applies, read while the command runs since some manifests are deleted right after.
+  private List<Map<String, Object>> captureManifests(
+      Runnable call, ShellResponse response, List<List<String>> commands) {
+    List<Map<String, Object>> manifests = new ArrayList<>();
+    when(fileHelperService.createTempFile(anyString(), anyString()))
+        .thenAnswer(i -> Files.createTempFile(Paths.get("/tmp"), i.getArgument(0), ".yml"));
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+        .thenAnswer(
+            i -> {
+              List<String> cmd = i.getArgument(0);
+              commands.add(cmd);
+              manifests.add(
+                  new Yaml().load(Files.readString(Path.of(cmd.get(cmd.indexOf("-f") + 1)))));
+              return response;
+            });
+    call.run();
+    return manifests;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Object labelsOf(Map<String, Object> manifest) {
+    return ((Map<String, Object>) manifest.get("metadata")).get("labels");
+  }
+
+  @Test
+  public void testCreateNamespaceWithLabels() {
+    List<List<String>> commands = new ArrayList<>();
+    List<Map<String, Object>> manifests =
+        captureManifests(
+            () ->
+                kubernetesManager.createNamespace(
+                    configProvider, "demo-ns", ImmutableMap.of("env", "universe")),
+            ShellResponse.create(0, ""),
+            commands);
+    assertEquals(
+        ImmutableList.of("kubectl", "apply", "-f", "--server-side"),
+        ImmutableList.of(
+            commands.get(0).get(0),
+            commands.get(0).get(1),
+            commands.get(0).get(2),
+            commands.get(0).get(4)));
+    assertEquals("Namespace", manifests.get(0).get("kind"));
+    assertEquals(ImmutableMap.of("env", "universe"), labelsOf(manifests.get(0)));
+  }
+
+  @Test
+  public void testApplySecretAddsLabelsAndDeletesTheCopy() throws IOException {
+    Path pullSecret = Files.createTempFile("pull-secret", ".yml");
+    Files.writeString(
+        pullSecret,
+        "apiVersion: v1\n"
+            + "kind: Secret\n"
+            + "metadata:\n"
+            + "  name: registry\n"
+            + "  labels:\n"
+            + "    team: from-file\n"
+            + "type: kubernetes.io/dockerconfigjson\n"
+            + "data:\n"
+            + "  .dockerconfigjson: e30=\n");
+    try {
+      List<List<String>> commands = new ArrayList<>();
+      List<Map<String, Object>> manifests =
+          captureManifests(
+              () ->
+                  kubernetesManager.applySecret(
+                      configProvider,
+                      "demo-ns",
+                      pullSecret.toString(),
+                      ImmutableMap.of("team", "db", "env", "universe")),
+              ShellResponse.create(0, ""),
+              commands);
+      List<String> cmd = commands.get(0);
+      String labeledCopy = cmd.get(3);
+      assertEquals(
+          ImmutableList.of(
+              "kubectl", "apply", "-f", labeledCopy, "--namespace", "demo-ns", "--server-side"),
+          cmd);
+      assertFalse(labeledCopy.equals(pullSecret.toString()));
+      assertFalse("the copy holds credentials", new File(labeledCopy).exists());
+      assertEquals("registry", ((Map<?, ?>) manifests.get(0).get("metadata")).get("name"));
+      assertEquals("e30=", ((Map<?, ?>) manifests.get(0).get("data")).get(".dockerconfigjson"));
+      assertEquals(
+          ImmutableMap.of("team", "from-file", "env", "universe"), labelsOf(manifests.get(0)));
+    } finally {
+      Files.deleteIfExists(pullSecret);
+    }
+  }
+
+  @Test
+  public void testDbNamespaceExistsDryRunsALabeledSecret() {
+    List<List<String>> commands = new ArrayList<>();
+    AtomicBoolean exists = new AtomicBoolean();
+    List<Map<String, Object>> manifests =
+        captureManifests(
+            () ->
+                exists.set(
+                    kubernetesManager.dbNamespaceExists(
+                        configProvider, "demo-ns", ImmutableMap.of("team", "platform"))),
+            ShellResponse.create(0, ""),
+            commands);
+    assertTrue(exists.get());
+    List<String> cmd = commands.get(0);
+    assertEquals(
+        ImmutableList.of(
+            "kubectl", "create", "-f", cmd.get(3), "-n", "demo-ns", "--dry-run=server"),
+        cmd);
+    assertFalse(new File(cmd.get(3)).exists());
+    assertEquals("Secret", manifests.get(0).get("kind"));
+    assertTrue(
+        ((Map<?, ?>) manifests.get(0).get("metadata"))
+            .get("name")
+            .toString()
+            .startsWith("ns-check-"));
+    assertEquals(ImmutableMap.of("team", "platform"), labelsOf(manifests.get(0)));
+  }
+
+  @Test
+  public void testDbNamespaceExistsParsesKubectlCreateErrors() {
+    List<List<String>> commands = new ArrayList<>();
+    AtomicBoolean exists = new AtomicBoolean(true);
+    captureManifests(
+        () -> exists.set(kubernetesManager.dbNamespaceExists(configProvider, "demo-ns", Map.of())),
+        ShellResponse.create(
+            1,
+            "Error from server (NotFound): error when creating \"/tmp/x-ns-check.yml\":"
+                + " namespaces \"demo-ns\" not found"),
+        commands);
+    assertFalse(exists.get());
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                captureManifests(
+                    () -> kubernetesManager.dbNamespaceExists(configProvider, "demo-ns", Map.of()),
+                    ShellResponse.create(
+                        1,
+                        "Error from server (Forbidden): error when creating \"/tmp/x.yml\":"
+                            + " secrets is forbidden: User \"yba\" cannot create resource"),
+                    commands));
+    assertTrue(e.getMessage().contains("secrets is forbidden"));
   }
 
   @Test
@@ -871,9 +1061,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
     Mockito.verify(shellProcessHandler, times(9)).run(command.capture(), context.capture());
     List<String> namespaceList =
         ImmutableList.of("demo-universe-az-1", "demo-universe-az-2", "demo-universe-az-3");
-    assertEquals(3, policyFiles.size());
+    assertEquals(9, policyFiles.size());
     validatePolicyFiles(universe, policyFiles);
-    validatePDBApplyCommand(universe, policyFiles, namespaceList);
+    validatePDBApplyCommand(policyFiles, namespaceList);
   }
 
   private void validateDeletePDBCommand(Universe universe, List<String> namespaceList) {

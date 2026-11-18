@@ -567,6 +567,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               createKubernetesExecutorTask(
                   universeName,
                   KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE,
+                  tempPI,
                   azCode,
                   config,
                   isReadOnlyCluster));
@@ -577,6 +578,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             createKubernetesExecutorTask(
                 universeName,
                 KubernetesCommandExecutor.CommandType.APPLY_SECRET,
+                tempPI,
                 azCode,
                 config,
                 isReadOnlyCluster));
@@ -1871,7 +1873,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     return podsToRemove;
   }
 
-  // Create Kubernetes Executor task for creating the namespaces and pull secrets.
   public KubernetesCommandExecutor createKubernetesExecutorTask(
       String universeName,
       KubernetesCommandExecutor.CommandType commandType,
@@ -1879,7 +1880,20 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> config,
       boolean isReadOnlyCluster) {
     return createKubernetesExecutorTask(
-        universeName, commandType, null, az, null, null, config, null, null, isReadOnlyCluster);
+        universeName, commandType, null, az, config, isReadOnlyCluster);
+  }
+
+  // Create Kubernetes Executor task for creating the namespaces and pull secrets. pi holds just the
+  // AZ, whose helm commonLabels the namespace and pull secret get.
+  public KubernetesCommandExecutor createKubernetesExecutorTask(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      Map<String, String> config,
+      boolean isReadOnlyCluster) {
+    return createKubernetesExecutorTask(
+        universeName, commandType, pi, az, null, null, config, null, null, isReadOnlyCluster);
   }
 
   public KubernetesCommandExecutor createKubernetesExecutorTask(

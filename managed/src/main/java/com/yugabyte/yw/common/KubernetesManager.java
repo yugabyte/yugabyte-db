@@ -1023,9 +1023,11 @@ public abstract class KubernetesManager {
 
   /* kubernetes interface */
 
-  public abstract void createNamespace(Map<String, String> config, String universePrefix);
+  public abstract void createNamespace(
+      Map<String, String> config, String namespace, Map<String, String> labels);
 
-  public abstract void applySecret(Map<String, String> config, String namespace, String pullSecret);
+  public abstract void applySecret(
+      Map<String, String> config, String namespace, String pullSecret, Map<String, String> labels);
 
   public abstract Pod getPodObject(Map<String, String> config, String namespace, String podName);
 
@@ -1047,7 +1049,8 @@ public abstract class KubernetesManager {
     return namespaceNames.contains(namespace);
   }
 
-  public abstract boolean dbNamespaceExists(Map<String, String> config, String namespace);
+  public abstract boolean dbNamespaceExists(
+      Map<String, String> config, String namespace, Map<String, String> labels);
 
   public abstract PodStatus getPodStatus(
       Map<String, String> config, String namespace, String podName);

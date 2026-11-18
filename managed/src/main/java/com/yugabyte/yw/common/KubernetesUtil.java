@@ -1034,58 +1034,119 @@ public class KubernetesUtil {
 
     Map<UUID, Map<String, Object>> result = new HashMap<>();
     PlacementInfo placementInfo = cluster.getOverallPlacement();
-
-    Provider provider = Util.getSingleProvider(cluster);
-
-    ObjectMapper mapper = new ObjectMapper();
-    Yaml yaml = new Yaml();
-    Map<String, Object> universeOverrides = new HashMap<>();
-    Map<String, Object> univOverridesMap = HelmUtils.convertYamlToMap(universeOverridesString);
-    if (MapUtils.isNotEmpty(univOverridesMap)) {
-      String universeOverridesStr = mapper.writeValueAsString(univOverridesMap);
-      universeOverrides = mapper.readValue(universeOverridesStr, Map.class);
-    }
     if (CollectionUtils.isEmpty(placementInfo.cloudList)) {
       return result;
     }
-    Map<String, String> cloudConfig = CloudInfoInterface.fetchEnvVars(provider);
+    Map<String, String> cloudConfig =
+        CloudInfoInterface.fetchEnvVars(Util.getSingleProvider(cluster));
     for (PlacementRegion pr : placementInfo.cloudList.get(0).regionList) {
       Region region = Region.getOrBadRequest(pr.uuid);
-      Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(region);
       for (PlacementAZ pa : pr.azList) {
         AvailabilityZone az = AvailabilityZone.getOrBadRequest(pa.uuid);
-        Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
-        Map<String, Object> overrides = new HashMap<>();
-        Map<String, Object> providerOverrides;
-        // Provider overrides in preference az > region > cloud
-        String providerOverridesYAML =
-            KubernetesUtil.getK8sPropertyFromConfigOrDefault(
-                cloudConfig, regionConfig, zoneConfig, "OVERRIDES", null);
-        if (providerOverridesYAML != null) {
-          providerOverrides = yaml.load(providerOverridesYAML);
-          if (providerOverrides != null) {
-            // Merge with overrides
-            HelmUtils.mergeYaml(overrides, providerOverrides);
-          }
-        }
-        // Merge Universe overrides
-        if (MapUtils.isNotEmpty(universeOverrides)) {
-          HelmUtils.mergeYaml(overrides, universeOverrides);
-        }
-        if (azsOverridesMap != null) {
-          String azOverridesStr = azsOverridesMap.get(az.getName());
-          Map<String, Object> azOverridesMap = HelmUtils.convertYamlToMap(azOverridesStr);
-          // Merge AZ overrides
-          if (MapUtils.isNotEmpty(azOverridesMap)) {
-            String azOverridesString = mapper.writeValueAsString(azOverridesMap);
-            Map<String, Object> azOverrides = mapper.readValue(azOverridesString, Map.class);
-            HelmUtils.mergeYaml(overrides, azOverrides);
-          }
-        }
-        result.put(az.getUuid(), overrides);
+        result.put(
+            az.getUuid(),
+            getFinalOverridesForAZ(
+                cloudConfig, region, az, universeOverridesString, azsOverridesMap));
       }
     }
     return result;
+  }
+
+  // Merges provider (zone > region > provider, not merged), universe and AZ overrides, in the
+  // order KubernetesCommandExecutor.generateHelmOverride merges them.
+  private static Map<String, Object> getFinalOverridesForAZ(
+      Map<String, String> cloudConfig,
+      Region region,
+      AvailabilityZone az,
+      String universeOverridesString,
+      Map<String, String> azsOverridesMap)
+      throws IOException {
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, Object> overrides = new HashMap<>();
+    String providerOverridesYAML =
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            cloudConfig,
+            CloudInfoInterface.fetchEnvVars(region),
+            CloudInfoInterface.fetchEnvVars(az),
+            "OVERRIDES",
+            null);
+    if (providerOverridesYAML != null) {
+      Map<String, Object> providerOverrides = new Yaml().load(providerOverridesYAML);
+      if (providerOverrides != null) {
+        HelmUtils.mergeYaml(overrides, providerOverrides);
+      }
+    }
+    // Parsed for each AZ: mergeYaml merges later overrides into the nested maps it took from
+    // earlier ones, so a copy shared across AZs would carry one AZ's overrides into the next.
+    Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesString);
+    if (MapUtils.isNotEmpty(universeOverrides)) {
+      HelmUtils.mergeYaml(
+          overrides, mapper.readValue(mapper.writeValueAsString(universeOverrides), Map.class));
+    }
+    if (azsOverridesMap != null) {
+      Map<String, Object> azOverrides =
+          HelmUtils.convertYamlToMap(azsOverridesMap.get(az.getName()));
+      if (MapUtils.isNotEmpty(azOverrides)) {
+        HelmUtils.mergeYaml(
+            overrides, mapper.readValue(mapper.writeValueAsString(azOverrides), Map.class));
+      }
+    }
+    return overrides;
+  }
+
+  /** The labels YBA puts on a universe's resources when the universe has LABEL_K8S_RESOURCES. */
+  public static Map<String, String> getUniverseResourceLabels(String universeName, String azCode) {
+    String sanitizedUniverseName = Util.sanitizeKubernetesNamespace(universeName, 0);
+    Map<String, String> labels = new HashMap<>();
+    labels.put("yugabyte.io/universe-name", sanitizedUniverseName);
+    labels.put("app.kubernetes.io/part-of", sanitizedUniverseName);
+    labels.put("yugabyte.io/zone", azCode);
+    return labels;
+  }
+
+  /**
+   * Returns the commonLabels the yugabyte chart puts on a universe's resources in the given AZ:
+   * YBA's own labels, then the commonLabels of the provider, universe and AZ overrides. Resources
+   * that YBA creates with kubectl, outside the chart, get the same labels so that admission
+   * policies requiring them treat those resources like the chart's.
+   *
+   * @param primaryIntent the primary cluster's user intent; helm always takes overrides from it,
+   *     read replicas included
+   */
+  public static Map<String, String> getHelmCommonLabels(
+      UserIntent primaryIntent, Map<String, String> universeConfig, UUID azUUID) {
+    AvailabilityZone az = AvailabilityZone.getOrBadRequest(azUUID);
+    Map<String, Object> overrides = new HashMap<>();
+    if (universeConfig != null
+        && "true".equals(universeConfig.getOrDefault(Universe.LABEL_K8S_RESOURCES, "false"))) {
+      overrides.put(
+          "commonLabels",
+          new HashMap<String, Object>(
+              getUniverseResourceLabels(primaryIntent.universeName, az.getCode())));
+    }
+    try {
+      HelmUtils.mergeYaml(
+          overrides,
+          getFinalOverridesForAZ(
+              CloudInfoInterface.fetchEnvVars(az.getProvider()),
+              az.getRegion(),
+              az,
+              primaryIntent.universeOverrides,
+              primaryIntent.azOverrides));
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to parse the helm overrides of AZ " + az.getCode(), e);
+    }
+    return getCommonLabels(overrides);
+  }
+
+  /** The commonLabels of the given helm overrides, with their values as strings. */
+  public static Map<String, String> getCommonLabels(@Nullable Map<String, Object> overrides) {
+    Map<String, String> labels = new HashMap<>();
+    if (overrides != null && overrides.get("commonLabels") instanceof Map<?, ?> commonLabels) {
+      commonLabels.forEach(
+          (k, v) -> labels.put(String.valueOf(k), v == null ? "" : String.valueOf(v)));
+    }
+    return labels;
   }
 
   private static Set<String> getNamespacesInCluster(

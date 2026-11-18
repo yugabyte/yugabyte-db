@@ -828,4 +828,59 @@ public class KubernetesUtilTest extends FakeDBApplication {
     assertTrue(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b1", universe, confGetter));
     assertFalse(KubernetesUtil.isNodeExporterSidecarEnabled("2026.2.0.0-b1", other, confGetter));
   }
+
+  @Test
+  public void testGetHelmCommonLabelsMergesLikeHelmOverrides() {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    List<AvailabilityZone> zones = pair.getSecond();
+    CloudInfoInterface.setCloudProviderInfoFromConfig(
+        zones.get(0),
+        new HashMap<>(
+            ImmutableMap.of("OVERRIDES", "commonLabels:\n  team: db\n  env: provider\n")));
+    zones.get(0).save();
+    UserIntent primaryIntent = pair.getFirst().getPrimaryCluster().userIntent;
+    primaryIntent.universeOverrides = "commonLabels:\n  env: universe\n";
+    primaryIntent.azOverrides =
+        ImmutableMap.of(zones.get(1).getName(), "commonLabels:\n  tier: gold\n");
+
+    String universeLabel = Util.sanitizeKubernetesNamespace(primaryIntent.universeName, 0);
+    assertEquals(
+        ImmutableMap.of(
+            "yugabyte.io/universe-name",
+            universeLabel,
+            "app.kubernetes.io/part-of",
+            universeLabel,
+            "yugabyte.io/zone",
+            zones.get(0).getCode(),
+            "team",
+            "db",
+            "env",
+            "universe"),
+        KubernetesUtil.getHelmCommonLabels(
+            primaryIntent, universeConfig(), zones.get(0).getUuid()));
+    // Without LABEL_K8S_RESOURCES only the overrides' labels apply.
+    assertEquals(
+        ImmutableMap.of("env", "universe", "tier", "gold"),
+        KubernetesUtil.getHelmCommonLabels(primaryIntent, new HashMap<>(), zones.get(1).getUuid()));
+  }
+
+  @Test
+  public void testGetFinalOverridesKeepsAZOverridesToTheirAZ() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false /* createRR */);
+    List<AvailabilityZone> zones = pair.getSecond();
+    Map<String, String> azOverrides = new HashMap<>();
+    for (AvailabilityZone zone : zones) {
+      azOverrides.put(zone.getName(), "commonLabels:\n  " + zone.getCode() + ": \"true\"\n");
+    }
+    Map<UUID, Map<String, Object>> finalOverrides =
+        KubernetesUtil.getFinalOverrides(
+            pair.getFirst().getPrimaryCluster(), "commonLabels:\n  env: prod\n", azOverrides);
+    for (AvailabilityZone zone : zones) {
+      assertEquals(
+          ImmutableMap.of("env", "prod", zone.getCode(), "true"),
+          finalOverrides.get(zone.getUuid()).get("commonLabels"));
+    }
+  }
 }

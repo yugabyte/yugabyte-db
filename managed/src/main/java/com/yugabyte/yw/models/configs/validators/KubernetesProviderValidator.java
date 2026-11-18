@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -265,10 +266,11 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
               .getManager()
               .dbNamespaceExists(
                   ImmutableMap.of("KUBECONFIG", getStringValue(getKubeConfigNode(k8sInfo))),
-                  getStringValue(namespaceNode));
+                  getStringValue(namespaceNode),
+                  getOverridesCommonLabels(k8sInfo));
     } catch (RuntimeException e) {
-      if (e.getMessage().contains("error: failed to create secret secrets is forbidden")
-          || e.getMessage().contains("Error from server (Forbidden): secrets is forbidden")) {
+      if (e.getMessage().contains("(Forbidden)")
+          && e.getMessage().contains("secrets is forbidden")) {
         validationErrors.put(
             getJsonPath(getKubeConfigNode(k8sInfo)),
             "Missing permission to create secrets in " + getStringValue(namespaceNode));
@@ -278,6 +280,23 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
     }
     if (!nsExists) {
       validationErrors.put(getJsonPath(namespaceNode), "Namespace doesn't exist in the cluster");
+    }
+  }
+
+  // Admission policies that require labels see the namespace check's dry-run create too. There is
+  // no universe yet, so the zone's overrides (else the region's) are the only source of labels.
+  private Map<String, String> getOverridesCommonLabels(Map<String, JsonNode> k8sInfo) {
+    JsonNode overridesNode = k8sInfo.get("overrides");
+    if (overridesNode == null) {
+      return Map.of();
+    }
+    try {
+      return KubernetesUtil.getCommonLabels(
+          HelmUtils.convertYamlToMap(getStringValue(overridesNode)));
+    } catch (RuntimeException e) {
+      // Invalid overrides fail the universe's helm install; this check isn't where to report them.
+      log.warn("Unable to read commonLabels from the provider overrides: {}", e.getMessage());
+      return Map.of();
     }
   }
 

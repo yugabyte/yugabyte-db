@@ -9,12 +9,15 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -69,10 +72,16 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
               .filter(namespace -> !targetNamespaces.contains(namespace))
               .collect(Collectors.toSet());
       if (!targetNamespacesNotExistOnSourceUniverse.isEmpty()) {
-        createNamespaces(targetNamespacesNotExistOnSourceUniverse, sourceUniverse);
+        createNamespaces(
+            targetNamespacesNotExistOnSourceUniverse,
+            getHelmCommonLabelsPerNamespace(targetUniverse),
+            sourceUniverse);
       }
       if (!sourceNamespacesNotExistOnTargetUniverse.isEmpty()) {
-        createNamespaces(sourceNamespacesNotExistOnTargetUniverse, targetUniverse);
+        createNamespaces(
+            sourceNamespacesNotExistOnTargetUniverse,
+            getHelmCommonLabelsPerNamespace(sourceUniverse),
+            targetUniverse);
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
@@ -81,7 +90,35 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
     log.info("Completed {}", getName());
   }
 
-  private void createNamespaces(Set<String> namespaces, Universe universe) {
+  // The helm commonLabels of each of the universe's namespaces. A namespace shared by AZs gets the
+  // labels of the first AZ by node name.
+  private static Map<String, Map<String, String>> getHelmCommonLabelsPerNamespace(
+      Universe universe) {
+    Map<String, Map<String, String>> labelsPerNamespace = new HashMap<>();
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
+    details.nodeDetailsSet.stream()
+        .filter(node -> node.azUuid != null && node.getK8sNamespace() != null)
+        .sorted(Comparator.comparing(node -> node.nodeName))
+        .forEach(
+            node ->
+                labelsPerNamespace.computeIfAbsent(
+                    node.getK8sNamespace(),
+                    ns ->
+                        KubernetesUtil.getHelmCommonLabels(
+                            primaryIntent, universe.getConfig(), node.azUuid)));
+    return labelsPerNamespace;
+  }
+
+  /**
+   * Creates the namespaces in the universe's Kubernetes clusters.
+   *
+   * @param labelsPerNamespace the labels of each namespace in the universe it is replicated from
+   */
+  private void createNamespaces(
+      Set<String> namespaces,
+      Map<String, Map<String, String>> labelsPerNamespace,
+      Universe universe) {
     log.info("Creating namespaces: {} on universe: {}", namespaces, universe);
     Set<UUID> visitedProviderUUIDS = new HashSet<>();
     KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
@@ -112,7 +149,8 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
                         kubeConfig);
                   } else {
                     log.debug("Creating namespace: {}, kubeconfig: {}", namespace, kubeConfig);
-                    kubernetesManager.createNamespace(config, namespace);
+                    kubernetesManager.createNamespace(
+                        config, namespace, labelsPerNamespace.get(namespace));
                   }
                 }
               }
