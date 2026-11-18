@@ -25,7 +25,13 @@ import {
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { AWSProviderCreateFormFieldValues } from '../../forms/aws/AWSProviderCreateForm';
-import { ArchitectureType, ProviderCode, ProviderOperation, ProviderStatus } from '../../constants';
+import {
+  ArchitectureType,
+  hasYBAManagedArmImage,
+  ProviderCode,
+  ProviderOperation,
+  ProviderStatus
+} from '../../constants';
 import { EmptyListPlaceholder } from '../../EmptyListPlaceholder';
 import { YBButton } from '../../../../common/forms/fields';
 import { UniverseItem } from '../../providerView/providerDetails/UniverseTable';
@@ -82,10 +88,9 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
   const [ybImageOptions, setUseYBImages] = useState<YbImageOptions>(() => ({
     useArm: !!ybManagedArmBundle,
     useX86: !!ybManagedX86Bundle,
-    useYBImages:
-      providerType === ProviderCode.AWS
-        ? !!ybManagedArmBundle || !!ybManagedX86Bundle
-        : !!ybManagedX86Bundle
+    useYBImages: hasYBAManagedArmImage(providerType)
+      ? !!ybManagedArmBundle || !!ybManagedX86Bundle
+      : !!ybManagedX86Bundle
   }));
 
   // For edit mode, track which bundles are in use.
@@ -126,7 +131,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
         });
       }
     }
-    if (ybImageOptions.useArm && providerType === ProviderCode.AWS) {
+    if (ybImageOptions.useArm && hasYBAManagedArmImage(providerType)) {
       if (isEditMode && ybManagedArmBundle?.active) {
         ybManagedArmBundle && images.push(ybManagedArmBundle!);
       } else {
@@ -145,6 +150,15 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
     }
 
     replace(images as any);
+  };
+
+  const onArchOptionChange = (archOptions: Partial<Pick<YbImageOptions, 'useX86' | 'useArm'>>) => {
+    const opts: YbImageOptions = { ...ybImageOptions, ...archOptions };
+    // Ticking "include YugabyteDB versions" also sets useArm on providers that hide the aarch64
+    // checkbox, so only the visible architecture checkboxes decide whether it stays ticked.
+    opts.useYBImages = opts.useX86 || (hasYBAManagedArmImage(providerType) && opts.useArm);
+    setUseYBImages(opts);
+    updateImageBundles(opts, imageBundles);
   };
 
   const dbNodePublicInternetAccess = useWatch({ name: 'dbNodePublicInternetAccess' });
@@ -241,7 +255,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
                   isDisabled ||
                   !dbNodePublicInternetAccess ||
                   (isEditMode &&
-                    (providerType === ProviderCode.AWS
+                    (hasYBAManagedArmImage(providerType)
                       ? isYbManagedArmImageBundleInUse || isYbManagedX86ImageBundleInUse
                       : isYbManagedX86ImageBundleInUse))
                 }
@@ -254,11 +268,7 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
           </YBTooltip>
           <YBCheckbox
             label={t('x86_64', { keyPrefix: 'universeForm.instanceConfig' })}
-            onChange={(e) => {
-              const opts: YbImageOptions = { ...ybImageOptions, useX86: e.target.checked };
-              setUseYBImages(opts);
-              updateImageBundles(opts, imageBundles);
-            }}
+            onChange={(e) => onArchOptionChange({ useX86: e.target.checked })}
             disabled={
               isDisabled ||
               !ybImageOptions.useYBImages ||
@@ -269,14 +279,10 @@ export const LinuxVersionCatalog: FC<LinuxVersionCatalogProps> = ({
               'data-testid': 'LinuxVersionCatalog-Includex86'
             }}
           />
-          {providerType === ProviderCode.AWS && (
+          {hasYBAManagedArmImage(providerType) && (
             <YBCheckbox
               label={t('aarch64', { keyPrefix: 'universeForm.instanceConfig' })}
-              onChange={(e) => {
-                const opts: YbImageOptions = { ...ybImageOptions, useArm: e.target.checked };
-                setUseYBImages(opts);
-                updateImageBundles(opts, imageBundles);
-              }}
+              onChange={(e) => onArchOptionChange({ useArm: e.target.checked })}
               disabled={
                 isDisabled ||
                 !ybImageOptions.useYBImages ||
