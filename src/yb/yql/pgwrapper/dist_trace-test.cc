@@ -2004,7 +2004,7 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolComment) {
       MakeExpectedTrace(query, tp.trace_id,
           {{SpanType::kRoot, 1},
            {SpanType::kExtParse, 1},
-           {SpanType::kParse, 2},
+           {SpanType::kParse, 1},
            {SpanType::kRewrite, 1},
            {SpanType::kExtBind, 1},
            {SpanType::kPlan, 1},
@@ -2030,7 +2030,7 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolGuc) {
       MakeExpectedTrace(query, tp.trace_id,
           {{SpanType::kRoot, 1},
            {SpanType::kExtParse, 1},
-           {SpanType::kParse, 2},
+           {SpanType::kParse, 1},
            {SpanType::kRewrite, 1},
            {SpanType::kExtBind, 1},
            {SpanType::kPlan, 1},
@@ -2057,6 +2057,7 @@ TEST_F(DistTraceTest, TestExtendedQueryProtocolPreparedStatementReuse) {
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.parse", 1));
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.bind", 3));
   ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "ext.execute", 3));
+  ASSERT_OK(collector_.VerifySpanCountInTrace(tp.trace_id, "query", 4));
   ASSERT_EQ(collector_.NumTraces(), 1);
   ASSERT_EQ(collector_.CountSpansInTrace(tp.trace_id, "query"), 4);
 

@@ -792,6 +792,10 @@ class VersionSet {
   // This function doesn't support leveldb SST filenames
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData> *metadata);
 
+  // Appends to *out the file numbers of the live SSTs of every non-dropped column family that are
+  // not on db_paths[path_id]. REQUIRES: DB mutex held, like GetLiveFilesMetaData.
+  void GetLiveFileNumbersNotOnPath(uint32_t path_id, std::vector<uint64_t>* out);
+
   void GetObsoleteFiles(const FileNumbersProvider& pending_outputs,
                         std::vector<FileMetaData*>* files,
                         std::vector<std::string>* manifest_filenames);

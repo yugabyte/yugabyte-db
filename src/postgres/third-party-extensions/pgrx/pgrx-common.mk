@@ -1,6 +1,6 @@
 # YB: Shared make settings for the vendored pgrx framework and its consumers,
-# included by pgrx/Makefile, pg_parquet/Makefile and
-# documentdb/pg_documentdb_gw_host/Makefile.
+# included by pgrx/Makefile, pg_parquet/Makefile, postgresql_anonymizer/Makefile
+# and documentdb/pg_documentdb_gw_host/Makefile.
 #
 # NOTE: Inherited env vars (CFLAGS, CXXFLAGS, LDFLAGS, etc.) from the parent
 # postgres build are unset via `env -u` before every cargo invocation. They
@@ -32,6 +32,13 @@ YB_UNAME_S := $(shell uname -s)
 # YB: macOS SDK (only defined on Darwin)
 ifeq ($(YB_UNAME_S),Darwin)
 	YB_SDKROOT := $(shell xcrun --show-sdk-path)
+	# YB: Postgres is configured with --enable-nls, so c.h includes <libintl.h>.
+	# On macOS that header is not in the SDK; it comes from thirdparty's gettext
+	# (installed/common/include), which the Postgres build passes via
+	# --with-includes but pgrx's bindgen and cshim compile never see.
+	# -idirafter searches it last, so it only supplies headers missing elsewhere.
+	YB_PGRX_MACOS_INCLUDE := -idirafter $(YB_THIRDPARTY_DIR)/installed/common/include
+	YB_PGRX_CFLAGS += $(YB_PGRX_MACOS_INCLUDE)
 endif
 
 ifneq (,$(filter clang%,$(YB_COMPILER_TYPE)))
@@ -78,6 +85,7 @@ YB_PGRX_CARGO_ENV = env -u CFLAGS -u CXXFLAGS -u LDFLAGS -u LDFLAGS_EX -u CPPFLA
 	$(if $(CXX),CXX=$(CXX),) \
 	$(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 	$(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
+	$(if $(YB_PGRX_MACOS_INCLUDE),BINDGEN_EXTRA_CLANG_ARGS="$(YB_PGRX_MACOS_INCLUDE)",) \
 	CFLAGS="$(YB_PGRX_CFLAGS)" \
 	CARGO_INCREMENTAL=1 \
 	ASAN_OPTIONS=detect_leaks=0

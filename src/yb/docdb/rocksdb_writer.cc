@@ -46,6 +46,7 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/endian_util.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
@@ -229,8 +230,15 @@ void PutApplyState(
   handler.Put(key_parts, value_parts);
 }
 
+// The hybrid time a write pair is written at. A row and its vector reverse mapping entry must both
+// use it.
+HybridTime RecordHybridTime(const yb::docdb::LWKeyValuePairPB& kv_pair, HybridTime hybrid_time) {
+  return kv_pair.has_external_hybrid_time() ? HybridTime(kv_pair.external_hybrid_time())
+                                            : hybrid_time;
+}
+
 void HandleRegularRecord(
-    const yb::docdb::LWKeyValuePairPB& kv_pair, HybridTime hybrid_time,
+    const yb::docdb::LWKeyValuePairPB& kv_pair, HybridTime record_hybrid_time,
     DocHybridTimeBuffer* doc_ht_buffer, rocksdb::DirectWriteHandler& handler,
     IntraTxnWriteId* write_id) {
 #ifndef NDEBUG
@@ -252,8 +260,6 @@ void HandleRegularRecord(
   // same key (row/column) within a transaction. We set it based on the position of the write
   // operation in its write batch.
 
-  auto record_hybrid_time =
-      kv_pair.has_external_hybrid_time() ? HybridTime(kv_pair.external_hybrid_time()) : hybrid_time;
   std::array<Slice, 2> key_parts = {{
       Slice(kv_pair.key()),
       doc_ht_buffer->EncodeWithValueType(record_hybrid_time, *write_id),
@@ -313,7 +319,8 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
       continue;
     }
 
-    HandleRegularRecord(kv_pair, hybrid_time_, &doc_ht_buffer, handler, &write_id);
+    HandleRegularRecord(
+        kv_pair, RecordHybridTime(kv_pair, hybrid_time_), &doc_ht_buffer, handler, &write_id);
   }
 
   return Status::OK();
@@ -402,17 +409,35 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
   if (put_batch_.has_delete_vector_ids()) {
     auto key_type = KeyEntryTypeAsChar::kTransactionId;
     DocHybridTimeBuffer doc_ht_buffer;
+    dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
 
+    // Encoded like the reverse index keys of the intents (AddIntent), so the apply tombstones
+    // these ids right after the rows of this batch. Then the tombstones win over the reverse
+    // mapping entries of vectors that earlier writes of the same transaction added.
+    // The leader picks the encoding, see vector_index_delete_list_after_rows.
+    auto doc_ht = doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++);
     std::array<Slice, 3> key = {{
       Slice(&key_type, sizeof(key_type)),
       transaction_id_.AsSlice(),
-      doc_ht_buffer.EncodeWithValueType(hybrid_time_, write_id_++),
+      put_batch_.delete_vector_ids_after_rows()
+          ? dockv::InvertEncodedDocHT(doc_ht, &inverted_doc_ht_buffer) : doc_ht,
     }};
-    auto value_type = ValueEntryTypeAsChar::kDeleteVectorIds;
-    std::array<Slice, 2> value = {{
-      Slice(&value_type, sizeof(value_type)),
-      Slice(put_batch_.delete_vector_ids()),
-    }};
+    // The value is a header and the vector ids. Before vector_index_delete_list_with_subtransaction
+    // the header is just ValueEntryType::kDeleteVectorIds.
+    // The header takes up to 2 + sizeof(SubTransactionId) bytes, while a ByteBuffer holds at least
+    // sizeof(void*) bytes inline.
+    constexpr size_t kHeaderSize = 8;
+    static_assert(2 + sizeof(SubTransactionId) <= kHeaderSize);
+    ByteBuffer<kHeaderSize> header;
+    if (put_batch_.delete_vector_ids_with_subtransaction()) {
+      header.PushBack(ValueEntryTypeAsChar::kVectorIndexRecord);
+      header.PushBack(std::to_underlying(dockv::VectorIndexRecordType::kDeleteList));
+      auto big_endian_id = BigEndian::FromHost32(subtransaction_id_);
+      header.Append(Slice::FromPod(&big_endian_id));
+    } else {
+      header.PushBack(ValueEntryTypeAsChar::kDeleteVectorIds);
+    }
+    std::array<Slice, 2> value = {{header.AsSlice(), Slice(put_batch_.delete_vector_ids())}};
 
     handler.Put(key, value);
   }
@@ -500,17 +525,7 @@ Status TransactionalWriter::operator()(
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
 
-  const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
-  SubTransactionId big_endian_subtxn_id;
-  Slice subtransaction_marker;
-  Slice subtransaction_id;
-  if (subtransaction_id_ > kMinSubTransactionId) {
-    subtransaction_marker = Slice(&subtransaction_value_type, 1);
-    big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
-    subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
-  } else {
-    DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
-  }
+  auto subtransaction_id = EncodeSubTransactionId(subtransaction_id_);
 
   if (is_top_level_key && intent_value.empty() &&
       intent_types.Test(dockv::IntentType::kStrongWrite)) {
@@ -522,11 +537,10 @@ Status TransactionalWriter::operator()(
     RSTATUS_DCHECK_EQ(skip_prefix_locks_, dockv::SkipPrefixLocks::kTrue, InvalidArgument, msg);
   }
 
-  std::array<Slice, 7> value = {{
+  std::array<Slice, 6> value = {{
       Slice(&transaction_value_type, 1),
       transaction_id_.AsSlice(),
-      subtransaction_marker,
-      subtransaction_id,
+      subtransaction_id.AsSlice(),
       Slice(&write_id_value_type, 1),
       Slice::FromPod(&big_endian_write_id),
       intent_value,
@@ -559,23 +573,11 @@ Status TransactionalWriter::Finish() {
 
   DocHybridTimeBuffer doc_ht_buffer;
 
-  const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
-  SubTransactionId big_endian_subtxn_id;
-  Slice subtransaction_marker;
-  Slice subtransaction_id;
-  if (subtransaction_id_ > kMinSubTransactionId) {
-    subtransaction_marker = Slice(&subtransaction_value_type, 1);
-    big_endian_subtxn_id = BigEndian::FromHost32(subtransaction_id_);
-    subtransaction_id = Slice::FromPod(&big_endian_subtxn_id);
-  } else {
-    DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
-  }
-
-  std::array<Slice, 4> value = {{
+  auto subtransaction_id = EncodeSubTransactionId(subtransaction_id_);
+  std::array<Slice, 3> value = {{
       Slice(&transaction_id_value_type, 1),
       transaction_id_.AsSlice(),
-      subtransaction_marker,
-      subtransaction_id,
+      subtransaction_id.AsSlice(),
   }};
 
   if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
@@ -598,7 +600,7 @@ Status TransactionalWriter::Finish() {
 
 Status TransactionalWriter::AddWeakIntent(
     const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
-    const std::array<Slice, 4>& value,
+    const std::array<Slice, 3>& value,
     DocHybridTimeBuffer* doc_ht_buffer) {
   char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
                           static_cast<char>(intent_and_types.second.ToUIntPtr()) };
@@ -748,7 +750,20 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
         CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
         RETURN_NOT_OK(OneWayBitmap::Skip(&reverse_index_value));
       } else if (reverse_index_value.TryConsumeByte(ValueEntryTypeAsChar::kDeleteVectorIds)) {
-        RETURN_NOT_OK(context_.DeleteVectorIds(key_slice, reverse_index_value, handler));
+        RETURN_NOT_OK(context_.DeleteVectorIds(
+            key_slice, kMinSubTransactionId, reverse_index_value, handler));
+        continue;
+      } else if (reverse_index_value.TryConsumeByte(ValueEntryTypeAsChar::kVectorIndexRecord)) {
+        if (!reverse_index_value.TryConsumeByte(
+                std::to_underlying(dockv::VectorIndexRecordType::kDeleteList))) {
+          return STATUS_FORMAT(
+              Corruption, "Unknown vector index record: $0",
+              reverse_index_value.ToDebugHexString());
+        }
+        auto subtransaction_id = VERIFY_RESULT((
+            CheckedRead<SubTransactionId, BigEndian>(reverse_index_value)));
+        RETURN_NOT_OK(context_.DeleteVectorIds(
+            key_slice, subtransaction_id, reverse_index_value, handler));
         continue;
       }
     }
@@ -818,8 +833,8 @@ ApplyIntentsContext::ApplyIntentsContext(
 
   if (ShouldMaintainVectorIndexes(table_type)) {
     vector_indexes_updater_.emplace(
-        std::move(vector_indexes), schema_packing_provider, frontiers_,
-        apply_to_storages, commit_ht, write_id_, chunk_holds_);
+        std::move(vector_indexes), schema_packing_provider, frontiers_, apply_to_storages,
+        chunk_holds_);
   }
 }
 
@@ -911,17 +926,7 @@ Result<bool> ApplyIntentsContext::Entry(
 
     write_id_ = decoded_value.write_id;
 
-    if (dockv::IsTopLevelIntentKey(intent.doc_path) && decoded_value.body.empty()) {
-      return false;
-    }
-
-    // Intents for row locks should be ignored (i.e. should not be written as regular records).
-    if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
-      return false;
-    }
-
-    // Intents from aborted subtransactions should not be written as regular records.
-    if (aborted_.Test(decoded_value.subtransaction_id)) {
+    if (IsNonRecordStrongWriteIntent(intent.doc_path, decoded_value, aborted_)) {
       return false;
     }
 
@@ -954,9 +959,11 @@ Result<bool> ApplyIntentsContext::Entry(
     // See NonTransactionalBatchWriter::Apply.
     const auto decode_row =
         ApplyToRegularDB() ||
-        (vector_indexes_updater_ && vector_indexes_updater_->AppliesToRow(intent.doc_path));
+        (vector_indexes_updater_ &&
+         vector_indexes_updater_->AppliesToRow(intent.doc_path, commit_ht_));
     if (vector_indexes_updater_ && decode_row) {
-      RETURN_NOT_OK(vector_indexes_updater_->Feed(handler, intent.doc_path, decoded_value.body));
+      RETURN_NOT_OK(vector_indexes_updater_->Feed(
+          handler, intent.doc_path, decoded_value.body, DocHybridTime(commit_ht_, write_id_)));
     }
 
     ++write_id_;
@@ -1004,7 +1011,12 @@ Status ApplyIntentsContext::Complete(
 }
 
 Status ApplyIntentsContext::DeleteVectorIds(
-    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+    Slice key, SubTransactionId subtransaction_id, Slice ids,
+    rocksdb::DirectWriteHandler& handler) {
+  // The rows of a rolled back subtransaction keep their vectors.
+  if (aborted_.Test(subtransaction_id)) {
+    return Status::OK();
+  }
   if (ApplyToRegularDB()) {
     RETURN_NOT_OK(TombstoneVectorReverseMappingIds(
         handler, ids, DocHybridTime(commit_ht_, write_id_)));
@@ -1117,7 +1129,8 @@ Status RemoveIntentsContext::Complete(
 }
 
 Status RemoveIntentsContext::DeleteVectorIds(
-    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+    Slice key, SubTransactionId subtransaction_id, Slice ids,
+    rocksdb::DirectWriteHandler& handler) {
   handler.SingleDelete(key);
   YB_TRANSACTION_DUMP(RemoveIntent, transaction_id(), reason_, key);
   RegisterRecord();
@@ -1251,7 +1264,7 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
   if (ShouldMaintainVectorIndexes(table_type_)) {
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        apply_data.commit_ht, apply_data.write_id, chunk_holds_, /* xcluster_target= */ true);
+        chunk_holds_, /* xcluster_target= */ true);
   }
   for (;;) {
     auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
@@ -1300,9 +1313,12 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     // See NonTransactionalBatchWriter::Apply.
     const auto decode_row =
         apply_to_storages_.TestRegularDB() ||
-        (vector_indexes_updater && vector_indexes_updater->AppliesToRow(output_key));
+        (vector_indexes_updater &&
+         vector_indexes_updater->AppliesToRow(output_key, apply_data.commit_ht));
     if (vector_indexes_updater && decode_row) {
-      RETURN_NOT_OK(vector_indexes_updater->Feed(regular_write_handler, output_key, output_value));
+      RETURN_NOT_OK(vector_indexes_updater->Feed(
+          regular_write_handler, output_key, output_value,
+          DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
     }
     ++apply_data.write_id;
 
@@ -1449,30 +1465,32 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
   std::optional<VectorIndexesUpdater> vector_indexes_updater;
   IntraTxnWriteId write_id = 0;
   if (ShouldMaintainVectorIndexes(table_type_)) {
-    // On an xCluster target write_hybrid_time_ is the source's hybrid time, which can be below
+    // On an xCluster target rows are written at the source's hybrid time, which can be below
     // the hybrid time of a vector index whose backfill ran before this write arrived (#34697).
     vector_indexes_updater.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        write_hybrid_time_, write_id, chunk_holds_, xcluster_target_applied_.get());
+        chunk_holds_, xcluster_target_applied_.get());
   }
 
   DocHybridTimeBuffer doc_ht_buffer;
   for (const auto& write_pair : put_batch_.write_pairs()) {
     if (VERIFY_RESULT(AddEntryToWriteBatch(
             write_pair, apply_external_transactions, handler, write_id))) {
+      const HybridTime pair_ht = RecordHybridTime(write_pair, write_hybrid_time_);
       // A replay into vector indexes only does not decode the rows no index takes, e.g. of other
       // tables: their schema packings could be GCed already (GH#35466).
       const auto decode_row =
           apply_to_storages_.TestRegularDB() ||
-          (vector_indexes_updater && vector_indexes_updater->AppliesToRow(write_pair.key()));
+          (vector_indexes_updater &&
+           vector_indexes_updater->AppliesToRow(write_pair.key(), pair_ht));
       if (vector_indexes_updater && decode_row) {
         RETURN_NOT_OK(vector_indexes_updater->Feed(
-            handler, write_pair.key(), write_pair.value()));
+            handler, write_pair.key(), write_pair.value(), DocHybridTime(pair_ht, write_id)));
       }
       // GH#32797: bootstrap replay clears the regular bit when the op is already flushed to the
       // regular DB but not to a vector index. Keep the write id sequence unchanged either way.
       if (apply_to_storages_.TestRegularDB()) {
-        HandleRegularRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
+        HandleRegularRecord(write_pair, pair_ht, &doc_ht_buffer, handler, &write_id);
       } else {
         ++write_id;
       }
@@ -1480,11 +1498,7 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
       // Non-transactional regular-DB write_pairs (direct PutBatch without a transaction). Local
       // colocated TRUNCATE is always transactional, so this hook is not the YSQL truncate path;
       // it covers any non-txn table-tombstone write_pair shape (and stays consistent with the
-      // external-intents notify above once those are applied via write_pairs). Prefer the pair's
-      // external_hybrid_time when present (xCluster producer HT), else the batch write HT.
-      const HybridTime pair_ht = write_pair.has_external_hybrid_time()
-          ? HybridTime(write_pair.external_hybrid_time())
-          : write_hybrid_time_;
+      // external-intents notify above once those are applied via write_pairs).
       MaybeNotifyTableTombstoneWritten(
           schema_packing_provider(), write_pair.key(), write_pair.value(), pair_ht);
 
@@ -1569,7 +1583,8 @@ Result<bool> DumpIntentsContext::Entry(const Slice& reverse_index_key,
 }
 
 Status DumpIntentsContext::DeleteVectorIds(
-    Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) {
+    Slice key, SubTransactionId subtransaction_id, Slice ids,
+    rocksdb::DirectWriteHandler& handler) {
   return Status::OK();
 }
 
@@ -1583,27 +1598,28 @@ Status DumpIntentsContext::Complete(rocksdb::DirectWriteHandler& handler,
 
 VectorIndexesUpdater::VectorIndexesUpdater(
     DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
-    ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, HybridTime commit_ht,
-    std::reference_wrapper<IntraTxnWriteId> write_id,
+    ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages,
     vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target)
     : indexes_(std::move(indexes)), schema_packing_provider_(schema_packing_provider),
       frontiers_(frontiers),
-      apply_to_storages_(apply_to_storages), commit_ht_(commit_ht), write_id_(write_id),
-      chunk_holds_(chunk_holds), xcluster_target_(xcluster_target) {
+      apply_to_storages_(apply_to_storages), chunk_holds_(chunk_holds),
+      xcluster_target_(xcluster_target) {
   if (indexes_) {
     batches_.resize(indexes_->size());
   }
 }
 
 bool VectorIndexesUpdater::IntentApplyShouldUpdateVectorIndex(
-    const DocVectorIndex& vector_index) const {
+    const DocVectorIndex& vector_index, HybridTime write_ht) const {
   // Also applies to xCluster targets: a restore can only bring a deactivated index back as of a
   // time before it was deactivated. An active index has an invalid cutoff, which compares above
-  // any commit time.
-  if (commit_ht_ > vector_index.deactivated_hybrid_time()) {
+  // any write time. write_ht is the time the row is stored at, which is what a restore compares
+  // against, so it is the right input on an xCluster target too, where write_ht is a source hybrid
+  // time and the cutoff a local one.
+  if (write_ht > vector_index.deactivated_hybrid_time()) {
     return false;
   }
-  return commit_ht_ > vector_index.hybrid_time() || xcluster_target_;
+  return write_ht > vector_index.hybrid_time() || xcluster_target_;
 }
 
 Result<bool> VectorIndexesUpdater::TableWritesVectorReverseMapping(Slice table_key_prefix) {
@@ -1635,7 +1651,9 @@ Result<bool> VectorIndexesUpdater::TableWritesVectorReverseMapping(Slice table_k
 }
 
 Status VectorIndexesUpdater::Feed(
-    rocksdb::DirectWriteHandler& handler, Slice key, Slice value) {
+    rocksdb::DirectWriteHandler& handler, Slice key, Slice value, DocHybridTime write_time) {
+  DCHECK(write_time.hybrid_time().is_valid());
+  write_time_ = write_time;
   auto row_value = value;
   RETURN_NOT_OK(dockv::ValueControlFields::Decode(&row_value));
 
@@ -1675,7 +1693,7 @@ Status VectorIndexesUpdater::Feed(
         column_id = VERIFY_RESULT(ColumnId::Decode(&column_id_slice));
         auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(sizes.prefix_size);
         DocVectorIndex::ApplyReverseEntry(
-            handler, ybctid, value, DocHybridTime(commit_ht_, write_id_),
+            handler, ybctid, value, write_time_,
             column_id, key.Prefix(sizes.prefix_size));
         need_reverse_entry = false; // Apply only once, not during vector index processing.
       }
@@ -1690,7 +1708,7 @@ Status VectorIndexesUpdater::Feed(
         for (size_t i = 0; i != indexes_->size(); ++i) {
           const auto& vector_index = *(*indexes_)[i];
           if (vector_index.IsIndexedTableKey(key) && vector_index.column_id() == column_id &&
-              IntentApplyShouldUpdateVectorIndex(vector_index)) {
+              IntentApplyShouldUpdateVectorIndex(vector_index, write_time_.hybrid_time())) {
             // The vector index knows its table key prefix and column id, so the payload stores
             // the ybctid alone.
             auto ybctid = key.Prefix(sizes.doc_key_size).WithoutPrefix(
@@ -1706,7 +1724,7 @@ Status VectorIndexesUpdater::Feed(
             if (need_reverse_entry &&
                 VERIFY_RESULT(TableWritesVectorReverseMapping(key.Prefix(sizes.prefix_size)))) {
               DocVectorIndex::ApplyReverseEntry(
-                  handler, ybctid, value, DocHybridTime(commit_ht_, write_id_));
+                  handler, ybctid, value, write_time_);
               need_reverse_entry = false; // Apply only once, not for every vector index.
             }
           }
@@ -1805,7 +1823,7 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
     if (!is_null && apply_to_storages_.TestRegularDB() &&
         VERIFY_RESULT(TableWritesVectorReverseMapping(table_key_prefix))) {
       DocVectorIndex::ApplyReverseEntry(
-          handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_),
+          handler, ybctid, *column_value, write_time_,
           column_id, table_key_prefix);
     }
 
@@ -1817,7 +1835,7 @@ Status VectorIndexesUpdater::FeedPackedRowTableOwnedReverseMapping(
       const auto& vector_index = *(*indexes_)[index_idx];
       if (vector_index.column_id() == column_id &&
           table_key_prefix == vector_index.indexed_table_key_prefix() &&
-          IntentApplyShouldUpdateVectorIndex(vector_index) &&
+          IntentApplyShouldUpdateVectorIndex(vector_index, write_time_.hybrid_time()) &&
           ApplyToVectorIndex(index_idx)) {
         auto& batch = batches_[index_idx];
         batch.should_apply = true;
@@ -1850,7 +1868,7 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
   for (size_t i = 0; i != indexes_->size(); ++i) {
     const auto& vector_index = *(*indexes_)[i];
     if (table_key_prefix != vector_index.indexed_table_key_prefix() ||
-        !IntentApplyShouldUpdateVectorIndex(vector_index)) {
+        !IntentApplyShouldUpdateVectorIndex(vector_index, write_time_.hybrid_time())) {
       continue;
     }
     if (vector_index.column_id() != prev_index_column_id) {
@@ -1879,7 +1897,7 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
           std::max(columns_added_to_vector_index.size(), column_index + 1));
       if (!columns_added_to_vector_index.test_set(column_index)) {
         DocVectorIndex::ApplyReverseEntry(
-            handler, ybctid, *column_value, DocHybridTime(commit_ht_, write_id_));
+            handler, ybctid, *column_value, write_time_);
       }
     }
   }
@@ -1887,14 +1905,14 @@ Status VectorIndexesUpdater::FeedPackedRowLegacyVectorIndexes(
   return Status::OK();
 }
 
-bool VectorIndexesUpdater::AppliesToRow(Slice key) const {
+bool VectorIndexesUpdater::AppliesToRow(Slice key, HybridTime write_ht) const {
   if (!indexes_) {
     return false;
   }
   for (size_t i = 0; i != indexes_->size(); ++i) {
     const auto& vector_index = *(*indexes_)[i];
     if (ApplyToVectorIndex(i) && vector_index.IsIndexedTableKey(key) &&
-        IntentApplyShouldUpdateVectorIndex(vector_index)) {
+        IntentApplyShouldUpdateVectorIndex(vector_index, write_ht)) {
       return true;
     }
   }

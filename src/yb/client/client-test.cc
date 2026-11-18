@@ -42,6 +42,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/client_master_rpc.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/client_error.h"
@@ -3548,6 +3549,48 @@ TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWith
   // master addresses currently doesn't resolve. Thus, we should be able to find the new master
   // leader and complete the request.
   ASSERT_RESULT(client_->ListTables());
+}
+
+// Supplies the response directly. Reaching ClientMasterRpcBase::Finished with a response error
+// while the client is shutting down would otherwise require the master reply to land inside the
+// window after YBClient::Shutdown sets closing_.
+class ResponseErrorRpc : public internal::ClientMasterRpc<
+    master::GetNamespaceInfoRequestPB, master::GetNamespaceInfoResponsePB> {
+ public:
+  ResponseErrorRpc(YBClient* client, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline) {
+    auto& error = *resp_.mutable_error();
+    error.set_code(master::MasterErrorPB::OBJECT_NOT_FOUND);
+    StatusToPB(STATUS(NotFound, "Keyspace not found"), error.mutable_status());
+  }
+
+  using internal::ClientMasterRpcBase::Finished;
+
+  std::string ToString() const override { return "ResponseErrorRpc"; }
+
+  const std::optional<Status>& processed_status() const { return processed_status_; }
+
+ private:
+  void CallRemoteMethod() override {}
+
+  void ProcessResponse(const Status& status) override { processed_status_ = status; }
+
+  std::optional<Status> processed_status_;
+};
+
+TEST_F(ClientTest, MasterRpcReportsResponseErrorWhileShuttingDown) {
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
+      .Build());
+  auto rpc = std::make_shared<ResponseErrorRpc>(client.get(), CoarseMonoClock::Now() + 10s);
+
+  client->Shutdown();
+  rpc->Finished(Status::OK());
+
+  ASSERT_TRUE(rpc->processed_status().has_value());
+  ASSERT_TRUE(rpc->processed_status()->IsNotFound()) << *rpc->processed_status();
+  ASSERT_EQ(master::MasterError(*rpc->processed_status()),
+            master::MasterErrorPB::OBJECT_NOT_FOUND);
 }
 
 }  // namespace client

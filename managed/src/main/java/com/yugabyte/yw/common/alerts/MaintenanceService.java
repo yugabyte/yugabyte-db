@@ -222,8 +222,24 @@ public class MaintenanceService {
    * @return true if there is any active maintenance window for the given universe, else false
    */
   public boolean isHealthCheckNotificationSuppressedForUniverse(Universe universe) {
-    MaintenanceWindowFilter filter = MaintenanceWindowFilter.builder().state(State.ACTIVE).build();
-    List<MaintenanceWindow> windows = list(filter);
+    return isHealthCheckNotificationSuppressedForUniverse(universe, listActiveWindows());
+  }
+
+  /** Returns the active maintenance windows. */
+  public List<MaintenanceWindow> listActiveWindows() {
+    return list(MaintenanceWindowFilter.builder().state(State.ACTIVE).build());
+  }
+
+  /**
+   * Checks if any of the given maintenance windows suppresses health check notifications for the
+   * given universe.
+   *
+   * @param universe the universe
+   * @param windows active maintenance windows, from {@link #listActiveWindows()}
+   * @return true if one of the windows suppresses them, else false
+   */
+  public static boolean isHealthCheckNotificationSuppressedForUniverse(
+      Universe universe, List<MaintenanceWindow> windows) {
     for (MaintenanceWindow window : windows) {
       if ((window.getSuppressHealthCheckNotificationsConfig() != null)
           && (window.getSuppressHealthCheckNotificationsConfig().isSuppressAllUniverses()

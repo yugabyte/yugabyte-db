@@ -1,5 +1,867 @@
-PostgreSQL Anonymizer 1.3: Important Security Update
+PostgreSQL Anonymizer 3.1 : Introducing Local Differential Privacy
 ================================================================================
+
+Eymoutiers, France, May 27th, 2026
+
+Dalibo is pleased to announce `PostgreSQL Anonymizer 3.1` introducing innovative
+data masking techniques to protect your data !
+
+Enhanced Privacy Protection for Your Data
+--------------------------------------------------------------------------------
+
+`PostgreSQL Anonymizer` is an extension that hides or replaces personally
+identifiable information (PII) or commercially sensitive data from a PostgreSQL
+database.
+
+The extension offers 6 different masking strategies:
+
+* [Dynamic Masking] - Real-time data protection
+* [Static Masking] - Permanent data transformation
+* [Replica Masking] - Anonymized logical replication
+* [Backup Masking] - Privacy-protected database exports
+* [Masking Views] - Controlled data visibility
+* [Masking Data Wrappers] - Extended protection across systems
+
+Each strategy is complemented by an enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+The extension can be installed with Debian and RPM packages, an Ansible role, a Docker
+image, etc. You can use it on most major DBaaS providers including : Alibaba Cloud,
+Crunchy Bridge, Google Cloud SQL, IBM Cloud, Microsoft Azure Database, Neon, Yandex
+It is also available on some Postgres forks such as EDB Advanced Postgres, Greenplum
+and Yugabyte.
+
+See the [INSTALL] section of the documentation for more details!
+
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Backup Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Replica Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/replica_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+[INSTALL]: https://postgresql-anonymizer.readthedocs.io/en/latest/INSTALL/
+
+
+Local Differential Privacy (LDP)
+--------------------------------------------------------------------------------
+
+**Local Differential Privacy** is a stronger approach to adding noise. Unlike
+the regular noise functions, LDP provides a formal mathematical guarantee:
+given the output, an observer cannot determine the original value with high
+confidence, no matter what auxiliary information they have. The strength of
+this guarantee is controlled by a parameter called **epsilon** -- a smaller
+epsilon means stronger privacy but less accuracy.
+
+This is particularly useful for **survey data** and **categorical values**
+(e.g. ratings, age brackets, answer choices) where you want to collect
+aggregate statistics while protecting individual responses.
+
+Currently LDP is achieved using the Generalized Randomized Response Mechanism
+(GRRM). Additional mechanisms may be introduced in the near future.
+
+Important Security Update
+--------------------------------------------------------------------------------
+
+Version 3.1 includes fixes for a critical vulnerability allowing users to
+gain superuser privileges under certains circumstances. The risk is very high
+on PostgreSQL 14 and on instances upgrades from PostgreSQL 14 and earlier.
+
+**All users should upgrade the extension to version 3.1 as soon as possible.**
+
+If a quick upgrade is not possible, the workaround below can mitigate the risk:
+
+    CREATE OR REPLACE FUNCTION anon.k_anonymity(relid regclass)
+    RETURNS INTEGER AS $$ SELECT NULL::INTEGER $$ LANGUAGE SQL;
+
+For more details see [issue 640] (CVE-2026-9617).
+
+[issue 640]: https://gitlab.com/dalibo/postgresql_anonymizer/-/issues/640
+
+
+Acknowledgments
+--------------------------------------------------------------------------------
+
+This release includes code, bugfixes, documentation, code reviews and ideas
+from Adem Bencheikh Lehocine, Benoit Lobréau, Buut, and other [contributors].
+
+The Local Differential Privacy features are part of a larger research project
+named [DIFPRIPOS] aiming at integrating differential privacy mechanisms
+into PostgreSQL. This project is financed by ANR, the French National Research
+Agency. Many thanks to Jean-François Couchot and Cedric Eichler for coordination
+and oversight.
+
+[DIFPRIPOS]: https://anr.fr/Project-ANR-23-CE23-0032
+
+We would also like to thanks the people at [Efluid] who helped us with their
+ideas, comments and testing.
+
+[Efluid]: https://www.efluid.com/
+
+And also special thanks to the [PGRX] team for their amazing work!
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+
+Join our community to improve data privacy!
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a list of [Junior Jobs].
+
+[Junior Jobs]: https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs
+
+
+--------------------------------------------------------------------------------
+
+
+PostgreSQL Anonymizer 3.0 : Parallel Static Masking + JSON import / export
+--------------------------------------------------------------------------
+
+Eymoutiers, France, February 11th, 2026
+
+Dalibo publishes `PostgreSQL Anonymizer 3.0`, a new major version of
+our privacy by design extension.
+
+Enhanced Privacy Protection for Your Data
+--------------------------------------------------------------------------------
+
+`PostgreSQL Anonymizer` is an extension that hides or replaces personally
+identifiable information (PII) or commercially sensitive data from a PostgreSQL
+database.
+
+The extension offers 6 different masking strategies:
+
+* [Dynamic Masking] - Real-time data protection
+* [Static Masking] - Permanent data transformation
+* [Replica Masking] - Anonymized logical replication
+* [Backup Masking] - Privacy-protected database exports
+* [Masking Views] - Controlled data visibility
+* [Masking Data Wrappers] - Extended protection across systems
+
+Each strategy is complemented by an enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+The extension can be installed with Debian and RPM packages, an Ansible role, a Docker
+image, etc. You can use it on most major DBaaS providers including : Alibaba Cloud,
+Crunchy Bridge, Google Cloud SQL, IBM Cloud, Microsoft Azure Database, Neon, Yandex
+It is also available on some Postgres forks such as EDB Advanced Postgres, Greenplum
+and Yugabyte.
+
+See the [INSTALL] section of the documentation for more details!
+
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Backup Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Replica Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/replica_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+[INSTALL]: https://postgresql-anonymizer.readthedocs.io/en/latest/INSTALL/
+
+
+Parallel Static Masking
+--------------------------------------------------------------------------------
+
+For a large database, static masking can be a time-consuming operation. To improve
+performance, the extension supports parallel static masking using PostgreSQL
+background workers.
+
+Instead of using `anon.anonymize_database()`, you can use the parallel version:
+
+```sql
+SELECT anon.anonymize_database_parallel(4);
+```
+
+The parameter specifies the number of parallel workers to use. The function will:
+
+1. Analyze the foreign key relationships between tables
+2. Group tables to avoid constraint violations
+3. Distribute the work across multiple background workers
+4. Process tables in parallel where possible
+
+This feature was added by Pierre-Marie Petit.
+
+
+JSON Import / Export
+--------------------------------------------------------------------------------
+
+When a masking policy contains a lot of rules, it can be difficult to maintain
+them as a long list of Security Labels. To simplify thinks and help automating
+the management of masking rules, rules can now be imported and exported in
+JSON format via the functions :
+
+* `anon.export_current_database_rules(policy text DEFAULT 'anon')`
+* `anon.export_roles_rules(policy text DEFAULT 'anon')`
+* `anon.import_database_rules(database_rules jsonb, policy text DEFAULT 'anon')`
+* `anon.import_roles_rules(role_rules jsonb, policy text DEFAULT 'anon'`
+
+Since roles are instance wide objects they must be managed separately.
+
+This feature was contributed by Benoit Lobréau.
+
+Important Security Updates
+--------------------------------------------------------------------------------
+
+Version 3.0 includes fixes for 2 critical vulnerabilities allowing users to
+gain superuser privileges under certains circumstances. The risk is very high
+on PostgreSQL 14 and on instances upgrades from PostgreSQL 14 and earlier.
+
+**All users should upgrade the extension to version 3.0 as soon as possible.**
+
+If a quick upgrade is not possible, the workaround below can mitigate the risk:
+
+    REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+    DROP FUNCTION anon.get_tablesample_ratio(OID);
+
+For more details see [issue 616] (CVE-2026-2360) and [issue 617] (CVE-2026-2361).
+
+[issue 616]: https://gitlab.com/dalibo/postgresql_anonymizer/-/issues/616
+[issue 617]: https://gitlab.com/dalibo/postgresql_anonymizer/-/issues/617
+
+
+
+Deprecations and Removed Features
+--------------------------------------------------------------------------------
+
+This major comes with a series of breaking changes, in particular:
+
+* PostgreSQL 13 is not supported anymore
+* Legacy Static Masking was deprecated since version 2.0 and it is now fully removed
+* The `anon.pg_masking_rules` view is replaced by `anon.{all|sys|user}_rules`
+* Support for RHEL 8 is now deprecated and we plan to fully remove it in
+  version 4.0 in 2027
+
+For upgrade instructions, please refer to the [UPGRADE] section in the
+documentation.
+
+
+Acknowledgments
+--------------------------------------------------------------------------------
+
+This release also includes code, bugfixes, documentation, code reviews and ideas
+from Pierre-Marie Petit, Benoit Lobréau, Robin Portigliatti, Ludovic Gilbon
+and other [contributors].
+
+We would like to thanks the people at [Efluid] who helped us with their ideas,
+comments and testing.
+
+[Efluid]: https://www.efluid.com/
+
+And also special thanks to the [PGRX] team for their amazing work!
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+
+Join our community to improve data privacy!
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a list of [Junior Jobs].
+
+[Junior Jobs]: https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs
+
+
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer 2.5 : Maintenance Release
+-----------------------------------------------
+
+Eymoutiers, France, November 18th, 2025
+
+We're publishing `PostgreSQL Anonymizer 2.5`, a maintenance version fixing
+several bugs.
+
+Enhanced Privacy Protection for Your Data
+--------------------------------------------------------------------------------
+
+`PostgreSQL Anonymizer` is an extension that hides or replaces personally
+identifiable information (PII) or commercially sensitive data from a PostgreSQL
+database.
+
+The extension offers five different masking strategies:
+
+* [Dynamic Masking] - Real-time data protection
+* [Static Masking] - Permanent data transformation
+* [Replica Masking] - Anonymized logical replication
+* [Backup Masking] - Privacy-protected database exports
+* [Masking Views] - Controlled data visibility
+* [Masking Data Wrappers] - Extended protection across systems
+
+Each strategy is complemented by an enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+The extension can be installed with Debian and RPM packages, an Ansible role, a docker
+image, etc. It is also available on major DBaaS providers including : Alibaba Cloud,
+Crunchy Bridge, Google Cloud SQL, Microsoft Azure Database, Neon, etc.
+
+See the [INSTALL] section of the documentation for more details!
+
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Backup Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Replica Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/replica_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+[INSTALL]: https://postgresql-anonymizer.readthedocs.io/en/latest/INSTALL/
+
+
+Last stop before version 3.0
+--------------------------------------------------------------------------------
+
+This version is most probably the last one before version 3.0.
+This is your last chance to test the following beta features:
+
+* Support for PostgreSQL 18
+* Replica Masking
+* Selective Masking
+
+Version 2.5 is also the last one to support PostgreSQL 13.
+
+Acknowledgments
+--------------------------------------------------------------------------------
+
+This release also includes code, bugfixes, documentation, code reviews and ideas
+from Benoit Lobréau, Hans Hübner and other[contributors].
+
+And also special thanks to the [PGRX] team for their amazing work!
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+
+Join our community to improve data privacy!
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a list of [Junior Jobs](https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs).
+
+
+--------------------------------------------------------------------------------
+
+
+
+PostgreSQL Anonymizer 2.4 : PostgreSQL 18 (BETA)
+------------------------------------------------
+
+Eymoutiers, France, Septembre 11th, 2025
+
+We're publishing `PostgreSQL Anonymizer 2.4` today, introducing support for
+PostgreSQL 18
+
+Enhanced Privacy Protection for Your Data
+--------------------------------------------------------------------------------
+
+`PostgreSQL Anonymizer` is an extension that hides or replaces personally
+identifiable information (PII) or commercially sensitive data from a PostgreSQL
+database.
+
+The extension offers five different masking strategies:
+
+* [Dynamic Masking] - Real-time data protection
+* [Static Masking] - Permanent data transformation
+* [Replica Masking] - Anonymized logical replication
+* [Backup Masking] - Privacy-protected database exports
+* [Masking Views] - Controlled data visibility
+* [Masking Data Wrappers] - Extended protection across systems
+
+Each strategy is complemented by an enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+The extension can be installed with Debian and RPM packages, an Ansible role, a docker
+image, etc. It is also available on major DBaaS providers including : Alibaba Cloud,
+Crunchy Bridge, Google Cloud SQL, Microsoft Azure Database, Neon, etc.
+
+See the [INSTALL] section of the documentation for more details!
+
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Backup Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Replica Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/replica_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+[INSTALL]: https://postgresql-anonymizer.readthedocs.io/en/latest/INSTALL/
+
+
+Entering Beta phase toward version 3.0
+--------------------------------------------------------------------------------
+
+This new version includes beta features that will be generally available in
+version 3.0, especially
+
+* Support for PostgreSQL 18
+* Replica Masking is now stabilized
+
+Selective Masking (BETA)
+--------------------------------------------------------------------------------
+
+This release introduces a new feature for controlling which lines should be
+masked inside a table.
+
+You can now add a `MASKED WHEN` rule to filter out some lines.
+
+For instance, the rule below would exclude all users with an id below 1000
+
+    SECURITY LABEL FOR anon ON TABLE users
+    IS 'MASKED WHEN user_id >= 999'
+
+This feature is still in BETA, use with care.
+
+
+Better handling of table partitions
+--------------------------------------------------------------------------------
+
+A bug in previous versions was causing [Backup Masking] to duplicate data that
+was stored in inherited tables... This is now fixed.
+
+All users are encouraged to upgrade to version 2.4 as soon as possible.
+
+
+
+Acknowledgments
+--------------------------------------------------------------------------------
+
+This release also includes code, bugfixes, documentation, code reviews and ideas
+from Alex Akeno, pkhartsk, MonsieurTain, Marcus Olsson, mardub
+and other[contributors].
+
+And also special thanks to the [PGRX] team for their amazing work!
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+
+Join our community to improve data privacy!
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a [list of `Junior Jobs`](https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs).
+
+
+--------------------------------------------------------------------------------
+
+
+PostgreSQL Anonymizer 2.3 : Replica Masking (ALPHA)
+---------------------------------------------------
+
+Eymoutiers, France, July 2nd, 2025
+
+We're publishing `PostgreSQL Anonymizer 2.3` today, introducing the long awaited
+replica masking mechanism. Database Administrators can now synchronize a "masked
+clone" with their production database using PostgreSQL logical replication.
+
+Enhanced Privacy Protection for Your Data
+--------------------------------------------------------------------------------
+
+`PostgreSQL Anonymizer` is an extension that hides or replaces personally
+identifiable information (PII) or commercially sensitive data from a PostgreSQL
+database.
+
+The extension offers five different masking strategies:
+
+* [Dynamic Masking] - Real-time data protection
+* [Static Masking] - Permanent data transformation
+* [Replica Masking] - Anonymized logical replication
+* [Backup Masking] - Privacy-protected database exports
+* [Masking Views] - Controlled data visibility
+* [Masking Data Wrappers] - Extended protection across systems
+
+Each strategy is complemented by an enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+The extension can be installed with Debian and RPM packages, an Ansible role, a docker
+image, etc. It is also available on major DBaaS providers including : Alibaba Cloud,
+Crunchy Bridge, Google Cloud SQL, Microsoft Azure Database, Neon, etc.
+
+See the [INSTALL] section of the documentation for more details!
+
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Backup Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Replica Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/replica_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+[INSTALL]: https://postgresql-anonymizer.readthedocs.io/en/latest/INSTALL/
+
+
+Introducing Replica Masking
+--------------------------------------------------------------------------------
+
+In some situations, you may want to have an anonymized copy of your production
+database on another instance like with Backup Masking (aka "Anonymized Dumps")
+but you also would like this copy to be up-to-date with the original data like
+with Dynamic Masking…
+
+With the Replica Masking feature, you can use PostgreSQL logical replication to
+create an anonymized clone of your production database.
+
+See the [documentation](https://postgresql-anonymizer.readthedocs.io/en/latest/replica_masking/)
+for more details.
+
+/!\ WARNING! DO NOT USE IN PRODUCTION
+
+This feature is currently under heavy development. This implementation of
+Replica Masking is provided for testing purpose only. Major breaking changes
+may be introduced at any time and we may even remove this feature entirely if
+we feel it does not reach our standard of quality and stability.
+
+We welcome any feedback, testing reports, comments and contributions. But for
+the moment, we do not guarantee any form of support for this feature.
+
+Our current plan is to stabilize this feature in version 3.0, which is scheduled
+for early 2026.
+
+
+Acknowledgments
+--------------------------------------------------------------------------------
+
+This release also includes code, bugfixes, documentation, code reviews and ideas
+from Robin Portigliatti, Suhas Thalanki, Benoit Lobréau and other [contributors].
+
+And also special thanks to the [PGRX] team for their amazing work!
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+
+Join our community to improve data privacy!
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a [list of `Junior Jobs`](https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs).
+
+
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer 2.2: Masking Cursors
+------------------------------------------
+
+Eymoutiers, France, May 28, 2025
+
+We're publishing `PostgreSQL Anonymizer 2.2` today, a maintenance release fixing
+a security bug in the dynamic masking and anonymous dumps features.
+
+Enhanced Privacy Protection for Your Data
+--------------------------------------------------------------------------------
+
+`PostgreSQL Anonymizer` is an extension that hides or replaces personally
+identifiable information (PII) or commercially sensitive data from a PostgreSQL
+database.
+
+The extension offers five different masking strategies:
+
+* [Dynamic Masking] - Real-time data protection
+* [Static Masking] - Permanent data transformation
+* [Anonymous Dumps] - Privacy-protected database exports
+* [Masking Views] - Controlled data visibility
+* [Masking Data Wrappers] - Extended protection across systems
+
+Each strategy is complemented by an enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+The extension can installed with Debian and RPM packages, an Ansible role, a docker
+image, etc. It is also available on major DBaaS providers including : Alibaba Cloud,
+Crunchy Bridge, Google Cloud SQL, Microsoft Azure Database, Neon, Tembo
+
+See the [INSTALL] section of the documentation for more details !
+
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Anonymous Dumps]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+[INSTALL]: https://postgresql-anonymizer.readthedocs.io/en/latest/INSTALL/
+
+
+Masking Cursors
+--------------------------------------------------------------------------------
+
+A security vulnerability has been identified in versions 2.0 and 2.1 that enables
+masked users to bypass data protection and access unmasked data through cursors
+or using the `--insert` option of the `pg_dump` command.
+
+We strongly recommend upgrading to version 2.2 immediately. If an immediate
+upgrade is not feasible, you can mitigate this vulnerability by setting the GUC
+parameter `anon.transparent_dynamic_masking` to `OFF`.
+
+For upgrade instructions, please refer to the [UPGRADE] section in the
+documentation.
+
+
+Acknowledgments
+--------------------------------------------------------------------------------
+
+This release also includes code, bugfixes, documentation, code reviews and ideas
+from Daniel Solsona, Jukka Heiskanen, Julien Acroute, Philip Olson and other
+[contributors].
+
+And also special thanks to the [PGRX] team for their amazing work!
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+
+Join our community to improve data privacy !
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a list of `Junior Jobs` here:
+
+https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs
+
+
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer 2.1: Blurring Images
+------------------------------------------
+
+Eymoutiers, France, April 18th, 2025
+
+`PostgreSQL Anonymizer 2.1` is out and it brings new possibilities in the field
+of database privacy protection!
+
+Enhanced Privacy Protection for Your Data
+--------------------------------------------------------------------------------
+
+`PostgreSQL Anonymizer` is an extension that hides or replaces personally
+identifiable information (PII) or commercially sensitive data from a PostgreSQL
+database.
+
+The extension offers five different masking strategies:
+
+* [Dynamic Masking] - Real-time data protection
+* [Static Masking] - Permanent data transformation
+* [Anonymous Dumps] - Privacy-protected database exports
+* [Masking Views] - Controlled data visibility
+* [Masking Data Wrappers] - Extended protection across systems
+
+Each strategy is complemented by an enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+The extension can installed with Debian and RPM packages, an Ansible role, a docker
+image, etc. It is also available on major DBaaS providers including : Alibaba Cloud,
+Crunchy Bridge, Google Cloud SQL, Microsoft Azure Database, Neon, Tembo
+
+See the [INSTALL] section of the documentation for more details !
+
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Anonymous Dumps]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+[INSTALL]: https://postgresql-anonymizer.readthedocs.io/en/latest/INSTALL/
+
+
+Image Blurring, Privacy Protection Beyond Text Data
+--------------------------------------------------------------------------------
+
+Sensitive information doesn't just hide in obvious places.
+
+While columns like name and zipcode are typical targets for masking, BYTEA columns
+often contain overlooked personal data in profile photos, shipping vouchers,
+barcodes, QR codes, delivery notes, etc.
+
+Of course the most efficient way to clean this kind of personal data is to simply
+delete it with
+
+    SECURITY LABEL FOR anon ON COLUMN user.photo
+    IS 'MASKED WITH VALUE NULL';
+
+But our new Image Blurring capability preserves visual data for testing while
+protecting privacy:
+
+    SECURITY LABEL FOR anon ON COLUMN user.photo
+    IS 'MASKED WITH FUNCTION anon.image_blur(photo,5.0)';
+
+This feature works seamlessly across all our masking strategies : apply it
+on-the-fly with [Dynamic Masking] and [Anonymous Dumps], or permanently with
+[Static Masking].
+
+
+Acknowledgments
+--------------------------------------------------------------------------------
+
+The image blurring feature was developed by Pierre-Marie Petit. Kudos to him
+for this tremendous innovation!
+
+This release also includes code, bugfixes, documentation, code reviews and ideas
+from Anthony Dumontois, Matthias van de Meent, and other [contributors].
+
+And also special thanks to the [PGRX] team for their amazing work!
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+
+Join our community to improve data privacy !
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a list of `Junior Jobs` here:
+
+https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs
+
+
+
+
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer 2.0: Better, Faster, Safer
+------------------------------------------------
+
+Eymoutiers, France, January 6th, 2025
+
+We're thrilled to announce PostgreSQL Anonymizer 2.0, a major leap forward in
+database privacy protection.
+
+This comprehensive data anonymization extension now offers five powerful
+strategies: [Dynamic Masking], [Static Masking], [Anonymous Dumps], [Masking Views],
+and [Masking Data Wrappers].
+
+Each strategy is complemented by our enhanced suite of Masking Functions, including
+advanced techniques such as: Substitution, Randomization, Faking, Pseudonymization,
+Partial Scrambling, Shuffling, Noise Addition and Generalization.
+
+[Masking Functions]: https://postgresql-anonymizer.readthedocs.io/en/latest/masking_functions/
+[Anonymous Dumps]: https://postgresql-anonymizer.readthedocs.io/en/latest/anonymous_dumps/
+[Static Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/static_masking/
+[Dynamic Masking]: https://postgresql-anonymizer.readthedocs.io/en/latest/dynamic_masking/
+[Masking Views]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_views/
+[Masking Data Wrappers]: https://postgresql-anonymizer.readthedocs.io/en/stable/masking_data_wrappers/
+
+
+A Complete Rewrite in Rust
+--------------------------------------------------------------------------------
+
+Version 2.0 represents a fundamental transformation of our codebase, completely
+rewritten in Rust using the groundbreaking [PGRX] framework. This strategic shift
+delivers exceptional improvements in memory safety and security, resource
+efficiency, testing and code maintainability.
+
+This milestone release introduces powerful capabilities that significantly expand
+your data protection toolkit:
+
+* Advanced Fake Data Generator with improved realism
+* Role-based Transparent Dynamic Masking
+* Multiple Masking Policies
+* Seamless Anonymized Exports with pg_dump
+* Debian Packages
+
+To help users get started quickly, we're releasing a comprehensive tutorial that
+walks through practical anonymization scenario
+
+See https://postgresql-anonymizer.readthedocs.io/en/stable/tutorials/0-intro/
+
+For existing users, we've ensured a smooth transition from version 1.x.
+See our comprehensive [UPGRADE] guide for a straightforward migration process.
+
+[UPGRADE]: https://postgresql-anonymizer.readthedocs.io/en/stable/UPGRADE/
+[PGRX]: https://github.com/pgcentralfoundation/pgrx
+
+Thanks
+--------------------------------------------------------------------------------
+
+This release includes code, bugfixes, documentation, code reviews and ideas
+from Giampaolo Capelli, José Pedro Saraiva, Guillaume Risbourg, Austin Putman,
+Carlos Ruiz, Thibaut Madeleine, Konrad Kucharski, Leo Long, Ben Dempsey,
+Pierre-Marie Petit, Danilo Lourenço Costa Oliveira and many other [contributors].
+
+And also special thanks for the [PGRX] team for their amazing work !
+
+[contributors]: https://gitlab.com/dalibo/postgresql_anonymizer/-/blob/master/AUTHORS.md
+
+How to contribute
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is part of the [Dalibo Labs] initiative. It is mainly
+developed by [Damien Clochard].
+
+This is an open project, contributions are welcome. We need your feedback and
+ideas! Let us know what you think of this tool, how it fits your needs and
+what features are missing.
+
+If you want to help, you can find a list of `Junior Jobs` here:
+
+https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+Jobs
+
+
+PostgreSQL Anonymizer 2025 Survey
+--------------------------------------------------------------------------------
+
+We're launching a quick survey to learn more about our users.
+Please take a couple of minutes, click the link below and answer 10 questions!
+
+https://dali.bo/anon_survey_2025
+
+You will help us improve the PostgreSQL Anonymizer extension.
+
+--------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer 1.3: Important Security Update
+----------------------------------------------------
 
 Eymoutiers, France, March 4th, 2024
 
@@ -51,7 +913,7 @@ list of the required changes.
 How to Upgrade
 --------------------------------------------------------------------------------
 
-Install the new version using your prefered [install] method. For instance, on
+Install the new version using your preferred [install] method. For instance, on
 Red Hat and Rocky Linux systems, you can update it directly with `dnf update`.
 
 Then restart the PostgreSQL instance, drop the extension and recreate it.
@@ -83,7 +945,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 1.2: Support for PostgreSQL 16
-================================================================================
+----------------------------------------------------
 
 Eymoutiers, France, January 22nd, 2024
 
@@ -186,7 +1048,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 --------------------------------------------------------------------------------
 
 PostgreSQL Anonymizer 1.1: Privacy By Default For Postgres
-================================================================================
+----------------------------------------------------------
 
 Tour, France, September 28th, 2022
 
@@ -241,7 +1103,7 @@ Before version 1.0, pg_dump_anon was a bash script. This script was nice and
 simple. However under certain conditions the anonymous backups were not
 consistent.
 
-There's now a brand new version of pg_dump_anon (rewitten in Golang) that
+There's now a brand new version of pg_dump_anon (rewritten in Golang) that
 will always produce consistent exports.
 
 The previous script is now renamed to pg_dump_anon.sh and it is still
@@ -315,7 +1177,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 1.0: Privacy By Design For Postgres
-================================================================================
+---------------------------------------------------------
 
 Limoges, France, May 17th, 2022
 
@@ -354,10 +1216,10 @@ to involve developers and architects early on, during the preliminary design
 steps, by declaring the masking rules using SQL, directly inside the database
 model itself, in the same way as an integrity constraint or an index !
 
-When a developper wants to add a new column to a table, she/he usually
+When a developer wants to add a new column to a table, she/he usually
 defines a few rules and restrictions that are enforced for this column.
 With PostgreSQL Anonymizer, she/he can also declare that this column contains
-personnal information and write a masking rule to describe how the data
+personal information and write a masking rule to describe how the data
 will be transformed during the anonymization process.
 
 The extension offers a panel of masking techniques: randomization, noise,
@@ -369,7 +1231,7 @@ role in the data protection policy :
 
 > « With PostgreSQL Anonymizer we integrate, from the design of the database,
 > the principle that outside production the data must be anonymized. Thus we can
-> inforce the RGPD rules, without affecting the quality of the tests during
+> enforce the RGPD rules, without affecting the quality of the tests during
 > version upgrades for example. »
 
 Here's a basic example:
@@ -397,7 +1259,7 @@ there's no risk of [singling out] an individual inside the dataset.
 
 Data protection is a team effort ! Every person involved in the lifecycle
 of application should be concerned. With that mindset, the PostgreSQL
-Anonymizer extension provides tools for developpers and DBAs and help them
+Anonymizer extension provides tools for developers and DBAs and help them
 to implement the data masking rules early on, thus respecting the
 "Privacy by Design" principle.
 
@@ -471,7 +1333,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.12: Release Candidate 2
-================================================================================
+-----------------------------------------------
 
 Limoges, France, April 10, 2022
 
@@ -576,7 +1438,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 --------------------------------------------------------------------------------
 
 PostgreSQL Anonymizer 0.11: Release Candidate 1
-================================================================================
+-----------------------------------------------
 
 Paris, France, March 31, 2022
 
@@ -672,7 +1534,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.10: An improved engine and a brand new tutorial
-================================================================================
+-----------------------------------------------------------------------
 
 Paris, France, March 14, 2022
 
@@ -789,7 +1651,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.9: Trusted Schemas and Support for PostgreSQL 14
-================================================================================
+------------------------------------------------------------------------
 
 Paris, France, July 2nd, 2021
 
@@ -840,7 +1702,7 @@ by default. However it will be set to 'on' by default in future versions.
 Users are strongly encouraged to activate this option as soon as possible.
 
 
-Warning:  Support for Amazon RDS is now deprecated
+Warning: Support for Amazon RDS is now deprecated
 --------------------------------------------------------------------------------
 
 As announced in the previous version, we made the difficult choice to drop the
@@ -921,7 +1783,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.8: Masking foreign tables and partitions
-================================================================================
+----------------------------------------------------------------
 
 Paris, France, February 8, 2021
 
@@ -956,7 +1818,7 @@ split a table into multiple partitions, you need to declare the masking rules fo
 each partition.
 
 
-Warning:  Support for Amazon RDS will be deprecated in the next version
+Warning: Support for Amazon RDS will be deprecated in the next version
 --------------------------------------------------------------------------------
 
 This extension was never really intended to work on Database As A Service platforms
@@ -1034,7 +1896,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.7: Generic Hashing and Advanced Faking
-================================================================================
+--------------------------------------------------------------
 
 Eymoutiers, France, September 25, 2020
 
@@ -1058,7 +1920,7 @@ Generic Hashing
 
 In theory, hashing is not a valid anonymization technique, however in practice
 it is sometimes necessary to generate a determinist hash of the original data.
-For instance, when a pair of  primary key / foreign key is a "natural key",
+For instance, when a pair of primary key / foreign key is a "natural key",
 it may contain actual information (like a customer number containing a birth
 date or something similar).
 
@@ -1066,14 +1928,14 @@ Hashing such columns allows to keep referential integrity intact even for
 relatively unusual source data. Therefore, the extension provides 2 masking
 functions:
 
-* `anon.hash(value)`  will return a text hash of the value using a secret salt
+* `anon.hash(value)` will return a text hash of the value using a secret salt
   and a secret hash algorithm (see below)
 
 * `anon.digest(value,salt,algorithm)` lets you choose a salt and the hash
   algorithm you want to use
 
 By default a random secret salt is generated when the extension is initialized
-and the default hash algortihm is `sha512`. You can change that if needed.
+and the default hash algorithm is `sha512`. You can change that if needed.
 
 Keep in mind that hashing is a form of Pseudonymization. This means that the
 real data can be rebuilt using the hashed value and the masking function. If an
@@ -1178,7 +2040,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.6: Pseudonymization and Improved Anonymous Exports
-================================================================================
+--------------------------------------------------------------------------
 
 Eymoutiers, France, Mars 5, 2020
 
@@ -1236,7 +2098,7 @@ command:
     pg_dump_anon -h localhost -U bob mydb > anonymous_dump.sql
 
 It uses the same connections parameters that `pg_dump`. The PostgreSQL
-environment variables ($PGHOST, PGUSER, etc.)  and `.pgpass` are supported.
+environment variables ($PGHOST, PGUSER, etc.) and `.pgpass` are supported.
 However the `plain` format is the only supported format. The other formats
 (`custom`, `dir` and `tar`) are not supported.
 
@@ -1325,7 +2187,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.5: Generalization and k-anonymity
-================================================================================
+---------------------------------------------------------
 
 Eymoutiers, France, November 6, 2019
 
@@ -1352,7 +2214,7 @@ value. For instance, instead of saying "Bob is 28 years old", you can say
 the data remains true while avoiding the risk of re-identification.
 
 PostgreSQL can handle generalization very easily with the [RANGE] data types,
-a very poweful way to store and manipulate a set of values contained between
+a very powerful way to store and manipulate a set of values contained between
 a lower and an upper bound.
 
 [RANGE]: https://www.postgresql.org/docs/current/rangetypes.html
@@ -1405,8 +2267,8 @@ of re-identification using linkage with other data sources.
 
 You can evaluate the k-anonymity factor of a table in 2 steps :
 
-Step 1: First defined the columns that are [indirect idenfiers] ( also known
-as "quasi identifers") like this:
+Step 1: First defined the columns that are [indirect identifiers] ( also known
+as "quasi identifiers") like this:
 
     SECURITY LABEL FOR anon ON COLUMN generalized_patient.zipcode
     IS 'INDIRECT IDENTIFIER';
@@ -1489,7 +2351,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.4 : Declare Masking Rules With Security Labels
-================================================================================
+----------------------------------------------------------------------
 
 Eymoutiers, October 14, 2019
 
@@ -1556,7 +2418,7 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 
 
 PostgreSQL Anonymizer 0.3 : In-Place Masking and Anonymous Dumps
-================================================================================
+----------------------------------------------------------------
 
 Paris, August 26, 2019
 
@@ -1564,12 +2426,12 @@ Paris, August 26, 2019
 identifiable information (PII) or commercially sensitive data from a PostgreSQL
 database.
 
-Firts of all, you declare a list of [Masking Rules] directly inside the database
+First of all, you declare a list of [Masking Rules] directly inside the database
 model with SQL comments like this :
 
     COMMENT ON COLUMN users.name IS 'MASKED WITH FUNCTION md5(name)';
 
-Once the masking rules are declared, anonymization can be acheived in 3
+Once the masking rules are declared, anonymization can be achieved in 3
 different ways:
 
 * [Anonymous Dumps]: Simply export the masked data into an SQL file
@@ -1580,7 +2442,7 @@ In addition, various [Masking Functions] are available : randomization, faking,
 partial scrambling, shuffling, noise, etc... You can also user your own custom
 function !
 
-For more detail, please take a look at the documention:
+For more detail, please take a look at the documentation:
 https://postgresql-anonymizer.readthedocs.io/
 
 [Masking Rules]: https://postgresql-anonymizer.readthedocs.io/en/latest/declare_masking_rules/
@@ -1632,14 +2494,14 @@ https://gitlab.com/dalibo/postgresql_anonymizer/issues?label_name%5B%5D=Junior+J
 --------------------------------------------------------------------------------
 
 Introducing PostgreSQL Anonymizer 0.2.1 !
-================================================================================
+-----------------------------------------
 
 Paris, october 29, 2018
 
 `postgresql_anonymizer` is an extension to mask or replace personally identifiable
 information (PII) or commercially sensitive data from a PostgreSQL database.
 
-The projet is aiming toward a **declarative approach** of anonymization. This
+The project is aiming toward a **declarative approach** of anonymization. This
 means we're trying to extend PostgreSQL's Data Definition Language (DDL) in
 order to specify the anonymization strategy inside the table definition itself.
 
@@ -1697,7 +2559,7 @@ It requires an extension named `tsm_system_rows`, which is delivered by the
 postgresql-contrib package of the main linux distributions
 
 You can install it with `pgxn` or build from source it like any other
-extenstion.
+extension.
 
 **WARNING:** The project is at an early stage of development and should be used carefully.
 

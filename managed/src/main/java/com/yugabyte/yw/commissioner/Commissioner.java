@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.idempotency.IdempotencyService;
 import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -194,6 +195,11 @@ public class Commissioner {
       ITaskParams taskParams,
       UUID taskUUID,
       @Nullable Consumer<RunnableTask> preTaskSubmitWork) {
+    if (taskUUID == null) {
+      // Within a request sent with Idempotency-Key, the first task gets the UUID derived from
+      // the key, so that the client can follow it and a retry can't submit it twice.
+      taskUUID = IdempotencyService.consumeTaskUuid();
+    }
     RunnableTask taskRunnable =
         taskQueue.enqueue(
             TaskParams.builder()
@@ -612,10 +618,10 @@ public class Commissioner {
   }
 
   /**
-   * Universe-aware rollback gate. Requires {@link TaskRollbackComputer#canRollback}. If there is no
-   * {@code state_transition_details}, the rollback must not need that checkpoint. When details are
-   * present, requires placement ownership and a safe delta (including refusing dedicatedNodes
-   * flips).
+   * Universe-aware rollback gate. Requires {@link TaskRollbackComputer#canRollback}. Rollbacks that
+   * do not replay a {@code state_transition_details} checkpoint ignore it. Checkpoint-based
+   * rollbacks require the checkpoint, placement ownership and a safe delta (including refusing
+   * dedicatedNodes flips).
    */
   private boolean canRollbackTaskOnUniverse(TaskInfo taskInfo) {
     try {
@@ -631,14 +637,21 @@ public class Commissioner {
       if (!isRollbackAllowedOnUniverse(taskInfo, universeUUID)) {
         return false;
       }
+      if (!rollbackRequiresStateTransitionDetails(taskInfo.getTaskType())) {
+        // Non-checkpoint rollbacks (software upgrade, DR switchover) do not use
+        // state_transition_details and never own placementModificationTaskUuid, so a checkpoint
+        // left on the universe by an unrelated task must not block them. Listing likewise checks
+        // only updatingTaskUUID ownership for them.
+        return true;
+      }
       Universe universe = universeOpt.get();
       StateTransitionDetails details = universe.getStateTransitionDetails();
       if (details == null) {
         // Checkpoint-based rollbacks (edit universe / add node) need a captured delta; a task with
         // none - e.g. aborted at precheck, before the freeze/checkpoint - is not rollbackable, so
         // submit stays consistent with listing (which requires placement ownership the task never
-        // took). Non-checkpoint rollbacks (software upgrade) do not use state_transition_details.
-        return !rollbackRequiresStateTransitionDetails(taskInfo.getTaskType());
+        // took).
+        return false;
       }
       // Must match the failed task - not an in-progress/failed RollbackEditUniverse.
       if (!Objects.equals(

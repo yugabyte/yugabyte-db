@@ -75,11 +75,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_min_conns_per_db, 1,
     "Minimum number of physical connections, that will be present in pool. "
     "This limit is not considered while closing a broken physical connection.");
 
-DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
-    "Enable unix socket connections between Ysql Connection Manager and pg_backend. "
-    "For pg_backend to accept unix socket connection by Ysql Connection Manager add "
-    "'local all yugabyte trust' in hba.conf (set ysql_hba_conf_csv as 'local all yugabyte trust')."
-    );
+DEPRECATE_FLAG(bool, ysql_conn_mgr_use_unix_conn, "11_2026");
 
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "Specifies the maximum duration (in seconds) that a backend PostgreSQL connection "
@@ -222,6 +218,12 @@ DEFINE_NON_RUNTIME_CONN_MGR_FLAG(uint32, socket_listen_backlog, 128,
     "Maximum number of pending TCP connections queued by the kernel on "
     "Connection Manager's listening socket (the backlog argument to listen(2)). "
     "Incoming connections beyond this limit may be refused or dropped during connection bursts.");
+
+DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, pool_attach_check, true,
+    "When enabled, before attaching a pooled backend connection to a client, Ysql Connection "
+    "Manager checks whether the backend has closed its socket (for example after "
+    "pg_terminate_backend() or a backend crash). Such a connection is discarded and another "
+    "backend is used, instead of failing the client's query with a broken connection error.");
 
 DEFINE_NON_RUNTIME_CONN_MGR_FLAG(bool, full_tls_handshake, true,
     "When true, Ysql Connection Manager builds its server SSL_CTX via PostgreSQL's "

@@ -116,6 +116,9 @@ public class ConfigureDBApisKubernetes extends KubernetesUpgradeTaskBase {
                                 node.isYsqlServer = taskParams().enableYSQL;
                               }))
               .setSubTaskGroupType(getTaskSubGroupType());
+          // After the API state is saved, so one write covers the sidecar's scheme and the YSQL
+          // and YCQL targets.
+          createSwamperTargetUpdateTask(false /* removeFile */);
 
           // update password from default to new custom password.
           // Ideally, this should be done before updating the universe state in DB.

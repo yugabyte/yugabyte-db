@@ -251,15 +251,52 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     RETURN_NOT_OK(CheckHashRangeConstraints(*slot_entry_opt));
   }
   auto stream = VERIFY_RESULT(cdc_service_->GetStream(stream_id_));
+  const auto slot_name = stream->GetReplicationSlotName();
+  RSTATUS_DCHECK(
+      slot_name, IllegalState, Format("Stream $0 has no replication slot name", stream_id_));
+  SCHECK_FORMAT(
+      !stream->IsPausedForUpgrade(), IllegalState,
+      "Replication slot $0 is paused for conversion to an implicit slot. Run 'yb-admin "
+      "prepare_replication_slots_for_transactional_ddl' after finalizing the upgrade to convert "
+      "it, or 'yb-admin release_replication_slot $0' to stream it without converting it",
+      *slot_name);
+  SCHECK_FORMAT(
+      !stream->IsUnusableWithTransactionalDdl(), IllegalState,
+      "Replication slot $0 is unusable with transactional DDL replication, as it wasn't paused "
+      "for conversion to an implicit slot. Create a new replication slot",
+      *slot_name);
 
   detect_publication_changes_implicitly_ =
       stream->GetDetectPublicationChangesImplicitly().value_or(false);
+  if (!detect_publication_changes_implicitly_) {
+    if (auto stop_time = stream->GetImplicitConversionBarrierTime()) {
+      implicit_conversion_stop_time_ = *stop_time;
+      LOG_WITH_PREFIX(INFO) << "Replication slot " << *slot_name << " has a catalog barrier, so "
+                            << "no change committed after " << implicit_conversion_stop_time_
+                            << " is shipped";
+    }
+  }
   if (detect_publication_changes_implicitly_ &&
       !FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot stream using a slot which has detect_publication_changes_implicitly set to true "
         "while the flag ysql_yb_enable_implicit_dynamic_tables_logical_replication is disabled.");
+  }
+
+  if (detect_publication_changes_implicitly_ && !stream->IsNotificationSlot() &&
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) {
+    const auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(stream->GetNamespaceId()));
+    const auto stream_table_ids = stream->GetTableIds();
+    for (const auto table_oid : {kPgAttributeTableOid, kPgPublicationRelPrpubidIndexOid}) {
+      SCHECK_FORMAT(
+          std::ranges::find(stream_table_ids, GetPgsqlTableId(database_oid, table_oid)) !=
+              stream_table_ids.end(),
+          IllegalState,
+          "Replication slot $0 lacks the catalog tables used to decode transactional DDL. Stop "
+          "its consumer and run 'yb-admin prepare_replication_slots_for_transactional_ddl $0'",
+          *slot_name);
+    }
   }
 
   if (detect_publication_changes_implicitly_) {
@@ -742,6 +779,17 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
   // response.
   while (CanAddMoreRecords(resp_records_size, resp->cdc_sdk_proto_records_size()) &&
          !sorted_records.empty() && empty_tablet_queues.empty()) {
+    if (implicit_conversion_stop_time_.is_valid() &&
+        !(is_txn_in_progress && curr_active_txn_commit_record) &&
+        sorted_records.top().second.first->GetCommitTime() >
+            implicit_conversion_stop_time_.ToUint64()) {
+      // Every tablet queue has its next record in the priority queue, so every record committed up
+      // to the stop time has been shipped, and the restart time can move to the stop time.
+      virtual_wal_safe_time_ = std::max(virtual_wal_safe_time_, implicit_conversion_stop_time_);
+      VLOG_WITH_PREFIX(2) << "Holding back records committed after the stop time "
+                          << implicit_conversion_stop_time_;
+      break;
+    }
     auto tablet_record_info_pair = VERIFY_RESULT(
         GetNextRecordToBeShipped(&sorted_records, &empty_tablet_queues, hostport, deadline));
     const auto tablet_id = tablet_record_info_pair.first;

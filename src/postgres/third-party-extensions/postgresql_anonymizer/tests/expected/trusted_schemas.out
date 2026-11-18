@@ -27,20 +27,22 @@ SET anon.restrict_to_trusted_schemas = on;
 SAVEPOINT before_test_2;
 SECURITY LABEL FOR anon ON COLUMN people.name
 IS 'MASKED WITH FUNCTION lower(people.name) ';
-ERROR:  'MASKED WITH FUNCTION lower(people.name) ' is not a valid masking function
+ERROR:  Anon: `MASKED WITH FUNCTION lower(people.name) ` is not a valid label for a column
+DETAIL:  lower(people.name)  is not qualified
 ROLLBACK TO before_test_2;
 -- TEST 3 generates an error
 SAVEPOINT before_test_3;
 SECURITY LABEL FOR anon ON COLUMN people.name
 IS 'MASKED WITH FUNCTION public.lower(people.name) ';
-ERROR:  'MASKED WITH FUNCTION public.lower(people.name) ' is not a valid masking function
+ERROR:  Anon: `MASKED WITH FUNCTION public.lower(people.name) ` is not a valid label for a column
+DETAIL:  public.lower(people.name)  does not belong in a TRUSTED schema
 ROLLBACK TO before_test_3;
 -- TEST 4
 SECURITY LABEL FOR anon ON COLUMN people.name
-IS 'MASKED WITH FUNCTION pg_catalog.lower(people.name) ';
+IS 'MASKED WITH FUNCTION anon.lower(people.name) ';
+-- TEST 5
 SECURITY LABEL FOR anon ON SCHEMA public
 IS 'TRUSTED';
--- TEST 5
 SECURITY LABEL FOR anon ON COLUMN people.name
 IS 'MASKED WITH FUNCTION public.lower(people.name) ';
 -- TEST 6

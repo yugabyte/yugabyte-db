@@ -415,7 +415,7 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
     // Gated on the provider, not on whether a pod name comes back: NodeDetails.getK8sPodName
     // falls back to slicing the private IP, so a VM node yields a plausible-looking selector
     // that matches nothing.
-    if (!SupportBundleV2K8sSupport.isK8s(universe)) {
+    if (!SupportBundleK8sSupport.isK8s(universe)) {
       return List.of();
     }
     Set<String> namespaces = new LinkedHashSet<>();
@@ -543,9 +543,16 @@ public class PrometheusMetricsComponent implements SupportBundleComponent {
 
       log.debug("exportMetric: querying metric '{}' from {} to {}", query, startDate, endDate);
 
+      // The previous call for this directory (another node or metric) removes it when it's empty.
+      Files.createDirectories(Paths.get(exportDestDir));
+
       // batchwise collection of prom-dump
       Date batchStartTS = startDate;
       Date batchEndTS = Date.from(batchStartTS.toInstant().plus(effectiveBatchDuration));
+      // A window shorter than one batch is queried in one batch.
+      if (batchEndTS.after(endDate)) {
+        batchEndTS = endDate;
+      }
       int batchNumber = 1;
       int freq = 0;
       while (!batchEndTS.after(endDate)) {

@@ -1,7 +1,8 @@
 ---
-title: Connect to clusters in YugabyteDB Aeon
+title: Connect to distributed clusters in YugabyteDB Aeon
+headerTitle: Connect to distributed clusters
 linkTitle: Connect to clusters
-description: Connect to clusters in YugabyteDB Aeon.
+description: Connect to distributed clusters in YugabyteDB Aeon.
 headcontent: Connect using Cloud Shell, a client shell, and from applications
 aliases:
   - /stable/deploy/yugabyte-cloud/connect-to-clusters/
@@ -9,13 +10,13 @@ aliases:
   - /stable/yugabyte-cloud/cloud-basics/connect-to-clusters/
 menu:
   stable_yugabyte-cloud:
-    parent: yugabytedb-managed
+    parent: distributed-postgres
     identifier: cloud-connect
     weight: 40
 type: indexpage
 ---
 
-Connect to clusters in YugabyteDB Aeon in the following ways:
+Connect to your YugabyteDB Aeon distributed clusters in the following ways:
 
 | From | How |
 | :--- | :--- |

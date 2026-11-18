@@ -268,6 +268,9 @@ struct ReplayState {
   // State specific to RocksDB-backed tables (not transaction status table)
   DocDbPersistentState persistent_state;
 
+  // Op id of the quiescent marker, which persistent_state was raised to. Empty without a marker.
+  OpId quiescent_marker_op_id;
+
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
 
@@ -403,6 +406,7 @@ OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_l
       << " (regular_op_id=" << persistent_state.regular
       << ", intents_op_id=" << persistent_state.intents
       << ", vector_indexes=" << AsString(persistent_state.vector_indexes)
+      << ", quiescent_marker_op_id=" << quiescent_marker_op_id
       << ", has_intents_db=" << has_intents_db << ")";
   return op_id_replay_lowest;
 }
@@ -561,7 +565,15 @@ class TabletBootstrap {
       tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
-    const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
+    // skip_wal_rewrite=false rewrites the WAL into a new dir and deletes the old one, together with
+    // the quiescent marker. So a tablet with a marker replays its WAL in place whatever the flag.
+    const bool has_marker = GetEnv()->FileExists(Log::QuiescentMarkerPath(meta_->wal_dir()));
+    if (has_marker && !skip_wal_rewrite_) {
+      LOG_WITH_PREFIX(INFO) << "Quiescent marker found, not rewriting WAL";
+      skip_wal_rewrite_ = log::SkipWalWrite::kTrue;
+    }
+
+    const bool needs_recovery = VERIFY_RESULT(PrepareToReplay()) || has_marker;
     if (needs_recovery && !skip_wal_rewrite_) {
       RETURN_NOT_OK(OpenLogReader());
     }
@@ -1340,6 +1352,8 @@ class TabletBootstrap {
   //   tables, and just the regular RocksDB's flushed OpId for non-transactional tables. Note that
   //   in practice the flushed OpId of the intents RocksDB should also be less than or equal to the
   //   flushed OpId of the regular RocksDB or this would be an invariant violation.
+  //   With a quiescent marker at L, the flushed OpIds were raised to L (ApplyQuiescentMarker), and
+  //   the segments with ops up to L may be absent.
   //
   // - The first OpId of the segment is less than or equal to persisted retryable requests
   //   file's last_flushed_op_id_ or the "restart safe time" of the first operation in the segment
@@ -1629,8 +1643,17 @@ class TabletBootstrap {
     // If skip_wal_rewrite is false, create a new segment and append each replayed entry to this
     // new log.
     RETURN_NOT_OK_PREPEND(
-        OpenLog(log::CreateNewSegment(!FLAGS_skip_wal_rewrite)),
+        OpenLog(log::CreateNewSegment(!skip_wal_rewrite_)),
           "Failed to open new log");
+
+    // Ops up to the quiescent marker are durable in all storages, and segments with them may be
+    // absent.
+    const auto marker = log_->quiescent_marker();
+    RestartSafeCoarseTimePoint last_entry_time;
+    if (marker) {
+      ApplyQuiescentMarker(*marker);
+      last_entry_time = RestartSafeCoarseTimePoint::FromUInt64(marker->entry_time());
+    }
 
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
@@ -1658,7 +1681,6 @@ class TabletBootstrap {
         data_.bootstrap_retryable_requests && data_.retryable_requests
             ? data_.retryable_requests->GetMaxReplicatedOpId()
             : OpId::Min();
-    RestartSafeCoarseTimePoint last_entry_time;
 
     // If the segment is the first one to replay, start replaying from the last flushed op id
     // instead of very beginning of the segment.
@@ -1745,6 +1767,12 @@ class TabletBootstrap {
     replay_state_->UpdateCommittedFromStored();
     RETURN_NOT_OK(ApplyCommittedPendingReplicates());
 
+    if (marker) {
+      // The marker op is the last op unless ops after it were replayed.
+      replay_state_->prev_op_id =
+          std::max(replay_state_->prev_op_id, OpId::FromPB(marker->op_id()));
+    }
+
     if (last_committed_op_id.index > replay_state_->committed_op_id.index) {
       auto it = replay_state_->pending_replicates.find(last_committed_op_id.index);
       if (it != replay_state_->pending_replicates.end()) {
@@ -1818,6 +1846,25 @@ class TabletBootstrap {
     }
 
     return Status::OK();
+  }
+
+  // Uses the quiescent marker as the lower bound of what replay would derive from the segments it
+  // replaced.
+  void ApplyQuiescentMarker(const log::QuiescentMarkerPB& marker) {
+    const auto marker_op_id = OpId::FromPB(marker.op_id());
+    LOG_WITH_PREFIX(INFO) << "Using quiescent marker: " << marker.ShortDebugString();
+    replay_state_->quiescent_marker_op_id = marker_op_id;
+    auto& persistent_state = replay_state_->persistent_state;
+    persistent_state.regular = std::max(persistent_state.regular, marker_op_id);
+    persistent_state.intents = std::max(persistent_state.intents, marker_op_id);
+    for (auto& vector_index : persistent_state.vector_indexes) {
+      vector_index.op_id = std::max(vector_index.op_id, marker_op_id);
+    }
+    replay_state_->UpdateCommittedOpId(marker_op_id);
+    const HybridTime hybrid_time(marker.hybrid_time());
+    replay_state_->max_committed_hybrid_time.MakeAtLeast(hybrid_time);
+    UpdateClock(hybrid_time.ToUint64());
+    tablet_->UpdateMonotonicCounter(marker.monotonic_counter());
   }
 
   Status PlayWriteRequest(

@@ -42,26 +42,7 @@ BEGIN
   THEN RAISE NOTICE 'insufficient_privilege';
 END$$;
 NOTICE:  insufficient_privilege
--- SHOULD FAIL
-SAVEPOINT fail_start_engine;
-SELECT anon.start_dynamic_masking();
-ERROR:  Only supersusers can start the dynamic masking engine.
-CONTEXT:  PL/pgSQL function anon.start_dynamic_masking(boolean) line 8 at RAISE
-ROLLBACK TO fail_start_engine;
-RESET ROLE;
-SELECT anon.start_dynamic_masking();
- start_dynamic_masking 
------------------------
- t
-(1 row)
-
 SET ROLE mallory_the_masked_user;
-SELECT * FROM mask.t1;
- i | t 
----+---
- 1 | 
-(1 row)
-
 -- SHOULD FAIL
 DO $$
 BEGIN
@@ -70,20 +51,6 @@ BEGIN
   THEN RAISE NOTICE 'insufficient_privilege';
 END$$;
 NOTICE:  insufficient_privilege
--- SHOULD FAIL
-SAVEPOINT fail_stop_engine;
-SELECT anon.stop_dynamic_masking();
-ERROR:  Only supersusers can stop the dynamic masking engine.
-CONTEXT:  PL/pgSQL function anon.stop_dynamic_masking() line 8 at RAISE
-ROLLBACK TO fail_stop_engine;
-RESET ROLE;
-SELECT anon.stop_dynamic_masking();
-NOTICE:  The previous priviledges of 'mallory_the_masked_user' are not restored. You need to grant them manually.
- stop_dynamic_masking 
-----------------------
- t
-(1 row)
-
 SET ROLE mallory_the_masked_user;
 SELECT COUNT(*)=1 FROM anon.pg_masking_rules;
  ?column? 

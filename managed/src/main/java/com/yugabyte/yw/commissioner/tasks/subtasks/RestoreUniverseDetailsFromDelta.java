@@ -12,9 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Restores edit-owned {@code universe_details_json} topology from the pre-task {@code before} state
- * reconstructed via {@link StateTransitionDetails#applyBeforeTo}. Lock fields, YBC version flags,
- * and {@code sequenceNumber} are taken from the current universe so an intervening YBC upgrade or
- * consistency-check bump is not undone.
+ * reconstructed via {@link StateTransitionDetails#applyBeforeTo}. The fields annotated with {@code
+ * DeltaRetainLatest} are taken from the current universe so those changes are not undone.
  */
 @Slf4j
 public class RestoreUniverseDetailsFromDelta extends UniverseTaskBase {

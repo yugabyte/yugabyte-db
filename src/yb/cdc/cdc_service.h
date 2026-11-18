@@ -209,6 +209,10 @@ class CDCServiceImpl : public CDCServiceIf {
     const UpdatePublicationTableListRequestPB* req,
     UpdatePublicationTableListResponsePB* resp, rpc::RpcContext context) override;
 
+  void InvalidateStreamMetadataCache(
+      const InvalidateStreamMetadataCacheRequestPB* req,
+      InvalidateStreamMetadataCacheResponsePB* resp, rpc::RpcContext context) override;
+
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
@@ -363,6 +367,10 @@ class CDCServiceImpl : public CDCServiceIf {
   bool HasCDCMasterBgTaskRunOnce() const {
     return cdc_master_bg_task_ran_once_.load(std::memory_order_acquire);
   }
+
+  // Releases the WAL, intent and history retention barriers of the sys catalog tablet on every
+  // master. Only called on the master leader.
+  Status ReleaseSysCatalogRetentionBarriers();
 
  private:
   friend class XClusterProducerBootstrap;

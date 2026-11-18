@@ -6,9 +6,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.DeltaEvaluator.ArrayElementComparator;
+import com.yugabyte.yw.common.DeltaEvaluator.DeltaRetainLatest;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.Test;
 import play.libs.Json;
 
@@ -583,5 +588,147 @@ public class DeltaEvaluatorTest {
     JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(current, newValue, byId);
     assertEquals(current, DeltaEvaluator.generateOldValue(delta));
     assertEquals(newValue, DeltaEvaluator.generateNewValue(delta));
+  }
+
+  @Test
+  public void mergeWithLatestRetainsAnnotatedFields() {
+    RetainParent target = parent(1, "a", "x", 1, 2);
+    RetainParent latest = parent(2, "b", "y", 2, 3);
+
+    DeltaEvaluator.mergeWithLatest(target, latest, BY_ID);
+
+    assertEquals(2, target.lock);
+    assertEquals(1, target.own);
+    // Private and declared in the superclass.
+    assertEquals(2, target.getHidden());
+    assertEquals("b", target.child.flags);
+    assertEquals("x", target.child.s);
+    // Element 1 is not in latest, so it keeps its own values.
+    assertEquals(1, target.children.get(0).id);
+    assertEquals("a", target.children.get(0).flags);
+    assertEquals(2, target.children.get(1).id);
+    assertEquals("b", target.children.get(1).flags);
+    assertEquals("x", target.children.get(1).s);
+    // The self reference is visited once.
+    assertTrue(target.self == target);
+  }
+
+  @Test
+  public void mergeWithLatestTakesNullFromLatest() {
+    RetainChild target = child(1, "a", "x");
+    RetainChild latest = child(1, null, "y");
+
+    DeltaEvaluator.mergeWithLatest(target, latest, BY_ID);
+
+    assertNull(target.flags);
+    assertEquals("x", target.s);
+  }
+
+  @Test
+  public void mergeWithLatestRejectsDifferentRootClasses() {
+    RetainChild target = child(1, "a", "x");
+    RetainChild latest = new RetainSubChild();
+    latest.flags = "b";
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> DeltaEvaluator.mergeWithLatest(target, latest, BY_ID));
+    assertEquals("a", target.flags);
+  }
+
+  @Test
+  public void mergeWithLatestRejectsNullRoot() {
+    RetainChild target = child(1, "a", "x");
+
+    assertThrows(
+        IllegalArgumentException.class, () -> DeltaEvaluator.mergeWithLatest(target, null, BY_ID));
+    assertThrows(
+        IllegalArgumentException.class, () -> DeltaEvaluator.mergeWithLatest(null, target, BY_ID));
+  }
+
+  @Test
+  public void mergeWithLatestSkipsDifferentNestedClasses() {
+    RetainParent target = parent(1, "a", "x");
+    RetainParent latest = parent(2, "b", "y");
+    latest.child = new RetainSubChild();
+    latest.child.flags = "c";
+
+    DeltaEvaluator.mergeWithLatest(target, latest, BY_ID);
+
+    assertEquals(2, target.lock);
+    assertEquals("a", target.child.flags);
+  }
+
+  @Test
+  public void mergeWithLatestStopsAtJdkSuperclass() {
+    RetainError target = new RetainError("a");
+    RetainError latest = new RetainError("b");
+
+    // Must not reach the inaccessible fields of RuntimeException.
+    DeltaEvaluator.mergeWithLatest(target, latest, BY_ID);
+
+    assertEquals("b", target.flags);
+  }
+
+  private static final ArrayElementComparator BY_ID =
+      (path, node1, node2) -> node1.get("id").asInt() - node2.get("id").asInt();
+
+  private static RetainParent parent(int value, String flags, String s, int... childIds) {
+    RetainParent parent = new RetainParent();
+    parent.lock = value;
+    parent.own = value;
+    parent.setHidden(value);
+    parent.child = child(0, flags, s);
+    for (int id : childIds) {
+      parent.children.add(child(id, flags, s));
+    }
+    parent.self = parent;
+    return parent;
+  }
+
+  private static RetainChild child(int id, String flags, String s) {
+    RetainChild child = new RetainChild();
+    child.id = id;
+    child.flags = flags;
+    child.s = s;
+    return child;
+  }
+
+  public static class RetainChild {
+    public int id;
+    @DeltaRetainLatest public String flags;
+    public String s;
+  }
+
+  public static class RetainSubChild extends RetainChild {}
+
+  public static class RetainBase {
+    @DeltaRetainLatest private int hidden;
+
+    public int getHidden() {
+      return hidden;
+    }
+
+    public void setHidden(int hidden) {
+      this.hidden = hidden;
+    }
+  }
+
+  public static class RetainParent extends RetainBase {
+    @DeltaRetainLatest public int lock;
+    public int own;
+    public RetainChild child;
+    public List<RetainChild> children = new ArrayList<>();
+    public RetainParent self;
+  }
+
+  public static class RetainError extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    @DeltaRetainLatest public String flags;
+
+    RetainError(String flags) {
+      this.flags = flags;
+    }
   }
 }

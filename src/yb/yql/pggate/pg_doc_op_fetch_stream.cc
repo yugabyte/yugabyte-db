@@ -324,9 +324,8 @@ Result<DocResult*> CachedPgDocOpFetchStream::NextDocResult() {
 
 template <class R>
 MergingPgDocOpFetchStream<R>::MergingPgDocOpFetchStream(
-    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops, size_t nattrs)
-    : PgDocOpFetchStream(fetch_func),
-      nattrs_(nattrs) {
+    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops)
+    : PgDocOpFetchStream(fetch_func) {
   ResetOps(ops);
 }
 
@@ -361,14 +360,19 @@ Result<uint64_t> MergingPgDocOpFetchStream<R>::EmplaceOpDocResult(
 template <>
 Result<uint64_t> MergingPgDocOpFetchStream<PgDocResult>::EmplaceOpDocResult(
     const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
-  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs_
+  int max_index = -1;
+  for (const auto& target : *targets_) {
+    max_index = std::max(max_index, target->index());
+  }
+  size_t nattrs = static_cast<size_t>(max_index + 1);
+  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs
                     << " merge sort keys: " << merge_sort_keys_->size();
   return EmplaceDocResult(
       VERIFY_RESULT_REF(FindReadStream(op, response)),
       std::move(data),
       targets_,
       merge_sort_keys_,
-      nattrs_);
+      nattrs);
 }
 
 template <class R>

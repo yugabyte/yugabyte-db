@@ -1,0 +1,55 @@
+---
+
+variables:
+  PGDATA: /var/lib/postgresql/data
+  PGUSER: postgres
+  EXTDIR: /usr/share/postgresql/13/extension/
+  PSQL: psql -v ON_ERROR_STOP=1
+  POSTGRES_DB: nice_marmot
+  POSTGRES_USER: runner
+  POSTGRES_PASSWORD: plop
+  PGPASSWORD: CHANGEME
+
+
+##
+## L I N T
+##
+"pre-commit":
+  stage: lint
+  image: dalibo/buildpack-rust:trixie
+  script:
+    - uvx prek run
+
+"lint-markdown":
+  stage: lint
+  image: dalibo/buildpack-rust:trixie
+  script:
+    - make lint-md
+
+##
+## T E S T
+##
+
+# basic user sories
+demo:
+  stage: test
+  before_script:
+    - mkdir -p $PGDATA
+    - mkdir -p $EXTDIR
+    - chown postgres $PGDATA
+    - gosu postgres initdb
+    - gosu postgres pg_ctl start
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+        make gcc postgresql-server-dev-13 postgresql-contrib-13  pgxnclient
+    - make extension
+    - make install
+    - psql -c "ALTER SYSTEM SET session_preload_libraries = 'anon'"
+    - psql -c "SELECT pg_reload_conf();"
+    - make demo
+  when: manual
+  artifacts:
+    paths:
+      - demo/*.out
+    expire_in: 1 day

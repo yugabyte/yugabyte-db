@@ -11,9 +11,9 @@ import io.ebean.DB;
 import java.util.Date;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;
-import org.springframework.util.CollectionUtils;
 
 @Slf4j
 public class V414__Add_Universe_Debug_Permission extends BaseJavaMigration {

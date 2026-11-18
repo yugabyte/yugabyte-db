@@ -113,6 +113,7 @@
 #include "catalog/pg_publication_rel.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
+#include "replication/yb_virtual_wal_client.h"
 #include "utils/catcache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
@@ -2243,9 +2244,19 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					if (IsYugaByteEnabled())
 					{
 						if (*YBCGetGFlags()->TEST_ysql_yb_enable_replication_slot_transactional_ddl)
+						{
+							const uint32_t *aborted_subtxn_set;
+							int			aborted_subtxn_set_size;
+
+							aborted_subtxn_set =
+								YBCGetAbortedSubtxnSet(change->data.tp.yb_txn_id,
+													   &aborted_subtxn_set_size);
 							YBCSetHistoricalReadContext(change->data.tp.yb_read_time,
 														change->data.tp.yb_in_txn_limit,
-														change->data.tp.yb_txn_id);
+														change->data.tp.yb_txn_id,
+														aborted_subtxn_set,
+														aborted_subtxn_set_size);
+						}
 
 						/*
 						 * In YB, the replica identity used for streaming is the

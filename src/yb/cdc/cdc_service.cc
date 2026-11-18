@@ -2420,6 +2420,7 @@ void CDCServiceImpl::UpdateMetrics() {
       if (!is_leader) {
         tablet_metric->cdcsdk_sent_lag_micros->set_value(0);
         tablet_metric->cdcsdk_flush_lag->set_value(0);
+        tablet_metric->cdcsdk_last_sent_physicaltime->set_value(0);
       } else {
         auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
         auto cdc_state_last_replication_time_micros =
@@ -3263,6 +3264,14 @@ void CDCServiceImpl::UpdateTabletPeersWithMinReplicatedIndex(
   }
 }
 
+Status CDCServiceImpl::ReleaseSysCatalogRetentionBarriers() {
+  TabletCDCCheckpointInfo checkpoint_info;
+  checkpoint_info.cdc_sdk_op_id = OpId::Max();
+  return UpdateTabletPeerWithCheckpoint(
+      master::kSysCatalogTabletId, &checkpoint_info, false /* enable_update_local_peer_min_index */,
+      false /* ignore_rpc_failures */);
+}
+
 Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
     const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
     bool enable_update_local_peer_min_index, bool ignore_rpc_failures,
@@ -3774,7 +3783,8 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
     // 2. Logical replication streams which don't poll sys_catalog tablet.
     // 3. gRPC streams (which never poll sys_catalog tablet)
     // Streams of type 2 and 3 won't have stream_metadata.GetDetectPublicationChangesImplicitly()
-    // set to true.
+    // set to true. A type 2 stream being converted to type 1 also has a sys_catalog entry, holding
+    // its catalog barrier.
 
     const bool is_logical_replication_stream = stream_metadata.IsLogicalReplicationStream();
     // To update the restart time of a gRPC stream entry, we need to track min(cdc_sdk_safe_time)
@@ -3819,8 +3829,8 @@ CDCServiceImpl::PopulateSysCatalogTabletCheckPointInfo(TableIdToStreamIdMap* exp
       continue;
     }
 
-    // sys_catalog tablet-stream entry which occurs only for 'Type 1' streams. Collect WAL, intent
-    // barriers and active_time.
+    // sys_catalog tablet-stream entry, of a 'Type 1' stream or a 'Type 2' stream being converted.
+    // Collect WAL, intent barriers and active_time.
     if (entry.key.tablet_id == master::kSysCatalogTabletId && entry.checkpoint.has_value() &&
         *entry.checkpoint != OpId::Invalid()) {
       int64_t last_active_time = static_cast<int64_t>(*entry.active_time);
@@ -4911,6 +4921,13 @@ void CDCServiceImpl::UpdateTabletCDCSDKMetrics(
                                 ? last_record_time.value()
                                 : tablet_metric->cdcsdk_last_sent_physicaltime->value();
   auto last_replicated_micros = GetLastReplicatedTime(tablet_peer);
+  if (last_record_micros == 0) {
+    const auto& last_row = resp.cdc_sdk_proto_records(cdc_sdk_proto_records_size - 1).row_message();
+    last_record_micros =
+        last_row.has_commit_time()
+            ? HybridTime(last_row.commit_time()).GetPhysicalValueMicros()
+            : HybridTime(resp.safe_hybrid_time()).GetPhysicalValueMicros();
+  }
   tablet_metric->cdcsdk_last_sent_physicaltime->set_value(last_record_micros);
   const int64_t sent_lag_value = last_replicated_micros - last_record_micros;
   tablet_metric->cdcsdk_sent_lag_micros->set_value(sent_lag_value > 0 ? sent_lag_value : 0);
@@ -5558,7 +5575,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
   auto lsn_type = stream_metadata_result->get()->GetReplicationSlotLsnType().value_or(
       ReplicationSlotLsnType_SEQUENCE);
 
-  uint64_t consistent_snapshot_time;
+  uint64_t consistent_snapshot_time = HybridTime::kInvalid.ToUint64();
   std::unique_ptr<ReplicationSlotHashRange> slot_hash_range = nullptr;
   if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range) {
     RPC_CHECK_AND_RETURN_ERROR(
@@ -5887,6 +5904,23 @@ void CDCServiceImpl::UpdateAndPersistLSN(
       << "Successfully persisted LSN values for stream_id: " << stream_id
       << ", confirmed_flush_lsn = " << confirmed_flush_lsn << ", restart_lsn = " << *res;
 
+  context.RespondSuccess();
+}
+
+void CDCServiceImpl::InvalidateStreamMetadataCache(
+    const InvalidateStreamMetadataCacheRequestPB* req,
+    InvalidateStreamMetadataCacheResponsePB* resp, rpc::RpcContext context) {
+  if (!CheckOnline(req, resp, &context)) {
+    return;
+  }
+
+  LOG_WITH_FUNC(INFO) << "Received InvalidateStreamMetadataCache request";
+  // Destroys the metadata outside the spinlock.
+  decltype(stream_metadata_) stream_metadata;
+  {
+    std::lock_guard l(mutex_);
+    stream_metadata.swap(stream_metadata_);
+  }
   context.RespondSuccess();
 }
 

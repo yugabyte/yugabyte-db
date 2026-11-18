@@ -1,0 +1,11 @@
+# third-party-extensions/postgresql_anonymizer/tests/yb_schedule_5
+#
+####################################################################################################
+# postgresql_anonymizer Extension Testsuite
+####################################################################################################
+test: yb.port.test_static_masking
+test: yb.port.test_parallel_static_masking
+test: yb.port.transparent_dynamic_masking
+test: yb.port.trusted_schemas
+test: yb.port.views
+test: yb.port.when

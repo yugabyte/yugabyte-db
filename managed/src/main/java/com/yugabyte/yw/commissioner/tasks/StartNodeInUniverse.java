@@ -195,6 +195,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // between the Stop/Start actions as Inactive.
       createSwamperTargetUpdateTask(false /* removeFile */);
 
+      // The node may have lost its master while stopped; a master start rewrites it on its own.
+      if (!startMaster
+          && cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+          && currentNode.dedicatedTo != ServerType.TSERVER) {
+        queueOtelCollectorConfigRewrite(nodeCollection, false /* ignoreErrors */);
+      }
+
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
 

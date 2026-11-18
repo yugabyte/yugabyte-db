@@ -187,6 +187,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       universeNode.state = NodeState.InstanceCreated;
     } else if (universeNode.state == NodeState.Decommissioned) {
       universeNode.state = NodeState.ToBeAdded;
+      // The new machine may run on another cloud. Releasing the node clears this too, when it marks
+      // the node Decommissioned, but a node released by an earlier YBA version still has its old
+      // machine's cloud.
+      universeNode.cloudInfo.physicalCloud = null;
     }
     // Confirm the node on hold.
     commitReservedNodes();
@@ -368,6 +372,10 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       if (addMaster || (currentNode.isMaster && !isFirstTry())) {
         // Update master addresses including xcluster with new master information.
         createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
+      }
+      // isMaster covers a retry, where addMaster is already false.
+      if (addMaster || currentNode.isMaster) {
+        queueOtelCollectorConfigRewrite(nodeSet, false /* ignoreErrors */);
       }
 
       if (addTserver) {

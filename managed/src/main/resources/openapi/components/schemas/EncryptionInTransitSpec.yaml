@@ -10,6 +10,13 @@ properties:
     description: Whether to enable encryption for client connection to DB nodes
     type: boolean
     example: false
+  use_node_to_node_client_certs:
+    description: |
+      Whether DB nodes require a client certificate on RPC (node_to_node_encryption_use_client_certificates). Supported only on Kubernetes universes whose node-to-node encryption uses a cert-manager (K8SCertManager) root CA; VM universes and Kubernetes universes with other root CA types are not supported. Can only be set at universe creation.
+    type: boolean
+    example: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
   root_and_client_root_ca_same:
     description: 'In case certificates are generated, whether to use the same certificate'
     type: boolean

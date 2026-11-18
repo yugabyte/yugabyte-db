@@ -3,7 +3,6 @@ BEGIN;
 */ -- YB
 CREATE EXTENSION anon CASCADE;
 BEGIN; -- YB: Workaround for read time error, check #25665
-SET yb_non_ddl_txn_for_sys_tables_allowed = true; -- YB: next statement updates pg_seclabel and is not a DDL
 SELECT anon.init();
  init 
 ------
@@ -54,44 +53,15 @@ SELECT * FROM t1;
 (1 row)
 
 UPDATE t1 SET t='test' WHERE i=1;
--- SHOULD FAIL
-BEGIN; -- YB: workaround for lack of transactional DDL
-SAVEPOINT fail_start_engine;
-SELECT anon.start_dynamic_masking();
-ERROR:  Only supersusers can start the dynamic masking engine.
-CONTEXT:  PL/pgSQL function anon.start_dynamic_masking(boolean) line 8 at RAISE
-ROLLBACK TO fail_start_engine;
-RESET ROLE;
-SELECT anon.start_dynamic_masking();
- start_dynamic_masking 
------------------------
- t
-(1 row)
-
-SET ROLE oscar_the_owner;
 SELECT * FROM t1;
  i |  t   
 ---+------
  1 | test
 (1 row)
 
---SELECT * FROM mask.t1;
--- SHOULD FAIL
-SAVEPOINT fail_stop_engine;
-SELECT anon.stop_dynamic_masking();
-ERROR:  Only supersusers can stop the dynamic masking engine.
-CONTEXT:  PL/pgSQL function anon.stop_dynamic_masking() line 8 at RAISE
-ROLLBACK TO fail_stop_engine;
-RESET ROLE;
-SELECT anon.stop_dynamic_masking();
-NOTICE:  The previous priviledges of 'mallory_the_masked_user' are not restored. You need to grant them manually.
- stop_dynamic_masking 
-----------------------
- t
-(1 row)
-
 SET ROLE oscar_the_owner;
 -- SHOULD FAIL
+BEGIN; -- YB: workaround for lack of transactional DDL
 SAVEPOINT fail_seclabel_on_role;
 DO $$
 BEGIN

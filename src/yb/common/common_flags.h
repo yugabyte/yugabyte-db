@@ -48,9 +48,10 @@ namespace yb {
 // Performs the initialization of the common flags, as needed.
 void InitCommonFlags();
 
-// Whether the persistence gate refuses writes and commits blocked by the persistence block map,
-// and whether StopPersisting and StartPersisting may run.  True iff both enable_persistence_gate
-// and enforce_xcluster_guarded_lease are set.
+// Whether the persistence gate refuses writes and commits blocked by the persistence block map
+// and aborts pending transactions whose commits would likewise be refused, and whether
+// StopPersisting and StartPersisting may run.  True iff both enable_persistence_gate and
+// enforce_xcluster_guarded_lease are set.
 bool IsPersistenceGateEnforced();
 
 } // namespace yb

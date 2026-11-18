@@ -98,6 +98,8 @@ TEST_F(SealTxnTest, NumBatchesWithRestart) {
   // Restarting whole cluster could result in expired transaction, that is not expected by the test.
   // Increase transaction timeout to avoid such kind of failures.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 50;
+  // Leader moves after the restart would hide tablets from the leader scan.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   TestNumBatches(/* restart= */ true);
 }
 

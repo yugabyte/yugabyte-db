@@ -115,11 +115,7 @@ class FlushBatch {
 
  private:
   Status Start(size_t i) {
-    if (indexes_[i]) {
-      for (const auto& index : *indexes_[i]) {
-        RETURN_NOT_OK(index->Flush());
-      }
-    }
+    RETURN_NOT_OK(indexes_[i].Flush());
     if (!vector_only_) {
       rocksdb::FlushOptions options(rocksdb::FlushReason::kAdminFlush);
       options.wait = false;
