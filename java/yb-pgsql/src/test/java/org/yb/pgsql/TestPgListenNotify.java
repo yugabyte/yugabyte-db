@@ -1669,16 +1669,14 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
 
   /**
    * An ERROR the poller raises while holding NotifyQueueLock must not leave it waiting on that
-   * lock in its error handler: the poller must still terminate the listeners and exit, and
-   * LISTEN on the node must not block behind it.
+   * lock in its error handler: it must still terminate the listeners and exit.
    */
   @Test
   public void testPollerErrorHoldingQueueLock() throws Exception {
-    Connection listener = getConnectionBuilder().withTServer(0).connect();
-    listener.createStatement().execute("LISTEN ch1");
-
-    try (Connection nonListener = getConnectionBuilder().withTServer(0).connect();
+    try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+         Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
+      listener.createStatement().execute("LISTEN ch1");
       getPollerPid(stmt);
 
       setPollerErrorHoldingQueueLockFlag(true);
@@ -1693,13 +1691,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
 
     verifyListenNotifyWorks();
-  }
-
-  private void setPollerErrorHoldingQueueLockFlag(boolean value) throws Exception {
-    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
-      setServerFlag(tserver, "ysql_yb_test_notifs_poller_error_holding_queue_lock",
-          value ? "true" : "false");
-    }
   }
 
   private void setCdcIntentRetentionMs(String value) throws Exception {
@@ -1773,6 +1764,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     String v = value ? "true" : "false";
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
       setServerFlag(tserver, "ysql_yb_test_fatal_after_notifs_queue_write", v);
+    }
+  }
+
+  private void setPollerErrorHoldingQueueLockFlag(boolean value) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "ysql_yb_test_notifs_poller_error_holding_queue_lock",
+          value ? "true" : "false");
     }
   }
 
