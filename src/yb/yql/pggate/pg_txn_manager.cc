@@ -13,10 +13,12 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
+#include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
+#include <boost/tuple/tuple.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/row_mark.h"
@@ -35,7 +37,6 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
-#include "yb/util/hash_util.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -272,41 +273,21 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 // recreation (see RestartTransaction and ResetTxnAndSession).
 class PgTxnManager::HeldObjectLocks {
  public:
-  struct Lock {
-    uint32_t db_oid;
-    uint32_t relation_oid;
-    uint32_t object_oid;
-    uint32_t object_sub_oid;
-    docdb::ObjectLockFastpathLockType lock_type;
-
-    static Lock Make(const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
-      return Lock{
-          .db_oid = lock_id.db_oid,
-          .relation_oid = lock_id.relation_oid,
-          .object_oid = lock_id.object_oid,
-          .object_sub_oid = lock_id.object_sub_oid,
-          .lock_type = lock_type};
-    }
-
-    bool operator==(const Lock&) const = default;
-
-    YB_STRUCT_DEFINE_HASH(Lock, db_oid, relation_oid, object_oid, object_sub_oid, lock_type);
-  };
-
   [[nodiscard]] bool empty() const { return entries_.empty(); }
   [[nodiscard]] size_t size() const { return entries_.size(); }
 
-  [[nodiscard]] bool Contains(const Lock& lock) const {
+  [[nodiscard]] bool Contains(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) const {
     const auto& by_lock = entries_.get<ByLockTag>();
-    return by_lock.find(lock) != by_lock.end();
+    return by_lock.find(boost::make_tuple(
+               lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid,
+               lock_type)) != by_lock.end();
   }
 
   // Keeps the existing entry if the lock is already recorded.
-  void Add(const Lock& lock, SubTransactionId subtxn_id) {
-    entries_.insert(Entry{lock, subtxn_id});
-  }
+  void Add(const docdb::ObjectLockFastpathRequest& request) { entries_.insert(request); }
 
-  void EraseFromSubTransaction(SubTransactionId subtxn_id) {
+  void EraseStartingFromSubTransaction(SubTransactionId subtxn_id) {
     auto& by_subtxn = entries_.get<BySubTransactionTag>();
     by_subtxn.erase(by_subtxn.lower_bound(subtxn_id), by_subtxn.end());
   }
@@ -314,23 +295,28 @@ class PgTxnManager::HeldObjectLocks {
   void Clear() { entries_.clear(); }
 
  private:
-  struct Entry {
-    Lock lock;
-    SubTransactionId subtxn_id;
-  };
+  using Request = docdb::ObjectLockFastpathRequest;
 
   struct ByLockTag;
   struct BySubTransactionTag;
 
   boost::multi_index_container<
-      Entry,
+      Request,
       boost::multi_index::indexed_by<
+          // Unique on the lock, i.e. all fields except subtxn_id.
           boost::multi_index::hashed_unique<
               boost::multi_index::tag<ByLockTag>,
-              boost::multi_index::member<Entry, Lock, &Entry::lock>>,
+              boost::multi_index::composite_key<
+                  Request,
+                  boost::multi_index::member<Request, uint32_t, &Request::database_oid>,
+                  boost::multi_index::member<Request, uint32_t, &Request::relation_oid>,
+                  boost::multi_index::member<Request, uint32_t, &Request::object_oid>,
+                  boost::multi_index::member<Request, uint32_t, &Request::object_sub_oid>,
+                  boost::multi_index::member<
+                      Request, docdb::ObjectLockFastpathLockType, &Request::lock_type>>>,
           boost::multi_index::ordered_non_unique<
               boost::multi_index::tag<BySubTransactionTag>,
-              boost::multi_index::member<Entry, SubTransactionId, &Entry::subtxn_id>>>>
+              boost::multi_index::member<Request, SubTransactionId, &Request::subtxn_id>>>>
       entries_;
 };
 
@@ -1246,7 +1232,7 @@ void PgTxnManager::ClearExportedTxnSnapshots() {
 
 Status PgTxnManager::RollbackToSubTransaction(
     SetupPerformOptionsAccessorTag tag, SubTransactionId id) {
-  held_object_locks_->EraseFromSubTransaction(id);
+  held_object_locks_->EraseStartingFromSubTransaction(id);
   if (!txn_in_progress_) {
     VLOG_TXN_STATE(2) << "No transaction in progress, nothing to rollback.";
     return Status::OK();
@@ -1323,7 +1309,7 @@ bool PgTxnManager::IsObjectLockHeld(
     ClearHeldObjectLocks();
     return false;
   }
-  return held_object_locks_->Contains(HeldObjectLocks::Lock::Make(lock_id, lock_type));
+  return held_object_locks_->Contains(lock_id, lock_type);
 }
 
 void PgTxnManager::RecordObjectLockHeld(
@@ -1331,8 +1317,13 @@ void PgTxnManager::RecordObjectLockHeld(
   if (!client_->IsObjectLockSharedStateEnabled()) {
     return;
   }
-  held_object_locks_->Add(
-      HeldObjectLocks::Lock::Make(lock_id, lock_type), active_sub_transaction_id_);
+  held_object_locks_->Add({
+      .subtxn_id = active_sub_transaction_id_,
+      .database_oid = lock_id.db_oid,
+      .relation_oid = lock_id.relation_oid,
+      .object_oid = lock_id.object_oid,
+      .object_sub_oid = lock_id.object_sub_oid,
+      .lock_type = lock_type});
 }
 
 void PgTxnManager::ClearHeldObjectLocks() {
