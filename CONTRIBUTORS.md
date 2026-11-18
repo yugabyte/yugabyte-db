@@ -169,3 +169,6 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [SrivastavaAnubhav](https://github.com/SrivastavaAnubhav)
 * [neera-mital](https://github.com/neera-mital)
 * [arpit-saxena](https://github.com/arpit-saxena)
+* [shishir2001-yb](https://github.com/shishir2001-yb)
+* [Sumukh-Phalgaonkar](https://github.com/Sumukh-Phalgaonkar)
+* [devansh5398](https://github.com/devansh5398)
