@@ -13,7 +13,6 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.empty;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -207,10 +206,22 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "WARNING: This is a preview API that could change.",
+      notes =
+          "WARNING: This is a preview API that could change. Queues a task that updates the"
+              + " load balancers a universe uses. YBA does not create these load balancers. Send"
+              + " the current universe definition with `universeUUID` set to the universe in the"
+              + " path. For each existing cluster, YBA saves `userIntent.enableLB`, each region's"
+              + " `lbFQDN` and each zone's `lbName`. YBA registers the nodes in `nodeDetailsSet`"
+              + " on those load balancers and removes them from load balancers no longer named.",
       value = "Update load balancer config",
       nickname = "updateLoadBalancerConfig",
-      response = UpdateLoadBalancerConfig.class)
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "UpdateLoadBalancerConfigRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
+          required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
