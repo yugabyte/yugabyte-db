@@ -141,6 +141,81 @@ func TestHandleDisableWithRootStopFailure(t *testing.T) {
 	}
 }
 
+// The install stops the root collector last, after the user stop and the configure pass, so a
+// failed step leaves it exporting. Only a failed user stop names it. A failed root stop warns.
+func TestStopOtelCollectorsForInstall(t *testing.T) {
+	userErr := errors.New("user stop failed")
+	configErr := errors.New("configure failed")
+	tests := []struct {
+		name      string
+		rootInUse bool
+		rootErr   error
+		userErr   error
+		configErr error
+		rootStop  rootOtelCollectorStop
+		wantCalls string
+		wantErr   error
+		wantRoot  bool
+		want      string
+	}{
+		{name: "user stop fails", userErr: userErr, wantCalls: "user", wantErr: userErr},
+		{name: "user stop fails, root in use", rootInUse: true, userErr: userErr, wantCalls: "user",
+			wantErr: userErr, wantRoot: true},
+		{name: "user stop fails, root state unknown", rootErr: errors.New("is-active failed"),
+			userErr: userErr, wantCalls: "user", wantErr: userErr, wantRoot: true},
+		{name: "configure fails", configErr: configErr, wantCalls: "user,configure",
+			wantErr: configErr},
+		{name: "root stopped", rootStop: rootOtelCollectorNotRunning,
+			wantCalls: "user,configure,root"},
+		{name: "root stop fails", rootStop: rootOtelCollectorStopFailed,
+			wantCalls: "user,configure,root", want: "Check its sudoers rules"},
+		{name: "root state unknown", rootStop: rootOtelCollectorStateUnknown,
+			wantCalls: "user,configure,root", want: "could not be read"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := newDisableCollectorHandler(t, t.TempDir())
+			handler.rootInUse = func(context.Context) (bool, error) {
+				return tc.rootInUse, tc.rootErr
+			}
+			var calls []string
+			handler.disableUserUnit = func(context.Context) error {
+				calls = append(calls, "user")
+				return tc.userErr
+			}
+			handler.stopRootUnit = func(context.Context) rootOtelCollectorStop {
+				calls = append(calls, "root")
+				return tc.rootStop
+			}
+			err := handler.stopOtelCollectorsForInstall(context.Background(), func() error {
+				calls = append(calls, "configure")
+				return tc.configErr
+			})
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("got err %v, want %v", err, tc.wantErr)
+			}
+			if err != nil && strings.Contains(err.Error(), "keep running") != tc.wantRoot {
+				t.Fatalf("root collector named in the error=%v, want %v: %v",
+					!tc.wantRoot, tc.wantRoot, err)
+			}
+			if got := strings.Join(calls, ","); got != tc.wantCalls {
+				t.Fatalf("calls %q, want %q", got, tc.wantCalls)
+			}
+			out := handler.logOut.String()
+			if tc.want == "" {
+				if out != "" {
+					t.Fatalf("want no task output, got %q", out)
+				}
+				return
+			}
+			if strings.Count(out, "keep running and exporting") != 1 ||
+				!strings.Contains(out, tc.want) {
+				t.Fatalf("want one export warning with %q, got %q", tc.want, out)
+			}
+		})
+	}
+}
+
 // A root-systemd node has its unit in the system unit directory.
 func TestHasRootOtelCollectorUnit(t *testing.T) {
 	handler := newDisableCollectorHandler(t, t.TempDir())
