@@ -161,6 +161,11 @@ int32_t RpcController::call_id() const {
   return -1;
 }
 
+bool RpcController::WasSent() const {
+  std::lock_guard l(lock_);
+  return call_ && call_->WasSent();
+}
+
 std::string RpcController::CallStateDebugString() const {
   std::lock_guard l(lock_);
   if (call_) {
