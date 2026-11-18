@@ -1737,8 +1737,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
    *     StatefulSets itself.
    * @param useNewMasterDeviceInfo true to render the master disk spec from the edit, false to
    *     render the saved one.
-   *     <p>Pass true when this runs after a full move of masters. The new master StatefulSets
-   *     already have the edit's spec, and K8s rejects changing it back.
+   *     <p>Pass true only where the edit's master disk spec is what every master StatefulSet runs.
+   *     That holds after any edit: a size change is resized in place and saved, and any other
+   *     master disk change fully moves every AZ that keeps masters. K8s rejects changing a
+   *     StatefulSet's disk spec.
    *     <p>Example: an edit changes the master storage class and removes tservers.
    */
   public void deletePodsTask(

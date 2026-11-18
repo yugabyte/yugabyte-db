@@ -1137,7 +1137,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           /* Will use checksum after last modification, so safe to use */
           supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */,
           fullMoveTserverAZs,
-          // A master full move gave the master StatefulSets the target spec.
+          // The edit's master disk spec is what every master StatefulSet runs: a size change is
+          // resized in place and saved, and any other master disk change fully moves every AZ
+          // that keeps masters (PlacementInfoUtil.shouldReplaceNode).
           true /* useNewMasterDeviceInfo */);
     }
 
