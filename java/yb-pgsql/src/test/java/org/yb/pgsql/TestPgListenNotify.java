@@ -19,6 +19,7 @@ import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
+import com.yugabyte.PGConnection;
 import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -27,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -1343,6 +1345,93 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
 
     verifyListenNotifyWorks();
+  }
+
+  /**
+   * A replayed transaction is written at the queue head, not where the first write was, so the
+   * filler entries that pad out a page fall at different positions. Duplicate detection must not
+   * count them: here the first write fits on its page and a replay must cross a page, so a count
+   * that included the replay's filler would deliver the notification twice.
+   *
+   * Queue layout with 1-char channels (see asyncQueueAddEntries): an entry takes
+   * INTALIGN(19 + payload length) bytes on an 8192-byte page, and a txn-begin marker 32.
+   */
+  @Test
+  public void testNoDuplicateWhenReplayCrossesPage() throws Exception {
+    final String channel = "t";
+    final String padChannel = "p";
+    // 8020-byte entries. Three such transactions leave the head at offset 8020 of a page from
+    // any starting position, since an entry this big never shares a page with an earlier one
+    // unless it starts within 140 bytes of the page start.
+    final String maxPayload = repeat('x', 7999);
+    // A 220-byte entry does not fit after the next marker at 8020, so it starts a new page and
+    // leaves the head at offset 220.
+    final String alignPayload = repeat('a', 201);
+    // A 4000-byte entry: the first write of BEGIN + n1 spans [220, 4252) and fits; the replay's
+    // BEGIN lands at 4252, so n1 must cross to the next page behind a filler.
+    final String payload = repeat('n', 3981);
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection notifierConn = getConnectionBuilder().withTServer(0).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+      listenerStmt.execute("LISTEN " + padChannel);
+
+      for (int i = 0; i < 3; i++) {
+        notifierStmt.execute("NOTIFY " + padChannel + ", '" + maxPayload + "'");
+      }
+      notifierStmt.execute("NOTIFY " + padChannel + ", '" + alignPayload + "'");
+      waitForNotification(listenerConn, padChannel, alignPayload);
+      listenerStmt.execute("UNLISTEN " + padChannel);
+      int pollerPid = getPollerPid(listenerStmt);
+
+      List<PGNotification> received = new ArrayList<>();
+      try {
+        setFatalAfterNotifsQueueWriteFlag(true);
+        Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+
+        notifierStmt.execute("NOTIFY " + channel + ", '" + payload + "'");
+
+        // The poller now dies after each write, before the CDC ack. Once two pollers after the
+        // original have run, the first of them has written a replay.
+        Set<Integer> newPollerPids = new HashSet<>();
+        PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
+        for (int attempt = 0; attempt < 600 && newPollerPids.size() < 2; attempt++) {
+          List<Row> rows = getRowList(listenerStmt,
+              "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+          if (!rows.isEmpty() && rows.get(0).getInt(0) != pollerPid) {
+            newPollerPids.add(rows.get(0).getInt(0));
+          }
+          PGNotification[] notifications = pgConn.getNotifications();
+          if (notifications != null) {
+            received.addAll(Arrays.asList(notifications));
+          }
+          Thread.sleep(100);
+        }
+        assertEquals("Poller restarts observed", 2, newPollerPids.size());
+      } finally {
+        setFatalAfterNotifsQueueWriteFlag(false);
+      }
+
+      Thread.sleep(5000);
+      listenerStmt.execute("SELECT 1");
+      PGNotification[] notifications =
+          listenerConn.unwrap(PGConnection.class).getNotifications();
+      if (notifications != null) {
+        received.addAll(Arrays.asList(notifications));
+      }
+      assertEquals("Deliveries of the replayed notification", 1, received.size());
+      assertEquals(payload, received.get(0).getParameter());
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  private static String repeat(char c, int n) {
+    char[] chars = new char[n];
+    Arrays.fill(chars, c);
+    return new String(chars);
   }
 
   /**
