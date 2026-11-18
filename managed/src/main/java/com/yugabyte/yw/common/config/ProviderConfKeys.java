@@ -372,8 +372,8 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "yb.filepaths.skip_tmp_dir_gflag_consistency_check",
           ScopeType.PROVIDER,
           "Skip tmp_dir gflag consistency check",
-          "When true, skips the on-prem create-universe precheck that requires provider"
-              + " remoteTmpDirectory to match master/tserver tmp_dir gflags.",
+          "When true, skips the on-prem create-universe and gflags upgrade precheck that requires"
+              + " provider remoteTmpDirectory to match master/tserver tmp_dir gflags.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> operationStatusPollingInterval =
