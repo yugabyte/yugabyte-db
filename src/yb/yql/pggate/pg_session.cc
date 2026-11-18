@@ -1463,10 +1463,11 @@ Status PgSession::AcquireObjectLock(
   // yb_enable_global_object_locking_infra is being promoted (it latched the flag as off), and on a
   // node with disable_global_object_locks on. If such a transaction sent no locks, the CREATE INDEX
   // would backfill under its uncommitted UPDATE, and the index would miss the update once it
-  // commits (#36572, #37355). So a transaction without global object locks sends the locks a
-  // writer takes. It sends nothing stronger, so its LOCK TABLE and DDLs behave as without global
-  // object locks: LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records
-  // every lock in its own lock table either way.
+  // commits (#36572, #37355). So a transaction without global object locks sends the locks its
+  // reads and writes take, up to ROW EXCLUSIVE; a reader's lock is what makes a table rewrite wait
+  // for it. It sends nothing stronger, so its LOCK TABLE and DDLs behave as without global object
+  // locks: LOCK TABLE t IN ACCESS EXCLUSIVE MODE still takes no object lock. PG records every lock
+  // in its own lock table either way.
   if (!pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn() &&
       (is_session_lock || mode > YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)) {
     return Status::OK();
