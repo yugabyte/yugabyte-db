@@ -72,7 +72,6 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -2735,48 +2734,37 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   /**
-   * This class mocks the runtime config, where the block for operator-owned resources reads false,
-   * and the handler caches it. Turn the block on, as it is by default.
+   * This class mocks the runtime config, where the block for operator-owned resources reads false.
+   * Turn the block on, as it is by default.
    */
-  private RuntimeConfigCache enableOperatorBlock() {
+  private void enableOperatorBlock() {
     when(mockConfig.getBoolean(GlobalConfKeys.blockOperatorApiResources.getKey())).thenReturn(true);
-    RuntimeConfigCache cache = app.injector().instanceOf(RuntimeConfigCache.class);
-    cache.invalidateCache();
-    return cache;
   }
 
   @Test
   public void testRollbackUpgradeBlockedForOperatorOwnedUniverse() {
-    RuntimeConfigCache cache = enableOperatorBlock();
-    try {
-      Universe.saveDetails(
-          defaultUniverse.getUniverseUUID(),
-          u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
-      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    enableOperatorBlock();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> u.getUniverseDetails().isKubernetesOperatorControlled = true);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
-      Result result = runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback");
+    Result result = runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback");
 
-      assertEquals(FORBIDDEN, result.status());
-      assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
-      verifyNoActions();
-    } finally {
-      cache.invalidateCache();
-    }
+    assertEquals(FORBIDDEN, result.status());
+    assertThat(contentAsString(result), containsString("controlled by kubernetes operator"));
+    verifyNoActions();
   }
 
   @Test
   public void testRollbackUpgradeNotBlockedForUniverseNotOwnedByOperator() {
-    RuntimeConfigCache cache = enableOperatorBlock();
-    try {
-      PlatformServiceException exception =
-          assertThrows(
-              PlatformServiceException.class,
-              () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback"));
+    enableOperatorBlock();
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback"));
 
-      // Past the operator check: the handler rejects it, since no upgrade is there to roll back.
-      assertNotEquals(FORBIDDEN, exception.getHttpStatus());
-    } finally {
-      cache.invalidateCache();
-    }
+    // Past the operator check: the handler rejects it, since no upgrade is there to roll back.
+    assertNotEquals(FORBIDDEN, exception.getHttpStatus());
   }
 }
