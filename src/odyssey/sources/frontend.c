@@ -1140,6 +1140,11 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		if (!is_deploy)
 			yb_backend_handle_query_ack(server, "yb query ack");
 		break;
+	case YB_KIWI_BE_OBJECT_DROPPED:
+		skip_forward_to_client = true;
+		if (yb_handle_object_dropped_pkt(server, data, size) == -1)
+			return relay->error_read;
+		break;
 #ifndef YB_SUPPORT_FOUND
 	case KIWI_BE_PARSE_COMPLETE:
 		if (route->rule->pool->reserve_prepared_statement) {

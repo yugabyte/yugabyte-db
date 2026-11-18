@@ -43,6 +43,7 @@
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
 #include "storage/procarray.h"
+#include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
@@ -919,6 +920,26 @@ YbSendFatalForLogicalConnectionPacket()
 
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
+}
+
+void
+YbSendConnMgrObjectDropped(char kind, Oid oid)
+{
+	static bool sent = false;
+	StringInfoData buf;
+
+	/*
+	 * This is sent at-most-once by a normal backend as well
+	 * as parallel workers to their leader.
+	 */
+	if (sent || !YbIsClientYsqlConnMgr() || whereToSendOutput != DestRemote)
+		return;
+	sent = true;
+
+	pq_beginmessage(&buf, '7');
+	pq_sendbyte(&buf, kind);
+	pq_sendint32(&buf, oid);
+	pq_endmessage(&buf);
 }
 
 bool
