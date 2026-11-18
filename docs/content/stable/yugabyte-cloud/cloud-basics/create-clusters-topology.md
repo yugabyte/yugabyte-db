@@ -84,7 +84,7 @@ In a cluster that is replicated across regions, the nodes of the cluster are dep
 
 **Latency**: Latency in a multi-region cluster depends on the distance and network packet transfer times between the nodes of the cluster and between the cluster and the client. Write latencies in this deployment mode can be high. This is because the tablet leader replicates write operations across a majority of tablet peers before sending a response to the client. All writes involve cross-zone communication between tablet peers.
 
-As a mitigation, you can enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) and set a [preferred region](../create-clusters/create-clusters-multisync/#preferred-region).
+As a mitigation, you can enable [follower reads](../../../additional-features/follower-reads/) and set a [preferred region](../create-clusters/create-clusters-multisync/#preferred-region).
 
 **Strengths**
 
@@ -94,7 +94,7 @@ As a mitigation, you can enable [follower reads](../../../explore/going-beyond-s
 **Tradeoffs**
 
 - Write latency can be high (depends on the distance/network packet transfer times)
-- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) trade off consistency for latency
+- [Follower reads](../../../additional-features/follower-reads/) trade off consistency for latency
 
 **Fault tolerance**
 
@@ -232,7 +232,7 @@ In an active-active configuration, both universes can handle writes to potential
 
 ## Read replicas
 
-For applications that have writes happening from a single zone or region but want to serve read requests from multiple remote regions, you can use read replicas. Data from the primary cluster is automatically replicated asynchronously to one or more read replica clusters. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest. To read data from a read replica, you enable [follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) for the cluster.
+For applications that have writes happening from a single zone or region but want to serve read requests from multiple remote regions, you can use read replicas. Data from the primary cluster is automatically replicated asynchronously to one or more read replica clusters. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest. To read data from a read replica, you enable [follower reads](../../../additional-features/follower-reads/) for the cluster.
 
 ![Read replicas](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-6.png)
 
@@ -264,4 +264,4 @@ You can add replicas to an existing primary cluster as needed. Refer to [Read re
 **Learn more**
 
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
-- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/)
+- [Follower reads](../../../additional-features/follower-reads/)

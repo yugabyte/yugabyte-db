@@ -2324,6 +2324,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "taskDiff" : {
+          "description" : "Task Diff",
+          "readOnly" : true,
+          "type" : "object"
+        },
         "taskUUID" : {
           "description" : "Task UUID",
           "format" : "uuid",
@@ -2724,6 +2729,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -4718,7 +4724,7 @@
           "type" : "string"
         },
         "params" : {
-          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [collect_top_stats, --remote_tar_path, /tmp/top.tar.gz, ...].",
+          "description" : "Arguments appended after the script (entrypoint + flags), e.g. [collect_top_ps_pmap_stats, --remote_tar_path, /tmp/top.tar.gz, ...].",
           "items" : {
             "type" : "string"
           },
@@ -4729,7 +4735,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {
@@ -5769,6 +5775,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -7424,10 +7431,11 @@
           "type" : "string"
         },
         "state" : {
-          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion, Validating.",
           "enum" : [
             "Active",
-            "QueuedForDeletion"
+            "QueuedForDeletion",
+            "Validating"
           ],
           "readOnly" : true,
           "type" : "string"
@@ -7500,10 +7508,11 @@
           "type" : "string"
         },
         "state" : {
-          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion.",
+          "description" : "state of the customerConfig. Possible values are Active, QueuedForDeletion, Validating.",
           "enum" : [
             "Active",
-            "QueuedForDeletion"
+            "QueuedForDeletion",
+            "Validating"
           ],
           "readOnly" : true,
           "type" : "string"
@@ -8688,7 +8697,7 @@
           "type" : "string"
         },
         "scriptPath" : {
-          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/node_utils.sh). May be relative to yb.devops.home.",
+          "description" : "Path on the YBA host to the script file to execute on the node (e.g. bin/support_bundle_utils.sh). May be relative to yb.devops.home.",
           "type" : "string"
         },
         "timeoutSecs" : {
@@ -9047,6 +9056,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -9921,6 +9931,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -11488,6 +11499,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -12256,6 +12268,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -17170,6 +17183,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -17892,6 +17906,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -18999,6 +19014,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -19877,6 +19893,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -21463,6 +21480,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -22172,6 +22190,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -22619,6 +22638,7 @@
               "ProvisionUniverseNodes",
               "DeleteCustomerConfig",
               "DeleteCustomerStorageConfig",
+              "ValidateStorageConfig",
               "ResizeNode",
               "RollbackResizeNode",
               "CreateTableSpacesInUniverse",
@@ -23220,6 +23240,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -24034,6 +24055,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -25237,6 +25259,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -26126,6 +26149,7 @@
               "OperatorImport",
               "RegisterWithPACollector",
               "UnregisterFromPACollector",
+              "Validate",
               "Unknown"
             ],
             "type" : "string"
@@ -26629,6 +26653,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -27350,6 +27375,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -28217,6 +28243,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -28903,6 +28930,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -29589,6 +29617,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -30796,6 +30825,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",
@@ -31250,7 +31280,7 @@
         },
         "managedLoadBalancer" : {
           "$ref" : "#/definitions/ManagedLoadBalancerConfig",
-          "description" : "WARNING: This is a preview API that could change. Load balancers that YBA creates, manages and deletes. Set when the universe is created. When set, it must enable at least one load balancer."
+          "description" : "WARNING: This is a preview API that could change. Load balancers that YBA creates, manages and deletes. Set when the universe is created. An edit can turn it on or off. When it turns it on, YBA takes over the load balancer that the zones of a region name with lbName. At create, it must enable at least one load balancer; in an edit, one that enables none turns it off and leaving it out keeps it."
         },
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo",
@@ -31987,6 +32017,7 @@
             "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
+            "ValidateStorageConfig",
             "ResizeNode",
             "RollbackResizeNode",
             "CreateTableSpacesInUniverse",

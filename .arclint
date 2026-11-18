@@ -78,10 +78,13 @@
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
+      "exclude": [
+        "(^managed/byoc-api-proxy/)"
+      ],
       "script-and-regex.script":
       "managed/lint/lint-java.sh",
       "script-and-regex.regex":
-        "/(?P<message>.*)/is"
+        "/^(?P<severity>error): (?P<message>.+)/s"
     },
     "eslint-ui": {
       "type": "script-and-regex",
@@ -109,6 +112,7 @@
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",
         "(^managed/yba-cli/GNUmakefile)",
+        "(^managed/devops/supportbundle/.*/GNUmakefile$)",
         "(^managed/ui/)",
         "(^troubleshoot/troubleshooting-framework-ui/)",
         "(^yugabyted-ui/.*/go[.]mod)",
@@ -155,6 +159,7 @@
         "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
         "(^src/yb/gutil/port[.]h$)",
         "(^src/yb/rocksdb/util/murmurhash[.]cc$)",
+        "(^src/yb/util/crc32c/)",
         "(_pch[.]h$)"
       ],
       "include": [

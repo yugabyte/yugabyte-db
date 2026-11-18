@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.ManagedLoadBalancerUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -33,7 +34,6 @@ import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -514,7 +514,9 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // Delete the load balancers of the cluster that the new placement does not call for, after
     // their nodes are gone. This also cleans up a load balancer left by an edit that was rolled
     // back.
-    List<ManagedLoadBalancer> plannedLbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    List<ManagedLoadBalancer> plannedLbs =
+        ManagedLoadBalancerUtil.planLoadBalancers(
+            cluster, universe.getUniverseDetails().getManagedLoadBalancerState());
     createDeleteManagedLoadBalancerTasks(
         lb ->
             lb.getClusterUuid().equals(cluster.uuid) && plannedLbs.stream().noneMatch(lb::matches),
@@ -531,18 +533,7 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     }
 
     if (!tserversToBeRemoved.isEmpty()) {
-      Duration sleepBeforeStart =
-          confGetter.getConfForScope(
-              universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
-      if (sleepBeforeStart.compareTo(Duration.ZERO) > 0) {
-        createWaitForDurationSubtask(universe, sleepBeforeStart)
-            .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
-      }
-      createModifyBlackListTask(
-              null /* addNodes */,
-              tserversToBeRemoved /* removeNodes */,
-              false /* isLeaderBlacklist */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createClearTserverBlacklistTasks(universe, tserversToBeRemoved);
     }
   }
 
@@ -554,8 +545,6 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
             .collect(Collectors.toList());
     UpgradeTaskBase.sortTServersInRestartOrder(universe, tservers);
     removeFromLeaderBlackListIfAvailable(tservers, SubTaskGroupType.UpdatingGFlags);
-    SubTaskGroup subTaskGroup =
-        createSubTaskGroup("AnsibleConfigureServers", SubTaskGroupType.UpdatingGFlags);
     for (NodeDetails nodeDetails : tservers) {
       stopProcessesOnNodes(
           Collections.singletonList(nodeDetails),
@@ -573,7 +562,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               ServerType.TSERVER,
               UpgradeTaskParams.UpgradeTaskType.GFlags,
               UpgradeTaskParams.UpgradeTaskSubType.None);
-      params.gflags = cluster.userIntent.tserverGFlags;
+      // getAnsibleConfigureServerParams reads the DB copy, which does not have this edit's intent.
+      params.gflags =
+          GFlagsUtil.getGFlagsForNode(
+              nodeDetails, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters);
+      SubTaskGroup subTaskGroup =
+          createSubTaskGroup("AnsibleConfigureServers", SubTaskGroupType.UpdatingGFlags);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(getUserTaskUUID());

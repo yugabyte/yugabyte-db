@@ -11,9 +11,11 @@ import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -24,6 +26,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import api.v2.handlers.UniverseUpgradesManagementHandler;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
@@ -70,9 +76,11 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
@@ -82,6 +90,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -244,6 +253,39 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
           "Cannot upgrade gflags on universe in state " + state, ex.get("error").textValue());
       verifyNoActions();
     }
+  }
+
+  @Test
+  public void testGFlagsUpgradeLogsNoSensitiveGFlagValues() throws ApiException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    String primaryClusterUuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString();
+    UniverseEditGFlags gflags =
+        new UniverseEditGFlags()
+            .putUniverseGflagsItem(
+                primaryClusterUuid,
+                new ClusterGFlags()
+                    .master(Map.of("k1", "v1"))
+                    .tserver(Map.of("ycql_ldap_bind_passwd", "ycql-bind-secret-xyz")));
+    Logger logger = (Logger) LoggerFactory.getLogger(UniverseUpgradesManagementHandler.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      runGFlagsUpgrade(defaultUniverse.getUniverseUUID(), gflags);
+    } finally {
+      logger.detachAppender(appender);
+    }
+
+    List<String> logged =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .filter(message -> message.contains("Starting v2 edit GFlags"))
+            .collect(Collectors.toList());
+    assertEquals(1, logged.size());
+    assertFalse(logged.get(0), logged.get(0).contains("ycql-bind-secret-xyz"));
+    assertTrue(logged.get(0), logged.get(0).contains("k1"));
   }
 
   @Test

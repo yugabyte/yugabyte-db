@@ -83,7 +83,6 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
-import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
@@ -113,6 +112,7 @@ import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
@@ -151,6 +151,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -1873,6 +1874,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
+          if (opType == UniverseOpType.EDIT) {
+            // The read replica's services follow the primary cluster's expose service setting.
+            Cluster primaryCluster = taskParams().getPrimaryCluster();
+            if (primaryCluster == null) { // A read-replica-only edit.
+              primaryCluster = universeDetails.getPrimaryCluster();
+            }
+            ExposingServiceState exposingService = cluster.userIntent.enableExposingService;
+            if (exposingService != univCluster.userIntent.enableExposingService
+                && exposingService != primaryCluster.userIntent.enableExposingService) {
+              throw new IllegalArgumentException(
+                  "Readonly cluster's expose service setting follows the primary cluster and"
+                      + " can't be changed on its own.");
+            }
+          }
         } else {
           if (opType == UniverseOpType.EDIT) {
             // During edit universe, overrides can't be changed.
@@ -2250,8 +2265,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
     getRunnableTask()
-        .setTaskParams(
-            RedactingService.filterSecretFields(Json.toJson(taskParams), RedactionTarget.APIS));
+        .setTaskParams(RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams)));
   }
 
   /**
@@ -4297,18 +4311,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         upgradeSystemCatalog,
         finalizeCatalogUpgrade,
         requireAdditionalSuperUserForCatalogUpgrade,
-        true /* saveReadyState */);
+        true /* saveReadyState */,
+        false /* ignorePromoteAutoFlagsErrors */);
   }
 
   /**
    * Finalize subtasks, ending with the Ready state unless {@code saveReadyState} is false; a caller
    * that passes false must save Ready (rollback disallowed) itself, together with the version.
+   *
+   * <p>{@code ignorePromoteAutoFlagsErrors} must be true when finalizing inside an upgrade task. A
+   * failure there leaves the universe in UpgradeFailed after rollback was disallowed (and the YSQL
+   * major catalog possibly finalized), and retrying the upgrade re-allows rollback.
    */
   protected void createFinalizeUpgradeTasks(
       boolean upgradeSystemCatalog,
       boolean finalizeCatalogUpgrade,
       boolean requireAdditionalSuperUserForCatalogUpgrade,
-      boolean saveReadyState) {
+      boolean saveReadyState,
+      boolean ignorePromoteAutoFlagsErrors) {
     Universe universe = getUniverse();
 
     createClearSoftwareUpgradeProgressTask();
@@ -4325,7 +4345,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Promote all auto flags upto class External.
       createPromoteAutoFlagTask(
           universe.getUniverseUUID(),
-          true /* ignoreErrors */,
+          ignorePromoteAutoFlagsErrors /* ignoreErrors */,
           AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
 
       if (upgradeSystemCatalog) {
@@ -4642,7 +4662,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * the task before YBA creates VMs.
    */
   protected void createEnsureManagedLoadBalancerTasks(Cluster cluster) {
-    List<ManagedLoadBalancer> lbs = ManagedLoadBalancerUtil.planLoadBalancers(cluster);
+    createEnsureManagedLoadBalancerTasks(
+        cluster,
+        ManagedLoadBalancerUtil.planLoadBalancers(
+            cluster, getUniverse().getUniverseDetails().getManagedLoadBalancerState()));
+  }
+
+  protected void createEnsureManagedLoadBalancerTasks(
+      Cluster cluster, List<ManagedLoadBalancer> lbs) {
     if (lbs.isEmpty()) {
       return;
     }
@@ -4675,18 +4702,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
-  /** Deletes the managed load balancers in the saved state that the filter accepts. */
+  /**
+   * Deletes the saved load balancers that the filter accepts. One a zone still names with lbName
+   * stays: a takeover clears lbName only on success, so until then it is the user's.
+   */
   protected void createDeleteManagedLoadBalancerTasks(
       Predicate<ManagedLoadBalancer> filter, boolean ignoreErrors) {
-    ManagedLoadBalancerState state =
-        getUniverse().getUniverseDetails().getManagedLoadBalancerState();
+    Universe universe = getUniverse();
+    ManagedLoadBalancerState state = universe.getUniverseDetails().getManagedLoadBalancerState();
     if (state == null) {
       return;
     }
     SubTaskGroup subTaskGroup =
         createSubTaskGroup("DeleteManagedLoadBalancer", SubTaskGroupType.RemovingUnusedServers);
     for (ManagedLoadBalancer lb : state.getLoadBalancers()) {
-      if (!filter.test(lb)) {
+      if (!filter.test(lb)
+          || ManagedLoadBalancerUtil.isNamedByZones(universe.getCluster(lb.getClusterUuid()), lb)) {
         continue;
       }
       Region region = Region.getOrBadRequest(lb.getRegionUuid());
@@ -4705,6 +4736,101 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (subTaskGroup.getSubTaskCount() > 0) {
       getRunnableTask().addSubTaskGroup(subTaskGroup);
     }
+  }
+
+  /**
+   * Restarts, one at a time, the tservers whose YSQL or YCQL proxy doesn't listen where its gflags
+   * now say: GFlagsUtil binds the proxies of a GCP cluster with a load balancer to 0.0.0.0. A node
+   * whose running proxies already match is skipped. Plan it after the new settings are saved.
+   */
+  protected void createRebindProxiesTasks() {
+    createRebindProxiesTasks(
+        getUniverse().getUniverseDetails().clusters.stream()
+            .map(c -> c.uuid)
+            .collect(Collectors.toSet()));
+  }
+
+  protected void createRebindProxiesTasks(Set<UUID> clusterUuids) {
+    Universe universe = getUniverse();
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    Set<ServerType> tserver = EnumSet.of(ServerType.TSERVER);
+    boolean rebinds = false;
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      if (!clusterUuids.contains(cluster.uuid)
+          || !GFlagsUtil.listensOnLoadBalancerAddress(cluster)) {
+        continue;
+      }
+      rebinds = true;
+      for (NodeDetails node : universe.getNodesInCluster(cluster.uuid)) {
+        if (!node.isTserver
+            || node.state != NodeState.Live
+            || !needsProxyRebind(universe, cluster, node, cloudEnabled)) {
+          continue;
+        }
+        // A rollback can't undo a restart: it would leave proxies on 0.0.0.0, and a tserver whose
+        // restart failed stays leader-blacklisted until a retry clears it below.
+        createMarkRollbackUnsafeTaskOnce();
+        List<NodeDetails> nodes = Collections.singletonList(node);
+        stopProcessesOnNodes(
+            nodes,
+            tserver,
+            false /* removeMasterFromQuorum */,
+            false /* deconfigure */,
+            false /* flushTablets */,
+            false /* ignoreStopError */,
+            SubTaskGroupType.StoppingNodeProcesses);
+        createGFlagsOverrideTasks(nodes, ServerType.TSERVER);
+        startProcessesOnNode(
+            node,
+            tserver,
+            SubTaskGroupType.StartingNodeProcesses,
+            false /* addMasterToQuorum */,
+            true /* wasStopped */,
+            true /* waitForServerReady */);
+      }
+    }
+    // A restart that failed after its stop left the tserver leader-blacklisted, and a retry skips
+    // it once its proxies match.
+    if (rebinds && !isFirstTry()) {
+      clearLeaderBlacklistIfAvailable(SubTaskGroupType.StartingNodeProcesses);
+    }
+  }
+
+  private boolean needsProxyRebind(
+      Universe universe, Cluster cluster, NodeDetails node, boolean cloudEnabled) {
+    Map<String, String> target =
+        GFlagsUtil.calculateFinalGFlags(
+            node,
+            getAnsibleConfigureServerParams(
+                cluster.userIntent,
+                node,
+                ServerType.TSERVER,
+                UpgradeTaskType.GFlags,
+                UpgradeTaskSubType.None),
+            cluster.userIntent,
+            universe,
+            GFlagsUtil.getGFlagsForNode(
+                node, ServerType.TSERVER, cluster, universe.getUniverseDetails().clusters),
+            config,
+            confGetter);
+    Map<String, String> running =
+        GFlagsUtil.getActualGFlags(
+            node,
+            ServerType.TSERVER,
+            universe,
+            true /* inMemory */,
+            nodeUniverseManager,
+            nodeUIApiHelper,
+            cloudEnabled);
+    // Unknown: a restart is safe, a skip may leave the load balancer unable to connect.
+    if (running == null) {
+      return true;
+    }
+    return Stream.of(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, GFlagsUtil.CSQL_PROXY_BIND_ADDRESS)
+        .filter(target::containsKey)
+        .anyMatch(flag -> !Objects.equals(target.get(flag), running.get(flag)));
   }
 
   protected void createTablespacesTasks(

@@ -171,6 +171,12 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& source_table_ids);
 
+  // Records the tablets of the tserver's end-of-WAL checkpoints (BootstrapProducer) on INITIATED
+  // streams, unless enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is
+  // off.
+  Status RecordXClusterStreamBootstrapInfo(
+      const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch);
+
   std::vector<xcluster::ReplicationGroupId> GetXClusterOutboundReplicationGroups(
       NamespaceId namespace_filter) const;
 
@@ -236,20 +242,46 @@ class XClusterSourceManager {
 
   // Checkpoint the xCluster stream to the given location. Invokes callback with true if bootstrap
   // is required, and false is bootstrap is not required.
+  // op0_tablet_ids is only valid with kOpId0; see CheckpointStreamsToOp0.
   Status CheckpointXClusterStreams(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
       StreamCheckpointLocation checkpoint_location, const LeaderEpoch& epoch,
-      bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback);
+      bool check_if_bootstrap_required, std::function<void(Result<bool>)> user_callback,
+      const std::vector<TabletId>& op0_tablet_ids = {});
 
+  // Checkpoints the streams to OpId 0 and records the tablets on INITIATED streams, except while
+  // enable_tablet_split_of_xcluster_bootstrapping_tables_with_recorded_tablets is off or for an
+  // index that MarkIndexBackfillCompleted checkpoints again. tablet_ids, if given, are the tablets
+  // of an earlier checkpoint of their table (all table_streams must then belong to one table);
+  // otherwise the table's current tablets are used. With tablet_ids the tablets are always
+  // recorded, and failing to record them fails the checkpoint, since the target must start from
+  // them.
   Status CheckpointStreamsToOp0(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
-      StdStatusCallback user_callback);
+      const LeaderEpoch& epoch, StdStatusCallback user_callback,
+      const std::vector<TabletId>& tablet_ids = {});
+
+  // The stream's recorded tablets, or empty if there are none.
+  Result<std::vector<TabletId>> GetStreamBootstrapTablets(const xrepl::StreamId& stream_id) const;
+
+  // Skips streams that are not INITIATED or already have a record, and empty tablet lists.
+  Status WriteXClusterStreamBootstrapInfo(
+      const XClusterStreamCheckpointedTablets& stream_tablets, const LeaderEpoch& epoch);
+
+  // Whether the end-of-WAL checkpoints of tablet_ids can be recorded: they must be the table's
+  // current tablets.
+  Status ValidateEndOfWalBootstrapTablets(
+      const TableId& table_id, const std::vector<TabletId>& tablet_ids) const;
+
+  // Whether MarkIndexBackfillCompleted checkpoints the stream again, to the end of its WAL, if its
+  // index is backfilled.
+  bool IsCheckpointedAgainAfterBackfill(const TableInfo& table, const CDCStreamInfo& stream) const;
 
   Status SetWALRetentionOnTables(const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
 
   Status CheckpointStreamsToEndOfWAL(
       const std::vector<std::pair<TableId, xrepl::StreamId>>& table_streams,
-      const LeaderEpoch& epoch, bool check_if_bootstrap_required,
+      const LeaderEpoch& epoch, bool check_if_bootstrap_required, bool keep_existing_checkpoints,
       std::function<void(Result<bool>)> user_callback);
 
   std::vector<CDCStreamInfoPtr> GetStreamsForTable(
@@ -266,7 +298,8 @@ class XClusterSourceManager {
       const std::vector<CDCStreamInfoPtr>& outbound_streams,
       std::vector<cdc::CDCStateTableKey>& entries_to_delete);
 
-  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
+  // An INITIATED stream blocks splits of its table unless it has recorded its bootstrap tablets.
+  bool DoesTableHaveBootstrappingStreamThatBlocksSplit(const TableId& table_id) const
       EXCLUDES(tables_to_stream_map_mutex_);
 
   Status SetupDDLReplicationExtension(

@@ -43,7 +43,12 @@ func init() {
 	}
 	tests := gonja.DefaultEnvironment.Tests
 	for name, fnc := range customTestFunctions {
-		if err := tests.Register(name, fnc); err != nil {
+		register := tests.Register
+		if tests.Exists(name) {
+			// gonja 2.9+ has truthiness-based "true"/"false" tests; ours must win.
+			register = tests.Replace
+		}
+		if err := register(name, fnc); err != nil {
 			util.FileLogger().
 				Fatalf(context.TODO(), "Error registering custom test %s: %s", name, err.Error())
 		}

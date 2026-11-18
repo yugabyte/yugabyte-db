@@ -1126,7 +1126,7 @@ Status XClusterTableSetupTask::ValidateBootstrapNotRequired() {
   }
 
   // TODO: When FLAGS_check_bootstrap_required is enabled by default we need to convert this to a
-  // async rpc call.
+  // async rpc call, and check the stream's checkpointed tablets, not the table's current ones.
   if (VERIFY_RESULT(
           parent_task_->GetYbClient().IsBootstrapRequired({source_table_id_}, bootstrap_id))) {
     return STATUS(
@@ -1151,31 +1151,34 @@ void XClusterTableSetupTask::SetupStreams() {
   auto received_table_id = std::make_shared<TableId>();
   auto stream_options = std::make_shared<std::unordered_map<std::string, std::string>>();
   auto use_target_applied_filter = std::make_shared<bool>(false);
+  auto bootstrap_tablet_ids = std::make_shared<std::vector<TabletId>>();
   parent_task_->GetYbClient().GetCDCStream(
       table_setup_info_.stream_id, received_table_id, stream_options,
       std::bind(
           &XClusterTableSetupTask::GetStreamCallback, shared_from(this), received_table_id,
-          stream_options, use_target_applied_filter, _1),
-      use_target_applied_filter);
+          stream_options, use_target_applied_filter, bootstrap_tablet_ids, _1),
+      use_target_applied_filter, bootstrap_tablet_ids);
 }
 
 void XClusterTableSetupTask::GetStreamCallback(
     std::shared_ptr<TableId> received_table_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-    std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s) {
+    std::shared_ptr<bool> xcluster_use_target_applied_filter,
+    std::shared_ptr<std::vector<TabletId>> bootstrap_tablet_ids, const Status& s) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(
-      received_table_id, options, xcluster_use_target_applied_filter, s);
+      received_table_id, options, xcluster_use_target_applied_filter, bootstrap_tablet_ids, s);
   ScheduleNextStep(
       std::bind(
           &XClusterTableSetupTask::ProcessStreamOptions, shared_from(this), received_table_id,
-          options, xcluster_use_target_applied_filter, s),
+          options, xcluster_use_target_applied_filter, bootstrap_tablet_ids, s),
       "Processing stream options");
 }
 
 Status XClusterTableSetupTask::ProcessStreamOptions(
     std::shared_ptr<TableId> received_table_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-    std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s) {
+    std::shared_ptr<bool> xcluster_use_target_applied_filter,
+    std::shared_ptr<std::vector<TabletId>> bootstrap_tablet_ids, const Status& s) {
   RETURN_NOT_OK_PREPEND(s, "Error from source universe");
   SCHECK(
       received_table_id != nullptr, InvalidArgument, "Received null table id from source universe");
@@ -1194,6 +1197,9 @@ Status XClusterTableSetupTask::ProcessStreamOptions(
       "Received null xcluster_use_target_applied_filter from source universe");
   table_setup_info_.stream_entry.set_xcluster_use_target_applied_filter(
       *xcluster_use_target_applied_filter);
+
+  // Also used for ACTIVE streams (see CatalogManager::UpdateCDCStreams).
+  table_setup_info_.bootstrap_tablet_ids = std::move(*bootstrap_tablet_ids);
 
   PopulateTabletMapping();
 
@@ -1224,6 +1230,18 @@ Status XClusterTableSetupTask::ProcessNewStream(const Result<xrepl::StreamId>& s
 void XClusterTableSetupTask::PopulateTabletMapping() {
   VLOG_WITH_PREFIX_AND_FUNC(1);
 
+  if (!table_setup_info_.bootstrap_tablet_ids.empty()) {
+    // Hidden split parents among them hand off to their children at the SPLIT_OP.
+    LOG_WITH_PREFIX(INFO) << "Using the bootstrap tablets of stream "
+                          << table_setup_info_.stream_id << ": "
+                          << AsString(table_setup_info_.bootstrap_tablet_ids);
+    parent_task_->GetYbClient().GetTabletLocations(
+        table_setup_info_.bootstrap_tablet_ids, master::IncludeHidden::kTrue,
+        std::bind(
+            &XClusterTableSetupTask::BootstrapTabletLocationsCallback, shared_from(this), _1));
+    return;
+  }
+
   auto stripped_source_table_id = xcluster::StripSequencesDataAliasIfPresent(source_table_id_);
   // If we have a specific target table ID, then allow fetching hidden tables.
   // This is needed if the target table was dropped before we could replicate the create table.
@@ -1252,6 +1270,37 @@ void XClusterTableSetupTask::PopulateTabletMappingCallback(
   master::GetTableLocationsResponsePB resp;
   resp.Swap(*result);
   schedule_func(std::move(resp));
+}
+
+void XClusterTableSetupTask::BootstrapTabletLocationsCallback(
+    const Result<master::GetTabletLocationsResponsePB*>& result) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << result.ToString();
+  std::shared_ptr<master::GetTabletLocationsResponsePB> resp;
+  if (result.ok()) {
+    resp = std::make_shared<master::GetTabletLocationsResponsePB>();
+    resp->Swap(*result);
+  }
+  ScheduleNextStep(
+      [self = shared_from(this), status = result.ok() ? Status::OK() : result.status(), resp]() {
+        RETURN_NOT_OK_PREPEND(status, "Error from source universe");
+        return self->ProcessBootstrapTabletLocations(*resp);
+      },
+      "Processing bootstrap tablet locations");
+}
+
+Status XClusterTableSetupTask::ProcessBootstrapTabletLocations(
+    master::GetTabletLocationsResponsePB& resp) {
+  // Recorded split parents are retained until the stream has polled their children.
+  if (resp.errors_size() > 0) {
+    return StatusFromPB(resp.errors(0).status())
+        .CloneAndPrepend(Format(
+            "Error from source universe for bootstrap tablet $0 of stream $1",
+            resp.errors(0).tablet_id(), table_setup_info_.stream_id));
+  }
+
+  master::GetTableLocationsResponsePB table_locations;
+  table_locations.mutable_tablet_locations()->Swap(resp.mutable_tablet_locations());
+  return ProcessTabletMapping(std::move(table_locations));
 }
 
 Status XClusterTableSetupTask::ProcessTabletMapping(

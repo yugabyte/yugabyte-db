@@ -367,6 +367,23 @@ k8s_memory_usage:
         "container_memory_cache": "Cached"
       ticksuffix: "&nbsp;GB"
 
+k8s_node_exporter_memory_usage:
+  metric: "container_memory_working_set_bytes"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    container_name: "yb-node-exporter"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Node Exporter Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+      alias:
+        "container_memory_working_set_bytes": "Usage"
+
 k8s_volume_disk_used_size_total:
   metric: "kubelet_volume_stats_used_bytes"
   function: "sum"
@@ -1755,6 +1772,20 @@ node_up:
   metric: "up"
   function: "avg"
   group_by: "instance"
+  panel_group: "Node Metrics"
+
+node_exporter_check:
+  metric: "yb_node_exporter_check"
+  function: "max_over_time|max"
+  range: true
+  group_by: "exported_instance,check,target,reason"
+  panel_group: "Node Metrics"
+
+node_exporter_collector_success:
+  metric: "node_scrape_collector_success"
+  function: "min_over_time|min"
+  range: true
+  group_by: "exported_instance,collector"
   panel_group: "Node Metrics"
 
 lsm_rocksdb_seek_next_prev:

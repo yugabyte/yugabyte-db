@@ -25,123 +25,7 @@ This guide assumes you have already done the following:
 - [Installed ybm CLI](../#install-ybm).
 - [Configured ybm CLI](../#configure-ybm) with your API key.
 
-Note that you can only create one Sandbox cluster per account. To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/pricing/), or you can [start a free trial](../../../managed-freetrial/). For more information, refer to [What are the differences between Sandbox and Dedicated clusters](../../../../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters).
-
-## Create a sandbox cluster
-
-To create your Sandbox cluster, enter the following command:
-
-```sh
-ybm cluster create \
-  --cluster-name my-sandbox \
-  --credentials username=admin,password=password-123 \
-  --cluster-tier Sandbox \
-  --wait
-```
-
-When you use the `--wait` flag, you can see the progress of the cluster creation in your shell. When finished, you should see output similar to the following:
-
-```output
-The cluster my-sandbox has been created
-Name         Tier      Version         State     Health    Regions     Nodes     Total Res.(Vcpu/Mem/Disk)
-my-sandbox   Sandbox   2.17.1.0-b439   ACTIVE    💚        us-west-2   1         2 / 4GB / 10GB
-```
-
-## Connect to your cluster
-
-To [connect to your database](../../../cloud-connect/) from your desktop or an application, you need the following:
-
-- your device added to the cluster IP allow list
-- the cluster TLS certificate
-- the host address of the cluster
-
-### Create and assign an IP allow list
-
-To connect to your cluster from your computer, you need an [IP allow list](../../../cloud-secure-clusters/add-connections/) with your computer's IP address. Create one as follows:
-
-```sh
-ybm network-allow-list create \
-  --ip-addr $(curl ifconfig.me) \
-  --name my-computer
-```
-
-```output
-Name          Description   Allow List          Clusters
-my-computer                 170.200.10.100/32
-NetworkAllowList my-computer successfully created
-```
-
-Assign the IP allow list to your Sandbox:
-
-```sh
-ybm cluster network allow-list assign \
-  --network-allow-list my-computer \
-  --cluster-name my-sandbox
-```
-
-```output
-The network allow list my-computer is being assigned to the cluster my-sandbox
-```
-
-To list your current network allow lists, enter the following command:
-
-```sh
-ybm network-allow-list list
-```
-
-```output
-Name                     Description              Allow List          Clusters
-my-computer                                       173.206.17.104/32   my-sandbox
-```
-
-### Download the cluster certificate
-
-To connect to a cluster in YugabyteDB Aeon using a shell, you need the [cluster certificate](../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
-
-```sh
-ybm cluster cert download --out $HOME/root.crt
-```
-
-### Show cluster settings
-
-To show details about your cluster, use the `describe` command as follows:
-
-```sh
-ybm cluster describe --cluster-name my-sandbox
-```
-
-```output
-General
-Name         ID                                     Version         State     Health
-my-sandbox   035f24da-3000-41c0-b12f-ef20004a3000   2.17.1.0-b439   ACTIVE    💚
-
-Provider   Tier      Fault Tolerance   Nodes     Total Res.(Vcpu/Mem/Disk)
-AWS        Sandbox   NONE              1         2 / 4GB / 10GB
-
-
-Regions
-Region      Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
-us-west-2   1         2           4GB        10GB
-
-
-Endpoints
-Region      Accessibility   State     Host
-us-west-2   PUBLIC          ACTIVE    us-west-2.000f20da-3000-40c0-b10f-ef20004a3000.aws.yugabyte.cloud
-
-
-Network AllowList
-Name          Description   Allow List
-my-computer                 173.200.10.100/32
-
-
-Nodes
-Name            Region[zone]            Health    Master    Tserver   ReadReplica   Used Memory(MB)
-my-sandbox-n1   us-west-2[us-west-2a]   💚        ✅        ✅        ❌            40MB
-```
-
-The public host address to use to connect to your cluster is displayed under **Endpoints**.
-
-To connect to your cluster using the ysqlsh or ycqlsh shells, follow the instructions in [Connect via client shells](../../../cloud-connect/connect-client-shell/). Use the public endpoint host address, the database credentials you specified when you created the sandbox, and the certificate you downloaded.
+To create VPCs and dedicated clusters, you need to [choose a plan](https://www.yugabyte.com/pricing/), or you can [start a free trial](../../../managed-freetrial/).
 
 ## Create dedicated clusters
 
@@ -228,6 +112,106 @@ ybm cluster update \
 ```
 
 For more information, see [Scale and configure clusters](../../../cloud-clusters/configure-clusters/).
+
+## Connect to your cluster
+
+To [connect to your database](../../../cloud-connect/) from your desktop or an application, you need the following:
+
+- your device added to the cluster IP allow list
+- the cluster TLS certificate
+- the host address of the cluster
+
+The following example connects to the single-region cluster `my-single-region`.
+
+### Create and assign an IP allow list
+
+To connect to your cluster from your computer, you need an [IP allow list](../../../cloud-secure-clusters/add-connections/) with your computer's IP address. Create one as follows:
+
+```sh
+ybm network-allow-list create \
+  --ip-addr $(curl ifconfig.me) \
+  --name my-computer
+```
+
+```output
+Name          Description   Allow List          Clusters
+my-computer                 170.200.10.100/32
+NetworkAllowList my-computer successfully created
+```
+
+Assign the IP allow list to the cluster:
+
+```sh
+ybm cluster network allow-list assign \
+  --network-allow-list my-computer \
+  --cluster-name my-single-region
+```
+
+```output
+The network allow list my-computer is being assigned to the cluster my-single-region
+```
+
+To list your current network allow lists, enter the following command:
+
+```sh
+ybm network-allow-list list
+```
+
+```output
+Name                     Description              Allow List          Clusters
+my-computer                                       173.206.17.104/32   my-single-region
+```
+
+### Download the cluster certificate
+
+To connect to a cluster in YugabyteDB Aeon using a shell, you need the [cluster certificate](../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
+
+```sh
+ybm cluster cert download --out $HOME/root.crt
+```
+
+### Show cluster settings
+
+To show details about your cluster, use the `describe` command as follows:
+
+```sh
+ybm cluster describe --cluster-name my-single-region
+```
+
+```output
+General
+Name               ID                                     Version        State     Health
+my-single-region   035f24da-3000-41c0-b12f-ef20004a3000   2.17.2.0-b216  ACTIVE    💚
+
+Provider   Tier        Fault Tolerance   Nodes     Total Res.(Vcpu/Mem/Disk)
+AWS        Dedicated   ZONE              3         12 / 48GB / 600GB
+
+
+Regions
+Region           Nodes     vCPU/Node   Mem/Node   Disk/Node   VPC
+ap-northeast-1   3         4           16GB       200GB
+
+
+Endpoints
+Region           Accessibility   State     Host
+ap-northeast-1   PUBLIC          ACTIVE    ap-northeast-1.000f20da-3000-40c0-b10f-ef20004a3000.aws.yugabyte.cloud
+
+
+Network AllowList
+Name          Description   Allow List
+my-computer                 173.200.10.100/32
+
+
+Nodes
+Name                 Region[zone]                      Health    Master    Tserver   ReadReplica   Used Memory(MB)
+my-single-region-n1  ap-northeast-1[ap-northeast-1a]   💚        ✅        ✅        ❌            40MB
+my-single-region-n2  ap-northeast-1[ap-northeast-1c]   💚        ✅        ✅        ❌            38MB
+my-single-region-n3  ap-northeast-1[ap-northeast-1d]   💚        ✅        ✅        ❌            41MB
+```
+
+The public host address to use to connect to your cluster is displayed under **Endpoints**.
+
+To connect to your cluster using the ysqlsh or ycqlsh shells, follow the instructions in [Connect via client shells](../../../cloud-connect/connect-client-shell/). Use the public endpoint host address, the database credentials you specified when you created the cluster, and the certificate you downloaded.
 
 ## Encryption at rest
 
@@ -435,7 +419,6 @@ ybm cluster list
 ```output
 Name               Tier        Version         State     Health    Regions                      Nodes     Total Res.(Vcpu/Mem/Disk)
 my-multi-region    Dedicated   2.14.7.0-b51    ACTIVE    💚        us-central1,+2               3         6 / 24GB / 600GB
-my-sandbox         Sandbox     2.17.1.0-b439   ACTIVE    💚        us-west-2                    1         2 / 4GB / 10GB
 my-single-region   Dedicated   2.14.7.0-b51    ACTIVE    💚        ap-northeast-1               3         12 / 48GB / 600GB
 ```
 
@@ -452,8 +435,6 @@ The cluster my-single-region has been paused
 Name               Tier        Version         State     Health    Regions          Nodes     Total Res.(Vcpu/Mem/Disk)
 my-single-region   Dedicated   2.17.2.0-b216   PAUSED    ❓        ap-northeast-1   3         12 / 48GB / 600GB
 ```
-
-(Note that the Sandbox is free, and can't be paused.)
 
 To resume a cluster:
 

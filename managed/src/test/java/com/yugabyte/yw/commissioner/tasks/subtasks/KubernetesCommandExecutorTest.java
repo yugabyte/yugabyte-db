@@ -1534,6 +1534,44 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             .containsKey(GFlagsUtil.USE_CLIENT_CERTIFICATES));
   }
 
+  private Map<String, Object> getInbuiltYbcGFlags(boolean clientCerts) throws IOException {
+    defaultUniverse = updateUniverseDetails("dev");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.setUseYbdbInbuiltYbc(true);
+              details.getPrimaryCluster().userIntent.useNodeToNodeClientCerts = clientCerts;
+              u.setUniverseDetails(details);
+            });
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+    kubernetesCommandExecutor.taskParams().namespace = namespace;
+    kubernetesCommandExecutor.run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmUpgrade(any(), any(), any(), any(), any(), overrideFile.capture(), isNull());
+    Map<String, Object> overrides;
+    try (InputStream is = new FileInputStream(overrideFile.getValue())) {
+      overrides = new Yaml().loadAs(is, Map.class);
+    }
+    return (Map<String, Object>) ((Map<String, Object>) overrides.get("gflags")).get("ybc");
+  }
+
+  @Test
+  public void testInbuiltYbcRequiresClientCerts() throws IOException {
+    assertEquals("true", getInbuiltYbcGFlags(true).get(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES));
+  }
+
+  @Test
+  public void testInbuiltYbcNoRequireClientCertsWithoutSetting() throws IOException {
+    assertFalse(getInbuiltYbcGFlags(false).containsKey(GFlagsUtil.YBC_REQUIRE_CLIENT_CERTIFICATES));
+  }
+
   @Test
   public void testHelmInstallRejectsInjectedGFlags() throws IOException {
     // Overrides saved before the API rejected them are still in the database.

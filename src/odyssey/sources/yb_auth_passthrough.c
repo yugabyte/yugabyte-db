@@ -57,7 +57,8 @@ static int yb_forward_fatal_msg(od_client_t *client,
 	if (rc == -1)
 		goto errmsg;
 
-	od_frontend_fatal_forward(client, fatal_pkt.code, fatal_pkt.message);
+	od_frontend_fatal_forward(client, fatal_pkt.code, "%s",
+				  fatal_pkt.message);
 	return 0;
 
 errmsg:
@@ -297,7 +298,7 @@ static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
 	/* Wait for password response packet from the client. */
 	uint64_t start_ts = machine_time_us();
 	while (true) {
-		msg = od_read(&client->io, login_timeout_ms);
+		msg = yb_od_read_auth(&client->io, login_timeout_ms);
 
 		/*
 		 * YB: Unconditionally exit if the client has not given a relevant
@@ -474,6 +475,11 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 
 			/* No need to wait for the Auth packet */
 			return YB_CLI_AUTH_FAILED;
+
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
+			machine_msg_free(msg);
+			continue;
 
 		case KIWI_BE_ERROR_RESPONSE:
 		default:
@@ -657,6 +663,11 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
 			yb_handle_fatalforlogicalconnection_pkt(client, server);
 			rc_auth = -1;
+			machine_msg_free(msg);
+			continue;
+
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			/* No action needed, auth will fail on following ErrorResponse */
 			machine_msg_free(msg);
 			continue;
 

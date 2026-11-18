@@ -536,13 +536,16 @@ public class RpcClientCertTest extends FakeDBApplication {
 
   @Test
   public void testValidateChecksVersion() {
-    for (String version : List.of("2025.2.1.0-b50", "2026.1.0.0-b1", "2.29.0.0-b259")) {
+    for (String version :
+        List.of(RpcClientCert.MIN_STABLE_VERSION, RpcClientCert.MIN_PREVIEW_VERSION)) {
       universe = setDetails(d -> d.getPrimaryCluster().userIntent.ybSoftwareVersion = version);
       RpcClientCert.validate(universe.getUniverseDetails());
     }
-    for (String version : List.of("2025.2.0.0-b100", "2025.1.3.0-b1", "2.29.0.0-b258")) {
+    for (String version : List.of("2025.1.3.0-b1", "2.25.0.0-b1")) {
       universe = setDetails(d -> d.getPrimaryCluster().userIntent.ybSoftwareVersion = version);
-      assertRejected(universe.getUniverseDetails(), "requires YugabyteDB 2025.2.1.0-b50 or later");
+      assertRejected(
+          universe.getUniverseDetails(),
+          "requires YugabyteDB " + RpcClientCert.MIN_STABLE_VERSION + " or later");
     }
   }
 

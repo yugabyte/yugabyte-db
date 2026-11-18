@@ -97,7 +97,7 @@ func (h *DestroyServerHandler) cleanInstance(ctx context.Context) error {
 		return fmt.Errorf("Error reading ybHomeDir %s - %s", ybHomeDir, err.Error())
 	}
 	for _, entry := range entries {
-		if _, ok := cleanupSubPaths[entry.Name()]; !ok {
+		if !h.isCleanupPath(entry.Name()) {
 			util.FileLogger().Infof(ctx, "Skipping path %s", entry.Name())
 			continue
 		}
@@ -133,6 +133,48 @@ func (h *DestroyServerHandler) cleanInstance(ctx context.Context) error {
 		)
 	}
 	return nil
+}
+
+// isCleanupPath reports whether the entry of ybHomeDir with the given name is deleted on destroy.
+func (h *DestroyServerHandler) isCleanupPath(name string) bool {
+	if _, ok := cleanupSubPaths[name]; ok {
+		return true
+	}
+	// Provisioning lays out node_exporter here, and its unit was removed with the other provisioned
+	// units. Without provisioning cleanup the unit stays, so its directory does too.
+	return h.param.GetIsProvisioningCleanup() && name == filepath.Dir(nodeExporterWebConfigSubpath)
+}
+
+// emptyNodeExporterWebConfig empties node_exporter's web.yml, if it has content, and reports
+// whether it did.
+func (h *DestroyServerHandler) emptyNodeExporterWebConfig(ctx context.Context) (bool, error) {
+	webConfig := filepath.Join(h.param.GetYbHomeDir(), nodeExporterWebConfigSubpath)
+	info, err := os.Stat(webConfig)
+	if errors.Is(err, os.ErrNotExist) || (err == nil && info.Size() == 0) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	util.FileLogger().Infof(ctx, "Emptying %s", webConfig)
+	h.logOut.WriteLine("Emptying %s", webConfig)
+	return true, os.Truncate(webConfig, 0)
+}
+
+// resetNodeExporterScheme puts a node_exporter that stays on the node back to plain HTTP. Its
+// web.yml names the node certificate and key, which cleanInstance deletes with yugabyte-tls-config,
+// and node_exporter does not start with a missing file. The universe the node joins next sets the
+// scheme again.
+func (h *DestroyServerHandler) resetNodeExporterScheme(ctx context.Context) error {
+	if h.param.GetIsProvisioningCleanup() {
+		// cleanInstance removed node_exporter's directory.
+		return nil
+	}
+	emptied, err := h.emptyNodeExporterWebConfig(ctx)
+	if err != nil || !emptied {
+		return err
+	}
+	return module.ControlSystemdService(ctx, h.username, nodeExporterService, "restart", h.logOut)
 }
 
 func (h *DestroyServerHandler) cleanupNode(ctx context.Context) error {
@@ -208,6 +250,9 @@ func (h *DestroyServerHandler) Handle(
 		}
 	}
 	if err := h.cleanupNode(ctx); err != nil {
+		return nil, err
+	}
+	if err := h.resetNodeExporterScheme(ctx); err != nil {
 		return nil, err
 	}
 	return &pb.DescribeTaskResponse{

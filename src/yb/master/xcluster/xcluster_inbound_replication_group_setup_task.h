@@ -36,6 +36,7 @@ struct YBTableInfo;
 namespace master {
 
 class GetTableLocationsResponsePB;
+class GetTabletLocationsResponsePB;
 class GetTableSchemaResponsePB;
 class UniverseReplicationInfo;
 
@@ -46,6 +47,9 @@ struct XClusterTableSetupInfo {
 
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
   std::unordered_map<std::string, std::string> stream_options = {};
+  // The source tablets to start replicating from, if the source recorded them when it checkpointed
+  // the stream. See master::XClusterStreamBootstrapInfoPB.
+  std::vector<TabletId> bootstrap_tablet_ids = {};
 
   std::string ToString() const { return YB_STRUCT_TO_STRING(target_table_id, stream_id); }
 };
@@ -134,16 +138,21 @@ class XClusterTableSetupTask : public MultiStepMonitoredTask {
   void GetStreamCallback(
       std::shared_ptr<TableId> received_table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-      std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s);
+      std::shared_ptr<bool> xcluster_use_target_applied_filter,
+      std::shared_ptr<std::vector<TabletId>> bootstrap_tablet_ids, const Status& s);
   Status ProcessStreamOptions(
       std::shared_ptr<TableId> received_table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
-      std::shared_ptr<bool> xcluster_use_target_applied_filter, const Status& s);
+      std::shared_ptr<bool> xcluster_use_target_applied_filter,
+      std::shared_ptr<std::vector<TabletId>> bootstrap_tablet_ids, const Status& s);
 
   void CreateXClusterStreamCallback(const Result<xrepl::StreamId>& stream_id);
   Status ProcessNewStream(const Result<xrepl::StreamId>& stream_id);
 
   void PopulateTabletMapping();
+  void BootstrapTabletLocationsCallback(
+      const Result<master::GetTabletLocationsResponsePB*>& result);
+  Status ProcessBootstrapTabletLocations(master::GetTabletLocationsResponsePB& resp);
   void PopulateTabletMappingCallback(const Result<master::GetTableLocationsResponsePB*>& result);
   Status ProcessTabletMapping(const Result<master::GetTableLocationsResponsePB>& result);
 

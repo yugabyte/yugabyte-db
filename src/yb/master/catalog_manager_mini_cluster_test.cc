@@ -11,6 +11,8 @@
 // under the License.
 
 
+#include "yb/consensus/raft_consensus.h"
+
 #include "yb/integration-tests/mini_cluster_utils.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
@@ -18,12 +20,20 @@
 #include "yb/master/catalog_loading_state.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog_constants.h"
 
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_util.h"
 
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(master_join_existing_universe);
+DECLARE_bool(quick_leader_election_on_create);
 
 namespace yb::master {
 
@@ -55,4 +65,40 @@ TEST_F(
       status.ToString(),
       "Master is joining an existing universe but wants to restore initial sys catalog snapshot");
 }
+
+class CatalogManagerFirstElectionTest : public CatalogManagerWithMiniClusterTest {
+ public:
+  void BeforeStartCluster() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_quick_leader_election_on_create) = true;
+    // Hold back the sys catalog's TABLET_PEER_STARTED notification until its first election is won.
+    auto* sync_point = SyncPoint::GetInstance();
+    sync_point->SetCallBack("TabletPeer::Start:BeforeStartedNotification", [](void* arg) {
+      auto* peer = static_cast<tablet::TabletPeer*>(arg);
+      if (peer->tablet_id() != kSysCatalogTabletId) {
+        return;
+      }
+      auto consensus = CHECK_RESULT(peer->GetRaftConsensus());
+      CHECK_OK(WaitFor(
+          [&consensus] { return consensus->role() == PeerRole::LEADER; }, 30s * kTimeMultiplier,
+          "Sys catalog leader"));
+    });
+    sync_point->EnableProcessing();
+  }
+
+  void TearDown() override {
+    SyncPoint::GetInstance()->DisableProcessing();
+    SyncPoint::GetInstance()->ClearAllCallBacks();
+    CatalogManagerWithMiniClusterTest::TearDown();
+  }
+
+ protected:
+  StringWaiterLogSink load_log_{"Loading table and tablet metadata into memory for term"};
+};
+
+TEST_F(CatalogManagerFirstElectionTest, LoadSysCatalogOncePerTerm) {
+  // A second load would be queued behind the first one, which is done once the cluster is up.
+  SleepFor(2s * kTimeMultiplier);
+  ASSERT_EQ(load_log_.GetEventCount(), 1);
+}
+
 }  // namespace yb::master

@@ -3134,6 +3134,77 @@ TEST_F(RaftConsensusITest, TestSlowLeader) {
   SleepFor(MonoDelta::FromSeconds(60));
 }
 
+// With nothing queued behind a write, the leader defers the commit-index-only UpdateConsensus, so
+// followers learn the new commit index only once the deferral fires.
+TEST_F(RaftConsensusITest, CommitIndexOnlyUpdateIsDeferred) {
+  const MonoDelta kTimeout = 30s;
+  constexpr int kDelayMs = 1000;
+  ASSERT_NO_FATALS(BuildAndStart({
+      "--raft_heartbeat_interval_ms=1500"s,
+      Format("--raft_deferred_update_delay_ms=$0", kDelayMs)}));
+
+  TServerDetails* leader = nullptr;
+  ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
+  // Start from a quiet tablet: with other ops still replicating, the commit index rides on them
+  // and is not deferred.
+  ASSERT_OK(WriteSimpleTestRow(leader, tablet_id_, 0, 0, "a", kTimeout));
+  ASSERT_OK(WaitForServersToAgree(kTimeout, tablet_servers_, tablet_id_, /* minimum_index= */ 1));
+  SleepFor(MonoDelta::FromMilliseconds(2 * kDelayMs));
+
+  ASSERT_OK(WriteSimpleTestRow(leader, tablet_id_, 1, 1, "a", kTimeout));
+  const auto committed = ASSERT_RESULT(GetLastOpIdForReplica(
+      tablet_id_, leader, consensus::COMMITTED_OPID, kTimeout)).index;
+
+  std::vector<TServerDetails*> followers;
+  for (auto* ts : TServerDetailsVector(tablet_servers_)) {
+    if (ts->uuid() != leader->uuid()) {
+      followers.push_back(ts);
+    }
+  }
+  // The follower whose ack formed the majority learns the commit index only through the deferral.
+  // A follower that acks after the commit gets it right away through more_pending.
+  int lagging_followers = 0;
+  for (auto* follower : followers) {
+    const auto follower_committed = ASSERT_RESULT(GetLastOpIdForReplica(
+        tablet_id_, follower, consensus::COMMITTED_OPID, kTimeout)).index;
+    if (follower_committed < committed) {
+      ++lagging_followers;
+    }
+  }
+  ASSERT_GE(lagging_followers, 1);
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    for (auto* follower : followers) {
+      const auto follower_committed = VERIFY_RESULT(GetLastOpIdForReplica(
+          tablet_id_, follower, consensus::COMMITTED_OPID, kTimeout)).index;
+      if (follower_committed < committed) {
+        return false;
+      }
+    }
+    return true;
+  }, 2ms * kDelayMs * kTimeMultiplier, "Followers learn the commit index"));
+}
+
+// A write that arrives while a commit-index-only update is deferred goes out immediately and
+// carries the commit index itself; it must never wait for the deferral to fire.
+TEST_F(RaftConsensusITest, WritesDoNotWaitForDeferredCommitIndexUpdate) {
+  const MonoDelta kTimeout = 30s;
+  constexpr int kDelayMs = 1000;
+  constexpr int kNumWrites = 10;
+  ASSERT_NO_FATALS(BuildAndStart({
+      "--raft_heartbeat_interval_ms=1500"s,
+      Format("--raft_deferred_update_delay_ms=$0", kDelayMs)}));
+
+  TServerDetails* leader = nullptr;
+  ASSERT_OK(GetLeaderReplicaWithRetries(tablet_id_, &leader));
+  for (int i = 0; i != kNumWrites; ++i) {
+    const auto start = MonoTime::Now();
+    ASSERT_OK(WriteSimpleTestRow(leader, tablet_id_, i, i, "a", kTimeout));
+    // Waiting on the deferral would cost kDelayMs.
+    ASSERT_LT(MonoTime::Now() - start, MonoDelta::FromMilliseconds(kDelayMs)) << "write " << i;
+  }
+}
+
 // Run a regular workload with one follower that's writing to its WAL slowly.
 TEST_F(RaftConsensusITest, TestSlowFollower) {
   if (!AllowSlowTests()) return;
@@ -3808,8 +3879,12 @@ TEST_F(RaftConsensusITest, GetSafeTimeBeforeNoOpReplicated) {
   ASSERT_NO_FATALS(WaitForRowCount(
       tablet_servers_[leader->uuid()]->tserver_proxy.get(), 2, &results));
 
-  // Reject update consensus requests on other_follower.
+  // Reject update consensus requests on other_follower. It must already know that both rows are
+  // committed: as the next leader it skips the NO_OP and so cannot commit them itself, and the
+  // commit-index-only update for the second row may still be deferred.
   const auto other_follower = cluster_->tablet_server(other_follower_idx);
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      3, tablet_servers_[other_follower->uuid()].get(), tablet_id_, kTimeout));
   ASSERT_OK(
       cluster_->SetFlag(other_follower, "TEST_follower_reject_update_consensus_requests", "true"));
 
@@ -3869,8 +3944,11 @@ TEST_F(RaftConsensusITest, OldLeaderLeaseTooOldOnNewLeader) {
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_,
                                   tablet_id_, 2));
 
-  // Pause one follower, and wait until the old leader lease on it is expired.
+  // Pause one follower, and wait until the old leader lease on it is expired. It must already know
+  // index 2 is committed: the commit-index-only update may still be deferred.
   const auto follower = cluster_->tablet_server(follower_idx);
+  ASSERT_OK(WaitUntilCommittedOpIdIndexIs(
+      2, tablet_servers_[follower->uuid()].get(), tablet_id_, MonoDelta::FromSeconds(10)));
   ASSERT_OK(
       cluster_->SetFlag(follower, "TEST_follower_reject_update_consensus_requests", "true"));
   ASSERT_OK(follower->Pause());

@@ -187,6 +187,8 @@ struct RequestIdAllocation;
 
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
+using GetTabletLocationsCallback =
+    std::function<void(const Result<master::GetTabletLocationsResponsePB*>&)>;
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
@@ -361,6 +363,11 @@ class YBClient {
       const TableId& table_id,
       std::optional<TransactionMetadata> requester_transaction,
       bool wait = true,
+      CoarseTimePoint deadline = CoarseTimePoint());
+
+  Status StartTableBackfill(
+      const TableId& source_table_id, uint32_t target_table_oid,
+      uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
       CoarseTimePoint deadline = CoarseTimePoint());
 
   Status GetIndexBackfillProgress(
@@ -742,12 +749,14 @@ class YBClient {
       const ReplicationSlotName& replication_slot_name,
       std::unordered_map<uint32_t, PgReplicaIdentity>* replica_identities);
 
+  // xcluster_bootstrap_tablet_ids: see master::XClusterStreamBootstrapInfoPB.
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
       std::shared_ptr<TableId> table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       StdStatusCallback callback,
-      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr);
+      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr,
+      std::shared_ptr<std::vector<TabletId>> xcluster_bootstrap_tablet_ids = nullptr);
 
   // List all the CDCSDK streams skipping the ones which do not have a replication slot name.
   Result<std::vector<CDCSDKStreamInfo>> ListCDCSDKStreams();
@@ -907,6 +916,12 @@ class YBClient {
 
   Result<yb::master::GetTabletLocationsResponsePB> GetTabletLocations(
       const std::vector<TabletId>& tablet_ids);
+
+  // Retries while any of the tablets is not running. Errors for individual tablets, such as
+  // deleted ones, are returned in the response.
+  void GetTabletLocations(
+      const std::vector<TabletId>& tablet_ids, master::IncludeHidden include_hidden,
+      GetTabletLocationsCallback callback);
 
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.

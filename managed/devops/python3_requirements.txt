@@ -31,7 +31,9 @@ distro==1.5.0
 google-api-python-client==1.10.0
 google-api-core==1.22.0
 google-auth==1.19.2
-grpcio==1.76.0
+grpcio==1.84.2
+# grpcio-tools 1.77+ requires protobuf 7. It only generates the node-agent stubs at build time,
+# and stubs from an older grpcio-tools run on a newer grpcio.
 grpcio-tools==1.76.0
 Jinja2==3.1.6
 MarkupSafe==3.0.3

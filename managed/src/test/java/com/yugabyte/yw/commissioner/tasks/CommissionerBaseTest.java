@@ -89,6 +89,7 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -173,11 +174,16 @@ import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.slf4j.LoggerFactory;
+import org.yb.WireProtocol.AppStatusPB;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListLiveTabletServersResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
+import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.TabletServerInfo;
 import play.Application;
 import play.Environment;
@@ -402,6 +408,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
+    when(mockBaseTaskDependencies.getAuditService()).thenReturn(mock(AuditService.class));
     releaseMetadata =
         ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("/fakedb-x86_64.tar.gz");
     ybcReleaseMetadata =
@@ -1677,5 +1684,22 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   Map<String, String> toLabelMap(Labels labels) {
     return labels.stream().collect(Collectors.toMap(Label::getName, Label::getValue));
+  }
+
+  protected static final String TSERVERS_NOT_UPGRADED_MESSAGE =
+      "Cannot promote AutoFlags before all yb-tservers have been upgraded to the current version";
+
+  protected static PromoteAutoFlagsResponse promoteAutoFlagsErrorResponse(
+      ErrorCode code, String message) {
+    return new PromoteAutoFlagsResponse(
+        0,
+        "uuid",
+        PromoteAutoFlagsResponsePB.newBuilder()
+            .setError(
+                MasterErrorPB.newBuilder()
+                    .setStatus(AppStatusPB.newBuilder().setCode(code).setMessage(message).build())
+                    .setCode(MasterErrorPB.Code.UNKNOWN_ERROR)
+                    .build())
+            .build());
   }
 }

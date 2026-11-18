@@ -43,6 +43,7 @@
 #include "pg_yb_utils.h"
 #include "storage/dsm_impl.h"
 #include "storage/procarray.h"
+#include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
@@ -83,6 +84,17 @@ bool
 YbIsClientYsqlConnMgr()
 {
 	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
+}
+
+/*
+ * The connection manager sets the addr and port together, so the addr alone
+ * decides, the same way pg_stat_activity does.
+ */
+bool
+YbHasConnMgrLogicalClientAddr(void)
+{
+	return YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
+		   yb_ycm_internal_client_addr[0] != '\0';
 }
 
 bool		yb_conn_mgr_is_auth_passthrough_backend = false;
@@ -919,6 +931,26 @@ YbSendFatalForLogicalConnectionPacket()
 
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
+}
+
+void
+YbSendConnMgrObjectDropped(char kind, Oid oid)
+{
+	static bool sent = false;
+	StringInfoData buf;
+
+	/*
+	 * This is sent at-most-once by a normal backend as well
+	 * as parallel workers to their leader.
+	 */
+	if (sent || !YbIsClientYsqlConnMgr() || whereToSendOutput != DestRemote)
+		return;
+	sent = true;
+
+	pq_beginmessage(&buf, '7');
+	pq_sendbyte(&buf, kind);
+	pq_sendint32(&buf, oid);
+	pq_endmessage(&buf);
 }
 
 bool

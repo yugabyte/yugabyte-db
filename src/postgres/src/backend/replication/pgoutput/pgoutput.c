@@ -883,6 +883,14 @@ pgoutput_ensure_entry_cxt(PGOutputData *data, RelationSyncEntry *entry)
 
 	MemoryContextCopyAndSetIdentifier(entry->entry_cxt,
 									  RelationGetRelationName(relation));
+
+	/*
+	 * YB: Release the reference.  YB's transactional DDL decoding invalidates
+	 * the relcache in the middle of the decoding transaction, which requires
+	 * that no entry is still referenced.
+	 */
+	if (IsYugaByteEnabled())
+		RelationClose(relation);
 }
 
 /*

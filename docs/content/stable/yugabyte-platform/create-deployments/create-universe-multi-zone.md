@@ -127,6 +127,12 @@ Complete the **Instance Configuration** section for **TServer** and **Master** a
 - **Memory(GiB)** - specify the memory allocation of the TServer and Master.
 - **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
 
+  {{< note title="TServer memory headroom" >}}
+
+  **Memory(GiB)** is the pod memory. In v2026.1.3.0 and later, YugabyteDB Anywhere sets `memoryLimitHardPercentage` to 70% for the TServer, so the TServer process uses 70% of that memory and PostgreSQL and other processes in the same pod have the rest. The master runs in its own pod and stays at 85%.
+
+  {{< /note >}}
+
   After the universe is created, you can change storage class and volume count on universes running YugabyteDB v2026.1.0.0 or later. Refer to [Full move for Kubernetes universes](../../scale-deployments/kubernetes-full-move/).
 
 YugabyteDB supports ARM instances on Kubernetes, which are specified using Helm overrides. Refer to [Kubernetes overrides](../../scale-deployments/edit-helm-overrides/#arm-vms).

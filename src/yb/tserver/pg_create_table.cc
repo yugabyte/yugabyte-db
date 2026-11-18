@@ -21,6 +21,7 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
@@ -209,6 +210,8 @@ Status PgCreateTable::Exec(
     }
     if (req_.skip_index_backfill()) {
       table_creator->skip_index_backfill(true);
+    } else if (const auto origination_ht = HybridTime::FromPB(req_.options().origination_ht())) {
+      table_creator->backfill_origination_ht(origination_ht);
     }
   }
 

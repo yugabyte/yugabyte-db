@@ -107,7 +107,6 @@ DECLARE_bool(use_node_hostname_for_local_tserver);
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
 
-DECLARE_bool(enable_object_locking_for_table_locks);
 
 namespace yb::pggate {
 namespace {
@@ -506,11 +505,6 @@ Result<bool> RetrieveYbctidsImpl(
       });
 }
 
-[[nodiscard]] bool ShouldEnableTableLocks() {
-  return FLAGS_enable_object_locking_for_table_locks && !YBCIsInitDbModeEnvVarSet() &&
-         !YBCIsBinaryUpgrade();
-}
-
 tserver::TServerSharedData& GetTServerSharedData() {
   PgBackendSetupSharedMemory();
   // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
@@ -783,8 +777,10 @@ PgApiImpl::PgApiImpl(
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
-      enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, pg_callbacks_, enable_table_locking_,
+      pg_txn_manager_(new PgTxnManager(
+          &pg_client_, pg_callbacks_,
+          /* backend_should_take_object_locks= */
+          !YBCIsInitDbModeEnvVarSet() && !YBCIsBinaryUpgrade() && !is_parallel_worker_,
           pg_shared_data_->next_read_time_serial_no)),
       pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
@@ -914,7 +910,7 @@ Status PgApiImpl::InsertSequenceTuple(
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called);
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
@@ -923,7 +919,7 @@ Status PgApiImpl::UpdateSequenceTupleConditionally(
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val, is_called,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
@@ -933,7 +929,7 @@ Status PgApiImpl::UpdateSequenceTuple(
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), last_val,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -947,7 +943,7 @@ Status PgApiImpl::FetchSequenceTuple(
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), fetch_count, inc_by,
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -962,7 +958,7 @@ Status PgApiImpl::ReadSequenceTuple(
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, actual_ysql_catalog_version,
-      pg_txn_manager_->IsTableLockingEnabledForCurrentTxn(), actual_yb_read_time));
+      pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn(), actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
   }
@@ -1458,6 +1454,20 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_tra
   req.set_origination_ht(pg_txn_manager_->GetOriginationHt());
   return pg_client_.BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
+}
+
+Status PgApiImpl::StartTableBackfill(
+    const PgObjectId& source_table_id, uint32_t target_table_oid,
+    uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id) {
+  tserver::PgStartTableBackfillRequestPB req;
+  source_table_id.ToPB(req.mutable_source_table_id());
+  req.set_target_table_oid(target_table_oid);
+  req.set_transform_fn_oid(transform_fn_oid);
+  req.set_backfill_timestamp(backfill_timestamp);
+  req.set_pg_job_id(pg_job_id);
+  // Unlike BackfillIndex, this RPC only starts the job and does not wait for the copy, so a DDL
+  // deadline is enough.
+  return pg_client_.StartTableBackfill(&req, DdlDeadline());
 }
 
 Status PgApiImpl::WaitVectorIndexReady(const PgObjectId& table_id) {
@@ -2386,8 +2396,12 @@ bool PgApiImpl::IsDdlModeWithRegularTransactionBlock() const {
   return pg_txn_manager_->IsDdlModeWithRegularTransactionBlock();
 }
 
-bool PgApiImpl::IsTableLockingEnabledForCurrentTxn() const {
-  return pg_txn_manager_->IsTableLockingEnabledForCurrentTxn();
+bool PgApiImpl::UsingObjectLocksLocally() const {
+  return pg_txn_manager_->UsingObjectLocksLocally();
+}
+
+bool PgApiImpl::UsingObjectLocksGloballyForCurrentTxn() const {
+  return pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn();
 }
 
 Result<bool> PgApiImpl::CurrentTransactionUsesFastPath() const {
@@ -2399,8 +2413,11 @@ void PgApiImpl::ResetCatalogReadTime() {
 }
 
 void PgApiImpl::SetHistoricalReadContext(
-    const ReadHybridTime& read_time, const char* transaction_id) {
-  pg_session_->SetHistoricalReadContext(read_time, transaction_id ? transaction_id : "");
+    const ReadHybridTime& read_time, const char* transaction_id,
+    std::span<const uint32_t> aborted_subtxn_set) {
+  pg_session_->SetHistoricalReadContext(
+      read_time, transaction_id ? transaction_id : "",
+      std::vector<uint32_t>(aborted_subtxn_set.begin(), aborted_subtxn_set.end()));
 }
 
 void PgApiImpl::ResetHistoricalReadContext() {

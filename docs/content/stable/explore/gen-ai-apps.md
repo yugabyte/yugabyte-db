@@ -84,11 +84,11 @@ YugabyteDB combines the PostgreSQL pgvector extension APIs with [Vector LSM](htt
 
 - Build for retrieval-optimized generation (ROG): YugabyteDB enables you to build applications that find answers without expensive LLM calls, moving beyond traditional RAG to retrieval-optimized generation (ROG) that reduces costs while maintaining accuracy.
 
-- No lock-in: YugabyteDB is 100% open source, so you can run it anywhere and leverage the massive ecosystem of PostgreSQL tools. YugabyteDB has a flexible vector indexing framework that supports the latest algorithms, including FAISS, HNSW_lib, USearch, ScANN, DiskAnn, and virtually any index.
+- No lock-in: YugabyteDB is 100% open source, so you can run it anywhere and leverage the massive ecosystem of PostgreSQL tools. Approximate nearest neighbor search uses the `ybhnsw` index on [Vector LSM](https://www.yugabyte.com/blog/yugabytedb-vector-indexing-architecture/). See [pgvector](/stable/additional-features/pg-extensions/extension-pgvector/).
 
 - Use any embedding model: Generate embeddings from OpenAI, Cohere, local models, or custom models, and then store them in standard `VECTOR` columns. The database treats them as numeric vectors, so you can switch embedding models by regenerating embeddings and updating your table without any schema changes.
 
-- Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). Internally, YugabyteDB uses a pluggable and swappable vector indexing framework. While it currently leverages USearch for high-performance vector search, the architecture is designed to be "algorithm-agnostic." This allows other leading libraries (such as hnswlib or FAISS) to be seamlessly integrated as the AI landscape evolves.
+- Flexible vector indexing: Run YugabyteDB on any infrastructure (self-hosted or cloud) with full PostgreSQL tool compatibility (for example, pg_dump, ORMs like SQLAlchemy). Approximate nearest neighbor search uses the distributed `ybhnsw` access method, backed by DocDB Vector LSM, instead of the USearch and HNSWLIB backends removed in v2026.1.3.0.
 
 AI applications require access to massive volumes of unstructured and diverse data (text, audio, video, and images) stored across fragmented locations like cloud buckets, local disks, and external applications. So it's a significant challenge to either get this diverse source data into YugabyteDB, or allow YugabyteDB to access this data in its original location.
 
