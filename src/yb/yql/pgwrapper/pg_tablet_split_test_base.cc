@@ -150,7 +150,7 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForDataCompacted(
     // Wait for parent tablet is deleted. This may be required by a series of splits.
     if (parent) {
       RETURN_NOT_OK(itest::WaitForTabletIsDeletedOrHidden(
-          catalog_mgr, parent->tablet_id(), MonoDelta::FromSeconds(5) * kTimeMultiplier));
+          cluster_.get(), parent->tablet_id(), MonoDelta::FromSeconds(5) * kTimeMultiplier));
     }
     parent = tablet;
 

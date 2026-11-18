@@ -21,9 +21,11 @@
 
 #include "yb/common/schema_pbutil.h"
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_client.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/util/status.h"
@@ -45,7 +47,14 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
     resp->Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(expected_count);
-    RETURN_NOT_OK(mini_master->catalog_manager().GetTableLocations(&req, resp));
+    rpc::ProxyCache proxy_cache(&mini_master->messenger());
+    MasterClientProxy proxy(&proxy_cache, mini_master->bound_rpc_addr());
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    RETURN_NOT_OK(proxy.GetTableLocations(req, resp, &controller));
+    if (resp->has_error()) {
+      return StatusFromPB(resp->error().status());
+    }
     if (resp->tablet_locations_size() >= expected_count) {
       bool is_stale = false;
       for (const TabletLocationsPB& loc : resp->tablet_locations()) {

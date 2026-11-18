@@ -91,6 +91,7 @@ set(INTEGRATION_TESTS_SRCS
   external_mini_cluster_validator.cc
   load_balancer_test_util.cc
   load_generator.cc
+  master_test_api.cc
   mini_cluster.cc
   mini_cluster_base.cc
   mini_cluster_utils.cc

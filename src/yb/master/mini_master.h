@@ -115,6 +115,10 @@ class MiniMaster {
 
   rpc::Messenger& messenger() const;
 
+  // The C++ Master or the Rust master's host: the server's clock, messenger, metrics and web
+  // server.
+  server::RpcAndWebServerBase& server() const;
+
   CatalogManagerIf& catalog_manager() const;
 
   CatalogManager& catalog_manager_impl() const;
@@ -146,9 +150,6 @@ class MiniMaster {
 
   Status StartOnPorts(uint16_t rpc_port, uint16_t web_port,
                       MasterOptions* options);
-
-  // The C++ Master or the Rust master's host.
-  server::RpcAndWebServerBase& server() const;
 
   // Fails the test when a Rust master is asked for C++ master internals.
   void CheckCppMaster(const char* accessor) const;

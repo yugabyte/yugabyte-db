@@ -56,12 +56,10 @@
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/master_test_api.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
@@ -69,10 +67,8 @@
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_options.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/object_lock_info_manager.h"
-#include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/ts_manager.h"
 
 #ifdef YB_WITH_RUST_MASTER
 #include "yb/master_host/embedded_master.h"
@@ -145,7 +141,6 @@ namespace yb {
 using client::YBClientBuilder;
 using master::MiniMaster;
 using master::TabletLocationsPB;
-using master::TSDescriptor;
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -206,8 +201,8 @@ Status IsLoadBalancerIdleByRpc(MiniMaster& master) {
 }
 
 // The tservers of `tservers` (uuid to instance seqno) the master lists, live ones only when
-// `live_only`. Unlike the C++ path it cannot check that each sent a full tablet report.
-Result<size_t> CountRegisteredTabletServers(
+// `live_only`. A listed tserver may not have sent its full tablet report yet.
+Result<std::vector<master::ListTabletServersResponsePB::Entry>> RegisteredTabletServers(
     MiniMaster& master, const std::unordered_map<std::string, int64_t>& tservers,
     bool live_only) {
   rpc::ProxyCache proxy_cache(&master.messenger());
@@ -218,11 +213,15 @@ Result<size_t> CountRegisteredTabletServers(
   controller.set_timeout(10s);
   RETURN_NOT_OK(proxy.ListTabletServers(req, &resp, &controller));
   RETURN_NOT_OK(ResponseStatus(resp));
-  return std::ranges::count_if(resp.servers(), [&](const auto& server) {
+  std::vector<master::ListTabletServersResponsePB::Entry> result;
+  for (const auto& server : resp.servers()) {
     auto it = tservers.find(server.instance_id().permanent_uuid());
-    return it != tservers.end() && it->second == server.instance_id().instance_seqno() &&
-           (!live_only || server.alive());
-  });
+    if (it != tservers.end() && it->second == server.instance_id().instance_seqno() &&
+        (!live_only || server.alive())) {
+      result.push_back(server);
+    }
+  }
+  return result;
 }
 
 std::string GetClusterDataDirName(const MiniClusterOptions& options) {
@@ -673,8 +672,7 @@ ssize_t MiniCluster::LeaderMasterIdx() {
   while (sw.elapsed().wall_seconds() < kMasterLeaderElectionWaitTimeSeconds) {
     for (size_t i = 0; i < mini_masters_.size(); i++) {
       MiniMaster* master = mini_master(i);
-      if (master->is_rust() ? !master->is_running()
-                            : master->master() == nullptr || master->master()->IsShutdown()) {
+      if (!master->is_running()) {
         continue;
       }
       if (auto leader = master->IsLeaderAndReady(); leader.ok() && *leader) {
@@ -904,10 +902,7 @@ Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
       continue;
     }
     locations->Clear();
-    Status s = (*leader_mini_master)->is_rust()
-        ? GetTabletLocationsByRpc(**leader_mini_master, tablet_id, locations)
-        : (*leader_mini_master)->master()->catalog_manager()->GetTabletLocations(
-              tablet_id, locations);
+    Status s = GetTabletLocationsByRpc(**leader_mini_master, tablet_id, locations);
     if (s.ok() && ((locations->stale() && expected_count == 0) ||
         (!locations->stale() && locations->replicas_size() == expected_count))) {
       return Status::OK();
@@ -928,10 +923,9 @@ Status MiniCluster::WaitForAllTabletServers() {
   return ResultToStatus(WaitForTabletServerCount(num_tablet_servers()));
 }
 
-Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForTabletServerCount(
-    size_t count, bool live_only) {
-  // Put the mini tservers into a map to simplify checking whether the master leader knows about
-  // them.
+Result<std::vector<master::ListTabletServersResponsePB::Entry>>
+MiniCluster::WaitForTabletServerCount(size_t count, bool live_only) {
+  // The mini tservers by uuid and instance seqno, to check that the leader lists exactly them.
   std::unordered_map<std::string, int64_t> mini_cluster_tservers;
   for (const auto& mini_ts : mini_tablet_servers_) {
     const auto& ts = mini_ts->server();
@@ -942,35 +936,16 @@ Result<std::vector<std::shared_ptr<master::TSDescriptor>>> MiniCluster::WaitForT
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
-    if (leader.ok() && (*leader)->is_rust()) {
-      // A Rust master has no descriptors to return.
-      auto registered = CountRegisteredTabletServers(**leader, mini_cluster_tservers, live_only);
-      if (registered.ok() && *registered == count) {
-        LOG(INFO) << count << " TS(s) registered with the Rust master after "
+    if (leader.ok()) {
+      auto registered = RegisteredTabletServers(**leader, mini_cluster_tservers, live_only);
+      if (registered.ok() && registered->size() == count) {
+        LOG(INFO) << count << " TS(s) registered with Master after "
                   << sw.elapsed().wall_seconds() << "s";
-        return std::vector<std::shared_ptr<master::TSDescriptor>>();
+        return std::move(*registered);
       }
-    } else if (leader.ok()) {
-      auto descs = (*leader)->ts_manager().GetAllDescriptors();
-      if (live_only || descs.size() == count) {
-        // GetAllDescriptors() may return servers that are no longer online.
-        // Do a second step of verification to verify that the descs that we got
-        // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
-        size_t match_count =
-            std::ranges::count_if(descs, [&mini_cluster_tservers, &live_only](const auto& desc) {
-              auto it = mini_cluster_tservers.find(desc->permanent_uuid());
-              return it != mini_cluster_tservers.end() && it->second == desc->latest_seqno() &&
-                     desc->has_tablet_report() && (!live_only || desc->IsLive());
-            });
-
-        if (match_count == count) {
-          LOG(INFO) << count << " TS(s) registered with Master after "
-                    << sw.elapsed().wall_seconds() << "s";
-          return descs;
-        }
+      if (registered.ok()) {
+        YB_LOG_EVERY_N_SECS(INFO, 5) << "Registered: " << registered->size() << " of " << count;
       }
-
-      YB_LOG_EVERY_N_SECS(INFO, 5) << "Registered: " << AsString(descs);
     }
 
     SleepFor(MonoDelta::FromMilliseconds(1));
@@ -1078,28 +1053,10 @@ Status MiniCluster::ChangeClusterConfig(
 
 Status MiniCluster::WaitForLoadBalancerToStabilize(MonoDelta timeout) {
   auto* leader_mini_master = VERIFY_RESULT(GetLeaderMiniMaster());
-  const auto start_time = MonoTime::Now();
-  const auto deadline = start_time + timeout;
-  if (leader_mini_master->is_rust()) {
-    // No RPC tells when a Rust leader's balancer last ran; idle means its recent runs were idle.
-    return Wait(
-        [&]() -> Result<bool> { return IsLoadBalancerIdleByRpc(*leader_mini_master).ok(); },
-        deadline, "IsLoadBalancerIdle");
-  }
-  auto master_leader = leader_mini_master->master();
-  RETURN_NOT_OK(Wait(
-      [&]() -> Result<bool> {
-        return master_leader->catalog_manager_impl()->LastLoadBalancerRunTime() > start_time;
-      },
-      deadline, "LoadBalancer did not evaluate the cluster load"));
-
-  master::IsLoadBalancerIdleRequestPB req;
-  master::IsLoadBalancerIdleResponsePB resp;
+  // No RPC tells when the balancer last ran; idle means its recent runs were idle.
   return Wait(
-      [&]() -> Result<bool> {
-        return master_leader->catalog_manager_impl()->IsLoadBalancerIdle(&req, &resp).ok();
-      },
-      deadline, "IsLoadBalancerIdle");
+      [&]() -> Result<bool> { return IsLoadBalancerIdleByRpc(*leader_mini_master).ok(); },
+      MonoTime::Now() + timeout, "IsLoadBalancerIdle");
 }
 
 std::string MiniCluster::GetTabletServerHTTPAddresses() const {
@@ -1145,7 +1102,7 @@ std::vector<server::SkewedClockDeltaChanger> JumpClocks(
   auto num_tservers = cluster->num_tablet_servers();
   delta_changers.reserve(num_masters + num_tservers);
   for (size_t i = 0; i != num_masters; ++i) {
-    delta_changers.push_back(JumpClock(cluster->mini_master(i)->master(), delta));
+    delta_changers.push_back(JumpClock(&cluster->mini_master(i)->server(), delta));
   }
   for (size_t i = 0; i != num_tservers; ++i) {
     delta_changers.push_back(JumpClock(cluster->mini_tablet_server(i)->server(), delta));
@@ -1627,24 +1584,12 @@ int NumRunningFlushes(MiniCluster* cluster) {
 
 Result<master::TableInfoPtr> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name) {
-  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
-  master::TableIdentifierPB identifier;
-  table_name.SetIntoTableIdentifierPB(&identifier);
-  return catalog_manager.FindTable(identifier);
+  return MasterTestApi(cluster).FindTable(table_name);
 }
 
 Result<TableId> FindTableId(
     MiniCluster* cluster, const std::string& table_name) {
-  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
-  master::ListTablesRequestPB req;
-  master::ListTablesResponsePB resp;
-  RETURN_NOT_OK(catalog_manager.ListTables(&req, &resp));
-  for (const auto & table : resp.tables()) {
-    if (table.name() == table_name) {
-      return table.id();
-    }
-  }
-  return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
+  return MasterTestApi(cluster).FindTableId(table_name);
 }
 
 Status WaitForInitDb(MiniCluster* cluster) {
@@ -1655,11 +1600,8 @@ Status WaitForInitDb(MiniCluster* cluster) {
     if (!leader_mini_master.ok()) {
       continue;
     }
-    master::IsInitDbDoneRequestPB req;
     master::IsInitDbDoneResponsePB resp;
-    auto status = (*leader_mini_master)->is_rust()
-        ? IsInitDbDoneByRpc(**leader_mini_master, &resp)
-        : (*leader_mini_master)->catalog_manager().IsInitDbDone(&req, &resp);
+    auto status = IsInitDbDoneByRpc(**leader_mini_master, &resp);
     if (!status.ok()) {
       LOG(INFO) << "IsInitDbDone failure: " << status;
       continue;
@@ -1750,7 +1692,7 @@ Status SetupConnectivity(
       auto address = VERIFY_RESULT(HostToAddress(TEST_RpcAddress(to_idx + 1, type)));
       if (from_idx < cluster->num_masters()) {
         SetupConnectivityWith(
-            cluster->mini_master(from_idx)->master()->messenger(), address, connectivity);
+            &cluster->mini_master(from_idx)->messenger(), address, connectivity);
       }
       if (from_idx < cluster->num_tablet_servers()) {
         SetupConnectivityWith(
@@ -1866,12 +1808,11 @@ Status InvokeSplitTabletRpcAndWaitForDataCompacted(
 
 Status InvokeSplitTabletRpcAndWaitForDataCompacted(
     MiniCluster* cluster, const TabletId& tablet_id, MonoDelta rpc_timeout) {
-  auto* master = VERIFY_RESULT(cluster->GetLeaderMiniMaster());
-  auto& catalog_manager = master->catalog_manager();
-  const auto tablet = VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+  auto catalog = VERIFY_RESULT(MasterTestApi(cluster).Catalog());
+  const auto tablet = VERIFY_RESULT(catalog.GetTabletInfo(tablet_id));
 
   // Get current number of tablets for the table.
-  const auto table = catalog_manager.GetTableInfo(tablet->table()->id());
+  const auto table = VERIFY_RESULT(catalog.GetTableInfo(tablet->table()->id()));
 
   return InvokeSplitTabletRpcAndWaitForDataCompacted(cluster, table, tablet, rpc_timeout);
 }
@@ -2130,9 +2071,7 @@ void ClearAllMetaCachesOnTServers(MiniCluster* cluster) {
 Status WaitForTabletHidden(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
   return WaitFor(
       [cluster, &tablet_id]() -> Result<bool> {
-        auto& catalog_manager =
-            VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
-        auto tablet_info = VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+        auto tablet_info = VERIFY_RESULT(MasterTestApi(cluster).GetTabletInfo(tablet_id));
         auto lock = tablet_info->LockForRead();
         if (lock->is_hidden()) {
           LOG(INFO) << "Tablet " << tablet_id << " is now hidden";

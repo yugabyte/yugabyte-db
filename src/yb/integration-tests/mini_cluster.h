@@ -50,6 +50,7 @@
 
 #include "yb/master/embedded_master_if.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_fwd.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
@@ -268,7 +269,8 @@ class MiniCluster : public MiniClusterBase {
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
-  Result<std::vector<std::shared_ptr<master::TSDescriptor>>> WaitForTabletServerCount(
+  // Returns the leader's entries for them.
+  Result<std::vector<master::ListTabletServersResponsePB::Entry>> WaitForTabletServerCount(
       size_t count, bool live_only = false);
 
   // Waits for the tablet server to heartbeat successfully to the master leader.

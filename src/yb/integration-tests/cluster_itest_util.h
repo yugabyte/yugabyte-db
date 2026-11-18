@@ -94,6 +94,7 @@ class ExternalMiniCluster;
 class HostPort;
 class MonoDelta;
 class MiniCluster;
+class MiniClusterBase;
 class Schema;
 class Status;
 
@@ -564,7 +565,7 @@ Status GetLastOpIdForMasterReplica(
     OpIdPB* op_id);
 
 Status WaitForTabletIsDeletedOrHidden(
-    master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout);
+    MiniClusterBase* cluster, const TabletId& tablet_id, MonoDelta timeout);
 
 void SetupQuickSplit(int64_t forced_split_threshold);
 

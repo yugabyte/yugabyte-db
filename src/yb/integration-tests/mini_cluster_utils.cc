@@ -20,10 +20,11 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
-#include "yb/master/catalog_manager_if.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet.h"
@@ -114,15 +115,23 @@ void CreateTabletForTesting(MiniCluster* cluster,
                             const Schema& schema,
                             std::string* tablet_id,
                             std::string* table_id) {
-  auto* mini_master = cluster->mini_master();
-  auto epoch = mini_master->catalog_manager().GetLeaderEpochInternal();
+  auto* mini_master = ASSERT_RESULT(cluster->GetLeaderMiniMaster());
+  auto proxy = ASSERT_RESULT(cluster->GetLeaderMasterProxy<master::MasterDdlProxy>());
+  auto call = [&proxy](auto method, const auto& req, auto* resp) -> Status {
+    rpc::RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    RETURN_NOT_OK((proxy.*method)(req, resp, &controller));
+    if (resp->has_error()) {
+      return StatusFromPB(resp->error().status());
+    }
+    return Status::OK();
+  };
   {
     master::CreateNamespaceRequestPB req;
     master::CreateNamespaceResponsePB resp;
     req.set_name(table_name.resolved_namespace_name());
 
-    const Status s = mini_master->catalog_manager().CreateNamespace(
-        &req, &resp, /* rpc::RpcContext* */ nullptr, epoch);
+    const Status s = call(&master::MasterDdlProxy::CreateNamespace, req, &resp);
     ASSERT_TRUE(s.ok() || s.IsAlreadyPresent()) << " status=" << s.ToString();
   }
   {
@@ -133,8 +142,7 @@ void CreateTabletForTesting(MiniCluster* cluster,
     req.mutable_namespace_()->set_name(table_name.resolved_namespace_name());
 
     SchemaToPB(schema, req.mutable_schema());
-    ASSERT_OK(mini_master->catalog_manager().CreateTable(
-        &req, &resp, /* rpc::RpcContext* */ nullptr, epoch));
+    ASSERT_OK(call(&master::MasterDdlProxy::CreateTable, req, &resp));
   }
 
   int wait_time = 1000;
@@ -144,7 +152,7 @@ void CreateTabletForTesting(MiniCluster* cluster,
     master::IsCreateTableDoneResponsePB resp;
 
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
-    ASSERT_OK(mini_master->catalog_manager().IsCreateTableDone(&req, &resp));
+    ASSERT_OK(call(&master::MasterDdlProxy::IsCreateTableDone, req, &resp));
     if (resp.done()) {
       is_table_created = true;
       break;
@@ -161,7 +169,7 @@ void CreateTabletForTesting(MiniCluster* cluster,
     master::GetTableSchemaRequestPB req;
     master::GetTableSchemaResponsePB resp;
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
-    ASSERT_OK(mini_master->catalog_manager().GetTableSchema(&req, &resp));
+    ASSERT_OK(call(&master::MasterDdlProxy::GetTableSchema, req, &resp));
     ASSERT_TRUE(resp.create_table_done());
     if (table_id != nullptr) {
       *table_id = resp.identifier().table_id();

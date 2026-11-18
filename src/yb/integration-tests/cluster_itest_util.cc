@@ -65,8 +65,8 @@
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/master_test_api.h"
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_client.proxy.h"
@@ -1338,8 +1338,10 @@ Status GetTableLocations(MiniCluster* cluster,
   table_name.SetIntoTableIdentifierPB(req.mutable_table());
   req.set_require_tablets_running(require_tablets_running);
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
-  auto& catalog_manager = VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
-  RETURN_NOT_OK(catalog_manager.GetTableLocations(&req, table_locations));
+  auto proxy = VERIFY_RESULT(cluster->GetLeaderMasterProxy<master::MasterClientProxy>());
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(30));
+  RETURN_NOT_OK(proxy.GetTableLocations(req, table_locations, &rpc));
   if (table_locations->has_error()) {
     return StatusFromPB(table_locations->error().status());
   }
@@ -1597,14 +1599,9 @@ Result<OpId> GetLastOpIdForReplica(
 }
 
 Status WaitForTabletIsDeletedOrHidden(
-    master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout) {
-  auto tablet_info_result = catalog_manager->GetTabletInfo(tablet_id);
-  // A DELETED tablet can already be gone from the catalog manager's tablet map.
-  if (!tablet_info_result.ok() && tablet_info_result.status().IsDeleted()) {
-    return Status::OK();
-  }
-  auto tablet_info = VERIFY_RESULT(std::move(tablet_info_result));
-  return LoggedWaitFor([&tablet_info] {
+    MiniClusterBase* cluster, const TabletId& tablet_id, MonoDelta timeout) {
+  return LoggedWaitFor([cluster, &tablet_id]() -> Result<bool> {
+      auto tablet_info = VERIFY_RESULT(MasterTestApi(cluster).GetTabletInfo(tablet_id));
       const auto tablet_lock = tablet_info->LockForRead();
       return tablet_lock->is_deleted() || tablet_lock->is_hidden();
     },
