@@ -2171,6 +2171,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   friend class AddTableToXClusterTargetTask;
   friend class VerifyDdlTransactionTask;
   friend class ObjectLockLoader;
+  friend class ClusterLoadBalancer;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
   FRIEND_TEST(TestCatalogManager, PlaceReplicasWithoutPlacementBlocks);

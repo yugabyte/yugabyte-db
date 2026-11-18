@@ -797,9 +797,23 @@ void ClusterLoadBalancer::ProcessUnderReplicatedTablets(
   }
 }
 
-void ClusterLoadBalancer::RunClusterBalancer(
-    const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
-    const TabletInfoMap& tablet_map) {
+void ClusterLoadBalancer::RunClusterBalancer(const LeaderEpoch& epoch) {
+  // The balancer works on a copy, so that it does not hold mutex_.
+  std::vector<TableInfoPtr> tables;
+  TabletInfoMap tablet_map;
+  if (!IsLoadBalancerEnabled()) {
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1) << "Cluster balancing is not enabled.";
+    // The per-run metrics go to zero while balancing is off.
+    per_run_state_ = std::make_unique<PerRunState>(tablet_map);
+    UpdatePerRunMetrics();
+    return;
+  }
+  {
+    CatalogManager::SharedLock lock(catalog_manager_->mutex_);
+    auto tables_it = catalog_manager_->tables_->GetPrimaryTables();
+    tables = std::vector(std::begin(tables_it), std::end(tables_it));
+    tablet_map = *catalog_manager_->tablet_map_;
+  }
   epoch_ = epoch;
   SysClusterConfigEntryPB config = CHECK_RESULT(catalog_manager_->GetClusterConfig());
 

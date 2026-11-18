@@ -592,6 +592,14 @@ Status TabletSplitManager::PrepareForSnapshotRestore(
   return Status::OK();
 }
 
+// Whether a replica reports something DoSplitting acts on. A tablet below the low phase
+// threshold is never split by ShouldSplitValidCandidate.
+bool ReplicaWorthChecking(const TabletReplicaDriveInfo& drive_info) {
+  return drive_info.may_have_orphaned_post_split_data ||
+         static_cast<int64_t>(drive_info.sst_files_size) >=
+             FLAGS_tablet_split_low_phase_size_threshold_bytes;
+}
+
 std::unordered_set<TabletServerId> GetReplicasWithOutstandingCompaction(
     const TabletReplicaMap& replicas) {
   std::unordered_set<TabletServerId> tservers_with_outstanding_compaction;
@@ -710,9 +718,9 @@ class TabletReplicaMapCache {
 class OutstandingSplitState {
  public:
   OutstandingSplitState(
-      const TabletInfoMap& tablet_info_map, TabletReplicaMapCache* replica_cache,
+      const CatalogManagerIf& catalog_manager, TabletReplicaMapCache* replica_cache,
       bool should_log_rejections)
-      : tablet_info_map_{tablet_info_map}, replica_cache_{replica_cache},
+      : catalog_manager_{catalog_manager}, replica_cache_{replica_cache},
         should_log_rejections_{should_log_rejections} {}
 
   // Helper method to determine if more splits can be scheduled, or if we should exit early.
@@ -750,14 +758,14 @@ class OutstandingSplitState {
 
   void AddSplitWithTask(const TabletId& split_tablet_id) {
     splits_with_task_.insert(split_tablet_id);
-    auto it = tablet_info_map_.find(split_tablet_id);
-    if (it == tablet_info_map_.end()) {
+    auto tablet = catalog_manager_.GetTabletInfo(split_tablet_id);
+    if (!tablet.ok()) {
       LOG(WARNING) << "Split tablet with task not found in tablet info map. ID: "
                    << split_tablet_id;
       return;
     }
-    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(*it->second));
-    auto l = it->second->LockForRead();
+    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(**tablet));
+    auto l = (*tablet)->LockForRead();
     for (auto child_id : l->pb.split_tablet_ids()) {
       // Track split_tablet_id as an ongoing split on its children's tservers.
       TrackTserverSplits(split_tablet_id, child_id);
@@ -972,7 +980,7 @@ class OutstandingSplitState {
   static constexpr size_t kMaxLoggedRejectedSplitCandidates = 10;
   static constexpr size_t kMaxLoggedRejectedTables = 20;
 
-  const TabletInfoMap& tablet_info_map_;
+  const CatalogManagerIf& catalog_manager_;
   TabletReplicaMapCache* replica_cache_;
   // Whether this pass should log rejected candidates/tables.
   const bool should_log_rejections_;
@@ -1079,12 +1087,12 @@ class OutstandingSplitState {
   // Tracks split_tablet_id as an ongoing split on the replicas of replica_tablet_id, which is
   // either split_tablet_id itself or one of split_tablet_id's children.
   void TrackTserverSplits(const TabletId& split_tablet_id, const TabletId& replica_tablet_id) {
-    auto it = tablet_info_map_.find(replica_tablet_id);
-    if (it == tablet_info_map_.end()) {
+    auto tablet = catalog_manager_.GetTabletInfo(replica_tablet_id);
+    if (!tablet.ok()) {
       VLOG(1) << "Tablet not found in tablet info map. ID: " << replica_tablet_id;
       return;
     }
-    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(*it->second));
+    TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(**tablet));
   }
 
   void TrackTserverSplits(const TabletId& tablet_id, const TabletReplicaMap& split_replicas) {
@@ -1115,9 +1123,29 @@ struct AutomaticSplitCandidate {
   SplitPhase phase;
 };
 
-void TabletSplitManager::DoSplitting(
-    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map,
-    const LeaderEpoch& epoch) {
+void TabletSplitManager::TrackTablet(const TabletInfoPtr& tablet) {
+  auto& tracked = tablet->tracked_for_split();
+  if (tracked.load()) {
+    return;
+  }
+  std::lock_guard tracked_lock(tracked_tablets_mutex_);
+  tracked.store(true);
+  tracked_tablets_[tablet->tablet_id()] = TrackedTablet{.tablet = tablet};
+}
+
+void TabletSplitManager::ReplicaDriveInfoUpdated(
+    const TabletInfoPtr& tablet, const TabletReplicaDriveInfo& drive_info) {
+  if (ReplicaWorthChecking(drive_info)) {
+    TrackTablet(tablet);
+  }
+}
+
+size_t TabletSplitManager::TEST_NumTrackedTablets() {
+  std::lock_guard tracked_lock(tracked_tablets_mutex_);
+  return tracked_tablets_.size();
+}
+
+void TabletSplitManager::DoSplitting(const LeaderEpoch& epoch) {
   VLOG_WITH_FUNC(2) << "Start";
   // TODO(asrivastava): We might want to loop over all running tables when determining outstanding
   // splits, to avoid missing outstanding splits for tables that have recently become invalid for
@@ -1135,11 +1163,63 @@ void TabletSplitManager::DoSplitting(
     last_rejections_collected_time_ = now;
   }
 
-  TabletReplicaMapCache replica_cache;
-  OutstandingSplitState state(tablet_info_map, &replica_cache, should_log_rejections);
+  // Every tablet is looked at once after a sys catalog load and after the low phase threshold
+  // is lowered. Other passes look only at the tablets tracked since.
+  const int64_t low_phase_threshold = FLAGS_tablet_split_low_phase_size_threshold_bytes;
+  if (full_scan_needed_.exchange(false) || low_phase_threshold < tracked_low_phase_threshold_) {
+    for (const auto& table :
+         catalog_manager_.GetTables(GetTablesMode::kAll, PrimaryTablesOnly::kTrue)) {
+      auto tablets_result = table->GetTablets();
+      if (!tablets_result.ok()) {
+        continue;
+      }
+      for (const auto& tablet : *tablets_result) {
+        TrackTablet(tablet);
+      }
+    }
+  }
+  tracked_low_phase_threshold_ = low_phase_threshold;
 
-  std::vector<TableInfoPtr> valid_tables;
-  for (const auto& table : tables) {
+  TabletInfos tracked;
+  {
+    std::lock_guard tracked_lock(tracked_tablets_mutex_);
+    tracked.reserve(tracked_tablets_.size());
+    for (const auto& [_, entry] : tracked_tablets_) {
+      tracked.push_back(entry.tablet);
+    }
+  }
+
+  // The tracked tablets by table. Tablets of a table that is not the one in the catalog anymore
+  // (left over from before a sys catalog load) are left out.
+  struct TrackedTable {
+    TableInfoPtr table;
+    bool valid = false;
+    std::unordered_set<const TabletInfo*> tablets;
+  };
+  std::map<TableId, TrackedTable> tracked_tables;
+  for (const auto& tablet : tracked) {
+    auto table = tablet->table();
+    if (!table) {
+      continue;
+    }
+    auto [it, inserted] = tracked_tables.try_emplace(table->id());
+    if (inserted) {
+      it->second.table = catalog_manager_.GetTableInfo(table->id());
+    }
+    if (it->second.table == table) {
+      it->second.tablets.insert(tablet.get());
+    }
+  }
+  std::erase_if(tracked_tables, [](const auto& entry) { return entry.second.tablets.empty(); });
+
+  // Tablets with a split task. They stay tracked whatever else is true of them.
+  std::unordered_set<const TabletInfo*> tablets_with_task;
+
+  TabletReplicaMapCache replica_cache;
+  OutstandingSplitState state(catalog_manager_, &replica_cache, should_log_rejections);
+
+  for (auto& [table_id, tracked_table] : tracked_tables) {
+    const auto& table = tracked_table.table;
     Status status = ValidateSplitCandidateTable(table);
     if (!status.ok()) {
       VLOG(3) << "Skipping table for splitting. " << status;
@@ -1152,20 +1232,26 @@ void TabletSplitManager::DoSplitting(
       state.MaybeRecordRejectedTable(table->id(), status);
       continue;
     }
-    valid_tables.push_back(table);
+    tracked_table.valid = true;
   }
 
-  for (const auto& table : valid_tables) {
+  for (const auto& [table_id, tracked_table] : tracked_tables) {
+    const auto& table = tracked_table.table;
     VLOG(3) << "Processing ongoing split tasks for table " << table->id();
     for (const auto& task : table->GetTasks()) {
       // These tasks will retry automatically until they succeed or fail.
       if (task->type() == server::MonitoredTaskType::kGetTabletSplitKey ||
           task->type() == server::MonitoredTaskType::kSplitTablet) {
         const TabletId tablet_id = static_cast<AsyncTabletLeaderTask*>(task.get())->tablet_id();
-        auto tablet_info_it = tablet_info_map.find(tablet_id);
-        if (tablet_info_it != tablet_info_map.end()) {
-          const auto& tablet = tablet_info_it->second;
-          state.AddSplitWithTask(tablet->id());
+        auto tablet_result = catalog_manager_.GetTabletInfo(tablet_id);
+        if (tablet_result.ok()) {
+          tablets_with_task.insert(tablet_result->get());
+        }
+        if (!tracked_table.valid) {
+          continue;
+        }
+        if (tablet_result.ok()) {
+          state.AddSplitWithTask(tablet_id);
         } else {
           LOG(WARNING) << "Could not find tablet info for tablet with task. Tablet id: "
                       << tablet_id;
@@ -1177,7 +1263,11 @@ void TabletSplitManager::DoSplitting(
     }
   }
 
-  for (const auto& table : valid_tables) {
+  for (const auto& [table_id, tracked_table] : tracked_tables) {
+    if (!tracked_table.valid) {
+      continue;
+    }
+    const auto& table = tracked_table.table;
     VLOG(3) << Format("Processing table $0 for split", table->id());
     auto tablets_result = table->GetTablets();
     if (!tablets_result) {
@@ -1187,6 +1277,9 @@ void TabletSplitManager::DoSplitting(
       continue;
     }
     for (const auto& tablet : *tablets_result) {
+      if (!tracked_table.tablets.contains(tablet.get())) {
+        continue;
+      }
       VLOG(4) << Format("Processing tablet $0 for split", tablet->id());
       if (state.HasSplitWithTask(tablet->id())) {
         VLOG(4) << Format("Should not split tablet $0 since it already has a split task",
@@ -1239,7 +1332,9 @@ void TabletSplitManager::DoSplitting(
         RETURN_NOT_OK(drive_info_opt);
         std::shared_ptr<TabletInfo> parent = nullptr;
         if (!parent_id.empty()) {
-          parent = FindPtrOrNull(tablet_info_map, parent_id);
+          if (auto parent_result = catalog_manager_.GetTabletInfo(parent_id); parent_result.ok()) {
+            parent = *parent_result;
+          }
         }
         if (auto s = ValidateSplitCandidateTablet(*tablet, parent); !s.ok()) {
           unsplittable_as_is = s.IsNotSupported();
@@ -1295,6 +1390,57 @@ void TabletSplitManager::DoSplitting(
   }
   // Schedule any new splits and any splits that need to be restarted.
   ScheduleSplits(state.GetSplitsToSchedule(), epoch);
+
+  // A tablet stays tracked while it has a split task, is a split child that is not running yet,
+  // or has a replica worth checking.
+  std::vector<bool> worth_tracking(tracked.size());
+  for (size_t i = 0; i != tracked.size(); ++i) {
+    const auto& tablet = tracked[i];
+    auto table = tablet->table();
+    auto it = table ? tracked_tables.find(table->id()) : tracked_tables.end();
+    if (it == tracked_tables.end() || !it->second.tablets.contains(tablet.get())) {
+      continue;
+    }
+    if (tablets_with_task.contains(tablet.get())) {
+      worth_tracking[i] = true;
+      continue;
+    }
+    {
+      auto tablet_lock = tablet->LockForRead();
+      if (tablet_lock->is_deleted()) {
+        continue;
+      }
+      if (!tablet_lock->pb.split_parent_tablet_id().empty() && !tablet_lock->is_running()) {
+        worth_tracking[i] = true;
+        continue;
+      }
+    }
+    worth_tracking[i] = std::ranges::any_of(
+        *replica_cache.GetOrAdd(*tablet),
+        [](const auto& replica) { return ReplicaWorthChecking(replica.second.drive_info); });
+  }
+
+  std::lock_guard tracked_lock(tracked_tablets_mutex_);
+  for (size_t i = 0; i != tracked.size(); ++i) {
+    const auto& tablet = tracked[i];
+    auto it = tracked_tablets_.find(tablet->tablet_id());
+    if (it == tracked_tablets_.end() || it->second.tablet != tablet) {
+      continue;
+    }
+    auto& entry = it->second;
+    if (worth_tracking[i]) {
+      if (entry.idle) {
+        entry.idle = false;
+        tablet->tracked_for_split().store(true);
+      }
+    } else if (entry.idle) {
+      tracked_tablets_.erase(it);
+    } else {
+      // TrackTablet takes the mutex again from now on, and clears idle.
+      entry.idle = true;
+      tablet->tracked_for_split().store(false);
+    }
+  }
 }
 
 Status TabletSplitManager::WaitUntilIdle(CoarseTimePoint deadline) {
@@ -1339,9 +1485,7 @@ bool TabletSplitManager::IsTabletSplittingComplete(
   return result.ok() && !*result;
 }
 
-void TabletSplitManager::MaybeDoSplitting(
-    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map,
-    const LeaderEpoch& epoch) {
+void TabletSplitManager::MaybeDoSplitting(const LeaderEpoch& epoch) {
   if (!FLAGS_enable_automatic_tablet_splitting) {
     VLOG_WITH_FUNC(2) << "Skipping splitting run because enable_automatic_tablet_splitting is not "
                          "set";
@@ -1375,7 +1519,7 @@ void TabletSplitManager::MaybeDoSplitting(
     return;
   }
 
-  DoSplitting(tables, tablet_info_map, epoch);
+  DoSplitting(epoch);
   last_run_time_ = CoarseMonoClock::Now();
   automatic_split_manager_time_ms_->set_value(ToMilliseconds(last_run_time_ - start_time));
 }

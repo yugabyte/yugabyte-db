@@ -37,6 +37,7 @@
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
@@ -1640,7 +1641,11 @@ bool MasterHeartbeatServiceImpl::ProcessTabletMetadata(
     .vector_index_size = storage_metadata.vector_index_size(),
     .has_active_vector_index_backfill = storage_metadata.has_active_vector_index_backfill(),
   };
-  return tablet->UpdateReplicaInfo(ts_uuid, drive_info);
+  const bool updated = tablet->UpdateReplicaInfo(ts_uuid, drive_info);
+  if (updated) {
+    master_->tablet_split_manager().ReplicaDriveInfoUpdated(tablet, drive_info);
+  }
+  return updated;
 }
 
 void MasterHeartbeatServiceImpl::ProcessLeaderInfo(

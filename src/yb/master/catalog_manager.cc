@@ -1654,6 +1654,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
     std::lock_guard tracked_lock(tables_being_removed_mutex_);
     tables_being_removed_.clear();
   }
+  master_->tablet_split_manager().RequestFullScan();
 
   // Clear the namespace mappings.
   namespace_ids_map_.clear();
@@ -3731,6 +3732,7 @@ Status CatalogManager::DoSplitTablet(
     auto tablet_map_checkout = tablet_map_.CheckOut();
     for (const auto& new_tablet : new_tablets) {
       TrackNewTablet(new_tablet);
+      master_->tablet_split_manager().TrackTablet(new_tablet);
       (*tablet_map_checkout)[new_tablet->id()] = std::move(new_tablet);
     }
   }
@@ -3899,6 +3901,7 @@ Status CatalogManager::SplitTablet(
         }
       });
   tablet->table()->AddTask(call);
+  master_->tablet_split_manager().TrackTablet(tablet);
   return ScheduleTask(call);
 }
 
@@ -12326,6 +12329,7 @@ Status CatalogManager::SendSplitTabletRequest(
       master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_keys, split_partition_keys,
       epoch);
   tablet->table()->AddTask(call);
+  master_->tablet_split_manager().TrackTablet(tablet);
   return ScheduleTask(call);
 }
 

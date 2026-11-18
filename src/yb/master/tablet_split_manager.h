@@ -50,10 +50,21 @@ class TabletSplitManager {
       const TableInfo& table, bool wait_for_parent_deletion, CoarseTimePoint deadline);
 
   // Perform one round of tablet splitting. This method is not thread-safe.
-  void MaybeDoSplitting(
-      const std::vector<TableInfoPtr>& tables,
-      const TabletInfoMap& tablet_info_map,
-      const LeaderEpoch& epoch);
+  void MaybeDoSplitting(const LeaderEpoch& epoch);
+
+  // Put a tablet on the list of tablets DoSplitting looks at. Called for a new split child and
+  // for a tablet that got a split task.
+  void TrackTablet(const TabletInfoPtr& tablet) EXCLUDES(tracked_tablets_mutex_);
+
+  // Called when a tserver reports a replica's drive info. Tracks the tablet if the replica is
+  // large enough to be split or may have post-split data to compact.
+  void ReplicaDriveInfoUpdated(
+      const TabletInfoPtr& tablet, const TabletReplicaDriveInfo& drive_info);
+
+  // Make the next DoSplitting look at every tablet. Called when the sys catalog is loaded.
+  void RequestFullScan() { full_scan_needed_ = true; }
+
+  size_t TEST_NumTrackedTablets() EXCLUDES(tracked_tablets_mutex_);
 
   Status ProcessSplitTabletResult(
       const TableId& split_table_id, const SplitTabletIds& split_tablet_ids,
@@ -111,10 +122,7 @@ class TabletSplitManager {
  private:
   void ScheduleSplits(const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch);
 
-  void DoSplitting(
-      const std::vector<TableInfoPtr>& tables,
-      const TabletInfoMap& tablet_info_map,
-      const LeaderEpoch& epoch);
+  void DoSplitting(const LeaderEpoch& epoch);
 
   Status ValidateTableAgainstDisabledLists(const TableId& table_id);
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);
@@ -127,6 +135,18 @@ class TabletSplitManager {
   std::shared_timed_mutex is_running_mutex_;
 
   CoarseTimePoint last_run_time_;
+
+  // The tablets DoSplitting looks at. A tablet found not worth checking is marked idle, and
+  // dropped by the next pass unless it was tracked again or is worth checking by then.
+  struct TrackedTablet {
+    TabletInfoPtr tablet;
+    bool idle = false;
+  };
+  std::mutex tracked_tablets_mutex_;
+  std::unordered_map<TabletId, TrackedTablet> tracked_tablets_ GUARDED_BY(tracked_tablets_mutex_);
+  std::atomic<bool> full_scan_needed_{true};
+  // tablet_split_low_phase_size_threshold_bytes as of the last pass.
+  int64_t tracked_low_phase_threshold_ = 0;
 
   // When a summary of rejected split candidates/tables was last logged, and when one was last
   // collected. Collection resumes once the log interval has elapsed since the last summary, but
