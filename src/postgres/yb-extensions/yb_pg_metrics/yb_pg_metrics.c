@@ -1080,9 +1080,7 @@ ybpgm_InitPostgres()
 						&conn_init_secs, &conn_init_usecs);
 	uint64_t	conn_latency_us = (uint64_t) (conn_init_secs * 1000000 + conn_init_usecs);
 	YbStatementType conn_type =
-		(YbIsAuthBackend() || YbIsAuthPassthroughControlBackend()) ?
-			AuthBackendInitLatency :
-			RegularBackendInitLatency;
+		YbIsAuthBackend() ? AuthBackendInitLatency : RegularBackendInitLatency;
 
 	ybpgm_Store(conn_type, conn_latency_us, 0);
 
