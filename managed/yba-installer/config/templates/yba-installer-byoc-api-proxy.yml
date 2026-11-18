@@ -24,6 +24,7 @@ services:
       ExecStart=/bin/sh -c 'exec "${JAVA_HOME}/bin/java" \
         -Djdk.internal.httpclient.disableHostnameVerification=true \
         -XX:+ExitOnOutOfMemoryError \
+        -XX:-UseBASE64Intrinsics \
         -jar {{ .JarPath }} \
         >> {{ .LogDir }}/byoc-api-proxy.log 2>&1'
 

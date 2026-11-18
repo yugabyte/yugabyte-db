@@ -1069,6 +1069,10 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
+// Turn off the AVX-512 Base64 decode intrinsic, which can write out of bounds on malformed input
+// (CVE-2026-114938). Decoding falls back to the bounds-checked Java code.
+Universal / javaOptions += "-J-XX:-UseBASE64Intrinsics"
+
 Universal / mappings ++= {
   compileYbaCliBinary.value.flatMap { folderPath =>
     val folder = file(folderPath)
