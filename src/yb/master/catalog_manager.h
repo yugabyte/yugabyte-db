@@ -3392,9 +3392,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status DoProcessCDCSDKTabletDeletion(
       std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets);
 
-  // Gets the inputs of IsHiddenTabletReleasedByCDCSDK for table_id. min_restart_time_across_slots
-  // is invalid unless the streams are logical replication streams. Reads cdc_state after releasing
-  // mutex_.
   Status GetCDCSDKStreamsInfoForHiddenTable(
       const TableId& table_id, std::unordered_set<xrepl::StreamId>* stream_ids,
       HybridTime* min_restart_time_across_slots,
@@ -3440,7 +3437,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   bool CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) EXCLUDES(mutex_);
 
   // Hidden tablets of table_id that the CDC deletion task would delete now. Empty if the table has
-  // no logical replication streams or a read fails.
+  // no logical replication streams or reading its streams fails; a tablet whose own check fails is
+  // left out.
   std::unordered_set<TabletId> GetHiddenTabletsReleasedByCDCSDK(const TableId& table_id)
       EXCLUDES(mutex_);
 
