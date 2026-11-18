@@ -283,6 +283,9 @@ class VectorLSM {
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
   bool FlushesRetiredUnlocked() const REQUIRES(mutex_);
 
+  // Destroy cancels the registries. A destroyed LSM saves no chunks.
+  bool IsDestroyed() const;
+
   // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
   void ReleaseChunkHold(MutableChunk& chunk);
 
@@ -290,6 +293,8 @@ class VectorLSM {
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
   void CheckFailure(const Status& status) EXCLUDES(mutex_);
   void RecordFailureUnlocked(const Status& status) REQUIRES(mutex_);
+  // Completes the flush waiters of the chunks in updates_queue_ with status.
+  void ReleaseFlushWaitersUnlocked(const Status& status) REQUIRES(mutex_);
 
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);

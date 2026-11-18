@@ -9916,6 +9916,68 @@ TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
   threads.JoinAll();
 }
 
+// Cancelling CREATE INDEX removes the index while its backfill is still inserting. Neither the
+// cancel nor the removal may wait for the rest of the backfill: the removal is applied by Raft, so
+// waiting there blocks the tablet and the heartbeats of its tservers (GH#38073).
+TEST_P(PgVectorIndexTest, CancelCreateIndexDuringBackfill) {
+  constexpr size_t kNumRows = 2000;
+  // With one insert thread and one vector per task, each replica needs kNumRows * kInsertDelay to
+  // backfill, far longer than kRemoveTimeout.
+  constexpr auto kInsertDelay = 50ms;
+  const auto kRemoveTimeout = 20s * kTimeMultiplier;
+
+  num_pre_split_tablets_ = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_concurrent_writes) = 1;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT g, ('[' || g || ',' || g || ',' || g || ']')::vector "
+      "FROM generate_series(1, $0) g", kNumRows));
+
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSMInsertTask::DoInsert:Entry", [kInsertDelay](void*) {
+    std::this_thread::sleep_for(kInsertDelay);
+  });
+  sync_point->EnableProcessing();
+  auto sync_point_cleanup = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  std::atomic<int32_t> backend_pid{0};
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([this, &backend_pid] {
+    auto index_conn = ASSERT_RESULT(Connect());
+    backend_pid = ASSERT_RESULT(index_conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+    ASSERT_NOK_STR_CONTAINS(CreateIndex(index_conn), "canceling statement due to user request");
+  });
+  ASSERT_OK(WaitForVectorIndexBackfillsStarted(cluster_->num_tablet_servers()));
+  const auto index_table_id = ListVectorIndexes(cluster_.get()).front()->table_id();
+  auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+
+  const auto start = MonoTime::Now();
+  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
+      Format("SELECT pg_cancel_backend($0)", backend_pid.load()))));
+  // The rollback of the cancelled CREATE INDEX removes the index from the tablets.
+  threads.JoinAll();
+  ASSERT_OK(WaitFor([&peers, &index_table_id] {
+    for (const auto& peer : peers) {
+      if (peer->tablet_metadata()->GetTableInfo(index_table_id).ok()) {
+        return false;
+      }
+    }
+    return true;
+  }, kRemoveTimeout, "Index removed from tablets"));
+  const auto elapsed = MonoTime::Now() - start;
+  LOG(INFO) << "Index removed in " << elapsed;
+  ASSERT_LT(elapsed, MonoDelta(kRemoveTimeout));
+
+  sync_point->ClearAllCallBacks();
+  ASSERT_OK(CreateIndex(conn));
+}
+
 // A stuck vector index insert blocks the apply of a write sent by a local call. The Perform that
 // sent the write should still finish at its deadline, not when the insert is unblocked.
 void PgVectorIndexTest::TestPerformDeadlineWithStuckLocalWrite(UseSharedMemory use_shared_memory) {

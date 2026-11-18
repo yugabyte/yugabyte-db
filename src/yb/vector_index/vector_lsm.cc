@@ -170,6 +170,12 @@ namespace {
 YB_DEFINE_ENUM(ImmutableChunkState, (kInMemory)(kOnDisk)(kInManifest));
 YB_DEFINE_ENUM(CompactionState, (kNone)(kCompacting)(kCompacted));
 YB_DEFINE_ENUM(ManifestUpdateType, (kFull)(kActual));
+// kCancelled stops allocations as kStopping does.
+YB_DEFINE_ENUM(InsertRegistryState, (kRunning)(kStopping)(kCancelled));
+
+Status DestroyedStatus() {
+  return STATUS(ShutdownInProgress, "Vector LSM is destroyed");
+}
 
 // Resolves the max memstore size for a Vector LSM compaction output chunk from gflags.
 // --vector_index_compaction_chunk_max_memstore_size_mb takes priority when non-zero.
@@ -513,6 +519,10 @@ class VectorLSMInsertTask :
   Status DoInsert() {
     DCHECK(index_);
     for (const auto& entry : entries_) {
+      if (registry_->IsCancelled()) {
+        return STATUS(Aborted, "Vector insertion cancelled");
+      }
+      TEST_SYNC_POINT("VectorLSMInsertTask::DoInsert:Entry");
       RETURN_NOT_OK(index_->Insert(entry.vector_id, entry.vector, entry.payload.AsSlice()));
     }
     return Status::OK();
@@ -543,7 +553,9 @@ class VectorLSMInsertRegistryBase
     for (;;) {
       {
         std::lock_guard lock(mutex_);
-        stopping_ = true;
+        auto expected = InsertRegistryState::kRunning;
+        state_.compare_exchange_strong(
+            expected, InsertRegistryState::kStopping, std::memory_order_acq_rel);
         TEST_SYNC_POINT("VectorLSMInsertRegistryBase::Shutdown:Stopping");
         if (allocated_tasks_ == 0) {
           break;
@@ -616,6 +628,17 @@ class VectorLSMInsertRegistryBase
     return !active_tasks_.empty();
   }
 
+  // Stops allocations as Shutdown does, and makes running and queued tasks skip the vectors they
+  // have not inserted yet, so Shutdown does not wait for them.
+  void Cancel() EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    state_.store(InsertRegistryState::kCancelled, std::memory_order_release);
+  }
+
+  bool IsCancelled() const {
+    return state_.load(std::memory_order_acquire) == InsertRegistryState::kCancelled;
+  }
+
  protected:
   VectorLSMInsertRegistryBase(std::string log_prefix, rpc::ThreadPool& thread_pool)
       : log_prefix_(std::move(log_prefix)), thread_pool_(thread_pool) {}
@@ -627,7 +650,7 @@ class VectorLSMInsertRegistryBase
   // Allocated tasks must be bound with BindTasks before ExecuteTasks or returned with
   // ReleaseTasks.
   Result<InsertTaskList> DoAllocateTasks(size_t num_tasks) REQUIRES(mutex_) {
-    if (stopping_) {
+    if (state_.load(std::memory_order_acquire) != InsertRegistryState::kRunning) {
       return STATUS_FORMAT(ShutdownInProgress, "VectorLSM registry is shutting down");
     }
     InsertTaskList result;
@@ -666,7 +689,9 @@ class VectorLSMInsertRegistryBase
   const std::string log_prefix_;
   rpc::ThreadPool& thread_pool_;
   std::shared_mutex mutex_;
-  bool stopping_ GUARDED_BY(mutex_) = false;
+  // Changed under mutex_, so no allocation passes the check after Shutdown found no tasks
+  // allocated. Tasks read it without the lock.
+  std::atomic<InsertRegistryState> state_{InsertRegistryState::kRunning};
   size_t allocated_tasks_ GUARDED_BY(mutex_) = 0;
   InsertTaskList active_tasks_ GUARDED_BY(mutex_);
   std::vector<InsertTaskPtr> task_pool_ GUARDED_BY(mutex_);
@@ -1436,11 +1461,16 @@ void VectorLSM<Vector, DistanceResult>::RecordFailureUnlocked(const Status& stat
     failed_status_ = status;
   }
   // A later chunk may have retired its save task while waiting for an earlier manifest entry.
+  ReleaseFlushWaitersUnlocked(failed_status_);
+  writing_manifest_done_cv_.notify_all();
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+void VectorLSM<Vector, DistanceResult>::ReleaseFlushWaitersUnlocked(const Status& status) {
   for (auto& [_, chunk] : updates_queue_) {
-    chunk->Flushed(failed_status_);
+    chunk->Flushed(status);
   }
   updates_queue_empty_cv_.notify_all();
-  writing_manifest_done_cv_.notify_all();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -1546,6 +1576,20 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Status VectorLSM<Vector, DistanceResult>::Destroy() {
   LOG_WITH_PREFIX(INFO) << __func__;
   StartShutdown();
+  // The caller is blocked until Destroy returns, so do not wait for a running backfill to insert
+  // the rest of its vectors, nor for chunks to be saved just to be deleted, see IsDestroyed. Only a
+  // save already in progress is waited for.
+  // Not the failed state: flushes that listed the index before its removal still read it.
+  if (insert_registry_) {
+    insert_registry_->Cancel();
+  }
+  if (merge_registry_) {
+    merge_registry_->Cancel();
+  }
+  {
+    std::lock_guard lock(mutex_);
+    ReleaseFlushWaitersUnlocked(DestroyedStatus());
+  }
   CompleteShutdown();
   return env_->DeleteRecursively(options_.storage_dir);
 }
@@ -1650,8 +1694,11 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
         // later frontiers, so bootstrap would not replay the failed one. Crashing before the save
         // leaves it in the WAL. Skipping the save instead is not an option, an unsaved chunk would
         // block the updates queue and CompleteShutdown.
-        LOG_IF_WITH_PREFIX(FATAL, !status.ok()) << "VectorLSM insertion failed: " << status;
-        if (frontiers_to_apply) {
+        // Only Destroy cancels insertion, and a destroyed LSM saves no chunks.
+        if (!status.ok()) {
+          LOG_IF_WITH_PREFIX(FATAL, !insert_registry_->IsCancelled())
+              << "VectorLSM insertion failed: " << status;
+        } else if (frontiers_to_apply) {
           std::lock_guard lock(mutex_);
           chunk->ApplyFrontiers(*frontiers_to_apply);
         }
@@ -2145,6 +2192,13 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
     SleepFor(TEST_sleep_during_flush);
   }
 
+  if (IsDestroyed()) {
+    // Also covers a chunk that a flush queued after Destroy released the queued ones.
+    std::lock_guard lock(mutex_);
+    chunk->Flushed(DestroyedStatus());
+    return;
+  }
+
   Status status;
   {
     std::lock_guard lock(mutex_);
@@ -2629,7 +2683,13 @@ DistanceResult VectorLSM<Vector, DistanceResult>::Distance(
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 bool VectorLSM<Vector, DistanceResult>::FlushesRetiredUnlocked() const {
-  return pending_save_tasks_ == 0 && (updates_queue_.empty() || !failed_status_.ok());
+  return pending_save_tasks_ == 0 &&
+         (updates_queue_.empty() || !failed_status_.ok() || IsDestroyed());
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+bool VectorLSM<Vector, DistanceResult>::IsDestroyed() const {
+  return insert_registry_ && insert_registry_->IsCancelled();
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
