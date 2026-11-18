@@ -38,6 +38,7 @@ import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import java.io.File;
 import java.io.IOException;
+import java.net.Socket;
 import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
@@ -54,8 +55,9 @@ import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.X509ExtendedTrustManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
@@ -397,18 +399,36 @@ public class PerfAdvisorClient {
   }
 
   // As yb.pa.ws.ssl.loose.acceptAnyCertificate: a collector's certificate is not validated.
+  // Extended, so the TLS provider doesn't wrap it and check the host name: yba-installer
+  // reaches its PA at localhost with a certificate issued for the YBA host.
   private static SSLContext acceptAnyCertificate() {
     try {
       SSLContext context = SSLContext.getInstance("TLS");
       context.init(
           null,
           new TrustManager[] {
-            new X509TrustManager() {
+            new X509ExtendedTrustManager() {
               @Override
               public void checkClientTrusted(X509Certificate[] chain, String authType) {}
 
               @Override
               public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+              @Override
+              public void checkClientTrusted(
+                  X509Certificate[] chain, String authType, Socket socket) {}
+
+              @Override
+              public void checkServerTrusted(
+                  X509Certificate[] chain, String authType, Socket socket) {}
+
+              @Override
+              public void checkClientTrusted(
+                  X509Certificate[] chain, String authType, SSLEngine engine) {}
+
+              @Override
+              public void checkServerTrusted(
+                  X509Certificate[] chain, String authType, SSLEngine engine) {}
 
               @Override
               public X509Certificate[] getAcceptedIssuers() {

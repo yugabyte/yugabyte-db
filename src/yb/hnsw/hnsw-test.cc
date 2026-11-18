@@ -81,9 +81,7 @@ class UsearchSpace : public hnswlib::SpaceInterface<YbHnsw::DistanceType> {
 
  private:
   static YbHnsw::DistanceType DistFunc(const void* lhs, const void* rhs, const void* arg) {
-    using unum::usearch::byte_t;
-    return (*static_cast<const UsearchMetric::Impl*>(arg))(
-        static_cast<const byte_t*>(lhs), static_cast<const byte_t*>(rhs));
+    return vector_index::MetricDistance(*static_cast<const UsearchMetric::Impl*>(arg), lhs, rhs);
   }
 
   UsearchMetric::Impl metric_;

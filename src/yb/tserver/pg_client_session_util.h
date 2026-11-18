@@ -190,6 +190,10 @@ class ReadPointHistory {
 
 Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status);
 
+// A follower read's read time: `staleness_ms` behind the read point's own clock, as one time with
+// no uncertainty window.
+void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms);
+
 Status HandleOperationResponse(uint64_t session_id,
                                const client::YBPgsqlOp& op,
                                PgPerformResponseMsg* resp,

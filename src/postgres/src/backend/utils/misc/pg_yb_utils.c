@@ -420,8 +420,9 @@ YbSetObjectLockingForCurrTxn()
 {
 	yb_is_historical_catalog_read = (yb_read_time != 0 &&
 									 !yb_read_time_skip_catalog);
-	YBCSetObjectLockingForCurrTxn(yb_enable_object_locking_infra &&
-								  !yb_is_historical_catalog_read);
+	YBCSetGlobalObjectLockingForCurrTxn(yb_enable_global_object_locking_infra &&
+										!yb_is_historical_catalog_read);
+	YBCSetHistoricalCatalogReadForCurrTxn(yb_is_historical_catalog_read);
 }
 
 bool
@@ -1622,12 +1623,24 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	 * handling this failure end up trying to abort the transaction which
 	 * would anyway terminate the backend on failure. Revisit this approach in
 	 * case the behavior of YBCAbortTransaction changes.
+	 *
+	 * During proc_exit, log the error instead, as YBCAbortTransaction does:
+	 * a FATAL here would skip the rest of the transaction abort.
 	 */
 	YbcStatus	status = YBCPgRollbackToSubTransaction(id);
 
 	if (unlikely(status))
-		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
-			 id, YBCMessageAsCString(status));
+	{
+		if (!proc_exit_inprogress)
+			elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
+				 id, YBCMessageAsCString(status));
+		/* Only reached when proc_exit_inprogress: elog(FATAL) does not return. */
+		ereport(LOG,
+				(errmsg("failed to rollback to subtransaction %" PRId32
+						" during shutdown: %s",
+						id, YBCMessageAsCString(status))));
+		YBCFreeStatus(status);
+	}
 
 	YbInvalidateTableCacheForAlteredTables();
 
@@ -2819,6 +2832,19 @@ bool
 YBGetDdlUseRegularTransactionBlock()
 {
 	return ddl_transaction_state.use_regular_txn_block;
+}
+
+/*
+ * Whether the current transaction takes object locks. pggate decides it, for
+ * the locks it sends and for this. A transaction without locks does not refresh
+ * its catalog cache when PG acquires a lock. An autonomous DDL transaction, for
+ * one, reads the catalog at its own read time, so a refresh would record the
+ * new catalog version with entries from before it.
+ */
+bool
+YbUsingObjectLocksLocally(void)
+{
+	return YBCPgUsingObjectLocksLocally();
 }
 
 void
@@ -4557,7 +4583,7 @@ YbGetDdlMode(PlannedStmt *pstmt, ProcessUtilityContext context,
 				}
 				is_breaking_change = false;
 				should_run_in_autonomous_transaction = !IsInTransactionBlock(is_top_level) &&
-						YBCIsLegacyModeForCatalogOps();
+						!YBCUsingObjectLocksGloballyForCurrentTxn();
 				break;
 			}
 

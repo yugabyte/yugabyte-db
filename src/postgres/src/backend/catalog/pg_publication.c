@@ -1297,8 +1297,20 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 	SRF_RETURN_DONE(funcctx);
 }
 
+/*
+ * Returns the tables of the given publications, and sets *yb_is_pub_all_tables
+ * to true if any of them is FOR ALL TABLES.
+ *
+ * Used by both slot creation and the virtual WAL, so that a slot bound to a
+ * publication gets exactly the tables the virtual WAL streams.
+ *
+ * If yb_expand_all_tables_pub is false, a FOR ALL TABLES publication adds no
+ * tables to the result.  Slot creation passes false: the master adds every
+ * table to such a slot itself, so there is no need to list them here.
+ */
 List *
-yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables)
+yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables,
+							  bool yb_expand_all_tables_pub)
 {
 	/* hash table for O(1) rel_oid lookup */
 	HTAB	   *seen_tables;
@@ -1324,7 +1336,8 @@ yb_pg_get_publications_tables(List *publications, bool *yb_is_pub_all_tables)
 		bool		has_alltables = pub->alltables;
 
 		if (has_alltables)
-			pub_tables = GetAllTablesPublicationRelations(pub->pubviaroot);
+			pub_tables = yb_expand_all_tables_pub ?
+				GetAllTablesPublicationRelations(pub->pubviaroot) : NIL;
 		else
 			pub_tables = GetPublicationRelations(pub->oid,
 												 pub->pubviaroot ?

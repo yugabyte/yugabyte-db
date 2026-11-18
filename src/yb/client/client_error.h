@@ -34,6 +34,7 @@ YB_DEFINE_ENUM(ClientErrorCode,
     (kTablePartitionListVersionDoesNotMatch)
     (kMetaCacheInvalidated)
     (kTablePartitionListRefreshed)
+    (kPipelinedWriteOutcomeUnknown)
 );
 
 struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {

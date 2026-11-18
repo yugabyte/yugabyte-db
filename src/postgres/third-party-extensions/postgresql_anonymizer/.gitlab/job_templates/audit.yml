@@ -1,0 +1,6 @@
+audit:
+  stage: test
+  image: dalibo/buildpack-rust:trixie
+  script:
+    - cargo audit
+  allow_failure: true

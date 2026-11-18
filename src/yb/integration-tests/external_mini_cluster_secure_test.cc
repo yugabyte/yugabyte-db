@@ -12,6 +12,7 @@
 //
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/stateful_services/test_echo_service_client.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
@@ -19,7 +20,10 @@
 #include "yb/integration-tests/cql_test_util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
+
+#include "yb/server/server_base.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
@@ -377,6 +381,80 @@ TEST_F_EX(ExternalMiniClusterSecureTest, YbIntermediateInCACert,
 TEST_F_EX(ExternalMiniClusterSecureTest, YbIntermediateInServerCert,
   ExternalMiniClusterSecureWithInterCAServerCertTest) {
   VerifyToolsAndYsqlsh();
+}
+
+// The tablet servers broadcast DNS names and present certificates that carry only those names, as
+// on Kubernetes with cert-manager. A client that connects to a tablet server by its private IP
+// address fails endpoint verification. Tablet server i binds 127.0.0.<2i+2> (its private address)
+// and 127.0.0.<2i+3>, and broadcasts 127.0.0.<2i+3>.ip.yugabyte. The broadcast name resolves to a
+// different endpoint than the private address, so a connection to the private address cannot reuse
+// a connection that was verified against the broadcast name.
+class ExternalMiniClusterSecureDnsCertTest : public ExternalMiniClusterSecureTest {
+ public:
+  static constexpr size_t kNumTabletServers = 3;
+
+  void SetUp() override {
+    ASSERT_NO_FATALS(ExternalMiniClusterSecureTest::SetUp());
+
+    for (size_t i = 0; i < kNumTabletServers; ++i) {
+      const auto private_host = cluster_->GetBindIpForTabletServer(i);
+      const auto broadcast_ip = Format("127.0.0.$0", (i + 1) * 2 + 1);
+      const auto port = cluster_->AllocateFreePort();
+      ASSERT_OK(cluster_->AddTabletServer(
+          /*start_cql_proxy=*/false,
+          {Format("--rpc_bind_addresses=$0:$2,$1:$2", private_host, broadcast_ip, port),
+           Format("--server_broadcast_addresses=$0.ip.yugabyte:$1", broadcast_ip, port)}));
+      broadcast_hosts_.push_back(broadcast_ip + ".ip.yugabyte");
+    }
+    ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServers, 30s * kTimeMultiplier));
+  }
+
+  ExternalMiniClusterOptions CreateExternalMiniClusterOptions() override {
+    auto opts = ExternalMiniClusterSecureTest::CreateExternalMiniClusterOptions();
+    opts.num_tablet_servers = 0;
+    opts.replication_factor = kNumTabletServers;
+    opts.enable_ysql = false;
+    opts.extra_master_flags.push_back("--TEST_echo_service_enabled=true");
+    opts.extra_tserver_flags.push_back("--TEST_echo_service_enabled=true");
+    return opts;
+  }
+
+  Status Ping(const HostPort& host_port) {
+    server::GenericServiceProxy proxy(&client_->proxy_cache(), host_port);
+    server::PingRequestPB req;
+    server::PingResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(5s * kTimeMultiplier);
+    return proxy.Ping(req, &resp, &rpc);
+  }
+
+  std::vector<std::string> broadcast_hosts_;
+};
+
+TEST_F_EX(
+    ExternalMiniClusterSecureTest, StatefulServiceWithDnsCerts,
+    ExternalMiniClusterSecureDnsCertTest) {
+  for (size_t i = 0; i < kNumTabletServers; ++i) {
+    auto* ts = cluster_->tablet_server(i);
+    const auto port = ts->bound_rpc_hostport().port();
+    auto status = Ping(HostPort(ts->bind_host(), port));
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "Endpoint does not match");
+    ASSERT_OK(Ping(HostPort(broadcast_hosts_[i], port)));
+  }
+
+  const auto timeout = 60s * kTimeMultiplier;
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        return client_->GetStatefulServiceLocation(StatefulServiceKind::TEST_ECHO).ok();
+      },
+      timeout, "Wait for the test echo service to have a leader"));
+
+  client::TestEchoServiceClient service_client(*client_);
+  stateful_service::GetEchoRequestPB req;
+  req.set_message("Hello");
+  auto resp = ASSERT_RESULT(service_client.GetEcho(req, timeout));
+  ASSERT_EQ(resp.message(), "Hello Hello Hello");
 }
 
 class ExternalMiniClusterSecureRbsTest : public ExternalMiniClusterSecureTest,

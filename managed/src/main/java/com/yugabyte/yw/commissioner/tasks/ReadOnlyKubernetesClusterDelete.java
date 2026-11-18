@@ -286,6 +286,7 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
     params.providerUUID = providerUUID;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.azCode = az;
+    params.isForceDelete = params().isForceDelete;
     params.helmReleaseName =
         KubernetesUtil.getHelmReleaseName(
             nodePrefix, universeName, az, isReadOnlyCluster, newNamingStyle);

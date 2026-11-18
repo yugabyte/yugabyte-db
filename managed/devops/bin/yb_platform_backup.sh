@@ -326,8 +326,10 @@ db_exists() {
     probe="$(dirname "${pg_helper_path}")/psql"
   fi
 
-  local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} -tAc \
-\"SELECT 1 FROM pg_database WHERE datname='${db_name}'\""
+  # Without -d, psql connects to a database named after the user, which an external
+  # Postgres may not have. The platform DB always exists by the time this runs.
+  local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} \
+-d ${PLATFORM_DB_NAME} -tAc \"SELECT 1 FROM pg_database WHERE datname='${db_name}'\""
   local probe_out
   probe_out=$(docker_aware_cmd "postgres" "${probe_cmd}" 2>/dev/null) || return 1
   [[ "${probe_out}" = "1" ]]

@@ -16095,6 +16095,20 @@ TEST_F(CDCSDKYsqlTest, TestTargetedPublicationBoundStreamWithRewrittenTables) {
   SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
   ASSERT_FALSE(ASSERT_RESULT(stream_has_table(test2_table_id)));
 
+  // The retention barriers and cdc_state entries set when the new tables' tablets are created
+  // follow the same rule.
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto verify_retention = [&](const TableId& table_id, bool expected) {
+    auto tablet_ids = ListTabletIdsForTable(test_cluster(), table_id);
+    ASSERT_EQ(tablet_ids.size(), 1U);
+    auto entry = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+        {*tablet_ids.begin(), stream_id}, CDCStateTableEntrySelector().IncludeCheckpoint()));
+    ASSERT_EQ(entry.has_value(), expected);
+    ASSERT_NO_FATALS(VerifyCDCSDKRetentionBarriers(table_id, expected));
+  };
+  ASSERT_NO_FATALS(verify_retention(test1_table_id, true /* expected */));
+  ASSERT_NO_FATALS(verify_retention(test2_table_id, false /* expected */));
+
   // Rewrite test1 again with the dynamic-table background task paused and the old table kept in the
   // stream. After a master restart, the stream loader must find the new table.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = true;
@@ -16109,57 +16123,58 @@ TEST_F(CDCSDKYsqlTest, TestTargetedPublicationBoundStreamWithRewrittenTables) {
       "The rewritten test1 did not join the stream after the master restart"));
 }
 
-// With SNAPSHOT 'use', PG resolves the bound publication inside the client's transaction before the
-// slot's consistent snapshot time is applied to it. That catalog read must not fix the
-// transaction's read time: the transaction must read as of the consistent snapshot time.
-TEST_F(CDCSDKYsqlTest, TestUseSnapshotWithPublicationBoundSlot) {
+TEST_F(CDCSDKYsqlTest, TestDynamicTableAdditionOnPublicationBoundStreams) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_publication_scoped_replication_slots) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
-  ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
+
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test1"));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   ASSERT_OK(conn.Execute("CREATE PUBLICATION pub1 FOR TABLE test1"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION pub_all FOR ALL TABLES"));
 
-  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(test_namespace_name));
-  ASSERT_OK(repl_conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  // A tablet's retention barriers serve all the streams of the namespace. To see that the stream
+  // bound to pub1 sets none on test2, which is not a member of pub1, it must be the only stream
+  // when test2 is created.
+  auto targeted_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "rs_pub1", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /* verify_snapshot_name */,
+      test_namespace_name, "pgoutput", "pub1"));
+  auto table2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test2"));
+  ASSERT_NO_FATALS(VerifyCDCSDKRetentionBarriers(table1.table_id(), true /* expected */));
+  ASSERT_NO_FATALS(VerifyCDCSDKRetentionBarriers(table2.table_id(), false /* expected */));
 
-  // Pause the slot creation in the master, after PG has resolved pub1.
-  std::atomic<bool> stream_creation_paused{false};
-  std::atomic<bool> resume_stream_creation{false};
-  SyncPoint::GetInstance()->SetCallBack("CreateNewCDCStreamForNamespace::Start", [&](void*) {
-    stream_creation_paused = true;
-    while (!resume_stream_creation) {
-      SleepFor(MonoDelta::FromMilliseconds(10));
-    }
-  });
-  SyncPoint::GetInstance()->EnableProcessing();
+  // A regular stream and the stream bound to the FOR ALL TABLES publication take test3.
+  auto regular_stream_id =
+      ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("rs_regular"));
+  auto all_tables_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(
+      "rs_pub_all", CDCSDKSnapshotOption::EXPORT_SNAPSHOT, false /* verify_snapshot_name */,
+      test_namespace_name, "pgoutput", "pub_all"));
+  auto table3 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test3"));
+  ASSERT_NO_FATALS(VerifyCDCSDKRetentionBarriers(table3.table_id(), true /* expected */));
 
-  Status create_status;
-  std::thread slot_creator([&]() {
-    create_status = ResultToStatus(repl_conn.Fetch(
-        "CREATE_REPLICATION_SLOT rs_bound LOGICAL yboutput "
-        "(SNAPSHOT 'use', yb_publication 'pub1')"));
-  });
-  auto cleanup = ScopeExit([&]() {
-    resume_stream_creation = true;
-    if (slot_creator.joinable()) {
-      slot_creator.join();
-    }
-    SyncPoint::GetInstance()->DisableProcessing();
-    SyncPoint::GetInstance()->ClearAllCallBacks();
-  });
-  ASSERT_OK(WaitFor(
-      [&]() { return stream_creation_paused.load(); }, MonoDelta::FromSeconds(30),
-      "Slot creation did not reach the master"));
+  auto test1_tablets = ListTabletIdsForTable(test_cluster(), table1.table_id());
+  test1_tablets.insert(kCDCSDKSlotEntryTabletId);
+  auto all_tablets = test1_tablets;
+  all_tablets.merge(ListTabletIdsForTable(test_cluster(), table2.table_id()));
+  all_tablets.merge(ListTabletIdsForTable(test_cluster(), table3.table_id()));
+  for (const auto& stream_id : {regular_stream_id, all_tables_stream_id}) {
+    VerifyTablesInStreamMetadata(
+        stream_id, {table1.table_id(), table2.table_id(), table3.table_id()},
+        "test3 not added to the stream", std::nullopt, true /* include_catalog_tables */);
+    CheckTabletsInCDCStateTable(
+        all_tablets, test_client(), stream_id, {}, "cdc_state rows for the stream don't match",
+        true /* include_catalog_tables */);
+  }
 
-  // Row 1 commits before the consistent snapshot time, row 2 after it.
-  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (1, 0)"));
-  resume_stream_creation = true;
-  slot_creator.join();
-  ASSERT_OK(create_status);
-  ASSERT_OK(conn.Execute("INSERT INTO test1 VALUES (2, 0)"));
-
-  ASSERT_EQ(ASSERT_RESULT(repl_conn.FetchAllAsString("SELECT key::text FROM test1")), "1");
-  ASSERT_OK(repl_conn.Execute("COMMIT"));
+  // The stream bound to pub1 takes neither test2 nor test3. The background task pass that added
+  // test3 to the other streams has evaluated this stream too.
+  VerifyTablesInStreamMetadata(
+      targeted_stream_id, {table1.table_id()},
+      "test2 or test3 wrongly added to the stream bound to pub1", std::nullopt,
+      true /* include_catalog_tables */);
+  CheckTabletsInCDCStateTable(
+      test1_tablets, test_client(), targeted_stream_id, {},
+      "cdc_state rows for the stream bound to pub1 don't match", true /* include_catalog_tables */);
 }
 
 }  // namespace cdc

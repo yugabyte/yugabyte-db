@@ -15,6 +15,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -50,6 +51,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.commons.exec.OS;
 import org.apache.commons.io.FileUtils;
@@ -209,24 +211,47 @@ public class SwamperHelperTest extends FakeDBApplication {
         empty());
   }
 
-  // Even with the universe's node_exporter TLS flag set.
   @Test
-  public void testWriteNodeExporterJsonK8sTargetsNeverHttps() throws Exception {
+  public void testWriteNodeExporterJsonK8sHttpsWhenTlsRecorded() throws Exception {
     Universe u =
         createK8sUniverseForNodeExporter(NodeExporterSidecarTestUtil.SUPPORTED_VERSION, true);
     u.updateConfig(ImmutableMap.of(Universe.NODE_EXPORTER_HTTPS, "true"));
     u.save();
-    swamperHelper.writeUniverseTargetJson(u.getUniverseUUID());
+    assertEquals(Set.of("https"), readNodeSchemes(u));
+  }
 
-    String json =
-        FileUtils.readFileToString(
-            new File(SWAMPER_TMP_PATH + "node." + u.getUniverseUUID() + ".json"), "UTF-8");
-    ArrayNode entries = (ArrayNode) Json.parse(json);
+  // Until a task records the TLS it rendered, the pods serve HTTP whatever the TLS settings say.
+  @Test
+  public void testWriteNodeExporterJsonK8sHttpUntilTlsRecorded() throws Exception {
+    Universe u =
+        createK8sUniverseForNodeExporter(NodeExporterSidecarTestUtil.SUPPORTED_VERSION, true);
+    lenient()
+        .when(
+            mockConfGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.nodeExporterTlsEnabled)))
+        .thenReturn(true);
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+              universe.setUniverseDetails(details);
+            });
+    assertEquals(Set.of("http"), readNodeSchemes(u));
+  }
+
+  private Set<String> readNodeSchemes(Universe u) throws Exception {
+    swamperHelper.writeUniverseTargetJson(u.getUniverseUUID());
+    ArrayNode entries =
+        (ArrayNode)
+            Json.parse(
+                FileUtils.readFileToString(
+                    new File(SWAMPER_TMP_PATH + "node." + u.getUniverseUUID() + ".json"), "UTF-8"));
     assertFalse(entries.isEmpty());
-    entries.forEach(
-        entry -> {
-          assertEquals("http", entry.get("labels").get("__scheme__").asText());
-        });
+    Set<String> schemes = new HashSet<>();
+    entries.forEach(entry -> schemes.add(entry.get("labels").get("__scheme__").asText()));
+    return schemes;
   }
 
   /** VM nodes are scrape targets whatever the K8s key. */

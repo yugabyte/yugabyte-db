@@ -358,10 +358,10 @@ class TransactionLoader::Executor {
            intents_iterator_.key()[current_key_.size()] !=
                dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime &&
            intents_iterator_.key().starts_with(current_key_)) {
-      // The delete-list record of a batch holds vector ids, not an intent key.
+      // The delete list record of a batch holds vector ids, not an intent key.
       // With the inverted key it sorts after the strong write intents of its batch, with the old
       // plain key before all intents of the transaction.
-      if (intents_iterator_.value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+      if (dockv::IsVectorIndexRecord(intents_iterator_.value())) {
         intents_iterator_.Prev();
         continue;
       }

@@ -36,6 +36,12 @@ export type ProviderCode = typeof ProviderCode[keyof typeof ProviderCode];
 export const isPerRegionImageProvider = (providerCode: ProviderCode) =>
   providerCode === ProviderCode.AWS || providerCode === ProviderCode.OCI;
 
+// Clouds for which YBA ships a default aarch64 image (arm_image / arm_listing_id in the
+// ybops <cloud>-metadata.yml). GCP and Azure only have x86 defaults, so a YBA-managed
+// aarch64 bundle can't be offered for them.
+export const hasYBAManagedArmImage = (providerCode: ProviderCode) =>
+  providerCode === ProviderCode.AWS || providerCode === ProviderCode.OCI;
+
 export const CloudVendorProviders = [
   ProviderCode.AWS,
   ProviderCode.AZU,

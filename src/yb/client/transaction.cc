@@ -23,6 +23,7 @@
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_cleanup.h"
@@ -207,6 +208,11 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const LWChildTransacti
 bool CanAbortTransaction(
     const Status& status, const TransactionMetadata& txn_metadata,
     const std::optional<SubTransactionMetadataPB>& subtransaction_pb) {
+  // An unknown pipelined write outcome aborts even inside a subtransaction, since rolling it back
+  // does not undo a write the old leader may still apply.
+  if (ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown) {
+    return true;
+  }
   // We don't abort the transaction in the following scenarios:
   // 1. When we face a kSkipLocking error, so as to make further progress.
   // 2. When we are inside a sub transaction, so as to only abort the subtxn, not the entire txn.
@@ -547,7 +553,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     CommitCallback commit_callback;
     if (!status.ok() &&
-        tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST) {
+        (ClientError(status) == ClientErrorCode::kPipelinedWriteOutcomeUnknown ||
+         tserver::TabletServerError(status) == tserver::TabletServerErrorPB::ASYNC_WRITE_LOST)) {
       write_pipelining_abort_ = true;
     }
     {

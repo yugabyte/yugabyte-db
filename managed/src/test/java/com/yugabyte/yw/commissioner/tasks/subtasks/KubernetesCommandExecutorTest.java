@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -26,12 +27,14 @@ import static play.inject.Bindings.bind;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -464,9 +467,17 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     expectedOverrides.put("master", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
 
     expectedOverrides.put("defaultServiceScope", "AZ");
-    // The key defaults to on, and the version gate, like KubernetesUtil's others, treats an
-    // unparsable version such as "1.0.0" as supported.
-    expectedOverrides.put("nodeExporter", ImmutableMap.of("enabled", true, "port", 9300));
+    // Both keys default to on, and the version gates, like KubernetesUtil's others, treat an
+    // unparsable version such as "1.0.0" as supported, so TLS follows node-to-node encryption.
+    expectedOverrides.put(
+        "nodeExporter",
+        ImmutableMap.of(
+            "enabled",
+            true,
+            "port",
+            9300,
+            "tls",
+            ImmutableMap.of("enabled", defaultUserIntent.enableNodeToNodeEncrypt)));
     return expectedOverrides;
   }
 
@@ -514,7 +525,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
 
     assertEquals(
-        ImmutableMap.of("enabled", true, "port", 9300),
+        ImmutableMap.of("enabled", true, "port", 9300, "tls", ImmutableMap.of("enabled", false)),
         runHelmInstallAndReadOverrides(null).get("nodeExporter"));
   }
 
@@ -524,8 +535,40 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
 
     assertEquals(
-        ImmutableMap.of("enabled", false),
+        ImmutableMap.of("enabled", false, "tls", ImmutableMap.of("enabled", false)),
         runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterTlsOnWithSidecarTlsKeyAndNodeToNode() throws IOException {
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    defaultUserIntent.enableNodeToNodeEncrypt = true;
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
+    details.rootCA = defaultCert.getUuid();
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "true");
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
+
+    assertEquals(ImmutableMap.of("enabled", true), nodeExporterTls(null));
+  }
+
+  @Test
+  public void testNodeExporterTlsUserOverridesCannotTurnItOn() throws IOException {
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+
+    assertEquals(
+        ImmutableMap.of("enabled", false),
+        nodeExporterTls(
+            ImmutableMap.of(
+                "nodeExporter", ImmutableMap.of("tls", ImmutableMap.of("enabled", true)))));
+  }
+
+  private Object nodeExporterTls(Map<String, Object> universeOverrides) throws IOException {
+    return ((Map<String, Object>)
+            runHelmInstallAndReadOverrides(universeOverrides).get("nodeExporter"))
+        .get("tls");
   }
 
   @Test
@@ -548,7 +591,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         runHelmInstallAndReadOverrides(
             ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", false, "port", 9400)));
 
-    assertEquals(ImmutableMap.of("enabled", true, "port", 9300), overrides.get("nodeExporter"));
+    assertEquals(
+        ImmutableMap.of("enabled", true, "port", 9300, "tls", ImmutableMap.of("enabled", false)),
+        overrides.get("nodeExporter"));
   }
 
   /** Runs a HELM_INSTALL with the given universe overrides and returns the rendered overrides. */
@@ -1934,7 +1979,50 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
     kubernetesCommandExecutor.run();
     verify(kubernetesManager, times(1))
-        .deleteStorage(config, defaultUniverse.getUniverseDetails().nodePrefix, namespace);
+        .deleteStorage(
+            defaultUniverse.getUniverseUUID(),
+            config,
+            ImmutableSet.of(defaultUniverse.getUniverseDetails().nodePrefix),
+            namespace);
+  }
+
+  @Test
+  public void testVolumeDeleteForReleaseNames() {
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().helmReleaseNames = ImmutableSet.of("rel-a", "rel-b");
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1))
+        .deleteStorage(
+            defaultUniverse.getUniverseUUID(),
+            config,
+            ImmutableSet.of("rel-a", "rel-b"),
+            namespace);
+  }
+
+  @Test
+  public void testVolumeDeleteErrorFailsTheStep() {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(kubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    assertThrows(RuntimeException.class, kubernetesCommandExecutor::run);
+  }
+
+  @Test
+  public void testVolumeDeleteErrorIgnoredOnForceDelete() {
+    doThrow(new RuntimeException("Unable to delete PVCs"))
+        .when(kubernetesManager)
+        .deleteStorage(any(), any(), any(), any());
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE, /* set namespace */ true);
+    kubernetesCommandExecutor.taskParams().isForceDelete = true;
+    kubernetesCommandExecutor.run();
+    verify(kubernetesManager, times(1)).deleteStorage(any(), any(), any(), any());
   }
 
   @Test

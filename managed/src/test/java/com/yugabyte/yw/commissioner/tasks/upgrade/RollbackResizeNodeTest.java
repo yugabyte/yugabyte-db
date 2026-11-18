@@ -13,6 +13,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
@@ -23,6 +25,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -60,6 +63,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -1046,6 +1050,165 @@ public class RollbackResizeNodeTest extends UpgradeTaskTest {
             .filter(t -> "Disk_Update".equals(t.getTaskParams().path("type").asText()))
             .count();
     assertTrue(diskUpdates > 0);
+  }
+
+  @Test
+  public void testRollbackSetsNodesLiveAfterIopsOnlyResizeFailedBeforeDiskUpdate() {
+    TaskInfo taskInfo = rollbackIopsOnlyResizeFailedInDiskUpdate(null);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(diskUpdates(taskInfo).isEmpty());
+    assertAllNodesLive();
+  }
+
+  @Test
+  public void testRollbackSetsNodesLiveAfterIopsOnlyResizeFailedOnSomeNodes() {
+    String changedNode = firstNodeName();
+    TaskInfo taskInfo = rollbackIopsOnlyResizeFailedInDiskUpdate(changedNode);
+    assertEquals(Success, taskInfo.getTaskState());
+    // Only the node whose disk the failed resize changed gets its old IOPS back.
+    assertEquals(
+        Collections.singletonList(changedNode),
+        diskUpdates(taskInfo).stream()
+            .map(t -> t.getTaskParams().path("nodeName").asText())
+            .collect(Collectors.toList()));
+    assertAllNodesLive();
+  }
+
+  @Test
+  public void testRollbackLeavesNodeResizingWhenItsTserverIsDown() {
+    NodeDetails downNode =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNode(firstNodeName());
+    when(mockClient.waitForServer(
+            eq(HostAndPort.fromParts(downNode.cloudInfo.private_ip, downNode.tserverRpcPort)),
+            anyLong()))
+        .thenReturn(false);
+    TaskInfo taskInfo = rollbackIopsOnlyResizeFailedInDiskUpdate(null);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertEquals(
+        NodeDetails.NodeState.Resizing,
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getNode(downNode.nodeName)
+            .state);
+  }
+
+  @Test
+  public void testRollbackStartsNodeLeftStoppedByGFlagsRestartBeforeSettingItLive() {
+    // The failed resize's rolling gflags restart stopped this node and left it Resizing. The
+    // rollback's own gflags restart must start it before it is set Live.
+    SpecificGFlags beforeFlags =
+        SpecificGFlags.construct(Map.of("master-before", "1"), Map.of("tserver-before", "2"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = beforeFlags);
+    seedFailedResize(/* changeInstance */ false, /* growVolume */ false, /* changeIops */ false);
+    seedFailedResizeTargetGFlags(
+        SpecificGFlags.construct(Map.of("master-before", "5"), Map.of("added-tserver", "y")));
+    String stoppedNode = firstNodeName();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.getNode(stoppedNode).state = NodeDetails.NodeState.Resizing);
+    stubCloudState(
+        DEFAULT_INSTANCE_TYPE,
+        DEFAULT_DISK_IOPS,
+        DEFAULT_DISK_THROUGHPUT,
+        DEFAULT_VOLUME_SIZE,
+        Instant.now().minus(Duration.ofHours(48)));
+
+    ResizeNodeParams rollbackParams = createRollbackParams();
+    rollbackParams.getPrimaryCluster().userIntent.specificGFlags = beforeFlags;
+    rollbackParams.masterGFlags = new HashMap<>();
+    rollbackParams.tserverGFlags = new HashMap<>();
+    TaskInfo taskInfo = submitRollback(rollbackParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    int firstStart = -1;
+    int firstLive = -1;
+    for (int i = 0; i < subTasks.size(); i++) {
+      TaskInfo t = subTasks.get(i);
+      if (firstStart < 0 && isServerCtl(t, stoppedNode, "start")) {
+        firstStart = i;
+      }
+      if (firstLive < 0
+          && t.getTaskType() == TaskType.SetNodeState
+          && stoppedNode.equals(t.getTaskParams().path("nodeName").asText())
+          && "Live".equals(t.getTaskParams().path("state").asText())) {
+        firstLive = i;
+      }
+    }
+    assertTrue("no start for " + stoppedNode, firstStart >= 0);
+    assertTrue(stoppedNode + " set Live before it was started", firstLive > firstStart);
+    assertAllNodesLive();
+  }
+
+  /**
+   * PLAT-23888: an IOPS-only resize sets every node Resizing, then fails in Disk_Update before
+   * persisting the new intent, so YBA still matches before. The cloud matches before too, except on
+   * {@code changedNode} (if any), whose disk the failed resize did change. Rolls it back.
+   */
+  private TaskInfo rollbackIopsOnlyResizeFailedInDiskUpdate(@Nullable String changedNode) {
+    seedFailedResize(/* changeInstance */ false, /* growVolume */ false, /* changeIops */ false);
+    UniverseDefinitionTaskParams before =
+        Json.fromJson(
+            Json.toJson(
+                Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getUniverseDetails()),
+            UniverseDefinitionTaskParams.class);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams target =
+                  Json.fromJson(
+                      Json.toJson(u.getUniverseDetails()), UniverseDefinitionTaskParams.class);
+              target.getPrimaryCluster().userIntent.deviceInfo.diskIops = NEW_DISK_IOPS;
+              target.getPrimaryCluster().userIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
+              JsonNode delta = DeltaEvaluator.buildDeltaJsonTree(before, target);
+              u.setStateTransitionDetails(new StateTransitionDetails(true, delta));
+              u.getNodes().forEach(n -> n.state = NodeDetails.NodeState.Resizing);
+            });
+    Instant lastModification = Instant.now().minus(Duration.ofHours(48));
+    stubCloudState(
+        DEFAULT_INSTANCE_TYPE,
+        DEFAULT_DISK_IOPS,
+        DEFAULT_DISK_THROUGHPUT,
+        DEFAULT_VOLUME_SIZE,
+        lastModification);
+    if (changedNode != null) {
+      lenient()
+          .when(
+              cloudAPI.describeNodeDataDiskSpec(
+                  any(), argThat(n -> n != null && changedNode.equals(n.nodeName))))
+          .thenReturn(
+              Optional.of(
+                  new CloudAPI.NodeDiskSpec(
+                      DEFAULT_INSTANCE_TYPE,
+                      NEW_DISK_IOPS,
+                      NEW_DISK_THROUGHPUT,
+                      DEFAULT_VOLUME_SIZE,
+                      lastModification)));
+    }
+
+    ResizeNodeParams rollbackParams = createRollbackParams();
+    rollbackParams.getPrimaryCluster().userIntent.deviceInfo.diskIops = DEFAULT_DISK_IOPS;
+    rollbackParams.getPrimaryCluster().userIntent.deviceInfo.throughput = DEFAULT_DISK_THROUGHPUT;
+    return submitRollback(rollbackParams);
+  }
+
+  private static List<TaskInfo> diskUpdates(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == TaskType.InstanceActions)
+        .filter(t -> "Disk_Update".equals(t.getTaskParams().path("type").asText()))
+        .collect(Collectors.toList());
+  }
+
+  private void assertAllNodesLive() {
+    for (NodeDetails node :
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes()) {
+      assertEquals(node.nodeName, NodeDetails.NodeState.Live, node.state);
+    }
   }
 
   /**

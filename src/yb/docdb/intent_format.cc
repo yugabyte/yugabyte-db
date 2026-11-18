@@ -179,10 +179,7 @@ void CombineExternalIntents(
   buffer.Clear();
   buffer.AppendKeyEntryType(KeyEntryType::kUuid);
   buffer.AppendRawBytes(provider->InvolvedTablet().AsSlice());
-  if (subtransaction_id != kMinSubTransactionId) {
-    buffer.AppendKeyEntryType(KeyEntryType::kSubTransactionId);
-    buffer.AppendUInt32(subtransaction_id);
-  }
+  buffer.AppendRawBytes(EncodeSubTransactionId(subtransaction_id).AsSlice());
   buffer.AppendKeyEntryType(KeyEntryType::kExternalIntents);
   while (auto key_value = provider->Next()) {
     buffer.AppendUInt64AsVarInt(key_value->first.size());

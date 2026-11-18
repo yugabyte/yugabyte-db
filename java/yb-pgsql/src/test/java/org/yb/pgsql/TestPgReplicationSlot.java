@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotEquals;
@@ -1095,6 +1096,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation(boolean usePubRefresh)
       throws Exception {
     String slotName = "test_dynamic_table_addition_slot_before_stream_creation";
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && isTransactionalDdlEnabled());
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1259,6 +1262,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   void testNonPKTablesNeverPolledForStreamCreatedWhenFlagUnset(boolean usePubRefresh)
       throws Exception {
     String slotName = "test_non_pk_tables_never_polled_for_stream_created_when_flag_unset";
+    final boolean txnDdl = isTransactionalDdlEnabled();
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && txnDdl);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1331,7 +1337,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
+        // With transactional DDL, DDL records also get LSN values.
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/16" : "0/8"), txnDdl ? 5 : 3));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("mnop")))));
@@ -1342,7 +1350,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
                 new PgOutputMessageTupleColumnValue("wxyz")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/16" : "0/8"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/17" : "0/9")));
       }
     };
 
@@ -5388,6 +5397,211 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testAddExtensionTypeColumnAfterSlotCreation() throws Exception {
+    final String slotName = "test_add_extension_type_column_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the new column')");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (2, 'with hstore', 'a=>1')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 6);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'before the new column'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:2 note[text]:'with hstore' "
+            + "hs[hstore]:'\"a\"=>\"1\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // #36725: the type did not exist when the slot was created, and the change before the DDLs uses
+  // the old schema while sharing a GetConsistentChanges batch with the change after them. The
+  // domain and array columns resolve to their base type when converting the values.
+  @Test
+  public void testCreateExtensionAndAddColumnsAfterSlotCreation() throws Exception {
+    final String slotName = "test_create_extension_after_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP EXTENSION IF EXISTS hstore CASCADE");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text, x int)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the DDLs', 10)");
+      stmt.execute("CREATE EXTENSION hstore");
+      stmt.execute("CREATE DOMAIN hstore_domain AS hstore");
+      stmt.execute("ALTER TABLE test_table DROP COLUMN x");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs_array hstore[]");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs_domain hstore_domain");
+      stmt.execute("INSERT INTO test_table VALUES "
+          + "(2, 'after the DDLs', 'a=>1', ARRAY['b=>2'::hstore], 'c=>3')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 6);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'before the DDLs' "
+            + "x[integer]:10",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:2 note[text]:'after the DDLs' "
+            + "hs[hstore]:'\"a\"=>\"1\"' hs_array[hstore[]]:'{\"\\\"b\\\"=>\\\"2\\\"\"}' "
+            + "hs_domain[hstore_domain]:'\"c\"=>\"3\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testUpdateAndDeleteExtensionTypeColumnAddedAfterSlotCreation() throws Exception {
+    final String slotName = "test_update_delete_extension_type_column_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+      stmt.execute("ALTER TABLE test_table REPLICA IDENTITY FULL");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (1, 'row', 'a=>1')");
+      stmt.execute("UPDATE test_table SET hs = 'a=>2' WHERE id = 1");
+      stmt.execute("DELETE FROM test_table WHERE id = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 9);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'row' hs[hstore]:'\"a\"=>\"1\"'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: UPDATE: old-key: id[integer]:1 note[text]:'row' "
+            + "hs[hstore]:'\"a\"=>\"1\"' new-tuple: id[integer]:1 note[text]:'row' "
+            + "hs[hstore]:'\"a\"=>\"2\"'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: DELETE: id[integer]:1 note[text]:'row' hs[hstore]:'\"a\"=>\"2\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testAddExtensionTypeColumnAfterSlotCreationWithYbOutput() throws Exception {
+    final String slotName = "test_add_extension_type_column_yboutput_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the new column')");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (2, 'with hstore', 'a=>1')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    // Read through the second transaction's COMMIT and keep the relations and inserts, so the
+    // check does not depend on the LSNs or on the TYPE messages sent for hstore.
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    int commits = 0;
+    while (commits < 2) {
+      PgOutputMessage message = receiveMessage(stream, 1).get(0);
+      if (message instanceof PgOutputCommitMessage) {
+        commits++;
+      } else if (message instanceof PgOutputRelationMessage
+                 || message instanceof PgOutputInsertMessage) {
+        result.add(message);
+      }
+    }
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("note", 25))),
+        PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("before the new column")))),
+        PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("note", 25),
+                PgOutputRelationMessageColumn.CreateForComparison("hs"))),
+        PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("with hstore"),
+                new PgOutputMessageTupleColumnValue("\"a\"=>\"1\"")))));
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
   public void testPgoutputWithChangeReplicaIdentityNotInPublication() throws Exception {
     final String slotName = "test_pgoutput_and_change_slot";
     try (Statement stmt = connection.createStatement()) {
@@ -7974,7 +8188,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   private void addConcurrentDdlFlags(Map<String, String> flags) {
     toggleDDLMode(flags, /* useLegacy */ false);
-    flags.put("ysql_yb_enable_object_locking_infra", "true");
+    flags.put("ysql_yb_enable_global_object_locking_infra", "true");
   }
 
   @Test

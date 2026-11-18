@@ -86,6 +86,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -2238,5 +2239,90 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     TaskInfo taskInfo = queueAndAbortEdit(taskParams);
 
     assertTrue(readReplicaHelmUpgrades(taskInfo).isEmpty());
+  }
+
+  /** Positions and release names of the queued VOLUME_DELETE subtasks of an edit. */
+  private Map<Integer, String> volumeDeletes(TaskInfo taskInfo) {
+    return taskInfo.getSubTasks().stream()
+        .filter(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor)
+        .filter(
+            t ->
+                KubernetesCommandExecutor.CommandType.VOLUME_DELETE
+                    .name()
+                    .equals(t.getTaskParams().path("commandType").asText()))
+        .collect(
+            Collectors.toMap(
+                TaskInfo::getPosition, t -> t.getTaskParams().path("helmReleaseName").asText()));
+  }
+
+  @Test
+  public void testRetryOfZoneRemovalQueuesVolumeDeleteAgain() throws InterruptedException {
+    setupUniverseMultiAZ(/* Create Masters */ true, 3);
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    Region region = Region.getByCode(kubernetesProvider, "region-1");
+    AvailabilityZone az3 = AvailabilityZone.getByCode(kubernetesProvider, "az-3");
+    AvailabilityZone az4 =
+        AvailabilityZone.createOrThrow(region, "az-4", "PlacementAZ 4", "subnet-4");
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.removeIf(az -> az.uuid.equals(az3.getUuid()));
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, true);
+
+    TaskInfo firstAttempt = queueAndAbortEdit(editParams(pi, false /* includeReadReplica */));
+    Map<Integer, String> firstVolumeDeletes = volumeDeletes(firstAttempt);
+    assertEquals(1, firstVolumeDeletes.size());
+    assertTrue(firstVolumeDeletes.values().iterator().next().contains("az-3"));
+    // The removed zone's storage is deleted before the new placement is saved, so a failure there
+    // leaves the old placement for the retry to compare against.
+    int primaryIntentPosition =
+        firstAttempt.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.UpdateUniverseIntent)
+            .map(TaskInfo::getPosition)
+            .findFirst()
+            .orElseThrow();
+    assertTrue(firstVolumeDeletes.keySet().iterator().next() < primaryIntentPosition);
+
+    UniverseDefinitionTaskParams retryParams =
+        Json.fromJson(firstAttempt.getTaskParams(), UniverseDefinitionTaskParams.class);
+    retryParams.setPreviousTaskUUID(firstAttempt.getUuid());
+    TaskInfo retry = queueAndAbortEdit(retryParams);
+
+    assertEquals(
+        new HashSet<>(firstVolumeDeletes.values()), new HashSet<>(volumeDeletes(retry).values()));
+  }
+
+  @Test
+  public void testFullMoveQueuesNoVolumeDelete() throws InterruptedException {
+    setupUniverseMultiAZ(/* Create Masters */ true, 3);
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u ->
+                u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+                    KubernetesUtil.MIN_VERSION_FULL_MOVE_SUPPORT_STABLE);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodePrefix = defaultUniverse.getUniverseDetails().nodePrefix;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
+    DeviceInfo deviceInfo = newUserIntent.deviceInfo.clone();
+    deviceInfo.numVolumes = (deviceInfo.numVolumes == null ? 1 : deviceInfo.numVolumes) + 1;
+    newUserIntent.deviceInfo = deviceInfo;
+    taskParams.getPrimaryCluster().userIntent = newUserIntent;
+    // As the edit API does: configure, then bump the statefulset index of the moving zones.
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    PlacementInfoUtil.applyK8sStsIndexIncrement(
+        taskParams.getPrimaryCluster(), taskParams.nodeDetailsSet);
+
+    TaskInfo edit = queueAndAbortEdit(taskParams);
+
+    assertTrue(
+        "the edit is not a full move",
+        edit.getSubTasks().stream().anyMatch(t -> t.getTaskParams().hasNonNull("fullMoveParams")));
+    assertEquals(Collections.emptyMap(), volumeDeletes(edit));
   }
 }

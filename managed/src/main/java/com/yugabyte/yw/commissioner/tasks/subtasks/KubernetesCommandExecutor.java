@@ -86,9 +86,11 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.yaml.snakeyaml.Yaml;
@@ -225,6 +227,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Map<String, String> universeConfig;
     public CommandType commandType;
     public String helmReleaseName;
+    // VOLUME_DELETE only: the releases whose storage is deleted, in place of helmReleaseName.
+    public Set<String> helmReleaseNames;
+    // VOLUME_DELETE only: a failed delete is logged and skipped.
+    public boolean isForceDelete;
     public String namespace;
     public boolean isReadOnlyCluster;
     public String ybSoftwareVersion = null;
@@ -510,9 +516,27 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                 confGetter.getConfForScope(universe, UniverseConfKeys.k8sMasterPvcGcReadyTimeout));
         break;
       case VOLUME_DELETE:
-        kubernetesManagerFactory
-            .getManager()
-            .deleteStorage(config, taskParams().helmReleaseName, taskParams().namespace);
+        try {
+          kubernetesManagerFactory
+              .getManager()
+              .deleteStorage(
+                  taskParams().getUniverseUUID(),
+                  config,
+                  CollectionUtils.isNotEmpty(taskParams().helmReleaseNames)
+                      ? taskParams().helmReleaseNames
+                      : Collections.singleton(taskParams().helmReleaseName),
+                  taskParams().namespace);
+        } catch (CancellationException e) {
+          throw e;
+        } catch (RuntimeException e) {
+          if (!taskParams().isForceDelete) {
+            throw e;
+          }
+          log.warn(
+              "Ignoring error deleting storage in namespace {} due to isForceDelete being set.",
+              taskParams().namespace,
+              e);
+        }
         break;
       case NAMESPACE_DELETE:
         kubernetesManagerFactory.getManager().deleteNamespace(config, taskParams().namespace);
@@ -1798,14 +1822,20 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         ((Map<String, Object>) serverGFlags).put(GFlagsUtil.USE_CLIENT_CERTIFICATES, "false");
       }
     }
-    // Done after all overrides, so none can turn the sidecar on or off or move its port.
+    // Done after all overrides, so none can turn the sidecar or its TLS on or off or move its port.
+    Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
     if (KubernetesUtil.isNodeExporterSidecarEnabled(
         taskParams().ybSoftwareVersion, universeFromDB, confGetter)) {
-      Map<String, Object> nodeExporter = getOrCreateMap(overrides, "nodeExporter");
       nodeExporter.put("enabled", true);
       nodeExporter.put("port", universeFromDBParams.communicationPorts.nodeExporterPort);
+      getOrCreateMap(nodeExporter, "tls")
+          .put(
+              "enabled",
+              KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+                  taskParams().ybSoftwareVersion, universeFromDB, confGetter));
     } else {
-      getOrCreateMap(overrides, "nodeExporter").put("enabled", false);
+      nodeExporter.put("enabled", false);
+      getOrCreateMap(nodeExporter, "tls").put("enabled", false);
     }
 
     // For single AZ azUUID may be null, use non-null values

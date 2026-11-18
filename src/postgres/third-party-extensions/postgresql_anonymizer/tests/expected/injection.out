@@ -102,18 +102,17 @@ WHERE tablename='inject_via_load';
 (1 row)
 
 --
--- Dynamic Masking
+-- Static Masking
 --
-SET anon.maskschema TO 'foo; CREATE TABLE inject_via_guc(i int);--';
-SELECT anon.start_dynamic_masking();
- start_dynamic_masking 
------------------------
- t
+SELECT anon.anonymize_database('anon''; CREATE TABLE inject_via_static_masking(i int);--');
+ anonymize_database 
+--------------------
+ 
 (1 row)
 
 SELECT COUNT(*) = 0
 FROM pg_tables
-WHERE tablename='inject_via_guc';
+WHERE tablename='inject_via_static_masking';
  ?column? 
 ----------
  t
@@ -129,45 +128,60 @@ SECURITY LABEL FOR anon ON COLUMN a.t
 IS 'MASKED WITH VALUE NULL as TEXT) as t FROM a;
     CREATE TABLE inject_via_rule(i int);
     SELECT 1--()';
-ERROR:  'MASKED WITH VALUE NULL as TEXT) as t FROM a;
+ERROR:  Anon: `MASKED WITH VALUE NULL as TEXT) as t FROM a;
     CREATE TABLE inject_via_rule(i int);
-    SELECT 1--()' is not a valid masking value
+    SELECT 1--()` is not a valid label for a column
+DETAIL:  NULL as TEXT) as t FROM a;
+    CREATE TABLE inject_via_rule(i int);
+    SELECT 1--() is not a valid expression
 ROLLBACK TO masking_rule_2;
 SAVEPOINT masking_rule_3;
 SECURITY LABEL FOR anon ON COLUMN a.t
 IS 'MASKED WITH VALUE NULL as t FROM a;
     CREATE TABLE inject_via_rule(i int);
     SELECT 1--()';
-ERROR:  'MASKED WITH VALUE NULL as t FROM a;
+ERROR:  Anon: `MASKED WITH VALUE NULL as t FROM a;
     CREATE TABLE inject_via_rule(i int);
-    SELECT 1--()' is not a valid masking value
+    SELECT 1--()` is not a valid label for a column
+DETAIL:  NULL as t FROM a;
+    CREATE TABLE inject_via_rule(i int);
+    SELECT 1--() is not a valid expression
 ROLLBACK TO masking_rule_3;
 SAVEPOINT masking_rule_4;
 SECURITY LABEL FOR anon ON COLUMN a.t
 IS 'MASKED WITH FUNCTION anon.fake_lastname() as TEXT) as t FROM a;
     CREATE TABLE inject_via_rule(i int);
     SELECT 1--()';
-ERROR:  'MASKED WITH FUNCTION anon.fake_lastname() as TEXT) as t FROM a;
+ERROR:  Anon: `MASKED WITH FUNCTION anon.fake_lastname() as TEXT) as t FROM a;
     CREATE TABLE inject_via_rule(i int);
-    SELECT 1--()' is not a valid masking function
+    SELECT 1--()` is not a valid label for a column
+DETAIL:  anon.fake_lastname() as TEXT) as t FROM a;
+    CREATE TABLE inject_via_rule(i int);
+    SELECT 1--() is not a valid function call
 ROLLBACK TO masking_rule_4;
 SAVEPOINT masking_rule_5;
 SECURITY LABEL FOR anon ON COLUMN a.t
 IS 'MASKED WITH FUNCTION anon.fake_lastname() as t FROM a;
     CREATE TABLE inject_via_rule(i int);
     SELECT 1--()';
-ERROR:  'MASKED WITH FUNCTION anon.fake_lastname() as t FROM a;
+ERROR:  Anon: `MASKED WITH FUNCTION anon.fake_lastname() as t FROM a;
     CREATE TABLE inject_via_rule(i int);
-    SELECT 1--()' is not a valid masking function
+    SELECT 1--()` is not a valid label for a column
+DETAIL:  anon.fake_lastname() as t FROM a;
+    CREATE TABLE inject_via_rule(i int);
+    SELECT 1--() is not a valid function call
 ROLLBACK TO masking_rule_5;
 SAVEPOINT masking_rule_6;
 SECURITY LABEL FOR anon ON TABLE a
 IS 'TABLESAMPLE SYSTEM(10);
     CREATE TABLE inject_via_rule(i int);
     --';
-ERROR:  'TABLESAMPLE SYSTEM(10);
+ERROR:  Anon: `TABLESAMPLE SYSTEM(10);
     CREATE TABLE inject_via_rule(i int);
-    --' is not a valid label for a table
+    --` is not a valid label for a table
+DETAIL:  TABLESAMPLE SYSTEM(10);
+    CREATE TABLE inject_via_rule(i int);
+    -- is not a valid expression
 ROLLBACK TO masking_rule_6;
 SELECT COUNT(*) = 0
 FROM pg_tables
@@ -187,10 +201,14 @@ IS 'MASKED WITH VALUE 1 as INT) as a,
                       rolname,
                       rolpassword
                 FROM pg_catalog.pg_authid --';
-ERROR:  'MASKED WITH VALUE 1 as INT) as a,
+ERROR:  Anon: `MASKED WITH VALUE 1 as INT) as a,
                       rolname,
                       rolpassword
-                FROM pg_catalog.pg_authid --' is not a valid masking value
+                FROM pg_catalog.pg_authid --` is not a valid label for a column
+DETAIL:  1 as INT) as a,
+                      rolname,
+                      rolpassword
+                FROM pg_catalog.pg_authid -- is not a valid expression
 ROLLBACK TO masking_rule_7;
 SAVEPOINT masking_rule_8;
 SECURITY LABEL FOR anon ON COLUMN hashes.a
@@ -198,10 +216,14 @@ IS 'MASKED WITH VALUE 1 as a,
                       rolname,
                       rolpassword
                 FROM pg_catalog.pg_authid --';
-ERROR:  'MASKED WITH VALUE 1 as a,
+ERROR:  Anon: `MASKED WITH VALUE 1 as a,
                       rolname,
                       rolpassword
-                FROM pg_catalog.pg_authid --' is not a valid masking value
+                FROM pg_catalog.pg_authid --` is not a valid label for a column
+DETAIL:  1 as a,
+                      rolname,
+                      rolpassword
+                FROM pg_catalog.pg_authid -- is not a valid expression
 ROLLBACK TO masking_rule_8;
 -- CLEAN UP
 DROP EXTENSION anon CASCADE;

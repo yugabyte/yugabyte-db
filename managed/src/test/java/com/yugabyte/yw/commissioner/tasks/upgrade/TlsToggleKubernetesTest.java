@@ -8,6 +8,7 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -22,8 +24,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -124,6 +128,56 @@ public class TlsToggleKubernetesTest extends KubernetesUpgradeTaskTest {
             .enableNodeToNodeEncrypt);
     assertTrue(defaultUniverse.getUniverseDetails().rootAndClientRootCASame);
     assertFalse(defaultUniverse.getUniverseDetails().allowInsecure);
+  }
+
+  // The sidecar's scrape scheme follows node-to-node encryption, so the targets are rewritten
+  // once the pods have restarted with it.
+  @Test
+  public void testTlsToggleRewritesTargetsAfterTheRestart() throws Exception {
+    TaskInfo taskInfo = enableTlsNonRolling();
+    List<Integer> rewrites =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.SwamperTargetsFileUpdate)
+            .map(TaskInfo::getPosition)
+            .collect(Collectors.toList());
+    int lastWait =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.WaitForServer)
+            .mapToInt(TaskInfo::getPosition)
+            .max()
+            .orElseThrow();
+    assertEquals(1, rewrites.size());
+    assertTrue(rewrites.get(0) > lastWait);
+  }
+
+  // Every pod restarted on the template rendered with node-to-node encryption, so the sidecars are
+  // recorded as serving TLS.
+  @Test
+  public void testTlsToggleRecordsSidecarTls() throws Exception {
+    enableTlsNonRolling();
+    assertTrue(isNodeExporterHttpsRecorded());
+  }
+
+  private TaskInfo enableTlsNonRolling() throws Exception {
+    tlsToggleKubernetes.setUserTaskUUID(UUID.randomUUID());
+    setupUniverseSingleAZ(false, true);
+    TestHelper.updateUniverseVersion(
+        defaultUniverse, NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "true");
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
+    rootCAUUID = UUID.randomUUID();
+    createRootCAUUID();
+    TlsToggleParams tlsToggleParams = new TlsToggleParams();
+    tlsToggleParams.enableClientToNodeEncrypt = true;
+    tlsToggleParams.enableNodeToNodeEncrypt = true;
+    tlsToggleParams.rootAndClientRootCASame = true;
+    tlsToggleParams.rootCA = rootCAUUID;
+    tlsToggleParams.upgradeOption = SoftwareUpgradeParams.UpgradeOption.NON_ROLLING_UPGRADE;
+    tlsToggleParams.expectedUniverseVersion = -1;
+    TaskInfo taskInfo = submitTask(tlsToggleParams);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    return taskInfo;
   }
 
   @Test
