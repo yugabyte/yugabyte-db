@@ -35,10 +35,11 @@ import play.libs.Json;
  * Redacts the LDAP secrets in Kubernetes overrides YAML for API responses, and puts the stored
  * values back when overrides copied from a response are submitted. Only the secrets are rewritten,
  * located by parsing the YAML, so the rest of the user's text is kept: the UI shows it as typed,
- * and overrides sent back unchanged equal redact(stored) exactly. A secret is the value of a secret
- * gflag or an ldapbindpasswd field of ysql_hba_conf_csv. A comment that mentions a secret is
- * replaced by "# REDACTED", and so are the comments below it up to the next YAML content, since a
- * value can continue on the next line. Comments are never restored.
+ * and overrides sent back unchanged equal redact(stored) exactly. A secret is the value of one of
+ * the fixed LDAP secret names, such as ycql_ldap_bind_passwd, or an ldapbindpasswd field of
+ * ysql_hba_conf_csv; gflags that only a DB version marks sensitive are not covered. A comment that
+ * mentions a secret is replaced by "# REDACTED", and so are the comments below it up to the next
+ * YAML content, since a value can continue on the next line. Comments are never restored.
  *
  * <p>Overrides are hidden whole as REDACTED instead when they can't be parsed and could hold a
  * secret: they name one, or hold a backslash or a !, with which a key can spell one (escapes in a
@@ -47,8 +48,9 @@ import play.libs.Json;
  * anywhere in that string or in the ones after it, and overrides that hold a secret and use YAML
  * the rewrite doesn't follow: anchors and aliases, which can carry a value to another key, other
  * tags, keys that aren't strings, a secret or ysql_hba_conf_csv that isn't a scalar, and a repeated
- * secret key. Overrides rarely use these, and hiding them whole fails closed. Sent back unchanged,
- * hidden overrides restore the stored text; an edit has to submit them in full.
+ * secret key. Overrides rarely use these, and hiding them whole fails closed. Overrides whose
+ * redaction fails for any other reason are hidden whole too, and redact never throws. Sent back
+ * unchanged, hidden overrides restore the stored text; an edit has to submit them in full.
  */
 @Slf4j
 public final class KubernetesOverridesRedactor {
@@ -132,11 +134,6 @@ public final class KubernetesOverridesRedactor {
     return RedactingService.sensitiveNames(null, null);
   }
 
-  private static boolean mentionsSecret(String text, Set<String> secretKeys) {
-    return secretKeys.stream().anyMatch(text::contains)
-        || HbaConfRedactor.mentionsLdapBindPasswd(text);
-  }
-
   public static String redact(String overrides) {
     if (overrides == null) {
       return null;
@@ -145,9 +142,20 @@ public final class KubernetesOverridesRedactor {
     // tag starts with !) in base64, so text with a backslash or a ! is parsed.
     if (overrides.indexOf('\\') < 0
         && overrides.indexOf('!') < 0
-        && !mentionsSecret(overrides, secretKeys())) {
+        && !RedactingService.mentionsSecret(overrides, secretKeys())) {
       return overrides;
     }
+    try {
+      return rewrite(overrides);
+    } catch (RuntimeException e) {
+      // Hidden whole, not thrown: restore compares overrides sent back unchanged with this, so it
+      // has to be what responses show.
+      log.warn("Failed to redact Kubernetes overrides; hiding them whole.", e);
+      return REDACTED;
+    }
+  }
+
+  private static String rewrite(String overrides) {
     Finder found;
     try {
       found = find(overrides);
@@ -174,7 +182,8 @@ public final class KubernetesOverridesRedactor {
       int[] comment = comments.get(i);
       boolean below = i > 0 && overrides.substring(comments.get(i - 1)[1], comment[0]).isBlank();
       hiding =
-          mentionsSecret(overrides.substring(comment[0], comment[1]), found.secretKeys)
+          RedactingService.mentionsSecret(
+                  overrides.substring(comment[0], comment[1]), found.secretKeys)
               || (hiding && below);
       if (hiding && !insideAny(scalars, comment[0])) {
         replacements.add(new Replacement(comment[0], comment[1], "# " + REDACTED));
@@ -186,11 +195,12 @@ public final class KubernetesOverridesRedactor {
   /**
    * Returns the submitted overrides with each REDACTED secret replaced by the stored value at the
    * same YAML path, following GFlagsUtil.mergeSensitiveGFlags: a 400 when nothing is stored there
-   * or the stored value is itself REDACTED, and for ysql_hba_conf_csv also when the rest of the
-   * value differs from the stored one. Also a 400 for REDACTED in overrides that are hidden whole
-   * or under a list item, which can't be matched to a stored value. Comments are not restored.
-   * stored is null for new overrides. Overrides sent back unchanged, as stored or as redacted, are
-   * returned as stored, even when the stored text already holds REDACTED.
+   * or the stored value is itself REDACTED, and for ysql_hba_conf_csv when the stored value holds
+   * REDACTED or the rest of the value differs from the stored one. Also a 400 for REDACTED in
+   * overrides that are hidden whole or under a list item, which can't be matched to a stored value.
+   * Comments are not restored. stored is null for new overrides. Overrides sent back unchanged, as
+   * stored or as redacted, are returned as stored, even when the stored text already holds
+   * REDACTED.
    */
   public static String restore(String stored, String submitted, String where) {
     if (!RedactingService.isGFlagRedacted(submitted)) {
@@ -265,7 +275,9 @@ public final class KubernetesOverridesRedactor {
                 name, REDACTED));
       }
       String storedValue = storedSecret.value.getValue();
-      if (RedactingService.isGFlagRedacted(storedValue)) {
+      if (secret.kind == Kind.HBA
+          ? RedactingService.isGFlagRedacted(storedValue)
+          : storedValue.equals(REDACTED)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
@@ -332,7 +344,8 @@ public final class KubernetesOverridesRedactor {
       throw new HiddenException("use a binary tag, which can spell a secret");
     }
     if (finder.unsupported != null
-        && (!finder.secrets.isEmpty() || mentionsSecret(overrides, finder.secretKeys))) {
+        && (!finder.secrets.isEmpty()
+            || RedactingService.mentionsSecret(overrides, finder.secretKeys))) {
       throw new HiddenException(finder.unsupported);
     }
     return finder;
@@ -402,7 +415,7 @@ public final class KubernetesOverridesRedactor {
       }
       if (node instanceof ScalarNode) {
         ScalarNode scalar = (ScalarNode) node;
-        if (mentionsSecret(scalar.getValue(), secretKeys)) {
+        if (RedactingService.mentionsSecret(scalar.getValue(), secretKeys)) {
           throw new HiddenException("hold a string that mentions a secret");
         }
         addSpan(scalar);
@@ -432,7 +445,7 @@ public final class KubernetesOverridesRedactor {
           } else if (hba && value instanceof ScalarNode) {
             visit(value);
             addSecret((ScalarNode) value, childPath, Kind.HBA, childInFlow, inList);
-          } else if (mentionsSecret(key, secretKeys)) {
+          } else if (RedactingService.mentionsSecret(key, secretKeys)) {
             throw new HiddenException("have a key that mentions a secret");
           } else {
             if (hba) {
