@@ -159,6 +159,71 @@ SELECT embedding FROM vec1 ORDER BY embedding <-> (SELECT embedding FROM vec2 LI
 DROP TABLE vec2;
 DROP TABLE vec1;
 
+-- A NULL query vector makes every distance NULL, so rows come back in any
+-- order, but the index scan must still return LIMIT rows, as a sort does.
+CREATE TABLE vec_nullq (id int PRIMARY KEY, v vector(3)) SPLIT INTO 2 TABLETS;
+INSERT INTO vec_nullq SELECT g, ('[' || (g % 7) || ',' || (g % 11) || ',' || (g % 13 + 1) || ']')::vector
+  FROM generate_series(1, 200) g;
+CREATE INDEX vec_nullq_l2 ON vec_nullq USING ybhnsw (v vector_l2_ops);
+CREATE INDEX vec_nullq_ip ON vec_nullq USING ybhnsw (v vector_ip_ops);
+CREATE INDEX vec_nullq_cos ON vec_nullq USING ybhnsw (v vector_cosine_ops);
+EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq ORDER BY v <-> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3;
+SELECT count(*) FROM (SELECT id FROM vec_nullq ORDER BY v <-> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3) s;
+SELECT v <-> (SELECT v FROM vec_nullq WHERE id = -1) AS dist FROM vec_nullq
+  ORDER BY v <-> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3;
+EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq ORDER BY v <#> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3;
+SELECT count(*) FROM (SELECT id FROM vec_nullq ORDER BY v <#> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3) s;
+EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq ORDER BY v <=> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3;
+SELECT count(*) FROM (SELECT id FROM vec_nullq ORDER BY v <=> (SELECT v FROM vec_nullq WHERE id = -1) LIMIT 3) s;
+-- Rescans alternating between NULL and non-NULL query vectors.
+CREATE TEMP TABLE vec_nullq_probes (pid int, q vector(3));
+INSERT INTO vec_nullq_probes VALUES (1, '[1,1,1]'), (2, NULL), (3, '[5,5,5]'), (4, NULL);
+EXPLAIN (COSTS OFF) SELECT p.pid, count(n.id) FROM vec_nullq_probes p
+  LEFT JOIN LATERAL (SELECT id FROM vec_nullq ORDER BY v <-> p.q LIMIT 3) n ON true
+  GROUP BY p.pid ORDER BY p.pid;
+SELECT p.pid, count(n.id) FROM vec_nullq_probes p
+  LEFT JOIN LATERAL (SELECT id FROM vec_nullq ORDER BY v <-> p.q LIMIT 3) n ON true
+  GROUP BY p.pid ORDER BY p.pid;
+-- A NULL parameter of a generic plan.
+SET plan_cache_mode = force_generic_plan;
+PREPARE vec_nullq_near(vector) AS
+  SELECT count(*) FROM (SELECT id FROM vec_nullq ORDER BY v <-> $1 LIMIT 3) s;
+EXPLAIN (COSTS OFF) EXECUTE vec_nullq_near(NULL);
+EXECUTE vec_nullq_near(NULL);
+EXECUTE vec_nullq_near('[1,1,1]');
+DEALLOCATE vec_nullq_near;
+RESET plan_cache_mode;
+DROP TABLE vec_nullq_probes;
+DROP TABLE vec_nullq;
+
+-- The LIMIT sent to the tablet leaves out the OFFSET, so these scans need rows
+-- from later pages of the tablet, more than vector_index_max_extra_tied_results
+-- (1024) past the first.  A later page keeps only rows farther than all fetched
+-- before, so a NULL query must not search with a vector that every row ties
+-- with, such as a zero vector under cosine or inner product.  The inner product
+-- index is on normalized vectors: on others HNSW doesn't reach every row even
+-- for a non-NULL query.
+CREATE TABLE vec_nullq_pages (id int PRIMARY KEY, v vector(3), nv vector(3)) SPLIT INTO 1 TABLETS;
+INSERT INTO vec_nullq_pages
+  SELECT g, x, l2_normalize(x) FROM generate_series(1, 1500) g,
+    LATERAL (SELECT ('[' || (g % 37 + 1) || ',' || (g % 41 + 1) || ',' || (g % 43 + 1) || ']')::vector AS x) s;
+CREATE INDEX vec_nullq_pages_cos ON vec_nullq_pages USING ybhnsw (v vector_cosine_ops);
+CREATE INDEX vec_nullq_pages_ip ON vec_nullq_pages USING ybhnsw (nv vector_ip_ops);
+CREATE INDEX vec_nullq_pages_l2 ON vec_nullq_pages USING ybhnsw (v vector_l2_ops);
+EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq_pages
+  ORDER BY v <=> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200;
+SELECT count(*) FROM (SELECT id FROM vec_nullq_pages
+  ORDER BY v <=> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200) s;
+EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq_pages
+  ORDER BY nv <#> (SELECT nv FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200;
+SELECT count(*) FROM (SELECT id FROM vec_nullq_pages
+  ORDER BY nv <#> (SELECT nv FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200) s;
+EXPLAIN (COSTS OFF) SELECT id FROM vec_nullq_pages
+  ORDER BY v <-> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200;
+SELECT count(*) FROM (SELECT id FROM vec_nullq_pages
+  ORDER BY v <-> (SELECT v FROM vec_nullq_pages WHERE id = -1) LIMIT 3 OFFSET 1200) s;
+DROP TABLE vec_nullq_pages;
+
 CREATE TABLE vec1 (embedding vector(3));
 CREATE INDEX vec1_idx ON vec1 USING hnsw (embedding vector_l2_ops);
 SET hnsw.ef_search = 100;
