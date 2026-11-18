@@ -64,11 +64,12 @@ ANALYZE gap_idx_tbl;
 --
 -- ord1 = x compares timestamptz with timestamp, which is stable, so that filter
 -- runs locally, after the merge, while x = gap runs as a storage filter within
--- each stream.  No target or local filter uses gap, so the scan reads it only
--- because the merge sorts on it.  The decoy passes x = gap, fails ord1 = x, and
--- comes first in stream bkt = 1, so a merge that compared gap without reading
--- it would return the rows out of order.  The primary key scan reads gap from
--- the table row, and the index-only scan from the index row.
+-- each stream.  The query does not select gap, and no local filter uses it, so
+-- the scan reads it only because the merge sorts on it.  The decoy passes x =
+-- gap, fails ord1 = x, and comes first in stream bkt = 1, so a merge that
+-- compared gap without reading it would return the rows out of order.  The
+-- primary key scan reads gap from the table row, and the index-only scan reads
+-- gap from the index row.
 SET TimeZone = 'UTC';
 CREATE TABLE gap_unread_tbl (bkt int, ord1 timestamptz, gap timestamp, ord2 int,
     x timestamp, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
@@ -83,10 +84,11 @@ ANALYZE gap_unread_tbl;
 \set query ':P :Q SELECT ord1, ord2, bkt FROM gap_unread_tbl WHERE bkt IN (1, 2) AND ord1 = x AND x = gap ORDER BY ord1, ord2;'
 \set Q1 '/*+IndexScan(gap_unread_tbl gap_unread_tbl_pkey) Set(yb_max_merge_scan_streams 0)*/'
 \set Q2 '/*+IndexScan(gap_unread_tbl gap_unread_tbl_pkey) Set(yb_max_merge_scan_streams 64)*/'
+\set Q3 '/*+IndexOnlyScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q4 '/*+IndexOnlyScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
-\set Q1 '/*+IndexOnlyScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
-\set Q2 '/*+IndexOnlyScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
-\i :run_query
+\unset Q3
+\unset Q4
 RESET TimeZone;
 
 -- Descending gap column, forward and backward scans
