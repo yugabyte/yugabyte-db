@@ -62,8 +62,11 @@ Status PgSelect::Prepare(
           read_req_, read_req_->mutable_index_request());
     }
 
+    auto index_skip_intents_info = skip_intents_info;
+    index_skip_intents_info.read_at_in_txn_limit |= index_info->read_at_in_txn_limit;
     SetSecondaryIndex(VERIFY_RESULT(PgSelectIndex::Make(
-        pg_session_, index_info->id, locality_info, skip_intents_info, std::move(index_req))));
+        pg_session_, index_info->id, locality_info, index_skip_intents_info,
+        std::move(index_req))));
   }
 
   // Prepare binds for the request.

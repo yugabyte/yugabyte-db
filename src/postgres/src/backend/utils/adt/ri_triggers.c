@@ -449,7 +449,8 @@ YbFindReferencedPartition(EState *estate, const RI_ConstraintInfo *riinfo,
  */
 static YbcPgYBTupleIdDescriptor *
 YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
-							TupleTableSlot *fkslot, EState *estate)
+							TupleTableSlot *fkslot, EState *estate,
+							bool *read_at_in_txn_limit)
 {
 	if (!riinfo->yb_cast_paths_valid)
 		return NULL;
@@ -490,6 +491,8 @@ YBCBuildYBTupleIdDescriptor(const RI_ConstraintInfo *riinfo,
 	Oid			referenced_rel_relfilenode_oid = YbGetRelfileNodeId(referenced_rel);
 	Oid			referenced_dboid = YBCGetDatabaseOid(referenced_rel);
 	YbcPgYBTupleIdDescriptor *result;
+
+	*read_at_in_txn_limit = YbRelationReadsAtInTxnLimit(referenced_rel);
 
 	result =
 		YBCCreateYBTupleIdDescriptor(referenced_dboid,
@@ -704,16 +707,18 @@ RI_FKey_check(TriggerData *trigdata)
 		 * in referenced relation can be built from referencing table tuple.
 		 */
 		Assert(trigdata->estate);
+		bool		read_at_in_txn_limit = false;
 		YbcPgYBTupleIdDescriptor *descr = YBCBuildYBTupleIdDescriptor(riinfo,
 																	  newslot,
-																	  trigdata->estate);
+																	  trigdata->estate,
+																	  &read_at_in_txn_limit);
 
 		if (descr)
 		{
 			bool		found = false;
 
 			HandleYBStatus(YBCForeignKeyReferenceExists(descr, YbBuildTableLocalityInfo(fk_rel),
-														&found));
+														read_at_in_txn_limit, &found));
 			pfree(descr);
 			if (!found)
 			{
@@ -3725,6 +3730,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 							  bool is_deferred)
 {
 	YbcPgYBTupleIdDescriptor *descr;
+	bool		read_at_in_txn_limit = false;
 
 	/*
 	 * Everything allocated while building and recording the intent, such as
@@ -3743,7 +3749,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 		YBCBuildYBTupleIdDescriptor(ri_FetchConstraintInfo(trigger,
 														   fk_rel,
 														   false /* rel_is_pk */ ),
-									new_slot, estate);
+									new_slot, estate, &read_at_in_txn_limit);
 	/*
 	 * Check that ybctid for row in source table can be built from referenced table tuple
 	 * (i.e. the batched DocDB lookup can be used).
@@ -3764,6 +3770,7 @@ YbAddTriggerFKReferenceIntent(Trigger *trigger, Relation fk_rel,
 		if (!null_found)
 			HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr,
 														   YbBuildTableLocalityInfo(fk_rel),
+														   read_at_in_txn_limit,
 														   is_deferred));
 	}
 

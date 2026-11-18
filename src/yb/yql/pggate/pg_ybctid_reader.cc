@@ -215,6 +215,10 @@ class YbctidReader::Impl {
       auto read_op_with_table = std::make_shared<PgsqlReadOpWithPgTable>(
           arena.get(), desc, tables_locality.Get(table_id), metrics_capture);
       auto read_op = SharedField(read_op_with_table, &read_op_with_table->read_op);
+      if (options.tables_reading_at_in_txn_limit &&
+          options.tables_reading_at_in_txn_limit->contains(table_id)) {
+        read_op->read_request().set_read_at_in_txn_limit(true);
+      }
       auto* expr_pb = read_op->read_request().add_targets();
       expr_pb->set_column_id(std::to_underlying(PgSystemAttrNum::kYBTupleId));
       doc_ops_.push_back(std::make_unique<PgDocReadOp>(

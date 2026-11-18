@@ -281,11 +281,17 @@ typedef struct {
 // indexes such as pgvector).  Note that this should be false in case of primary key index scan
 // since the pk index and the table are same in DocDB.
 // TODO(#25940): it is currently not always false for primary key index.
+//
+// index_read_at_in_txn_limit: the request to the index must read at in_txn_limit even if the
+// table's YbcPgSkipIntentsOptimizationInfo doesn't say so.  That info is decided from the table,
+// but an index created in the current transaction on a table that existed before it has rows in
+// the regular db, above the transaction read time, while the table has none.
 typedef struct {
   YbcPgOid index_relfilenode_oid;
   bool index_only_scan;
   bool embedded_idx;
   bool fetch_ybctids_only;
+  bool index_read_at_in_txn_limit;
 } YbcPgPrepareParameters;
 
 // Structure for output value.

@@ -10942,6 +10942,54 @@ YBHasSkippedIntentsWrite()
 }
 
 /*
+ * Whether the skip intents optimization can apply to rel in this transaction, so that this
+ * transaction may have put rows of rel in the regular db and every read of rel has to be at
+ * in_txn_limit. Depends on the relation alone, not on transaction state: only this
+ * transaction can write to such a relation.
+ *
+ * An index is checked on its own, apart from its table: a new index on a table that existed
+ * before the transaction is written on the fast path while the table is not.
+ */
+bool
+YbRelationReadsAtInTxnLimit(Relation rel)
+{
+	if (!yb_enable_new_relation_fastpath_write)
+		return false;
+
+	/*
+	 * 1. rd_createSubid: The logical table was created in this txn.
+	 * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
+	 * in this txn (typical for ALTER TABLE / REINDEX).
+	 */
+	if (rel->rd_createSubid == InvalidSubTransactionId &&
+		rel->rd_newRelfilenodeSubid == InvalidSubTransactionId)
+	{
+		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
+		return false;
+	}
+
+	if (rel->rd_id < FirstNormalObjectId)
+	{
+		elog(DEBUG3, "Skip intents not applicable: relation %u is a system catalog", rel->rd_id);
+		return false;
+	}
+
+	if (YbIsTempRelation(rel))
+	{
+		elog(DEBUG2, "Skip intents not applicable: relation %u is a temporary relation", rel->rd_id);
+		return false;
+	}
+
+	if (YbGetTableDistribution(rel) == YB_COLOCATED)
+	{
+		elog(DEBUG2, "Skip intents not applicable: relation %u is colocated", rel->rd_id);
+		return false;
+	}
+
+	return true;
+}
+
+/*
  * Decides both halves of the skip intents optimization for one operation on rel. See
  * YbcPgSkipIntentsOptimizationInfo: the relation-static checks below decide
  * read_at_in_txn_limit and hold for the whole transaction, while the transaction-state checks
@@ -10953,44 +11001,9 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
-	if (!yb_enable_new_relation_fastpath_write)
+	if (!YbRelationReadsAtInTxnLimit(rel))
 		return info;
 
-	/*
-	 * 1. rd_createSubid: The logical table was created in this txn.
-	 * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
-	 * in this txn (typical for ALTER TABLE / REINDEX).
-	 */
-	if (rel->rd_createSubid == InvalidSubTransactionId &&
-		rel->rd_newRelfilenodeSubid == InvalidSubTransactionId)
-	{
-		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
-		return info;
-	}
-
-	if (rel->rd_id < FirstNormalObjectId)
-	{
-		elog(DEBUG3, "Skip intents not applicable: relation %u is a system catalog", rel->rd_id);
-		return info;
-	}
-
-	if (YbIsTempRelation(rel))
-	{
-		elog(DEBUG2, "Skip intents not applicable: relation %u is a temporary relation", rel->rd_id);
-		return info;
-	}
-
-	if (YbGetTableDistribution(rel) == YB_COLOCATED)
-	{
-		elog(DEBUG2, "Skip intents not applicable: relation %u is colocated", rel->rd_id);
-		return info;
-	}
-
-	/*
-	 * Only this transaction can write to the relation, and it may already have put rows in the
-	 * regular db, so the read time has to account for them regardless of what the checks below
-	 * decide about this particular operation.
-	 */
 	info.read_at_in_txn_limit = true;
 
 	if (skip_intents_txn_state.disabled)

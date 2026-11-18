@@ -699,6 +699,13 @@ ybcSetupScanPlan(bool xs_want_itup, YbOpaque ybScan, YbScanPlan scan_plan)
 		params->index_only_scan = xs_want_itup;
 		params->index_relfilenode_oid =
 			ybcCalculateIndexRelfileNodeId(relation, index, params);
+
+		/*
+		 * A primary key index has no storage of its own: the scan reads the
+		 * table, and the table's own decision covers it.
+		 */
+		if (!index->rd_index->indisprimary)
+			params->index_read_at_in_txn_limit = YbRelationReadsAtInTxnLimit(index);
 	}
 
 	/* Setup descriptors for target and bind. */

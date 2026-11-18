@@ -173,7 +173,8 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
   if (!index_id.IsValid()) {
     return std::nullopt;
   }
-  return PgSelect::IndexQueryInfo{index_id, params && params->embedded_idx};
+  return PgSelect::IndexQueryInfo{
+      index_id, params && params->embedded_idx, params && params->index_read_at_in_txn_limit};
 }
 
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
@@ -182,7 +183,9 @@ Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const YbcPgTableLocalityInfo& locality_info,
     const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
   if (params && params->index_only_scan) {
-    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_info);
+    auto index_skip_intents_info = skip_intents_info;
+    index_skip_intents_info.read_at_in_txn_limit |= params->index_read_at_in_txn_limit;
+    return PgSelectIndex::Make(pg_session, index_id, locality_info, index_skip_intents_info);
   }
   return PgSelect::Make(
       pg_session, table_id, locality_info, skip_intents_info, MakeIndexQueryInfo(index_id, params));
@@ -2429,9 +2432,11 @@ ReadHybridTime PgApiImpl::GetCatalogReadTime() const {
 }
 
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
-    const PgObjectId& table_id, const Slice& ybctid, YbcPgTableLocalityInfo locality_info) {
+    const PgObjectId& table_id, const Slice& ybctid, YbcPgTableLocalityInfo locality_info,
+    bool read_at_in_txn_limit) {
   return fk_reference_cache_.IsReferenceExists(
-      table_id.database_oid, LightweightTableYbctid{table_id.object_oid, ybctid}, locality_info);
+      table_id.database_oid, LightweightTableYbctid{table_id.object_oid, ybctid}, locality_info,
+      read_at_in_txn_limit);
 }
 
 Status PgApiImpl::AddForeignKeyReferenceIntent(

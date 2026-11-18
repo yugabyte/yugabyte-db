@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_set>
 #include <utility>
 
 #include "yb/gutil/macros.h"
@@ -32,6 +33,8 @@ struct YbctidReaderOptions {
   std::optional<int> pg_wait_policy{};
   std::optional<int> docdb_wait_policy{};
   std::optional<PgSessionRunOperationMarker> run_marker{};
+  // Tables whose ops must read at in_txn_limit, see YbcPgSkipIntentsOptimizationInfo.
+  const std::unordered_set<PgOid>* tables_reading_at_in_txn_limit{};
 };
 
 class YbctidReader {

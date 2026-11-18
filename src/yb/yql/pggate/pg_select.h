@@ -26,11 +26,13 @@ namespace yb::pggate {
 class PgSelect : public PgStatementLeafBase<PgDmlRead, StmtOp::kSelect> {
  public:
   struct IndexQueryInfo {
-    IndexQueryInfo(PgObjectId id_, bool is_embedded_)
-        : id(id_), is_embedded(is_embedded_) {}
+    IndexQueryInfo(PgObjectId id_, bool is_embedded_, bool read_at_in_txn_limit_)
+        : id(id_), is_embedded(is_embedded_), read_at_in_txn_limit(read_at_in_txn_limit_) {}
 
     PgObjectId id;
     bool is_embedded;
+    // See YbcPgPrepareParameters::index_read_at_in_txn_limit.
+    bool read_at_in_txn_limit;
   };
 
   static Result<std::unique_ptr<PgSelect>> Make(

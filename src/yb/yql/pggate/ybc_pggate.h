@@ -913,11 +913,16 @@ uint16_t YBCCompoundHash(const char *key, size_t length);
 void YBCPgDeleteFromForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64_t ybctid);
 YbcStatus YBCPgForeignKeyReferenceCacheDelete(const YbcPgYBTupleIdDescriptor* descr);
+// read_at_in_txn_limit: the referenced relation (a table, or the unique index the foreign key
+// points at) may have rows this transaction wrote to the regular db with the skip intents
+// optimization.  The check and its row lock must then run at in_txn_limit, like any other read
+// of such a relation (see YbcPgSkipIntentsOptimizationInfo).
 YbcStatus YBCForeignKeyReferenceExists(
-    const YbcPgYBTupleIdDescriptor* descr, YbcPgTableLocalityInfo locality_info, bool* res);
+    const YbcPgYBTupleIdDescriptor* descr, YbcPgTableLocalityInfo locality_info,
+    bool read_at_in_txn_limit, bool* res);
 YbcStatus YBCAddForeignKeyReferenceIntent(
     const YbcPgYBTupleIdDescriptor* descr, YbcPgTableLocalityInfo locality_info,
-    bool is_deferred_trigger);
+    bool read_at_in_txn_limit, bool is_deferred_trigger);
 void YBCNotifyDeferredTriggersProcessingStarted();
 
 // Explicit Row-level Locking.

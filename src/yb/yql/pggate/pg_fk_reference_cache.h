@@ -32,6 +32,7 @@ class PgFKReferenceCache {
  public:
   struct IntentOptions {
     YbcPgTableLocalityInfo locality_info;
+    bool read_at_in_txn_limit;
     bool is_deferred;
   };
 
@@ -43,7 +44,8 @@ class PgFKReferenceCache {
   void DeleteReference(const LightweightTableYbctid& key);
   void AddReference(const LightweightTableYbctid& key);
   Result<bool> IsReferenceExists(
-      PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info);
+      PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info,
+      bool read_at_in_txn_limit);
   Status AddIntent(
       PgOid database_id, const LightweightTableYbctid& key, const IntentOptions& options);
   void OnDeferredTriggersProcessingStarted();

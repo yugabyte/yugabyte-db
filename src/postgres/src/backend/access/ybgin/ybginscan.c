@@ -82,6 +82,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 		.index_only_scan = scan->xs_want_itup,
 		.embedded_idx = YbIsScanningEmbeddedIdx(scan->heapRelation,
 												scan->indexRelation),
+		.index_read_at_in_txn_limit = YbRelationReadsAtInTxnLimit(scan->indexRelation),
 	};
 
 	/* Initialize non-yb gin scan opaque fields. */

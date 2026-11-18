@@ -777,7 +777,8 @@ class PgApiImpl {
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);
   void AddForeignKeyReference(PgOid table_id, const Slice& ybctid);
   Result<bool> ForeignKeyReferenceExists(
-      const PgObjectId& table_id, const Slice& ybctid, YbcPgTableLocalityInfo locality_info);
+      const PgObjectId& table_id, const Slice& ybctid, YbcPgTableLocalityInfo locality_info,
+      bool read_at_in_txn_limit);
   Status AddForeignKeyReferenceIntent(
     const PgObjectId& table_id, const Slice& ybctid,
     const PgFKReferenceCache::IntentOptions& options);

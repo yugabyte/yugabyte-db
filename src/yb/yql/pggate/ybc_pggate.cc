@@ -2232,25 +2232,31 @@ void YBCPgAddIntoForeignKeyReferenceCache(YbcPgOid table_relfilenode_oid, uint64
 }
 
 YbcStatus YBCForeignKeyReferenceExists(
-  const YbcPgYBTupleIdDescriptor *source, YbcPgTableLocalityInfo locality_info, bool* res) {
+  const YbcPgYBTupleIdDescriptor *source, YbcPgTableLocalityInfo locality_info,
+  bool read_at_in_txn_limit, bool* res) {
   return ProcessYbctid(
     *source,
-    [res, source, &locality_info](auto table_id, const auto& ybctid) -> Status {
+    [res, source, &locality_info, read_at_in_txn_limit](
+        auto table_id, const auto& ybctid) -> Status {
     *res = VERIFY_RESULT(pgapi->ForeignKeyReferenceExists(
-        PgObjectId{source->database_oid, table_id}, ybctid, locality_info));
+        PgObjectId{source->database_oid, table_id}, ybctid, locality_info,
+        read_at_in_txn_limit));
     return Status::OK();
   });
 }
 
 YbcStatus YBCAddForeignKeyReferenceIntent(
     const YbcPgYBTupleIdDescriptor* source, YbcPgTableLocalityInfo locality_info,
-    bool is_deferred_trigger) {
+    bool read_at_in_txn_limit, bool is_deferred_trigger) {
   return ProcessYbctid(
       *source,
-      [source, &locality_info, is_deferred_trigger](auto table_id, const auto& ybctid) {
+      [source, &locality_info, read_at_in_txn_limit, is_deferred_trigger](
+          auto table_id, const auto& ybctid) {
         return pgapi->AddForeignKeyReferenceIntent(
             PgObjectId{source->database_oid, table_id}, ybctid,
-            {.locality_info = locality_info, .is_deferred = is_deferred_trigger});
+            {.locality_info = locality_info,
+             .read_at_in_txn_limit = read_at_in_txn_limit,
+             .is_deferred = is_deferred_trigger});
       });
 }
 

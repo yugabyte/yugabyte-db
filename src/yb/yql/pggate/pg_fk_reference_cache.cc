@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include "nodes/lockoptions.h"
@@ -56,6 +57,7 @@ class PgFKReferenceCache::Impl {
     regular_intents_.clear();
     deferred_intents_.clear();
     table_locality_map_.Clear();
+    tables_reading_at_in_txn_limit_.clear();
     intents_ = &regular_intents_;
     references_cache_limit_.reset();
   }
@@ -75,7 +77,8 @@ class PgFKReferenceCache::Impl {
   }
 
   Result<bool> IsReferenceExists(
-      PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info) {
+      PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info,
+      bool read_at_in_txn_limit) {
     if (references_.contains(key)) {
       return true;
     }
@@ -91,7 +94,7 @@ class PgFKReferenceCache::Impl {
       // In case of processing deferred intents absence of intent could be caused by
       // subtransaction rollback. In this case we have to make a read attempt.
       requested_key_intent_it = intents_->emplace(key.table_id, key.ybctid).first;
-      table_locality_map_.Add(key.table_id, locality_info);
+      AddTableInfo(key.table_id, locality_info, read_at_in_txn_limit);
     }
     RETURN_NOT_OK(ReadBatch(database_id, requested_key_intent_it));
     return references_.contains(key);
@@ -106,7 +109,7 @@ class PgFKReferenceCache::Impl {
         return Status::OK();
     }
 
-    table_locality_map_.Add(key.table_id, options.locality_info);
+    AddTableInfo(key.table_id, options.locality_info, options.read_at_in_txn_limit);
     if (!options.is_deferred) {
       regular_intents_.emplace(key.table_id, key.ybctid);
       if (intents_->size() >= buffering_settings_.max_batch_size) {
@@ -127,6 +130,14 @@ class PgFKReferenceCache::Impl {
   }
 
  private:
+  void AddTableInfo(
+      PgOid table_id, const YbcPgTableLocalityInfo& locality_info, bool read_at_in_txn_limit) {
+    table_locality_map_.Add(table_id, locality_info);
+    if (read_at_in_txn_limit) {
+      tables_reading_at_in_txn_limit_.insert(table_id);
+    }
+  }
+
   Status ReadBatch(
       PgOid database_id, const MemoryOptimizedTableYbctidSet::iterator& mandatory_intent_it) {
     DCHECK(!intents_->empty() && mandatory_intent_it != intents_->end());
@@ -158,7 +169,8 @@ class PgFKReferenceCache::Impl {
         database_id, table_locality_map_,
         {.rowmark = ROW_MARK_KEYSHARE,
          .pg_wait_policy = LockWaitBlock,
-         .docdb_wait_policy = FLAGS_enable_wait_queues ? WAIT_BLOCK : WAIT_ERROR
+         .docdb_wait_policy = FLAGS_enable_wait_queues ? WAIT_BLOCK : WAIT_ERROR,
+         .tables_reading_at_in_txn_limit = &tables_reading_at_in_txn_limit_
         }));
     // In case all FK has been read successfully it is reasonable to move requested intents into
     // references instead of cleanup intents and create new elements in references.
@@ -189,6 +201,7 @@ class PgFKReferenceCache::Impl {
   MemoryOptimizedTableYbctidSet deferred_intents_;
   MemoryOptimizedTableYbctidSet* intents_ = &regular_intents_;
   TableLocalityMap table_locality_map_;
+  std::unordered_set<PgOid> tables_reading_at_in_txn_limit_;
   std::optional<size_t> references_cache_limit_;
 };
 
@@ -211,8 +224,9 @@ void PgFKReferenceCache::AddReference(const LightweightTableYbctid& key) {
 }
 
 Result<bool> PgFKReferenceCache::IsReferenceExists(
-    PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info) {
-  return impl_->IsReferenceExists(database_id, key, locality_info);
+    PgOid database_id, const LightweightTableYbctid& key, YbcPgTableLocalityInfo locality_info,
+    bool read_at_in_txn_limit) {
+  return impl_->IsReferenceExists(database_id, key, locality_info, read_at_in_txn_limit);
 }
 
 Status PgFKReferenceCache::AddIntent(
