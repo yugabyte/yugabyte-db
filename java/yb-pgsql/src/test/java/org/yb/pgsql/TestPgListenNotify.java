@@ -1680,7 +1680,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       getPollerPid(stmt);
 
       setPgConfOnAllTServers("yb_test_notifs_poller_error_holding_queue_lock", true);
-      Thread.sleep(2000);
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
 
       stmt.execute("NOTIFY ch1, 'x'");
 
@@ -1776,7 +1776,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       List<String> entries = new ArrayList<>();
       for (String entry :
            miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv").split(",")) {
-        if (!entry.isEmpty() && !entry.trim().startsWith(guc)) {
+        if (!entry.isEmpty() && !entry.trim().split("[\\s=]", 2)[0].equals(guc)) {
           entries.add(entry);
         }
       }
