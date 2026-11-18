@@ -1,0 +1,198 @@
+--
+-- See yb_merge_scan_schedule for details about the test.  Tests merge scans
+-- with gap columns.  A gap column is an index column before the last ORDER BY
+-- column of the index that the ORDER BY can skip because a filter or the index
+-- predicate ties it to an earlier column or to a constant.  The merge sorts on
+-- each gap column, since a filter that ties it can run after the merge.
+--
+
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/data/explainrun_merge_scan.sql'
+\i :filename
+
+SET enable_sort = off;
+
+-- Local filter: non-C collation
+--
+-- ord1 = gap compares text with a non-C collation, which is not pushed down, so
+-- the filter runs after the merge.
+CREATE TABLE gap_coll_tbl (bkt int, ord1 text COLLATE "en_US", gap text COLLATE "en_US",
+    ord2 int, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
+INSERT INTO gap_coll_tbl VALUES
+    (1, 'b', 'b', 10), (1, 'b', 'b', 30),  -- stream bkt = 1
+    (2, 'b', 'b', 20),                     -- stream bkt = 2
+    (1, 'b', 'a', 99);                     -- decoy, fails ord1 = gap
+ANALYZE gap_coll_tbl;
+
+\set query 'SELECT gap, ord1, ord2, bkt FROM gap_coll_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2'
+:explain2run2
+
+-- Secondary index: filter pushed to the table, read after the index merge
+--
+-- d is not in the index.  The planner does not evaluate equality clauses as
+-- written: it chains the members of the class of ord1, gap, and d in the order
+-- the clauses bring them in, generates an equality for each link, and pushes an
+-- equality to the index only when it references index columns alone (see
+-- #38120).
+-- - ord1 = d AND gap = d generates ord1 = d and d = gap, both pushed to the
+--   table, so a filter ties gap only at the table read.
+-- - ord1 = d AND ord1 = gap generates the same equalities, so the ord1 = gap it
+--   writes does not run on the index.
+-- - ord1 = gap AND ord1 = d generates ord1 = gap, which runs on the index,
+--   within each stream, before the merge, and gap = d.
+-- TODO(#38120): the first two queries should run ord1 = gap on the index.
+-- TODO(#37785): the last query should not merge on gap.
+CREATE TABLE gap_idx_tbl (k int, bkt int, ord1 int, gap int, ord2 int, d int,
+    PRIMARY KEY (k ASC));
+CREATE INDEX NONCONCURRENTLY gap_idx_tbl_idx ON gap_idx_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC);
+INSERT INTO gap_idx_tbl VALUES
+    (1, 1, 1, 1, 10, 1), (2, 1, 1, 1, 30, 1),  -- stream bkt = 1
+    (3, 2, 1, 1, 20, 1),                       -- stream bkt = 2
+    (4, 1, 1, 0, 99, 1);                       -- decoy, fails gap = d
+ANALYZE gap_idx_tbl;
+
+\set query 'SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND gap = d ORDER BY ord1, ord2'
+:explain2run2
+\set query 'SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = d AND ord1 = gap ORDER BY ord1, ord2'
+:explain2run2
+\set query 'SELECT d, gap, ord1, ord2, bkt FROM gap_idx_tbl WHERE bkt IN (1, 2) AND ord1 = gap AND ord1 = d ORDER BY ord1, ord2'
+:explain2run2
+
+-- Gap column used only by a pushed down filter
+--
+-- ord1 = x compares timestamptz with timestamp, which is stable, so that filter
+-- runs locally, after the merge, while x = gap runs as a storage filter within
+-- each stream.  The merge sorts on gap, but the primary key scan reads only the
+-- columns that the targets and the local filter use, so when the query does not
+-- select gap, the scan never reads it, and the merge compares NULLs on it.  The
+-- decoy passes x = gap, fails ord1 = x, and comes first in stream bkt = 1, so
+-- the first query returns the rows out of order.  The second query selects gap,
+-- so the scan reads it, and the rows come out in order.
+-- TODO(#38147): read every merge sort column, so that the first query returns
+-- the rows in order.
+SET TimeZone = 'UTC';
+CREATE TABLE gap_unread_tbl (bkt int, ord1 timestamptz, gap timestamp, ord2 int,
+    x timestamp, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
+INSERT INTO gap_unread_tbl VALUES
+    (1, '2020-01-02', '2020-01-02', 10, '2020-01-02'),  -- stream bkt = 1
+    (1, '2020-01-02', '2020-01-02', 30, '2020-01-02'),
+    (2, '2020-01-02', '2020-01-02', 20, '2020-01-02'),  -- stream bkt = 2
+    (1, '2020-01-02', '2020-01-01', 99, '2020-01-01');  -- decoy, fails ord1 = x
+ANALYZE gap_unread_tbl;
+
+\set query 'SELECT ord1, ord2, bkt FROM gap_unread_tbl WHERE bkt IN (1, 2) AND ord1 = x AND x = gap ORDER BY ord1, ord2'
+:explain2run2
+\set query 'SELECT gap, ord1, ord2, bkt FROM gap_unread_tbl WHERE bkt IN (1, 2) AND ord1 = x AND x = gap ORDER BY ord1, ord2'
+:explain2run2
+RESET TimeZone;
+
+-- Descending gap column, forward and backward scans
+--
+-- The index sorts gap in descending order.  ord2 numbers the rows that pass
+-- ord1 = gap in their order: stream bkt = 1 has 10 and 30, and stream bkt = 2
+-- has 20, which belongs between them.  Each decoy fails ord1 = gap and comes
+-- first in stream bkt = 1 for its scan direction.  Only a merge that compares
+-- gap in the order of the scan lets the decoy out first.  Otherwise stream bkt
+-- = 1 waits behind it, and 20 comes out too early.
+CREATE TABLE gap_desc_tbl (bkt int, ord1 int, gap int, ord2 int,
+    PRIMARY KEY (bkt ASC, ord1 ASC, gap DESC, ord2 ASC));
+INSERT INTO gap_desc_tbl VALUES
+    (1, 1, 1, 10), (1, 1, 1, 30),  -- stream bkt = 1
+    (2, 1, 1, 20),                 -- stream bkt = 2
+    (1, 1, 2, 99),                 -- forward decoy, first under gap DESC
+    (1, 1, 0, 0);                  -- backward decoy, first backward
+ANALYZE gap_desc_tbl;
+
+SET yb_enable_expression_pushdown = off;
+\set hint1 ':off'
+\set hint2 ':on'
+\set query 'SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2'
+:explain2run2
+\set query 'SELECT gap, ord1, ord2, bkt FROM gap_desc_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC'
+:explain2run2
+RESET yb_enable_expression_pushdown;
+
+-- Gap column with NULLs, forward and backward scans
+--
+-- The forward scan reads an index that sorts gap with NULLs first, and the
+-- backward scan reads one that sorts gap in descending order with NULLs last,
+-- so both scans return gap with NULLs first.  The rows are as in the descending
+-- gap column section, but both decoys have a NULL gap, so both come first in
+-- stream bkt = 1 in both scans.  Only a merge that compares gap with NULLs
+-- first lets the decoys out first.
+CREATE TABLE gap_null_tbl (bkt int, ord1 int, gap int, ord2 int);
+CREATE INDEX NONCONCURRENTLY gap_null_tbl_fwd_idx ON gap_null_tbl (bkt ASC, ord1 ASC, gap ASC NULLS FIRST, ord2 ASC);
+CREATE INDEX NONCONCURRENTLY gap_null_tbl_bwd_idx ON gap_null_tbl (bkt ASC, ord1 ASC, gap DESC NULLS LAST, ord2 ASC);
+INSERT INTO gap_null_tbl VALUES
+    (1, 1, 1, 10), (1, 1, 1, 30),  -- stream bkt = 1
+    (2, 1, 1, 20),                 -- stream bkt = 2
+    (1, 1, NULL, 99),              -- forward decoy
+    (1, 1, NULL, 0);               -- backward decoy
+ANALYZE gap_null_tbl;
+
+SET yb_enable_expression_pushdown = off;
+\set hint1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set hint2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_fwd_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query 'SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1, ord2'
+:explain2run2
+\set hint1 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set hint2 '/*+IndexOnlyScan(gap_null_tbl gap_null_tbl_bwd_idx) Set(yb_max_merge_scan_streams 64)*/'
+\set query 'SELECT gap, ord1, ord2, bkt FROM gap_null_tbl WHERE bkt IN (1, 2) AND ord1 = gap ORDER BY ord1 DESC, ord2 DESC'
+:explain2run2
+RESET yb_enable_expression_pushdown;
+
+-- Gap columns before two merge sort columns
+--
+-- The merge sorts on ord1, g1, ord2, g2, g3, ord3: g1 is a gap column before
+-- ord2, and g2 and g3 are two gap columns before ord3.  With expression
+-- pushdown off, the filters that tie them run after the merge.  The rows that
+-- pass the filters are as in the descending gap column section.  Each decoy
+-- fails the filter on one gap column and comes first in stream bkt = 1 among
+-- the rows that the earlier merge sort columns tie, so a merge that leaves out
+-- that gap column returns the rows out of order.
+CREATE TABLE gap_multi_tbl (bkt int, ord1 int, g1 int, ord2 int, g2 int, g3 int,
+    ord3 int, PRIMARY KEY (bkt ASC, ord1 ASC, g1 ASC, ord2 ASC, g2 ASC, g3 ASC,
+    ord3 ASC));
+INSERT INTO gap_multi_tbl VALUES
+    (1, 1, 1, 1, 1, 1, 10), (1, 1, 1, 1, 1, 1, 30),  -- stream bkt = 1
+    (2, 1, 1, 1, 1, 1, 20),                          -- stream bkt = 2
+    (1, 1, 0, 9, 9, 9, 99),                          -- decoy for g1
+    (1, 1, 1, 1, 0, 9, 99),                          -- decoy for g2
+    (1, 1, 1, 1, 1, 0, 99);                          -- decoy for g3
+ANALYZE gap_multi_tbl;
+
+SET yb_enable_expression_pushdown = off;
+\set hint1 ':off'
+\set hint2 ':on'
+\set query 'SELECT g1, ord1, g2, g3, ord2, ord3, bkt FROM gap_multi_tbl WHERE bkt IN (1, 2) AND ord1 = g1 AND ord2 = g2 AND ord2 = g3 ORDER BY ord1, ord2, ord3'
+:explain2run2
+RESET yb_enable_expression_pushdown;
+
+DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_unread_tbl, gap_desc_tbl,
+    gap_null_tbl, gap_multi_tbl;
+
+-- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
+--
+-- In this database, the expression gap filters run after the merge: with
+-- expression pushdown on, each is a storage table filter, since the index does
+-- not hold gap itself, and with it off, a local filter.  The merge sorts on
+-- every gap column.
+-- TODO(#37784): the predicate gap merge should leave out (gap || ''), whose
+-- comparisons always tie.
+\set gap_cells :abs_srcdir '/yb_commands/merge_scan_gap_cells.sql'
+\i :gap_cells
+
+\c co
+-- The same cells on embedded indexes.  For an embedded index scan, an
+-- expression column is not available for sort (see also #36017), so the merge
+-- stops before an expression gap column: the predicate gap scan has no merge,
+-- and the filter gap scans merge on ord1 alone.  A pushed down filter runs
+-- within each stream, before the merge, since the scan reads the index and
+-- table rows of a stream in one request.
+-- TODO(#37784): the predicate gap merge should leave out (gap || ''), which the
+-- predicate implies, and merge on ord2.
+-- TODO(#37785): with expression pushdown on, the operator filter gap and
+-- relabeled filter gap filters run within each stream, before the merge, so
+-- those merges should sort on ord1 and ord2.
+SET enable_sort = off;
+\i :gap_cells
