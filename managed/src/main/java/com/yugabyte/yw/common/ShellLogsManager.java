@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
@@ -89,7 +90,7 @@ public class ShellLogsManager {
 
   private File getParentDir() {
     return customLogsDir == null
-        ? new File(System.getProperty("java.io.tmpdir"))
+        ? new File(confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath))
         : new File(customLogsDir);
   }
 
@@ -200,10 +201,15 @@ public class ShellLogsManager {
     return result;
   }
 
-  public void onProcessStop(UUID processUUID) {
+  /**
+   * @param skipRetention delete the output files even when a retention policy would keep them, for
+   *     output that must not stay on disk, such as the output of commands that are not logged.
+   *     Setting yb.logs.cmdOutputDelete to false still keeps them.
+   */
+  public void onProcessStop(UUID processUUID, boolean skipRetention) {
     Pair<File, File> pair = currentProcesses.remove(processUUID);
     if (pair != null) {
-      if (config.getBoolean(COMMAND_OUTPUT_LOGS_DELETE_KEY) && !isRetainLogs()) {
+      if (config.getBoolean(COMMAND_OUTPUT_LOGS_DELETE_KEY) && (skipRetention || !isRetainLogs())) {
         if (pair.getLeft().exists()) {
           pair.getLeft().delete();
         }
@@ -228,6 +234,7 @@ public class ShellLogsManager {
       parentDir.mkdirs();
     }
 
-    return File.createTempFile(prefix, "tmp", parentDir);
+    // Files.createTempFile, not File.createTempFile, so that only the owner can read the output.
+    return Files.createTempFile(parentDir.toPath(), prefix, "tmp").toFile();
   }
 }
