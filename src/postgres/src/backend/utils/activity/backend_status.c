@@ -373,6 +373,10 @@ pgstat_bestart_initial(void)
 	lbeentry.st_clienthostname[NAMEDATALEN - 1] = '\0';
 	lbeentry.st_activity_raw[pgstat_track_activity_query_size - 1] = '\0';
 
+	/* YB: pgstat_bestart_final() fills this in once the database is known */
+	if (YBIsEnabledInPostgresEnvVar())
+		lbeentry.st_databasename[0] = '\0';
+
 	/* These structs can just start from zeroes each time */
 #ifdef USE_SSL
 	memset(lbeentry.st_sslstatus, 0, sizeof(PgBackendSSLStatus));
@@ -503,9 +507,7 @@ pgstat_bestart_final(void)
 	 * YB: the database name is published together with st_databaseid below,
 	 * inside the st_changecount bracket, so readers such as yb_pg_metrics'
 	 * rpcz never pair an id with another backend's name.  Look it up here
-	 * because the syscache lookup can fail, which the bracket must not.  A
-	 * backend without a database clears the name its slot's previous occupant
-	 * left.
+	 * because the syscache lookup can fail, which the bracket must not.
 	 */
 	if (YBIsEnabledInPostgresEnvVar() && OidIsValid(MyDatabaseId))
 	{
@@ -545,8 +547,6 @@ pgstat_bestart_final(void)
 		strcpy(beentry->st_databasename, yb_databasename);
 		beentry->yb_st_allocated_mem_bytes = PgMemTracker.backend_cur_allocated_mem_bytes;
 	}
-	else if (YBIsEnabledInPostgresEnvVar())
-		beentry->st_databasename[0] = '\0';
 
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 
