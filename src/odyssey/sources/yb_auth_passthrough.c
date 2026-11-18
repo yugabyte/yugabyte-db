@@ -410,6 +410,7 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 					&instance->logger,
 					CONTEXT_AUTH_PASSTHROUGH, NULL, server,
 					"failed to parse authentication message");
+				machine_msg_free(msg);
 				yb_control_connection_failed(server, instance);
 				od_frontend_fatal(
 					client, KIWI_PROTOCOL_VIOLATION,
@@ -446,6 +447,7 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 			continue;
 
 		case YB_KIWI_BE_FATAL_FOR_LOGICAL_CONNECTION:
+			machine_msg_free(msg);
 			yb_handle_fatalforlogicalconnection_pkt(client, server);
 
 			/* No need to wait for the Auth packet */
