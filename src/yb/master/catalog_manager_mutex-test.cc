@@ -15,7 +15,6 @@
 #include <atomic>
 #include <iostream>
 #include <mutex>
-#include <string>
 #include <thread>
 #include <vector>
 
@@ -29,8 +28,6 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
-
-DECLARE_string(catalog_manager_mutex_type);
 
 DEFINE_test_flag(int32, catalog_mutex_test_waiters, 2000,
     "Number of threads that queue for the lock behind the writer in the convoy test.");
@@ -67,22 +64,12 @@ uint64_t Spin(uint64_t iterations) {
 
 } // namespace
 
-class CatalogManagerMutexTest : public YBTest, public ::testing::WithParamInterface<std::string> {
- protected:
-  void SetUp() override {
-    YBTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_mutex_type) = GetParam();
-  }
-};
-
-INSTANTIATE_TEST_SUITE_P(, CatalogManagerMutexTest,
-    ::testing::Values("spinlock", "rwmutex", "absl"),
-    [](const auto& info) { return info.param; });
+class CatalogManagerMutexTest : public YBTest {};
 
 // The CE-1824 convoy: a long shared holder (the backup repack), a queued writer (the bg task) and
 // thousands of RPC threads queued behind the writer. Measures how long the holder's fixed amount of
 // work takes and how much CPU the process burns while the waiters wait.
-TEST_P(CatalogManagerMutexTest, Convoy) {
+TEST_F(CatalogManagerMutexTest, Convoy) {
   CatalogManagerMutex mutex;
   const auto kWork = FullOrReduced<uint64_t>(2'000'000'000ULL, 200'000'000ULL);
   const int num_waiters = FullOrReduced(
@@ -130,7 +117,7 @@ TEST_P(CatalogManagerMutexTest, Convoy) {
   }
   threads.JoinAll();
 
-  std::cerr << GetParam() << " convoy with " << num_waiters << " waiters: holder work took "
+  std::cerr << "Convoy with " << num_waiters << " waiters: holder work took "
             << hold.wall_seconds() << " s (alone " << alone.ToSeconds() << " s, "
             << hold.wall_seconds() / alone.ToSeconds() << "x), process CPU during the hold "
             << CpuSeconds(hold) << " s = " << CpuSeconds(hold) / hold.wall_seconds() << " cores"
@@ -147,7 +134,7 @@ TEST_P(CatalogManagerMutexTest, Convoy) {
 
 // Steady state: many threads take the lock shared for a moment while one writer takes it
 // exclusively every millisecond, like CatalogManagerBgTasks and DDLs against RPC traffic.
-TEST_P(CatalogManagerMutexTest, Throughput) {
+TEST_F(CatalogManagerMutexTest, Throughput) {
   CatalogManagerMutex mutex;
   const int kReaders = std::max(4u, std::thread::hardware_concurrency());
   const auto kDuration = MonoDelta::FromSeconds(FullOrReduced(5, 1));
@@ -201,8 +188,8 @@ TEST_P(CatalogManagerMutexTest, Throughput) {
   auto pct = [&](double p) {
     return writer_wait_us.empty() ? 0 : writer_wait_us[(writer_wait_us.size() - 1) * p];
   };
-  std::cerr << GetParam() << " throughput with " << kReaders
-            << " readers: " << shared_ops / kDuration.ToSeconds() << " shared ops/s, "
+  std::cerr << "Throughput with " << kReaders << " readers: "
+            << shared_ops / kDuration.ToSeconds() << " shared ops/s, "
             << writer_wait_us.size() << " exclusive acquisitions, writer wait p50 " << pct(0.5)
             << " us p99 " << pct(0.99) << " us max " << pct(1.0) << " us, CPU " << cpu << " s"
             << std::endl;
@@ -215,7 +202,7 @@ TEST_P(CatalogManagerMutexTest, Throughput) {
 // Cost of releasing the lock to many waiters: N threads wait for a shared lock behind an exclusive
 // holder, then the holder unlocks. Measures how long unlock() itself takes, how long until the
 // first and the last waiter get the lock, and the process CPU used during the handoff.
-TEST_P(CatalogManagerMutexTest, ReleaseToWaiters) {
+TEST_F(CatalogManagerMutexTest, ReleaseToWaiters) {
   for (int waiters : FullOrReduced<std::vector<int>>({1, 10, 100, 1000, 4000}, {1, 10, 100})) {
     for (int rep = 0; rep < 3; ++rep) {
       CatalogManagerMutex mutex;
@@ -244,8 +231,8 @@ TEST_P(CatalogManagerMutexTest, ReleaseToWaiters) {
       threads.JoinAll();
       auto cpu = CpuSeconds(sw.elapsed());
       std::sort(acquired.begin(), acquired.end());
-      std::cerr << GetParam() << " release to " << waiters
-                << " waiters: unlock() " << unlock_us << " us, first waiter in "
+      std::cerr << "Release to " << waiters << " waiters: unlock() " << unlock_us
+                << " us, first waiter in "
                 << (acquired.front() - t0).ToMicroseconds() << " us, median "
                 << (acquired[waiters / 2] - t0).ToMicroseconds() << " us, last "
                 << (acquired.back() - t0).ToMicroseconds() << " us, CPU " << cpu * 1000
@@ -259,7 +246,7 @@ TEST_P(CatalogManagerMutexTest, ReleaseToWaiters) {
 
 // Last reader handing the lock to a queued writer while many readers queue behind that writer
 // (the repack finishing while the bg task and RPCs wait).
-TEST_P(CatalogManagerMutexTest, ReaderHandoffToWriter) {
+TEST_F(CatalogManagerMutexTest, ReaderHandoffToWriter) {
   for (int waiters : FullOrReduced<std::vector<int>>({0, 100, 1000, 4000}, {0, 100})) {
     for (int rep = 0; rep < 3; ++rep) {
       CatalogManagerMutex mutex;
@@ -290,8 +277,8 @@ TEST_P(CatalogManagerMutexTest, ReaderHandoffToWriter) {
       auto writer_us = (writer_in - t0).ToMicroseconds();
       auto all_us = (MonoTime::Now() - t0).ToMicroseconds();
       auto cpu = CpuSeconds(sw.elapsed());
-      std::cerr << GetParam() << " reader->writer handoff with "
-                << waiters << " queued readers: unlock_shared() " << unlock_us
+      std::cerr << "Reader->writer handoff with " << waiters
+                << " queued readers: unlock_shared() " << unlock_us
                 << " us, writer in " << writer_us << " us, all done " << all_us << " us, CPU "
                 << cpu * 1000 << " ms" << std::endl;
 

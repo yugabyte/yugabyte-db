@@ -16,75 +16,29 @@
 #include <absl/synchronization/mutex.h>
 
 #include "yb/gutil/thread_annotations.h"
-#include "yb/util/locks.h"
-#include "yb/util/rw_mutex.h"
 
 namespace yb::master {
 
-// Reader/writer lock for CatalogManager, chosen by --catalog_manager_mutex_type when the lock is
-// constructed: rw_spinlock, an RWMutex (pthread rwlock, writer-preferring on Linux), or
-// absl::Mutex.
+// Reader/writer lock for CatalogManager: absl::Mutex behind the std lock method names that
+// std::lock_guard, std::unique_lock and NonRecursiveSharedLock call.
 //
-// rw_spinlock waiters poll every microsecond (nanosleep) and never block. When thousands of RPC
-// threads queue behind a long shared holder, the polling uses most of the CPU, which slows the
-// holder and lengthens the stall. RWMutex and absl::Mutex waiters sleep on a futex instead.
-// absl::Mutex also wakes one designated waker at a time rather than every waiter.
+// It replaces rw_spinlock, whose waiters poll every microsecond (nanosleep) and never block. When
+// thousands of RPC threads queue behind a long shared holder, the polling uses most of the CPU,
+// which slows the holder and lengthens the stall. absl::Mutex waiters sleep on a futex, new
+// readers queue once a writer waits, and a release wakes one designated waker rather than every
+// waiter.
 class CAPABILITY("mutex") CatalogManagerMutex {
  public:
-  enum class Type { kSpinlock, kRWMutex, kAbsl };
-
-  CatalogManagerMutex();
-
-  // NO_THREAD_SAFETY_ANALYSIS: each method acquires or releases the inner lock that type_ selects
-  // at runtime, not *this, which the analysis cannot follow.
-  void lock() ACQUIRE() NO_THREAD_SAFETY_ANALYSIS {
-    switch (type_) {
-      case Type::kSpinlock: spinlock_.lock(); return;
-      case Type::kRWMutex: rw_mutex_.lock(); return;
-      case Type::kAbsl: absl_mutex_.Lock(); return;
-    }
-  }
-
-  void unlock() RELEASE() NO_THREAD_SAFETY_ANALYSIS {
-    switch (type_) {
-      case Type::kSpinlock: spinlock_.unlock(); return;
-      case Type::kRWMutex: rw_mutex_.unlock(); return;
-      case Type::kAbsl: absl_mutex_.Unlock(); return;
-    }
-  }
-
-  bool try_lock() TRY_ACQUIRE(true) NO_THREAD_SAFETY_ANALYSIS {
-    switch (type_) {
-      case Type::kSpinlock: return spinlock_.try_lock();
-      case Type::kRWMutex: return rw_mutex_.try_lock();
-      case Type::kAbsl: return absl_mutex_.TryLock();
-    }
-    return false;
-  }
-
-  void lock_shared() ACQUIRE_SHARED() NO_THREAD_SAFETY_ANALYSIS {
-    switch (type_) {
-      case Type::kSpinlock: spinlock_.lock_shared(); return;
-      case Type::kRWMutex: rw_mutex_.lock_shared(); return;
-      case Type::kAbsl: absl_mutex_.ReaderLock(); return;
-    }
-  }
-
-  void unlock_shared() RELEASE_SHARED() NO_THREAD_SAFETY_ANALYSIS {
-    switch (type_) {
-      case Type::kSpinlock: spinlock_.unlock_shared(); return;
-      case Type::kRWMutex: rw_mutex_.unlock_shared(); return;
-      case Type::kAbsl: absl_mutex_.ReaderUnlock(); return;
-    }
-  }
-
-  Type type() const { return type_; }
+  // NO_THREAD_SAFETY_ANALYSIS: each method acquires or releases mutex_, not *this, which the
+  // analysis cannot connect.
+  void lock() ACQUIRE() NO_THREAD_SAFETY_ANALYSIS { mutex_.Lock(); }
+  void unlock() RELEASE() NO_THREAD_SAFETY_ANALYSIS { mutex_.Unlock(); }
+  bool try_lock() TRY_ACQUIRE(true) NO_THREAD_SAFETY_ANALYSIS { return mutex_.TryLock(); }
+  void lock_shared() ACQUIRE_SHARED() NO_THREAD_SAFETY_ANALYSIS { mutex_.ReaderLock(); }
+  void unlock_shared() RELEASE_SHARED() NO_THREAD_SAFETY_ANALYSIS { mutex_.ReaderUnlock(); }
 
  private:
-  const Type type_;
-  rw_spinlock spinlock_;
-  RWMutex rw_mutex_{RWMutex::Priority::PREFER_WRITING};
-  absl::Mutex absl_mutex_;
+  absl::Mutex mutex_;
 };
 
 } // namespace yb::master
