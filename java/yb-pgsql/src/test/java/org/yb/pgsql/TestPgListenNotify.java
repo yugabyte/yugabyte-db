@@ -1315,7 +1315,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     final String payload = "payload";
 
     try {
-      setFatalAfterNotifsQueueWriteFlag(true);
+      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", true);
       Thread.sleep(2000);
 
       try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
@@ -1339,7 +1339,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
             "Old notifications should not be re-delivered after poller restart");
       }
     } finally {
-      setFatalAfterNotifsQueueWriteFlag(false);
+      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", false);
     }
 
     verifyListenNotifyWorks();
@@ -1425,7 +1425,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     try {
       // The poller now crashes after every queue write, before the CDC ack, so it keeps
       // replaying the same transaction.
-      setFatalAfterNotifsQueueWriteFlag(true);
+      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", true);
       Thread.sleep(2000);
 
       try (Connection aConn = getConnectionBuilder().withTServer(0).connect();
@@ -1447,7 +1447,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
             "Replay of a transaction received before UNLISTEN was delivered again");
       }
     } finally {
-      setFatalAfterNotifsQueueWriteFlag(false);
+      setPgConfOnAllTServers("yb_test_fatal_after_notifs_queue_write", false);
     }
 
     verifyListenNotifyWorks();
@@ -1679,7 +1679,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       listener.createStatement().execute("LISTEN ch1");
       getPollerPid(stmt);
 
-      setPollerErrorHoldingQueueLockFlag(true);
+      setPgConfOnAllTServers("yb_test_notifs_poller_error_holding_queue_lock", true);
       Thread.sleep(2000);
 
       stmt.execute("NOTIFY ch1, 'x'");
@@ -1687,7 +1687,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       waitForPollerAndSlotCleanup(nonListener);
       assertConnectionDead(listener, "listener");
     } finally {
-      setPollerErrorHoldingQueueLockFlag(false);
+      setPgConfOnAllTServers("yb_test_notifs_poller_error_holding_queue_lock", false);
     }
 
     verifyListenNotifyWorks();
@@ -1760,17 +1760,23 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
   }
 
-  private void setFatalAfterNotifsQueueWriteFlag(boolean value) throws Exception {
-    String v = value ? "true" : "false";
+  /**
+   * Turns a boolean test GUC on or off on every tserver through ysql_pg_conf_csv. A change to
+   * that flag reloads postgresql.conf, so it reaches background workers such as the poller.
+   */
+  private void setPgConfOnAllTServers(String guc, boolean value) throws Exception {
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
-      setServerFlag(tserver, "ysql_yb_test_fatal_after_notifs_queue_write", v);
-    }
-  }
-
-  private void setPollerErrorHoldingQueueLockFlag(boolean value) throws Exception {
-    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
-      setServerFlag(tserver, "ysql_yb_test_notifs_poller_error_holding_queue_lock",
-          value ? "true" : "false");
+      List<String> entries = new ArrayList<>();
+      for (String entry :
+           miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv").split(",")) {
+        if (!entry.isEmpty() && !entry.trim().startsWith(guc)) {
+          entries.add(entry);
+        }
+      }
+      if (value) {
+        entries.add(guc + "=true");
+      }
+      setServerFlag(tserver, "ysql_pg_conf_csv", String.join(",", entries));
     }
   }
 
