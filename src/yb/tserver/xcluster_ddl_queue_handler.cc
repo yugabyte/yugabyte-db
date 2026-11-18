@@ -449,6 +449,11 @@ void XClusterDDLQueueHandler::KillPgConnection() {
 }
 
 void XClusterDDLQueueHandler::Shutdown() {
+  ReleaseAdvisoryLock();
+  pg_conn_.reset();
+}
+
+void XClusterDDLQueueHandler::ReleaseAdvisoryLock() {
   if (pg_conn_ && FLAGS_ysql_yb_enable_advisory_locks &&
       FLAGS_xcluster_ddl_queue_advisory_lock_key != 0) {
     // Optimistically unlock the advisory lock so we don't have to wait for the connection to close.
@@ -456,7 +461,6 @@ void XClusterDDLQueueHandler::Shutdown() {
     auto s = ResultToStatus(pg_conn_->Fetch("SELECT pg_catalog.pg_advisory_unlock_all()"));
     // Alright if we fail here, log an error and wait for the connection to close normally.
     WARN_NOT_OK(s, "Encountered error unlocking advisory lock for xCluster DDL queue handler");
-    pg_conn_.reset();
   }
 }
 
@@ -924,9 +928,7 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
 
 Status XClusterDDLQueueHandler::InitPGConnection() {
   if (!FLAGS_TEST_xcluster_ddl_queue_handler_cache_connection) {
-    // Release the advisory lock synchronously: closing the connection releases it asynchronously,
-    // so the new connection's pg_try_advisory_lock below could otherwise fail.
-    Shutdown();
+    ReleaseAdvisoryLock();
     pg_conn_.reset();
     pg_backend_pid_.store(0, std::memory_order_release);
   }

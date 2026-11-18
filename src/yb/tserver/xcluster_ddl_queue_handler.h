@@ -177,6 +177,8 @@ class XClusterDDLQueueHandler {
                                   bool is_manual_execution);
 
   virtual Status InitPGConnection();
+  // Best effort: on failure the lock is held until the PG session is cleaned up.
+  void ReleaseAdvisoryLock();
   // Safe time excluding ddl_queue table.
   virtual Result<HybridTime> GetXClusterSafeTimeForNamespace();
   // Safe time of the namespace including the ddl_queue table.
