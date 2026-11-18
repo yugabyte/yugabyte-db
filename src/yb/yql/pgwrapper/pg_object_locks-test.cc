@@ -73,6 +73,7 @@ DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
@@ -2542,6 +2543,45 @@ TEST_F(PgObjectLocksTestRF1, TestRedundantLockIsServedLocallyInYsql) {
   ASSERT_OK(conn.Execute("INSERT INTO pk VALUES(3000, 0)"));
   ASSERT_EQ(num_initial_locks, NumGrantedLocks());
   ASSERT_OK(conn.Execute("COMMIT"));
+}
+
+// Forces a full relcache preload on every new connection.
+class PgObjectLocksTestRF1FullPreload : public PgObjectLocksTestRF1 {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    PgObjectLocksTestRF1::SetUp();
+  }
+};
+
+// The relcache preload reads catalogs at a versioned catalog snapshot and must not take object
+// locks on them, so a new connection must not wait on a conflicting catalog lock. Catalog reads
+// outside the preload still lock.
+TEST_F(PgObjectLocksTestRF1FullPreload, RelcachePreloadDoesNotTakeCatalogObjectLocks) {
+  // pg_index is read under AccessShareLock by YBUpdateRelationsIndicies during the preload.
+  auto lock_holder = ASSERT_RESULT(Connect());
+  ASSERT_OK(lock_holder.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(lock_holder.Execute("LOCK TABLE pg_index IN ACCESS EXCLUSIVE MODE"));
+
+  auto connect_future = std::async(std::launch::async, [this] { return Connect(); });
+  const auto connect_status = connect_future.wait_for(std::chrono::seconds(30 * kTimeMultiplier));
+  if (connect_status != std::future_status::ready) {
+    // Unblock the connection so the future's destructor does not wait out the RPC timeout.
+    ASSERT_OK(lock_holder.CommitTransaction());
+  }
+  ASSERT_EQ(connect_status, std::future_status::ready)
+      << "New connection blocked on the catalog lock held by another session";
+  auto conn = ASSERT_RESULT(connect_future.get());
+  ASSERT_OK(conn.Fetch("SELECT 1"));
+
+  // A catalog read outside the preload still takes its lock and waits on the holder.
+  ASSERT_OK(conn.Execute("SET lock_timeout = '2s'"));
+  auto status = conn.Fetch("SELECT count(*) FROM pg_index");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.status().ToString(), "canceling statement due to lock timeout");
+
+  ASSERT_OK(lock_holder.CommitTransaction());
+  ASSERT_OK(conn.Fetch("SELECT count(*) FROM pg_index"));
 }
 
 class PgObjectLocksBothPathsTest : public PgObjectLocksTestRF1,
