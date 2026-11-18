@@ -63,8 +63,8 @@
 #include "yb/util/test_util.h"
 
 DECLARE_int32(o_direct_block_size_bytes);
-DECLARE_bool(TEST_simulate_fs_without_fallocate);
 DECLARE_bool(TEST_fail_direct_io_reopen_append);
+DECLARE_bool(TEST_simulate_fs_without_fallocate);
 
 #if !defined(__APPLE__)
 #include <linux/falloc.h>
@@ -430,7 +430,7 @@ TEST_F(TestEnv, TestReopenDirectIOWritableFileFailedReadBack) {
   ASSERT_EQ(0, getrlimit(RLIMIT_NOFILE, &old_limit));
   // The lowest free fd is what the next open gets. A limit one above it lets the writable open
   // succeed and makes the read-back open fail with EMFILE.
-  const int lowest_free_fd = dup(STDIN_FILENO);
+  const int lowest_free_fd = open("/dev/null", O_RDONLY);
   ASSERT_GE(lowest_free_fd, 0);
   close(lowest_free_fd);
   struct rlimit low_limit = old_limit;
@@ -477,7 +477,9 @@ TEST_F(TestEnv, TestReopenDirectIOWritableFileFailedAppend) {
   open_opts.mode = Env::OPEN_EXISTING;
   open_opts.initial_offset = data_size;
   shared_ptr<WritableFile> writer;
-  ASSERT_NOK(env_util::OpenFileForWrite(open_opts, env_.get(), test_path, &writer));
+  const auto status = env_util::OpenFileForWrite(open_opts, env_.get(), test_path, &writer);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Simulated append failure");
 
   ASSERT_EQ(data_size, ASSERT_RESULT(env_->GetFileSize(test_path)));
   std::unique_ptr<RandomAccessFile> readable_file;
