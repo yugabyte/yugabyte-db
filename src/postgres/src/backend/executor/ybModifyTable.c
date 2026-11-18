@@ -53,6 +53,7 @@
 #include "commands/dbcommands.h"
 #include "commands/trigger.h"
 #include "commands/yb_profile.h"
+#include "common/hashfn.h"
 #include "executor/executor.h"
 #include "executor/tuptable.h"
 #include "executor/ybExpr.h"
@@ -65,8 +66,11 @@
 #include "tcop/pquery.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
+#include "utils/datum.h"
+#include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
@@ -1939,4 +1943,95 @@ YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo, EState *estate)
 
 	/* Skip this index-update if the predicate isn't satisfied */
 	return ExecQual(predicate, GetPerTupleExprContext(estate));
+}
+
+/*
+ * The rows a ModifyTable node has updated or deleted, by relation and ybctid.
+ *
+ * When a join returns a target row more than once, as UPDATE ... FROM and
+ * DELETE ... USING can, PostgreSQL acts on the first match and finds the
+ * tuple already modified by the current command (TM_SelfModified) on later
+ * ones, which it skips.  YB rows carry no such marker, so the node remembers
+ * the rows it modified.
+ */
+struct YbModifiedRows
+{
+	MemoryContext cxt;
+	HTAB	   *rows;
+};
+
+typedef struct YbModifiedRowKey
+{
+	Oid			relid;
+	bytea	   *ybctid;
+} YbModifiedRowKey;
+
+static uint32
+YbModifiedRowHash(const void *key, Size keysize)
+{
+	const YbModifiedRowKey *k = key;
+
+	return hash_combine(murmurhash32(k->relid),
+						hash_bytes((const unsigned char *) VARDATA_ANY(k->ybctid),
+								   VARSIZE_ANY_EXHDR(k->ybctid)));
+}
+
+static int
+YbModifiedRowMatch(const void *key1, const void *key2, Size keysize)
+{
+	const YbModifiedRowKey *k1 = key1;
+	const YbModifiedRowKey *k2 = key2;
+	Size		len = VARSIZE_ANY_EXHDR(k1->ybctid);
+
+	if (k1->relid != k2->relid || len != VARSIZE_ANY_EXHDR(k2->ybctid))
+		return 1;
+	return memcmp(VARDATA_ANY(k1->ybctid), VARDATA_ANY(k2->ybctid), len);
+}
+
+YbModifiedRows *
+YbCreateModifiedRows(MemoryContext parent)
+{
+	MemoryContext cxt = AllocSetContextCreate(parent, "YbModifiedRows",
+											  ALLOCSET_DEFAULT_SIZES);
+	YbModifiedRows *result = MemoryContextAlloc(cxt, sizeof(YbModifiedRows));
+	HASHCTL		ctl;
+
+	ctl.keysize = sizeof(YbModifiedRowKey);
+	ctl.entrysize = sizeof(YbModifiedRowKey);
+	ctl.hash = YbModifiedRowHash;
+	ctl.match = YbModifiedRowMatch;
+	ctl.hcxt = cxt;
+
+	result->cxt = cxt;
+	result->rows = hash_create("YbModifiedRows", 256, &ctl,
+							   HASH_ELEM | HASH_FUNCTION | HASH_COMPARE |
+							   HASH_CONTEXT);
+	return result;
+}
+
+bool
+YbIsRowModified(YbModifiedRows *rows, Relation rel, Datum ybctid)
+{
+	YbModifiedRowKey key = {RelationGetRelid(rel), DatumGetByteaPP(ybctid)};
+	bool		found;
+
+	(void) hash_search(rows->rows, &key, HASH_FIND, &found);
+	return found;
+}
+
+void
+YbRememberModifiedRow(YbModifiedRows *rows, Relation rel, Datum ybctid)
+{
+	YbModifiedRowKey key = {RelationGetRelid(rel), DatumGetByteaPP(ybctid)};
+	YbModifiedRowKey *entry;
+	bool		found;
+
+	entry = hash_search(rows->rows, &key, HASH_ENTER, &found);
+	if (!found)
+	{
+		MemoryContext oldcxt = MemoryContextSwitchTo(rows->cxt);
+
+		entry->ybctid = DatumGetByteaPP(datumCopy(ybctid, false, -1));
+		MemoryContextSwitchTo(oldcxt);
+	}
 }

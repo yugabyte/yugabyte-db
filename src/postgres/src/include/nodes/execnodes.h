@@ -48,6 +48,7 @@ struct LogicalTapeSet;
 
 /* YB forward references. */
 struct YbInsertOnConflictBatchState;
+struct YbModifiedRows;
 
 
 /* ----------------
@@ -1492,6 +1493,12 @@ typedef struct ModifyTableState
 	 * value.
 	 */
 	int			yb_ioc_batch_size;
+
+	/*
+	 * YB: rows this node has updated or deleted, kept when the subplan can
+	 * return a target row more than once (see ExecModifyTable); else NULL.
+	 */
+	struct YbModifiedRows *yb_modified_rows;
 } ModifyTableState;
 
 /* ----------------

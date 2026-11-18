@@ -314,3 +314,10 @@ extern int	YBCRelInfoGetSecondaryIndicesCount(ResultRelInfo *resultRelInfo);
  */
 extern bool YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo,
 											   EState *estate);
+
+typedef struct YbModifiedRows YbModifiedRows;
+
+extern YbModifiedRows *YbCreateModifiedRows(MemoryContext parent);
+extern bool YbIsRowModified(YbModifiedRows *rows, Relation rel, Datum ybctid);
+extern void YbRememberModifiedRow(YbModifiedRows *rows, Relation rel,
+								  Datum ybctid);

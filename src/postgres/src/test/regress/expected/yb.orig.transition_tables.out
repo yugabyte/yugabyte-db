@@ -749,6 +749,25 @@ SELECT * FROM tt_sr ORDER BY id;
 
 DROP TABLE tt_sr;
 ----------------------------------------------------------------------
+-- Section 15: UPDATE ... FROM and DELETE ... USING
+----------------------------------------------------------------------
+-- Id 15 joins two rows of tt_from_src; each transition table holds it once.
+CREATE TABLE tt_from (id int PRIMARY KEY, qty int);
+CREATE TABLE tt_from_src (id int, qty int);
+INSERT INTO tt_from VALUES (15, 0), (16, 0);
+INSERT INTO tt_from_src VALUES (15, 1), (15, 9), (16, 4);
+CREATE TRIGGER tt_from_upd AFTER UPDATE ON tt_from
+  REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_update();
+CREATE TRIGGER tt_from_del AFTER DELETE ON tt_from
+  REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE FUNCTION tt_log_delete();
+UPDATE tt_from t SET qty = t.qty + 1 FROM tt_from_src s WHERE t.id = s.id;
+NOTICE:  tt_log_update: tg_op=UPDATE, old_table=(15,0), (16,0), new_table=(15,1), (16,1)
+DELETE FROM tt_from t USING tt_from_src s WHERE t.id = s.id;
+NOTICE:  tt_log_delete: tg_op=DELETE, old_table=(15,1), (16,1)
+DROP TABLE tt_from, tt_from_src;
+----------------------------------------------------------------------
 -- Cleanup
 ----------------------------------------------------------------------
 DROP TABLE tt_test;

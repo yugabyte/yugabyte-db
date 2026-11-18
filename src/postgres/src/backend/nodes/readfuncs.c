@@ -1758,6 +1758,7 @@ _readModifyTable(void)
 	READ_NODE_FIELD(yb_update_affected_entities);
 	READ_BOOL_FIELD(no_row_trigger);
 	READ_BOOL_FIELD(ybInsertOnConflictPushdownPossible);
+	READ_BOOL_FIELD(ybTargetRowMayRepeat);
 
 	READ_DONE();
 }

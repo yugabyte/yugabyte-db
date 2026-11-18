@@ -461,6 +461,12 @@ struct PlannerInfo
 	 * yb_first_fetch_limit applies the executor's own pass-through rules.
 	 */
 	Cardinality yb_limit_tuples;
+
+	/*
+	 * YB: true for UPDATE ... FROM and DELETE ... USING, whose join can return
+	 * a target row more than once.
+	 */
+	bool		ybTargetRowMayRepeat;
 };
 
 

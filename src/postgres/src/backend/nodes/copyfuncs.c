@@ -249,6 +249,7 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(yb_update_affected_entities);
 	COPY_SCALAR_FIELD(no_row_trigger);
 	COPY_SCALAR_FIELD(ybInsertOnConflictPushdownPossible);
+	COPY_SCALAR_FIELD(ybTargetRowMayRepeat);
 
 	return newnode;
 }

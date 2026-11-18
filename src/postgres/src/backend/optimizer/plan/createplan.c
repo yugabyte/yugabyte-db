@@ -4321,6 +4321,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	plan->no_row_trigger = no_row_trigger;
 	plan->yb_skip_entities = YbInitSkippableEntities(no_update_index_list);
 	plan->ybInsertOnConflictPushdownPossible = YbIocPushdownPossible(root, plan);
+	plan->ybTargetRowMayRepeat = root->ybTargetRowMayRepeat;
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
