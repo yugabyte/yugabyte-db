@@ -6421,6 +6421,23 @@ void CatalogManager::DoProcessCDCSDKHiddenObjectDeletion() {
   }
 }
 
+Status CatalogManager::GetCDCSDKStreamsInfoForHiddenTable(
+    const TableId& table_id, std::unordered_set<xrepl::StreamId>* stream_ids,
+    HybridTime* min_restart_time_across_slots,
+    std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>* stream_creation_time_map) {
+  {
+    SharedLock lock(mutex_);
+    *stream_ids = GetCDCSDKStreamsForTable(table_id);
+    if (!AreLogicalReplicationStreams(*stream_ids)) {
+      *min_restart_time_across_slots = HybridTime::kInvalid;
+      return Status::OK();
+    }
+    *stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(*stream_ids));
+  }
+  *min_restart_time_across_slots = VERIFY_RESULT(ReadMinRestartTimeAcrossSlots(*stream_ids));
+  return Status::OK();
+}
+
 Result<bool> CatalogManager::IsHiddenTabletReleasedByCDCSDK(
     const TabletId& tablet_id, const HiddenReplicationTabletInfo& hidden_tablet,
     const std::unordered_set<xrepl::StreamId>& stream_ids,
@@ -6543,14 +6560,9 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
     std::unordered_set<xrepl::StreamId> stream_ids;
     HybridTime min_restart_time_across_slots;
     std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
-    {
-      SharedLock lock(mutex_);
-      stream_ids = GetCDCSDKStreamsForTable(hidden_tablet.table_id_);
-      min_restart_time_across_slots = VERIFY_RESULT(GetMinRestartTimeAcrossSlots(stream_ids));
-      if (min_restart_time_across_slots.is_valid()) {
-        stream_creation_time_map = VERIFY_RESULT(GetCDCSDKStreamCreationTimeMap(stream_ids));
-      }
-    }
+    RETURN_NOT_OK(GetCDCSDKStreamsInfoForHiddenTable(
+        hidden_tablet.table_id_, &stream_ids, &min_restart_time_across_slots,
+        &stream_creation_time_map));
 
     if (VERIFY_RESULT(IsHiddenTabletReleasedByCDCSDK(
             tablet_id, hidden_tablet, stream_ids, min_restart_time_across_slots,
@@ -6687,14 +6699,8 @@ bool CatalogManager::CDCSDKShouldRetainHiddenTablet(const TabletId& tablet_id) {
 std::unordered_set<TabletId> CatalogManager::GetHiddenTabletsReleasedByCDCSDK(
     const TableId& table_id) {
   std::unordered_map<TabletId, HiddenReplicationTabletInfo> hidden_tablets;
-  std::unordered_set<xrepl::StreamId> stream_ids;
-  std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
   {
     SharedLock read_lock(mutex_);
-    stream_ids = GetCDCSDKStreamsForTable(table_id);
-    if (!AreLogicalReplicationStreams(stream_ids)) {
-      return {};
-    }
     for (const auto& [tablet_id, hidden_tablet] : retained_by_cdcsdk_) {
       // The deletion task processes a split parent before its children.
       const auto& parent_tablet_id = hidden_tablet.parent_tablet_id_;
@@ -6704,22 +6710,22 @@ std::unordered_set<TabletId> CatalogManager::GetHiddenTabletsReleasedByCDCSDK(
       }
       hidden_tablets.emplace(tablet_id, hidden_tablet);
     }
-    if (hidden_tablets.empty()) {
-      return {};
-    }
-    auto stream_creation_time_map_result = GetCDCSDKStreamCreationTimeMap(stream_ids);
-    if (!stream_creation_time_map_result.ok()) {
-      LOG(WARNING) << "Failed to get the stream creation times for table " << table_id << ": "
-                   << stream_creation_time_map_result.status();
-      return {};
-    }
-    stream_creation_time_map = std::move(*stream_creation_time_map_result);
+  }
+  if (hidden_tablets.empty()) {
+    return {};
   }
 
-  auto min_restart_time_result = ReadMinRestartTimeAcrossSlots(stream_ids);
-  if (!min_restart_time_result.ok()) {
-    LOG(WARNING) << "Failed to read the min restart time across slots for table " << table_id
-                 << ": " << min_restart_time_result.status();
+  std::unordered_set<xrepl::StreamId> stream_ids;
+  HybridTime min_restart_time_across_slots;
+  std::unordered_map<xrepl::StreamId, std::optional<HybridTime>> stream_creation_time_map;
+  auto s = GetCDCSDKStreamsInfoForHiddenTable(
+      table_id, &stream_ids, &min_restart_time_across_slots, &stream_creation_time_map);
+  if (!s.ok()) {
+    LOG(WARNING) << "Failed to get the CDCSDK streams info for table " << table_id << ": " << s;
+    return {};
+  }
+  // The virtual WAL is only used with logical replication streams.
+  if (!min_restart_time_across_slots.is_valid()) {
     return {};
   }
 
@@ -6728,8 +6734,8 @@ std::unordered_set<TabletId> CatalogManager::GetHiddenTabletsReleasedByCDCSDK(
   std::vector<cdc::CDCStateTableKey> unused_entries_to_delete;
   for (const auto& [tablet_id, hidden_tablet] : hidden_tablets) {
     auto released_result = IsHiddenTabletReleasedByCDCSDK(
-        tablet_id, hidden_tablet, stream_ids, *min_restart_time_result, stream_creation_time_map,
-        &unused_entries_to_delete);
+        tablet_id, hidden_tablet, stream_ids, min_restart_time_across_slots,
+        stream_creation_time_map, &unused_entries_to_delete);
     if (!released_result.ok()) {
       LOG(WARNING) << "Failed to check whether CDC released hidden tablet " << tablet_id << ": "
                    << released_result.status();
