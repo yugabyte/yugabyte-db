@@ -238,15 +238,11 @@ message GetConsistentChangesResponsePB {
   optional bytes publication_refresh_txn_id = 7;
 
   // Aborted subtransactions of the transactions whose BEGIN records the virtual WAL read for this
-  // response, keyed by DocDB transaction id. This is the only place the walsender gets them from,
-  // including for the transactions that the virtual WAL merges into one because they commit at
-  // the same time and whose BEGIN records it does not ship. Only set with transactional DDL.
+  // response, keyed by DocDB transaction id.
   map<string, CDCSDKAbortedSubtxnsPB> aborted_subtxns = 8;
 }
 
 message CDCSDKAbortedSubtxnsPB {
-  // Commit time of the transaction. The walsender keeps the set until it has streamed a COMMIT at
-  // or after this time.
   optional fixed64 commit_time = 1;
   optional SubtxnSetPB aborted_subtxns = 2;
 }
