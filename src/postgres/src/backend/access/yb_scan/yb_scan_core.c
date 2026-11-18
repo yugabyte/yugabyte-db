@@ -2134,10 +2134,9 @@ ybGetMergeScanInfo(Scan *scan)
 }
 
 /*
- * True if the merge runs on the rows of a separate index request, which
- * pggate makes for a plain index scan of a secondary index that is not
- * embedded in its table.  That request fetches the merge sort columns along
- * with the ybctid (see ybSetupMergeSortTargets).
+ * For a merge scan, whether the merge sort happens between the index and table
+ * requests.  This is the case for a plain index scan of a secondary index that
+ * is not embedded in its table.
  */
 static bool
 ybMergesInIndexRequest(YbOpaque ybScan)
@@ -2254,8 +2253,8 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 	memset(is_column_eq_or_in_bound, 0, sizeof(bool) * max_idx);
 
 	YbMergeScanInfo *yb_merge_scan_info = (scan ?
-											ybGetMergeScanInfo(scan) :
-											NULL);
+										   ybGetMergeScanInfo(scan) :
+										   NULL);
 
 	if (yb_enable_advanced_index_cond_fold && !is_for_precheck)
 	{
