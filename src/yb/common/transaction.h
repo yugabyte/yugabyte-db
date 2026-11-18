@@ -427,14 +427,14 @@ std::ostream& operator<<(std::ostream& out, const TransactionFullLocality& local
 struct TransactionMetadata {
   TransactionId transaction_id = TransactionId::Nil();
   IsolationLevel isolation = IsolationLevel::NON_TRANSACTIONAL;
-  TabletId status_tablet;
+  TabletId status_tablet = TabletId();
 
   // By default, a random value is picked for a newly created transaction.
   uint64_t priority = 0;
 
   // Used for snapshot isolation (as read time and for conflict resolution).
   // start_time is used only for backward compability during rolling update.
-  HybridTime start_time;
+  HybridTime start_time = HybridTime::kInvalid;
 
   // Used by the wait queue to determine the order in which waiting transactions are resumed.
   // Matches the txn start time tracked by postgres.
@@ -443,7 +443,7 @@ struct TransactionMetadata {
   TransactionFullLocality locality = TransactionFullLocality::Global();
 
   // Former transaction status tablet that the transaction was using prior to a move.
-  TabletId old_status_tablet;
+  TabletId old_status_tablet = TabletId();
 
   bool skip_prefix_locks = false;
 
