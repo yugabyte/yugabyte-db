@@ -407,6 +407,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleClusterServerCtl,
           TaskType.MarkRollbackUnsafe, // before ChangeMasterConfig
+          TaskType.ModifyBlackList, // clear master leader blacklist before add
           TaskType.ChangeMasterConfig, // master done
           TaskType.CheckFollowerLag, // master done
           TaskType.WaitForServer,
@@ -448,6 +449,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()), // MarkRollbackUnsafe
+          Json.toJson(ImmutableMap.of()), // clear master leader blacklist before add
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

@@ -50,8 +50,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClientApi;
+import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -123,6 +126,14 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       lenient()
           .when(mockClient.getLeaderMasterHostAndPort())
           .thenReturn(HostAndPort.fromHost("10.0.0.1"));
+      CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+          CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+      lenient()
+          .when(mockClient.getMasterClusterConfig())
+          .thenReturn(new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null));
+      lenient()
+          .when(mockClient.changeMasterClusterConfig(any()))
+          .thenReturn(new ChangeMasterClusterConfigResponse(1112, "", null));
     } catch (Exception e) {
       fail();
     }
@@ -174,6 +185,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
+          TaskType.ModifyBlackList, // clear master leader blacklist before add
           TaskType.ChangeMasterConfig,
           TaskType.CheckFollowerLag,
           TaskType.AnsibleConfigureServers,
@@ -197,6 +209,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // clear master leader blacklist before add
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

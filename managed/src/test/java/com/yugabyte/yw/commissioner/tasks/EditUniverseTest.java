@@ -171,6 +171,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.ModifyBlackList, // clear master leader blacklist before add
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -178,7 +179,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
+          TaskType.ModifyBlackList, // blacklist master before remove
           TaskType.ChangeMasterConfig, // Remove
+          TaskType.ModifyBlackList, // clear master leader blacklist
           TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
           TaskType.AnsibleConfigureServers, // Tservers
@@ -227,6 +230,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
+          TaskType.ModifyBlackList, // clear master leader blacklist before add
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -234,7 +238,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
+          TaskType.ModifyBlackList, // blacklist master before remove
           TaskType.ChangeMasterConfig, // Remove
+          TaskType.ModifyBlackList, // clear master leader blacklist
           TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
           TaskType.AnsibleConfigureServers, // Tservers
@@ -3254,8 +3260,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     enableManualEditRollback(universe);
     UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
-    int swapBlackListPosition = UNIVERSE_EXPAND_TASK_SEQUENCE.lastIndexOf(TaskType.ModifyBlackList);
     int markUnsafePosition = UNIVERSE_EXPAND_TASK_SEQUENCE.indexOf(TaskType.MarkRollbackUnsafe);
+    // The ADD-node swap is the first blacklist after the rollback checkpoint. Later
+    // ModifyBlackList tasks are the master leader blacklist around a master move.
+    int swapBlackListPosition =
+        markUnsafePosition
+            + 1
+            + UNIVERSE_EXPAND_TASK_SEQUENCE
+                .subList(markUnsafePosition + 1, UNIVERSE_EXPAND_TASK_SEQUENCE.size())
+                .indexOf(TaskType.ModifyBlackList);
     assertTrue(markUnsafePosition > 0 && markUnsafePosition < swapBlackListPosition);
     setAbortPosition(swapBlackListPosition + 1);
     try {
