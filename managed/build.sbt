@@ -1069,8 +1069,9 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
 
-// Turn off the AVX-512 Base64 decode intrinsic, which can write out of bounds on malformed input
-// (CVE-2026-114938). Decoding falls back to the bounds-checked Java code.
+// Turn off HotSpot's Base64 encode and decode intrinsics on every CPU. The AVX-512 decode one can
+// write out of bounds on malformed input (CVE-2026-114938). Base64 then runs the bounds-checked
+// Java code, with the same results.
 Universal / javaOptions += "-J-XX:-UseBASE64Intrinsics"
 
 Universal / mappings ++= {
