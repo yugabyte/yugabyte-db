@@ -265,8 +265,11 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 // erases the locks of all subtransactions with a greater or equal id, and all locks are cleared
 // when the transaction ends or the tserver is asked to restart it.
 //
-// The locks are only valid for the shared state epoch they were recorded under, which changes if
-// the transaction is aborted on the DocDB side and a new one registered.
+// If the transaction is aborted on the DocDB side, its lock owner registration is cleared, which
+// disables the shared state, and the locks are dropped the next time they are looked up. This
+// assumes the tserver doesn't register a new transaction for the session within the same postgres
+// transaction without pggate clearing the locks first, which holds for transaction restarts and
+// recreation (see RestartTransaction and ResetTxnAndSession).
 class PgTxnManager::HeldObjectLocks {
  public:
   struct Lock {
@@ -284,8 +287,6 @@ class PgTxnManager::HeldObjectLocks {
 
   [[nodiscard]] bool empty() const { return entries_.empty(); }
   [[nodiscard]] size_t size() const { return entries_.size(); }
-  [[nodiscard]] uint64_t epoch() const { return epoch_; }
-  void set_epoch(uint64_t epoch) { epoch_ = epoch; }
 
   [[nodiscard]] bool Contains(const Lock& lock) const {
     const auto& by_lock = entries_.get<ByLockTag>();
@@ -304,10 +305,7 @@ class PgTxnManager::HeldObjectLocks {
     by_subtxn.erase(by_subtxn.lower_bound(subtxn_id), by_subtxn.end());
   }
 
-  void Clear() {
-    entries_.clear();
-    epoch_ = 0;
-  }
+  void Clear() { entries_.clear(); }
 
  private:
   struct LockHash {
@@ -341,7 +339,6 @@ class PgTxnManager::HeldObjectLocks {
               boost::multi_index::tag<BySubTransactionTag>,
               boost::multi_index::member<Entry, SubTransactionId, &Entry::subtxn_id>>>>
       entries_;
-  uint64_t epoch_ = 0;
 };
 
 PgTxnManager::PgTxnManager(
@@ -1325,12 +1322,10 @@ bool PgTxnManager::IsObjectLockHeld(
   if (held_object_locks_->empty()) {
     return false;
   }
-  // If the transaction was aborted on the DocDB side, the shared state is disabled or registered
-  // for another transaction, and the locks recorded so far are no longer held.
-  const auto epoch = client_->ObjectLockSharedStateActiveEpoch();
-  if (epoch == 0 || epoch != held_object_locks_->epoch()) {
-    VLOG_WITH_FUNC(2) << "Object lock shared state epoch changed from "
-                      << held_object_locks_->epoch() << " to " << epoch << ", dropping "
+  // If the transaction was aborted on the DocDB side, the shared state is disabled and the locks
+  // recorded so far are no longer held.
+  if (!client_->IsObjectLockSharedStateEnabled()) {
+    VLOG_WITH_FUNC(2) << "Object lock shared state disabled, dropping "
                       << held_object_locks_->size() << " held locks";
     ClearHeldObjectLocks();
     return false;
@@ -1340,13 +1335,8 @@ bool PgTxnManager::IsObjectLockHeld(
 
 void PgTxnManager::RecordObjectLockHeld(
     const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
-  const auto epoch = client_->ObjectLockSharedStateActiveEpoch();
-  if (epoch == 0) {
+  if (!client_->IsObjectLockSharedStateEnabled()) {
     return;
-  }
-  if (epoch != held_object_locks_->epoch()) {
-    ClearHeldObjectLocks();
-    held_object_locks_->set_epoch(epoch);
   }
   held_object_locks_->Add({lock_id, lock_type}, active_sub_transaction_id_);
 }

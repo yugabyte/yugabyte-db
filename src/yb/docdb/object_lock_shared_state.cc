@@ -324,7 +324,6 @@ class ObjectLockSharedState::Impl {
     std::lock_guard lock(mutex_);
     if (SHARED_MEMORY_LOAD(enabled_) == ActiveState::kDisabled) {
       SHARED_MEMORY_STORE(enabled_, ActiveState::kEnabled);
-      ++enabled_epoch_.Get();
       VLOG_WITH_FUNC(1) << "done";
     }
   }
@@ -368,10 +367,9 @@ class ObjectLockSharedState::Impl {
     VLOG_WITH_FUNC(1) << "set to " << CollectionToString(exclusive_intents.SharedMemorySpan());
   }
 
-  uint64_t ActiveEpoch() const EXCLUDES(mutex_) {
+  [[nodiscard]] bool IsEnabled() const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    return SHARED_MEMORY_LOAD(enabled_) == ActiveState::kEnabled
-        ? SHARED_MEMORY_LOAD(enabled_epoch_) : 0;
+    return SHARED_MEMORY_LOAD(enabled_) == ActiveState::kEnabled;
   }
 
   uint64_t PgLockRequestCount() const {
@@ -484,8 +482,6 @@ class ObjectLockSharedState::Impl {
   PendingLockRequests shared_requests_ GUARDED_BY(mutex_);
   ChildProcessRO<std::span<const ObjectLockExclusiveIntent>> exclusive_intents_;
   ChildProcessRO<ActiveState> enabled_ GUARDED_BY(mutex_) = ActiveState::kDisabled;
-  // Incremented each time the state is enabled, i.e. each time a transaction is registered for it.
-  ChildProcessRO<uint64_t> enabled_epoch_ GUARDED_BY(mutex_) = 0;
 
   // Keep track of whether this session/transaction is registered with ObjectLockManager. If it is,
   // we need to release via ObjectLockManager to release that state, and cannot use fastpath
@@ -552,8 +548,8 @@ void ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestCons
   impl_->ConsumePendingLockRequests(consume);
 }
 
-uint64_t ObjectLockSharedState::ActiveEpoch() const {
-  return impl_->ActiveEpoch();
+bool ObjectLockSharedState::IsEnabled() const {
+  return impl_->IsEnabled();
 }
 
 uint64_t ObjectLockSharedState::PgLockRequestCount() const {

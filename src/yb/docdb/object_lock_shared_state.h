@@ -140,10 +140,9 @@ class ObjectLockSharedState {
   void ResetExclusiveLockIntentsTo(const ObjectLockExclusiveIntents& exclusive_intents)
       PARENT_PROCESS_ONLY;
 
-  // Returns a non-zero value identifying the current period during which the state is enabled for a
-  // registered transaction, or 0 if the state is disabled. The value changes whenever the
-  // registration changes, e.g. after the transaction is aborted and a new one registered.
-  uint64_t ActiveEpoch() const;
+  // Whether the state is enabled, i.e. a transaction is registered for it. The registration is
+  // cleared if the transaction is aborted on the DocDB side.
+  [[nodiscard]] bool IsEnabled() const;
 
   uint64_t PgLockRequestCount() const;
   uint64_t PgLockReleaseCount() const;

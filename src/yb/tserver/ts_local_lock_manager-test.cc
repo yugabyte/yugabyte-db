@@ -1413,28 +1413,6 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
-// The active epoch is non-zero only while a transaction is registered, and changes with each
-// registration, so that locks known to be held for one transaction are not assumed held for the
-// next one.
-TEST_F(TSLocalLockManagerTest, TestFastpathActiveEpoch) {
-  ParentProcessGuard g;
-  auto shared_state = ASSERT_RESULT(shared_manager_->AllocateShared());
-  auto& state = *shared_state.get();
-  ASSERT_EQ(state.ActiveEpoch(), 0);
-
-  uint64_t first_epoch;
-  {
-    auto registration = lock_owner_registry_->Register(state, kTxn1.txn_id, TabletId());
-    first_epoch = state.ActiveEpoch();
-    ASSERT_NE(first_epoch, 0);
-  }
-  ASSERT_EQ(state.ActiveEpoch(), 0);
-
-  auto registration = lock_owner_registry_->Register(state, kTxn2.txn_id, TabletId());
-  ASSERT_NE(state.ActiveEpoch(), 0);
-  ASSERT_NE(state.ActiveEpoch(), first_epoch);
-}
-
 // A release naming specific objects leaves the subtxn's other locks held, so it must keep the
 // subtxn's tracked acquire deadline. Otherwise the later release-all of the subtxn finds no
 // deadline and schedules no lost-message retry.
