@@ -47,8 +47,10 @@ Result<std::string> WaitForPidExitReason(size_t pid) {
   return out.substr(start, out.length() - start - kTail.length());
 }
 
-bool IsSegfaultExitReason(std::string_view exit_reason) {
-  return exit_reason.contains("SIGSEGV");
+// A backend that exits through proc_exit() reports "exited with <code>". "killed by <signal>" means
+// it crashed: SIGSEGV, or SIGABRT from a failed assertion in debug builds.
+bool IsCrashExitReason(std::string_view exit_reason) {
+  return exit_reason.starts_with("killed by");
 }
 
 } // namespace
@@ -83,7 +85,7 @@ TEST_F(PgTerminateBackendTest, YB_DISABLE_TEST_ON_MACOS(ConflictingSubTxn)) {
     threads.AddThreadFunctor([aux_backend_pid] {
       const auto exit_reason = ASSERT_RESULT(WaitForPidExitReason(aux_backend_pid));
       LOG(INFO) << "Backend exit reason: " << exit_reason;
-      ASSERT_FALSE(IsSegfaultExitReason(exit_reason));
+      ASSERT_FALSE(IsCrashExitReason(exit_reason)) << exit_reason;
     });
     latch.Wait();
     std::this_thread::sleep_for(2000ms);
