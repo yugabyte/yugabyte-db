@@ -52,6 +52,7 @@
 #include "yb/common/ql_protocol.fwd.h"
 
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager_mutex.h"
 #include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
@@ -2677,7 +2678,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // easy to make a "gettable set".
 
   // Lock protecting the various in memory storage structures.
-  using MutexType = rw_spinlock;
+  using MutexType = CatalogManagerMutex;
   using SharedLock = NonRecursiveSharedLock<MutexType>;
   using UniqueLock = yb::UniqueLock<MutexType>;
   using LockGuard = std::lock_guard<MutexType>;
