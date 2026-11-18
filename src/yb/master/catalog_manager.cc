@@ -668,8 +668,10 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "so search resolves rows without the reverse mapping, and such a table writes no reverse "
     "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
-    "store the payload. Disabled by default, because deleted vectors are not removed from such an "
-    "index yet.");
+    "store the payload. Creating an index that stores the payload fails on a table that writes the "
+    "reverse mapping without owning it, see enable_table_owned_vector_reverse_mapping. Disabled by "
+    "default, because deleted vectors are not removed yet from the indexes of a table that writes "
+    "no reverse mapping.");
 
 DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "Temporary, until the tenant of a vector index can be specified when the index is created, "
@@ -4725,6 +4727,27 @@ bool EnableTableOwnedVectorReverseMapping() {
       : FLAGS_enable_table_owned_vector_reverse_mapping;
 }
 
+// An index on a table that does not write the reverse mapping must store the payload, it is the
+// only way for its search to resolve rows. Compaction drops deleted vectors of an index which
+// stores payloads via the reverse mapping when the table writes it, and only a table which owns the
+// reverse mapping has entries for the vectors backfilled into such an index.
+Result<bool> VectorIndexStoresPayload(
+    const TablePropertiesPB& indexed_table_properties, const std::string& index_name,
+    const std::string& indexed_table_name) {
+  if (indexed_table_properties.skip_vector_reverse_mapping()) {
+    return true;
+  }
+  if (!FLAGS_vector_index_store_payload) {
+    return false;
+  }
+  SCHECK(indexed_table_properties.owns_vector_reverse_mapping(), NotSupported, Format(
+      "Vector index $0 cannot store payloads, see vector_index_store_payload: its table $1 "
+      "writes the vector reverse mapping without owning it. Turn off vector_index_store_payload, "
+      "or recreate the table with it off while enable_table_owned_vector_reverse_mapping is on",
+      index_name, indexed_table_name));
+  return true;
+}
+
 } // namespace
 
 Status CatalogManager::PersistNewTable(
@@ -5003,12 +5026,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (is_vector_index) {
       auto& vector_index_options = *index_info.mutable_vector_idx_options();
       vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
-      // An index on a table that does not write the reverse mapping must store the payload, it is
-      // the only way for its search to resolve rows.
       auto indexed_table_lock = indexed_table->LockForRead();
-      vector_index_options.set_store_payload(
-          FLAGS_vector_index_store_payload ||
-          indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
+      vector_index_options.set_store_payload(VERIFY_RESULT(VectorIndexStoresPayload(
+          indexed_table_lock->schema().table_properties(), req.name(),
+          indexed_table_lock->name())));
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
