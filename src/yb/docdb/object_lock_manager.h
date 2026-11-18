@@ -38,6 +38,9 @@ struct LockData {
   TabletId status_tablet;
   MonoTime start_time;
   TransactionId background_transaction_id = TransactionId::Nil();
+  // Callers may treat the request as finished once this is invoked, e.g. TSLocalLockManager leaves
+  // its in-progress scope, after which Shutdown() can proceed. So nothing in the lock manager may
+  // be accessed after invoking it, including when it is invoked inline from Lock().
   StdStatusCallback callback;
 
   std::string ToString() const {

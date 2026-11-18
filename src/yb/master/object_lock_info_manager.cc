@@ -107,6 +107,10 @@ DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
 DEFINE_test_flag(bool, pause_obj_lock_release_before_persist, false,
     "If true, pause before persisting release request acked from all tservers.");
 
+DEFINE_test_flag(bool, pause_obj_lock_acquire_before_persist, false,
+    "If true, pause after an acquire request is granted by the master leader's local lock manager, "
+    "before persisting it.");
+
 DEFINE_test_flag(bool, pause_obj_lock_acquire_before_relaunch_check, false,
     "If true, pause after an acquire request is acked by all tservers, before checking whether "
     "the fanout must be relaunched for lease changes.");
@@ -692,7 +696,10 @@ WaitForLockersMultipleRequestPB TserverRequestFor(
 template <class Resp>
 void FillErrorIfRequired(const Status& status, Resp& resp) {
   if (!status.ok()) {
-    if (status.IsIllegalState() && status.message().ToBuffer() == kNotTheMasterLeader) {
+    // An epoch change means a new leadership term began while the request was in flight. Have the
+    // client retry against the current leader.
+    if (status.IsIllegalState() && (status.message().ToBuffer() == kNotTheMasterLeader ||
+                                    status.message().ToBuffer() == kEpochChanged)) {
       resp.mutable_error()->set_code(MasterErrorPB::NOT_THE_LEADER);
     } else {
       resp.mutable_error()->set_code(MasterErrorPB::UNKNOWN_ERROR);
@@ -2348,6 +2355,7 @@ Status UpdateAllTServers<Req>::BeforeRpcs() {
 template <>
 Status UpdateAllTServers<AcquireObjectLockRequestPB>::BeforeRpcs() {
   TRACE_FUNC();
+  TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_acquire_before_persist);
   return DoPersistRequest();
 }
 
