@@ -307,9 +307,12 @@ is_foreign_expr(PlannerInfo *root,
 	{
 		if (yb_has_unpushable_funcs((Node *) expr))
 			return false;
+	}
+	else
+	{
+		if (contain_mutable_functions((Node *) expr))
+			return false;
 	}							/* YB */
-	else if (contain_mutable_functions((Node *) expr))
-		return false;
 
 	/* OK to evaluate on the remote server */
 	return true;
