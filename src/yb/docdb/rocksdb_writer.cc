@@ -423,7 +423,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
           ? dockv::InvertEncodedDocHT(doc_ht, &inverted_doc_ht_buffer) : doc_ht,
     }};
     // The value is a header and the vector ids. Before vector_index_delete_list_with_subtransaction
-    // the header is just kDeleteVectorIds.
+    // the header is just ValueEntryType::kDeleteVectorIds.
     // The header takes up to 2 + sizeof(SubTransactionId) bytes, while a ByteBuffer holds at least
     // sizeof(void*) bytes inline.
     constexpr size_t kHeaderSize = 8;
@@ -431,7 +431,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
     ByteBuffer<kHeaderSize> header;
     if (put_batch_.delete_vector_ids_with_subtransaction()) {
       header.PushBack(ValueEntryTypeAsChar::kVectorIndexRecord);
-      header.PushBack(std::to_underlying(dockv::VectorIndexRecordType::kDeleteVectorIds));
+      header.PushBack(std::to_underlying(dockv::VectorIndexRecordType::kDeleteList));
       auto big_endian_id = BigEndian::FromHost32(subtransaction_id_);
       header.Append(Slice::FromPod(&big_endian_id));
     } else {
@@ -755,7 +755,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler& handler) {
         continue;
       } else if (reverse_index_value.TryConsumeByte(ValueEntryTypeAsChar::kVectorIndexRecord)) {
         if (!reverse_index_value.TryConsumeByte(
-                std::to_underlying(dockv::VectorIndexRecordType::kDeleteVectorIds))) {
+                std::to_underlying(dockv::VectorIndexRecordType::kDeleteList))) {
           return STATUS_FORMAT(
               Corruption, "Unknown vector index record: $0",
               reverse_index_value.ToDebugHexString());

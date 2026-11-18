@@ -7208,6 +7208,13 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
     }, 10s * kTimeMultiplier, "Transactions loaded");
   }
 
+  // Sets the AutoFlags of the delete list record to their values after (true) or before (false) the
+  // upgrade.
+  static void SetDeleteListEncoding(bool new_encoding) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = new_encoding;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = new_encoding;
+  }
+
   // The sorted value types of the delete list records in the intents DB of the test tablet.
   Result<std::string> DeleteListRecordTypes() {
     auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
@@ -7646,7 +7653,7 @@ TEST_F(PgVectorIndexUtilTest, SameTxnDeletedVector) {
 }
 
 // A tablet that restarts with an uncommitted transaction in its intents DB scans the reverse index
-// of that transaction backwards for its last strong intent. The delete-list record of a DELETE sits
+// of that transaction backwards for its last strong intent. The delete list record of a DELETE sits
 // between the strong and the weak intents of its batch. An UPDATE also takes a row lock, a strong
 // intent written after the delete list.
 TEST_F(PgVectorIndexUtilTest, LoadTransactionWithDeleteList) {
@@ -7660,8 +7667,8 @@ TEST_F(PgVectorIndexUtilTest, LoadTransactionWithDeleteList) {
   ASSERT_FALSE(decode_failure_log.IsEventOccurred());
 }
 
-// A transaction that spans the promotion of vector_index_delete_list_after_rows has delete lists
-// with both key encodings.
+// A transaction that spans the promotion of the delete list AutoFlags has delete list records of
+// both encodings.
 TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   constexpr int64_t kNumRows = 20;
   constexpr auto kQueryC = "[0, 0, -500]";
@@ -7670,10 +7677,10 @@ TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   // A committed row updated twice in one transaction: the old key tombstones the committed vector,
   // the new key tombstones the vector of the first update.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (2000, '$0')", kQueryC));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  SetDeleteListEncoding(/* new_encoding= */ false);
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2000", kQueryB));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  SetDeleteListEncoding(/* new_encoding= */ true);
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, -100, 100]' WHERE id = 2000"));
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
@@ -7685,10 +7692,10 @@ TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   }
 
   // A pending transaction with both encodings, loaded by a restarted tablet.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  SetDeleteListEncoding(/* new_encoding= */ false);
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  SetDeleteListEncoding(/* new_encoding= */ true);
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(cluster_->FlushTablets());
 
