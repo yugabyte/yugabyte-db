@@ -65,6 +65,12 @@ METRIC_DEFINE_event_stats(
     server, load_balancer_duration, "Cluster balancer duration",
     yb::MetricUnit::kMilliseconds, "Duration of one cluster balancer run (in milliseconds)");
 
+METRIC_DEFINE_event_stats(
+    server, catalog_manager_bg_task_duration, "Catalog manager background task duration",
+    yb::MetricUnit::kMilliseconds,
+    "Duration of one catalog manager background task pass, without the cluster balancer run "
+    "(in milliseconds)");
+
 DEFINE_RUNTIME_int32(catalog_manager_bg_task_wait_ms, 1000,
     "Amount of time the catalog manager background task thread waits between runs");
 
@@ -124,6 +130,8 @@ CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
       master_(master),
       catalog_manager_(master->catalog_manager_impl()),
       cluster_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
+          master_->metric_entity())),
+      bg_task_duration_(METRIC_catalog_manager_bg_task_duration.Instantiate(
           master_->metric_entity())),
       last_live_tservers_(0) {
 }
@@ -214,7 +222,8 @@ void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
   }
 }
 
-void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
+void CatalogManagerBgTasks::RunOnceAsLeader(
+    const LeaderEpoch& epoch, CoarseDuration& balancer_time) {
   LongOperationTracker long_operation_tracker(
       "CatalogManagerBgTasks::RunOnceAsLeader",
       FLAGS_master_bg_task_long_operation_warning_ms * 1ms);
@@ -289,7 +298,7 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
     tablet_info_map = *catalog_manager_->tablet_map_;
   }
   if (!processed_tablets) {
-    MaybeRunClusterBalancer(epoch, tables, tablet_info_map);
+    MaybeRunClusterBalancer(epoch, tables, tablet_info_map, balancer_time);
   }
   master_->tablet_split_manager().MaybeDoSplitting(tables, tablet_info_map, epoch);
 
@@ -332,14 +341,15 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
 
 void CatalogManagerBgTasks::MaybeRunClusterBalancer(
     const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
-    const TabletInfoMap& tablets) {
+    const TabletInfoMap& tablets, CoarseDuration& balancer_time) {
   if (catalog_manager_->TimeSinceElectedLeader() <=
       MonoDelta::FromSeconds(FLAGS_load_balancer_initial_delay_secs)) {
     return;
   }
   auto start = CoarseMonoClock::Now();
   catalog_manager_->load_balance_policy_->RunClusterBalancer(epoch, tables, tablets);
-  cluster_balancer_duration_->Increment(ToMilliseconds(CoarseMonoClock::now() - start));
+  balancer_time = CoarseMonoClock::now() - start;
+  cluster_balancer_duration_->Increment(ToMilliseconds(balancer_time));
 }
 
 void CatalogManagerBgTasks::Run() {
@@ -350,13 +360,18 @@ void CatalogManagerBgTasks::Run() {
       LOG(WARNING) << "Catalog manager background task thread going to sleep: "
                    << l.catalog_status().ToString();
     } else if (l.leader_status().ok()) {
-      RunOnceAsLeader(l.epoch());
+      auto start = CoarseMonoClock::Now();
+      CoarseDuration balancer_time{};
+      RunOnceAsLeader(l.epoch(), balancer_time);
+      bg_task_duration_->Increment(
+          ToMilliseconds(CoarseMonoClock::now() - start - balancer_time));
       was_leader_ = true;
     } else {
       // leader_status is not ok.
       if (was_leader_) {
         LOG(INFO) << "Begin one-time cleanup on losing leadership";
         cluster_balancer_duration_->Reset();
+        bg_task_duration_->Reset();
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
         master_->ysql_backends_manager()->AbortAllJobs();
