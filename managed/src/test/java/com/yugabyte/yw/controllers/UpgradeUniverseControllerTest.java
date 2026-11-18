@@ -166,6 +166,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   private GFlagsValidation mockGFlagsValidation;
   private XClusterUniverseService mockXClusterUniverseService;
   private CloudUtilFactory mockCloudUtilFactory;
+  private ReleaseManager mockReleaseManager;
 
   private Universe defaultUniverse;
   private Universe k8sUniverse;
@@ -229,7 +230,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     mockGFlagsValidation = mock(GFlagsValidation.class);
     mockXClusterUniverseService = mock(XClusterUniverseService.class);
     mockCloudUtilFactory = mock(CloudUtilFactory.class);
-    ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
+    mockReleaseManager = mock(ReleaseManager.class);
 
     when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockConfig.getString("yb.storage.path")).thenReturn("/tmp/" + getClass().getSimpleName());
@@ -660,6 +661,46 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
                     "software"));
     assertTrue(exception.getUserVisibleMessage().contains("Software version is already"));
     verifyNoActions();
+  }
+
+  @Test
+  @Parameters({"software", "db_version"})
+  public void testSoftwareUpgradeToDisabledReleaseFails(String upgradePath) {
+    stubDisabledRelease();
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                runUpgrade(
+                    defaultUniverse,
+                    p -> {
+                      p.ybSoftwareVersion = "2.21.0.0-b1";
+                    },
+                    SoftwareUpgradeParams.class,
+                    upgradePath));
+    assertTrue(exception.getUserVisibleMessage().contains("Release 2.21.0.0-b1 is not ACTIVE"));
+    verifyNoActions();
+  }
+
+  @Test
+  public void testRollbackUpgradeAllowedWhenReleaseDisabled() {
+    TestHelper.updateUniverseSoftwareUpgradeState(
+        defaultUniverse, SoftwareUpgradeState.PreFinalize);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    stubDisabledRelease();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RollbackUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Result result = runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback");
+    assertOk(result);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.RollbackUpgrade), any());
+  }
+
+  private void stubDisabledRelease() {
+    ReleaseManager.ReleaseMetadata rm = ReleaseManager.ReleaseMetadata.create("2.21.0.0-b1");
+    rm.state = ReleaseManager.ReleaseState.DISABLED;
+    when(mockReleaseManager.getReleaseByVersion(any()))
+        .thenReturn(new ReleaseContainer(rm, mockCloudUtilFactory, mockConfig, mockReleasesUtils));
   }
 
   @Test
