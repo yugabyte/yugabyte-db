@@ -80,9 +80,16 @@ vector<ColumnId> ColumnIdsFromPB(const RepeatedField<uint32>& ids) {
   return column_ids;
 }
 
+HybridTime BirthTimeFromPB(const IndexInfoPB& pb, HybridTime added_ht) {
+  if (pb.birth_time()) {
+    return HybridTime(pb.birth_time());
+  }
+  return pb.has_vector_idx_options() ? added_ht : HybridTime::kInvalid;
+}
+
 } // namespace
 
-IndexInfo::IndexInfo(const IndexInfoPB& pb)
+IndexInfo::IndexInfo(const IndexInfoPB& pb, HybridTime added_ht)
     : table_id_(pb.table_id()),
       indexed_table_id_(pb.indexed_table_id()),
       schema_version_(pb.version()),
@@ -99,7 +106,7 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
                                                 : Status::OK()),
       num_rows_read_from_table_for_backfill_(pb.num_rows_read_from_table_for_backfill()),
       num_rows_backfilled_in_index_(pb.num_rows_backfilled_in_index()),
-      birth_time_(pb.birth_time()),
+      birth_time_(BirthTimeFromPB(pb, added_ht)),
       use_mangled_column_name_(pb.use_mangled_column_name()),
       where_predicate_spec_(pb.has_where_predicate_spec() ?
         std::make_shared<IndexInfoPB::WherePredicateSpecPB>(pb.where_predicate_spec()) : nullptr) {
@@ -155,8 +162,8 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   }
   pb->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill_);
   pb->set_num_rows_backfilled_in_index(num_rows_backfilled_in_index_);
-  if (birth_time_ != 0) {
-    pb->set_birth_time(birth_time_);
+  if (birth_time_) {
+    pb->set_birth_time(birth_time_.ToUint64());
   }
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (where_predicate_spec_) {
@@ -308,14 +315,14 @@ IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexe
 IndexMap::IndexMap(const ArenaList<LWIndexInfoPB>& indexes) {
   clear();
   for (const auto& index : indexes) {
-    emplace(index.table_id(), IndexInfo(index.ToGoogleProtobuf()));
+    emplace(index.table_id(), IndexInfo(index.ToGoogleProtobuf(), HybridTime::kInvalid));
   }
 }
 
 void IndexMap::FromPB(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
   clear();
   for (const auto& index : indexes) {
-    emplace(index.table_id(), IndexInfo(index));
+    emplace(index.table_id(), IndexInfo(index, HybridTime::kInvalid));
   }
 }
 

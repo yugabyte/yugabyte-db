@@ -330,6 +330,7 @@ TableInfo::~TableInfo() = default;
 void TableInfo::CompleteInit() {
   if (IsVectorIndex()) {
     doc_read_context->vector_idx_options = index_info->vector_idx_options();
+    LOG_IF(DFATAL, !index_info->birth_time()) << "Vector index without birth time: " << ToString();
   }
 
   if (!index_info || !index_info->is_unique()) {
@@ -377,7 +378,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
 
   RETURN_NOT_OK(doc_read_context->LoadFromPB(pb));
   if (pb.has_index_info()) {
-    index_info.reset(new IndexInfo(pb.index_info()));
+    index_info.reset(new IndexInfo(pb.index_info(), hybrid_time));
   }
   index_map->FromPB(pb.indexes());
   schema_version = pb.schema_version();
@@ -725,7 +726,7 @@ Status RestoreVectorIndexOptions(TableInfo* target, const TableInfoPB& snapshot_
   IndexInfoPB index_info_pb;
   target->index_info->ToPB(&index_info_pb);
   *index_info_pb.mutable_vector_idx_options() = source_options;
-  target->index_info = std::make_unique<qlexpr::IndexInfo>(index_info_pb);
+  target->index_info = std::make_unique<qlexpr::IndexInfo>(index_info_pb, target->hybrid_time);
   target->doc_read_context->vector_idx_options = source_options;
   return Status::OK();
 }
@@ -2985,7 +2986,8 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(
     IndexInfoPB index_info_pb;
     new_table_info->index_info->ToPB(&index_info_pb);
     index_info_pb.set_birth_time(birth_time);
-    new_table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+    new_table_info->index_info.reset(
+        new qlexpr::IndexInfo(index_info_pb, new_table_info->hybrid_time));
   }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << new_table_info->schema_version

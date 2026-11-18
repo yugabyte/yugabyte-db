@@ -1801,7 +1801,8 @@ Status TSTabletManager::DoApplyCloneTablet(
       request->target_skip_table_tombstone_check();
   const std::optional<qlexpr::IndexInfo> target_table_index_info =
       request->has_target_index_info() ?
-      std::optional<qlexpr::IndexInfo>(request->target_index_info().ToGoogleProtobuf()) :
+      std::make_optional<qlexpr::IndexInfo>(
+          request->target_index_info().ToGoogleProtobuf(), operation->hybrid_time()) :
       std::nullopt;
   Schema target_schema;
   dockv::PartitionSchema target_partition_schema;
@@ -1884,18 +1885,17 @@ Status TSTabletManager::DoApplyCloneTablet(
       tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
   std::vector<tablet::TableInfoPtr> colocated_tables_infos;
 
-  for (const auto& colocated_table : ToRepeatedPtrField(request->colocated_tables())) {
+  for (auto& colocated_table : ToRepeatedPtrField(request->colocated_tables())) {
     LOG(INFO) << Format(
         "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
-    auto table_info = VERIFY_RESULT(
-        tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table));
     // The master leaves the hybrid time of colocated_tables entries unset. A vector index only
     // takes intent applies committed after it, so an invalid one keeps every transactional write to
-    // the clone out of the index.
-    if (!table_info->hybrid_time.is_valid()) {
-      table_info->hybrid_time = operation->hybrid_time();
+    // the clone out of the index. Set before loading: it is also the vector index birth time.
+    if (!colocated_table.hybrid_time()) {
+      colocated_table.set_hybrid_time(operation->hybrid_time().ToPB());
     }
-    colocated_tables_infos.push_back(std::move(table_info));
+    colocated_tables_infos.push_back(VERIFY_RESULT(
+        tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table)));
   }
   // Setup raft group metadata. If we crash between here and when we set the tablet data state to
   // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.

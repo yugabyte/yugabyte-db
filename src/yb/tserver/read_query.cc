@@ -903,30 +903,29 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
       auto table_info = VERIFY_RESULT(metadata->GetTableInfo(pgsql_read_req.has_index_request()
           ? pgsql_read_req.index_request().table_id()
           : pgsql_read_req.table_id()));
-      if (table_info->index_info && !table_info->IsVectorIndex() && read_time_ &&
+      if (table_info->index_info && read_time_ &&
           PREDICT_TRUE(!FLAGS_TEST_disable_index_birth_time_check)) {
         // Reject reads arriving at index with a read time earlier than the index birth time.
         // TODO(#33155): index birth_time isn't set for xCluster automatic-mode target (where
         // backfill is replicated from the source).
-        auto birth_time = table_info->index_info->birth_time();
-        auto birth_ht = HybridTime(birth_time);
+        const auto birth_time = table_info->index_info->birth_time();
         VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
-                << " birth_time=" << birth_time << " (" << birth_ht << ")"
+                << " birth_time=" << birth_time
                 << " retain_delete_markers="
                 << table_info->schema().table_properties().retain_delete_markers()
                 << " read_time=" << read_time_.read;
-        if (birth_time != 0 && !birth_ht.is_special() && read_time_.read < birth_ht) {
+        if (birth_time && read_time_.read < birth_time) {
           return STATUS(
               SnapshotTooOld,
               Format("Query read time < index birth time: $0 < [$1] $2",
-                     read_time_.read.ToString(), table_info->table_id, birth_ht.ToString()),
+                     read_time_.read, table_info->table_id, birth_time),
               TransactionError(TransactionErrorCode::kSnapshotTooOld));
         }
         // Master persists index birth before launching AsyncBackfillDone task in
         // AllowCompactionsToGCDeleteMarkers. So if the delete markers are still set,
         // reject reads with retryable error until the task to clear the delete markers
         // is processed, which would set birth_time (if one exists).
-        if (birth_time == 0 &&
+        if (!birth_time &&
             table_info->schema().table_properties().retain_delete_markers()) {
           return STATUS_FORMAT(
               LeaderNotReadyToServe,

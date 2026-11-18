@@ -2111,6 +2111,36 @@ TEST_P(PgVectorIndexTest, DeleteAndUpdate) {
   ASSERT_NO_FATALS(VerifyRows(conn, AddFilter::kTrue, expected_filtered));
 }
 
+// The backfill indexes rows as of the time the index is added to the tablet, so the index misses
+// vectors deleted or updated after an earlier read time. Such a read must not use the index.
+TEST_P(PgVectorIndexTest, ReadBeforeIndexCreation) {
+  constexpr size_t kNumRows = 64;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  const auto read_time_us = GetCurrentTimeMicros();
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, 500, 9000]' WHERE id = 2"));
+  ASSERT_OK(CreateIndex(conn));
+
+  // Read the table as of read_time_us, and the catalog as of now, so the index is visible.
+  ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", read_time_us));
+  // The read time is before the delete.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1")), 1);
+  for (int64_t id : {1, 2}) {
+    const auto query = "SELECT * FROM test" + IndexQuerySuffix(Vector(id), 1);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    auto result = conn.FetchAllAsString(query);
+    LOG(INFO) << "Search for " << id << ": " << result;
+    if (result.ok()) {
+      ASSERT_EQ(*result, ExpectedRow(id));
+    } else {
+      ASSERT_STR_CONTAINS(result.status().ToString(), "index birth time");
+    }
+  }
+}
+
 // The search merges rows from intents with the index results. A row without a vector there must
 // be skipped, and must hide its old vector, which is still in the index.
 void PgVectorIndexTest::TestNullVectorsInIntents(bool commit) {

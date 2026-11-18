@@ -68,7 +68,7 @@ class DocVectorIndexTest : public YBTest {
         "T test: ", GetTestPath("vector_index"),
         [] { return DocVectorIndexThreadPools{}; }, Slice(), TableWritesReverseMapping::kFalse,
         HybridTime::kMin,
-        /* split_generation= */ 0, qlexpr::IndexInfo(index_info_pb),
+        /* split_generation= */ 0, qlexpr::IndexInfo(index_info_pb, HybridTime::kInvalid),
         std::make_unique<StubVectorIndexContext>(), /* block_cache= */ nullptr,
         /* mem_tracker= */ nullptr,
         METRIC_ENTITY_table.Instantiate(&metric_registry_, "test"));

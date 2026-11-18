@@ -1622,7 +1622,7 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   info->table_type = VERIFY_RESULT(PBToClientTableType(resp.table_type()));
   info->index_map.FromPB(resp.indexes());
   if (resp.has_index_info()) {
-    info->index_info.emplace(resp.index_info());
+    info->index_info.emplace(resp.index_info(), HybridTime::kInvalid);
   }
   if (resp.has_replication_info()) {
     info->replication_info.emplace(resp.replication_info());

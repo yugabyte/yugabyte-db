@@ -3416,7 +3416,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   std::optional<qlexpr::IndexInfo> index_info;
   if (table_info.has_index_info()) {
-    index_info.emplace(table_info.index_info());
+    index_info.emplace(table_info.index_info(), ht);
   }
 
   // Decided before the table is added, so that the mark goes into the superblock together with the

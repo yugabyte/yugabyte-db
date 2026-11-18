@@ -31,6 +31,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/stl_util.h"
 
@@ -44,7 +45,10 @@ namespace yb::qlexpr {
 // A class to maintain the information of an index.
 class IndexInfo {
  public:
-  explicit IndexInfo(const IndexInfoPB& pb);
+  // added_ht is when the index was added to the tablet, valid only for the index's own table on a
+  // tablet. The tablet backfills a vector index as of that time, so it is the birth time of a
+  // vector index that has none in pb.
+  IndexInfo(const IndexInfoPB& pb, HybridTime added_ht);
   IndexInfo(const IndexInfo& rhs);
   IndexInfo(IndexInfo&& rhs);
   IndexInfo();
@@ -128,7 +132,7 @@ class IndexInfo {
     return num_rows_backfilled_in_index_;
   }
 
-  uint64_t birth_time() const {
+  HybridTime birth_time() const {
     return birth_time_;
   }
 
@@ -173,7 +177,7 @@ class IndexInfo {
   const Status backfill_status_;
   const uint64_t num_rows_read_from_table_for_backfill_ = 0;
   const double num_rows_backfilled_in_index_ = 0;
-  const uint64_t birth_time_ = 0;
+  const HybridTime birth_time_ = HybridTime::kInvalid;
 
   // Column ids covered by the index (include indexed columns).
   std::unordered_set<ColumnId, boost::hash<ColumnIdRep>> covered_column_ids_;
