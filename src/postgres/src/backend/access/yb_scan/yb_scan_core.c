@@ -3401,15 +3401,10 @@ YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
 }
 
 /*
- * Sets up the merge sort columns of a merge scan as columns read by the
- * request whose rows the merge compares.  The merge compares every merge sort
- * column, so that request must read each one.  A separate index request reads
- * them as targets of its own.  The main request reads them through attnums,
- * its set of required columns, along with the columns that its targets, local
- * filters, and rechecks use, so that a column it reads anyway is not read
- * twice.  attnums is NULL under aggregate pushdown, whose main request returns
- * aggregate results instead of rows, and no merge scan gets aggregate pushdown
- * (#38305).
+ * Sets up targets for a merge scan.  The merge compares every merge sort
+ * column, so the scan must read each one.  attnums is an in/out param for the
+ * main request's set of targeted columns, or it is NULL if the caller sets up
+ * the main request's targets itself.
  */
 static void
 ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan,
