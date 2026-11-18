@@ -22,6 +22,10 @@
 #include "utils/numeric.h"
 #include "utils/timestamp.h"
 
+/* YB includes */
+#include "utils/guc.h"
+#include "yb_ysql_conn_mgr_helper.h"
+
 /* Shared PRNG state used by all the random functions */
 static pg_prng_state prng_state;
 static bool prng_seed_set = false;
@@ -84,6 +88,16 @@ setseed(PG_FUNCTION_ARGS)
 
 	pg_prng_fseed(&prng_state, seed);
 	prng_seed_set = true;
+
+	/*
+	 * YB: Making connection sticky for setting seed as the RNG state is a
+	 * session state.
+	 */
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Making connection sticky for setseed");
+		yb_ysql_conn_mgr_sticky_guc = true;
+	}
 
 	PG_RETURN_VOID();
 }
