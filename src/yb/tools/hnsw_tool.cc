@@ -805,10 +805,8 @@ class BenchmarkTool {
       vertex_id_to_query_distance_fn =
           [this, metric = hnsw_options().template CreateMetric<FloatVector>()](
               VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
-            return metric(
-                pointer_cast<const unum::usearch::byte_t*>(
-                    input_vectors_[VertexIdToInputVectorIndex(vertex_id)].data()),
-                pointer_cast<const unum::usearch::byte_t*>(v.data()));
+            return MetricDistance(
+                metric, input_vectors_[VertexIdToInputVectorIndex(vertex_id)].data(), v.data());
           };
     } else {
       vertex_id_to_query_distance_fn =
