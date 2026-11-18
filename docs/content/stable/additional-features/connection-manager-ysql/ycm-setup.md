@@ -283,13 +283,17 @@ Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend
 
 ## Audit logging with pgaudit
 
-[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager, with the following differences from PostgreSQL:
+[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager. Configure pgaudit parameters with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or the `ysql_pg_conf_csv` flag rather than with `SET` in client sessions. Setting a string-type pgaudit parameter (`pgaudit.log`, `pgaudit.log_level`, or `pgaudit.role`) during a session makes the connection [sticky](#sticky-connections); Settings applied in the other ways don't.
+
+pgaudit behaves differently from PostgreSQL in the following ways:
 
 - **ALTER ROLE SET and ALTER DATABASE SET changes reach existing sessions.** In PostgreSQL, a statement such as `ALTER ROLE app SET pgaudit.log = 'none'` applies only to sessions that connect afterwards. With the default `gradual` adoption strategy, an existing session starts using the new value when its next transaction runs on a backend that has it. For example, if you turn off auditing for a role, its existing sessions stop being audited mid-session; if you turn auditing on, they start being audited without reconnecting. To keep existing sessions on the values they connected with, as in PostgreSQL, set `ysql_conn_mgr_alter_guc_adoption_strategy` to `connection_static`. For details, see [ALTER ROLE SET and ALTER DATABASE SET commands](#alter-role-set-and-alter-database-set-commands).
 
-- **STATEMENT_ID is numbered per backend, not per session.** pgaudit documents STATEMENT_ID as a sequential ID unique within the session, but the counter belongs to the backend process that runs the statement. Because sessions share backends, a session's STATEMENT_IDs can start above 1 and skip numbers, the same ID can appear twice in one session after it moves to another backend, and two sessions can log the same ID. SUBSTATEMENT_ID is unaffected, because a statement always runs on a single backend.
+- **STATEMENT_ID isn't sequential within a session.** pgaudit numbers statements with a counter in the backend process that runs them. Because sessions share backends, a session's STATEMENT_IDs can start above 1, skip numbers, and repeat after the session moves to another backend, and two sessions can log the same ID. As a result, a gap in STATEMENT_IDs doesn't mean that a statement went unlogged.
 
-    Don't use STATEMENT_ID to group audit lines by session. The `%p` (process ID) and `%c` (session ID) escapes of `log_line_prefix` also identify the backend, not the client session. Instead, have each client set a distinct `application_name` and add `%a` to `log_line_prefix`, or combine `%u` (user) and `%d` (database) with the statement text and timestamp.
+    STATEMENT_ID still groups the audit lines of a single statement. A statement always runs on one backend, so STATEMENT_ID together with the backend's `%c` (session ID) escape of `log_line_prefix` identifies the statement, and SUBSTATEMENT_ID numbers its substatements as in PostgreSQL.
+
+    Don't use STATEMENT_ID, `%p` (process ID), or `%c` to group audit lines by client session, because they identify the backend, not the client session. Instead, have each client set a distinct `application_name` and add `%a` to `log_line_prefix`, or combine `%u` (user) and `%d` (database) with the statement text and timestamp. The `%h` and `%r` (client host) escapes show the address of YSQL Connection Manager, not of the client.
 
 ## Limitations
 
