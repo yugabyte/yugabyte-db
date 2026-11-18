@@ -247,11 +247,12 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, enable_object_locking_infra, kLocalPersisted, 
 // so that DDLs with global object locks wait for it (#36572).
 //
 // Replaces enable_object_locking_infra, which 2025.2 and 2026.1 already promote. As an AutoFlag
-// that starts unpromoted on upgrade, it keeps every transaction in legacy mode until finalize,
-// i.e. until all nodes run the new binary. So the mixed-mode handling only has to deal with new
-// mode and legacy mode transactions that both come from new binaries. This assumes the pre-upgrade
-// cluster has the features off. If they are on, upgraded tservers drop back to legacy mode until
-// finalize, while the not-yet-upgraded ones keep using the features.
+// that starts unpromoted on upgrade, it keeps every transaction without global object locking
+// until finalize, i.e. until all nodes run the new binary. So the mixed-mode handling only has to
+// deal with transactions with and without global object locking that both come from new binaries.
+// This assumes the pre-upgrade cluster has the features off. If they are on, upgraded tservers run
+// without global object locking until finalize, while the not-yet-upgraded ones keep using the
+// features.
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_global_object_locking_infra, kLocalPersisted, false,
     true,
     "Auto flag that gates global object locking during upgrade. With this flag and "
