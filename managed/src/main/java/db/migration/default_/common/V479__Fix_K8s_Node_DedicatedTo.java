@@ -33,7 +33,7 @@ import play.libs.Json;
  * replacement.
  */
 @Slf4j
-public class V478__Fix_K8s_Node_DedicatedTo extends BaseJavaMigration {
+public class V479__Fix_K8s_Node_DedicatedTo extends BaseJavaMigration {
   private static final String MASTER = "MASTER";
   private static final String TSERVER = "TSERVER";
 
