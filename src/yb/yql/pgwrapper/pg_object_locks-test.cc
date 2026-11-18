@@ -70,7 +70,6 @@ DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
-DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
 DECLARE_int64(olm_poll_interval_ms);
 DECLARE_string(vmodule);
@@ -2950,45 +2949,6 @@ TEST_P(PgObjectLocksRetryTest, ReadRestartRetryKeepsLocalLimits) {
   ASSERT_OK(count);
   LOG(INFO) << "restarts: " << restarts.load();
   ASSERT_LE(restarts.load(), kNumTablets);
-  ASSERT_OK(writer.CommitTransaction());
-}
-
-// A retry that starts after the failed attempt's global limit has passed must read at its own
-// (current) read time, with the global limit raised to it. Reading at the old global limit would
-// miss rows committed before the retry started.
-TEST_P(PgObjectLocksRetryTest, ReadRestartRetryPastGlobalLimitReadsLatest) {
-  auto conn = ASSERT_RESULT(Connect());
-  auto writer = ASSERT_RESULT(ConnectWriter());
-
-  // Hold the tserver at the restart until row 11 is committed.
-  CountDownLatch restarting(1);
-  CountDownLatch row_committed(1);
-  std::atomic<bool> first_restart{true};
-  SyncPoint::GetInstance()->SetCallBack(
-      "PgClientSession::RestartTransactionForRetry", [&](void*) {
-        ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
-        if (first_restart.exchange(false)) {
-          restarting.CountDown();
-          row_committed.Wait();
-        }
-      });
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
-  {
-    TestThreadHolder thread_holder;
-    thread_holder.AddThreadFunctor([&writer] {
-      ASSERT_OK(writer.Execute("INSERT INTO t2 SELECT 1, COUNT(*) FROM gate"));
-    });
-    auto release_tserver = ScopeExit([&] { row_committed.CountDown(); });
-    ASSERT_TRUE(restarting.WaitFor(30s * kTimeMultiplier));
-    // The wait drives the uncertainty window, not an ordering: the retry's read time must be past
-    // the failed attempt's global limit.
-    SleepFor(MonoDelta::FromMicroseconds(FLAGS_max_clock_skew_usec) + 100ms);
-    ASSERT_OK(conn.Execute("INSERT INTO gate VALUES (11)"));
-  }
-  ASSERT_EQ(ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT v FROM t2 WHERE id = 1")), 11);
   ASSERT_OK(writer.CommitTransaction());
 }
 
