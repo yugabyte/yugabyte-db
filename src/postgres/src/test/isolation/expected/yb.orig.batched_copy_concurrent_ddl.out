@@ -1,0 +1,248 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s3_lock s1_copy_t s2_create_trigger s3_triggers s3_unlock s2_triggers s2_counts_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_create_trigger: CREATE TRIGGER reject_big_b BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION reject_big_b(); <waiting ...>
+step s3_triggers: SELECT count(*) FROM pg_trigger WHERE tgrelid = 't'::regclass AND NOT tgisinternal;
+count
+-----
+    0
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step s2_create_trigger: <... completed>
+step s2_triggers: SELECT tgname FROM pg_trigger WHERE tgrelid = 't'::regclass AND NOT tgisinternal;
+tgname      
+------------
+reject_big_b
+(1 row)
+
+step s2_counts_t: SELECT b, count(*) FROM t GROUP BY b ORDER BY b;
+  b|count
+---+-----
+  1|   20
+999|   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_t s2_add_check s3_constraints s3_unlock s2_constraints s2_counts_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_add_check: ALTER TABLE t ADD CONSTRAINT b_small CHECK (b < 100); <waiting ...>
+step s3_constraints: SELECT count(*) FROM pg_constraint WHERE conrelid = 't'::regclass AND conname IN ('b_small', 'b_fk');
+count
+-----
+    0
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step s2_add_check: <... completed>
+ERROR:  check constraint "b_small" of relation "t" is violated by some row
+step s2_constraints: SELECT conname, convalidated FROM pg_constraint WHERE conrelid = 't'::regclass AND contype IN ('c', 'f') ORDER BY conname;
+conname|convalidated
+-------+------------
+gate   |t           
+(1 row)
+
+step s2_counts_t: SELECT b, count(*) FROM t GROUP BY b ORDER BY b;
+  b|count
+---+-----
+  1|   20
+999|   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_t_null s2_set_not_null s3_not_null s3_unlock s2_not_null s2_counts_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t_null: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g," 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_set_not_null: ALTER TABLE t ALTER COLUMN b SET NOT NULL; <waiting ...>
+step s3_not_null: SELECT attnotnull FROM pg_attribute WHERE attrelid = 't'::regclass AND attname = 'b';
+attnotnull
+----------
+f         
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t_null: <... completed>
+step s2_set_not_null: <... completed>
+ERROR:  column "b" of relation "t" contains null values
+step s2_not_null: SELECT attnotnull FROM pg_attribute WHERE attrelid = 't'::regclass AND attname = 'b';
+attnotnull
+----------
+f         
+(1 row)
+
+step s2_counts_t: SELECT b, count(*) FROM t GROUP BY b ORDER BY b;
+b|count
+-+-----
+1|   20
+ |   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_t s2_add_fk s3_constraints s3_unlock s2_constraints s2_counts_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_add_fk: ALTER TABLE t ADD CONSTRAINT b_fk FOREIGN KEY (b) REFERENCES p (id); <waiting ...>
+step s3_constraints: SELECT count(*) FROM pg_constraint WHERE conrelid = 't'::regclass AND conname IN ('b_small', 'b_fk');
+count
+-----
+    0
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step s2_add_fk: <... completed>
+ERROR:  insert or update on table "t" violates foreign key constraint "b_fk"
+step s2_constraints: SELECT conname, convalidated FROM pg_constraint WHERE conrelid = 't'::regclass AND contype IN ('c', 'f') ORDER BY conname;
+conname|convalidated
+-------+------------
+gate   |t           
+(1 row)
+
+step s2_counts_t: SELECT b, count(*) FROM t GROUP BY b ORDER BY b;
+  b|count
+---+-----
+  1|   20
+999|   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_t s2_create_index s3_indexes s3_unlock s2_index_check s2_counts_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_create_index: CREATE INDEX NONCONCURRENTLY t_b_idx ON t (b); <waiting ...>
+step s3_indexes: SELECT count(*) FROM pg_class WHERE relname IN ('t_b_idx', 'pt1_b_idx');
+count
+-----
+    0
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step s2_create_index: <... completed>
+step s2_index_check: SELECT yb_index_check('t_b_idx'::regclass);
+yb_index_check
+--------------
+(0 rows)
+
+step s2_counts_t: SELECT b, count(*) FROM t GROUP BY b ORDER BY b;
+  b|count
+---+-----
+  1|   20
+999|   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_pt s2_index_partition s3_indexes s3_unlock s2_count_pt
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_pt: COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_index_partition: CREATE INDEX NONCONCURRENTLY pt1_b_idx ON pt1 (b); <waiting ...>
+step s3_indexes: SELECT count(*) FROM pg_class WHERE relname IN ('t_b_idx', 'pt1_b_idx');
+count
+-----
+    0
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_pt: <... completed>
+step s2_index_partition: <... completed>
+step s2_count_pt: SELECT count(*) FROM pt;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_ts s2_alter_sequence s3_sequence_max s3_unlock s2_count_ts
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_ts: COPY ts (k, b) FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_alter_sequence: ALTER SEQUENCE sq MAXVALUE 1000000; <waiting ...>
+step s3_sequence_max: SELECT seqmax FROM pg_sequence WHERE seqrelid = 'sq'::regclass;
+             seqmax
+-------------------
+9223372036854775807
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_ts: <... completed>
+step s2_alter_sequence: <... completed>
+step s2_count_ts: SELECT count(*) FROM ts;
+count
+-----
+   40
+(1 row)
+

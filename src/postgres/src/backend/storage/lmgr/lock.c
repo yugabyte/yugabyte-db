@@ -392,6 +392,58 @@ GetYbObjectLockId(const LOCKTAG *locktag)
 	};
 }
 
+static void
+YbAcquireObjectLockOnTserver(LockMethod lockMethodTable, const LOCKTAG *locktag,
+							 LOCKMODE lockmode, bool sessionLock)
+{
+	int			log_level = (locktag->locktag_field2 >= FirstNormalObjectId) ?
+		((lockmode >= ShareUpdateExclusiveLock) ? DEBUG1 : DEBUG2) : DEBUG4;
+
+	elog(log_level, "LockAcquire start: lock [%u,%u] mode: %s",
+		 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
+
+	/*
+	 * With lock_timeout disabled, pggate still bounds the acquisition, but nothing armed a
+	 * timer to report that bound: it expired as a transport deadline, so a statement blocked on
+	 * a conflicting lock failed with an RPC or shared-memory timeout naming neither the lock nor
+	 * the holder. Arm postgres' timer just inside pggate's deadline so the statement is
+	 * cancelled with "canceling statement due to lock timeout" instead. The wait is unchanged.
+	 *
+	 * Bootstrap mode is excluded: BootstrapModeMain never calls InitializeTimeouts, so touching
+	 * LOCK_TIMEOUT there is a FATAL.
+	 */
+	int			lock_timeout_ms = LockTimeout;
+
+	if (lock_timeout_ms <= 0 && !IsBootstrapProcessingMode())
+	{
+		int			rpc_timeout_ms = YBCGetDefaultRpcTimeoutMs();
+
+		/*
+		 * Reserve time ("slack") for pggate to report lock error messages before
+		 * the RPC deadline expires.
+		 *
+		 * We cap the slack at 2000 ms (matching pg_client_extra_timeout_ms), or half
+		 * the total RPC deadline if the deadline is under 4 seconds.
+		 */
+		int			slack_ms = Min(2000, rpc_timeout_ms / 2);
+
+		lock_timeout_ms = rpc_timeout_ms - slack_ms;
+	}
+
+	if (lock_timeout_ms > 0)
+		enable_timeout_after(LOCK_TIMEOUT, lock_timeout_ms);
+
+	HandleYBStatus(YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock));
+
+	if (lock_timeout_ms > 0)
+		disable_timeout(LOCK_TIMEOUT, false);
+
+	CHECK_FOR_INTERRUPTS();
+
+	elog(log_level, "LockAcquired: lock [%u,%u] mode: %s",
+		 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
+}
+
 int
 YbNumSessionObjectLocks()
 {
@@ -987,52 +1039,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		 * non-shared structure and return. This makes subsequent redundant
 		 * lock requests equivalent to a no-op.
 		 */
-		int			log_level = (locktag->locktag_field2 >= FirstNormalObjectId) ?
-			((lockmode >= ShareUpdateExclusiveLock) ? DEBUG1 : DEBUG2) : DEBUG4;
-
-		elog(log_level, "LockAcquire start: lock [%u,%u] mode: %s",
-			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
-
-		/*
-		 * With lock_timeout disabled, pggate still bounds the acquisition, but nothing armed a
-		 * timer to report that bound: it expired as a transport deadline, so a statement blocked on
-		 * a conflicting lock failed with an RPC or shared-memory timeout naming neither the lock nor
-		 * the holder. Arm postgres' timer just inside pggate's deadline so the statement is
-		 * cancelled with "canceling statement due to lock timeout" instead. The wait is unchanged.
-		 *
-		 * Bootstrap mode is excluded: BootstrapModeMain never calls InitializeTimeouts, so touching
-		 * LOCK_TIMEOUT there is a FATAL.
-		 */
-		int			lock_timeout_ms = LockTimeout;
-
-		if (lock_timeout_ms <= 0 && !IsBootstrapProcessingMode())
-		{
-			int			rpc_timeout_ms = YBCGetDefaultRpcTimeoutMs();
-
-			/*
-			 * Reserve time ("slack") for pggate to report lock error messages before
-			 * the RPC deadline expires.
-			 *
-			 * We cap the slack at 2000 ms (matching pg_client_extra_timeout_ms), or half
-			 * the total RPC deadline if the deadline is under 4 seconds.
-			 */
-			int			slack_ms = Min(2000, rpc_timeout_ms / 2);
-
-			lock_timeout_ms = rpc_timeout_ms - slack_ms;
-		}
-
-		if (lock_timeout_ms > 0)
-			enable_timeout_after(LOCK_TIMEOUT, lock_timeout_ms);
-
-		HandleYBStatus(YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock));
-
-		if (lock_timeout_ms > 0)
-			disable_timeout(LOCK_TIMEOUT, false);
-
-		CHECK_FOR_INTERRUPTS();
-
-		elog(log_level, "LockAcquired: lock [%u,%u] mode: %s",
-			 locktag->locktag_field1, locktag->locktag_field2, lockMethodTable->lockModeNames[lockmode]);
+		YbAcquireObjectLockOnTserver(lockMethodTable, locktag, lockmode, sessionLock);
 		GrantLockLocal(locallock, owner);
 		return LOCKACQUIRE_OK;
 	}
@@ -5086,6 +5093,132 @@ YbLockHeldOnObjectBySession(const LOCKTAG *locktag)
 		}
 	}
 	return false;
+}
+
+/*
+ * Batched COPY commits the YB transaction after each batch (see
+ * YBCommitTransactionIntermediate) while the PG transaction continues.  DocDB
+ * releases the transaction's object locks at that commit, but the local lock
+ * table still shows them as held.  Later requests for them then stop at the
+ * local table, and a concurrent DDL does not wait for the COPY.
+ *
+ * YbHoldTxnObjectLocksForSession and YbReacquireTxnObjectLocks keep every lock
+ * the transaction holds across such a commit.  They do it the way upstream
+ * keeps a lock across CommitTransactionCommand (see DefineIndex): a session
+ * lock, taken while the transaction still holds the same lock, covers the
+ * commit.  After the commit, the new YB transaction takes the locks again and
+ * the session locks are released, so the local lock table matches DocDB.
+ *
+ * One release-all request releases the session locks.  The tserver applies a
+ * release after it returns, and only a release-all request is limited to the
+ * subtransaction that took the locks.  A release that names an object can
+ * arrive after the next batch has taken its session lock on that object, and
+ * then releases that lock too.
+ *
+ * The session locks are not held while COPY runs user code, because the
+ * tserver rejects a session advisory lock request from a session that holds
+ * session object locks.
+ */
+static List *
+YbTxnObjectLockTags(void)
+{
+	HASH_SEQ_STATUS status;
+	LOCALLOCK  *locallock;
+	List	   *tags = NIL;
+
+	hash_seq_init(&status, LockMethodLocalHash);
+	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+	{
+		if (locallock->nLocks <= 0 ||
+			LOCALLOCK_LOCKMETHOD(*locallock) != DEFAULT_LOCKMETHOD)
+			continue;
+		for (int i = 0; i < locallock->numLockOwners; i++)
+		{
+			if (locallock->lockOwners[i].owner != NULL)
+			{
+				LOCALLOCKTAG *tag = palloc(sizeof(LOCALLOCKTAG));
+
+				*tag = locallock->tag;
+				tags = lappend(tags, tag);
+				break;
+			}
+		}
+	}
+	return tags;
+}
+
+static void
+YbReleaseAllSessionObjectLocks(void)
+{
+	HASH_SEQ_STATUS status;
+	LOCALLOCK  *locallock;
+	bool		released = false;
+
+	hash_seq_init(&status, LockMethodLocalHash);
+	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+	{
+		LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
+
+		if (LOCALLOCK_LOCKMETHOD(*locallock) != DEFAULT_LOCKMETHOD)
+			continue;
+		for (int i = 0; i < locallock->numLockOwners; i++)
+		{
+			if (lockOwners[i].owner != NULL)
+				continue;
+
+			locallock->nLocks -= lockOwners[i].nLocks;
+			locallock->numLockOwners--;
+			if (i < locallock->numLockOwners)
+				lockOwners[i] = lockOwners[locallock->numLockOwners];
+			if (locallock->nLocks == 0)
+				RemoveLocalLock(locallock);
+			released = true;
+			break;
+		}
+	}
+
+	if (released)
+		HandleYBStatus(YBCReleaseSessionObjectLock((YbcObjectLockId) {}, true));
+}
+
+void
+YbHoldTxnObjectLocksForSession(void)
+{
+	List	   *tags;
+	ListCell   *lc;
+
+	Assert(YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED);
+	Assert(YbNumSessionObjectLocks() == 0);
+
+	tags = YbTxnObjectLockTags();
+	foreach(lc, tags)
+	{
+		LOCALLOCKTAG *tag = (LOCALLOCKTAG *) lfirst(lc);
+
+		(void) LockAcquire(&tag->lock, tag->mode, true, false);
+	}
+	list_free_deep(tags);
+}
+
+void
+YbReacquireTxnObjectLocks(void)
+{
+	List	   *tags;
+	ListCell   *lc;
+
+	Assert(YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED);
+
+	tags = YbTxnObjectLockTags();
+	foreach(lc, tags)
+	{
+		LOCALLOCKTAG *tag = (LOCALLOCKTAG *) lfirst(lc);
+
+		YbAcquireObjectLockOnTserver(LockMethods[DEFAULT_LOCKMETHOD],
+									 &tag->lock, tag->mode, false);
+	}
+	list_free_deep(tags);
+
+	YbReleaseAllSessionObjectLocks();
 }
 
 #ifdef USE_ASSERT_CHECKING
