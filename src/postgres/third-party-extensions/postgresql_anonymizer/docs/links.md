@@ -5,31 +5,47 @@ Videos / Presentations
 --------------------------------------------------------------------------------
 
 * French: https://www.youtube.com/watch?v=KGSlp4UygdU
+* English: https://www.youtube.com/watch?v=niIIFL4s-L8
 * Chinese: https://www.youtube.com/watch?v=n9atI31FcSM
 
-Similar technologies
+Similar Tools
 --------------------------------------------------------------------------------
 
-* [greenmask](https://github.com/GreenmaskIO/greenmask)
-  Anonymous dump utility written in Golang
+Here's a list of **open-source** projects with similar goals. AS the PostgreSQL
+Anonymizer extension is often compared to some of them, we try to maintain the
+feature matrix below:
 
-* [pganonymize](https://github.com/rheinwerk-verlag/pganonymize)
-  A commandline tool for anonymizing PostgreSQL databases
+<!-- rumdl-disable MD033 -->
 
-* [pgantomizer](https://github.com/asgeirrr/pgantomizer)
-  Anonymous dumps based on masking rules written in a YAML file
+|  Name                   | rules<br>syntax | static<br>masking | dynamic<br>masking | backup<br>masking | replica<br>masking | FDW<br>masking |
+| ----------------------- | --------------- | ----------------- | ------------------ | ----------------- | ------------------ | -------------- |
+| [PostgreSQL Anonymizer] | SQL             |       ✅          |        ✅          |    ✅             |   ✅               |   ✅           |
+| [database anonymizer]   | YAML            |       -           |        -           |    ✅             |   -                |   -            |
+| [greenmask]             | YAML            |       -           |        -           |    ✅             |   -                |   -            |
+| [pg_anon]               | JSON            |       -           |        -           |    ✅             |   -                |   -            |
+| [pg_anonymize]          | SQL             |       -           |        ✅          |    ✅             |   -                |   -            |
+| [pg_diffix]             | SQL             |       -           |        ✅          |    -              |   -                |   -            |
+| [pg-anonymizer]         | JS              |       -           |        -           |    ✅             |   -                |   -            |
+| [pg-mask]               | SQL             |       -           |        -           |    ✅             |   -                |   -            |
+| [pganonymize]           | YAML            |       -           |        -           |    ✅             |   -                |   -            |
+| [pgantomizer]           | YAML            |       -           |        -           |    ✅             |   -                |   -            |
+| [pgEdge Anonymizer]     | YAML            |       ✅          |        -           |    -              |   -                |   -            |
+| [pgstream]              | YAML            |       -           |        -           |    -              |   ✅               |   -            |
 
-* [pgsodium and postgresql-anonymizer](https://github.com/michelp/pgsodium/blob/michelp/anonymizer-example/example/PgSodiumAnonymizer.ipynb)
-  Pseudononymous Access To Encrypted Table
 
-* [pg_diffix](https://github.com/diffix/pg_diffix)
-  PostgreSQL extension implementing differential privacy (inactive)
+[PostgreSQL Anonymizer]: https://labs.dalibo.com/postgresql_anonymizer
+[database anonymizer]: https://gitnet.fr/deblan/database-anonymizer
+[greenmask]: https://github.com/GreenmaskIO/greenmask
+[pganonymize]: https://github.com/rheinwerk-verlag/pganonymize
+[pgantomizer]: https://github.com/asgeirrr/pgantomizer
+[pg_diffix]: https://github.com/diffix/pg_diffix
+[pg_anonymize]: https://github.com/rjuju/pg_anonymize
+[pg-anonymizer]: https://github.com/rap2hpoutre/pg-anonymizer
+[pg-mask]: https://github.com/rpobulic/pg-mask
+[pgEdge Anonymizer]: https://github.com/pgEdge/pgedge-anonymizer
+[pgstream]: https://github.com/xataio/pgstream
+[pg_anon]: https://github.com/TantorLabs/pg_anon
 
-* [pg_anonymize](https://github.com/rjuju/pg_anonymize)
-  PostgreSQL extension implementing dynamic data anonymization
-
-* [pg-anonymizer](https://github.com/rap2hpoutre/pg-anonymizer)
-  Dump anonymized PostgreSQL database with a NodeJS CLI
 
 Similar Implementations
 --------------------------------------------------------------------------------

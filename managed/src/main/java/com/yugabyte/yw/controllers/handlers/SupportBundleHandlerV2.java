@@ -416,10 +416,7 @@ public class SupportBundleHandlerV2 {
   private void pruneK8sUnsupportedPromExports(
       SupportBundleFormDataV2 bundleData, Universe universe) {
     if (bundleData.prometheusMetricsTypes == null
-        || KubernetesUtil.isNodeExporterSidecarEnabled(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            universe,
-            confGetter)
+        || KubernetesUtil.isNodeExporterSidecarEnabled(universe, confGetter)
         || !bundleData.prometheusMetricsTypes.remove(PrometheusMetricsType.NODE_EXPORT)) {
       return;
     }
