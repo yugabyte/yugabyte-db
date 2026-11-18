@@ -6,13 +6,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -23,19 +20,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import junit.framework.TestCase;
-import org.apache.commons.lang3.tuple.Pair;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ShellLogsManagerTest extends TestCase {
-  @Rule public TemporaryFolder tmpFolder = new TemporaryFolder();
-
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
 
   @Mock Config mockConfig;
@@ -132,75 +124,9 @@ public class ShellLogsManagerTest extends TestCase {
     mockManager.createFilesForProcess(pid);
     mockManager.rotateLogs(1L, 1);
     assertEquals(2, files.size()); // Files are not removed
-    mockManager.onProcessStop(pid, false);
+    mockManager.onProcessStop(pid);
     mockManager.rotateLogs(1L, 1);
     assertTrue(files.isEmpty()); // Files are removed
-  }
-
-  @Test
-  public void testSkipRetentionRemovesOutputDespiteRetentionPolicy() throws IOException {
-    when(mockConfig.getBoolean(ShellLogsManager.COMMAND_OUTPUT_LOGS_DELETE_KEY)).thenReturn(true);
-    when(mockConfig.hasPath(ShellLogsManager.YB_LOGS_SHELL_OUTPUT_RETENTION_HOURS_KEY))
-        .thenReturn(true);
-    when(mockConfig.getInt(ShellLogsManager.YB_LOGS_SHELL_OUTPUT_RETENTION_HOURS_KEY))
-        .thenReturn(1);
-    ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
-    UUID retained = UUID.randomUUID();
-    Pair<File, File> retainedFiles = manager.createFilesForProcess(retained);
-    UUID deleted = UUID.randomUUID();
-    Pair<File, File> deletedFiles = manager.createFilesForProcess(deleted);
-
-    manager.onProcessStop(retained, false);
-    manager.onProcessStop(deleted, true);
-
-    assertTrue(retainedFiles.getLeft().exists());
-    assertTrue(retainedFiles.getRight().exists());
-    assertFalse(deletedFiles.getLeft().exists());
-    assertFalse(deletedFiles.getRight().exists());
-  }
-
-  @Test
-  public void testSkipRetentionKeepsOutputWhenDeleteIsDisabled() throws IOException {
-    when(mockConfig.getBoolean(ShellLogsManager.COMMAND_OUTPUT_LOGS_DELETE_KEY)).thenReturn(false);
-    ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
-    UUID pid = UUID.randomUUID();
-    Pair<File, File> files = manager.createFilesForProcess(pid);
-
-    manager.onProcessStop(pid, true);
-
-    assertTrue(files.getLeft().exists());
-    assertTrue(files.getRight().exists());
-  }
-
-  @Test
-  public void testOutputFilesAreReadableOnlyByOwner() throws IOException {
-    Pair<File, File> files =
-        managerWritingTo(tmpFolder.getRoot()).createFilesForProcess(UUID.randomUUID());
-    for (File file : List.of(files.getLeft(), files.getRight())) {
-      assertEquals(
-          PosixFilePermissions.fromString("rw-------"),
-          Files.getPosixFilePermissions(file.toPath()));
-    }
-  }
-
-  @Test
-  public void testRotationFindsOutputFilesWhereTheyAreWritten() throws IOException {
-    ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
-    UUID pid = UUID.randomUUID();
-    Pair<File, File> files = manager.createFilesForProcess(pid);
-    manager.onProcessStop(pid, false);
-    assertTrue(files.getLeft().exists());
-
-    manager.rotateLogs(null, 0);
-
-    assertFalse(files.getLeft().exists());
-    assertFalse(files.getRight().exists());
-  }
-
-  private ShellLogsManager managerWritingTo(File dir) {
-    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath))
-        .thenReturn(dir.getAbsolutePath());
-    return new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory, runtimeConfGetter);
   }
 
   private void testLogsRotation(

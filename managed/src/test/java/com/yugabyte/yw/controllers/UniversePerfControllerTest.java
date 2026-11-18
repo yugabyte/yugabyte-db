@@ -9,7 +9,6 @@
  */
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
@@ -17,23 +16,16 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CustomWsClientFactory;
@@ -58,9 +50,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
-import junitparams.Parameters;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import org.junit.Rule;
@@ -68,7 +58,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -103,7 +92,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
         spy(
             new UnusedIndexFinder(
                 mockNodeUniverseManager, mockPlatformExecutorFactory, mockConfGetter));
-    universePerfHandler = spy(new TestUniversePerfHandler(mockNodeUniverseManager, mockConfGetter));
+    universePerfHandler = spy(new TestUniversePerfHandler(mockNodeUniverseManager));
     universePerfController =
         spy(
             new UniversePerfController(
@@ -168,11 +157,6 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.maxThreads)))
         .thenReturn(22);
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.slowQueryDisableCommandLogging)))
-        .thenReturn(true);
-    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ysqlTimeoutSecs)))
-        .thenReturn(180L);
 
     customer = ModelFactory.testCustomer();
     universe = createUniverse(customer.getId());
@@ -183,7 +167,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   public void testQueryDistributionNoSuggestion1() {
     // Test case where all nodes of universe have equal query load, and hence no query distribution
     // related suggestions should be given.
-    mockQueryDistributionResponses(shellResponses.get(0));
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+        .thenReturn(shellResponses.get(0));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
@@ -211,7 +196,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   public void testQueryDistributionNoSuggestion2() {
     // Test case where suggestion would not be given because of minimum query count threshold
     // criteria (MINIMUM_TOTAL_QUERY_THRESHOLD_FOR_SUGGESTIONS=1000) not being satisfied.
-    mockQueryDistributionResponses(shellResponses.get(2), shellResponses.get(1));
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+        .thenReturn(shellResponses.get(2), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
@@ -250,7 +236,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     // overloaded in last 1 hour, and hence no suggestions.
 
     // Return 1000 numSelect for 1 node, 0 for remaining nodes
-    mockQueryDistributionResponses(shellResponses.get(0), shellResponses.get(1));
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+        .thenReturn(shellResponses.get(0), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
@@ -291,7 +278,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     mockedTime = mockedTime.plusHours(2);
 
     // Mock the query response such that all nodes had no load in last 2 hours.
-    mockQueryDistributionResponses(shellResponses.get(3));
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+        .thenReturn(shellResponses.get(3));
     queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
             customer.getUuid(), universe.getUniverseUUID());
@@ -311,7 +299,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     // Test case when one node is overloaded.
 
     // Return 1000 numSelect for 1 node, 0 for remaining nodes
-    mockQueryDistributionResponses(shellResponses.get(0), shellResponses.get(1));
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+        .thenReturn(shellResponses.get(0), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
@@ -354,8 +343,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     // Test case where multiple nodes are overloaded, and the most overloaded node is reported.
 
     // Return 1000 numSelect for 1 node, 0 for remaining nodes
-    mockQueryDistributionResponses(
-        shellResponses.get(0), shellResponses.get(4), shellResponses.get(5));
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+        .thenReturn(shellResponses.get(0), shellResponses.get(4), shellResponses.get(5));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
@@ -401,7 +390,8 @@ public class UniversePerfControllerTest extends FakeDBApplication {
 
     // Return 100 numSelect, 200 numDelete, 300 numInsert, 400 numUpdate queries for 1 node. 0 for
     // remaining nodes.
-    mockQueryDistributionResponses(shellResponses.get(6), shellResponses.get(1));
+    when(mockNodeUniverseManager.runYsqlCommand(any(), any(), any(), any()))
+        .thenReturn(shellResponses.get(6), shellResponses.get(1));
 
     Result queryDistributionSuggestions =
         universePerfController.getQueryDistributionSuggestions(
@@ -439,64 +429,6 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     assertTrue(json.get("description").asText().contains(nodeWithHeavyQueryLoad));
     assertEquals(
         "Redistribute queries to other nodes in the cluster", json.get("suggestion").asText());
-  }
-
-  @Test
-  @Parameters({"true", "false"})
-  public void testQueryDistributionFollowsDisableCommandLogging(boolean disableCommandLogging) {
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.slowQueryDisableCommandLogging)))
-        .thenReturn(disableCommandLogging);
-    mockQueryDistributionResponses(shellResponses.get(0));
-
-    universePerfController.getQueryDistributionSuggestions(
-        customer.getUuid(), universe.getUniverseUUID());
-
-    verify(mockNodeUniverseManager, atLeastOnce())
-        .runYsqlCommand(
-            any(),
-            any(),
-            any(),
-            any(),
-            eq(180L),
-            anyBoolean(),
-            anyBoolean(),
-            eq(!disableCommandLogging));
-  }
-
-  @Test
-  @Parameters({"true", "false"})
-  public void testQueryDistributionParseErrorLogsQueryTextOnlyWhenLoggingEnabled(
-      boolean disableCommandLogging) {
-    when(mockConfGetter.getConfForScope(
-            any(Universe.class), eq(UniverseConfKeys.slowQueryDisableCommandLogging)))
-        .thenReturn(disableCommandLogging);
-    // An unquoted token, which Jackson quotes in its error message.
-    mockQueryDistributionResponses(
-        ShellResponse.create(
-            ShellResponse.ERROR_CODE_SUCCESS,
-            " jsonb_agg\n-----------\n[{\"calls\": 1, \"query\": sentinel_query_text}]\n(1 row)"));
-    Logger logger = (Logger) LoggerFactory.getLogger(UniversePerfHandler.class);
-    ListAppender<ILoggingEvent> appender = new ListAppender<>();
-    appender.start();
-    logger.addAppender(appender);
-    try {
-      assertPlatformException(
-          () -> universePerfHandler.universeQueryDistributionSuggestion(universe));
-    } finally {
-      logger.detachAppender(appender);
-    }
-    String logged =
-        appender.list.stream()
-            .map(
-                event ->
-                    event.getFormattedMessage()
-                        + (event.getThrowableProxy() == null
-                            ? ""
-                            : event.getThrowableProxy().getMessage()))
-            .collect(Collectors.joining("\n"));
-    assertTrue(logged, logged.contains("Unable to parse"));
-    assertEquals(logged, !disableCommandLogging, logged.contains("sentinel_query_text"));
   }
 
   @Test
@@ -709,17 +641,10 @@ public class UniversePerfControllerTest extends FakeDBApplication {
         json.get(0).get("index_command").asText());
   }
 
-  private void mockQueryDistributionResponses(ShellResponse first, ShellResponse... rest) {
-    when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
-        .thenReturn(first, rest);
-  }
-
   private class TestUniversePerfHandler extends UniversePerfHandler {
 
-    public TestUniversePerfHandler(
-        NodeUniverseManager nodeUniverseManager, RuntimeConfGetter confGetter) {
-      super(nodeUniverseManager, confGetter);
+    public TestUniversePerfHandler(NodeUniverseManager nodeUniverseManager) {
+      super(nodeUniverseManager);
     }
 
     @Override

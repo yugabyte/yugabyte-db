@@ -180,13 +180,10 @@ public class ShellProcessHandler {
       if (appConfig.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
-      String outputDestination =
-          context.isLogCmdOutput()
-              ? String.format(
-                  "logging stdout=%s, stderr=%s",
-                  tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath())
-              : "output not logged";
-      logMsg = String.format("Starting proc (full cmd) - %s - %s", fullCommand, outputDestination);
+      logMsg =
+          String.format(
+              "Starting proc (full cmd) - %s - logging stdout=%s, stderr=%s",
+              fullCommand, tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath());
       if (context.isTraceLogging()) {
         log.trace(logMsg);
       } else {
@@ -201,12 +198,11 @@ public class ShellProcessHandler {
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      boolean logCmdOutput = context.isLogCmdOutput();
       boolean timedOut =
-          waitForProcessExit(
-              process, description, tempOutputFile, tempErrorFile, endTimeMs, logCmdOutput);
+          waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
+      boolean logCmdOutput = context.isLogCmdOutput();
       try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         if (logCmdOutput) {
@@ -276,7 +272,7 @@ public class ShellProcessHandler {
       } else {
         log.info(logMsg);
       }
-      shellLogsManager.onProcessStop(processUUID, !context.isLogCmdOutput());
+      shellLogsManager.onProcessStop(processUUID);
       if (context.getUuid() != null) {
         // TODO revisit this leak fix for backup for a cleaner approach.
         Util.removeProcess(context.getUuid());
@@ -384,12 +380,7 @@ public class ShellProcessHandler {
   // Returns true if the process was aborted because it exceeded endTimeMs, false if it exited on
   // its own.
   private static boolean waitForProcessExit(
-      Process process,
-      String description,
-      File outFile,
-      File errFile,
-      long endTimeMs,
-      boolean logAppLines)
+      Process process, String description, File outFile, File errFile, long endTimeMs)
       throws IOException, InterruptedException {
     boolean timedOut = false;
     try (FileInputStream outputInputStream = new FileInputStream(outFile);
@@ -401,8 +392,8 @@ public class ShellProcessHandler {
       while (!waitFor(process, Duration.ofSeconds(1), Duration.ofMillis(500))) {
         // read a limited number of lines so that we don't
         // get stuck infinitely without getting to the time check
-        tailStream(outputStream, 10000 /*maxLines*/, logAppLines);
-        tailStream(errorStream, 10000 /*maxLines*/, logAppLines);
+        tailStream(outputStream, 10000 /*maxLines*/);
+        tailStream(errorStream, 10000 /*maxLines*/);
         if (endTimeMs > 0 && (System.currentTimeMillis() >= endTimeMs)) {
           log.warn("Aborting command {} forcibly because it took too long", description);
           timedOut = true;
@@ -411,16 +402,17 @@ public class ShellProcessHandler {
         }
       }
       // check for any remaining lines
-      tailStream(outputStream, 0 /*maxLines*/, logAppLines);
-      tailStream(errorStream, 0 /*maxLines*/, logAppLines);
+      tailStream(outputStream);
+      tailStream(errorStream);
     }
     return timedOut;
   }
 
-  // logAppLines is false for commands whose output is not logged: a line of that output, such as
-  // query text, can contain "[app]".
-  private static void tailStream(BufferedReader br, long maxLines, boolean logAppLines)
-      throws IOException {
+  private static void tailStream(BufferedReader br) throws IOException {
+    tailStream(br, 0 /*maxLines*/);
+  }
+
+  private static void tailStream(BufferedReader br, long maxLines) throws IOException {
 
     String line;
     long count = 0;
@@ -429,7 +421,7 @@ public class ShellProcessHandler {
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
       line = line.trim();
-      if (logAppLines && line.contains("[app]")) {
+      if (line.contains("[app]")) {
         log.info(line);
       }
       count++;

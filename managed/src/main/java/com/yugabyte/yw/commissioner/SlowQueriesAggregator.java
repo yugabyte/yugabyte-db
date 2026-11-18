@@ -132,31 +132,12 @@ public class SlowQueriesAggregator {
                     data.get("calls").asText(),
                     data.get("mean_time").asText()));
           }
-          JsonNode result =
-              queryExecutor.executeQueryBatchInNodeShell(
-                  universe,
-                  Util.SYSTEM_PLATFORM_DB,
-                  insertQueries,
-                  node,
-                  !slowQueryDisableCommandLogging);
-          if (result != null && result.has("error")) {
-            // The error can quote the failed INSERT, which holds users' query text.
-            log.error(
-                "Failed to save slow queries data for universe {}: {}",
-                universe.getName(),
-                slowQueryDisableCommandLogging
-                    ? Util.REDACTED_YSQL_QUERY
-                    : result.get("error").asText());
-          } else if (result != null) {
-            long unsaved = insertQueries.size() - countInsertedRows(result.path("result").asText());
-            if (unsaved > 0) {
-              log.error(
-                  "Failed to save {} of {} slow queries for universe {}",
-                  unsaved,
-                  insertQueries.size(),
-                  universe.getName());
-            }
-          }
+          queryExecutor.executeQueryBatchInNodeShell(
+              universe,
+              Util.SYSTEM_PLATFORM_DB,
+              insertQueries,
+              node,
+              !slowQueryDisableCommandLogging);
         }
       } catch (Exception e) {
         log.error(
@@ -165,13 +146,6 @@ public class SlowQueriesAggregator {
             e.getMessage());
       }
     }
-  }
-
-  // ysqlsh carries on past a failed -c and exits with the status of the last one, so an earlier
-  // INSERT that fails shows only as a missing command tag.
-  @VisibleForTesting
-  static long countInsertedRows(String batchOutput) {
-    return batchOutput.lines().filter(line -> line.trim().equals("INSERT 0 1")).count();
   }
 
   // An E'' literal reads backslashes the same whatever standard_conforming_strings is set to.
