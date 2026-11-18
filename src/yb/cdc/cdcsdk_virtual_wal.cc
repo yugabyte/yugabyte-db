@@ -465,11 +465,6 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
 
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
-    if (tablet_checkpoint_pair.tablet_locations().hidden_table_released_by_cdc()) {
-      LOG_WITH_PREFIX(INFO) << "Not adding tablet " << tablet_id
-                            << " of a hidden table released by CDC";
-      continue;
-    }
     TabletStreamInfo tablet_info = {.stream_id = stream_id_, .tablet_id = tablet_id};
     auto entry_opt = VERIFY_RESULT(cdc_service_->cdc_state_table_->TryFetchEntry(
         {tablet_id, stream_id_}, CDCStateTableEntrySelector().IncludeActiveTime()));
@@ -505,6 +500,12 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
                               "enable the flag cdc_skip_unqualified_tables_for_polling.",
                               tablet_id, stream_id_));
       }
+    }
+
+    if (tablet_checkpoint_pair.tablet_locations().hidden_table_released_by_cdc()) {
+      LOG_WITH_PREFIX(INFO) << "Not adding tablet " << tablet_id
+                            << " of a hidden table released by CDC";
+      continue;
     }
 
     tablet_id_to_table_id_map_[tablet_id].insert(table_id);
