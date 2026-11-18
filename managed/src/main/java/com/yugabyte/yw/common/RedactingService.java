@@ -399,7 +399,7 @@ public class RedactingService {
 
   /** A text value holding serialized JSON is redacted as a tree; any other as free text. */
   private static String redactTextValue(String text, Set<String> names) {
-    if (!HbaConfRedactor.mentionsLdapBindPasswd(text) && names.stream().noneMatch(text::contains)) {
+    if (!mentionsSecret(text, names)) {
       return text;
     }
     String trimmed = text.trim();
@@ -419,6 +419,11 @@ public class RedactingService {
       }
     }
     return redactSensitiveInfoInString(text, names);
+  }
+
+  /** Whether text names a secret: one of names, or an ldapbindpasswd of ysql_hba_conf_csv. */
+  static boolean mentionsSecret(String text, Collection<String> names) {
+    return HbaConfRedactor.mentionsLdapBindPasswd(text) || names.stream().anyMatch(text::contains);
   }
 
   /** Redacts all sensitive field values (LDAP passwords, sensitive gflags) found in a string. */
