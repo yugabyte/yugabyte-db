@@ -31,7 +31,9 @@
 //
 
 #include <fcntl.h>
+#include <sys/resource.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <memory>
 #include <string>
@@ -46,6 +48,8 @@
 #include "yb/util/crc.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/errno.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/memenv/memenv.h"
 #include "yb/util/os-util.h"
@@ -60,6 +64,7 @@
 
 DECLARE_int32(o_direct_block_size_bytes);
 DECLARE_bool(TEST_simulate_fs_without_fallocate);
+DECLARE_bool(TEST_fail_direct_io_reopen_append);
 
 #if !defined(__APPLE__)
 #include <linux/falloc.h>
@@ -399,6 +404,89 @@ TEST_F(TestEnv, TestReopenDirectIOWritableFile) {
   ASSERT_OK(env_util::ReadFully(readable_file.get(), 0, data_size+1,
                                 &data_after_reopen, scratch_after_reopen.get()));
   ASSERT_EQ(data.ToBuffer()+one_byte.ToBuffer(), data_after_reopen.ToBuffer());
+}
+
+// Reopening an O_DIRECT file reads back its partial last block through a second fd. If that open
+// fails, the file must be left as is.
+TEST_F(TestEnv, TestReopenDirectIOWritableFileFailedReadBack) {
+  const auto test_path = GetTestPath("test_env_wf");
+  Random rnd(SeedRandom());
+  const size_t data_size = FLAGS_o_direct_block_size_bytes + 100;
+  std::unique_ptr<uint8_t[]> scratch(new uint8_t[data_size]);
+  RandomString(scratch.get(), data_size, &rnd);
+  const Slice data(scratch.get(), data_size);
+
+  WritableFileOptions open_opts;
+  open_opts.o_direct = true;
+  {
+    shared_ptr<WritableFile> writer;
+    ASSERT_OK(env_util::OpenFileForWrite(open_opts, env_.get(), test_path, &writer));
+    ASSERT_OK(writer->Append(data));
+    ASSERT_OK(writer->Close());
+  }
+  ASSERT_EQ(data_size, ASSERT_RESULT(env_->GetFileSize(test_path)));
+
+  struct rlimit old_limit;
+  ASSERT_EQ(0, getrlimit(RLIMIT_NOFILE, &old_limit));
+  // The lowest free fd is what the next open gets. A limit one above it lets the writable open
+  // succeed and makes the read-back open fail with EMFILE.
+  const int lowest_free_fd = dup(STDIN_FILENO);
+  ASSERT_GE(lowest_free_fd, 0);
+  close(lowest_free_fd);
+  struct rlimit low_limit = old_limit;
+  low_limit.rlim_cur = lowest_free_fd + 1;
+  ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &low_limit));
+
+  open_opts.mode = Env::OPEN_EXISTING;
+  open_opts.initial_offset = data_size;
+  shared_ptr<WritableFile> writer;
+  const auto status = env_util::OpenFileForWrite(open_opts, env_.get(), test_path, &writer);
+  ASSERT_EQ(0, setrlimit(RLIMIT_NOFILE, &old_limit));
+  ASSERT_NOK(status);
+  ASSERT_EQ(EMFILE, Errno(status)) << status;
+
+  ASSERT_EQ(data_size, ASSERT_RESULT(env_->GetFileSize(test_path)));
+  std::unique_ptr<RandomAccessFile> readable_file;
+  ASSERT_OK(env_->NewRandomAccessFile(test_path, &readable_file));
+  std::unique_ptr<uint8_t[]> read_scratch(new uint8_t[data_size]);
+  Slice read_data;
+  ASSERT_OK(env_util::ReadFully(
+      readable_file.get(), 0, data_size, &read_data, read_scratch.get()));
+  ASSERT_EQ(data.ToBuffer(), read_data.ToBuffer());
+}
+
+// A reopen that fails after the writable file took the fd must not truncate the partial block.
+TEST_F(TestEnv, TestReopenDirectIOWritableFileFailedAppend) {
+  const auto test_path = GetTestPath("test_env_wf");
+  Random rnd(SeedRandom());
+  const size_t data_size = FLAGS_o_direct_block_size_bytes + 100;
+  std::unique_ptr<uint8_t[]> scratch(new uint8_t[data_size]);
+  RandomString(scratch.get(), data_size, &rnd);
+  const Slice data(scratch.get(), data_size);
+
+  WritableFileOptions open_opts;
+  open_opts.o_direct = true;
+  {
+    shared_ptr<WritableFile> writer;
+    ASSERT_OK(env_util::OpenFileForWrite(open_opts, env_.get(), test_path, &writer));
+    ASSERT_OK(writer->Append(data));
+    ASSERT_OK(writer->Close());
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_direct_io_reopen_append) = true;
+  open_opts.mode = Env::OPEN_EXISTING;
+  open_opts.initial_offset = data_size;
+  shared_ptr<WritableFile> writer;
+  ASSERT_NOK(env_util::OpenFileForWrite(open_opts, env_.get(), test_path, &writer));
+
+  ASSERT_EQ(data_size, ASSERT_RESULT(env_->GetFileSize(test_path)));
+  std::unique_ptr<RandomAccessFile> readable_file;
+  ASSERT_OK(env_->NewRandomAccessFile(test_path, &readable_file));
+  std::unique_ptr<uint8_t[]> read_scratch(new uint8_t[data_size]);
+  Slice read_data;
+  ASSERT_OK(env_util::ReadFully(
+      readable_file.get(), 0, data_size, &read_data, read_scratch.get()));
+  ASSERT_EQ(data.ToBuffer(), read_data.ToBuffer());
 }
 #endif
 
