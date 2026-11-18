@@ -1365,8 +1365,8 @@ typedef struct
  * in index column order (see yb_finalize_merge_scan_info).  The
  * executor must bind each of them per stream, and ybValidateMergeScanBinds
  * checks that it does.  pggate treats every key column before the last merge
- * sort column as a stream key (PgDmlRead::IsMergeSortColumn), including the
- * columns this list leaves out.
+ * sort column that is not itself a merge sort column as a stream key
+ * (PgDmlRead::IsMergeSortColumn), including the columns this list leaves out.
  */
 typedef struct
 {
