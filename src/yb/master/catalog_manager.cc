@@ -3135,6 +3135,7 @@ Result<SplitTableEligibility> CatalogManager::ComputeSplitTableEligibility(
       eligibility.num_eligible_tservers = valid_tservers->size();
     }
   }
+  TEST_SYNC_POINT_CALLBACK("CatalogManager::ComputeSplitTableEligibility", &eligibility);
   return eligibility;
 }
 
@@ -12647,7 +12648,6 @@ Status CatalogManager::HandlePlacementUsingPlacementInfo(const PlacementInfoPB& 
 Result<vector<shared_ptr<TSDescriptor>>> CatalogManager::FindTServersForPlacementInfo(
     const PlacementInfoPB& placement_info,
     const TSDescriptorVector& ts_descs) const {
-  TEST_SYNC_POINT("CatalogManager::FindTServersForPlacementInfo");
   vector<shared_ptr<TSDescriptor>> all_allowed_ts;
   for (const auto& ts : ts_descs) {
     for (const auto& pb : placement_info.placement_blocks()) {

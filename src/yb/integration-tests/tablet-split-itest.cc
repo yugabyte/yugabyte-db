@@ -18,15 +18,18 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
@@ -2340,6 +2343,88 @@ TEST_F(AutomaticTabletSplitITest, PhasePromotionAccountsForSplitRetry) {
     /* num_replicas_online */ 0,
     /* table */ client::kTableName,
     /* core_dump_on_failure */ false));
+}
+
+TEST_F(AutomaticTabletSplitITest, ResolvesEachTableOncePerPass) {
+  // Empty tablets can pass the initial size check but cannot clear the high-phase threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_high_phase_size_threshold_bytes) = 1_GB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_process_split_tablet_candidates_interval_msec) = 0;
+
+  SetNumTablets(2);
+  ASSERT_NO_FATALS(CreateTable());
+  auto* catalog = ASSERT_RESULT(catalog_manager());
+  const auto servers = catalog->GetAllLiveNotBlacklistedTServers();
+  ASSERT_EQ(servers.size(), 3);
+  ReplicationInfoPB pinned;
+  auto* placement = pinned.mutable_live_replicas();
+  placement->set_num_replicas(1);
+  auto* block = placement->add_placement_blocks();
+  *block->mutable_cloud_info() = servers.front()->GetCloudInfo();
+  block->set_min_num_replicas(1);
+
+  const client::YBTableName pinned_name(YQL_DATABASE_CQL, table_.name().namespace_name(), "pinned");
+  std::unique_ptr<client::YBTableCreator> creator(client_->NewTableCreator());
+  const auto schema = client::YBSchemaFromSchema(GetSimpleTestSchema());
+  ASSERT_OK(creator->table_name(pinned_name)
+                .schema(&schema)
+                .num_tablets(2)
+                .replication_info(pinned)
+                .Create());
+
+  const std::vector<master::TableInfoPtr> tables = {
+      catalog->GetTableInfo(table_->id()), ASSERT_RESULT(FindTable(cluster_.get(), pinned_name))};
+  master::TabletInfoMap tablets;
+  for (const auto& table : tables) {
+    for (const auto& tablet : ASSERT_RESULT(table->GetTablets())) {
+      tablets.emplace(tablet->id(), tablet);
+    }
+  }
+  ASSERT_EQ(tablets.size(), 4);
+  ASSERT_OK(WaitFor([&] {
+    return std::all_of(tablets.begin(), tablets.end(), [](const auto& entry) {
+      const auto drive = entry.second->GetLeaderReplicaDriveInfo();
+      return drive.ok() && master::CheckSplitCandidateDriveInfo(entry.first, *drive).ok();
+    });
+  }, 30s * kTimeMultiplier, "Wait for all tablet leaders to report drive info"));
+
+  // Count only the synchronous pass below, not concurrent master background work.
+  const auto test_thread = std::this_thread::get_id();
+  size_t enumerations = 0;
+  std::vector<size_t> eligible_servers;
+  auto* sync = SyncPoint::GetInstance();
+  auto cleanup = ScopeExit([sync] {
+    sync->DisableProcessing();
+    sync->ClearAllCallBacks();
+  });
+  sync->SetCallBack("CatalogManager::GetAllLiveNotBlacklistedTServers", [&](void*) {
+    if (std::this_thread::get_id() == test_thread) {
+      ++enumerations;
+    }
+  });
+  sync->SetCallBack("CatalogManager::ComputeSplitTableEligibility", [&](void* arg) {
+    if (std::this_thread::get_id() == test_thread) {
+      const auto& eligibility = *static_cast<const master::SplitTableEligibility*>(arg);
+      eligible_servers.push_back(eligibility.num_eligible_tservers);
+    }
+  });
+  sync->EnableProcessing();
+  auto& manager = ASSERT_RESULT(GetLeaderMaster()).get().tablet_split_manager();
+  const auto run_pass = [&] {
+    eligible_servers.clear();
+    enumerations = 0;
+    manager.MaybeDoSplitting(tables, tablets, catalog->GetLeaderEpochInternal());
+  };
+  for (int i = 0; i < 2; ++i) {
+    run_pass();
+    ASSERT_EQ(enumerations, 1);
+    ASSERT_EQ(eligible_servers, (std::vector<size_t>{3, 1}));
+  }
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 1_GB;
+  run_pass();
+  ASSERT_EQ(enumerations, 0);
+  ASSERT_TRUE(eligible_servers.empty());
 }
 
 TEST_F(AutomaticTabletSplitITest, StalePlacementCandidateRevalidatedBeforeRegistration) {
