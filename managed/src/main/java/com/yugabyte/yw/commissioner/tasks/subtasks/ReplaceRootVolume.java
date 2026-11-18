@@ -72,8 +72,9 @@ public class ReplaceRootVolume extends NodeTaskBase {
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Replace_Root_Volume, taskParams())
         .processErrors();
-    // Only once the root volume is replaced. A failed replacement leaves the node on its old root
-    // volume, whose node agent later tasks still use.
+    // Only after a successful replacement. One that fails before the swap leaves the node on its
+    // old root volume, whose node agent later tasks still use. One that fails after the swap leaves
+    // a stale record until a retry of the task succeeds and deletes it.
     deleteNodeAgent(nodeDetails);
 
     // On OCI, replacementDisk is an image, and ybops does not report the new boot volume's ID.
