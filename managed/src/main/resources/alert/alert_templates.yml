@@ -2806,6 +2806,73 @@ templates:
 
         Affected nodes: {{ $labels.affected_node_names }}
 
+  NODE_METRICS_COLLECTION_FAILURE:
+    name: DB node metrics collection failure
+    universeType: VM
+    description: Node metrics collected through the node_exporter textfile collector are missing, stale or can't be read
+      on DB node(s), so alerts based on them can't fire for those nodes
+    queryTemplate: count by (universe_uuid) (max by (universe_uuid, node_name) (
+      label_replace(max by (universe_uuid, node_name) (node_textfile_scrape_error{universe_uuid="__universeUuid__"} == 1),
+        "reason", "scrape_error", "", "")
+      or label_replace(max by (universe_uuid, node_name)
+        (time() - node_textfile_mtime_seconds{universe_uuid="__universeUuid__", file=~".*node_metrics.prom"} > 300),
+        "reason", "stale", "", "")
+      or label_replace(max by (universe_uuid, node_name) (up{universe_uuid="__universeUuid__", export_type="node_export"} == 1)
+        unless on (universe_uuid, node_name) node_textfile_mtime_seconds{universe_uuid="__universeUuid__", file=~".*node_metrics.prom"}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid="__universeUuid__"} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid="__universeUuid__"} == 1),
+        "reason", "missing", "", "")
+      or label_replace(max by (universe_uuid, node_name) (up{universe_uuid="__universeUuid__", export_type="master_export"} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid="__universeUuid__", export_type="node_export", process="master"}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid="__universeUuid__"} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid="__universeUuid__"} == 1),
+        "reason", "master_metrics", "", "")
+      or label_replace(max by (universe_uuid, node_name) (up{universe_uuid="__universeUuid__", export_type="tserver_export"} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid="__universeUuid__", export_type="node_export", process="tserver"}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid="__universeUuid__"} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid="__universeUuid__"} == 1),
+        "reason", "tserver_metrics", "", "")
+      )) {{ query_condition }} {{ query_threshold }}
+    defaultDurationSec: 600
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "
+        label_replace(max by (universe_uuid, node_name) (node_textfile_scrape_error{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'metrics file unreadable', '', '')
+        or label_replace(max by (universe_uuid, node_name)
+        (time() - node_textfile_mtime_seconds{universe_uuid='{{ $labels.universe_uuid }}', file=~'.*node_metrics.prom'} > 300),
+        'reason', 'metrics file not updated for 5+ min', '', '')
+        or label_replace(max by (universe_uuid, node_name) (up{universe_uuid='{{ $labels.universe_uuid }}', export_type='node_export'} == 1)
+        unless on (universe_uuid, node_name) node_textfile_mtime_seconds{universe_uuid='{{ $labels.universe_uuid }}', file=~'.*node_metrics.prom'}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'no metrics file', '', '')
+        or label_replace(max by (universe_uuid, node_name) (up{universe_uuid='{{ $labels.universe_uuid }}', export_type='master_export'} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}', export_type='node_export', process='master'}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'no master metrics in file', '', '')
+        or label_replace(max by (universe_uuid, node_name) (up{universe_uuid='{{ $labels.universe_uuid }}', export_type='tserver_export'} == 1)
+        unless on (universe_uuid, node_name) yb_node_boot_time{universe_uuid='{{ $labels.universe_uuid }}', export_type='node_export', process='tserver'}
+        unless on (universe_uuid, node_name) (yb_node_custom_node_metrics{universe_uuid='{{ $labels.universe_uuid }}'} == 0)
+        and on (universe_uuid) (ybp_health_check_status{universe_uuid='{{ $labels.universe_uuid }}'} == 1),
+        'reason', 'no tserver metrics in file', '', '')
+        " }}{{if $index}}, {{end}}{{ $element.Labels.node_name }} ({{ $element.Labels.reason }}){{ end }}
+    annotations:
+      summary: >-
+        Node metrics collection failed for universe '{{ $labels.source_name }}' on
+        {{ $value | printf "%.0f" }} node(s). Alerts based on node metrics can't fire for these nodes.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
   NODE_EXPORTER_TLS_ROOT_NODES:
     name: Node exporter TLS off due to root-level nodes
     description: Node-to-node encryption is on but node_exporter serves plain HTTP, because some
