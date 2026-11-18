@@ -285,7 +285,7 @@ Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend
 
 ## Audit logging with pgaudit
 
-[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager. Configure pgaudit parameters with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or the `ysql_pg_conf_csv` flag rather than with `SET` in client sessions.
+[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager. Configure pgaudit parameters with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or the `ysql_pg_conf_csv` flag.
 
 pgaudit behaves differently from PostgreSQL in the following ways:
 
