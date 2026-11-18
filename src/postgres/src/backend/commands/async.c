@@ -600,13 +600,19 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
-/* Element of ybNotifsPollerPendingEntries. */
+/*
+ * Element of ybNotifsPollerPendingEntries.
+ *
+ * A whole transaction is buffered until its COMMIT, so only qe.length bytes of
+ * qe are allocated: sizeof(AsyncQueueEntry) is about 8 KB, while a typical
+ * entry is under 100 bytes.  qe must therefore stay the last field.
+ */
 typedef struct YbNotifsPollerPendingEntry
 {
-	AsyncQueueEntry qe;
 	/* sort keys, see ybNotifsPollerPendingEntryCmp */
 	char		docdb_txn_id[37];	/* empty if the row has none */
 	int32		seq;
+	AsyncQueueEntry qe;
 } YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
@@ -1977,7 +1983,12 @@ asyncQueueAddEntries(ListCell *nextNotify)
 	while (nextNotify != NULL)
 	{
 		if (IsYugaByteEnabled())
-			qe = ((YbNotifsPollerPendingEntry *) lfirst(nextNotify))->qe;
+		{
+			AsyncQueueEntry *pending =
+				&((YbNotifsPollerPendingEntry *) lfirst(nextNotify))->qe;
+
+			memcpy(&qe, pending, pending->length);
+		}
 		else
 		{
 			Notification *n = (Notification *) lfirst(nextNotify);
@@ -3578,11 +3589,17 @@ ybNotifsPollerProcessRecord(const YbcPgRowMessage *record)
 static void
 ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 {
-	MemoryContext oldcontext = MemoryContextSwitchTo(CurTransactionContext);
-	YbNotifsPollerPendingEntry *entry =
-		palloc0(sizeof(YbNotifsPollerPendingEntry));
+	AsyncQueueEntry qe;
+	int32		seq;
+	MemoryContext oldcontext;
+	YbNotifsPollerPendingEntry *entry;
 
-	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq);
+	ybRecordToAsyncQueueEntry(record, &qe, &seq);
+
+	oldcontext = MemoryContextSwitchTo(CurTransactionContext);
+	entry = palloc0(offsetof(YbNotifsPollerPendingEntry, qe) + qe.length);
+	memcpy(&entry->qe, &qe, qe.length);
+	entry->seq = seq;
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT &&
 		record->has_docdb_txn_id)
 		strlcpy(entry->docdb_txn_id, record->docdb_txn_id,
