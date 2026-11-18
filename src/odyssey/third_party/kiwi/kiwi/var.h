@@ -658,7 +658,8 @@ yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
 
 __attribute__((hot)) static inline int
 kiwi_vars_cas(kiwi_vars_t *client_session_vars,
-	      kiwi_vars_t *server_session_vars, char *query, int query_len)
+	      kiwi_vars_t *server_session_vars, char *query, int query_len,
+	      const char *skip_name)
 {
 	int pos = 0;
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
@@ -680,6 +681,9 @@ kiwi_vars_cas(kiwi_vars_t *client_session_vars,
 		/* we do not support odyssey-to-backend compression yet */
 
 		if (strcmp(var->name, "compression") == 0)
+			continue;
+
+		if (skip_name != NULL && strcmp(var->name, skip_name) == 0)
 			continue;
 
 		kiwi_var_t *server_var;

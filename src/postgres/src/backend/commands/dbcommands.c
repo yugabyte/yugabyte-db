@@ -1073,6 +1073,10 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 							 "https://github.com/YugaByte/yugabyte-db/issues."),
 					 parser_errposition(pstate, distemplate->location)));
 
+		/*
+		 * Connection Manager's deploy (src/odyssey/sources/deploy.c) assumes
+		 * every database is UTF8 and must change if this restriction is lifted.
+		 */
 		if (encoding >= 0 && encoding != PG_UTF8)
 			ereport(YBUnsupportedFeatureSignalLevel(),
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
