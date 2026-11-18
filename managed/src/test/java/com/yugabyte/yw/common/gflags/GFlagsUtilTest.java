@@ -1090,6 +1090,36 @@ public class GFlagsUtilTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void testMergeSensitiveGFlagsYsqlHbaRedactedIgnoresSurroundingWhitespace() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+
+      String existing = "\n host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812 \n";
+      Map<String, String> existingGFlags = Map.of(YSQL_HBA_CONF_CSV, existing);
+      String trimmedRedacted =
+          RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existing).trim();
+
+      Map<String, String> merged =
+          GFlagsUtil.mergeSensitiveGFlags(
+              existingGFlags, Map.of(YSQL_HBA_CONF_CSV, trimmedRedacted), gFlagsValidation, "2.18");
+      assertEquals(existing, merged.get(YSQL_HBA_CONF_CSV));
+
+      Map<String, String> changed =
+          Map.of(YSQL_HBA_CONF_CSV, trimmedRedacted.replace("0.0.0.0/0", "192.0.2.0/24"));
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      existingGFlags, changed, gFlagsValidation, "2.18"));
+      assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    }
+  }
+
   /** Small JSON tree with clusters[0].userIntent.tserverGFlags for redaction tests. */
   private static ObjectNode universeJsonWithTserverGFlags(
       String ysqlHbaConfCsv, String ycqlLdapBindPasswd, String webserverPort) {

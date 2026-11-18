@@ -2902,10 +2902,11 @@ public class GFlagsUtil {
                   + " in ldapbindpasswd; the real password cannot be recovered."
                   + " Submit ysql_hba_conf_csv with the actual ldapbindpasswd.");
         }
-        // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input
+        // Redact the YBA metadata's ysql_hba_conf_csv value and compare with user input. Gflags
+        // upgrades trim the values they receive, and the stored value may be untrimmed.
         String existingRedacted =
             RedactingService.redactAllLdapBindPasswdHbaFormattedValues(existingYsqlHbaConf);
-        if (!existingRedacted.equals(newYsqlHbaConf)) {
+        if (!existingRedacted.trim().equals(newYsqlHbaConf.trim())) {
           throw new PlatformServiceException(
               BAD_REQUEST,
               "ysql_hba_conf_csv contains "
