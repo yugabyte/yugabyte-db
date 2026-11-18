@@ -838,9 +838,7 @@ bool YBCUsingObjectLocksGloballyForCurrentTxn();
 // Whether DDLs run inside the enclosing transaction block.
 // ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
 // enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
-// object locking feature. It therefore follows global object locks for the current transaction,
-// which are off until the object locking infra auto flag is promoted and stay at the value latched
-// when the transaction began.
+// object locking feature. It therefore follows global object locks for the current transaction.
 bool YBCIsDdlTransactionBlockEnabled();
 
 // Effective per-RPC response byte cap that pggate applies when the executor
