@@ -469,9 +469,13 @@ TEST_F(YsqlMajorExtensionUpgradeTest, Upgrade) {
 TEST_F(YsqlMajorExtensionUpgradeTest, IncompatibleExtensions) {
   ASSERT_OK(ExecuteStatement("CREATE EXTENSION pg_stat_monitor"));
   ASSERT_OK(ExecuteStatement("CREATE EXTENSION pgcrypto SCHEMA pg_catalog"));
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION pgrowlocks"));
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION pgstattuple"));
   ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
       "In database: yugabyte",
       "  pg_stat_monitor",
+      "  pgrowlocks",
+      "  pgstattuple",
       "Your installation contains extensions that are not compatible",
       "with YSQL major version upgrade. Please uninstall the extensions",
       "using DROP EXTENSION, and reinstall them after the upgrade. A list of",
@@ -486,10 +490,18 @@ TEST_F(YsqlMajorExtensionUpgradeTest, IncompatibleExtensions) {
   ASSERT_OK(ExecuteStatements({
       "DROP EXTENSION pg_stat_monitor",
       "DROP EXTENSION pgcrypto",
+      "DROP EXTENSION pgrowlocks",
+      "DROP EXTENSION pgstattuple",
       "CREATE EXTENSION pgcrypto SCHEMA public",
   }));
   ASSERT_OK(UpgradeClusterToCurrentVersion());
   ASSERT_OK(ExecuteStatement("CREATE EXTENSION pg_stat_monitor"));
+  // Unlike the others, these two can no longer be created.
+  for (const auto* extension : {"pgrowlocks", "pgstattuple"}) {
+    ASSERT_NOK_STR_CONTAINS(
+        ExecuteStatement(Format("CREATE EXTENSION $0", extension)),
+        Format("extension \"$0\" is not available", extension));
+  }
 }
 
 } // namespace yb
