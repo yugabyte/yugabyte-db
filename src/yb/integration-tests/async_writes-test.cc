@@ -207,8 +207,8 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     auto tablet_peer = cluster_->GetTabletManager(idx)->LookupTablet(tablet_id);
     auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
 
-    RETURN_NOT_OK(
-        tablet->transaction_participant()->ResolveIntents(now_ht, CoarseTimePoint::max()));
+    RETURN_NOT_OK(tablet->transaction_participant()->ResolveIntents(
+        now_ht, CoarseTimePoint::max(), tablet::WaitForApply::kTrue));
 
     auto log = VERIFY_RESULT(tablet_peer->GetRaftConsensus())->log();
     RETURN_NOT_OK(log->WaitUntilAllFlushed());
