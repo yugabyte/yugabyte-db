@@ -28,10 +28,15 @@ import csv
 import os
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 CSV_FILEPATH = f"{SCRIPT_PATH}/upstream_repositories.csv"
+# A remote fetch is tried this many times, waiting FETCH_BACKOFF_S, then twice that, between.
+FETCH_ATTEMPTS = 3
+FETCH_BACKOFF_S = 1.0
 
 
 class NotFoundError(Exception):
@@ -105,32 +110,48 @@ def fetch(filepath):
     else:
         assert repository.startswith("https://gitlab.com"), repository
         url = f"https://gitlab.com/{repo_name}/-/raw/{commit}/{upstream_filepath}"
-    try:
-        req = urllib.request.urlopen(url, timeout=10)
-    except Exception as e:
-        # Examples:
-        # - urllib.error.HTTPError: HTTP Error 403: Forbidden
-        # - urllib.error.HTTPError: HTTP Error 404: Not Found
-        # - urllib.error.HTTPError: HTTP Error 503: Service Unavailable
-        # - urllib.error.URLError: <urlopen error [Errno -2] Name or service not known>
-        # - urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>
-        # - urllib.error.URLError: <urlopen error [Errno 110] Connection timed out>
-        # - urllib.error.URLError: <urlopen error timed out>
-        # - (older python version) socket.timeout: The read operation timed out
-        # - (newer python version) TimeoutError: The read operation timed out
+    return fetch_url(url)
 
-        # Only 404 should be considered expected.  That happens if the file path or commit does not
-        # exist.  403 happens for gitlab when the repository does not exist (github gives 404), and
-        # that should be considered a fatal issue.
-        if isinstance(e, urllib.error.HTTPError) and e.code == 404:
-            raise NotFoundError(url) from e
 
-        # The rest should rethrow.  Also print the error message to stdout so that it shows in arc
-        # lint stdout (otherwise, it gets buried under stacktrace in stderr, and arc lint truncates
-        # it so that it's not seen).
-        print(f"{type(e).__name__}: {e}")
-        raise
-    return req.read()
+def fetch_url(url):
+    """The body at `url`, retrying a transient failure; NotFoundError on a 404."""
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(url, timeout=10) as req:
+                return req.read()
+        except Exception as e:
+            # Examples:
+            # - urllib.error.HTTPError: HTTP Error 403: Forbidden
+            # - urllib.error.HTTPError: HTTP Error 404: Not Found
+            # - urllib.error.HTTPError: HTTP Error 503: Service Unavailable
+            # - urllib.error.URLError: <urlopen error [Errno -2] Name or service not known>
+            # - urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name
+            #   resolution>
+            # - urllib.error.URLError: <urlopen error [Errno 110] Connection timed out>
+            # - urllib.error.URLError: <urlopen error timed out>
+            # - (older python version) socket.timeout: The read operation timed out
+            # - (newer python version) TimeoutError: The read operation timed out
+
+            # Only 404 should be considered expected.  That happens if the file path or commit
+            # does not exist.  403 happens for gitlab when the repository does not exist (github
+            # gives 404), and that should be considered a fatal issue.
+            if isinstance(e, urllib.error.HTTPError) and e.code == 404:
+                raise NotFoundError(url) from e
+
+            # A timeout, a DNS failure, a reset connection or a 5xx can pass on a retry; any
+            # other 4xx will not.  A failed fetch fails the file in lint, so a transient network
+            # error is retried before it is reported.
+            transient = not isinstance(e, urllib.error.HTTPError) or e.code >= 500
+            if transient and attempt < FETCH_ATTEMPTS - 1:
+                time.sleep(FETCH_BACKOFF_S * 2 ** attempt)
+                continue
+
+            # The rest should rethrow.  Also print the error message to stdout so that it shows
+            # in arc lint stdout (otherwise, it gets buried under stacktrace in stderr, and arc
+            # lint truncates it so that it's not seen).
+            print(f"{type(e).__name__}: {e}")
+            raise
+    raise AssertionError("unreachable")
 
 
 def main(filepath, output_filepath):

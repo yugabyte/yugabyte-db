@@ -350,9 +350,13 @@ def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
         else:
             m = pat.search(output)
             matches = [m] if m else []
-        if proc.returncode != 0 and not matches:
-            # The script failed before it reported anything the regex reads (a missing
-            # tool, a failed fetch): report that instead of passing the file.
+        # Most src/lint scripts exit 0 whether or not they report findings, so a non-zero
+        # exit means the script stopped partway (a missing tool, a failed fetch) and the
+        # rules after that point never ran, even when it printed findings first. A linter
+        # whose script exits non-zero on findings sets
+        # `script-and-regex.exits-nonzero-on-findings`; it fails only when nothing matched.
+        exits_on_findings = linter.config.get("script-and-regex.exits-nonzero-on-findings", False)
+        if proc.returncode != 0 and not (exits_on_findings and matches):
             first_line = next((ln for ln in output.splitlines() if ln.strip()), "")
             msgs.append(Message(
                 path,
@@ -363,7 +367,6 @@ def run_script_and_regex(linter: Linter, files: list[str]) -> list[Message]:
                 + (f": {first_line.strip()}" if first_line else ""),
                 linter.name,
             ))
-            continue
         for m in matches:
             gd = m.groupdict()
             line = gd.get("line")
