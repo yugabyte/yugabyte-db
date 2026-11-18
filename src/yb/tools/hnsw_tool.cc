@@ -1426,6 +1426,8 @@ Status BenchmarkExecute(const BenchmarkArguments& args) {
     /* Cosine similarity */                               \
     ((Usearch, Cosine,       float,      float  ))        \
     ((Usearch, Cosine,       uint8_t,    float  ))        \
+    ((Hnswlib, Cosine,       float,      float  ))        \
+    ((Hnswlib, Cosine,       uint8_t,    float  ))        \
     ((PgVector, Cosine,      float,      float  ))        \
     /* Inner product */                                   \
     ((Usearch, InnerProduct, float,      float  ))        \
