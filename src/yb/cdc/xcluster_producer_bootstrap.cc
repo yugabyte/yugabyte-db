@@ -251,9 +251,10 @@ Status XClusterProducerBootstrap::GetLatestOpIdsFromLocalPeers() {
   HybridTime ht;
   OpId op_id = yb::OpId::Invalid();
   for (const auto& [bootstrap_id, tablet_id] : local_tablets_) {
-    // The peer may have been tombstoned since the locations were read, or may still be copying.
+    // Check if this tablet has local information cached.
     auto tablet_peer_result = cdc_service_context_->GetServingTablet(tablet_id);
     if (!tablet_peer_result.ok()) {
+      // The peer may have been tombstoned since the locations were read, or may still be copying.
       LOG(WARNING) << "Fetching the latest op id of tablet " << tablet_id
                    << " from its leader, since the local peer cannot serve: "
                    << tablet_peer_result.status();
