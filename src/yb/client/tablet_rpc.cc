@@ -64,9 +64,9 @@ DEFINE_test_flag(bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDe
     "will always be refreshed when a successful Write/Read/TransactionStatus/GetChanges RPC "
     "responds.");
 DEFINE_RUNTIME_bool(abort_txn_on_unknown_pipelined_write_outcome, true,
-    "Abort the transaction when a pipelined write's call timed out, or failed with a network "
-    "error after the write was sent, instead of resending the write or failing only the "
-    "statement, since the old leader may still apply it.");
+    "Abort the transaction when a pipelined request (a write, or a read that takes row locks or "
+    "runs in serializable isolation) may have reached the leader but got no reply. The old leader "
+    "may still apply it, so resending it or failing only the statement is not safe.");
 
 DEFINE_RUNTIME_bool(enable_metacache_partial_refresh, true,
     "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
@@ -81,14 +81,17 @@ namespace internal {
 namespace {
 
 // Whether the server may have received the request even though the call failed without a reply.
-bool ServerMayHaveRequest(const Status& status, const rpc::RpcController& controller) {
-  if (status.IsTimedOut()) {
-    // The retrier also fails with TimedOut when the deadline passes between attempts, or during a
-    // tablet lookup, with no request outstanding. Only a timeout of the call itself counts, and it
-    // counts even if the request was not fully sent, since its transfer can still finish.
-    return controller.status().IsTimedOut();
+bool ServerMayHaveRequest(const rpc::RpcController& controller) {
+  // Check the call's own status: the retrier also fails the rpc when the deadline passes between
+  // attempts or during a tablet lookup, with no call outstanding.
+  const auto& call_status = controller.status();
+  if (call_status.ok() || call_status.IsRemoteError()) {
+    // No call failed, or the server replied with an error.
+    return false;
   }
-  return status.IsNetworkError() && controller.WasSent();
+  // A timed out call counts even if its request was not fully sent, since the transfer can still
+  // finish.
+  return call_status.IsTimedOut() || controller.WasSent();
 }
 
 } // namespace
@@ -437,7 +440,7 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   if (FLAGS_abort_txn_on_unknown_pipelined_write_outcome && rpc_->AppliedBeforeReplication() &&
-      ServerMayHaveRequest(*status, retrier_->controller())) {
+      ServerMayHaveRequest(retrier_->controller())) {
     // The server may still early-apply this request, leaving intents that no log entry backs once
     // it loses leadership. The transaction must not commit with these, so abort the transaction.
     if (tablet_ && current_ts_) {
@@ -445,7 +448,7 @@ bool TabletInvoker::Done(Status* status) {
     }
     *status = status->CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted))
         .CloneAndAddErrorCode(ClientError(ClientErrorCode::kPipelinedWriteOutcomeUnknown));
-    rpc_->Failed(*status);
+    FailRpc(status);
     return true;
   }
 
@@ -561,32 +564,8 @@ bool TabletInvoker::Done(Status* status) {
       if (tablet_ != nullptr && current_ts_ != nullptr) {
         tablet_->MarkReplicaFailed(current_ts_, *status);
       }
-      // Keep the root cause from earlier attempts, e.g. "Connection refused", unless
-      // RpcRetrier::DoRetry already appended it to the deadline message.
-      const auto& last_error = retrier_->last_error();
-      if (!last_error.ok() && !last_error.IsTimedOut() &&
-          status->message().ToBuffer().find(last_error.ToString()) == std::string::npos) {
-        *status = status->CloneAndAppend(last_error.ToString());
-      }
     }
-    std::string current_ts_string;
-    if (current_ts_) {
-      current_ts_string = Format("on tablet server $0", *current_ts_);
-    } else {
-      current_ts_string = "(no tablet server available)";
-    }
-    Status log_status = status->CloneAndPrepend(
-        Format("Failed $0 to tablet $1 $2 after $3 attempt(s)",
-               command_->ToString(),
-               tablet_id_,
-               current_ts_string,
-               retrier_->attempt_num()));
-    if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << log_status;
-    } else {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << log_status;
-    }
-    rpc_->Failed(*status);
+    FailRpc(status);
   } else if (assign_new_leader && current_ts_) {
     bool assigned = tablet_->MarkTServerAsLeader(current_ts_);
     LOG_IF(INFO, !assigned)
@@ -597,6 +576,36 @@ bool TabletInvoker::Done(Status* status) {
   TEST_SYNC_POINT_CALLBACK("TabletInvoker::Done", &attempt_num);
 
   return true;
+}
+
+void TabletInvoker::FailRpc(Status* status) {
+  if (status->IsTimedOut()) {
+    // Keep the root cause from earlier attempts, e.g. "Connection refused", unless
+    // RpcRetrier::DoRetry already appended it to the deadline message.
+    const auto& last_error = retrier_->last_error();
+    if (!last_error.ok() && !last_error.IsTimedOut() &&
+        status->message().ToBuffer().find(last_error.ToString()) == std::string::npos) {
+      *status = status->CloneAndAppend(last_error.ToString());
+    }
+  }
+  std::string current_ts_string;
+  if (current_ts_) {
+    current_ts_string = Format("on tablet server $0", *current_ts_);
+  } else {
+    current_ts_string = "(no tablet server available)";
+  }
+  Status log_status = status->CloneAndPrepend(
+      Format("Failed $0 to tablet $1 $2 after $3 attempt(s)",
+             command_->ToString(),
+             tablet_id_,
+             current_ts_string,
+             retrier_->attempt_num()));
+  if (status->IsTryAgain() || status->IsExpired() || status->IsAlreadyPresent()) {
+    YB_LOG_EVERY_N_SECS(INFO, 1) << log_status;
+  } else {
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << log_status;
+  }
+  rpc_->Failed(*status);
 }
 
 void TabletInvoker::InitialLookupTabletDone(

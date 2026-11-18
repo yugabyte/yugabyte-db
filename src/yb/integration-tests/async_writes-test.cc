@@ -1568,7 +1568,7 @@ class AsyncWritesSingleTabletTest : public AsyncWritesExternalTest {
   // tserver that the test pauses or slows down.
   Status MoveTransactionStatusLeaders() {
     for (const auto& entry : VERIFY_RESULT(cluster_->GetTablets(leader_))) {
-      if (entry.table_name() == "transactions" && entry.is_leader()) {
+      if (entry.table_name() == kGlobalTransactionsTableName && entry.is_leader()) {
         RETURN_NOT_OK(cluster_->MoveTabletLeader(entry.tablet_id(), client_idx_));
       }
     }
@@ -1775,8 +1775,7 @@ TEST_F(AsyncWritesTimeoutTest, CallTimedOut) {
 // A rejected write whose deadline passes before its retry has no call outstanding, so only the
 // savepoint is rolled back and the transaction commits.
 TEST_F(AsyncWritesTimeoutTest, RejectedUntilDeadline) {
-  // Logged by the client tserver once it gives up on the write. An aborted transaction logs no
-  // failure for the write.
+  // Logged by the client tserver once it gives up on the write.
   LogWaiter write_failed(
       cluster_->tablet_server(client_idx_), Format("Failed Write(tablet: $0", tablet_id_));
   // Retry a rejected write only after its deadline, so the deadline passes between attempts.

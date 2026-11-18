@@ -311,7 +311,7 @@ class OutboundCall : public RpcCall {
 
   // True once the whole request has been handed to the socket, even if the call failed later.
   // A call that times out mid-transfer stays false although the rest of its request is still sent.
-  bool WasSent() const { return was_sent_.load(std::memory_order_acquire); }
+  bool WasSent() const { return was_sent_; }
 
   // Outbound call could be moved to final state only once,
   // so only one of SetFinished/SetTimedOut/SetFailed/SetResponse can be called.

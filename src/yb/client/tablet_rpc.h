@@ -87,7 +87,8 @@ class TabletRpc {
 
   virtual void SetRequestRaftConfigOpidIndex(int64_t opid_index) {}
 
-  // True when the server may have applied the request before replicating it (pipelined writes).
+  // True when the server may have applied the request before replicating it (pipelined writes, and
+  // pipelined reads that take row locks or run in serializable isolation).
   virtual bool AppliedBeforeReplication() const { return false; }
 
  protected:
@@ -194,6 +195,9 @@ class TabletInvoker {
       const Status& reason,
       tserver::TabletServerErrorPB_Code error_code = tserver::TabletServerErrorPB::UNKNOWN_ERROR,
       bool consensus_info_refresh_succeeded = false);
+
+  // Fails the rpc with `status` and logs the failure.
+  void FailRpc(Status* status);
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
