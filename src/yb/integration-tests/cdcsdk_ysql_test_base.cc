@@ -2269,7 +2269,8 @@ Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCWithExplictCheckpo
 }
 
 Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
-    const xrepl::StreamId& stream_id, const YBTableName& old_table, const YBTableName& new_table) {
+    const xrepl::StreamId& stream_id, const YBTableName& old_table, const YBTableName& new_table,
+    const uint64_t session_id) {
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
   RETURN_NOT_OK(test_client()->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets));
   if (old_tablets.empty()) {
@@ -2282,7 +2283,7 @@ Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
 
   return WaitFor(
       [&]() -> Result<bool> {
-        auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id, session_id));
 
         if (change_resp.cdc_sdk_proto_records_size() > 0) {
           bool found_commit = false;
@@ -2295,7 +2296,7 @@ Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
           }
 
           if (found_commit) {
-            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn, session_id));
           }
         }
 
@@ -2305,7 +2306,7 @@ Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
             change_resp.publication_refresh_time() > 0) {
           if (!new_table.empty()) {
             RETURN_NOT_OK(UpdatePublicationTableList(
-                stream_id, {new_table.table_id()}, kVWALSessionId1,
+                stream_id, {new_table.table_id()}, session_id,
                 true /* include_oid_to_relfilenode */));
           }
         }

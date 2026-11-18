@@ -973,6 +973,9 @@ void InitializeTabletLocationsPB(
   locs_pb->mutable_partition()->CopyFrom(pb.partition());
   locs_pb->set_split_depth(pb.split_depth());
   locs_pb->set_split_parent_tablet_id(pb.split_parent_tablet_id());
+  if (pb.has_hide_hybrid_time()) {
+    locs_pb->set_hide_hybrid_time(pb.hide_hybrid_time());
+  }
 }
 
 IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {

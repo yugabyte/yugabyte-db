@@ -97,6 +97,9 @@ message TabletLocationsPB {
   // Set only for hidden tablets: the table is dropped or rewritten, and CDC has cleared this
   // tablet for deletion.
   optional bool hidden_table_released_by_cdc = 16;
+
+  // Set only for hidden tablets.
+  optional fixed64 hide_hybrid_time = 17;
 }
 
 message GetIndexBackfillProgressRequestPB {

@@ -5557,6 +5557,72 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   ASSERT_EQ(change_resp.record_count[1], 1);  // INSERT
 }
 
+// A lagging slot keeps hidden_table_released_by_cdc unset. The rebuild of a slot that is already
+// past the dropped tablet's hide time must still leave the tablet off its poll list.
+TEST_F(CDCSDKConsumptionConsistentChangesTest,
+       TestGetChangesSucceedsAfterVWALRefreshWithLaggingSlotAndHiddenTabletDeletion) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 3600;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto dropped_table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "dropped_table"));
+  auto live_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "live_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  auto lagging_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  const std::vector<TableId> table_ids = {dropped_table.table_id(), live_table.table_id()};
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, table_ids, kVWALSessionId1, nullptr /* vslot_hash_range */,
+      true /* include_oid_to_relfilenode */));
+  ASSERT_OK(InitVirtualWAL(
+      lagging_stream_id, table_ids, kVWALSessionId2, nullptr /* vslot_hash_range */,
+      true /* include_oid_to_relfilenode */));
+
+  ASSERT_OK(WriteRowsHelper(
+      1, 2, &test_cluster_, true, 2, dropped_table.table_name().c_str()));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", dropped_table.table_name()));
+  // A commit after the drop moves the restart time past the tablet hide time.
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true, 2, live_table.table_name().c_str()));
+
+  // Empty replacement table: PollTill does not refresh the virtual WAL's tablet list.
+  YBTableName no_replacement_table;
+  ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(
+      stream_id, dropped_table, no_replacement_table));
+
+  ASSERT_OK(DestroyVirtualWAL(kVWALSessionId1));
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, table_ids, kVWALSessionId1, nullptr /* vslot_hash_range */,
+      true /* include_oid_to_relfilenode */));
+
+  // Once the lagging slot is also past the hide time, the master deletes the tablet.
+  ASSERT_OK(PollTillRestartTimeExceedsTableHideTime(
+      lagging_stream_id, dropped_table, no_replacement_table, kVWALSessionId2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dropped_tablets;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return test_client()
+            ->GetTabletsFromTableId(dropped_table.table_id(), 0, &dropped_tablets)
+            .IsNotFound();
+      },
+      MonoDelta::FromSeconds(60),
+      "Timed out waiting for the hidden tablet to be deleted"));
+
+  ASSERT_OK(WriteRowsHelper(2, 3, &test_cluster_, true, 2, live_table.table_name().c_str()));
+  auto change_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {live_table.table_id()}, 1 /* expected_dml_records */,
+      false /* init_virtual_wal */));
+  ASSERT_EQ(change_resp.records.size(), 3);  // BEGIN, INSERT, COMMIT
+  ASSERT_EQ(change_resp.record_count[1], 1);  // INSERT
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;

@@ -608,7 +608,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status PollTillRestartTimeExceedsTableHideTime(
       const xrepl::StreamId& stream_id, const YBTableName& old_table,
-      const YBTableName& new_table = YBTableName());
+      const YBTableName& new_table = YBTableName(), const uint64_t session_id = kVWALSessionId1);
 
   bool DeleteCDCStream(const xrepl::StreamId& db_stream_id);
 
