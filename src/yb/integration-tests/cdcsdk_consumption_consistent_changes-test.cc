@@ -7719,6 +7719,9 @@ void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAnd
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   // FULL makes each UPDATE carry a before image, read from the table's history.
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 REPLICA IDENTITY FULL", kTableName));
+  // Add an extra column to the table that doesn't get updated in the UPDATE query. This is to
+  // ensure that the UPDATE doesn't get converted to an INSERT when packed row is enabled.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN unchanged int", kTableName));
   constexpr auto kSlotName = "test_slot";
   const auto stream_id = pub_refresh
       ? ASSERT_RESULT(CreatePubRefreshSlot(kSlotName))
