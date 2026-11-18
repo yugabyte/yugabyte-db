@@ -934,8 +934,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   void testDynamicTableAdditionForAllTablesPublication(boolean usePubRefresh) throws Exception {
-    final boolean txnDdl = !usePubRefresh && isTransactionalDdlEnabled();
+    final boolean txnDdl = isTransactionalDdlEnabled();
     String slotName = "test_dynamic_table_addition_for_all_tables_pub";
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && txnDdl);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
