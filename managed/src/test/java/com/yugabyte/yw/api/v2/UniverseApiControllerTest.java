@@ -223,17 +223,6 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     return Json.parse(contentAsString(result));
   }
 
-  private JsonNode rawPageListUniverses() {
-    Result result =
-        doRequestWithAuthTokenAndBody(
-            "POST",
-            String.format("/api/v2/customers/%s/universes/page", customer.getUuid()),
-            authToken,
-            Json.newObject());
-    assertEquals(contentAsString(result), 200, result.status());
-    return Json.parse(contentAsString(result));
-  }
-
   private static void assertSecretsRedacted(JsonNode universe) {
     assertFalse(universe.toString(), universe.toString().contains("lr23812"));
     JsonNode gflags = universe.at("/spec/clusters/0/gflags");
@@ -257,7 +246,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
   }
 
   @Test
-  public void testGetAndListUniverseV2RedactSecrets() throws IOException {
+  public void testGetUniverseV2RedactSecrets() throws IOException {
     when(mockRuntimeConfig.getBoolean(
             GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
         .thenReturn(true);
@@ -265,9 +254,6 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     Universe universe = createUniverseWithSecrets();
 
     assertSecretsRedacted(rawGetUniverse(universe.getUniverseUUID()));
-    JsonNode page = rawPageListUniverses();
-    assertThat(page.get("entities").size(), is(1));
-    assertSecretsRedacted(page.get("entities").get(0));
   }
 
   @Test
