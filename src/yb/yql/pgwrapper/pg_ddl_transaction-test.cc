@@ -22,6 +22,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/server/monitored_task.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
@@ -1093,6 +1094,43 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithSlowIndexDeleti
   SyncPoint::GetInstance()->DisableProcessing();
 
   ASSERT_OK(conn.Execute("DROP TABLE existing_table"));
+}
+
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointAfterStaleVerificationTaskFails) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto conn = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY)", kTableName2));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1), (2), (3)", kTableName2));
+  auto table_info = catalog_manager.GetTableInfo(
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, kTableName)));
+  auto table2_info = catalog_manager.GetTableInfo(
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabase, kTableName2)));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN x INT", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName2));
+  const auto txn_id =
+      ASSERT_RESULT(FullyDecodeTransactionId(table2_info->LockForRead()->pb_transaction_id()));
+
+  ASSERT_OK(conn2.ExecuteFormat("ALTER TABLE $0 ADD COLUMN y INT", kTableName));
+  ASSERT_OK(WaitFor(
+      [&] { return !table_info->HasTasks(server::MonitoredTaskType::TableSchemaVerification); },
+      MonoDelta::FromSeconds(30), "Wait for the verification task of the first ALTER to end"));
+  ASSERT_EQ(
+      catalog_manager.TEST_GetYsqlDdlVerificationState(txn_id),
+      master::YsqlDdlVerificationState::kDdlPostProcessingFailed);
+
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  ASSERT_OK(conn.Execute(GetParam() ? "COMMIT" : "ROLLBACK"));
+  ASSERT_EQ(
+      ASSERT_RESULT(conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", kTableName2))), 3);
 }
 
 // Probe for #29139 / D51840: without the fix, when sys.catalog raft replication on yb-master is

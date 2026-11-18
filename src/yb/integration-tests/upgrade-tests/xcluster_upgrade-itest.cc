@@ -11,12 +11,17 @@
 // under the License.
 //
 
+#include "yb/client/table_handle.h"
 #include "yb/client/xcluster_client.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/xcluster_util.h"
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
 
 #include "yb/master/master_replication.pb.h"
 
@@ -346,6 +351,59 @@ class XClusterUpgradeTestBase : public UpgradeTestBase {
     ASSERT_OK(ValidateRows());
   }
 
+  struct SafeTimeTableRowCounts {
+    int with_stream_id = 0;
+    int without_stream_id = 0;
+  };
+
+  Result<SafeTimeTableRowCounts> CountSafeTimeTableRows() {
+    client::TableHandle table;
+    RETURN_NOT_OK(table.Open(
+        client::YBTableName(
+            YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kXClusterSafeTimeTableName),
+        &consumer_client()));
+
+    Status scan_status;
+    client::TableIteratorOptions options;
+    options.error_handler = [&scan_status](const Status& status) { scan_status = status; };
+
+    SafeTimeTableRowCounts counts;
+    for (const auto& row : client::TableRange(table, options)) {
+      const auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromSafeTimeTableRow(
+          xcluster::ReplicationGroupId(row.column(master::kXCReplicationGroupIdIdx).string_value()),
+          row.column(master::kXCProducerTabletIdIdx).string_value()));
+      if (key.stream_id().IsNil()) {
+        ++counts.without_stream_id;
+      } else {
+        ++counts.with_stream_id;
+      }
+    }
+    RETURN_NOT_OK(scan_status);
+    return counts;
+  }
+
+  // Old binaries only use the old safe time table key, so the key must not include the stream ID
+  // until xcluster_safe_time_table_include_stream_id is promoted.
+  void SafeTimeTableKeyOnUpgradeTest() {
+    ASSERT_OK(CreateTablesAndSetupXCluster());
+
+    SwitchToConsumerCluster();
+    ASSERT_OK(UpgradeClusterToCurrentVersion(kNoDelayBetweenNodes, /*auto_finalize=*/false));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+    const auto counts_before_promotion = ASSERT_RESULT(CountSafeTimeTableRows());
+    ASSERT_EQ(counts_before_promotion.with_stream_id, 0);
+    ASSERT_GT(counts_before_promotion.without_stream_id, 0);
+
+    ASSERT_OK(FinalizeUpgrade());
+    ASSERT_OK(LoggedWaitFor(
+        [this]() -> Result<bool> {
+          const auto counts = VERIFY_RESULT(CountSafeTimeTableRows());
+          return counts.with_stream_id > 0 && counts.without_stream_id == 0;
+        },
+        kRpcTimeout, "Wait for the safe time table keys to include the stream ID"));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  }
+
  private:
   void SwapOtherCluster() {
     other_cluster_.swap(cluster_);
@@ -396,6 +454,10 @@ TEST_P(XClusterUpgradeTest, UpgradeHashPartitionedTable) {
 
 TEST_P(XClusterUpgradeTest, UpgradePastSchemaVersionsRepair) {
   ASSERT_NO_FATAL_FAILURE(SchemaVersionsRepairOnUpgradeTest());
+}
+
+TEST_P(XClusterUpgradeTest, UpgradeSafeTimeTableKey) {
+  ASSERT_NO_FATAL_FAILURE(SafeTimeTableKeyOnUpgradeTest());
 }
 
 // #27380 added support for range partitioned tables in xCluster replication.

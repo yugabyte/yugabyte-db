@@ -2,16 +2,22 @@ title: StorageConfigState
 description: |
   StorageConfigState
 
-  State of a storage configuration. QUEUED_FOR_DELETION means a delete was accepted and YBA
-  removes the configuration once no backup stored with it is still being deleted. Part of
-  StorageConfigInfo.
+  State of a storage configuration. A configuration created by createStorageConfig is VALIDATING
+  while the task that create returns checks the storage, and can't be used for backups yet. When
+  the check passes, the task succeeds and the configuration becomes ACTIVE. When it fails, the task
+  fails with the error code in its error message and YBA deletes the configuration. A configuration
+  still VALIDATING when YBA restarts is deleted, since its check can't finish. QUEUED_FOR_DELETION
+  means a delete was accepted and YBA removes the configuration once no backup stored with it is
+  still being deleted. Part of StorageConfigInfo.
 type: string
 readOnly: true
 enum:
   - ACTIVE
   - QUEUED_FOR_DELETION
+  - VALIDATING
 x-enum-varnames:
   - StorageConfigActive
   - StorageConfigQueuedForDeletion
+  - StorageConfigValidating
 x-yba-api-since: 2026.2.0.0
 x-yba-api-visibility: preview

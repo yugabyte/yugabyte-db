@@ -12,10 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Restores edit-owned {@code universe_details_json} topology from the pre-task {@code before} state
- * reconstructed via {@link StateTransitionDetails#applyBeforeTo}. Lock fields, YBC version flags,
- * {@code sequenceNumber} and the fields other tasks write while the failed task waits (YBC throttle
- * flags, node agent flags, Perf Advisor registration) are taken from the current universe so those
- * changes are not undone.
+ * reconstructed via {@link StateTransitionDetails#applyBeforeTo}. The fields annotated with {@code
+ * DeltaRetainLatest} are taken from the current universe so those changes are not undone.
  */
 @Slf4j
 public class RestoreUniverseDetailsFromDelta extends UniverseTaskBase {
