@@ -12,6 +12,8 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -33,6 +35,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -46,6 +49,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -90,6 +94,17 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   static final int DEFAULT_WAIT_TIME_MS = 10000;
   private final OperatorStatusUpdater kubernetesStatus;
   private final YbcManager ybcManager;
+
+  /** Task runtime info, inherited by a retry of this task. */
+  public static class RuntimeInfo {
+    /**
+     * Whether the primary cluster edit changes the master addresses. A retry that runs after the
+     * primary cluster is saved sees no placement change, but the read replica still needs the new
+     * addresses.
+     */
+    @JsonProperty("masterAddressesChanged")
+    boolean masterAddressesChanged = false;
+  }
 
   @Inject
   protected EditKubernetesUniverse(
@@ -263,6 +278,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getPrimaryCluster(),
               masterAddresses,
               existingMasterAddresses);
+      if (mastersAddrChanged) {
+        updateRuntimeInfo(RuntimeInfo.class, info -> info.masterAddressesChanged = true);
+      } else {
+        mastersAddrChanged = getRuntimeInfo(RuntimeInfo.class).masterAddressesChanged;
+      }
       // Updating cluster in DB
       createUpdateUniverseIntentTask(taskParams().getPrimaryCluster());
 
@@ -290,7 +310,32 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               : (CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
                   ? universe.getUniverseDetails().getReadOnlyClusters().get(0)
                   : null);
-      if (taskParamsAsyncCluster != null || (asyncCluster != null && mastersAddrChanged)) {
+      ExposingServiceState exposingService =
+          taskParams().getPrimaryCluster().userIntent.enableExposingService;
+      boolean asyncExposingServiceChanged =
+          asyncCluster != null
+              && universeDetails.getClusterByUuid(asyncCluster.uuid)
+                      .userIntent
+                      .enableExposingService
+                  != exposingService;
+      if (taskParamsAsyncCluster != null
+          || (asyncCluster != null && (mastersAddrChanged || asyncExposingServiceChanged))) {
+        // The client does not have to pass the read cluster either, but the tasks that update
+        // its pods read it from taskParams.
+        Cluster taskAsyncCluster =
+            taskParamsAsyncCluster != null
+                ? taskParamsAsyncCluster
+                : taskParams()
+                    .upsertCluster(
+                        asyncCluster.userIntent,
+                        asyncCluster.getPartitions(),
+                        asyncCluster.placementInfo,
+                        asyncCluster.uuid,
+                        asyncCluster.clusterType);
+        if (asyncExposingServiceChanged) {
+          taskAsyncCluster.userIntent = taskAsyncCluster.userIntent.clone();
+          taskAsyncCluster.userIntent.enableExposingService = exposingService;
+        }
         // Use new master addresses for editing read cluster.
         editCluster(
             universe,
@@ -299,9 +344,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             masterAddresses,
             masterAddresses /* existingMasterAddresses */,
             mastersAddrChanged);
-        if (taskParamsAsyncCluster != null) {
+        if (taskParamsAsyncCluster != null || asyncExposingServiceChanged) {
           // Updating cluster in DB
-          createUpdateUniverseIntentTask(asyncCluster);
+          createUpdateUniverseIntentTask(taskAsyncCluster);
         }
       }
 
@@ -808,6 +853,25 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           fullMoveMasterAZs,
           fullMoveTserverAZs,
           true /* includeUniverseNodes */);
+    } else if (primaryCluster.userIntent.enableExposingService != curIntent.enableExposingService) {
+      // Every release renders the primary cluster's expose service setting. This creates or
+      // deletes the LoadBalancer services without restarting pods.
+      upgradePodsNonRestart(
+          universe.getName(),
+          newPlacement,
+          masterAddresses,
+          isReadOnlyCluster ? ServerType.TSERVER : ServerType.EITHER,
+          newIntent.ybSoftwareVersion,
+          universeOverrides,
+          azOverrides,
+          newNamingStyle,
+          isReadOnlyCluster,
+          universe.isYbcEnabled(),
+          ybcManager.getStableYbcVersion(),
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */,
+          fullMoveMasterAZs,
+          fullMoveTserverAZs);
     }
 
     // If tservers have been removed, check if some deployments need to be completely
@@ -1752,7 +1816,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           } else {
             taskParams().getClusterByUuid(clusterUUID).setCurrentMasterFullMoveBatchIndex(index);
           }
-          tf.setTaskParams(Json.toJson(taskParams()));
+          tf.setTaskParams(taskParamsForStorage());
         };
     return getUpdateParentTaskParamsTask(taskInfoConsumer);
   }
@@ -2164,6 +2228,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     return task;
   }
 
+  private JsonNode taskParamsForStorage() {
+    return RedactingService.filterSecretFieldsForStorage(Json.toJson(taskParams()));
+  }
+
   protected void persistGflagsChecksumInTaskParams(String universeName) {
     if (MapUtils.isNotEmpty(
         taskParams().getPrimaryCluster().getPerAZServerTypeGflagsChecksumMap())) {
@@ -2180,7 +2248,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         log.debug("Persisting gflags checksum");
       }
     }
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   protected void persistCertChecksumInTaskParams(String universeName) {
@@ -2195,7 +2263,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (Cluster newCluster : taskParams().clusters) {
       newCluster.setCertChecksum(certChecksum);
     }
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   protected void persistOriginalDiskSizeInTaskParams(UUID clusterUUID) {
@@ -2219,7 +2287,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               originalDiskSizeMap.put(azUUID, diskSizes);
             });
     taskParams().getClusterByUuid(cluster.uuid).setOriginalDiskSize(originalDiskSizeMap);
-    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(taskParamsForStorage()));
   }
 
   private void createCheckNodeSafeToDeleteTasks(

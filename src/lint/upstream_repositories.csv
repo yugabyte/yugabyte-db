@@ -18,5 +18,5 @@ src/postgres/third-party-extensions/pgrx,,https://github.com/pgcentralfoundation
 src/postgres/third-party-extensions/pgtap,,https://github.com/theory/pgtap,b941782fada240afdb7057065eb3261a21e8512c
 src/postgres/third-party-extensions/pgvector,,https://github.com/pgvector/pgvector,2627c5ff775ae6d7aef0c430121ccf857842d2f2
 src/postgres/third-party-extensions/postgresql-hll,,https://github.com/citusdata/postgresql-hll,c4ac698ddbb9dee1ff7ff52e077be1af1477721f
-src/postgres/third-party-extensions/postgresql_anonymizer,,https://gitlab.com/dalibo/postgresql_anonymizer,ba2a748905287306349b1b4dd1e2131e2b77def5
+src/postgres/third-party-extensions/postgresql_anonymizer,,https://gitlab.com/dalibo/postgresql_anonymizer,929fa0c41e48164836cee7c920bec9f12119e09d
 src/postgres/third-party-extensions/wal2json,,https://github.com/eulerto/wal2json,75629c2e1e81a12350cc9d63782fc53252185d8d

@@ -29,6 +29,8 @@ struct CdrMetadata {
   HybridTime source_write_ht = HybridTime::kInvalid;
 
   std::string ToString() const { return YB_STRUCT_TO_STRING(source_origin, source_write_ht); }
+
+  bool operator==(const CdrMetadata&) const = default;
 };
 
 } // namespace yb

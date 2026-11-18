@@ -4,7 +4,6 @@ BEGIN;
 
 CREATE EXTENSION anon CASCADE;
 BEGIN; -- YB: Workaround for read time error, check #25665
-SET yb_non_ddl_txn_for_sys_tables_allowed = true; -- YB: next statement updates pg_seclabel and is not a DDL
 SELECT anon.init();
 COMMIT; -- YB: Workaround for read time error, check #25665
 
@@ -48,30 +47,12 @@ SELECT * FROM t1;
 
 UPDATE t1 SET t='test' WHERE i=1;
 
--- SHOULD FAIL
-BEGIN; -- YB: workaround for lack of transactional DDL
-SAVEPOINT fail_start_engine;
-SELECT anon.start_dynamic_masking();
-ROLLBACK TO fail_start_engine;
-
-RESET ROLE;
-SELECT anon.start_dynamic_masking();
-SET ROLE oscar_the_owner;
-
 SELECT * FROM t1;
 
---SELECT * FROM mask.t1;
-
--- SHOULD FAIL
-SAVEPOINT fail_stop_engine;
-SELECT anon.stop_dynamic_masking();
-ROLLBACK TO fail_stop_engine;
-
-RESET ROLE;
-SELECT anon.stop_dynamic_masking();
 SET ROLE oscar_the_owner;
 
 -- SHOULD FAIL
+BEGIN; -- YB: workaround for lack of transactional DDL
 SAVEPOINT fail_seclabel_on_role;
 DO $$
 BEGIN

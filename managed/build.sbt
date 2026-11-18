@@ -174,7 +174,7 @@ Global / onChangedBuildSource := ReloadOnSourceChanges
 // Flyway 10+ ships database support as separate modules; the postgresql one is required.
 val flywayVersion = "13.8.0"
 val bouncyCastleFipsVersion = "2.1.1"
-val bouncyCastleUtilFipsVersion = "2.1.7"
+val bouncyCastleUtilFipsVersion = "2.1.8"
 
 libraryDependencies ++= Seq(
   javaJdbc,
@@ -321,7 +321,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.8.15" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.8.18" % Test,
   // yba-client-v2's ApiClient registers MultiPartFeature. The POM it installs is the shade
   // plugin's dependency-reduced one, which drops all compile deps, so declare this one here.
   "org.glassfish.jersey.media" % "jersey-media-multipart" % "2.41" % Test,
@@ -409,7 +409,25 @@ externalResolvers := {
 }
 
 (Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts).value
-(Test / test) := (Test / test).dependsOn(testDependentArtifacts).value
+// The support bundle Go helpers aren't Maven modules, so mvn test never reaches them. Their tests
+// run after the Java tests, and a failure fails `sbt test`. testDependentArtifacts can't carry
+// this: sbt ignores its exit status.
+(Test / test) := {
+  val javaTests = (Test / test).dependsOn(testDependentArtifacts).result.value
+  ybLog("Testing support bundle Go helpers...")
+  val goStatus = Process("bash devops/supportbundle/run_go_tests.sh", baseDirectory.value).!
+  javaTests.toEither.left.foreach(incomplete => throw incomplete)
+  goStatus match {
+    case 0 =>
+    case 2 =>
+      sys.error(
+        "Support bundle Go tests could not run: go is missing, a Go download failed, or the" +
+          " report folders could not be cleared or created; see the log above. This is a" +
+          " tooling failure, not a test failure.")
+    case _ =>
+      sys.error("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
+  }
+}
 
 (Compile / compilePlatform) := {
   Def.sequential(
@@ -757,7 +775,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
-    version := "1.0.3",
+    version := "1.0.5",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v1"),
   )
@@ -774,7 +792,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.8.15",
+    version := "1.8.18",
     openApiHttpUserAgent := s"yba-java-client/${version.value}",
     target := file("client/java/target/v2"),
   )
@@ -1099,6 +1117,7 @@ dependencyOverrides += "org.bouncycastle" % "bcutil-fips" % bouncyCastleUtilFips
 libraryDependencies += "org.yb" % "yb-client" % "0.8.125-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b13"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
+libraryDependencies += "com.yugabyte.troubleshoot" % "perf-advisor-client" % "0.2.0"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

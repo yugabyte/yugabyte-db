@@ -30,7 +30,6 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/polymorphic_iterator.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -56,7 +55,7 @@ using vector_index::StoreVectorPayload;
 using vector_index::VectorId;
 using vector_index::VectorIndexIf;
 using vector_index::VectorIndexIfPtr;
-using vector_index::VectorIndexIteratorEntry;
+using vector_index::VectorIndexIterator;
 using vector_index::VectorIndexTraitsIf;
 using vector_index::VectorWithDistance;
 using pgwrapper::DistanceOpName;
@@ -204,13 +203,7 @@ class PgVectorIndex : public VectorIndexIf<FloatVector, float>, public PgVectorI
     return STATUS(NotSupported, "GetVector not implemented for PgVectorIndex");
   }
 
-  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<FloatVector>>> BeginImpl()
-      const override {
-    LOG(FATAL) << "Iteration not supported for PgVectorIndex";
-  }
-
-  std::unique_ptr<AbstractIterator<VectorIndexIteratorEntry<FloatVector>>> EndImpl()
-      const override {
+  std::unique_ptr<VectorIndexIterator<FloatVector>> CreateIterator() const override {
     LOG(FATAL) << "Iteration not supported for PgVectorIndex";
   }
 

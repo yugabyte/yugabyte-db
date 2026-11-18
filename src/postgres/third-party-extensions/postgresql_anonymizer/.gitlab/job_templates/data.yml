@@ -1,0 +1,55 @@
+---
+
+variables:
+  PROJECT_API: "$CI_API_V4_URL/projects/$CI_PROJECT_ID"
+  DATA_ZIP_API_URL: "$PROJECT_API/packages/generic/data/$CI_COMMIT_REF_NAME"
+
+##
+## D E P L O Y
+##
+
+data_zip:
+  stage: deploy
+  image: alpine
+  rules:
+    - if: $CI_COMMIT_TAG                 # Run this job when a tag is created
+  script:
+    - apk add -U make git zip curl
+    - make data_zip
+    - echo $DATA_ZIP_API_URL
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN"
+            --upload-file _build/postgresql_anonymizer_data_en_US.zip
+            "$DATA_ZIP_API_URL/postgresql_anonymizer_data_en_US.zip"'
+    - 'curl --header "JOB-TOKEN: $CI_JOB_TOKEN"
+            --upload-file _build/postgresql_anonymizer_data_fr_FR.zip
+            "$DATA_ZIP_API_URL/postgresql_anonymizer_data_fr_FR.zip"'
+  artifacts:
+    paths:
+      - _build
+
+
+
+##
+## R E L E A S E
+##
+
+release_anon:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG                 # Run this job when a tag is created
+  script:
+    - echo "running release_job"
+  release:
+    tag_name: '$CI_COMMIT_TAG'
+    description: '$CI_COMMIT_TAG'
+    assets:
+      links:
+        - name: 'English dataset'
+          url: '$DATA_ZIP_API_URL/postgresql_anonymizer_data_en_US.zip'
+          link_type: 'package'
+          filepath: 'postgresql_anonymizer_data_en_US.zip'
+        - name: 'French dataset'
+          url: '$DATA_ZIP_API_URL/postgresql_anonymizer_data_fr_FR.zip'
+          link_type: 'package'
+          filepath: 'postgresql_anonymizer_data_fr_FR.zip'

@@ -183,19 +183,24 @@ uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t ke
 char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len);
 
 /*
- * Latch the value of the yb_enable_object_locking_infra auto flag for the transaction that is about
- * to start. The flag is PGC_SIGHUP, so without a per-transaction copy it can change between
- * two statements of the same transaction block and flip object locking on or off mid-transaction.
- * Must be called from PG's StartTransaction() before AtStart_Cache(), which already consults the
- * value, and must not be called for savepoints or for the internal transaction restarts that
- * happen within one PG transaction.
+ * Latch whether the transaction that is about to start uses global object locking. PG decides it in
+ * YbSetObjectLockingForCurrTxn: the yb_enable_global_object_locking_infra auto flag is on, and the
+ * transaction doesn't start with yb_read_time set. The flag is PGC_SIGHUP and yb_read_time can be
+ * changed by SET LOCAL, so without a per-transaction copy object locking could flip on or off
+ * mid-transaction. Must be called from PG's StartTransaction() before AtStart_Cache(), which
+ * already consults the value, and must not be called for savepoints or for the internal
+ * transaction restarts that happen within one PG transaction.
  */
-void YBCSetObjectLockingInfraForCurrTxn();
+void YBCSetGlobalObjectLockingForCurrTxn(bool enabled);
+/*
+ * Latch whether the transaction that is about to start reads the catalog as of yb_read_time.
+ * Called next to YBCSetGlobalObjectLockingForCurrTxn(), under the same rules.
+ */
+void YBCSetHistoricalCatalogReadForCurrTxn(bool historical_catalog_read);
 
-/* The value latched by YBCSetObjectLockingInfraForCurrTxn(). */
-bool YBCIsObjectLockingInfraEnabled();
-
-bool YBCIsObjectLockingEnabled();
+/* The values latched by the two calls above. */
+bool YBCIsObjectLockingLatchedForCurrTxn();
+bool YBCIsHistoricalCatalogReadForCurrTxn();
 
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 

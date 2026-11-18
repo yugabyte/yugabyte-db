@@ -288,7 +288,6 @@ export const ReleaseDetails = ({
             <YBButton
               variant="secondary"
               size="large"
-              disabled={data?.universes?.length > 0}
               onClick={() => {
                 onDisableReleaseButtonClick();
                 onSidePanelClose();

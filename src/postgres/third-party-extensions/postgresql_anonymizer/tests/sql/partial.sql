@@ -21,4 +21,3 @@ SELECT anon.partial_email(NULL) IS NULL;
 
 
 ROLLBACK;
-

@@ -24,6 +24,9 @@ option java_package = "org.yb.docdb";
 message KeyValuePairPB {
   optional bytes key = 1;
   optional bytes value = 2;
+  // DocDB write time for this pair. Wins over the operation's write time. Only an xCluster target
+  // sets it: one target request holds records from several source ops, so one time per request
+  // cannot cover every pair.
   optional fixed64 external_hybrid_time = 3;
   // Reserved for transaction field which was used in xcluster external intent writes.
   reserved 4;

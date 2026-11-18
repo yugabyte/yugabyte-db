@@ -42,16 +42,7 @@ BEGIN
   THEN RAISE NOTICE 'insufficient_privilege';
 END$$;
 
--- SHOULD FAIL
-SAVEPOINT fail_start_engine;
-SELECT anon.start_dynamic_masking();
-ROLLBACK TO fail_start_engine;
-
-RESET ROLE;
-SELECT anon.start_dynamic_masking();
 SET ROLE mallory_the_masked_user;
-
-SELECT * FROM mask.t1;
 
 -- SHOULD FAIL
 DO $$
@@ -61,13 +52,6 @@ BEGIN
   THEN RAISE NOTICE 'insufficient_privilege';
 END$$;
 
--- SHOULD FAIL
-SAVEPOINT fail_stop_engine;
-SELECT anon.stop_dynamic_masking();
-ROLLBACK TO fail_stop_engine;
-
-RESET ROLE;
-SELECT anon.stop_dynamic_masking();
 SET ROLE mallory_the_masked_user;
 
 SELECT COUNT(*)=1 FROM anon.pg_masking_rules;

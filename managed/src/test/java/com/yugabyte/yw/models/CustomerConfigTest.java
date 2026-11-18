@@ -4,8 +4,10 @@ package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
@@ -101,5 +103,17 @@ public class CustomerConfigTest extends FakeDBApplication {
     fc.delete();
     fc = CustomerConfig.get(defaultCustomer.getUuid(), cc.getConfigUUID());
     assertNull(fc);
+  }
+
+  @Test
+  public void onlyActiveConfigsAreActive() {
+    CustomerConfig cc = createData(defaultCustomer);
+    assertTrue(cc.isActive());
+    cc.setState(CustomerConfig.ConfigState.Validating);
+    assertFalse(cc.isActive());
+    cc.setState(CustomerConfig.ConfigState.QueuedForDeletion);
+    assertFalse(cc.isActive());
+    // Not a field of the v1 config JSON.
+    assertFalse(Json.toJson(cc).has("active"));
   }
 }

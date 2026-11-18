@@ -1,0 +1,15 @@
+{{! Yugabyte modification: the stock java-play-framework templates have no oneOf interface. }}
+/**
+ * {{#description}}{{.}}{{/description}}{{^description}}{{classname}}{{/description}}
+ */
+{{#discriminator}}
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "{{{discriminator.propertyBaseName}}}", visible = true)
+@JsonSubTypes({
+  {{#discriminator.mappedModels}}
+  @JsonSubTypes.Type(value = {{modelName}}.class, name = "{{mappingName}}"),
+  {{/discriminator.mappedModels}}
+})
+{{/discriminator}}
+{{! No discriminator getter: a variant may type the property as an enum, and Jackson reads the
+    property itself. Callers switch on the variant class. }}
+public interface {{classname}} {}

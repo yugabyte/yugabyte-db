@@ -5,18 +5,22 @@ The installation process is composed of 4 basic steps:
 
 * Step 1: **Deploy** the extension into the host server
 * Step 2: **Load** the extension in the PostgreSQL instance
-* Step 3: **Create** the extension inside the database
-* Step 4: **Initialize** the extension internal data
+* Step 3: **Create** and **Initialize** the extension inside the database
 
 There are multiple ways to install the extension :
 
-* [Install on RedHat / CentOS]
+* [Install on RedHat / Rocky Linux]
+* [Install on Debian / Ubuntu]
+* [Install on SUSE]
+* [Install with Ansible]
 * [Install with PGXN]
 * [Install from source]
 * [Install with docker]
 * [Install as a black box]
+* [Install with Django]
 * [Install on MacOS]
 * [Install on Windows]
+* [Install on PostgreSQL Forks]
 * [Install in the cloud]
 * [Uninstall]
 
@@ -26,13 +30,18 @@ See [Load the extension] for more details.
 
 If you're having any problem, check the [Troubleshooting] section.
 
-[Install on RedHat / CentOS]: #install-on-redhat-centos
+[Install on RedHat / Rocky Linux]: #install-on-redhat-rocky-linux-alma-linux
+[Install on Debian / Ubuntu]: #install-on-debian-ubuntu
+[Install on SUSE]: #install-on-suse
+[Install with Ansible]: #install-with-ansible
 [Install with PGXN]: #install-with-pgxn
 [Install from source]: #install-from-source
 [Install with docker]: #install-with-docker
 [Install as a black box]: #install-as-a-black-box
+[Install with Django]: #install-with-django
 [Install on MacOS]: #install-on-macos
 [Install on Windows]: #install-on-windows
+[Install on PostgreSQL Forks]: #install-on-postgresql-forks
 [Install in the cloud]: #install-in-the-cloud
 [Uninstall]: #uninstall
 [Load the extension]: #addendum-alternative-ways-to-load-the-extension
@@ -49,32 +58,85 @@ This extension is available in two versions :
 
 
 
-Install on RedHat / CentOS
+Install on RedHat / Rocky Linux / Alma Linux
 ------------------------------------------------------------------------------
 
-> This is the recommended way to install the `stable` extension
-> This method works for RHEL/CentOS 7 and 8. If you're running RHEL/CentOS 6,
-> consider upgrading or read the [Install With PGXN] section.
+!!! warning "New RPM repository !"
 
-_Step 0:_ Add the [PostgreSQL Official RPM Repo] to your system. It should be
-something like:
+    DO NOT use the package provided by the PGDG RPM repository.
+    It is obsolete.
+
+_Step 0:_ Add the [DaLibo Labs RPM repository] to your system.
 
 ```console
-sudo yum install https://.../pgdg-redhat-repo-latest.noarch.rpm
+sudo dnf install https://yum.dalibo.org/labs/dalibo-labs-4-1.noarch.rpm
 ```
 
-[PostgreSQL Official RPM Repo]: https://yum.postgresql.org/
+[Dalibo Labs RPM repository]: https://yum.dalibo.org/labs/
 
+Alternatively you can download the `latest` version from the
+[Gitlab Package Registry].
 
 _Step 1:_ Deploy
 
 ```console
-sudo yum install postgresql_anonymizer_14
+sudo yum install postgresql_anonymizer_16
 ```
 
-(Replace `14` with the major version of your PostgreSQL instance.)
+(Replace `16` with the major version of your PostgreSQL instance.)
 
-_Step 2:_  Load the extension.
+_Step 2:_ Load the extension.
+
+```sql
+ALTER DATABASE foo SET session_preload_libraries = 'anon';
+```
+
+(If you're already loading extensions that way, just add `anon` to the current list)
+
+> The setting will be applied for the next sessions,
+> i.e. **You need to reconnect to the database for the change to visible**
+
+
+
+_Step 3:_ Close your session and open a new one. Create the extension.
+
+```sql
+CREATE EXTENSION anon;
+SELECT anon.init();
+```
+
+All new connections to the database can now use the extension.
+
+Install on Debian / Ubuntu
+------------------------------------------------------------------------------
+
+> This is the recommended way to install the `stable` version
+
+_Step 0:_ Add the [DaLibo Labs DEB Repo] to your system.
+
+```console
+apt install curl lsb-release
+echo deb http://apt.dalibo.org/labs $(lsb_release -cs)-dalibo main > /etc/apt/sources.list.d/dalibo-labs.list
+curl -fsSL -o /etc/apt/trusted.gpg.d/dalibo-labs.gpg https://apt.dalibo.org/labs/debian-dalibo.gpg
+apt update
+```
+
+[Dalibo Labs DEB Repo]: https://apt.dalibo.org/labs/
+
+Alternatively you can download the `latest` version from the
+[Gitlab Package Registry].
+
+[Gitlab Package Registry]: https://gitlab.com/dalibo/postgresql_anonymizer/-/packages
+
+_Step 1:_ Deploy
+
+```console
+sudo apt install postgresql_anonymizer_16
+```
+
+(Replace `16` with the major version of your PostgreSQL instance.)
+
+_Step 2:_ Load the extension.
 
 ```sql
 ALTER DATABASE foo SET session_preload_libraries = 'anon';
@@ -82,26 +144,126 @@ ALTER DATABASE foo SET session_preload_libraries = 'anon';
 
 (If you're already loading extensions that way, just add `anon` the current list)
 
-_Step 3:_  Close your session and open a new one. Create the extension.
+> The setting will be applied for the next sessions,
+> i.e. **You need to reconnect to the database for the change to visible**
+
+_Step 3:_ Close your session and open a new one. Create the extension.
 
 ```sql
-CREATE EXTENSION anon CASCADE;
+CREATE EXTENSION anon;
+SELECT anon.init();
 ```
 
-_Step 4:_  Initialize the extension
+All new connections to the database can now use the extension.
+
+Install on SUSE
+------------------------------------------------------------------------------
+
+This procedure works with the official PostgreSQL packages from the
+[Postgres Zypper Repository].
+
+[Postgres Zypper Repository]: https://zypp.postgresql.org/
+
+_Step 0:_ Download the latest version from the [PostgreSQL Anonymizer Package Registry]
+
+[PostgreSQL Anonymizer Package Registry]: https://gitlab.com/dalibo/postgresql_anonymizer/-/packages
+
+Rename the downloaded file as `postgresql_anonymizer_16.rpm`
+
+(Replace `16` with the major version of your PostgreSQL instance.)
+
+_Step 1:_ Deploy
+
+```console
+sudo zypper install postgresql_anonymizer_16.rpm
+```
+
+_Step 2:_ Load the extension.
 
 ```sql
+ALTER DATABASE foo SET session_preload_libraries = 'anon';
+```
+
+(If you're already loading extensions that way, just add `anon` to the current list)
+
+> The setting will be applied for the next sessions,
+> i.e. **You need to reconnect to the database for the change to visible**
+
+
+
+_Step 3:_ Close your session and open a new one. Create the extension.
+
+```sql
+CREATE EXTENSION anon;
+SELECT anon.init();
+```
+
+All new connections to the database can now use the extension.
+
+Install with Ansible
+------------------------------------------------------------------------------
+
+> This method will install the `stable` extension
+
+_Step 1a:_ Install the [Dalibo PostgreSQL Essential Ansible Collection]
+
+```console
+ansible-galaxy collection install dalibo.advanced
+```
+
+[Dalibo PostgreSQL Essential Ansible Collection]: https://galaxy.ansible.com/ui/repo/published/dalibo/advanced/
+
+
+_Step 1b:_ Write a playbook (e.g. `anon.yml`) to the `postgresql_anonymizer`
+role to the database servers. For instance:
+
+```yaml
+---
+- name: Install the PostgreSQL Anonymizer extension on all hosts of the pgsql group
+  hosts: pgsql
+  roles:
+    - dalibo.advanced.anon
+```
+
+_Step 1c:_ Launch the playbook
+
+```console
+ansible-playbook anon.yml
+```
+
+_Step 2:_ Load the extension.
+
+```sql
+ALTER DATABASE foo SET session_preload_libraries = 'anon';
+```
+
+(If you're already loading extensions that way, just add `anon` the current list)
+
+> The setting will be applied for the next sessions,
+> i.e. **You need to reconnect to the database for the change to visible**
+
+_Step 3:_ Close your session and open a new one. Create the extension.
+
+```sql
+CREATE EXTENSION anon;
 SELECT anon.init();
 ```
 
 All new connections to the database can now use the extension.
 
 
-Install With [PGXN](https://pgxn.org/) :
+
+Install With [PGXN](https://pgxn.org/)
 ------------------------------------------------------------------------------
 
-> This method will install the `stable` extension
+!!! warning
 
+    This method is not available currently but you can use the
+    "Install From Source" method below which is very similar.
+
+<!--
+
+> This method will install the `stable` extension
 
 _Step 1:_  Deploy the extension into the host server with:
 
@@ -123,12 +285,7 @@ ALTER DATABASE foo SET session_preload_libraries = 'anon';
 _Step 3:_  Close your session and open a new one. Create the extension.
 
 ```sql
-CREATE EXTENSION anon CASCADE;
-```
-
-_Step 4:_  Initialize the extension
-
-```sql
+CREATE EXTENSION anon;
 SELECT anon.init();
 ```
 
@@ -146,42 +303,67 @@ All new connections to the database can now use the extension.
 [pgxn install documentation]: https://github.com/pgxn/pgxnclient/blob/master/docs/usage.rst#pgxn-install
 [Issue #93]: https://gitlab.com/dalibo/postgresql_anonymizer/issues/93
 
+-->
 
-Install From source
+Install From Source
 ------------------------------------------------------------------------------
+
+[PGRX System Requirements]: https://github.com/pgcentralfoundation/pgrx?tab=readme-ov-file#system-requirements
 
 > This is the recommended way to install the `latest` extension
 
-_Step 0:_ First you need to install the postgresql development libraries.
-On most distributions, this is available through a package called
-`postgresql-devel` or `postgresql-server-dev`.
+!!! Important
 
-_Step 1:_ Download the source from the
+    Building the extension requires a full Rust development
+    environment. It is not recommended to build it on a production server.
+
+Before anything else, you need to install the [PGRX System Requirements] and
+install and initialise PGRX itself using
+
+```console
+cargo install cargo-pgrx --version 0.14.3 --locked
+cargo pgrx init
+```
+
+!!! note
+
+    You may need to specify your pg_config location in the second command
+    by using the `--pg{version}` flag
+    (e.g. `--pg16 /usr/lib/postgresql/16/bin/pg_config`).
+
+
+_Step 0:_ Download the source from the
 [official repository on Gitlab](https://gitlab.com/dalibo/postgresql_anonymizer/),
 either the archive of the [latest release](https://gitlab.com/dalibo/postgresql_anonymizer/-/releases),
-or the latest version from the `master` branch:
+or clone the `latest` branch:
 
 ```console
 git clone https://gitlab.com/dalibo/postgresql_anonymizer.git
 ```
 
-_Step 2:_  Build the project like any other PostgreSQL extension:
+_Step 1:_ Build the project like any other PostgreSQL extension:
 
 ```console
 make extension
 sudo make install
 ```
 
-**NOTE**: If you have multiple versions of PostgreSQL on the server, you may
-need to specify which version is your target by defining the `PG_CONFIG` env
-variable like this:
+**NOTE**: If you have multiple versions of PostgreSQL on the server or if the
+package does not build/install correctly, you may
+need to specify which version is your target by defining the `PG_CONFIG` and
+`PGVER` env variable like this:
 
 ```console
-make extension PG_CONFIG=/usr/lib/postgresql/14/bin/pg_config
-sudo make install PG_CONFIG=/usr/lib/postgresql/14/bin/pg_config
+make extension PG_CONFIG=/usr/lib/postgresql/14/bin/pg_config PGVER=pg14
+sudo make install PG_CONFIG=/usr/lib/postgresql/14/bin/pg_config PGVER=pg14
 ```
 
-_Step 3:_  Load the extension:
+_Step 2:_ Load the extension:
+
+Please note that in order to load the extension you must connect to Postgresql
+with a user having superuser privileges. Also, the extension
+(as all Postgresql extensions) will be created only in the given database and
+not globally.
 
 ```sql
 ALTER DATABASE foo SET session_preload_libraries = 'anon';
@@ -189,19 +371,15 @@ ALTER DATABASE foo SET session_preload_libraries = 'anon';
 
 (If you're already loading extensions that way, just add `anon` the current list)
 
-_Step 4:_  Close your session and open a new one. Create the extension.
+_Step 3:_ Close your session and open a new one on the same PostgreSQL
+database. Create the extension.
 
 ```sql
-CREATE EXTENSION anon CASCADE;
-```
-
-_Step 5:_  Initialize the extension:
-
-```sql
+CREATE EXTENSION anon;
 SELECT anon.init();
 ```
 
-All new connections to the database can now use the extension.
+All new connections to the given database can now use the extension.
 
 
 
@@ -257,66 +435,25 @@ not plan to provide a docker image for each version of PostgreSQL. However you
 can build your own image based on the version you need like this:
 
 ```shell
-PG_MAJOR_VERSION=11 make docker_image
+DOCKER_PG_MAJOR_VERSION=16 make docker_image
 ```
 
 Install as a "Black Box"
 ------------------------------------------------------------------------------
 
+see [Anonymous Dumps]
 
-You can also treat the docker image as an "anonymizing black box" by using a
-specific entrypoint script called `/anon.sh`. You pass the original data
-and the masking rules to the `/anon.sh` script and it will return a anonymized
-dump.
+[Anonymous Dumps]: anonymous_dumps.md
 
-Here's an example in 4 steps:
+Install With Django
+------------------------------------------------------------------------------
 
-_Step 1:_  Dump your original data (for instance `dump.sql`)
+Django PostgreSQL Anonymizer provides seamless integration with the PostgreSQL
+Anonymizer extension, enabling you to anonymize data at the database level
+with zero performance overhead. Ideal for development workflows, safe data
+sharing, and reducing privacy risks.
 
-```console
-pg_dump --format=plain [...] my_db > dump.sql
-```
-
-Note this method only works with plain sql format (`-Fp`). You **cannot**
-use the custom format (`-Fc`) and the directory format (`-Fd`) here.
-
-If you want to maintain the owners and grants, you need export them with
-`pg_dumpall --roles-only` like this:
-
-```console
-(pg_dumpall -Fp [...] --roles-only && pg_dump -Fp [...] my_db ) > dump.sql
-```
-
-_Step 2:_  Write your masking rules in a separate file (for instance `rules.sql`)
-
-```sql
-SELECT pg_catalog.set_config('search_path', 'public', false);
-
-CREATE EXTENSION anon CASCADE;
-SELECT anon.init();
-
-SECURITY LABEL FOR anon ON COLUMN people.lastname
-IS 'MASKED WITH FUNCTION anon.fake_last_name()';
-
--- etc.
-```
-
-_Step 3:_  Pass the dump and the rules through the docker image and receive an
-anonymized dump !
-
-```console
-IMG=registry.gitlab.com/dalibo/postgresql_anonymizer
-ANON="docker run --rm -i $IMG /anon.sh"
-cat dump.sql rules.sql | $ANON > anon_dump.sql
-```
-
-(this last step is written on 3 lines for clarity)
-
-_NB:_ You can also gather _step 1_ and _step 3_ in a single command:
-
-```console
-(pg_dumpall --roles-only && pg_dump my_db) | cat - rules.sql | $ANON > anon_dump.sql
-```
+See <https://django-postgres-anonymizer.readthedocs.io/>
 
 
 Install on MacOS
@@ -324,24 +461,60 @@ Install on MacOS
 
 **WE DO NOT PROVIDE COMMUNITY SUPPORT FOR THIS EXTENSION ON MACOS SYSTEMS.**
 
-However it should be possible to build the extension with the following lines:
+However it should be possible to build the extension if you install the
+[PGRX Mac OS system requirements] and then follow the regular
+[install from source] procedure.
 
-```console
-export C_INCLUDE_PATH="$(xcrun --show-sdk-path)/usr/include"
-make extension
-make install
-```
+[PGRX Mac OS system requirements]: https://github.com/pgcentralfoundation/pgrx?tab=readme-ov-file#system-requirements
 
 Install on Windows
 ------------------------------------------------------------------------------
 
-**WE DO NOT PROVIDE COMMUNITY SUPPORT FOR THIS EXTENSION ON WINDOWS.**
+At the moment there's no native build of PostgreSQL Anonymizer for Windows.
 
-However it is possible to compile it using Visual Studio and the `build.bat`
-file.
+However is it possible to run PostgreSQL inside a WSL2 container, which is
+basically an Ubuntu subsystem running on Windows.
 
-We provide Windows binaries and install files as part of our commercial
-support.
+You can then install PostgreSQL Anonymizer inside the WSL2 container like you
+would on a regular Ubuntu server.
+
+Please read the Windows documentation for more details:
+
+* [Install WSL2]
+* [Install PostgreSQL in WSL2]
+
+[Install PostgreSQL in WSL2]: https://learn.microsoft.com/windows/wsl/tutorials/wsl-database#install-postgresql
+[Install WSL2]: https://learn.microsoft.com/windows/wsl/install
+
+If you need native builds for Windows, please consider sponsoring the project !
+
+
+Install on PostgreSQL Forks
+------------------------------------------------------------------------------
+
+The extension is also available for PostgreSQL Forks and PostgreSQL-compatible
+software, such as:
+
+* [EDB Postgres]
+* [Postgres Pro Enterprise]
+* [Tanzu Greenplum]
+* [Yugabytes]
+
+Please refer to their own documentation on how to activate the extension as they
+might have a platform-specific install procedure.
+
+[Postgres Pro Enterprise]: https://postgrespro.com/docs/enterprise/current/pgpro-anonymizer
+[Tanzu Greenplum]: https://techdocs.broadcom.com/us/en/vmware-tanzu/data-solutions/tanzu-greenplum/7/greenplum-database/ref_guide-modules-postgresql_anonymizer.html
+[EDB Postgres]: https://www.enterprisedb.com/docs/pg_extensions/pg_anonymizer/
+[Yugabytes]: https://docs.yugabyte.com/stable/additional-features/pg-extensions/extension-pganon/
+
+!!! Note
+
+    Some editors don't follow our release cycle
+    and may offer an outdated version. For our part, we only provide community
+    support for the `stable` and `latest` versions (see above).
+    Extended Long Term Support is available via commercial support, contact our
+    [sales team](mailto:contact@dalibo.com) for more details.
 
 
 Install in the cloud
@@ -352,18 +525,45 @@ that most Database As A Service platforms (DBaaS), such as Amazon RDS or
 Microsoft Azure SQL, do not allow. They must add the extension to their catalog
 in order for you to use it.
 
-At the time we are writing this (October 2023), the following platforms support
+At the time we are writing this (Jan. 2026), the following platforms provide
 PostgreSQL Anonymizer:
 
-* [Google Cloud SQL](https://cloud.google.com/sql/docs/postgres/extensions#postgresql_anonymizer)
-* [Postgres.ai](https://postgres.ai/docs/database-lab/masking)
+* [Aiven]
+* [Alibaba Cloud]
+* [Crunchy Bridge]
+* [Google Cloud SQL]
+* [IBM Cloud]
+* [Microsoft Azure Database]
+* [Neon]
+* [Postgres.ai]
+* [Scalingo]
+* [Yandex]
+
+[Aiven]: https://aiven.io/blog/using-postgresql-anonymizer-to-safely-share-data-with-llms
+[Alibaba Cloud]: https://www.alibabacloud.com/help/en/rds/apsaradb-rds-for-postgresql/extensions-supported-by-apsaradb-rds-for-postgresql
+[Crunchy Bridge]: https://access.crunchydata.com/documentation/postgresql-anonymizer/latest/
+[Google Cloud SQL]: https://cloud.google.com/sql/docs/postgres/extensions#postgresql_anonymizer
+[IBM Cloud]: https://cloud.ibm.com/docs/databases-for-postgresql?topic=databases-for-postgresql-data-masking
+[Microsoft Azure Database]: https://learn.microsoft.com/fr-fr/azure/postgresql/flexible-server/concepts-extensions
+[Neon]: https://neon.tech/docs/extensions/postgresql-anonymizer
+[Postgres.ai]: https://postgres.ai/docs/database-lab/masking
+[Scalingo]: https://doc.scalingo.com/databases/postgresql/guides/postgresql-anonymizer
+[Yandex]: https://yandex.cloud/en/docs/managed-postgresql/operations/extensions/pg_anon
 
 Please refer to their own documentation on how to activate the extension as they
 might have a platform-specific install procedure.
 
+!!! Note
+
+    Some cloud service providers don't follow our release cycle
+    and may offer an outdated version. For our part, we only provide community
+    support for the `stable` and `latest` versions (see above).
+    Extended Long Term Support is available via commercial support, contact our
+    [sales team](mailto:contact@dalibo.com) for more details.
+
 If your favorite DBaaS provider is not present in the list above, there is not
-much we can do about it... Although we have open discussions with some major
-actors in this domain, we DO NOT have internal knowledge on wether or not they
+much we can do about it... Although we have open discussions with most major
+actors in this domain, we DO NOT have internal knowledge on whether or not they
 will support it in the near future. If privacy and anonymity are a concern to
 you, we encourage you to contact the customer service of these platforms and
 ask them directly if they plan to add this extension to their catalog.
@@ -450,7 +650,7 @@ SELECT anon.is_initialized();
 ```
 
 If the result is not `t`, the extension data is not present.
-Go back to step 4.
+Go back to step 3.
 
 
 Uninstall
@@ -463,23 +663,21 @@ SELECT anon.remove_masks_for_all_columns();
 SELECT anon.remove_masks_for_all_roles();
 ```
 
-**THIS IS NOT MANDATORY !**  It is possible to keep the masking rules inside
-the database schema even if the anon extension is removed !
+Although this step is not mandatory, it is highly recommended.
+
+In some situations ever, it may be useful to keep the masking rules inside
+the database schema even if the anon extension is removed ! Keep in mind
+that [pg_dump] and [pg_restore] both have an option `--no-security-labels`
+to exclude the masking rules when you want to import/export the database.
+
+[pg_dump]: https://www.postgresql.org/docs/current/app-pgdump.html
+[pg_restore]: https://www.postgresql.org/docs/current/app-pgrestore.html
 
 _Step 2:_ Drop the extension
 
 ```sql
-DROP EXTENSION anon CASCADE;
+DROP EXTENSION anon;
 ```
-
-The `anon` extension also installs [pgcrypto] as a dependency, if you
-don't need it, you can remove it too:
-
-```sql
-DROP EXTENSION pgcrypto;
-```
-
-[pgcrypto]: https://www.postgresql.org/docs/current/pgcrypto.html
 
 _Step 3:_ Unload the extension
 
@@ -488,13 +686,42 @@ _Step 3:_ Unload the extension
 ALTER DATABASE foo RESET session_preload_libraries;
 ```
 
+Or modify `shared_preload_libraries` depending on how you loaded
+the extension...
+
+
 
 _Step 4:_ Uninstall the extension
 
-For Redhat / CentOS / Rocky:
+For Redhat / Rocky:
 
 ```console
-sudo yum remove postgresql_anonymizer_14
+sudo yum remove postgresql_anonymizer_17
 ```
 
-Replace 14 by the version of your postgresql instance.
+Replace 17 by the version of your postgresql instance.
+
+Compatibility Guide
+-------------------------------------------------------------------------------
+
+PostgreSQL Anonymizer is designed to work on the most current setups.
+As we are trying to find the right balance between innovation and backward
+compatibility, we define a comprehensive list of platforms and software that
+we officially support for each major version.
+
+
+| Version  | Released   | EOL       | Postgres |    OS                  |
+|----------|------------|-----------|----------|------------------------|
+| 4.x (WIP)  | jan. 2027  | jan. 2028 | 15 to 19 | RHEL 9 & 10, Debian 13 & 14, Ubuntu 26.04 |
+| 3.x      | jan. 2026  | jan. 2027 | 14 to 18 | RHEL 8, 9 & 10, Debian 12 & 13, Ubuntu 24.04 |
+| 2.x      | dec. 2024  | jan. 2026 | 13 to 17 | RHEL 8 & 9, Debian 11 & 12, Ubuntu 24.04 |
+| 1.3      | mar. 2024  | dec. 2024 | 12 to 16 | RHEL 8 & 9 |
+| 1.2      | jan. 2024  | mar. 2024 | 12 to 16 | RHEL 8 & 9 |
+| 1.1      | sept. 2022 | jan. 2024 | 11 to 15 | RHEL 7 & 8 |
+
+The extension may work on other distributions than the ones above, however
+provide packages only for these versions and we do not guarantee free
+community support for other OS.
+
+If you need support on other platforms, we may offer commercial support for it.
+Please contact our commercial team at <contact@dalibo.com> for more details.

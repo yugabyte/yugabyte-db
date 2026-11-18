@@ -13056,7 +13056,8 @@ validateForeignKeyConstraint(char *conname,
 	 * of a child row that the check passed and leave that child orphaned.
 	 */
 	if ((!IsYBRelation(rel) ||
-		 (!YBCIsLegacyModeForCatalogOps() && yb_enable_batchednl)) &&
+		 (YBCUsingObjectLocksGloballyForCurrentTxn() &&
+		  yb_enable_batchednl)) &&
 		RI_Initial_Check(&trig, rel, pkrel))
 		return;
 
@@ -21271,6 +21272,9 @@ ATExecAttachPartitionIdx(List **wqueue, Relation parentIdx, RangeVar *name)
 								   RelationGetRelationName(parentTbl),
 								   RelationGetRelationName(partIdx))));
 		}
+
+		/* YB: xCluster source cannot attach an invalid index. */
+		YbCheckAttachedIndexIsValid(partIdx);
 
 		/* All good -- do it */
 		IndexSetParentIndex(partIdx, RelationGetRelid(parentIdx));

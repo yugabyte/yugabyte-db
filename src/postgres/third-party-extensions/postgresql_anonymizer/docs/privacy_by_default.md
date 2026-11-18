@@ -1,14 +1,6 @@
 Privacy By Default
 ===============================================================================
 
-Disclaimer
---------------------------------------------------------------------------------
-
-**This feature is considered in beta and not ready for production until version
-2.O is published.**
-
-**Use with care.**
-
 Principle
 --------------------------------------------------------------------------------
 
@@ -45,8 +37,10 @@ Now let's activate privacy by default:
 ALTER DATABASE foo SET anon.privacy_by_default = True;
 ```
 
-The setting will be applied for the next sessions and we can now anonymize the
-table without writing any masking rule.
+> The setting will be applied for the next sessions,
+> i.e. **You need to reconnect to the database for the change to visible**
+
+We can now anonymize the table without writing any masking rule.
 
 ```sql
 # SELECT anon.anonymize_database();
@@ -57,7 +51,7 @@ table without writing any masking rule.
 # SELECT * FROM access_logs LIMIT 1;
  date_open | ip_addr | url | browser_agent
 -----------+---------+-----+---------------
-           |         |     | unkown
+           |         |     | unknown
 ```
 
 
@@ -102,7 +96,7 @@ Caveat: Add a DEFAULT to the NOT NULL columns
 
 It is a bit ironic that the `anon.privacy_by_default` parameter **is not**
 enabled by default. This reason is simple: activating this option **may or may
-not** lead to contraint violations depending on the columns constraints placed
+not** lead to constraint violations depending on the columns constraints placed
 in the database model.
 
 Let's say we want to add a `NOT NULL` constraint on the `date_open` column:
@@ -132,5 +126,3 @@ ALTER TABLE public.access_logs
 
 Other constraints (foreign keys, UNIQUE, CHECK, etc.) should work fine without
 a DEFAULT value.
-
-
