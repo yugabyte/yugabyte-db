@@ -60,6 +60,7 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
@@ -418,6 +419,28 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertOk(result);
     String body = contentAsString(result);
     assertTrue(body, body.contains("dummy-bind-pass"));
+  }
+
+  @Test
+  public void testConfigureRejectsAnotherCustomersUniverse() {
+    Universe u = setUpUniverseWithLdapGFlags();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    taskParams.resetAZConfig = true;
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
+    bodyJson.put("currentClusterType", "PRIMARY");
+    bodyJson.put("clusterOperation", "EDIT");
+    Customer otherCustomer = ModelFactory.testCustomer("tc2", "Test Customer 2");
+    String otherAuthToken =
+        ModelFactory.testUser(otherCustomer, "other@customer.com").createAuthToken();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    "/api/customers/" + otherCustomer.getUuid() + "/universe_configure",
+                    otherAuthToken,
+                    bodyJson));
+    assertBadRequest(result, "doesn't belong to Customer");
   }
 
   @Test

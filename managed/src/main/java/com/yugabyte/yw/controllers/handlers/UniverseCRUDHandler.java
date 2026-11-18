@@ -473,6 +473,11 @@ public class UniverseCRUDHandler {
     if (taskParams.clusterOperation == null) {
       throw new PlatformServiceException(BAD_REQUEST, "clusterOperation must be set");
     }
+    // A universe UUID that doesn't exist yet configures a new universe.
+    if (taskParams.getUniverseUUID() != null
+        && Universe.maybeGet(taskParams.getUniverseUUID()).isPresent()) {
+      Universe.getOrBadRequest(taskParams.getUniverseUUID(), customer);
+    }
     Cluster cluster = getClusterFromTaskParams(taskParams);
     if (taskParams.clusterOperation == ClusterOperationType.CREATE
         && taskParams.currentClusterType == ClusterType.PRIMARY
