@@ -80,17 +80,14 @@ namespace internal {
 
 namespace {
 
-// Whether the server may have received the request even though the call failed without a reply.
+// Whether the server may have received the request although the call got no reply.
 bool ServerMayHaveRequest(const rpc::RpcController& controller) {
-  // Check the call's own status: the retrier also fails the rpc when the deadline passes between
-  // attempts or during a tablet lookup, with no call outstanding.
   const auto& call_status = controller.status();
   if (call_status.ok() || call_status.IsRemoteError()) {
-    // No call failed, or the server replied with an error.
+    // If the server replied, its reply says what happened.
     return false;
   }
-  // A timed out call counts even if its request was not fully sent, since the transfer can still
-  // finish.
+  // Otherwise it may still be handling the request.
   return call_status.IsTimedOut() || controller.WasSent();
 }
 
