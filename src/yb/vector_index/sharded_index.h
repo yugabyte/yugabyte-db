@@ -172,6 +172,10 @@ class ShardedVectorIndexTraits : public VectorIndexTraitsIf<Vector, DistanceResu
     return index_traits_->EstimateNumVectorsForBytes(bytes_limit / num_shards_) * num_shards_;
   }
 
+  const VectorTenantExtractor& tenant_extractor() const override {
+    return index_traits_->tenant_extractor();
+  }
+
  private:
   const VectorIndexTraitsPtr<Vector, DistanceResult> index_traits_;
   const size_t num_shards_;

@@ -108,6 +108,10 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   bool IsIndex() const;
 
+  // Tenant components of a vector index, see
+  // PgVectorIdxOptionsPB::tenant_hash_group_and_range_components.
+  uint32_t vector_index_tenant_components() const;
+
  private:
   PgObjectId relfilenode_id_;
   YbcPgOid pg_table_id_{kInvalidOid};

@@ -1804,6 +1804,10 @@ template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 auto VectorLSM<Vector, DistanceResult>::Search(
     const Vector& query_vector, const SearchOptions& options) const ->
     Result<typename VectorLSM<Vector, DistanceResult>::SearchResults> {
+  const auto& tenant_extractor = options_.vector_index_traits->tenant_extractor();
+  // Otherwise the insert registry would match nothing, while the chunks reject the search.
+  SCHECK(!tenant_extractor || !options.tenant.empty(), InvalidArgument,
+         "Search of a vector index with tenants without a tenant");
   if (options.max_num_results == 0) {
     return SearchResults();
   }
@@ -1815,7 +1819,7 @@ auto VectorLSM<Vector, DistanceResult>::Search(
 
   auto start_registry_search = MonoTime::Now();
   auto intermediate_results = VERIFY_RESULT(insert_registry_->Search(
-      query_vector, options, options_.vector_index_traits->tenant_extractor()));
+      query_vector, options, tenant_extractor));
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Results from registry: " << AsString(intermediate_results);
   size_t num_results_from_insert_registry = intermediate_results.size();
 

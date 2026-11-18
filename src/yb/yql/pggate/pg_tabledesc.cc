@@ -272,5 +272,9 @@ bool PgTableDesc::IsIndex() const {
   return resp_.has_index_info();
 }
 
+uint32_t PgTableDesc::vector_index_tenant_components() const {
+  return resp_.index_info().vector_idx_options().tenant_hash_group_and_range_components();
+}
+
 }  // namespace pggate
 }  // namespace yb

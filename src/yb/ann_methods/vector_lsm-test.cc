@@ -2627,6 +2627,9 @@ TEST_P(VectorLSMTest, Tenants) {
     sync->DisableProcessing();
     sync->ClearAllCallBacks();
   });
+  // A search without a tenant fails even before the index has chunks.
+  ASSERT_NOK(lsm.Search(
+      {0, 0, 0, 0}, vector_index::SearchOptions {.max_num_results = 1, .ef = 1}));
   ASSERT_OK(insert());
   ASSERT_NO_FATALS(check(kVectorsPerTenant));
 
@@ -2644,6 +2647,74 @@ TEST_P(VectorLSMTest, Tenants) {
   ASSERT_OK(lsm.Compact(/* wait= */ true));
   ASSERT_EQ(lsm.NumSavedImmutableChunks(), 1);
   ASSERT_NO_FATALS(check(2 * kVectorsPerTenant));
+}
+
+// Searches of a tenant, while inserts move vectors from the insert registry to the mutable chunk,
+// return only the vectors of the tenant.
+TEST_P(VectorLSMTest, TenantSearchesDuringInserts) {
+  if (!store_vector_payload()) {
+    GTEST_SKIP() << "Only indexes with payloads have tenants";
+  }
+  constexpr size_t kDimensions = 4;
+  constexpr size_t kNumTenants = 4;
+  constexpr size_t kNumBatches = 20;
+  constexpr size_t kVectorsPerBatch = 4;
+  constexpr size_t kVectorsPerTenant = kNumBatches * kVectorsPerBatch;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 2;
+  // The payload is the tenant.
+  tenant_extractor_ = [](Slice payload) -> Result<Slice> { return payload; };
+
+  FloatVectorLSM lsm;
+  ASSERT_OK(OpenVectorLSM(lsm, kDimensions, /* vectors_per_chunk= */ 1024));
+
+  auto tenant_name = [](size_t tenant) { return Format("tenant_$0", tenant); };
+  auto search = [&lsm](const std::string& tenant) {
+    return lsm.Search(
+        {0, 0, 0, 0},
+        vector_index::SearchOptions {
+          .max_num_results = 2 * kVectorsPerTenant,
+          .ef = 2 * kVectorsPerTenant,
+          .tenant = tenant,
+        });
+  };
+
+  TestThreadHolder threads;
+  for (size_t tenant = 0; tenant != kNumTenants; ++tenant) {
+    threads.AddThreadFunctor(
+        [&search, tenant_str = tenant_name(tenant), &stop = threads.stop_flag()] {
+      while (!stop.load(std::memory_order_acquire)) {
+        for (const auto& result : ASSERT_RESULT(search(tenant_str))) {
+          ASSERT_EQ(result.payload.AsSlice(), tenant_str);
+        }
+      }
+    });
+  }
+  for (size_t batch = 0; batch != kNumBatches; ++batch) {
+    FloatVectorLSM::InsertEntries entries;
+    for (size_t tenant = 0; tenant != kNumTenants; ++tenant) {
+      for (size_t i = 0; i != kVectorsPerBatch; ++i) {
+        entries.push_back(FloatVectorLSM::InsertEntry {
+          .vector_id = VectorId::GenerateRandom(),
+          .vector = {static_cast<float>(batch), static_cast<float>(i), 0, 0},
+          .payload = ValueBuffer(tenant_name(tenant)),
+        });
+      }
+    }
+    TestFrontiers frontiers(entries);
+    ASSERT_OK(lsm.Insert(entries, { .frontiers = &frontiers }));
+  }
+  ASSERT_OK(WaitForBackgroundInsertsDone(lsm));
+  threads.Stop();
+
+  for (size_t tenant = 0; tenant != kNumTenants; ++tenant) {
+    const auto tenant_str = tenant_name(tenant);
+    auto results = ASSERT_RESULT(search(tenant_str));
+    ASSERT_EQ(results.size(), kVectorsPerTenant);
+    for (const auto& result : results) {
+      ASSERT_EQ(result.payload.AsSlice(), tenant_str);
+    }
+  }
 }
 
 TEST_P(VectorLSMTest, DamagedChunk) {
