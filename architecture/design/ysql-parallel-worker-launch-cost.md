@@ -19,6 +19,12 @@ the scan cost is divided among the workers while nothing on the startup side
 grows, and on the three-node cluster measured below that plan ran 15 times
 slower than the serial plan.
 
+Catalog preloading replaces the per-relation delay with a fixed delay several
+times larger, which the model does not charge. For the one-table LIMIT query of
+#36851 the planner picks a 2-worker plan, and on the single-node cluster
+measured below, with preloading on, launching the two workers took 131 ms
+against 106 ms for the whole serial plan.
+
 This document records what the model charges, the measurements behind the
 charge, where the model departs from the measurements, and how to redo them.
 
@@ -76,7 +82,7 @@ read. `EXPLAIN (ANALYZE, DIST)` reports these as Catalog Read Requests.
 
 For an index scan on the primary key of each of R partitions, a worker makes
 22 + 6 R catalog reads: six for each table with its primary key, and 22 that do
-not depend on R. A one-relation plan makes 25 to 28 depending on the query, and
+not depend on R. A one-relation plan makes 25 to 30 depending on the query, and
 a scan through a secondary index made the same 27 as a scan through the primary
 key.
 
@@ -284,6 +290,83 @@ across worker counts. On the laptop, measured on 2026-11-14 with the boolean
 gflag, the one-table database took 79 ms, 1,000 tables added 19 ms and 3,000
 functions added 77 ms.
 
+### A one-relation plan under a LIMIT
+
+Measured 2026-11-18 with the table and a query of #36851: `ord`, 3,000,000
+rows with a range primary key split into three tablets, not colocated, and
+
+```
+SELECT id, k2, status, amt FROM ord WHERE k2 = 500 ORDER BY id DESC LIMIT 200
+```
+
+One row in 1,000 matches `k2 = 500`. The serial plan is a backward scan of the
+primary key with the LIMIT pushed down, and it reads 199,500 rows in one
+request. The planner costs it at 26,317 against 16,218 for the 2-worker plan
+and 11,603 for the 8-worker plan, a Gather Merge over a Parallel Index Scan
+Backward, within 0.2% in all three environments.
+
+The three-node cluster had the preload gflags at their defaults and the
+single-node cluster had `ysql_catalog_preload_additional_tables` set to true.
+The laptop ran build `0b04a0500215fa8662f97f4f7e6be050e6a5c19d` with the
+preload gflags and `max_worker_processes` at their defaults, so it launched 6
+of 8 planned workers. Each figure is the median of five or six runs in one
+session after a discarded first run.
+
+The launch alone was measured with the same query restricted to
+`id >= 2999000`, a range of 1,000 rows that its serial plan scans in 1 ms or
+less, under `yb_test_force_parallel = force`. A Gather Merge returns its first
+row only after every worker has delivered a row or finished, so the time to
+the first row is the launch. In milliseconds:
+
+| workers planned | three-node, preload off | single-node, preload on | laptop, preload off |
+| ---: | ---: | ---: | ---: |
+| 1 | 27.7 | 129.6 | 15.1 |
+| 2 | 27.8 | 130.8 | 14.8 |
+| 4 | 29.9 | 156.8 | 18.7 |
+| 8 | 35.6 | 174.9 | 24.2 |
+
+A worker made 30 catalog reads with preloading off and 13 with it on. For the
+query itself the counts were 26 and 10.
+
+The query itself, in milliseconds:
+
+| plan | three-node, preload off | single-node, preload on | laptop, preload off |
+| --- | ---: | ---: | ---: |
+| serial | 112 | 106 | 56 |
+| 2 workers, first row | 142 | 243 | 71 |
+| 2 workers, total | 180 | 282 | 90 |
+| 8 workers, total | 210 | 369 | 109 |
+
+**With preloading off the flat charge is about the launch.** The serial plan's
+time is proportional to its scan's startup cost for LIMIT 10 to LIMIT 1,000, at
+122 to 129 cost units per millisecond on the three-node cluster, 128 to 132 on
+the single-node cluster and 234 to 252 on the laptop. At 127 and 245 units per
+millisecond the launch is 3,500 to 4,500 units on the three-node cluster and
+3,600 to 5,900 on the laptop, against 4,200 charged for one relation.
+
+**With preloading on the launch is four to five times the charge.** 130 to
+175 ms on the single-node cluster is 16,700 to 22,600 units at 129 units per
+millisecond. On the laptop
+build the planner chose the serial plan with `parallel_setup_cost` at 14,124
+for 2 workers and at 18,729 for 8, and the parallel plan at 9,000 and 14,126,
+so charging the measured launch would give the serial plan at both worker
+counts.
+
+**The cluster of #36851 shows the preloading count.** The EXPLAIN output in the
+issue has 47 catalog reads with 2 workers launched and 87 with 6, which is 10
+for each added worker, the count measured here with preloading on. The issue
+does not state the cluster's gflags.
+
+**Launch is not all of the gap.** With preloading off the 2-worker plan still
+takes 1.6 times the serial plan. A worker's rows reach the leader only when
+16 kB of them are queued or the worker finishes, and a worker fetches three
+`yb_parallel_range_size` ranges before it has its 200 rows, so the first row
+arrives one launch and three range fetches after the start; the leader then
+fetches one more range of its own. On the cost side, the Limit node adds a
+prorated share of the scan's run cost to a serial plan whose startup cost
+already covers the LIMIT's rows, which nearly doubles the serial plan's cost.
+None of these is a launch cost, and this model addresses none of them.
+
 ### Where the model departs from the measurements
 
 At the cost model's convention of roughly 300 cost units per millisecond, on
@@ -298,19 +381,30 @@ m6i.4xlarge:
 The measured columns are the fit coefficients, so up to 45 units of each
 per-relation figure is scan work.
 
+The conversion is not one number. On the three-node cluster on 2026-11-18,
+serial scans of `ord` ran at 122 to 324 cost units per millisecond depending on
+the scan type and on how many rows the scan returned, and the serial plan of
+the #36851 query at 122 to 129. At 127 the measured rows of the table are 42%
+of the figures shown.
+
 - **The per-relation default is a lower bound.** 120 prices the six reads at
   the local round-trip cost. The measured delay is 1.8 to 2.0 ms per relation,
-  about five times that.
+  about five times that at 300 units per millisecond and about twice that at
+  127.
 - **Nothing is charged per worker.** Neither the 1.4 ms per worker nor the
   0.08 to 0.11 ms per worker per relation enters the cost, so adding workers
   still lowers the cost of a plan whose launch gets slower.
-- **The flat part undercharges.** The 10-partition query above stays parallel
-  with the charge and runs in 53 ms against 42 ms serial.
+- **The flat part undercharges at 300 units per millisecond.** The
+  10-partition query above stays parallel with the charge and runs in 53 ms
+  against 42 ms serial. At the ratio of the #36851 query's serial plan the
+  flat part is about the launch of a one-relation plan (A one-relation plan
+  under a LIMIT).
 - **With catalog preloading on, the shape is wrong.** The per-relation charge
   is above the delay it prices. The flat part is a tenth of the fixed delay
-  measured in the sweep's database, and the fixed delay grows with the tables
-  in the database and, faster than linearly, with the functions. The model
-  reads neither preload gflag.
+  measured in the sweep's database at 300 units per millisecond and a quarter
+  to a fifth of a one-relation launch at the #36851 query's ratio, and the
+  fixed delay grows with the tables in the database and, faster than linearly,
+  with the functions. The model reads neither preload gflag.
 - **Partitions pruned at executor startup are counted.** The count is taken
   after plan-time pruning only. What a worker reads for a plan that prunes at
   executor startup was not measured.
@@ -339,7 +433,8 @@ the defaults absorb:
   than from new backends. That would remove the premise of the model, not just
   change its constants.
 - **The units-per-millisecond convention** of the cost model, since the
-  defaults are expressed in it.
+  defaults are expressed in it, and any change to scan costing that moves the
+  ratio for the serial plans a parallel plan competes with.
 
 ## How to recalibrate
 
@@ -363,7 +458,10 @@ the defaults absorb:
 6. Fit `base + a * workers + b * relations + c * workers * relations` to the
    execution times. If the mean error is above a few percent, another term is
    scaling and the shape is no longer right.
-7. Convert `b` to cost units and update
+7. Measure the cost units per millisecond of serial plans on the same cluster,
+   for example from an ordered scan with a storage filter under a range of
+   LIMIT values, whose time is proportional to its scan's startup cost.
+8. Convert `b` to cost units at that ratio and update
    `YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION`.
 
 Changing the default moves plan choice for every query that scans more than a
@@ -379,6 +477,14 @@ preloading adds.
 
 Until then, three additions would bring the model to the measured shape: a
 charge per worker, a charge per worker per relation, and a separate charge
-when catalog preloading is on. Constants cannot make up the last one, because
-under preloading the fixed delay follows the tables and functions in the
-database. Each one changes plan choice broadly and needs its own validation.
+when catalog preloading is on. Each one changes plan choice broadly and needs
+its own validation.
+
+The charge for catalog preloading comes first, because it decides plans of any
+size: with preloading on, the launch of a one-relation plan took four to five
+times what the model charges, enough to change the plan of the #36851 query.
+Constants cannot make up that charge, because under preloading the fixed delay
+follows the tables and functions in the database and the catalog tables the
+gflags name. `YbCatalogPreloadRequired()` tells whether a new backend
+preloads. The size of the delay has to come from the database; one candidate
+is the time the leader's own backend took to preload when it started.
