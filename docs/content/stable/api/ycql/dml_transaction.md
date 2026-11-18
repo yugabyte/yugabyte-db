@@ -58,8 +58,14 @@ transaction_block ::= START TRANSACTION ';'
 - There is no explicit rollback. To rollback a transaction, abort, or interrupt the client session.
 - DDLs are always executed outside of a transaction block, and like DMLs outside a transaction block, are committed immediately.
 - Inside a transaction block only insert, update, and delete statements are allowed. Select statements are not allowed.
-- An error is raised if any of the `INSERT`, `UPDATE`, or `DELETE` statements contains an `IF` clause without `ELSE ERROR`. If any `IF` condition is not satisfied, the transaction fails and none of its statements are applied.
-- If the row does not exist, an `UPDATE` statement whose assignments all use `+` or `-` on the column's current value, such as `SET balance = balance + 200`, has no effect and does not raise an error. This applies to `TINYINT`, `SMALLINT`, `INT`, `BIGINT`, `VARINT`, `FLOAT`, and `DOUBLE` columns, and to `+` on `TEXT` columns, both inside and outside a transaction block. The other statements in the transaction block are still applied. To raise an error instead, add `IF EXISTS ELSE ERROR` to the statement, as shown in [Transfer a balance to a new row](#transfer-a-balance-to-a-new-row).
+- An `IF` clause in a transaction block must be followed by `ELSE ERROR`. Otherwise, an error is raised.
+- If an `IF` condition is not satisfied, the transaction fails. None of its statements are applied.
+- If the row does not exist, an `UPDATE` such as `SET balance = balance + 200` has no effect. No error is raised.
+  - This applies when every assignment uses `+` or `-` on the column's current value.
+  - The column types are `TINYINT`, `SMALLINT`, `INT`, `BIGINT`, `VARINT`, `FLOAT`, and `DOUBLE`. It also applies to `+` on `TEXT` columns.
+  - The behavior is the same inside and outside a transaction block.
+  - The other statements in the transaction block are still applied.
+  - To raise an error instead, add `IF EXISTS ELSE ERROR`. See [Transfer a balance to a row that does not exist](#transfer-a-balance-to-a-row-that-does-not-exist).
 
 ## Examples
 
@@ -147,7 +153,7 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
 
 ### Transfer a balance to a new row
 
-`IF EXISTS ELSE ERROR` makes the transaction fail if Smith's savings account does not exist.
+Mary's savings account does not exist yet, and Smith's savings account exists. Both `IF` conditions are satisfied, so the transaction is applied.
 
 ```sql
 ycqlsh:example> BEGIN TRANSACTION
@@ -179,12 +185,118 @@ ycqlsh:example> SELECT account_name, account_type, balance FROM accounts;
         Smith |      savings |    1700
 ```
 
+### Transfer a balance without `ELSE ERROR`
+
+An `IF` clause without `ELSE ERROR` is not supported in a transaction block. The transaction raises an error and is not run.
+
+```sql
+ycqlsh:example> BEGIN TRANSACTION
+                 INSERT INTO accounts (account_name, account_type, balance)
+                   VALUES ('Mary', 'savings', 300) IF NOT EXISTS;
+                 UPDATE accounts SET balance = balance - 300
+                   WHERE account_name = 'Smith' AND account_type = 'savings' IF EXISTS;
+               END TRANSACTION;
+```
+
+```output
+SyntaxException: <Error from server: code=2000 [Syntax error in CQL query] message="Invalid CQL Statement. Execution of conditional DML statement in transaction block without ELSE ERROR is not supported yet
+BEGIN TRANSACTION
+                 INSERT INTO accounts (account_name, account_type, balance)
+                   VALUES ('Mary', 'savings', 300) IF NOT EXISTS;
+                 UPDATE accounts SET balance = balance - 300
+                   WHERE account_name = 'Smith' AND account_type = 'savings' IF EXISTS;
+               END TRANSACTION;
+At location: (2.7-12)
+ (ql error -12)">
+```
+
+### Transfer a balance to a row that already exists
+
+Mary's savings account now exists, so the `IF NOT EXISTS` condition is not satisfied. The transaction fails.
+
+```sql
+ycqlsh:example> BEGIN TRANSACTION
+                 INSERT INTO accounts (account_name, account_type, balance)
+                   VALUES ('Mary', 'savings', 300) IF NOT EXISTS ELSE ERROR;
+                 UPDATE accounts SET balance = balance - 300
+                   WHERE account_name = 'Smith' AND account_type = 'savings' IF EXISTS ELSE ERROR;
+               END TRANSACTION;
+```
+
+```output
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Execution Error. Condition on table accounts was not satisfied.
+BEGIN TRANSACTION
+                 INSERT INTO accounts (account_name, account_type, balance)
+                   VALUES ('Mary', 'savings', 300) IF NOT EXISTS ELSE ERROR;
+                 UPDATE accounts SET balance = balance - 300
+                   WHERE account_name = 'Smith' AND account_type = 'savings' IF EXISTS ELSE ERROR;
+               END TRANSACTION;
+At location: (2.7-12)
+ (ql error -300)"
+```
+
+### Transfer a balance to a row that does not exist
+
+Mary's checking account does not exist, so the `IF EXISTS` condition on it is not satisfied. The transaction fails.
+
+```sql
+ycqlsh:example> BEGIN TRANSACTION
+                 UPDATE accounts SET balance = balance + 100
+                   WHERE account_name = 'Mary' AND account_type = 'checking' IF EXISTS ELSE ERROR;
+                 UPDATE accounts SET balance = balance - 100
+                   WHERE account_name = 'Mary' AND account_type = 'savings' IF EXISTS ELSE ERROR;
+               END TRANSACTION;
+```
+
+```output
+InvalidRequest: Error from server: code=2200 [Invalid query] message="Execution Error. Condition on table accounts was not satisfied.
+BEGIN TRANSACTION
+                 UPDATE accounts SET balance = balance + 100
+                   WHERE account_name = 'Mary' AND account_type = 'checking' IF EXISTS ELSE ERROR;
+                 UPDATE accounts SET balance = balance - 100
+                   WHERE account_name = 'Mary' AND account_type = 'savings' IF EXISTS ELSE ERROR;
+               END TRANSACTION;
+At location: (1.18-2.7)
+ (ql error -300)"
+```
+
+Neither failed transaction is applied. Smith's and Mary's savings balances are unchanged.
+
+```sql
+ycqlsh:example> SELECT account_name, account_type, balance FROM accounts;
+```
+
+```output
+ account_name | account_type | balance
+--------------+--------------+---------
+         Mary |      savings |     300
+         John |     checking |     100
+         John |      savings |     800
+        Smith |     checking |     250
+        Smith |      savings |    1700
+```
+
 ### Transfer a balance between existing rows
 
 Insert the row outside the transaction block, and use `IF EXISTS ELSE ERROR` on both `UPDATE` statements.
 
 ```sql
 ycqlsh:example> INSERT INTO accounts (account_name, account_type, balance) VALUES ('Mary', 'checking', 0);
+```
+
+```sql
+ycqlsh:example> SELECT account_name, account_type, balance FROM accounts;
+```
+
+```output
+ account_name | account_type | balance
+--------------+--------------+---------
+         Mary |     checking |       0
+         Mary |      savings |     300
+         John |     checking |     100
+         John |      savings |     800
+        Smith |     checking |     250
+        Smith |      savings |    1700
 ```
 
 ```sql
