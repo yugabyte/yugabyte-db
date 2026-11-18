@@ -71,7 +71,9 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 \set query ':P :Q1 SELECT * FROM simple WHERE k IN (1, 2) OR ind_a IN (4, 6) ORDER BY k;'
 \i :run_query
 
-\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2 OR ind_a = 4 OR ind_a = 6 ORDER BY k;'
+-- The ::int8 casts give the second arm on each column a different operator, so
+-- the planner does not group the equalities into one = ANY per index.
+\set query ':P :Q1 SELECT * FROM simple WHERE k = 1 OR k = 2::int8 OR ind_a = 4 OR ind_a = 6::int8 ORDER BY k;'
 \i :run_query
 
 -- test non-existent results
@@ -180,7 +182,7 @@ SET yb_fetch_size_limit = 0;
 SET yb_fetch_row_limit = 0;
 SET yb_fetch_size_limit = '1kB';
 
-\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, BUFFERS OFF)'
 :query
 
 RESET yb_fetch_row_limit;
@@ -405,13 +407,16 @@ SELECT $$
 $$ AS query \gset
 \i :run_query
 
+-- The hash primary key cannot serve the k_text ranges, so these statements
+-- have no bitmap path. Name the primary key in the hint to keep
+-- pk_text_v_int_idx out of the fallback plan.
 SELECT $$
-:P :Q1 SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
+:P /*+ BitmapScan(pk_text pk_text_pkey) */ SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
 $$ AS query \gset
 \i :run_query
 
 SELECT $$
-:P :Q1 SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
+:P /*+ BitmapScan(pk_text pk_text_pkey) */ SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
 $$ AS query \gset
 \i :run_query
 
