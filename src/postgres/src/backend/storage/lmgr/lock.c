@@ -405,12 +405,17 @@ GetYbObjectLockId(const LOCKTAG *locktag)
  *   relation or object lock uses.
  * - Tuple locks are only sent to the tserver under the
  *   TEST_enable_obj_tuple_locks test flag; see LockTuple.
+ * - Advisory locks taken through the pg_advisory_* functions use YB's own
+ *   advisory lock path and never get here.  Extensions such as documentdb
+ *   take advisory locks by calling LockAcquire directly, and rely on them
+ *   conflicting across backends.
+ *   TODO(#38468): route those through YB's advisory lock path too.
  *
  * The other tag types are either never acquired with object locking enabled
- * (transaction, virtual transaction and speculative insertion locks), are
- * handled separately (advisory locks), or protect PG-local storage, which
- * only temp relations have and only their own backend can access (relation
- * extension and page locks).  For those the local lock table is enough.
+ * (transaction, virtual transaction and speculative insertion locks), or
+ * protect PG-local storage, which only temp relations have and only their own
+ * backend can access (relation extension and page locks).  For those the
+ * local lock table is enough.
  * Sending them would also be wrong, as GetYbObjectLockId drops the tag type:
  * e.g. a relation extension lock would become an ExclusiveLock on the
  * relation itself, held until commit.
@@ -424,6 +429,7 @@ YbIsObjectLockTag(const LOCKTAG *locktag)
 		case LOCKTAG_OBJECT:
 		case LOCKTAG_DATABASE_FROZEN_IDS:
 		case LOCKTAG_TUPLE:
+		case LOCKTAG_ADVISORY:
 			return true;
 		default:
 			return false;
@@ -1019,9 +1025,10 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	Assert(!IsRelationExtensionLockHeld);
 
 	/*
-	 * YB: Only database objects are locked on the tserver, see
-	 * YbIsObjectLockTag.  Keep any other transaction-scoped lock in the local
-	 * lock table only.  Session locks are only taken on relations and objects.
+	 * YB: Only the tags listed in YbIsObjectLockTag are locked on the tserver.
+	 * Keep any other transaction-scoped lock in the local lock table only.
+	 * Session locks are always sent to the tserver, whatever the tag, as
+	 * LockRelease forwards every session lock release there.
 	 */
 	if (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED && !sessionLock &&
 		!YbIsObjectLockTag(locktag))
