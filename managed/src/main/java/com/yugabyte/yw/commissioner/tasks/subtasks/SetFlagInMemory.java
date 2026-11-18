@@ -82,10 +82,11 @@ public class SetFlagInMemory extends ServerSubTaskBase {
       setFlags();
     } catch (RuntimeException e) {
       // Not the SubTaskGroup's ignoreErrors: it runs the later groups but still fails the task.
-      // setFlags wraps every client error, so an abort shows up as a cause.
+      // setFlags wraps every client error, so an abort shows up as a cause. hasCause checks only
+      // the outer exception.
       if (!taskParams().ignoreErrors
-          || ExceptionUtils.hasCause(e, CancellationException.class)
-          || ExceptionUtils.hasCause(e, InterruptedException.class)) {
+          || ExceptionUtils.indexOfType(e, CancellationException.class) >= 0
+          || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0) {
         throw e;
       }
       log.warn("Ignoring error from {}: {}", getName(), e.getMessage());

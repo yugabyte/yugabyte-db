@@ -3322,7 +3322,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               "Error while getting masters from DB. Current YBA masters %s - %s",
               masterAddresses, e.getMessage());
       log.error(msg, e);
-      throw new RuntimeException(msg);
+      throw new RuntimeException(msg, e);
     }
   }
 

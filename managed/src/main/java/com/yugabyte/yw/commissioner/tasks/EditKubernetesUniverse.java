@@ -1985,8 +1985,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           tserverPartition =
               serverType == ServerType.TSERVER ? replicas.oldReplicas : currNumTservers;
 
-          // The old masters are removed by now, and finalMasterAddrRenders has written the final
-          // master list. This upgrade writes it again while it deletes the old master pods. The
+          // This upgrade writes the final master list while it deletes the old pods. In a master
+          // full move with a recorded stage, finalMasterAddrRenders has written it already. The
           // partitions hold the pods, so none rolls.
           KubernetesCommandExecutor podDeleteSubtask =
               createKubernetesExecutorTaskForServerType(

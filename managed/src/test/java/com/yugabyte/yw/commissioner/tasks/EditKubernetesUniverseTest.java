@@ -16,6 +16,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
@@ -2659,6 +2660,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testMasterFullMoveRetryOfParamsWithoutPropagationRecordSkipsIt() {
     setupMasterMoveUniverse(FULL_MOVE_VERSION);
+    String oldMasters = expectedMasterAddresses(currentPlacement());
     UniverseDefinitionTaskParams.UserIntent newIntent = currentIntent();
     TestUtils.updateDeviceInfo(newIntent, ServerType.MASTER, d -> d.storageClass = "fast");
     PlacementInfo pi = currentPlacement();
@@ -2676,6 +2678,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertTrue(
         between(masterAddrPushes(plan), firstPosition(adds), lastPosition(removes) + 3).isEmpty());
     assertTrue(earlySecretUpdate(plan).isEmpty());
+    // The full move's own renders copy its create upgrade, which does not keep the gflags
+    // checksum, so earlySecretUpdate misses them. Per AZ, only the create, pod delete and final
+    // upgrades remain.
+    List<TaskInfo> masterHelm =
+        helmUpgrades(plan).stream()
+            .filter(t -> "MASTER".equals(t.getTaskParams().path("serverType").asText()))
+            .collect(Collectors.toList());
+    assertEquals(9, masterHelm.size());
+    Set<String> movingMasters = addressSet(oldMasters, expectedMasterAddresses(pi));
+    for (TaskInfo t : masterHelm) {
+      assertNotEquals(movingMasters, addressSet(helmMasterAddresses(t)));
+    }
   }
 
   @Test
