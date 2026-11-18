@@ -117,7 +117,7 @@ public class KubernetesOverridesRedactionRandomizedTest {
     if (GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key)) {
       return HbaConfRedactor.redact(value);
     }
-    if (NAMES.stream().anyMatch(value::contains) || HbaConfRedactor.mentionsLdapBindPasswd(value)) {
+    if (RedactingService.mentionsSecret(value, NAMES)) {
       hiddenWhole = true;
     }
     return value;

@@ -7,12 +7,15 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.junit.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.yaml.snakeyaml.Yaml;
 
 public class KubernetesOverridesRedactorTest {
@@ -220,6 +223,45 @@ public class KubernetesOverridesRedactorTest {
     assertThrows(
         PlatformServiceException.class,
         () -> KubernetesOverridesRedactor.restore(stored, submitted, "overrides"));
+  }
+
+  @Test
+  public void restoreRestoresAStoredValueThatOnlyContainsRedacted() {
+    // As GFlagsUtil.mergeSensitiveGFlags: only a whole-value secret that equals REDACTED is lost.
+    String stored = "gflags:\n  tserver:\n    ycql_ldap_bind_passwd: xREDACTEDy\n";
+    String submitted = KubernetesOverridesRedactor.redact(stored) + "x: y\n";
+    assertEquals(
+        "xREDACTEDy",
+        at(
+            KubernetesOverridesRedactor.restore(stored, submitted, "o"),
+            "gflags",
+            "tserver",
+            "ycql_ldap_bind_passwd"));
+    String storedHba =
+        "gflags:\n  tserver:\n    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=xREDACTEDy\n";
+    String submittedHba = KubernetesOverridesRedactor.redact(storedHba) + "x: y\n";
+    assertThrows(
+        PlatformServiceException.class,
+        () -> KubernetesOverridesRedactor.restore(storedHba, submittedHba, "o"));
+  }
+
+  @Test
+  public void redactHidesOverridesWhoseRedactionFails() {
+    String stored =
+        "gflags:\n  tserver:\n    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=hba-secret\n    note: redaction-fails\n";
+    try (MockedStatic<HbaConfRedactor> hba =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      hba.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new IllegalStateException());
+      assertEquals("REDACTED", KubernetesOverridesRedactor.redact(stored));
+      // Sent back unchanged, as the UI does on edits and upgrades, they restore the stored text.
+      assertEquals(stored, KubernetesOverridesRedactor.restore(stored, "REDACTED", "o"));
+      assertEquals(
+          Map.of("az-1", stored),
+          KubernetesOverridesRedactor.restoreAz(
+              Map.of("az-1", stored), Map.of("az-1", "REDACTED")));
+    }
   }
 
   @Test
