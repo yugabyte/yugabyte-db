@@ -395,10 +395,10 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
         }
       }
       assertEquals("expected exactly one /rpcz entry for " + appName, 1, matches);
-    }
-
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("DROP DATABASE " + dbName);
+    } finally {
+      try (Statement stmt = connection.createStatement()) {
+        stmt.execute("DROP DATABASE " + dbName);
+      }
     }
   }
 
