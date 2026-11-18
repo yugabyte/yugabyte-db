@@ -256,6 +256,37 @@ TEST_P(PgMiscConflictsTest, DifferentColumnsConcurrentUpdate) {
   ASSERT_OK(aux_conn.RollbackTransaction());
 }
 
+// The query layer retries a statement that fails on a conflict without ending the PG transaction,
+// so PL/pgSQL's per-transaction simple-expression state survives into the retry. When the retry
+// replans a simple expression that the failed attempt evaluated, it releases the old plan's
+// refcount, which PL/pgSQL's simple-expression resource owner must still hold.
+TEST_P(PgMiscConflictsTest, RetriedFunctionReplansSimpleExpression) {
+  auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
+  auto aux_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+      SetLowPriTxn(Connect()), IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+  // GUCs set by the failed attempt survive the retry. So only the first attempt runs the UPDATE,
+  // and the retry evaluates the IF condition under a different search_path, which forces a replan.
+  ASSERT_OK(conn.Execute(R"#(
+      CREATE FUNCTION update_once() RETURNS text LANGUAGE plpgsql AS $$
+      BEGIN
+        IF current_setting('test.attempted', true) = 'true' THEN
+          RETURN 'retried';
+        END IF;
+        PERFORM set_config('test.attempted', 'true', false);
+        PERFORM set_config('search_path', 'pg_catalog', true);
+        UPDATE public.t SET v = v + 1 WHERE k = 1;
+        RETURN 'not retried';
+      END $$
+  )#"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t SET v = 10 WHERE k = 1"));
+  ASSERT_EQ(ASSERT_RESULT(aux_conn.FetchRow<std::string>("SELECT update_once()")), "retried");
+  ASSERT_OK(conn.CommitTransaction());
+}
+
 class PgExplicitRowLockingTest : public PgMiscConflictsTest {
  protected:
   Status CreateKVTableWithValues(PGConn& conn, std::string_view name) {

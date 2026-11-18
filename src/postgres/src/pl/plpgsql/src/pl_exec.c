@@ -8507,6 +8507,19 @@ plpgsql_create_econtext(PLpgSQL_execstate *estate)
 	 */
 	if (estate->simple_eval_resowner == NULL)
 	{
+		/*
+		 * YB: A query-layer retry reruns the statement in the same
+		 * transaction, after YBCRestartWriteTransaction has released
+		 * TopTransactionResourceOwner and its children.  Expressions
+		 * evaluated before the retry still count on their plan refcounts
+		 * being held here (their expr_simple_plan_lxid is still the current
+		 * lxid), so this resowner must not be a child of
+		 * TopTransactionResourceOwner.  Like the DO-block resowner, it has no
+		 * parent, and plpgsql_xact_cb releases and deletes it.
+		 */
+		if (IsYugaByteEnabled() && shared_simple_eval_resowner == NULL)
+			shared_simple_eval_resowner =
+				ResourceOwnerCreate(NULL, "PL/pgSQL simple expressions");
 		if (shared_simple_eval_resowner == NULL)
 			shared_simple_eval_resowner =
 				ResourceOwnerCreate(TopTransactionResourceOwner,
@@ -8586,6 +8599,9 @@ plpgsql_xact_cb(XactEvent event, void *arg)
 		shared_simple_eval_estate = NULL;
 		if (shared_simple_eval_resowner)
 			ResourceOwnerReleaseAllPlanCacheRefs(shared_simple_eval_resowner);
+		/* YB: The resowner has no parent, see plpgsql_create_econtext. */
+		if (IsYugaByteEnabled() && shared_simple_eval_resowner)
+			ResourceOwnerDelete(shared_simple_eval_resowner);
 		shared_simple_eval_resowner = NULL;
 	}
 	else if (event == XACT_EVENT_ABORT ||
@@ -8593,6 +8609,15 @@ plpgsql_xact_cb(XactEvent event, void *arg)
 	{
 		simple_econtext_stack = NULL;
 		shared_simple_eval_estate = NULL;
+		/*
+		 * YB: The resowner has no parent (see plpgsql_create_econtext), so
+		 * abort recovery does not release it.
+		 */
+		if (IsYugaByteEnabled() && shared_simple_eval_resowner)
+		{
+			ResourceOwnerReleaseAllPlanCacheRefs(shared_simple_eval_resowner);
+			ResourceOwnerDelete(shared_simple_eval_resowner);
+		}
 		shared_simple_eval_resowner = NULL;
 	}
 }
