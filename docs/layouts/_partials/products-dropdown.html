@@ -4,6 +4,7 @@
   {{- $versionDir := .versionDir -}}
 
   <div class="products-dropdown">
+    <div class="products-dropdown-inner">
     {{- range .productsMenu.ByWeight.Reverse -}}
       {{ $anchorLink = "" }}
       {{- if eq .URL "/" -}}
@@ -73,5 +74,6 @@
         </li>
       {{- end -}}
     </ul>
+    </div>
   </div>
 {{- end -}}

@@ -47,6 +47,7 @@ public class SupportBundleV2SpecValidatorTest {
   public void setUp() throws Exception {
     devopsHome = temporaryFolder.newFolder("devops").toPath();
     Files.createDirectories(devopsHome.resolve("bin"));
+    Files.createFile(devopsHome.resolve("bin/support_bundle_utils.sh"));
     Files.createFile(devopsHome.resolve("bin/node_utils.sh"));
     Files.createFile(devopsHome.resolve("bin/yba_utils.sh"));
     Files.createFile(devopsHome.resolve("bin/run_node_action.py"));
@@ -108,7 +109,7 @@ public class SupportBundleV2SpecValidatorTest {
 
   @Test
   public void manifestScriptFilesAreAccepted() {
-    validator.validateScriptPath("UniverseLogs", "bin/node_utils.sh");
+    validator.validateScriptPath("UniverseLogs", "bin/support_bundle_utils.sh");
     validator.validateScriptPath("ApplicationLogs", "bin/yba_utils.sh");
   }
 
@@ -236,7 +237,7 @@ public class SupportBundleV2SpecValidatorTest {
             scriptSpec(
                 FilesComponentSpec::new,
                 "UniverseLogs",
-                devopsHome.resolve("bin/node_utils.sh").toAbsolutePath().toString(),
+                devopsHome.resolve("bin/support_bundle_utils.sh").toAbsolutePath().toString(),
                 "create_universe_logs_bundle")));
   }
 
@@ -265,19 +266,22 @@ public class SupportBundleV2SpecValidatorTest {
   public void otherScriptInsideDevopsHomeIsRejected() {
     assertBadRequest(
         () -> validator.validateScriptPath("FilesComponent", "bin/run_node_action.py"));
+    // The legacy streamed script; it holds no support bundle v2 entrypoint.
+    assertBadRequest(() -> validator.validateScriptPath("UniverseLogs", "bin/node_utils.sh"));
   }
 
   @Test
   public void scriptPathReachingAllowedNameByTraversalIsRejected() {
     // Ends in an allowed file name but resolves outside the devops directory.
     assertBadRequest(
-        () -> validator.validateScriptPath("FilesComponent", "../../tmp/node_utils.sh"));
+        () -> validator.validateScriptPath("FilesComponent", "../../tmp/support_bundle_utils.sh"));
   }
 
   @Test
   public void absoluteScriptPathInsideDevopsHomeIsAccepted() {
     validator.validateScriptPath(
-        "FilesComponent", devopsHome.resolve("bin/node_utils.sh").toAbsolutePath().toString());
+        "FilesComponent",
+        devopsHome.resolve("bin/support_bundle_utils.sh").toAbsolutePath().toString());
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -289,7 +293,12 @@ public class SupportBundleV2SpecValidatorTest {
     assertEntrypointRejected(
         SupportBundleV2ManifestLoader.FILES_NODE_GROUP,
         scriptSpec(
-            FilesComponentSpec::new, "UniverseLogs", "bin/node_utils.sh", "bash", "-c", "id"));
+            FilesComponentSpec::new,
+            "UniverseLogs",
+            "bin/support_bundle_utils.sh",
+            "bash",
+            "-c",
+            "id"));
   }
 
   @Test
@@ -299,7 +308,7 @@ public class SupportBundleV2SpecValidatorTest {
         scriptSpec(
             FilesComponentSpec::new,
             "UniverseLogs",
-            "bin/node_utils.sh",
+            "bin/support_bundle_utils.sh",
             "create_system_logs_bundle"));
   }
 
@@ -311,7 +320,7 @@ public class SupportBundleV2SpecValidatorTest {
         scriptSpec(
             BashComponentSpec::new,
             "collect_heap_snapshot",
-            "bin/node_utils.sh",
+            "bin/support_bundle_utils.sh",
             "append_command_section",
             "x",
             "y",
@@ -348,7 +357,10 @@ public class SupportBundleV2SpecValidatorTest {
     assertEntrypointRejected(
         SupportBundleV2ManifestLoader.FILES_NODE_GROUP,
         scriptSpec(
-            FilesComponentSpec::new, null, "bin/node_utils.sh", "create_universe_logs_bundle"));
+            FilesComponentSpec::new,
+            null,
+            "bin/support_bundle_utils.sh",
+            "create_universe_logs_bundle"));
   }
 
   @Test
@@ -387,7 +399,7 @@ public class SupportBundleV2SpecValidatorTest {
                         scriptSpec(
                             FilesComponentSpec::new,
                             "UniverseLogs",
-                            "bin/node_utils.sh",
+                            "bin/support_bundle_utils.sh",
                             "create_universe_logs_bundle"))));
     assertEquals(Status.INTERNAL_SERVER_ERROR, exception.getHttpStatus());
   }

@@ -183,6 +183,9 @@ static ReplicationState *session_replication_state = NULL;
 /* Magic for on disk files. */
 #define REPLICATION_STATE_MAGIC ((uint32) 0x1257DADE)
 
+/* YB declarations */
+static void YbConnMgrLatchIfReplicationOriginExcluded(void);
+
 static void
 replorigin_check_prerequisites(bool check_slots, bool recoveryOK)
 {
@@ -1178,12 +1181,6 @@ replorigin_session_setup(RepOriginId node)
 		session_replication_state->roident = node;
 	}
 
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Making connection sticky for setting replication origin in session");
-		yb_ysql_conn_mgr_sticky_nontxn_object = true;
-	}
-
 
 	Assert(session_replication_state->roident != InvalidRepOriginId);
 
@@ -1381,6 +1378,8 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 
 	replorigin_session_origin = origin;
 
+	YbConnMgrLatchIfReplicationOriginExcluded();
+
 	pfree(name);
 
 	PG_RETURN_VOID();
@@ -1419,11 +1418,8 @@ yb_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
 	origin = replorigin_by_name(name, false);
 
 	replorigin_session_origin = origin;
-	if (YbIsClientYsqlConnMgr())
-	{
-		elog(LOG, "Making connection sticky for setting shared replication origin in session");
-		yb_ysql_conn_mgr_sticky_nontxn_object = true;
-	}
+
+	YbConnMgrLatchIfReplicationOriginExcluded();
 
 	pfree(name);
 
@@ -1682,4 +1678,14 @@ void
 YbAtEOXact_ReplicationOrigin(void)
 {
 	replorigin_session_origin_timestamp = 0;
+}
+
+static void
+YbConnMgrLatchIfReplicationOriginExcluded(void)
+{
+	if (replorigin_session_origin == InvalidRepOriginId)
+		return;
+
+	if (yb_conn_mgr_replication_origin_permanent_sticky)
+		yb_ysql_conn_mgr_sticky_replication_origin = true;
 }

@@ -625,6 +625,17 @@ export function fetchHostInfoFailure(error) {
   };
 }
 
+// Fetches the host info and stores the result, or clears it on failure.
+export function loadHostInfo(dispatch) {
+  return dispatch(fetchHostInfo()).then((response) => {
+    if (response.payload.status !== 200) {
+      dispatch(fetchHostInfoFailure(response.payload));
+    } else {
+      dispatch(fetchHostInfoSuccess(response.payload));
+    }
+  });
+}
+
 export function fetchCustomerCount() {
   const request = axios.get(`${ROOT_URL}/customer_count`);
   return {

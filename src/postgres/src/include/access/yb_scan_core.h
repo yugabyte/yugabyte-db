@@ -3,11 +3,23 @@
  * yb_scan_core.h
  *	  Internal YB scan types and functions for the AM layer.
  *
- *	  This header is intended for access-method implementations
- *	  (heapam, yb_lsm, ybgin, ybvector) that need direct access
- *	  to YbOpaque and the low-level scan primitives.  Code above
- *	  the AM layer (executor, optimizer) should use yb_table_scan.h
- *	  or yb_table_scan_options.h instead.
+ *	  YbOpaque and the low-level scan primitives that the YB access
+ *	  methods share: the functions that build, bind, execute, and
+ *	  fetch a scan, and the GUC variables that control binding.
+ *	  Only those belong here.  The YB table scan descriptor
+ *	  (YbTableScanDescData) and the ybc_heap_* functions, which
+ *	  implement heap's scan functions for YB tables, are an
+ *	  exception, and #37429 tracks moving them out.  A function that
+ *	  code other than scans also needs goes in a header outside this
+ *	  one, so that its callers do not depend on these internals to
+ *	  reach it.
+ *
+ *	  Only access-method code includes this header (the YB access
+ *	  methods, the AM code under src/backend/access/, and AM
+ *	  extensions such as ybvector), plus guc.c for the GUC variables
+ *	  declared here.  Code above the AM layer uses the other headers
+ *	  that src/backend/access/yb_scan/README groups, as their
+ *	  comments allow.
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -141,8 +153,8 @@ typedef struct YbTableScanDescData *YbTableScanDesc;
 extern void ybc_free_ybscan(YbOpaque ybscan);
 
 /*
- * YB implementations of the heap AM scan lifecycle, called from
- * heapam.c / heapam_handler.c when the relation is YB-backed.
+ * YB implementations of the heap AM scan lifecycle, called from heapam.c when
+ * the relation is YB-backed.
  */
 extern TableScanDesc ybc_heap_beginscan(Relation relation,
 										Snapshot snapshot,
@@ -157,9 +169,8 @@ extern bool ybc_heap_getnextslot(TableScanDesc scanDesc,
 extern void ybc_heap_endscan(TableScanDesc scanDesc);
 
 /*
- * Low-level scan setup: builds the PgGate statement, binds scan
- * keys, and configures targets/pushdowns.  Used by both table
- * scans (via ybc_heap_beginscan) and index scans (via yb_lsm).
+ * Low-level scan setup: builds the PgGate statement, binds scan keys, and
+ * configures targets/pushdowns.  Used by access-method code.
  */
 extern YbOpaque YbBeginScan(Relation table,
 							Relation index,
@@ -179,8 +190,8 @@ extern YbOpaque YbBeginScan(Relation table,
 extern bool YbNeedsPgRecheck(YbOpaque ybScan);
 
 /*
- * Used in Agg node init phase to determine whether YB recheck or PG recheck
- * may be needed.
+ * Used by lsm's yb_ammightrecheck callback, which scan nodes call at init to
+ * learn whether YB recheck or PG recheck may be needed.
  */
 extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   Relation relation,
@@ -190,9 +201,8 @@ extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   int nkeys);
 
 /*
- * Low-level tuple fetch functions operating on YbOpaque directly.
- * Used by AM implementations (yb_lsm, ybgin) and catalog scans
- * (yb_catalog_scan) that manage their own scan state.
+ * Low-level tuple fetch functions operating on YbOpaque directly.  Used by
+ * access-method code.
  */
 extern HeapTuple ybc_getnext_heaptuple(YbOpaque ybScan, ScanDirection dir);
 extern IndexTuple ybc_getnext_indextuple(YbOpaque ybScan, ScanDirection dir);

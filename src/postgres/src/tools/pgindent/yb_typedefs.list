@@ -156,6 +156,10 @@ YbOpaque
 YbOpaqueData
 YbOptSplit
 YbOptionalReadPointHandle
+YbOscReplayState
+YbOscTargetOrder
+YbOscTransform
+YbOscTriggerSpec
 YbPFetchTable
 YbPFetchTableInfo
 YbPFetchTableState
@@ -400,7 +404,6 @@ YbcTableProperties
 YbcTablePropertiesData
 YbcTcmallocStats
 YbcTxnPriorityRequirement
-YbcTypeEntityProvider
 YbcUpdateInitPostgresMetricsFn
 YbcWaitEventDescriptor
 YbcWaitEventInfo

@@ -11,6 +11,7 @@
 // under the License.
 
 #include <atomic>
+#include <set>
 
 #include <gtest/gtest.h>
 
@@ -52,6 +53,8 @@
 
 DECLARE_bool(enable_quiescent_tablets);
 DECLARE_int32(quiescent_tablet_idle_sec);
+DECLARE_bool(skip_prefix_locks);
+DECLARE_bool(skip_prefix_locks_for_upgrade);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
@@ -61,6 +64,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(cdcsdk_enable_publication_scoped_replication_slots);
 DECLARE_bool(cdc_pg_create_grpc_stream);
 DECLARE_bool(ysql_yb_enable_listen_notify);
+DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(TEST_slowdown_alter_table_rpcs_ms);
 
 namespace yb {
@@ -135,6 +139,122 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardInsertWithAutoCommit))
   }
   LOG(INFO) << "Got " << count[1] << " insert record";
   CheckCount(expected_count, count);
+}
+
+TEST_F(CDCSDKYsqlTest, SerializableDmlSkipsEmptyTopLevelIntent) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks_for_upgrade) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 3;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE items (id integer PRIMARY KEY, value text) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("ALTER TABLE items REPLICA IDENTITY FULL"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, "items"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot("items_slot"));
+
+  CDCSDKCheckpointPB checkpoint;
+  int64_t safe_time = -1;
+  int wal_segment_index = 0;
+  std::vector<RowMessage> rows;
+  int begins = 0, commits = 0;
+  bool saw_partial_transaction = false;
+  auto stream_until_commits = [&](int expected_commits) {
+    rows.clear();
+    begins = 0;
+    commits = 0;
+    saw_partial_transaction = false;
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto resp = VERIFY_RESULT(GetChangesFromCDC(
+              stream_id, tablets, &checkpoint, 0, safe_time, wal_segment_index));
+          for (const auto& record : resp.cdc_sdk_proto_records()) {
+            const auto& row = record.row_message();
+            if (row.op() == RowMessage::BEGIN) {
+              ++begins;
+            } else if (row.op() == RowMessage::COMMIT) {
+              ++commits;
+            } else if (row.op() != RowMessage::DDL && row.op() != RowMessage::SAFEPOINT) {
+              rows.push_back(row);
+            }
+          }
+          checkpoint = resp.cdc_sdk_checkpoint();
+          saw_partial_transaction |= !checkpoint.key().empty() && checkpoint.write_id() > 0;
+          safe_time = resp.has_safe_hybrid_time() ? resp.safe_hybrid_time() : -1;
+          wal_segment_index = resp.wal_segment_index();
+          return commits >= expected_commits;
+        },
+        MonoDelta::FromSeconds(60), "Wait for committed transactions");
+  };
+
+  // Single-row inserts under each isolation level, including empty and NULL values.
+  const std::vector<std::string> isolation = {
+      "SERIALIZABLE", "SERIALIZABLE", "READ COMMITTED", "REPEATABLE READ"};
+  const std::vector<std::string> sql_values = {"'hello'", "''", "NULL", "'snapshot'"};
+  const std::vector<std::optional<std::string>> values = {"hello", "", std::nullopt, "snapshot"};
+  for (size_t i = 0; i < isolation.size(); ++i) {
+    const int id = static_cast<int>(i) + 1;
+    ASSERT_OK(conn.ExecuteFormat("BEGIN ISOLATION LEVEL $0", isolation[i]));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO items VALUES ($0, $1)", id, sql_values[i]));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    ASSERT_OK(stream_until_commits(1));
+    ASSERT_EQ(begins, 1);
+    ASSERT_EQ(commits, 1);
+    ASSERT_EQ(rows.size(), 1);
+    ASSERT_EQ(rows[0].op(), RowMessage::INSERT);
+    ASSERT_EQ(rows[0].table(), "items");
+    ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[0].new_tuple(), id, values[i]));
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT string_agg(id::text || ':' || coalesce(value, '<NULL>'), ',' ORDER BY id) "
+      "FROM items")), "1:hello,2:,3:<NULL>,4:snapshot");
+
+  // Serializable update, delete, a rolled-back savepoint and a multi-row insert, streamed in
+  // pages of cdc_max_stream_intent_records intents.
+  for (const std::string& sql : std::vector<std::string>{
+           "BEGIN ISOLATION LEVEL SERIALIZABLE", "INSERT INTO items VALUES (10, 'hello')", "COMMIT",
+           "BEGIN ISOLATION LEVEL SERIALIZABLE", "UPDATE items SET value = 'updated' WHERE id = 10",
+           "COMMIT", "BEGIN ISOLATION LEVEL SERIALIZABLE", "DELETE FROM items WHERE id = 10",
+           "COMMIT", "BEGIN ISOLATION LEVEL SERIALIZABLE", "SAVEPOINT s",
+           "INSERT INTO items VALUES (99, 'abort')", "ROLLBACK TO SAVEPOINT s",
+           "INSERT INTO items SELECT generate_series(11, 18), 'batch'", "COMMIT"}) {
+    ASSERT_OK(conn.Execute(sql));
+  }
+  ASSERT_OK(stream_until_commits(4));
+  ASSERT_TRUE(saw_partial_transaction);
+  ASSERT_EQ(begins, 4);
+  ASSERT_EQ(commits, 4);
+  ASSERT_EQ(rows.size(), 11);
+  ASSERT_EQ(rows[0].op(), RowMessage::INSERT);
+  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[0].new_tuple(), 10, "hello"));
+  // With packed rows, a full-row UPDATE is streamed as an upsert of the new row.
+  ASSERT_TRUE(rows[1].op() == RowMessage::UPDATE || rows[1].op() == RowMessage::INSERT);
+  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[1].new_tuple(), 10, "updated"));
+  ASSERT_EQ(rows[2].op(), RowMessage::DELETE);
+  ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[2].old_tuple(), 10, "updated"));
+  std::set<int> ids;
+  for (size_t i = 3; i < rows.size(); ++i) {
+    ASSERT_EQ(rows[i].op(), RowMessage::INSERT);
+    ASSERT_EQ(rows[i].table(), "items");
+    ASSERT_EQ(rows[i].new_tuple_size(), 2);
+    int id = rows[i].new_tuple(0).datum_int32();
+    ASSERT_GE(id, 11);
+    ASSERT_LE(id, 18);
+    ASSERT_TRUE(ids.insert(id).second);
+    ASSERT_NO_FATAL_FAILURE(CheckTextTuple(rows[i].new_tuple(), id, "batch"));
+  }
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM items WHERE id BETWEEN 11 AND 18 AND value = 'batch'")), 8);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM items")), 12);
+  auto resp = ASSERT_RESULT(GetChangesFromCDC(
+      stream_id, tablets, &checkpoint, 0, safe_time, wal_segment_index));
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    ASSERT_TRUE(record.row_message().op() == RowMessage::DDL ||
+                record.row_message().op() == RowMessage::SAFEPOINT);
+  }
 }
 
 // Insert, update, delete rows.
@@ -256,6 +376,167 @@ void CDCSDKYsqlTest::TestCDCLagMetric(CDCCheckpointType checkpoint_type) {
 }
 
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestCDCLagMetric);
+
+// Sent lag must not spike when a peer becomes leader again, before it serves GetChanges.
+TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeAfterLeaderChange) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  size_t leader_index = 0;
+  size_t follower_index = 0;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+  auto* cdc_service = CDCService(test_cluster()->mini_tablet_server(leader_index)->server());
+  ASSERT_OK(WaitFor(
+      [&] { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+  auto metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablet_id, stream_id, CreateMetricsEntityIfNotFound::kFalse));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return metrics->cdcsdk_sent_lag_micros->value() == 0 &&
+               metrics->cdcsdk_last_sent_physicaltime->value() > 0;
+      },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Caught up"));
+  ASSERT_GT(metrics->cdcsdk_change_event_count->value(), 0);
+  ASSERT_GT(metrics->cdcsdk_traffic_sent->value(), 0);
+  auto original_leader_peer =
+      test_cluster()->GetTabletManager(leader_index)->LookupTablet(tablet_id);
+  ASSERT_NE(original_leader_peer, nullptr);
+
+  // Move leadership away, and let the new leader stream the next row so the stream itself stays
+  // caught up.
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ false, "Original leader stepped down");
+  ASSERT_OK(WaitFor(
+      [&] { return metrics->cdcsdk_last_sent_physicaltime->value() == 0; },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Last-sent cleared"));
+  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
+  ASSERT_EQ(metrics->cdcsdk_flush_lag->value(), 0);
+
+  // The next row must commit well after the old last-sent time, so a stale last-sent would show
+  // as a spike.
+  SleepFor(MonoDelta::FromSeconds(3) * kTimeMultiplier);
+  ASSERT_OK(WriteRowsHelper(1, 2, &test_cluster_, true));
+  auto cp = change_resp.cdc_sdk_checkpoint();
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, /* is_explicit_checkpoint */ true, &cp));
+
+  auto new_leader_metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *CDCService(test_cluster()->mini_tablet_server(follower_index)->server()), tablet_id,
+      stream_id, CreateMetricsEntityIfNotFound::kFalse));
+  ASSERT_GT(new_leader_metrics->cdcsdk_change_event_count->value(), 0);
+  ASSERT_GT(new_leader_metrics->cdcsdk_traffic_sent->value(), 0);
+  ASSERT_GT(new_leader_metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+  ASSERT_LT(new_leader_metrics->cdcsdk_sent_lag_micros->value(), 1000 * 1000);
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+      stream_id, tablets, &change_resp.cdc_sdk_checkpoint(), &change_resp.cdc_sdk_checkpoint()));
+
+  ASSERT_OK(StepDownLeader(leader_index, tablet_id));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ true, "Original leader is ready");
+
+  // No GetChanges. UpdateMetrics is the only thing that can publish sent lag now.
+  const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(3) * kTimeMultiplier;
+  while (MonoTime::Now() < deadline) {
+    ASSERT_LT(metrics->cdcsdk_sent_lag_micros->value(), 1000 * 1000);
+    ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+}
+
+// A schema-only GetChanges publishes last-sent and does not spike sent lag.
+TEST_F(CDCSDKYsqlTest, TestSentLagNoSpikeWhenNoDataRecord) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  const auto tablet_id = tablets[0].tablet_id();
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true));
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets, 1, /* is_explicit_checkpoint */ true));
+  auto cp = change_resp.cdc_sdk_checkpoint();
+
+  size_t leader_index = 0;
+  size_t follower_index = 0;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &leader_index, &follower_index);
+  auto* cdc_service = CDCService(test_cluster()->mini_tablet_server(leader_index)->server());
+  ASSERT_OK(WaitFor(
+      [&] { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
+  auto metrics = ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablet_id, stream_id, CreateMetricsEntityIfNotFound::kFalse));
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return metrics->cdcsdk_last_sent_physicaltime->value() > 0; },
+      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Last-sent set"));
+
+  // A schema change is not a data row.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN extra INT"));
+
+  auto original_leader_peer =
+      test_cluster()->GetTabletManager(leader_index)->LookupTablet(tablet_id);
+  ASSERT_NE(original_leader_peer, nullptr);
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(follower_index, tablet_id));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ false, "Original leader stepped down");
+  ASSERT_OK(WaitFor(
+      [&] { return metrics->cdcsdk_last_sent_physicaltime->value() == 0; },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Last-sent cleared"));
+  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
+
+  // Stop UpdateMetrics before this peer is leader again. Only the GetChanges below can publish
+  // sent lag.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
+
+  ASSERT_OK(StepDownLeader(leader_index, tablet_id));
+  WaitUntilPeerLeaderState(
+      original_leader_peer, /* is_leader_and_ready */ true, "Original leader is ready");
+  ASSERT_EQ(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+  ASSERT_EQ(metrics->cdcsdk_sent_lag_micros->value(), 0);
+
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB ddl_resp;
+  PrepareChangeRequest(&change_req, stream_id, tablets, cp);
+  change_req.set_serve_as_proxy(true);
+  RpcController rpc;
+  ASSERT_OK(cdc_proxy_->GetChanges(change_req, &ddl_resp, &rpc));
+  ASSERT_FALSE(ddl_resp.has_error());
+  ASSERT_GT(ddl_resp.cdc_sdk_proto_records_size(), 0);
+  for (const auto& record : ddl_resp.cdc_sdk_proto_records()) {
+    ASSERT_FALSE(IsDMLRecord(record));
+    ASSERT_NE(record.row_message().op(), RowMessage::SAFEPOINT);
+  }
+
+  ASSERT_GT(metrics->cdcsdk_last_sent_physicaltime->value(), 0);
+  ASSERT_LT(metrics->cdcsdk_sent_lag_micros->value(), 1000 * 1000);
+}
 
 // Begin transaction, perform some operations and abort transaction.
 // Expected records: 0. In case of non consistent snapshot streams we receive 1 DDL.
@@ -8134,12 +8415,13 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAtomicDDLDropColumn)) {
   ASSERT_FALSE(set_resp.has_error());
 
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
-  const int expected_count[] = {2, 10, 0, 0, 0, 0, 4, 4};
+  const int expected_count[] = {3, 10, 0, 0, 0, 0, 4, 4};
   int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
 
-  // Fail the ALTER TABLE DROP column
+  // Fail the ALTER TABLE DROP column. Its first CHANGE_METADATA_OP is streamed while no schema is
+  // cached yet, so it gets a DDL record; the successful DROP's first op below is filtered out.
   ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(DropColumn(&test_cluster_, test_namespace_name, kTableName, kValueColumnName, &conn));
 
@@ -12890,11 +13172,11 @@ TEST_F(CDCSDKYsqlTest, TestStreamIndependenceWhilePollingCatalogTablet) {
   // corresponding to the ALTER PUB (BEGIN, DDL, INSERT, COMMIT). With transactional DDL, we also
   // get 12 records of pg_attribute and pg_publication_rel_prpubid_index: a DDL for each, 9 inserts
   // to pg_attribute for the CREATE TABLE and 1 insert to pg_publication_rel_prpubid_index.
-  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id_1));
-  ASSERT_FALSE(change_resp.has_error());
-  ASSERT_EQ(
-      change_resp.cdc_sdk_proto_records_size(),
-      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11);
+  const int expected_records =
+      FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? 23 : 11;
+  auto change_resp =
+      ASSERT_RESULT(GetChangesFromMasterUntilRecordCount(stream_id_1, expected_records));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), expected_records);
 
   // Call GetChanges on sys catalog tablet using stream_2. We will not get any DMLs as sys catalog
   // tablet only has change records corresponding to the DB 1. These records will be filtered by CDC
@@ -12930,8 +13212,6 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_2 (a int primary key, b text)"));
 
-  auto change_resp = ASSERT_RESULT(GetChangesFromMaster(stream_id));
-
   // 0=DDL, 1=INSERT, 2=UPDATE, 3=DELETE, 4=READ, 5=TRUNCATE, 6=BEGIN, 7=COMMIT
   // We will receive records only corresponding to the creation of test_2.
   // Without packed row wer will receive 1 Insert in pg_class for test_2 entry, 1 insert in pg_class
@@ -12942,6 +13222,16 @@ TEST_F(CDCSDKYsqlTest, TestPollingPgCatalogTablesAfterLeaderStepDown) {
   const int expected_count_without_packed_row[] = {1, 2, 1, 0, 0, 0, 1, 1};
   const int expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0, 1, 1};
   const int txn_ddl_extra_count[] = {1, 10, 0, 0, 0, 0, 0, 0};
+
+  const auto& expected_count = FLAGS_ysql_enable_packed_row ? expected_count_with_packed_row
+                                                            : expected_count_without_packed_row;
+  int expected_total = 0;
+  for (int i = 0; i < 8; i++) {
+    expected_total += expected_count[i] +
+        (FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ? txn_ddl_extra_count[i] : 0);
+  }
+  auto change_resp =
+      ASSERT_RESULT(GetChangesFromMasterUntilRecordCount(stream_id, expected_total));
 
   // None of the records should belong to the DDL which was performed before stream creation.
   for (auto record : change_resp.cdc_sdk_proto_records()) {

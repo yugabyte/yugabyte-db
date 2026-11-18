@@ -5,5 +5,6 @@
         "isGoSubmodule": "true",
         "gitHost": "github.com",
         "gitUserId": "yugabyte",
-        "gitRepoId": "platform-go-client"
+        "gitRepoId": "platform-go-client",
+        "useOneOfDiscriminatorLookup": true
     }
