@@ -324,6 +324,7 @@ void OutboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& 
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
           << this << " - Unexpected - Connection is null with ok status";
     }
+    was_sent_ = true;
     if (SetSent()) {
       std::lock_guard lock(sent_on_connection_mutex_);
       sent_on_connection_ = conn;

@@ -23,12 +23,18 @@ import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -117,6 +123,35 @@ public class FileDataServiceTest extends FakeDBApplication {
     Collection<File> diskFiles = FileUtils.listFiles(new File(TMP_STORAGE_PATH), null, true);
     assertEquals(diskFiles.size(), 12);
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
+  }
+
+  @Test
+  public void testSyncFileDataToDiskPermissions() throws IOException {
+    UUID providerUUID = UUID.randomUUID();
+    Map<String, String> expectedPermissions =
+        ImmutableMap.of(
+            "credentials.json", "rw-------",
+            "kubeconfig.conf", "rw-------",
+            "yb-key.pem", "r--------",
+            "yb-key.pub", "rw-r--r--");
+    for (String fileName : expectedPermissions.keySet()) {
+      String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
+      FileData.create(
+          providerUUID,
+          "/keys/" + providerUUID + "/" + fileName,
+          FilenameUtils.getExtension(fileName),
+          content);
+    }
+
+    fileDataService.syncFileData(TMP_STORAGE_PATH, true);
+
+    for (Map.Entry<String, String> entry : expectedPermissions.entrySet()) {
+      Path path = Paths.get(TMP_STORAGE_PATH, "keys", providerUUID.toString(), entry.getKey());
+      assertEquals(
+          entry.getKey(),
+          entry.getValue(),
+          PosixFilePermissions.toString(Files.getPosixFilePermissions(path)));
+    }
   }
 
   @Test
