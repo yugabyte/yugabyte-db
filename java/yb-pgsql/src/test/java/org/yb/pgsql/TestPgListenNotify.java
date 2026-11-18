@@ -845,6 +845,69 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * The virtual WAL streams transactions that commit at the same hybrid time as one transaction.
+   * Each transaction's notifications must still be delivered together and in send order (#38398).
+   * Such commit times collide only across tservers' clocks, so the test makes the virtual WAL
+   * treat commits within one window as simultaneous.
+   */
+  @Test
+  public void testNotifyOrderOfTransactionsWithSameCommitTime() throws Exception {
+    final int n = 50;
+    final long windowMs = 5000;
+    setVirtualWalCommitTimeRoundUp(windowMs * 1000);
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection connA = getConnectionBuilder().connect();
+         Connection connB = getConnectionBuilder().connect();
+         Statement stmtA = connA.createStatement();
+         Statement stmtB = connB.createStatement()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      stmtA.execute("BEGIN");
+      stmtA.execute(notifySeriesSql("a_", n));
+      stmtB.execute("BEGIN");
+      stmtB.execute(notifySeriesSql("b_", n));
+      // Commit both early in a window so that they don't straddle its end.
+      Thread.sleep(windowMs - System.currentTimeMillis() % windowMs + windowMs / 10);
+      stmtA.execute("COMMIT");
+      stmtB.execute("COMMIT");
+
+      List<String> payloads = new ArrayList<>();
+      for (String last : new String[] {"a_", "b_"}) {
+        String lastPayload = String.format("%s%05d", last, n - 1);
+        if (!payloads.contains(lastPayload)) {
+          for (PGNotification notif : waitForNotification(listenerConn, CHANNEL, lastPayload)) {
+            payloads.add(notif.getParameter());
+          }
+        }
+      }
+
+      List<String> expectedA = new ArrayList<>();
+      List<String> expectedB = new ArrayList<>();
+      for (int i = 0; i < n; i++) {
+        expectedA.add(String.format("a_%05d", i));
+        expectedB.add(String.format("b_%05d", i));
+      }
+      List<String> aThenB = new ArrayList<>(expectedA);
+      aThenB.addAll(expectedB);
+      List<String> bThenA = new ArrayList<>(expectedB);
+      bThenA.addAll(expectedA);
+      assertTrue("Notifications interleaved or out of order: " + payloads,
+          payloads.equals(aThenB) || payloads.equals(bThenA));
+    } finally {
+      setVirtualWalCommitTimeRoundUp(0);
+    }
+  }
+
+  private void setVirtualWalCommitTimeRoundUp(long usec) throws Exception {
+    for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
+      setServerFlag(tserver, "TEST_cdcsdk_vwal_round_up_commit_time_usec", String.valueOf(usec));
+    }
+  }
+
+  /**
    * A transaction's notifications must be delivered in the order they were sent even when their
    * rows land on different tablets of pg_yb_notifications (#35444).
    */

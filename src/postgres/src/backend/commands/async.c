@@ -603,7 +603,9 @@ static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 typedef struct YbNotifsPollerPendingEntry
 {
 	AsyncQueueEntry qe;
-	int64		seq;			/* sort key, see ybNotifsPollerPendingEntryCmp */
+	/* sort keys, see ybNotifsPollerPendingEntryCmp */
+	char		docdb_txn_id[37];	/* empty if the row has none */
+	int64		seq;
 } YbNotifsPollerPendingEntry;
 
 /* A notifications poller's own poller_id, see YbNotifsPollerShmemData. */
@@ -3575,6 +3577,10 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 		palloc0(sizeof(YbNotifsPollerPendingEntry));
 
 	ybRecordToAsyncQueueEntry(record, &entry->qe, &entry->seq);
+	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT &&
+		record->has_docdb_txn_id)
+		strlcpy(entry->docdb_txn_id, record->docdb_txn_id,
+				sizeof(entry->docdb_txn_id));
 	/* A row from an older writer has no seq: keep its arrival position. */
 	if (record->action == YB_PG_ROW_MESSAGE_ACTION_INSERT && entry->seq < 0)
 		entry->seq = list_length(ybNotifsPollerPendingEntries);
@@ -3583,11 +3589,18 @@ ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record)
 }
 
 /*
- * Orders a transaction's pending entries as the sending backend issued them,
- * see YB_NOTIF_SEQ_KEY. The BEGIN entry has seq -1 and so stays first.
+ * Orders a transaction's pending entries as the sending backends issued them,
+ * see YB_NOTIF_SEQ_KEY. The BEGIN entry has no DocDB transaction id and seq -1,
+ * and so stays first.
  *
- * A transaction's rows all come from one backend, so either all of them carry
- * a seq or (older writer) none do and the arrival positions keep the order.
+ * The virtual WAL streams DocDB transactions that commit at the same hybrid
+ * time as one transaction, each one's rows together and ordered by DocDB
+ * transaction id. Each sender numbers its notifications from 0, so sort by
+ * that id first to keep each sender's notifications together and in the
+ * virtual WAL's order.
+ *
+ * All rows of one sender carry a seq, or (older writer) none do and the
+ * arrival positions keep the order.
  *
  * The order is deterministic, so a transaction replayed after a poller crash
  * is queued in the same order, as the listeners' duplicate-skipping requires.
@@ -3597,7 +3610,10 @@ ybNotifsPollerPendingEntryCmp(const ListCell *a, const ListCell *b)
 {
 	const YbNotifsPollerPendingEntry *ea = lfirst(a);
 	const YbNotifsPollerPendingEntry *eb = lfirst(b);
+	int			cmp = strcmp(ea->docdb_txn_id, eb->docdb_txn_id);
 
+	if (cmp != 0)
+		return cmp;
 	if (ea->seq < eb->seq)
 		return -1;
 	if (ea->seq > eb->seq)
