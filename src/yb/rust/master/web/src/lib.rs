@@ -125,8 +125,7 @@ pub struct View {
     pub lease_deadline: LeaseDeadline,
     /// `GetReplicationStatus` on this universe as an xCluster target; false on an error.
     pub replication_status: ReplicationStatus,
-    /// When leaderless time starts to count: the term's start plus a grace period for every
-    /// tserver to heartbeat to this leader.
+    /// When leaderless time starts to count: the term's start.
     pub observable_from: Instant,
     /// `TsManager::live_lease_report_time`.
     pub last_lease_report: LeaseReportTime,
@@ -250,14 +249,13 @@ impl MasterWeb {
         let host = self.host.clone();
         let term = token.term();
         let now = Instant::now();
-        // Every live tserver heartbeats to a new leader within the unresponsive timeout.
+        // As C++, which counts a tablet's leaderless time from when the term loaded it.
         let observable_from = now
             - self
                 .leader
                 .balancer
                 .time_since_elected()
-                .unwrap_or_default()
-            + (ts_manager.options().unresponsive_timeout)();
+                .unwrap_or_default();
         Some(View {
             snapshot,
             tservers: self.leader.ts_manager.all(),

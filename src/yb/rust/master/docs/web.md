@@ -41,9 +41,10 @@ diffs every C++ JSON page between a C++ leader and the Rust leader that follows 
 What the Rust leader does not have yet: per-table `Tasks` on `/api/v1/table` (empty), split parents
 already removed from the catalog on the table page, the remote bootstraps in progress on
 `/api/v1/load-distribution` (empty), and task outcomes in its tasks summary (the balancer records
-what it sent, as `kScheduled`). `/api/v1/tablet-replication` counts leaderless time only from the
-term's start plus `tserver_unresponsive_timeout_ms`, so a new leader does not report tablets it has
-not heard about yet.
+what it sent, as `kScheduled`). `/api/v1/tablet-replication` follows the leaderless check of
+`master-tablet-locations` (K7): while a leader's tserver is live, a tablet's leaderless time ends at
+that tserver's last heartbeat, so a tablet whose leader just stopped heartbeating is reported only
+once the tserver is marked unresponsive, later than C++ reports it.
 
 ## The web UI
 

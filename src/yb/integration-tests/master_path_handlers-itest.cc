@@ -157,7 +157,7 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
   Result<std::vector<std::vector<std::string>>> GetHtmlTableRows(
       const std::string& url, const std::string& html_table_tag_id) {
-    if (VERIFY_RESULT(LeaderIsRust())) {
+    if (IsUiPage(url) && VERIFY_RESULT(LeaderIsRust())) {
       return RustTableRows(url, html_table_tag_id);
     }
     return path_handlers_util::GetHtmlTableRows(master_http_url_ + url, html_table_tag_id);
@@ -166,22 +166,39 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
   Result<std::vector<std::string>> GetHtmlTableColumn(
       const std::string& url, const std::string& html_table_tag_id,
       const std::string& column_header) {
-    if (VERIFY_RESULT(LeaderIsRust())) {
+    if (IsUiPage(url) && VERIFY_RESULT(LeaderIsRust())) {
       return RustTableColumn(url, html_table_tag_id, column_header);
     }
     return path_handlers_util::GetHtmlTableColumn(
         master_http_url_ + url, html_table_tag_id, column_header);
   }
 
+  // A master page the Rust master's web UI replaces (master-web's ui::PAGES); the host's own pages
+  // (/pprof, /varz, ...) stay HTML.
+  static bool IsUiPage(const std::string& url) {
+    static const std::set<std::string> kPages = {
+        "/", "/tablet-servers", "/tablet-server-clocks", "/tables", "/namespaces", "/table",
+        "/cluster-config", "/xcluster", "/tasks", "/tablet-replication", "/load-distribution",
+        "/stateful-services"};
+    return kPages.contains(url.substr(0, url.find('?')));
+  }
+
   // A Rust leader's pages are the web UI, which renders the JSON; only a Rust leader serves
   // /api/v1/overview.
   Result<bool> LeaderIsRust() {
-    faststring result;
-    if (!GetUrl("/api/v1/overview", &result).ok()) {
-      return false;
-    }
-    JsonDocument doc;
-    return doc.Parse(result.ToString()).ok();
+    bool rust = false;
+    RETURN_NOT_OK(WaitFor([&]() -> Result<bool> {
+      // Not GetUrl, which retries a C++ master's 404 until its timeout.
+      faststring result;
+      auto status = EasyCurl().FetchURL(master_http_url_ + "/api/v1/overview", &result);
+      if (status.ok()) {
+        JsonDocument doc;
+        rust = doc.Parse(result.ToString()).ok();
+        return true;
+      }
+      return status.message().ToBuffer().find("HTTP 404") != std::string::npos;
+    }, 30s * kTimeMultiplier, "Find whether the master leader is Rust"));
+    return rust;
   }
 
   Result<JsonValue> GetJson(const std::string& path, JsonDocument* doc) {
@@ -333,6 +350,11 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
 
   Result<std::string> GetLeaderlessTabletsString() {
     faststring result;
+    if (VERIFY_RESULT(LeaderIsRust())) {
+      // The leaderless tablets section of the page, from its JSON.
+      RETURN_NOT_OK(GetUrl("/api/v1/tablet-replication", &result));
+      return result.ToString();
+    }
     auto url = "/tablet-replication";
     RETURN_NOT_OK(GetUrl(url, &result));
     const std::string& result_str = result.ToString();
@@ -381,6 +403,27 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
       int tablet_count, const std::string& html_table_name = "test_table") {
     // This code expects 3 TServers and RF 3. html_table_name need not be the only table.
     int expected_replicas = tablet_count * 3;
+
+    if (ASSERT_RESULT(LeaderIsRust())) {
+      JsonDocument doc;
+      auto json = ASSERT_RESULT(GetJson("/api/v1/load-distribution", &doc));
+      bool found = false;
+      for (const auto& table :
+           ASSERT_RESULT(json["tablet_distribution"]["tables"].GetArray())) {
+        if (ASSERT_RESULT(table["table_name"].GetString()) != html_table_name) {
+          continue;
+        }
+        found = true;
+        EXPECT_EQ(ASSERT_RESULT(table["tablet_count"].GetInt64()), tablet_count);
+        int64_t peers = 0;
+        for (const auto& count : ASSERT_RESULT(table["counts"].GetArray())) {
+          peers += ASSERT_RESULT(count["replicas"].GetInt64());
+        }
+        EXPECT_EQ(peers, expected_replicas);
+      }
+      ASSERT_TRUE(found) << "No " << html_table_name << " in the load distribution";
+      return;
+    }
 
     faststring result;
     ASSERT_OK(GetUrl("/load-distribution", &result));
@@ -479,9 +522,10 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   cluster_->mini_tablet_server(0)->Shutdown();
   std::this_thread::sleep_for(std::chrono::milliseconds(2 * FLAGS_tserver_unresponsive_timeout_ms));
 
-  // Check UI page.
+  // Check UI page; a Rust leader's is the UI, which renders the JSON.
+  const auto* page = ASSERT_RESULT(LeaderIsRust()) ? "/api/v1/tablet-servers" : "/tablet-servers";
   faststring result;
-  ASSERT_OK(GetUrl("/tablet-servers", &result));
+  ASSERT_OK(GetUrl(page, &result));
   const std::string& result_str = result.ToString();
   ASSERT_TRUE(verifyTServersAlive(2, result_str));
 
@@ -495,7 +539,7 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
-        RETURN_NOT_OK(GetUrl("/tablet-servers", &result));
+        RETURN_NOT_OK(GetUrl(page, &result));
         return verifyTServersAlive(3, result.ToString());
       },
       10s /* timeout */, "Waiting for tserver heartbeat to master"));
@@ -820,6 +864,9 @@ class TabletSplitMasterPathHandlersItest : public MasterPathHandlersItest {
 // text, so the cell carries the total bytes as a numeric sort key.
 TEST_F_EX(
     MasterPathHandlersItest, TablesPageOnDiskSizeSortKey, TabletSplitMasterPathHandlersItest) {
+  if (ASSERT_RESULT(LeaderIsRust())) {
+    GTEST_SKIP() << "A Rust leader's tables page is the web UI, which sorts the JSON's sizes";
+  }
   CreateTestTable(1 /* num_tablets */);
 
   client::TableHandle table;
@@ -1478,6 +1525,15 @@ class MasterPathHandlersHiddenTablespaceItest :
   // Asserting on this, not only on the alert, rejects a fix that merely stops reporting.
   // nullopt: no tablespace resolved, so the row is not rendered.
   Result<std::optional<uint32_t>> ResolvedTablespaceOid(const TableId& table_id) {
+    if (VERIFY_RESULT(LeaderIsRust())) {
+      JsonDocument doc;
+      auto oid = VERIFY_RESULT(GetJson("/api/v1/table?id=" + table_id, &doc))
+          ["table_tablespace_oid"];
+      if (!oid.IsValid()) {
+        return std::nullopt;
+      }
+      return VERIFY_RESULT(oid.GetUint32());
+    }
     faststring result;
     RETURN_NOT_OK(GetUrl("/table?id=" + table_id, &result));
     const std::string page = result.ToString();
@@ -1691,8 +1747,24 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   faststring result;
   auto url = Format("/table?id=$0", table->id());
 
+  // A Rust leader's table page is the UI; its JSON has the replication info.
+  auto json_zone = [&]() -> Result<std::string> {
+    JsonDocument doc;
+    auto json = VERIFY_RESULT(GetJson(Format("/api/v1/table?id=$0", table->id()), &doc));
+    return json["table_replication_info"]["live_replicas"]["placement_blocks"][0]["cloud_info"]
+               ["placement_zone"].GetString();
+  };
+  const bool rust = ASSERT_RESULT(LeaderIsRust());
+
   // Verify cluster level replication info.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
+  if (rust) {
+    ASSERT_EQ(ASSERT_RESULT(json_zone()), "zone");
+    ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
+        table->name(), "cloud.region.anotherzone", 3, "table_uuid"));
+    ASSERT_EQ(ASSERT_RESULT(json_zone()), "anotherzone");
+    return;
+  }
   ASSERT_OK(GetUrl(url, &result));
   const std::string& cluster_str = result.ToString();
   size_t pos = cluster_str.find("Replication Info", 0);
@@ -1886,6 +1958,12 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
 }
 
 TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderChange) {
+  if (ASSERT_RESULT(LeaderIsRust())) {
+    // TEST_skip_processing_tablet_metadata simulates a master that stops processing a live
+    // leader's lease reports. A Rust leader doesn't count that time as leaderless (K7 in
+    // rust/master/docs/web.md), so it never reports this tablet.
+    GTEST_SKIP() << "A Rust leader doesn't count unprocessed lease reports as leaderless time";
+  }
   const auto kMaxLeaderLeaseExpiredMs = 5000;
   const auto kHtLeaseDurationMs = 2000;
   const auto kMaxTabletWithoutValidLeaderMs = 5000;
@@ -2001,9 +2079,18 @@ TEST_F(MasterPathHandlersLeaderlessRF1ITest, TestRF1) {
   ASSERT_EQ(result.find(tablet_id), std::string::npos);
 
   ASSERT_OK(cluster_->tablet_server(0)->Pause());
-  SleepFor((kLeaderlessTabletAlertDelaySecs + 1) * 1s);
-  result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_NE(result.find(tablet_id), std::string::npos);
+  if (ASSERT_RESULT(LeaderIsRust())) {
+    // A Rust leader counts leaderless time only once the leader's tserver is unresponsive
+    // (tserver_unresponsive_timeout_ms is 10 s here).
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(GetLeaderlessTabletsString()).find(tablet_id) != std::string::npos;
+    }, (10s + (kLeaderlessTabletAlertDelaySecs + 1) * 1s) * kTimeMultiplier,
+        "leaderless tablet reported"));
+  } else {
+    SleepFor((kLeaderlessTabletAlertDelaySecs + 1) * 1s);
+    result = ASSERT_RESULT(GetLeaderlessTabletsString());
+    ASSERT_NE(result.find(tablet_id), std::string::npos);
+  }
 
   ASSERT_OK(cluster_->tablet_server(0)->Resume());
 }
@@ -2577,7 +2664,10 @@ TEST_F_EX(
         << "Expected hash_split partition format, got: " << partition;
   }
 
-  // Verify HTML endpoint.
+  // Verify HTML endpoint. A Rust leader's page is the UI, which renders the JSON checked above.
+  if (ASSERT_RESULT(LeaderIsRust())) {
+    return;
+  }
   faststring html_result;
   ASSERT_OK(GetUrl(Format("/table?id=$0", vi_table_id), &html_result));
   auto html_str = html_result.ToString();

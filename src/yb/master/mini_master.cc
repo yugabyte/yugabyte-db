@@ -48,6 +48,8 @@
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/server_base.pb.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -328,6 +330,15 @@ HostPort MiniMaster::bound_rpc_addr() const {
 
 Endpoint MiniMaster::bound_http_addr() const {
   CHECK(running_);
+  if (rust_) {
+    // The Rust master serves the web port; the host's own web server is on loopback.
+    // MasterHost::GetStatusPB lists the Rust server's addresses, IPv4 first.
+    server::ServerStatusPB status;
+    server().GetStatusPB(&status);
+    CHECK_GT(status.bound_http_addresses_size(), 0);
+    const auto& hp = status.bound_http_addresses(0);
+    return Endpoint(boost::asio::ip::make_address(hp.host()), hp.port());
+  }
   return CHECK_RESULT(server().first_http_address());
 }
 

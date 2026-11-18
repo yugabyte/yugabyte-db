@@ -364,3 +364,83 @@ async fn cluster_config_json() {
         r#"{"replication_info":{"live_replicas":{"num_replicas":1}}}"#
     );
 }
+
+#[tokio::test]
+async fn replication_json() {
+    let view = view().await;
+    assert_eq!(
+        render(crate::replication::tablet_replication, &view, None),
+        r#"{"leaderless_tablets":[]}"#
+    );
+    // RF 1 and one replica: nothing is missing.
+    assert_eq!(
+        render(crate::replication::tablet_under_replication, &view, None),
+        r#"{"underreplicated_tablets":[]}"#
+    );
+}
+
+#[tokio::test]
+async fn overview_and_distribution_json() {
+    let view = view().await;
+    let overview = render(crate::ui_json::overview, &view, None);
+    for part in [
+        r#""replication_factor":1"#,
+        r#""live_tservers":1,"dead_tservers":0"#,
+        r#""is_load_balanced":null"#,
+        r#""encryption_at_rest":"Disabled""#,
+        r#""tablet_limits":{"tablet_peer_limit":null,"tablet_peers":0,"enforced":false}"#,
+        r#""placements":[{"placement_uuid":"","is_primary":true,"live_tservers":1"#,
+        r#""user_tablet_peers":1"#,
+    ] {
+        assert!(overview.contains(part), "{part} in {overview}");
+    }
+    let distribution = render(crate::ui_json::load_distribution, &view, None);
+    assert!(
+        distribution.contains(&format!(
+            r#""tables":[{{"table_id":"{TABLE}","keyspace":"ks","table_name":"t","tablet_count":1,"counts":[{{"uuid":"ts1","replicas":1,"leaders":1}}]}}]"#
+        )),
+        "{distribution}"
+    );
+    let clocks = render(crate::ui_json::tablet_server_clocks, &view, None);
+    assert!(
+        clocks.contains(r#""ysql_lease":{"state":"N/A"}"#),
+        "{clocks}"
+    );
+}
+
+#[tokio::test]
+async fn table_json() {
+    use yb_proto::pb::master_rust_peer::WebTableLayoutResponsePB;
+    let mut view = view().await;
+    view.host_call = Box::new(|method, _| {
+        assert_eq!(method, "WebTableLayout");
+        let mut resp = WebTableLayoutResponsePB::new();
+        let mut column =
+            yb_proto::pb::master_rust_peer::web_table_layout_response_pb::Column::new();
+        column.set_name(b"k".to_vec());
+        column.set_id(b"0".to_vec());
+        column.set_type(b"int32 NOT NULL HASH".to_vec());
+        resp.columns.push(column);
+        resp.partitions
+            .push(b"hash_split: [0x0000, 0xFFFF]".to_vec());
+        Ok(resp.write_to_bytes().unwrap())
+    });
+    assert_eq!(
+        render(crate::table::table, &view, Some(&format!("id={TABLE}"))),
+        format!(
+            r#"{{"table_name":"ks.t","table_id":"{TABLE}","table_version":0,"table_type":"YQL_TABLE_TYPE","table_state":"Running","table_state_message":"","table_replication_info":{{"live_replicas":{{"num_replicas":1}}}},"columns":[{{"column":"k","id":"0","type":"int32 NOT NULL HASH"}}],"tablets":[{{"tablet_id":"{TABLET}","partition":"hash_split: [0x0000, 0xFFFF]","split_depth":0,"state":"Running","hidden":"false","message":"","locations":[{{"uuid":"ts1","role":"LEADER","location":"http://h1:9000/tablet?id={TABLET}"}}]}}],"Tasks":[]}}"#
+        )
+    );
+    assert_eq!(
+        render(crate::table::table, &view, Some("id=missing")),
+        r#"{"error":"Table not found!"}"#
+    );
+    assert_eq!(
+        render(
+            crate::table::table,
+            &view,
+            Some("keyspace_name=ks&table_name=t&keyspace_type=x")
+        ),
+        r#"{"error":"Wrong keyspace_type found 'x'. Possible values are: ycql, ysql, yedis"}"#
+    );
+}

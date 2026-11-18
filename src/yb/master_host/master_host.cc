@@ -859,6 +859,11 @@ void MasterHost::RegisterWebPages() {
       {"/api/v1/cluster-config", "Cluster Config JSON", false, false, ""},
       {"/api/v1/xcluster", "xCluster", false, false, ""},
       {"/api/v1/stateful-services", "Stateful Services", false, false, ""},
+      // Only a Rust leader serves these (the web UI's data for pages C++ renders as HTML).
+      {"/api/v1/overview", "Overview", false, false, ""},
+      {"/api/v1/load-distribution", "Cluster Balancer View", false, false, ""},
+      {"/api/v1/tasks", "Tasks", false, false, ""},
+      {"/api/v1/tablet-server-clocks", "Tablet Server Clocks", false, false, ""},
   };
   for (const auto& page : kLeaderPages) {
     web_server_->RegisterPathHandler(

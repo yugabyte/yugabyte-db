@@ -363,21 +363,40 @@ pub(crate) fn load_distribution(view: &View, _args: &Args) -> Vec<u8> {
 
     jw.string("tables");
     jw.start_array();
+    // MasterPathHandlers::CalculateTServerTree and RenderLoadBalancerViewPanel: running user
+    // tables and indexes, their tablets not deleted (hidden split parents included).
     let mut tables: Vec<TableRow> = snapshot
         .iter(SysRowEntryType::TABLE)
         .filter_map(TableRow::new)
-        .filter(|t| t.is_running() && !t.is_secondary())
+        .filter(|t| t.is_running() && !t.is_secondary() && t.is_user_created(snapshot))
+        .filter(|t| {
+            matches!(
+                crate::classify::table_category(snapshot, t),
+                crate::classify::TableCategory::User | crate::classify::TableCategory::Index
+            )
+        })
         .collect();
     tables.sort_by(|a, b| a.id().cmp(b.id()));
     for table in &tables {
         let mut counts: BTreeMap<Vec<u8>, (u32, u32)> = BTreeMap::new();
-        for tablet in table.active_tablets(snapshot) {
-            for replica in view
+        let mut tablet_count = 0u64;
+        for tablet in table.tablets(snapshot) {
+            if tablet.tablet().is_none_or(|h| {
+                h.state
+                    == yb_proto::pb::catalog_entity_info::sys_tablets_entry_pb::State::DELETED
+                        as i32
+            }) {
+                continue;
+            }
+            let replicas = view
                 .locations
                 .get(&tablet.key.id)
                 .map(|r| r.replicas)
-                .unwrap_or_default()
-            {
+                .unwrap_or_default();
+            if !replicas.is_empty() {
+                tablet_count += 1;
+            }
+            for replica in replicas {
                 let entry = counts.entry(replica.ts_uuid.to_vec()).or_default();
                 entry.0 += 1;
                 if replica.role == yb_proto::pb::common_types::PeerRole::LEADER {
@@ -392,6 +411,8 @@ pub(crate) fn load_distribution(view: &View, _args: &Args) -> Vec<u8> {
             namespace_name(snapshot, table.pb.namespace_id()),
         );
         jw.field("table_name", table.pb.name());
+        jw.string("tablet_count");
+        jw.uint(tablet_count);
         jw.string("counts");
         jw.start_array();
         for (uuid, (replicas, leaders)) in &counts {
