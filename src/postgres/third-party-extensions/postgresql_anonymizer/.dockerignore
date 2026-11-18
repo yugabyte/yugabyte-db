@@ -1,0 +1,6 @@
+.git
+target
+docs
+examples
+#pg_dump_anon
+**/_build

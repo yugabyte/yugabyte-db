@@ -72,7 +72,15 @@ FROM (
 ) AS k
 ;
 
+CREATE TABLE attack (id int, "id,(SELECT inject_here())" text);
 
+INSERT INTO attack VALUES(0,'whatever');
+
+SECURITY LABEL FOR k_anonymity ON COLUMN attack."id,(SELECT inject_here())"
+IS 'indirect identifier';
+
+-- executes: GROUP BY "id,(SELECT inject_here())"
+SELECT anon.k_anonymity('attack'::regclass) = 1 ;
 
 /* YB: workaround for lack of transactional DDL
 ROLLBACK;
@@ -82,3 +90,4 @@ DROP EXTENSION anon CASCADE; -- YB: workaround for lack of transactional DDL
 DROP TABLE disease CASCADE; -- YB: workaround for lack of transactional DDL
 DROP TABLE patient CASCADE; -- YB: workaround for lack of transactional DDL
 DROP TABLE anon_patient CASCADE; -- YB: workaround for lack of transactional DDL
+DROP TABLE attack CASCADE; -- YB: workaround for lack of transactional DDL

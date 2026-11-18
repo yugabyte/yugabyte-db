@@ -14,21 +14,21 @@ it.
 
 ## How it works
 
-![](img/anon_static.png)
+![Anon Static image](img/anon_static.png)
 
 ## Learning Objective
 
 In this section, we will learn:
 
--   How to write simple masking rules
--   The advantage and limitations of static masking
--   The concept of "Singling Out" a person
+- How to write simple masking rules
+- The advantage and limitations of static masking
+- The concept of "Singling Out" a person
 
 
 ## The "customer" table
 
 
-``` { .run-postgres  parse_query=False }
+```text { .run-postgres  parse_query=False }
 DROP TABLE IF EXISTS customer CASCADE;
 
 DROP TABLE IF EXISTS payout CASCADE;
@@ -45,7 +45,7 @@ CREATE TABLE customer (
 
 Insert a few persons:
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 INSERT INTO customer
 VALUES
 (107,'Sarah','Conor','060-911-0911', '1965-10-10', '90016'),
@@ -54,7 +54,7 @@ VALUES
 ;
 ```
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SELECT * FROM customer;
 ```
 
@@ -62,7 +62,7 @@ SELECT * FROM customer;
 
 Sales are tracked in a simple table:
 
-``` { .run-postgres  parse_query=False  }
+```text { .run-postgres  parse_query=False  }
 CREATE TABLE payout (
     id SERIAL PRIMARY KEY,
     fk_customer_id INT REFERENCES customer(id),
@@ -74,7 +74,7 @@ CREATE TABLE payout (
 
 Let\'s add some orders:
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 INSERT INTO payout
 VALUES
 (1,107,'2021-10-01','2021-10-01', '7'),
@@ -87,7 +87,7 @@ VALUES
 
 ## Activate the extension
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 CREATE EXTENSION IF NOT EXISTS anon CASCADE;
 
 SELECT anon.init();
@@ -100,7 +100,7 @@ SELECT setseed(0);
 Paul wants to hide the last name and the phone numbers of his clients.
 He will use the `fake_last_name()` and `partial()` functions for that:
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SECURITY LABEL FOR anon ON COLUMN customer.lastname
 IS 'MASKED WITH FUNCTION anon.fake_last_name()';
 
@@ -110,11 +110,11 @@ IS 'MASKED WITH FUNCTION anon.partial(phone,2,$$X-XXX-XX$$,2)';
 
 ## Apply the rules permanently
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SELECT anon.anonymize_table('customer');
 ```
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SELECT id, firstname, lastname, phone
 FROM customer;
 ```
@@ -125,7 +125,7 @@ FROM customer;
 > permanently replaced**. We\'ll see later how we can use dynamic
 > anonymization or anonymous exports.
 
-## Exercices
+## Exercises
 
 ### E101 - Mask the client's first names
 
@@ -167,7 +167,7 @@ given individual based on data stored outside of the table. For
 instance, we can identify the best client of Paul\'s boutique with a
 query like this:
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 WITH best_client AS (
     SELECT SUM(amount), fk_customer_id
     FROM payout
@@ -211,7 +211,7 @@ section of the
 
 ### S101
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SECURITY LABEL FOR anon ON COLUMN customer.firstname
 IS 'MASKED WITH FUNCTION anon.fake_first_name()';
 
@@ -223,7 +223,7 @@ FROM customer;
 
 ### S102
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SECURITY LABEL FOR anon ON COLUMN customer.postcode
 IS 'MASKED WITH FUNCTION anon.partial(postcode,2,$$xxx$$,0)';
 
@@ -235,7 +235,7 @@ FROM customer;
 
 ### S103
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SELECT postcode, COUNT(id)
 FROM customer
 GROUP BY postcode;
@@ -243,7 +243,7 @@ GROUP BY postcode;
 
 ### S104
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SECURITY LABEL FOR anon ON COLUMN customer.birth
 IS 'MASKED WITH FUNCTION make_date(EXTRACT(YEAR FROM birth)::INT,1,1)';
 
@@ -257,13 +257,13 @@ FROM customer;
 
 Let\'s mix up the values of the fk_customer_id:
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 SELECT anon.shuffle_column('payout','fk_customer_id','id');
 ```
 
 Now let\'s try to single out the best client again :
 
-``` { .run-postgres  }
+```text { .run-postgres  }
 WITH best_client AS (
     SELECT SUM(amount), fk_customer_id
     FROM payout
@@ -278,9 +278,7 @@ JOIN best_client b ON (c.id = b.fk_customer_id);
 
 ------------------------------------------------------------------------
 
-**WARNING**
-
-Note that the link between a `customer` and its `payout` is now
+**WARNING**: Note that the link between a `customer` and its `payout` is now
 completely false. For instance, if a customer A had 2 payouts. One of
 these payout may be linked to a customer B, while the second one is
 linked to a customer C.

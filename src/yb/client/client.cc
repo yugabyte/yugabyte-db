@@ -1719,7 +1719,10 @@ Status YBClient::GetCDCStream(
     std::optional<bool>* detect_publication_changes_implicitly,
     std::optional<std::string>* replication_slot_plugin_name,
     bool* is_notification_slot,
-    std::optional<bool>* xcluster_use_target_applied_filter) {
+    std::optional<bool>* xcluster_use_target_applied_filter,
+    bool* paused_for_upgrade,
+    bool* unusable_with_transactional_ddl,
+    std::optional<HybridTime>* implicit_conversion_barrier_ht) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1806,6 +1809,20 @@ Status YBClient::GetCDCStream(
   if (xcluster_use_target_applied_filter &&
       resp.stream().has_xcluster_use_target_applied_filter()) {
     *xcluster_use_target_applied_filter = resp.stream().xcluster_use_target_applied_filter();
+  }
+
+  if (paused_for_upgrade) {
+    *paused_for_upgrade = resp.stream().cdcsdk_paused_for_upgrade();
+  }
+
+  if (unusable_with_transactional_ddl) {
+    *unusable_with_transactional_ddl = resp.stream().cdcsdk_unusable_with_transactional_ddl();
+  }
+
+  if (implicit_conversion_barrier_ht &&
+      resp.stream().has_cdcsdk_implicit_conversion_barrier_ht()) {
+    *implicit_conversion_barrier_ht =
+        HybridTime(resp.stream().cdcsdk_implicit_conversion_barrier_ht());
   }
 
   return Status::OK();
@@ -2839,10 +2856,9 @@ Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
   return data_->GetTableDiskSize(table_id, deadline);
 }
 
-Status YBClient::ReportYsqlDdlTxnStatus(
-    const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time) {
+Status YBClient::ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed) {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
-  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, propagated_hybrid_time, deadline);
+  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, deadline);
 }
 
 Status YBClient::WaitForDdlVerificationToFinish(const TransactionMetadata& txn) {

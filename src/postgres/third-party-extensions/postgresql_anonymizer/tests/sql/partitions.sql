@@ -71,4 +71,3 @@ SELECT * FROM invoice_2020;
 SELECT * FROM measurement;
 
 SELECT * FROM measurement_y2006m02;
-

@@ -75,15 +75,13 @@ FROM pg_tables
 WHERE tablename='inject_via_load';
 
 --
--- Dynamic Masking
+-- Static Masking
 --
-
-SET anon.maskschema TO 'foo; CREATE TABLE inject_via_guc(i int);--';
-SELECT anon.start_dynamic_masking();
+SELECT anon.anonymize_database('anon''; CREATE TABLE inject_via_static_masking(i int);--');
 
 SELECT COUNT(*) = 0
 FROM pg_tables
-WHERE tablename='inject_via_guc';
+WHERE tablename='inject_via_static_masking';
 
 --
 -- Masking Rule Syntax
@@ -158,5 +156,3 @@ ROLLBACK TO masking_rule_8;
 -- CLEAN UP
 DROP EXTENSION anon CASCADE;
 ROLLBACK;
-
-

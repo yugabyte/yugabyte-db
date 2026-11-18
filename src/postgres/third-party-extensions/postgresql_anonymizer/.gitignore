@@ -1,3 +1,5 @@
+# coverage files
+*.profraw
 # pgxn
 _pgxn
 # unit tests
@@ -8,7 +10,7 @@ tests/tmp/*
 *.swp
 *.swo
 # tests
-*.out
+regression.out
 *.diffs
 _dump1.sql
 _dump2.sql
@@ -20,6 +22,8 @@ contrib_regression_test_restore.pgsql
 *.so
 # python
 _venv/
+# mkdocs
+site
 # artefacts
 _build/
 docs/how-to/_build/
@@ -51,4 +55,6 @@ dput
 /target
 *.iml
 **/*.rs.bk
-Cargo.lock
+.idea
+.vscode
+.DS_Store

@@ -44,6 +44,7 @@
 #include "yb/util/stol_utils.h"
 
 DECLARE_bool(docdb_enable_sst_stats_collector);
+DECLARE_bool(TEST_use_custom_varz);
 
 namespace yb::integration_tests {
 
@@ -253,6 +254,42 @@ TEST_F(TServerPathHandlersItest, TablesPageOnDiskSizeSortKey) {
         return VERIFY_RESULT(CheckedStoull(match[1].str())) > 0;
       },
       30s, "Wait for the tables page to carry the table's size as its sort key"));
+}
+
+class TServerCustomVarzItest : public TServerPathHandlersItest {
+ public:
+  void SetUp() override {
+    // Read when the tablet server options are created, so it has to be set before the cluster
+    // starts.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
+    TServerPathHandlersItest::SetUp();
+  }
+
+ protected:
+  Status CheckRpcBindAddressesInVarz() {
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->mini_tablet_server(i);
+      faststring varz;
+      RETURN_NOT_OK(path_handlers_util::GetUrl(
+          Format("http://$0/varz?raw=1", AsString(ts->bound_http_addr())), &varz));
+      const auto expected = Format("--rpc_bind_addresses=$0\n", AsString(ts->bound_rpc_addr()));
+      SCHECK_NE(
+          varz.ToString().find(expected), std::string::npos, IllegalState,
+          Format("ts-$0 /varz does not contain $1: $2", i + 1, expected, varz.ToString()));
+    }
+    return Status::OK();
+  }
+};
+
+// yb-controller reads the RPC address of its tablet server from /varz, so with custom varz each
+// tablet server has to show its own bind address, not the process-wide flag.
+TEST_F(TServerCustomVarzItest, ShowsOwnRpcBindAddress) {
+  ASSERT_OK(CheckRpcBindAddressesInVarz());
+
+  auto* ts = cluster_->mini_tablet_server(0);
+  ts->Shutdown();
+  ASSERT_OK(ts->Start());
+  ASSERT_OK(CheckRpcBindAddressesInVarz());
 }
 
 class TServerSstStatsPathHandlerItest : public TServerPathHandlersItest {

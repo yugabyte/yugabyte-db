@@ -766,15 +766,21 @@ class VectorMetadataFilter {
     const auto& entry = VERIFY_RESULT_REF(iterator()->Fetch());
 
     // Make sure extracted entry matches the specified key.
-    if (!entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
-      // Single tombstone with no vector_id -> ybctid mapping left in the tablet: safe to drop
-      // as the mapping pair has been already dropped somewhere in the past, otherwise it should
-      // have been found by the Seek() above.
+    if (!entry || !entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
+      // No mapping entry for the tombstone: either it was already removed, e.g. by an earlier
+      // iteration of this post-split compaction, or it will be written when a committed transaction
+      // is applied. Such a transaction started before the tombstone was written. A kept tombstone
+      // is removed later by a regular compaction, like any other tombstone.
+      EncodedDocHybridTime encoded_doc_ht;
+      RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
+      const auto keep = encoded_doc_ht >= encoded_min_running_ht_;
       VLOG_WITH_FUNC(2)
-          << "Discarding orphaned vector index reverse mapping tombstone"
+          << (keep ? "Keeping" : "Discarding")
+          << " vector index reverse mapping tombstone without mapping entry"
           << ", expected: " << key.Prefix(dockv::kEncodedDocVectorKeyStaticSize).ToDebugHexString()
-          << ", located: " << entry.key.ToDebugHexString();
-      return rocksdb::FilterDecision::kDiscard;
+          << ", located: " << (entry ? entry.key.ToDebugHexString() : "<end>")
+          << ", min running ht: " << encoded_min_running_ht_.ToString();
+      return keep ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
     }
 
     return DoFilterValue(entry.value);
@@ -832,6 +838,8 @@ class VectorMetadataFilter {
       return Status::OK();
     }
     SCHECK_NOTNULL(iterator_provider_);
+    encoded_min_running_ht_ =
+        EncodedDocHybridTime(iterator_provider_->MinRunningHybridTime(), kMinWriteId);
     iterator_holder_ =
         VERIFY_RESULT(iterator_provider_->CreateVectorMetadataIterator(
             ReadHybridTime::Max(), nullptr));
@@ -849,6 +857,7 @@ class VectorMetadataFilter {
   HistoryCutoff history_cutoff_;
   DocVectorMetadataIteratorProvider* iterator_provider_;
   IntentAwareIteratorWithBounds iterator_holder_;
+  EncodedDocHybridTime encoded_min_running_ht_;
 };
 
 std::unique_ptr<VectorMetadataFilter> CreateVectorMetadataFilter(

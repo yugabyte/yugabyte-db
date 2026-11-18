@@ -201,7 +201,9 @@ class TabletVectorIndexes :
       EXCLUDES(vector_indexes_mutex_);
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const override;
+
+  HybridTime MinRunningHybridTime() const override;
 
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);

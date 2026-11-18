@@ -50,5 +50,3 @@ SELECT * FROM sales.staff;
 SELECT anon.start_dynamic_masking();
 
 ROLLBACK;
-
-

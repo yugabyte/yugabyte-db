@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -35,17 +36,31 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
   private final Commissioner commissioner;
   private final ConfigHelper configHelper;
   private final StorageUtilFactory storageUtilFactory;
+  private final BackupHelper backupHelper;
 
   @Inject
   public ContinuousBackupHandler(
       AuditService auditService,
       Commissioner commissioner,
       ConfigHelper configHelper,
-      StorageUtilFactory storageUtilFactory) {
+      StorageUtilFactory storageUtilFactory,
+      BackupHelper backupHelper) {
     super(auditService);
     this.commissioner = commissioner;
     this.configHelper = configHelper;
     this.storageUtilFactory = storageUtilFactory;
+    this.backupHelper = backupHelper;
+  }
+
+  private static void requireActive(CustomerConfig customerConfig) {
+    if (!customerConfig.isActive()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Storage config %s is %s; only an active storage config can be used for continuous"
+                  + " backup.",
+              customerConfig.getConfigUUID(), customerConfig.getState()));
+    }
   }
 
   /**
@@ -102,6 +117,9 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can only use storage config for continuous backup.");
     }
+    requireActive(customerConfig);
+    // Rejected now rather than failing every scheduled run.
+    backupHelper.requireYbaFederatedIdentity(customerConfig, customerConfig.getDataObject());
 
     // Validate backup directory name
     validateBackupDir(continuousBackupCreateSpec.getBackupDir());
@@ -169,6 +187,9 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can only set storage config for continuous backup.");
     }
+    requireActive(customerConfig);
+    // Rejected now rather than failing every scheduled run.
+    backupHelper.requireYbaFederatedIdentity(customerConfig, customerConfig.getDataObject());
 
     // Validate backup directory name
     validateBackupDir(continuousBackupEditSpec.getBackupDir());

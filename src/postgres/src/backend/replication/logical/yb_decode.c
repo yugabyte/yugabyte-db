@@ -28,15 +28,18 @@
 #include <inttypes.h>
 
 #include "access/xact.h"
+#include "catalog/yb_type.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
 #include "utils/catcache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 static void YBDecodeDDL(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodePublicationRefresh(LogicalDecodingContext *ctx,
@@ -48,6 +51,9 @@ static void YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 static int	YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
 											 const YbcPgDatumMessage *col);
+static void YbQlValueToDatum(const YbcPgDatumMessage *col, bool after_op,
+							 TupleDesc tupdesc, int attr_idx, Datum *datum,
+							 bool *is_null);
 static void YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 static bool YbDmlHistoricalReadParams(const YbVirtualWalRecord *yb_record,
 									  uint64_t *read_time,
@@ -272,6 +278,8 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 
 	change->data.tp.clear_toast_afterwards = true;
 
+	Assert(CurrentMemoryContext != YBCGetDecodeRecordContext());
+
 	/*
 	 * YB does not support on-disk TOASTing, so toast_insert will always be
 	 * false.
@@ -298,6 +306,8 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	bool	   *before_op_is_omitted = NULL;
 	bool	   *after_op_is_omitted = NULL;
 	bool		should_handle_omitted_case;
+	bool		needs_before_op;
+	MemoryContext old_context;
 
 	change->action = REORDER_BUFFER_CHANGE_UPDATE;
 	change->lsn = yb_record->lsn;
@@ -335,8 +345,11 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	Datum		before_op_datums[nattrs];
 	bool		before_op_is_nulls[nattrs];
 
+	needs_before_op = relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL;
+
 	memset(after_op_is_nulls, 1, sizeof(after_op_is_nulls));
 	memset(before_op_is_nulls, 1, sizeof(before_op_is_nulls));
+	old_context = MemoryContextSwitchTo(YBCGetDecodeRecordContext());
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		YbcPgDatumMessage *col = &yb_record->cols[col_idx];
@@ -353,16 +366,16 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		}
 
 		if (!should_handle_omitted_case || !col->after_op_is_omitted)
-		{
-			after_op_datums[attr_idx] = col->after_op_datum;
-			after_op_is_nulls[attr_idx] = col->after_op_is_null;
-		}
-		if (!should_handle_omitted_case || !col->before_op_is_omitted)
-		{
-			before_op_datums[attr_idx] = col->before_op_datum;
-			before_op_is_nulls[attr_idx] = col->before_op_is_null;
-		}
+			YbQlValueToDatum(col, true /* after_op */ , tupdesc, attr_idx,
+							 &after_op_datums[attr_idx],
+							 &after_op_is_nulls[attr_idx]);
+		if (needs_before_op &&
+			(!should_handle_omitted_case || !col->before_op_is_omitted))
+			YbQlValueToDatum(col, false /* after_op */ , tupdesc, attr_idx,
+							 &before_op_datums[attr_idx],
+							 &before_op_is_nulls[attr_idx]);
 	}
+	MemoryContextSwitchTo(old_context);
 
 	/* See the comment in YBDecodeInsert on why we create tuples twice. */
 	after_op_tuple =
@@ -382,7 +395,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 * non-primary key updates non-null old-tuple will be sent only for replica
 	 * identity FULL to match the PG behaviour.
 	 */
-	if (relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
+	if (needs_before_op)
 	{
 		before_op_tuple =
 			heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
@@ -402,6 +415,9 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		if (should_handle_omitted_case && before_op_is_omitted)
 			pfree(before_op_is_omitted);
 	}
+
+	/* The tuples hold copies of the converted datums. */
+	MemoryContextReset(YBCGetDecodeRecordContext());
 
 	if (log_min_messages <= DEBUG2)
 	{
@@ -439,6 +455,7 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
+	Assert(CurrentMemoryContext != YBCGetDecodeRecordContext());
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 
@@ -477,6 +494,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 	YbStoreDmlHistoricalReadContext(change, yb_record);
 
 	change->data.tp.clear_toast_afterwards = true;
+	Assert(CurrentMemoryContext != YBCGetDecodeRecordContext());
 	ReorderBufferQueueChange(ctx->reorder, yb_record->xid,
 							 ctx->reader->ReadRecPtr, change, false /* toast_insert */ );
 }
@@ -557,6 +575,7 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 	TupleDesc	tupdesc;
 	int			nattrs;
 	HeapTuple	tuple;
+	MemoryContext old_context;
 
 	YbcPgRowMessageAction action = yb_record->action;
 
@@ -580,6 +599,7 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 
 	/* Set value to null by default so that we treat dropped columns as null. */
 	memset(is_nulls, true, sizeof(is_nulls));
+	old_context = MemoryContextSwitchTo(YBCGetDecodeRecordContext());
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
@@ -589,15 +609,14 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 		if (attr_idx < 0)
 			continue;
 
-		datums[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
-							col->after_op_datum :
-							col->before_op_datum);
-		is_nulls[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
-							  col->after_op_is_null :
-							  col->before_op_is_null);
+		YbQlValueToDatum(col, action == YB_PG_ROW_MESSAGE_ACTION_INSERT,
+						 tupdesc, attr_idx, &datums[attr_idx],
+						 &is_nulls[attr_idx]);
 	}
+	MemoryContextSwitchTo(old_context);
 
 	tuple = heap_form_tuple(tupdesc, datums, is_nulls);
+	MemoryContextReset(YBCGetDecodeRecordContext());
 	if (log_min_messages <= DEBUG2)
 	{
 		const char *tuple_string = YbHeapTupleToStringWithIsOmitted(tuple,
@@ -676,6 +695,37 @@ YBFindAttributeIndexInDescriptor(Relation relation, TupleDesc tupdesc,
 			 errmsg("could not find column with name %s in tuple"
 					" descriptor", column_name)));
 	return -1;					/* keep compiler quiet */
+}
+
+/*
+ * Converts the column's after or before value to a datum, allocated in the
+ * decode record context, which the caller must have made current.
+ */
+static void
+YbQlValueToDatum(const YbcPgDatumMessage *col, bool after_op,
+				 TupleDesc tupdesc, int attr_idx, Datum *datum, bool *is_null)
+{
+	const void *ql_value = (after_op ?
+							col->after_op_ql_value :
+							col->before_op_ql_value);
+	const YbcPgTypeEntity *type_entity = col->type_entity;
+	uint64_t	value = 0;
+
+	Assert(CurrentMemoryContext == YBCGetDecodeRecordContext());
+
+	*datum = (Datum) 0;
+	*is_null = after_op ? col->after_op_is_null : col->before_op_is_null;
+	if (*is_null)
+		return;
+	Assert(ql_value);
+
+	if (!type_entity)
+		type_entity =
+			YbDataTypeFromOidMod(attr_idx + 1,
+								 TupleDescAttr(tupdesc, attr_idx)->atttypid);
+
+	HandleYBStatus(YBCQLValueToDatum(type_entity, ql_value, &value, is_null));
+	*datum = (Datum) value;
 }
 
 static void

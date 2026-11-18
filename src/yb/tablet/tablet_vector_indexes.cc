@@ -45,6 +45,7 @@
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/vector_index_checker.h"
 
 #include "yb/util/operation_counter.h"
@@ -1471,6 +1472,15 @@ Result<VectorIndexCheckResultPB> TabletVectorIndexes::Check(
     vector_index = it->second;
   }
   return CheckVectorIndex(tablet(), *vector_index, max_inconsistencies, deadline);
+}
+
+HybridTime TabletVectorIndexes::MinRunningHybridTime() const {
+  auto* participant = tablet().transaction_participant();
+  if (!participant) {
+    return HybridTime::kMax;
+  }
+  // Invalid until the transactions are loaded, any of them could be applied later.
+  return participant->MinRunningHybridTime().GetValueOr(HybridTime::kMin);
 }
 
 Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(

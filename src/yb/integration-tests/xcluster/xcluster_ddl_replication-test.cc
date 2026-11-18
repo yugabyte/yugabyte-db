@@ -97,6 +97,7 @@ DECLARE_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_uint32(xcluster_poller_task_delay_considered_stuck_secs);
+DECLARE_bool(xcluster_safe_time_table_include_stream_id);
 DECLARE_bool(xcluster_enable_index_backfill_replication);
 DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_uint32(xcluster_guarded_lease_duration_ms);
@@ -692,6 +693,30 @@ TEST_F(XClusterDDLReplicationTest, BootstrappingEmptyTable) {
   auto bootstrap_required =
       ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, namespace_id));
   EXPECT_EQ(bootstrap_required, true);
+}
+
+// Test that 'CREATE EXTENSION yb_xcluster_ddl_replication' is processed properly when the database
+// already has an end-of-statement event trigger.
+TEST_F(XClusterDDLReplicationTest, CreateExtensionWithPreexistingEndOfStatementTrigger) {
+  ASSERT_OK(SetUpClusters());
+
+  // pgaudit creates its own ddl_command_end and sql_drop event triggers.
+  ASSERT_OK(producer_conn_->Execute("CREATE EXTENSION pgaudit"));
+
+  ASSERT_OK(producer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'source'"));
+  ASSERT_OK(producer_conn_->Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(
+          "SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue")),
+      "");
+
+  // DDLs after the extension is created are still captured.
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY)"));
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(
+          "SELECT yb_data->>'query' FROM yb_xcluster_ddl_replication.ddl_queue")),
+      "CREATE TABLE t (key int PRIMARY KEY)");
 }
 
 // TODO(Julien): As part of #24888, undisable this or make this a test that this correctly fails
@@ -7205,6 +7230,9 @@ class XClusterDDLReplicationRetriedRewriteVectorIndexTest : public XClusterDDLRe
 
   Status SetUpTableWithVectorIndex() {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
+    // The table's rows must arrive after the retry builds the index. With this flag on, the retry
+    // waits for its own poller, so they would arrive first.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_safe_time_table_include_stream_id) = false;
     RETURN_NOT_OK(SetUpClusters());
     RETURN_NOT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
       auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
@@ -7365,6 +7393,68 @@ TEST_F(XClusterDDLReplicationRetriedRewriteVectorIndexTest, RowsAppliedAfterBack
       ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name)));
   ASSERT_OK(consumer_conn_->Execute("SET enable_seqscan = off"));
   ASSERT_NO_FATALS(VerifyVectorSearch());
+}
+
+// A replayed DDL that creates a table waits for the xCluster safe time, so the table's rows are
+// applied before it commits. When the replay is retried, the first attempt's poller can still be
+// running. The retry must wait for its own poller.
+class XClusterDDLReplicationRetriedRewriteSafeTimeTest : public XClusterDDLReplicationTest {
+ public:
+  void TearDown() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching) = "";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_block_first_poll) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_tablet_deletion) = false;
+    XClusterDDLReplicationTest::TearDown();
+  }
+
+ protected:
+  static constexpr int kNumRows = 100;
+};
+
+TEST_F(XClusterDDLReplicationRetriedRewriteSafeTimeTest, RetryWaitsForItsOwnPoller) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(
+      producer_conn_->Execute("CREATE TABLE t (id INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO t SELECT g, md5(g::text) FROM generate_series(1, $0) AS g", kNumRows));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM t")), kNumRows);
+
+  const auto relfilenode_before = ASSERT_RESULT(consumer_conn_->FetchRow<pgwrapper::PGOid>(
+      "SELECT relfilenode FROM pg_class WHERE relname = 't'"));
+
+  // Keep the first attempt's poller and its target tablet alive. In practice the poller lingers
+  // after the failure, still publishing safe times for the same source tablet.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_disable_delete_old_pollers) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_tablet_deletion) = true;
+
+  StringWaiterLogSink ddl_failed_log("Failed DDL operation as requested");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching) =
+      "ALTER TABLE t ALTER COLUMN v1 TYPE";
+  ASSERT_OK(producer_conn_->Execute("ALTER TABLE t ALTER COLUMN v1 TYPE VARCHAR(200)"));
+  ASSERT_OK(ddl_failed_log.WaitFor(kTimeout));
+
+  // Hold back the retry's poller. This blocks only pollers that have not polled yet, so the first
+  // attempt's poller keeps running.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_block_first_poll) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl_matching) = "";
+
+  auto relfilenode_changed = [&]() -> Result<bool> {
+    auto relfilenode = VERIFY_RESULT(consumer_conn_->FetchRow<pgwrapper::PGOid>(
+        "SELECT relfilenode FROM pg_class WHERE relname = 't'"));
+    return relfilenode != relfilenode_before;
+  };
+  SleepFor(20s * kTimeMultiplier);
+  ASSERT_FALSE(ASSERT_RESULT(relfilenode_changed()))
+      << "The retried rewrite committed while its poller was held back";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_block_first_poll) = false;
+  ASSERT_OK(WaitFor(
+      relfilenode_changed, kTimeout, "Wait for the retried table rewrite to commit on the target"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM t")), kNumRows);
 }
 
 TEST_F(XClusterDDLReplicationTest, CloneSourceDatabaseIncludesDDLReplicationTables) {
