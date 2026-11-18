@@ -12,9 +12,8 @@
 
 // The Rust master (yb-master-rs) in a quorum of C++ masters. As a follower it joins, keeps the same
 // sys catalog and the same in-memory catalog as the C++ leader through DDL, snapshots and a PITR
-// restore, answers the follower-servable RPCs, and, with --TEST_rust_master_allow_leadership=false,
-// never claims to lead. Otherwise it leads and serves the cluster, client and heartbeat RPCs
-// (src/yb/rust/master/docs/testing.md).
+// restore, and answers the follower-servable RPCs. As the leader it serves the cluster, client and
+// heartbeat RPCs (src/yb/rust/master/docs/testing.md).
 
 #include <algorithm>
 #include <map>
@@ -116,8 +115,6 @@ class RustMasterTest : public YBTest {
     auto* master = cluster_->master(index);
     master->Shutdown();
     master->SetExe(rust_master_exe_);
-    // A follower unless the test lets it lead: these tests compare it with C++ followers.
-    master->AddExtraFlag("TEST_rust_master_allow_leadership", "false");
     for (const auto& [flag, value] : extra_flags) {
       master->AddExtraFlag(flag, value);
     }
@@ -483,42 +480,6 @@ TEST_F(RustMasterTest, FollowerKeepsSameCatalog) {
   ASSERT_EQ(rust_flags.ToString(), cpp_flags.ToString());
 }
 
-TEST_F(RustMasterTest, NeverLeads) {
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
-  auto* rust_master = cluster_->master(rust_index);
-
-  // Ask the leader to hand leadership to the Rust master. It wins the election and steps down.
-  // The leader refuses until the restarted peer has caught up.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        tserver::TabletServerErrorPB::Code error_code;
-        auto status = cluster_->StepDownMasterLeader(&error_code, rust_master->uuid());
-        if (status.ok()) {
-          return true;
-        }
-        if (status.ToString().find("not caught up") != std::string::npos) {
-          return false;
-        }
-        return status;
-      },
-      kTimeout, "the leader to hand over to the Rust master"));
-  const auto deadline = CoarseMonoClock::Now() + 10s;
-  while (CoarseMonoClock::Now() < deadline) {
-    auto registration = Registration(rust_master);
-    if (registration.ok()) {
-      ASSERT_NE(registration->role(), PeerRole::LEADER);
-    }
-    SleepFor(100ms);
-  }
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        auto leader = cluster_->GetLeaderMasterIndex();
-        return leader.ok() && *leader != rust_index;
-      },
-      kTimeout, "a C++ master to lead"));
-  ASSERT_OK(WaitForRole(rust_master, PeerRole::FOLLOWER));
-}
-
 TEST_F(RustMasterTest, AddedThroughRemoteBootstrap) {
   auto new_master = ASSERT_RESULT(cluster_->StartShellMaster(rust_master_exe_));
   ASSERT_OK(WaitForRole(new_master.get(), PeerRole::NON_PARTICIPANT));
@@ -646,8 +607,7 @@ TEST_F(RustMasterTest, RustLeaderServesWebJson) {
     cpp_pages[path] = CanonicalPage(ASSERT_RESULT(FetchPage(cpp_leader, path)));
   }
 
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust(
-      {{"TEST_rust_master_allow_leadership", "true"}}));
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
   auto* rust_master = cluster_->master(rust_index);
   ASSERT_OK(WaitForMastersToCatchUp());
   ASSERT_OK(TransferLeadershipTo(rust_master));
@@ -876,6 +836,9 @@ TEST_F(RustMasterTest, FollowerCatalogMatchesRandomWorkload) {
 
   const auto leader_index = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
   auto* leader = cluster_->master(leader_index);
+  // The snapshot schedule keeps the leader writing, so it stops first: the rest of the cluster can
+  // take seconds to shut down (longer under sanitizers).
+  leader->Shutdown();
   cluster_->Shutdown();
   const auto leader_rows = ASSERT_RESULT(DumpRows(leader));
   ASSERT_EQ(RowLines(dump), leader_rows) << "seed " << seed;
@@ -888,8 +851,7 @@ TEST_F(RustMasterTest, RustLeaderServesCoreRpcs) {
   client::TableHandle table;
   client::kv_table_test::CreateTable(
       client::Transactional::kFalse, /* num_tablets= */ 3, client_.get(), &table);
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust(
-      {{"TEST_rust_master_allow_leadership", "true"}}));
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
   auto* rust_master = cluster_->master(rust_index);
   ASSERT_OK(WaitForMastersToCatchUp());
   ASSERT_OK(TransferLeadershipTo(rust_master));
@@ -1019,7 +981,6 @@ TEST_F(RustMasterTest, WarmFailover) {
     auto* master = cluster_->master(i);
     master->Shutdown();
     master->SetExe(rust_master_exe_);
-    master->AddExtraFlag("TEST_rust_master_allow_leadership", "true");
     ASSERT_OK(master->Restart());
     ASSERT_OK(WaitForRole(master, PeerRole::FOLLOWER));
     rust_masters.push_back(master);
@@ -1057,7 +1018,6 @@ TEST_F(RustMasterTest, WarmFailover) {
 // "unchanged" instead of the list until membership changes.
 TEST_F(RustMasterTest, LiveTserverListVersion) {
   const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
-      {"TEST_rust_master_allow_leadership", "true"},
       {"tserver_unresponsive_timeout_ms", "5000"},
   }));
   auto* rust_master = cluster_->master(rust_index);
@@ -1091,9 +1051,7 @@ TEST_F(RustMasterTest, LiveTserverListVersion) {
 // A master removed while a Rust master leads is told to go back to shell mode
 // (SysCatalogTable's InformRemovedMaster, through the host).
 TEST_F(RustMasterTest, RustLeaderInformsRemovedMaster) {
-  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust({
-      {"TEST_rust_master_allow_leadership", "true"},
-  }));
+  const auto rust_index = ASSERT_RESULT(RestartFollowerAsRust());
   auto* rust_master = cluster_->master(rust_index);
   ASSERT_OK(WaitForMastersToCatchUp());
   ASSERT_OK(TransferLeadershipTo(rust_master));

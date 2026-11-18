@@ -24,6 +24,12 @@ any phase -> Follower when the term changes or the peer is no longer leader
   published: Ready resumes with a new scope and `pitr_count + 1`, so nothing decided before the
   reload is written after it.
 
+Ready hooks capture leader components that hold `Leadership`, so `master-server` calls
+`Leadership::shutdown()` (drops the hooks, cancels the scope) once its runtimes have stopped;
+without it the whole leader stays reachable through the cycle and LeakSanitizer reports it.
+Components that call back into one another (snapshot, xCluster and failover hooks, the xrepl
+extension) hold the back-references as `Weak` for the same reason.
+
 The Raft state is polled every 100 ms; an election also nudges it through the apply sink. The
 host reads the term from the consensus state: `GetLeaderState()` carries it only when
 `LEADER_AND_READY`, and -1 otherwise.
@@ -52,9 +58,4 @@ it while the term catches up, and it equals the Ready token afterwards.
 | LeaseLapsed | the `LeaderState::CreateStatus` status (LeaderHasNoLease, LeaderNotReadyToServe) |
 | Reloading | ServiceUnavailable "Catalog manager is restoring" |
 
-## Keeping a Rust master a follower
-
-`--TEST_rust_master_allow_leadership` (default true; defined by the C++ host because it decides
-failure detection at startup) set to false keeps layer 1's behavior: no failure detection, and an
-immediate step-down if a leader transfer elects it. Tests that compare a Rust follower with C++
-followers set it.
+A Rust master takes part in elections as a C++ master does, and leads when it wins one.

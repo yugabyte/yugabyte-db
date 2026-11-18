@@ -101,7 +101,7 @@ pub trait LeaderStateSource: Send + Sync + 'static {
 /// Where leadership is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
-    /// Not the leader, or leadership is not allowed.
+    /// Not the leader.
     Follower,
     /// Elected in `term`; waiting for the lease, the catalog and the post-load hooks.
     CatchingUp {
@@ -170,7 +170,6 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// The leadership state machine.
 pub struct Leadership {
     source: Arc<dyn LeaderStateSource>,
-    allowed: Box<dyn Fn() -> bool + Send + Sync>,
     registry: Arc<TaskRegistry>,
     inner: Mutex<Inner>,
     phase: watch::Sender<Phase>,
@@ -185,15 +184,10 @@ struct Inner {
 }
 
 impl Leadership {
-    /// A follower. `allowed` is read on every election (`TEST_rust_master_allow_leadership`).
-    pub fn new(
-        source: Arc<dyn LeaderStateSource>,
-        allowed: impl Fn() -> bool + Send + Sync + 'static,
-        registry: Arc<TaskRegistry>,
-    ) -> Arc<Leadership> {
+    /// A follower.
+    pub fn new(source: Arc<dyn LeaderStateSource>, registry: Arc<TaskRegistry>) -> Arc<Leadership> {
         Arc::new(Leadership {
             source,
-            allowed: Box::new(allowed),
             registry,
             inner: Mutex::new(Inner {
                 phase: Phase::Follower,
@@ -209,6 +203,16 @@ impl Leadership {
     /// Registers a hook that runs on every election before Ready.
     pub fn add_ready_hook(&self, hook: ReadyHook) {
         self.hooks.lock().unwrap().push(Arc::new(hook));
+    }
+
+    /// Drops the ready hooks and the term's scope, once nothing can run any more (the runtime has
+    /// shut down). Hooks capture the leader's components, which hold this, so keeping them leaks
+    /// the whole leader.
+    pub fn shutdown(&self) {
+        self.hooks.lock().unwrap().clear();
+        if let Some(scope) = self.inner.lock().unwrap().scope.take() {
+            scope.cancel();
+        }
     }
 
     /// The current phase.
@@ -340,7 +344,7 @@ impl Leadership {
         let mut inner = self.inner.lock().unwrap();
         match inner.phase {
             Phase::Follower => {
-                if live.role == PeerRole::LEADER && (self.allowed)() {
+                if live.role == PeerRole::LEADER {
                     tracing::info!("Elected sys catalog leader in term {}", live.term);
                     self.set_phase(&mut inner, Phase::CatchingUp { term: live.term });
                     let this = self.clone();
@@ -479,7 +483,7 @@ impl LeaderStateSource for FakeLeaderState {
 /// A leadership that is Ready in `term`, for tests of the crates that need a token.
 pub async fn ready_for_tests(term: i64) -> (Arc<Leadership>, Arc<FakeLeaderState>) {
     let source = FakeLeaderState::new();
-    let leadership = Leadership::new(source.clone(), || true, Arc::default());
+    let leadership = Leadership::new(source.clone(), Arc::default());
     source.lead(term);
     leadership.step();
     let mut phases = leadership.subscribe();
@@ -508,7 +512,7 @@ mod tests {
     #[tokio::test]
     async fn election_runs_hooks_then_issues_tokens() {
         let source = FakeLeaderState::new();
-        let leadership = Leadership::new(source.clone(), || true, Arc::default());
+        let leadership = Leadership::new(source.clone(), Arc::default());
         let calls = Arc::new(AtomicUsize::new(0));
         let c = calls.clone();
         leadership.add_ready_hook(Box::new(move |term| {
@@ -566,7 +570,7 @@ mod tests {
     #[tokio::test]
     async fn hooks_write_with_a_catch_up_token() {
         let source = FakeLeaderState::new();
-        let leadership = Leadership::new(source.clone(), || true, Arc::default());
+        let leadership = Leadership::new(source.clone(), Arc::default());
         let (sender, mut hook_tokens) = tokio::sync::mpsc::unbounded_channel();
         let weak = Arc::downgrade(&leadership);
         leadership.add_ready_hook(Box::new(move |term| {
@@ -611,14 +615,5 @@ mod tests {
         assert_eq!(new_token.pitr_count(), 1);
         assert!(leadership.check(&token).is_err());
         assert!(!leadership.scope().unwrap().is_cancelled());
-    }
-
-    #[tokio::test]
-    async fn not_allowed_stays_follower() {
-        let source = FakeLeaderState::new();
-        let leadership = Leadership::new(source.clone(), || false, Arc::default());
-        source.lead(3);
-        leadership.step();
-        assert_eq!(leadership.phase(), Phase::Follower);
     }
 }

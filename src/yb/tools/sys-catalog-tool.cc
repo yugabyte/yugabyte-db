@@ -92,6 +92,10 @@ class MiniSysCatalogTable {
  public:
   static Result<MiniSysCatalogTablePtr> Load(FsManager* fs_manager);
 
+  // The tablet's background flushes call into tablet_peer_ (its transaction participant
+  // context), so the tablet shuts down before the members are destroyed.
+  ~MiniSysCatalogTable();
+
   tablet::TabletPtr tablet() const { return tablet_; }
 
   const consensus::ConsensusMetadataPB& ConsensusPB() const {
@@ -130,6 +134,13 @@ MiniSysCatalogTable::MiniSysCatalogTable()
     : clock_(server::LogicalClock::CreateStartingAt(HybridTime::kInitial)),
       metric_registry_(new MetricRegistry) {
   CHECK_OK(ThreadPoolBuilder("pool").set_min_threads(1).Build(&thread_pool_));
+}
+
+MiniSysCatalogTable::~MiniSysCatalogTable() {
+  if (tablet_) {
+    tablet_->StartShutdown(tablet::DisableFlushOnShutdown::kTrue, tablet::AbortOps::kTrue);
+    tablet_->CompleteShutdown();
+  }
 }
 
 Status MiniSysCatalogTable::LoadTablet(FsManager* fs_manager) {

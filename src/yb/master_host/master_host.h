@@ -13,9 +13,6 @@
 // The C++ process host of the Rust master: the server base, the sys-catalog tablet and the
 // replicated state machines that run inside its Raft apply (snapshot coordinator, AutoFlags), but
 // no CatalogManager. Rust drives it through master/server/src/ffi.rs and serves the master RPCs.
-//
-// With --TEST_rust_master_allow_leadership=false the host stays a follower: it never starts an
-// election and steps down at once if it wins one (src/yb/rust/master/docs/leadership.md).
 
 #pragma once
 
@@ -347,7 +344,6 @@ class MasterHost : public tserver::DbServerBase, public rust_bridge::RpcServerHa
   std::unique_ptr<master::EncryptionManager> encryption_manager_;
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
   std::unique_ptr<rpc::SecureContext> secure_context_;
-  std::unique_ptr<ThreadPool> leadership_pool_;
 
   // Published by the master leader; followers hold their pg catalog history back to it.
   master::HistoryRetentionPinInfo ysql_history_retention_pin_;

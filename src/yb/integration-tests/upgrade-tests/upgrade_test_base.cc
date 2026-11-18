@@ -334,9 +334,6 @@ void UpgradeTestBase::SetUpOptions(ExternalMiniClusterOptions& opts) {
   // old release has no Rust master, so the cluster starts on C++ masters.
   rust_current_masters_ = opts.rust_masters == master::RustMasters::kAll;
   opts.rust_masters = master::RustMasters::kNone;
-  if (rust_current_masters_) {
-    AddUnDefOkAndSetFlag(opts.extra_master_flags, "TEST_rust_master_allow_leadership", "true");
-  }
 
   ExternalMiniClusterITestBase::SetUpOptions(opts);
 }

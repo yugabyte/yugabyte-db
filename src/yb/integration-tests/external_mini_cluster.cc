@@ -571,9 +571,6 @@ Result<ExternalMasterPtr> ExternalMiniCluster::StartMaster(
       : GetBinaryPath(GetMasterBinaryName());
 
   vector<string> flags = opts_.extra_master_flags;
-  if (rust) {
-    flags.push_back("--TEST_rust_master_allow_leadership=true");
-  }
   // Disable WAL fsync for tests
   flags.push_back("--durable_wal_write=false");
   flags.push_back("--enable_leader_failure_detection=true");

@@ -84,6 +84,27 @@ TEST_F(WireProtocolTest, TestBadStatus) {
   EXPECT_EQ(s.ToString(/* no file/line */ false), s2.ToString(/* no file/line */ false));
 }
 
+// A status relayed from a sender that set no file name (a Rust master) arrives with source_file
+// present but empty; the decoded status must not point into the PB (caught by ASAN).
+TEST_F(WireProtocolTest, EmptySourceFileOutlivesPB) {
+  for (bool with_errors : {false, true}) {
+    Status s;
+    {
+      AppStatusPB pb;
+      pb.set_code(AppStatusPB::NOT_FOUND);
+      pb.set_message("foo");
+      pb.set_source_file("");
+      if (with_errors) {
+        StatusToPB(STATUS(NotFound, "foo", "", Errno(1234)), &pb);
+        pb.set_source_file("");
+      }
+      s = StatusFromPB(pb);
+    }
+    EXPECT_TRUE(s.IsNotFound());
+    EXPECT_EQ("", std::string(s.file_name()));
+  }
+}
+
 TEST_F(WireProtocolTest, TestBadStatusWithPosixCode) {
   Status s = STATUS(NotFound, "foo", "bar", Errno(1234));
   AppStatusPB pb;

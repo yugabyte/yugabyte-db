@@ -24,8 +24,6 @@
 
 #include "master/server/src/ffi.rs.h"
 
-DECLARE_bool(TEST_rust_master_allow_leadership);
-
 namespace yb::master_host {
 
 namespace {
@@ -39,8 +37,6 @@ class InProcessRustMaster : public master::EmbeddedMasterIf {
 
   static Result<std::unique_ptr<master::EmbeddedMasterIf>> Start(
       const master::MasterOptions& opts) {
-    // A cluster of Rust masters must elect one of them, which also needs failure detection on.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_rust_master_allow_leadership) = true;
     try {
       auto host = CreateMasterHostWithOptions(opts);
       host->SetEmbedded();

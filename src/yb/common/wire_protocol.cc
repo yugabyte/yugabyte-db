@@ -221,6 +221,12 @@ struct WireProtocolTabletServerErrorTag {
   }
 };
 
+// Status copies the file name only when it is non-empty and otherwise keeps the pointer, so an
+// empty name must not point into the PB or the RPC buffer, which is often released first.
+inline const char* SourceFile(Slice source_file) {
+  return source_file.empty() ? "" : source_file.cdata();
+}
+
 // Backward compatibility.
 template<class PB>
 Status StatusFromOldPB(const PB& pb) {
@@ -228,7 +234,7 @@ Status StatusFromOldPB(const PB& pb) {
 
   auto status_factory = [code, &pb](const Slice& errors) {
     return Status(
-        code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), errors,
+        code, SourceFile(pb.source_file()), pb.source_line(), pb.message(), errors,
         pb.source_file().size());
   };
 
@@ -258,7 +264,7 @@ Status StatusFromOldPB(const PB& pb) {
     }
   }
 
-  return Status(code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), "",
+  return Status(code, SourceFile(pb.source_file()), pb.source_line(), pb.message(), "",
                 nullptr /* error */, pb.source_file().size());
   #undef ENCODE_ERROR_AND_RETURN_STATUS
 }
@@ -277,7 +283,7 @@ Status DoStatusFromPB(const PB& pb) {
   }
 
   if (pb.has_errors()) {
-    return Status(kErrorCodeToStatus[pb.code()], Slice(pb.source_file()).cdata(), pb.source_line(),
+    return Status(kErrorCodeToStatus[pb.code()], SourceFile(pb.source_file()), pb.source_line(),
                   pb.message(), pb.errors(), pb.source_file().size());
   }
 

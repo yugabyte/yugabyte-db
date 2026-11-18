@@ -48,8 +48,7 @@ master added from shell mode are the same as `CatalogManager::StartRemoteBootstr
 **A new universe (K10).** With `--master_addresses` and no data, the host creates the sys-catalog
 tablet (`SysCatalogTable::CreateNew`, after the same `CheckLocalHostInMasterAddresses` as
 `CatalogManager::InitSysCatalogAsync`) and the first Rust leader writes the default rows
-([catalog-state.md](catalog-state.md)). With `--TEST_rust_master_allow_leadership=false` it
-refuses: such a master never starts an election. Only C++ can build the system tables' rows (their schemas
+([catalog-state.md](catalog-state.md)). Only C++ can build the system tables' rows (their schemas
 come from the YCQL virtual table classes), so `SystemTableRows` builds them with
 `src/yb/master/system_tables.{h,cc}`, which `CatalogManager` uses too. The host also gives the
 default YCQL superuser's bcrypt hash and the YSQL major version. YSQL's initial sys catalog snapshot
@@ -99,14 +98,8 @@ targets, partition hashes and DNS lookups are C++'s, and the C++ classes read th
 `CatalogManager`, which a Rust master's host does not have. `system.partitions` is rebuilt on
 every read rather than cached as C++ caches it.
 
-**Leading.** Unless `--TEST_rust_master_allow_leadership=false`
-([leadership.md](leadership.md)): failure detection stays on and an election only nudges the
-Rust leadership loop. With the flag false the host turns off `enable_leader_failure_detection`, so it
-never starts an election; if an explicit leader transfer elects it, the state-change callback
-steps it down at once, retrying while the step-down is refused, and `GetMasterRegistration`
-reports FOLLOWER meanwhile, as a C++ leader that is not ready does.
-
-The host also does two leader duties for a Rust leader: it tells a master removed from the
+**Leading.** Failure detection stays on as in C++, and an election only nudges the Rust leadership
+loop ([leadership.md](leadership.md)). The host also does two leader duties for a Rust leader: it tells a master removed from the
 quorum to go back to shell mode (`InformRemovedMaster`, a `RemovedMasterUpdate` call), and it holds
 the pg catalog history back to the live YSQL history retention pin. The Rust leader aggregates the
 pins from tserver heartbeats (`master-ts-manager` `pins.rs`), answers each heartbeat with the
@@ -138,7 +131,6 @@ what would block the test:
   peer, and MiniCluster starts the masters one after another.
 - It does not raise ulimits or start the `TotalMemWatcher` and its `TerminationMonitor` (one per
   process).
-- `TEST_rust_master_allow_leadership` is set, process-wide, so a cluster of Rust masters elects one.
 
 ## Bridges
 

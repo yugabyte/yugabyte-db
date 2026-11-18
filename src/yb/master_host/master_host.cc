@@ -173,7 +173,6 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
 DECLARE_bool(emergency_repair_mode);
 DECLARE_bool(enable_db_history_retention_pins);
-DECLARE_bool(enable_leader_failure_detection);
 DECLARE_int64(inbound_rpc_memory_limit);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(skip_tserver_version_checks);
@@ -193,9 +192,6 @@ DECLARE_string(tmp_dir);
 DECLARE_int32(master_ysql_lease_svc_queue_length);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 
-DEFINE_test_flag(bool, rust_master_allow_leadership, true,
-    "Lets the Rust master lead the sys catalog. When false it stays a follower: it never starts "
-    "an election and steps down if a leader transfer elects it.");
 DECLARE_bool(webserver_redirect_http_to_https);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 DECLARE_int32(xcluster_safe_time_table_num_tablets);
@@ -758,14 +754,6 @@ MasterHost::~MasterHost() {
 }
 
 std::unique_ptr<MasterHost> CreateMasterHost() {
-  // With TEST_rust_master_allow_leadership=false this peer must never become the sys catalog
-  // leader.
-  // Without failure detection it never starts an election on its own; ElectedAsLeader() steps it
-  // down if an explicit leader transfer elects it anyway.
-  if (!FLAGS_TEST_rust_master_allow_leadership && FLAGS_enable_leader_failure_detection) {
-    LOG(INFO) << "Disabling enable_leader_failure_detection: the Rust master is follower-only";
-    FLAGS_enable_leader_failure_detection = false;
-  }
   if (FLAGS_emergency_repair_mode) {
     throw std::runtime_error("emergency_repair_mode needs a master leader; use the C++ master");
   }
@@ -797,7 +785,6 @@ void MasterHost::InitHost() {
 }
 
 Status MasterHost::DoInit() {
-  RETURN_NOT_OK(ThreadPoolBuilder("leadership").set_max_threads(1).Build(&leadership_pool_));
   RETURN_NOT_OK(DbServerBase::Init());
   // As Master's constructor and ClusterLoadBalancer::InitMetrics.
   metric_entity_cluster_ =
@@ -1185,15 +1172,6 @@ Status MasterHost::OpenSysCatalog() {
     LOG(INFO) << "Starting master in shell mode.";
     return Status::OK();
   }
-  // A master that may not lead never starts an election (leader failure detection is off), so a
-  // quorum of them would create a universe that nobody leads.
-  if (!FLAGS_TEST_rust_master_allow_leadership) {
-    return STATUS(
-        NotSupported,
-        "The Rust master creates no new universe with --TEST_rust_master_allow_leadership=false. "
-        "Start it on an existing master's data, or in shell mode (no --master_addresses, or "
-        "--master_join_existing_universe) and add it with change_master_config.");
-  }
   // A new universe, as CatalogManager::InitSysCatalogAsync does: the first leader writes the
   // default rows (K10).
   RETURN_NOT_OK(master::CheckLocalHostInMasterAddresses(*this, opts_));
@@ -1204,40 +1182,9 @@ Status MasterHost::OpenSysCatalog() {
 }
 
 Status MasterHost::ElectedAsLeader() {
-  if (FLAGS_TEST_rust_master_allow_leadership) {
-    // Rust polls the leader state as well; this only saves it a poll interval.
-    tap_->PostLeadershipChange();
-    return Status::OK();
-  }
-  // Runs inside the consensus state-change callback, so the step-down happens on another thread.
-  return leadership_pool_->SubmitFunc([this] {
-    auto peer = sys_catalog_->tablet_peer();
-    if (!peer) {
-      return;
-    }
-    auto consensus = peer->GetConsensus();
-    if (!consensus.ok()) {
-      return;
-    }
-    LOG(WARNING) << "The Rust master was elected sys catalog leader; stepping down";
-    // A step-down can be refused (for example LEADER_NOT_READY_TO_STEP_DOWN while a new master is
-    // still a PRE_VOTER). The C++ followers do not elect anyone while this peer heartbeats them, so
-    // keep trying until it is no longer leader.
-    while ((*consensus)->role() == PeerRole::LEADER) {
-      consensus::LeaderStepDownRequestPB req;
-      req.set_tablet_id(master::kSysCatalogTabletId);
-      req.set_dest_uuid(permanent_uuid());
-      consensus::LeaderStepDownResponsePB resp;
-      auto status = (*consensus)->StepDown(&req, &resp);
-      if (status.ok() && !resp.has_error()) {
-        return;
-      }
-      LOG(WARNING) << "Step-down failed, retrying: " << status << " " << resp.ShortDebugString();
-      if (stop_latch_.WaitFor(MonoDelta::FromSeconds(1))) {
-        return;
-      }
-    }
-  });
+  // Rust polls the leader state as well; this only saves it a poll interval.
+  tap_->PostLeadershipChange();
+  return Status::OK();
 }
 
 Status MasterHost::ResetMemoryState(const RaftConfigPB& config) {
@@ -1581,9 +1528,6 @@ void MasterHost::ShutdownHost() {
     xcluster_remote_clients_.clear();
   }
   RpcAndWebServerBase::Shutdown();
-  if (leadership_pool_) {
-    leadership_pool_->Shutdown();
-  }
   snapshot_coordinator_->Shutdown();
   // SysCatalogTable creates its thread pools in Start(); CompleteShutdown assumes they exist.
   if (sys_catalog_started_) {

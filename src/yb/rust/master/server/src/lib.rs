@@ -85,6 +85,7 @@ struct RunningMaster {
     /// `MasterYsqlLease` calls run here, never behind heartbeats or DDL (K3).
     lease_runtime: tokio::runtime::Runtime,
     gate: Arc<store::HostGate>,
+    leadership: Arc<Leadership>,
 }
 
 impl RunningMaster {
@@ -94,6 +95,7 @@ impl RunningMaster {
         self.runtime.shutdown_timeout(Duration::from_secs(10));
         self.lease_runtime.shutdown_timeout(Duration::from_secs(10));
         self.gate.close();
+        self.leadership.shutdown();
     }
 }
 
@@ -148,7 +150,6 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
             host.pin_mut().info_handle(),
             gate.clone(),
         )),
-        wiring::leadership_allowed,
         registry.clone(),
     );
     host.pin_mut().set_apply_sink(Box::new(store::ApplySink {
@@ -162,7 +163,7 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
         sys_catalog.clone(),
         apply_events,
         Catalog::new(apply_sender),
-        leadership,
+        leadership.clone(),
         wiring::HostParts {
             metrics,
             defaults: Arc::new(store::HostDefaults(
@@ -274,5 +275,6 @@ fn start(mut host: UniquePtr<MasterHost>) -> Result<RunningMaster, String> {
         runtime,
         lease_runtime,
         gate,
+        leadership,
     })
 }

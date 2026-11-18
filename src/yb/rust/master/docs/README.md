@@ -14,8 +14,6 @@ applies, the same way on leader and follower.
 
 Layer 2 adds the core of a leader: the catalog writer, leadership, the tserver registry,
 heartbeats and tablet reports, and the core cluster and client RPCs. Layer 3 serves the rest.
-`--TEST_rust_master_allow_leadership=false` keeps a Rust master a follower
-([leadership.md](leadership.md)).
 
 | Doc | Covers |
 |---|---|

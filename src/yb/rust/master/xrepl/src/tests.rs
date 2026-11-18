@@ -311,7 +311,7 @@ impl Harness {
         tokio::spawn(run_materializer(catalog.clone(), fake.clone(), events));
         catalog.barrier().await;
         let source = FakeLeaderState::new();
-        let leadership = Leadership::new(source.clone(), || true, Arc::default());
+        let leadership = Leadership::new(source.clone(), Arc::default());
         source.lead(3);
         leadership.step();
         let mut phases = leadership.subscribe();

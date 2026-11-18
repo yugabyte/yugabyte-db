@@ -792,10 +792,6 @@ public class MiniYBCluster implements AutoCloseable {
       "--callhome_enabled=false",
       "--TEST_process_info_dir=" + getProcessInfoDir(),
       "--never_fsync=true");
-    if (rust) {
-      // A cluster of Rust masters must elect one of them.
-      masterCmdLine.add("--TEST_rust_master_allow_leadership=true");
-    }
     if (clusterParameters.tserverHeartbeatTimeoutMsOpt.isPresent()) {
       masterCmdLine.add(
           "--tserver_unresponsive_timeout_ms=" +

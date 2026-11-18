@@ -34,7 +34,7 @@ pub use xcluster::xcluster_stream_options;
 
 use master_table_lifecycle::BackfillDecision;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::Duration;
 
 use master_catalog_state::{Catalog, CatalogWriter};
@@ -270,8 +270,8 @@ pub struct Xrepl {
     /// The host's CDC service serves GetChanges on the sys catalog tablet; enabled once, as C++
     /// never disables it.
     pub(crate) cdc_service_enabled: std::sync::atomic::AtomicBool,
-    /// master-xcluster's part of the hooks.
-    pub(crate) extension: OnceLock<Arc<dyn XreplExtension>>,
+    /// master-xcluster's part of the hooks, held weakly: master-xcluster holds this service.
+    extension: OnceLock<Weak<dyn XreplExtension>>,
 }
 
 impl Xrepl {
@@ -307,7 +307,11 @@ impl Xrepl {
 
     /// master-xcluster's part of the hooks; set once, before any leader term.
     pub fn set_extension(&self, extension: Arc<dyn XreplExtension>) {
-        let _ = self.extension.set(extension);
+        let _ = self.extension.set(Arc::downgrade(&extension));
+    }
+
+    pub(crate) fn extension(&self) -> Option<Arc<dyn XreplExtension>> {
+        self.extension.get().and_then(Weak::upgrade)
     }
 
     /// The RPC client tservers are called with; set once, before any leader term.

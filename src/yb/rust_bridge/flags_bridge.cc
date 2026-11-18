@@ -51,7 +51,9 @@ void Register(const char* name, const char* help, const char* file, const std::s
   } else {
     parsed = boost::lexical_cast<T>(value);
   }
-  new google::FlagRegisterer(name, help, file, new T(parsed), new T(parsed));
+  // The constructor registers the flag; the object itself holds nothing.
+  [[maybe_unused]] google::FlagRegisterer registerer(
+      name, help, file, new T(parsed), new T(parsed));
 }
 
 FlagTag ParseTag(const std::string& tag) {
@@ -107,7 +109,7 @@ void DefineFlag(
     throw std::runtime_error("unsupported flag type " + type_str);
   }
   for (const auto& tag : tags) {
-    new flag_tags_internal::FlagTagger(name_ptr, ParseTag(std::string(tag)));
+    [[maybe_unused]] flag_tags_internal::FlagTagger tagger(name_ptr, ParseTag(std::string(tag)));
   }
 }
 

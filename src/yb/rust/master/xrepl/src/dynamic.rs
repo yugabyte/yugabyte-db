@@ -358,7 +358,7 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         Box::pin(async move {
             self.update_cdc_producer_on_split(&table_id, &parent, &children)
                 .await?;
-            if let Some(x) = self.extension.get() {
+            if let Some(x) = self.extension() {
                 x.split_registered(table_id.clone(), parent.clone(), children.clone())
                     .await?;
             }
@@ -375,7 +375,7 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         req: &yb_proto::pb::master_ddl::CreateTableRequestPB,
         table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
     ) -> Result<(), Status> {
-        match self.extension.get() {
+        match self.extension() {
             Some(x) => x.xcluster_create_table(snapshot, req, table),
             None => Ok(()),
         }
@@ -388,7 +388,7 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         table: &mut yb_proto::pb::catalog_entity_info::SysTablesEntryPB,
         mutation: master_catalog_state::Mutation,
     ) -> Result<master_catalog_state::Mutation, Status> {
-        match self.extension.get() {
+        match self.extension() {
             Some(x) => x.xcluster_after_ddl(snapshot, table_id, table, mutation),
             None => Ok(mutation),
         }
@@ -399,8 +399,10 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         index_ids: Vec<Vec<u8>>,
         indexed_table_id: Vec<u8>,
     ) -> master_task_runtime::BoxFuture<'_, Result<BackfillDecision, Status>> {
-        match self.extension.get() {
-            Some(x) => x.backfill_decision(index_ids, indexed_table_id),
+        match self.extension() {
+            Some(x) => {
+                Box::pin(async move { x.backfill_decision(index_ids, indexed_table_id).await })
+            }
             None => Box::pin(async { Ok(BackfillDecision::TabletSafeTime) }),
         }
     }
@@ -409,31 +411,28 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         &self,
         index_ids: Vec<Vec<u8>>,
     ) -> master_task_runtime::BoxFuture<'_, Result<(), Status>> {
-        match self.extension.get() {
-            Some(x) => x.backfill_completed(index_ids),
+        match self.extension() {
+            Some(x) => Box::pin(async move { x.backfill_completed(index_ids).await }),
             None => Box::pin(async { Ok(()) }),
         }
     }
 
     fn is_automatic_ddl_mode(&self, snapshot: &CatalogSnapshot, namespace_id: &[u8]) -> bool {
-        self.extension
-            .get()
+        self.extension()
             .is_some_and(|x| x.is_automatic_ddl_mode(snapshot, namespace_id))
     }
 
     fn retains_hidden_tablet(&self, snapshot: &CatalogSnapshot, tablet_id: &[u8]) -> bool {
         self.retains_tablet(snapshot, tablet_id)
             || self
-                .extension
-                .get()
+                .extension()
                 .is_some_and(|x| x.retains_hidden_tablet(snapshot, tablet_id))
     }
 
     fn retains_dropped_table(&self, snapshot: &CatalogSnapshot, table_id: &[u8]) -> bool {
         self.retains_table(snapshot, table_id)
             || self
-                .extension
-                .get()
+                .extension()
                 .is_some_and(|x| x.retains_dropped_table(snapshot, table_id))
     }
 
@@ -442,7 +441,7 @@ impl master_table_lifecycle::XreplHooks for Xrepl {
         table_id: Vec<u8>,
     ) -> master_task_runtime::BoxFuture<'_, Result<bool, Status>> {
         Box::pin(async move {
-            match self.extension.get() {
+            match self.extension() {
                 Some(x) => x.post_tablet_create(table_id).await,
                 None => Ok(true),
             }

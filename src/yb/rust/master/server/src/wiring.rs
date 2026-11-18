@@ -14,7 +14,7 @@
 //! controllers and the location stream in the term's scope.
 
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use master_catalog_state::defaults::{
@@ -116,7 +116,6 @@ pub(crate) const FLAGS: &[&dyn yb_flags::AnyFlagDef] = &[
     &LOCATION_PUSH_INTERVAL_MS,
 ];
 
-static ALLOW_LEADERSHIP: FlagRef<bool> = FlagRef::new("TEST_rust_master_allow_leadership");
 static SNAPSHOT_POLL_INTERVAL_MS: FlagRef<u64> =
     FlagRef::new("snapshot_coordinator_poll_interval_ms");
 static SNAPSHOT_CLEANUP_DELAY_MS: FlagRef<u64> =
@@ -636,10 +635,22 @@ fn leader_tables_retention(snapshots: &Arc<SnapshotCoordinator>, splits: &Tablet
 
 type SnapshotState = yb_proto::pb::catalog_entity_info::sys_snapshot_entry_pb::State;
 
+/// A hook's component. The hooks below hold their components weakly, because the components hold
+/// the hooks (or each other's): strong references form cycles that keep the whole leader alive
+/// after shutdown. A component is gone only once the master has shut down.
+fn component<T: ?Sized>(weak: &Weak<T>) -> Result<Arc<T>, yb_host_api::Status> {
+    weak.upgrade().ok_or_else(|| {
+        yb_host_api::Status::new(
+            StatusCode::ShutdownInProgress,
+            "The master is shutting down",
+        )
+    })
+}
+
 /// xCluster failover's snapshots and restorations, through the coordinator's own steps.
 struct FailoverSnapshotsImpl {
-    snapshots: Arc<SnapshotCoordinator>,
-    splits: Arc<TabletSplitManager>,
+    snapshots: Weak<SnapshotCoordinator>,
+    splits: Weak<TabletSplitManager>,
 }
 
 fn status_of(e: &yb_proto::pb::master_types::MasterErrorPB) -> yb_host_api::Status {
@@ -656,21 +667,21 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
         feature: &'static str,
     ) -> master_task_runtime::BoxFuture<'_, Result<(), yb_host_api::Status>> {
         Box::pin(async move {
+            let splits = component(&self.splits)?;
             // `PrepareForSnapshotRestore`: in-flight splits get
             // `inflight_splits_completion_timeout_secs` to finish.
             let inflight =
                 Duration::from_secs(INFLIGHT_SPLITS_COMPLETION_TIMEOUT_SECS.get().max(0) as u64);
             let restore = Duration::from_secs(PITR_MAX_RESTORE_DURATION_SECS.get().max(0) as u64);
-            self.splits
-                .disable_splitting_for(inflight + restore, feature);
+            splits.disable_splitting_for(inflight + restore, feature);
             let until = (tokio::time::Instant::now() + inflight).min(deadline);
             while tokio::time::Instant::now() < until {
-                if self.splits.is_tablet_splitting_complete(true) {
+                if splits.is_tablet_splitting_complete(true) {
                     return Ok(());
                 }
                 tokio::time::sleep(millis(PITR_SPLIT_DISABLE_CHECK_FREQ_MS.get().max(1))).await;
             }
-            self.splits.reenable_splitting_for(feature);
+            splits.reenable_splitting_for(feature);
             Err(yb_host_api::Status::new(
                 yb_host_api::StatusCode::TimedOut,
                 "Timed out waiting for inflight tablet splitting to complete.",
@@ -679,7 +690,9 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
     }
 
     fn reenable_splitting(&self, feature: &'static str) {
-        self.splits.reenable_splitting_for(feature);
+        if let Some(splits) = self.splits.upgrade() {
+            splits.reenable_splitting_for(feature);
+        }
     }
 
     fn create<'a>(
@@ -700,7 +713,7 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
             req.set_add_indexes(true);
             req.set_retention_duration_hours(retention_hours);
             let mut resp = CreateSnapshotResponsePB::new();
-            self.snapshots
+            component(&self.snapshots)?
                 .create_snapshot(token, deadline, &req, &mut resp)
                 .await
                 .map_err(|e| status_of(&e))?;
@@ -715,7 +728,7 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
         deadline: tokio::time::Instant,
     ) -> master_task_runtime::BoxFuture<'a, Result<(), yb_host_api::Status>> {
         Box::pin(async move {
-            self.snapshots
+            component(&self.snapshots)?
                 .wait_for_snapshot(token, snapshot_id, deadline)
                 .await
                 .map_err(|e| status_of(&e))
@@ -730,7 +743,7 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
         deadline: tokio::time::Instant,
     ) -> master_task_runtime::BoxFuture<'a, Result<Vec<u8>, yb_host_api::Status>> {
         Box::pin(async move {
-            self.snapshots
+            component(&self.snapshots)?
                 .restore_at(token, snapshot_id, restore_at, deadline)
                 .await
                 .map_err(|e| status_of(&e))
@@ -750,7 +763,7 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
         req.set_restoration_id(restoration_id.to_vec());
         req.set_snapshot_id(snapshot_id.to_vec());
         let mut resp = ListSnapshotRestorationsResponsePB::new();
-        self.snapshots
+        component(&self.snapshots)?
             .list_restorations(token, &req, &mut resp)
             .map_err(|e| status_of(&e))?;
         if resp.restorations.len() != 1 {
@@ -775,7 +788,7 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
         Box::pin(async move {
             let mut req = DeleteSnapshotRequestPB::new();
             req.set_snapshot_id(snapshot_id.to_vec());
-            self.snapshots
+            component(&self.snapshots)?
                 .delete_snapshot(token, deadline, &req)
                 .await
                 .map_err(|e| status_of(&e))
@@ -785,12 +798,12 @@ impl master_xcluster::FailoverSnapshots for FailoverSnapshotsImpl {
 
 /// What a finished restore tells the other leader components.
 struct SnapshotHooks {
-    tables: Arc<TableLifecycle>,
-    splits: Arc<TabletSplitManager>,
+    tables: Weak<TableLifecycle>,
+    splits: Weak<TabletSplitManager>,
     host: Arc<dyn SchemaHost>,
     leadership: Arc<Leadership>,
     catalog: Arc<Catalog>,
-    xcluster: Arc<master_xcluster::XCluster>,
+    xcluster: Weak<master_xcluster::XCluster>,
 }
 
 impl RestoreHooks for SnapshotHooks {
@@ -803,7 +816,9 @@ impl RestoreHooks for SnapshotHooks {
     }
 
     fn reenable_splitting(&self, feature: &str) {
-        self.splits.reenable_splitting_for(feature);
+        if let Some(splits) = self.splits.upgrade() {
+            splits.reenable_splitting_for(feature);
+        }
     }
 
     fn disable_splitting(&self, duration: Duration, feature: &str) {
@@ -812,8 +827,9 @@ impl RestoreHooks for SnapshotHooks {
             (INFLIGHT_SPLITS_COMPLETION_TIMEOUT_SECS.get() + PITR_MAX_RESTORE_DURATION_SECS.get())
                 .max(0) as u64,
         );
-        self.splits
-            .disable_splitting_for(configured.max(duration), feature);
+        if let Some(splits) = self.splits.upgrade() {
+            splits.disable_splitting_for(configured.max(duration), feature);
+        }
     }
 
     fn advance_oid_counters(
@@ -830,20 +846,23 @@ impl RestoreHooks for SnapshotHooks {
     }
 
     fn is_automatic_xcluster_target(&self, namespace_id: &[u8]) -> bool {
-        self.xcluster.is_automatic_target(namespace_id)
+        self.xcluster
+            .upgrade()
+            .is_some_and(|x| x.is_automatic_target(namespace_id))
     }
 }
 
 /// `AdvanceOidCounters`: the namespace's normal and secondary OID counters move above the highest
 /// OID it uses, preserved ones included.
 fn advance_oid_counters(
-    tables: Arc<TableLifecycle>,
+    tables: Weak<TableLifecycle>,
     host: Arc<dyn SchemaHost>,
     leadership: Arc<Leadership>,
     catalog: Arc<Catalog>,
     namespace_id: Vec<u8>,
 ) -> master_task_runtime::BoxFuture<'static, Result<(), yb_host_api::Status>> {
     Box::pin(async move {
+        let tables = component(&tables)?;
         let database_oid =
             master_table_lifecycle::pg_database_oid(&namespace_id).ok_or_else(|| {
                 yb_host_api::Status::new(StatusCode::InvalidArgument, "not a YSQL database")
@@ -896,7 +915,7 @@ fn advance_oid_counters(
 
 /// The OID counters for master-xcluster.
 struct XClusterOidHooks {
-    tables: Arc<TableLifecycle>,
+    tables: Weak<TableLifecycle>,
     host: Arc<dyn SchemaHost>,
     leadership: Arc<Leadership>,
     catalog: Arc<Catalog>,
@@ -921,7 +940,9 @@ impl master_xcluster::XClusterHooks for XClusterOidHooks {
         namespace_id: Vec<u8>,
     ) -> master_task_runtime::BoxFuture<'static, Result<u32, yb_host_api::Status>> {
         let (tables, leadership) = (self.tables.clone(), self.leadership.clone());
-        Box::pin(async move { reserve_oids(&tables, &leadership, namespace_id, 0).await })
+        Box::pin(
+            async move { reserve_oids(&*component(&tables)?, &leadership, namespace_id, 0).await },
+        )
     }
 
     fn reserve_oids_above(
@@ -931,7 +952,7 @@ impl master_xcluster::XClusterHooks for XClusterOidHooks {
     ) -> master_task_runtime::BoxFuture<'static, Result<(), yb_host_api::Status>> {
         let (tables, leadership) = (self.tables.clone(), self.leadership.clone());
         Box::pin(async move {
-            reserve_oids(&tables, &leadership, namespace_id, oid)
+            reserve_oids(&*component(&tables)?, &leadership, namespace_id, oid)
                 .await
                 .map(|_| ())
         })
@@ -1444,23 +1465,23 @@ impl Core {
             },
         );
         xcluster.set_hooks(Arc::new(XClusterOidHooks {
-            tables: tables.clone(),
+            tables: Arc::downgrade(&tables),
             host: schema.clone(),
             leadership: leadership.clone(),
             catalog: catalog.clone(),
         }));
         xrepl.set_extension(xcluster.clone());
         xcluster.set_failover_snapshots(Arc::new(FailoverSnapshotsImpl {
-            snapshots: snapshots.clone(),
-            splits: splits.clone(),
+            snapshots: Arc::downgrade(&snapshots),
+            splits: Arc::downgrade(&splits),
         }));
         snapshots.set_hooks(Arc::new(SnapshotHooks {
-            tables: tables.clone(),
-            splits: splits.clone(),
+            tables: Arc::downgrade(&tables),
+            splits: Arc::downgrade(&splits),
             host: schema.clone(),
             leadership: leadership.clone(),
             catalog: catalog.clone(),
-            xcluster: xcluster.clone(),
+            xcluster: Arc::downgrade(&xcluster),
         }));
         let mut contributors = contributors;
         contributors.push(xcluster.clone());
@@ -2094,11 +2115,6 @@ impl Controller for UniverseUuidController {
             }
         })
     }
-}
-
-/// `TEST_rust_master_allow_leadership`.
-pub(crate) fn leadership_allowed() -> bool {
-    ALLOW_LEADERSHIP.get()
 }
 
 /// The balancer's flags, read for each run as C++ builds `Options` for each run.

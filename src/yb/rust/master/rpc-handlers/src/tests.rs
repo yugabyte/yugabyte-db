@@ -567,7 +567,7 @@ mod leader_tests {
             let catalog = Catalog::new(fake.sender().clone());
             tokio::spawn(run_materializer(catalog.clone(), fake.clone(), events));
             catalog.barrier().await;
-            let leadership = Leadership::new(source.clone(), || true, Arc::default());
+            let leadership = Leadership::new(source.clone(), Arc::default());
             if lead {
                 source.lead(7);
                 leadership.step();
