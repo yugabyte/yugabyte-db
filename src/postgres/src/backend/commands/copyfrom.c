@@ -759,8 +759,8 @@ CopyFrom(CopyFromState cstate)
 	 *    partitioned table itself, but each partition can have its own foreign
 	 *    keys, triggers, indexes and colocation.
 	 * 4. When a row can get other than one entry in a secondary index, as with
-	 *    a partial index or an index still being built. The batch size set
-	 *    below assumes one entry per index, so a batch could otherwise end
+	 *    a partial index or an index not yet ready for inserts. The batch size
+	 *    set below assumes one entry per index, so a batch could otherwise end
 	 *    between a row and its index entries.
 	 */
 	bool		has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
