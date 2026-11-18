@@ -23,7 +23,7 @@ Yugabyte has extended the upstream Cassandra drivers with specific changes to le
 | GitHub project | Based on | Learn more |
 | :--- | :--- | :--- |
 | [YugabyteDB Java Driver for YCQL (3.10)](https://github.com/yugabyte/cassandra-java-driver/tree/3.10.0-yb-x) | [DataStax Java Driver 3.10](https://docs.datastax.com/en/developer/java-driver/3.10/) | [Documentation](../java/ycql/) |
-| [YugabyteDB Java Driver for YCQL (4.19)](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x) | [DataStax Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) | [Documentation](../java/ycql-4.x/) |
+| [YugabyteDB Java Driver for YCQL (4.19)](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x) | [Apache Cassandra Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) | [Documentation](../java/ycql-4.x/) |
 | [YugabyteDB Go Driver for YCQL](https://github.com/yugabyte/gocql) | [gocql](https://gocql.github.io/) | [Documentation](../go/ycql/) |
 | [YugabyteDB Python Driver for YCQL](https://github.com/yugabyte/cassandra-python-driver) | [DataStax Python Driver](https://github.com/datastax/python-driver) | [Documentation](../python/ycql/) |
 | [YugabyteDB Node.js Driver for YCQL](https://github.com/yugabyte/cassandra-nodejs-driver) | [DataStax Node.js Driver](https://github.com/datastax/nodejs-driver) | [Documentation](../nodejs/ycql/) |

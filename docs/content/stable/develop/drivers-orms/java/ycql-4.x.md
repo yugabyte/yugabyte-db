@@ -50,7 +50,7 @@ type: docs
   </li>
 </ul>
 
-[YugabyteDB Java Driver for YCQL (4.19)](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x) is based on [DataStax Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+[YugabyteDB Java Driver for YCQL (4.19)](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x) is based on [Apache Cassandra Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 

@@ -82,7 +82,7 @@ For details, see the [Maven repository contents](https://mvnrepository.com/artif
 
 ### YugabyteDB Java Driver for YCQL 4.19
 
-The [YugabyteDB Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x/manual/core), version `4.19.0-yb-1`, is based on the [DataStax Java Driver for Apache Cassandra (v4.19)](https://github.com/apache/cassandra-java-driver/tree/4.19.0) and requires the Maven dependency shown below.
+The [YugabyteDB Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x/manual/core), version `4.19.0-yb-1`, is based on the [Apache Cassandra Java Driver 4.19](https://github.com/apache/cassandra-java-driver/tree/4.19.0) and requires the Maven dependency shown below.
 
 For details, see the [v4.19 README](https://github.com/yugabyte/cassandra-java-driver/blob/4.19.0-yb-x/README.md) in our GitHub repository.
 
