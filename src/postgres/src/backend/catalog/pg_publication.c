@@ -1410,14 +1410,17 @@ yb_is_publishable_relation(Relation rel)
 static bool
 yb_is_internal_table_to_be_excluded_from_cdc(Relation rel)
 {
+	const char *relname = RelationGetRelationName(rel);
 	char	   *nspname;
 	bool		result;
 
+	if (strcmp(relname, "ddl_queue") != 0 &&
+		strcmp(relname, "replicated_ddls") != 0)
+		return false;
 
 	nspname = get_namespace_name(RelationGetNamespace(rel));
 	if (nspname == NULL)
 		return false;
-
 
 	result = strcmp(nspname, "yb_xcluster_ddl_replication") == 0;
 	pfree(nspname);

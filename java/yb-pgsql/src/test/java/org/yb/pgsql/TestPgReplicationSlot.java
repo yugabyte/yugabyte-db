@@ -8154,9 +8154,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication." + table, error);
     }
 
+    // As on the master, only these two tables are excluded: other tables in their schema are not.
     try (Statement stmt = connection.createStatement()) {
-      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables",
-          new Row("public", "t1"));
+      stmt.execute("CREATE TABLE yb_xcluster_ddl_replication.t2 (id int primary key)");
+      stmt.execute("ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication.t2");
+      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables ORDER BY 1, 2",
+          new Row("public", "t1"), new Row("yb_xcluster_ddl_replication", "t2"));
     }
   }
 }
