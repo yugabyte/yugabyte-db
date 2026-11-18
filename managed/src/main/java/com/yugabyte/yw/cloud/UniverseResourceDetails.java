@@ -40,6 +40,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -389,15 +390,17 @@ public class UniverseResourceDetails {
   }
 
   /**
-   * Create a UniverseResourceDetails object, which contains info on the various pricing and other
-   * sorts of resources used by this universe.
+   * Computes the estimated price and the CPU, memory, storage, IOPS and throughput used by a
+   * universe.
    *
-   * @param providerUUID Optional provider uuid. If present - we count only nodes for provider.
-   * @param nodes Nodes that make up this universe.
-   * @param params Parameters describing this universe.
-   * @param priceForAllNodes - whether to calculate the price based on all nodes or use only
-   *     provided nodes (to keep the V1 behavior)
-   * @return a UniverseResourceDetails object containing info on the universe's resources.
+   * @param providerUUID if present, only nodes of this provider are counted.
+   * @param nodes the nodes to count resources for.
+   * @param params the universe's definition, which supplies clusters and placement.
+   * @param context the runtime config and the cached provider and instance type lookups.
+   * @param priceForAllNodes if true, the node count and price cover the whole universe, regardless
+   *     of {@code nodes}. If false, the price covers only {@code nodes}, and the node count only
+   *     the clusters they belong to. Most v1 flows pass true.
+   * @return the resources and estimated price of the counted nodes.
    */
   public static UniverseResourceDetails create(
       Optional<UUID> providerUUID,
@@ -408,8 +411,8 @@ public class UniverseResourceDetails {
     UniverseResourceDetails details = new UniverseResourceDetails();
     details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
     details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
-    if (CollectionUtils.isEmpty(nodes)) {
-      return details;
+    if (nodes == null) {
+      nodes = new ArrayList<>();
     }
     if (!priceForAllNodes) {
       Set<UUID> clusterUUIDs = nodes.stream().map(n -> n.placementUuid).collect(Collectors.toSet());
@@ -417,9 +420,9 @@ public class UniverseResourceDetails {
         if (!clusterUUIDs.contains(cluster.uuid)) {
           continue;
         }
-        if (cluster.getOverallPlacement() != null) {
-          cluster
-              .getOverallPlacement()
+        PlacementInfo overallPlacement = cluster.getOverallPlacement();
+        if (overallPlacement != null) {
+          overallPlacement
               .azInfoStream()
               .filter(az -> providerUUID.isEmpty() || providerUUID.get().equals(az.cloud.uuid))
               .mapToInt(az -> az.placementAZ.numNodesInAZ)
@@ -431,7 +434,6 @@ public class UniverseResourceDetails {
         details.addNumNodes(cluster.userIntent.numNodes);
       }
     }
-
     Collection<NodeDetails> providerNodes = new ArrayList<>();
     Map<UUID, UUID> providerUUIDByAZ = new HashMap<>();
     for (NodeDetails node : nodes) {
@@ -494,7 +496,7 @@ public class UniverseResourceDetails {
         }
       }
     }
-    // V1 API always uses all the nodes for price calculation,
+    // V1 API usually uses all the nodes for price calculation,
     // but for V2 API we take only passed nodes into account.
     details.addPrice(priceForAllNodes ? params.nodeDetailsSet : providerNodes, params, context);
     return details;
@@ -503,7 +505,6 @@ public class UniverseResourceDetails {
   /** Resource estimate for each provider represented by {@code nodes} */
   public static Map<UUID, UniverseResourceDetails> createPerProvider(
       Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
-
     Set<UUID> allProviderUUIDs =
         nodes.stream()
             .map(n -> params.getClusterByUuid(n.placementUuid))

@@ -5214,7 +5214,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     second.cloudList.get(0).regionList.add(sharedRegion);
 
-    PlacementInfo merged = PlacementInfoUtil.mergePlacements(ImmutableList.of(first, second, null));
+    PlacementInfo merged = PlacementInfoUtil.mergePlacements(Arrays.asList(first, second, null));
 
     assertEquals(1, merged.cloudList.size());
     PlacementCloud mergedCloud = merged.cloudList.get(0);
@@ -5261,7 +5261,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     assertThrows(
         IllegalStateException.class,
-        () -> PlacementInfoUtil.mergePlacements(ImmutableList.of(first, second)));
+        () -> PlacementInfoUtil.mergePlacements(Arrays.asList(first, second)));
   }
 
   private static PlacementInfo placementWithCloud(UUID cloudUuid, String code, UUID regionUuid) {

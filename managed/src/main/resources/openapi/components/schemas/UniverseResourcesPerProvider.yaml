@@ -1,5 +1,9 @@
 title: UniverseResourcesPerProvider
-description: Estimated pricing and cpu/memory/storage resource utilisation for each provider in a universe.
+description: |
+  UniverseResourcesPerProvider
+
+  Estimated pricing and cpu/memory/storage resource utilisation for each provider in a universe.
+  Part of UniverseResourcesPerProviderResp.
 type: object
 required:
   - resources_per_provider

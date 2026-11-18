@@ -75,14 +75,15 @@ public class UniverseResp {
     }
     String ybaSoftwareVersion = currentYbaSoftwareVersion();
     String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
+    UniverseResourceDetails basicDetails = UniverseResourceDetails.create(
+        Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context, true);
     return new UniverseResp(
         universe,
         Customer.get(universe.getCustomerId()),
         taskUUID,
         context.getProvider(Util.getDefaultProviderUUID(universe)),
-        UniverseResourceDetails.create(
-            Optional.empty(), universe.getNodes(), universe.getUniverseDetails(), context, true),
-        getPerProviderDetails(universe, context),
+        basicDetails,
+        getPerProviderDetails(universe, context, basicDetails),
         allowedTasks.get(universe.getUniverseUUID()),
         rollMaxBatchSize,
         ybaSoftwareVersion,
@@ -111,34 +112,46 @@ public class UniverseResp {
     String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
     return universeList.stream()
         .map(
-            universe ->
-                new UniverseResp(
-                    universe,
-                    customer,
-                    null,
-                    context.getProvider(Util.getDefaultProviderUUID(universe)),
-                    // Counting overall details separately instead of sum of per-provider to avoid
-                    // errors in aggregation.
-                    UniverseResourceDetails.create(
-                        Optional.empty(),
-                        universe.getNodes(),
-                        universe.getUniverseDetails(),
-                        context,
-                        true),
-                    getPerProviderDetails(universe, context),
-                    allowedTasks.get(universe.getUniverseUUID()),
-                    suggests.get(universe.getUniverseUUID()),
-                    ybaSoftwareVersion,
-                    localInstanceAddress,
-                    confGetter))
+            universe -> {
+              UniverseResourceDetails basicDetails = UniverseResourceDetails.create(
+                  Optional.empty(),
+                  universe.getNodes(),
+                  universe.getUniverseDetails(),
+                  context,
+                  true);
+              return new UniverseResp(
+                  universe,
+                  customer,
+                  null,
+                  context.getProvider(Util.getDefaultProviderUUID(universe)),
+                  basicDetails,
+                  // Counting overall details separately instead of sum of per-provider to avoid
+                  // errors in aggregation.
+                  getPerProviderDetails(universe, context, basicDetails),
+                  allowedTasks.get(universe.getUniverseUUID()),
+                  suggests.get(universe.getUniverseUUID()),
+                  ybaSoftwareVersion,
+                  localInstanceAddress,
+                  confGetter);
+              }
+            )
         .collect(Collectors.toList());
   }
 
   private static Map<UUID, UniverseResourceDetails> getPerProviderDetails(
-      Universe universe, UniverseResourceDetails.Context context) {
+      Universe universe, UniverseResourceDetails.Context context,
+      UniverseResourceDetails basic
+      ) {
     Map<UUID, UniverseResourceDetails> resourcesPerProvider = new HashMap<>();
+    Set<UUID> allProviders = new HashSet<>();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
+      allProviders.addAll(cluster.userIntent.getAllProviderUUIDs());
+    }
+    if (allProviders.size() == 1) {
+      // Avoid extra calculation.
+      return Collections.singletonMap(allProviders.iterator().next(), basic);
+    }
+    for (UUID providerUUID : allProviders) {
         resourcesPerProvider.put(
             providerUUID,
             UniverseResourceDetails.create(
@@ -147,7 +160,6 @@ public class UniverseResp {
                 universe.getUniverseDetails(),
                 context,
                 false));
-      }
     }
     return resourcesPerProvider;
   }
