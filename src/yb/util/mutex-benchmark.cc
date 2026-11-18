@@ -11,8 +11,8 @@
 // under the License.
 //
 
-// Lock/unlock throughput and handoff latency of YB's mutex types as the number of contending threads
-// grows. rw_spinlock (and RWCLock) follow --use_absl_rw_spinlock, so run once with
+// Lock/unlock throughput and handoff latency of YB's mutex types as the number of contending
+// threads grows. rw_spinlock (and RWCLock) follow --use_absl_rw_spinlock, so run once with
 // --use_absl_rw_spinlock=false (the original polling implementation) and once with true.
 // Most cases hold the lock for a single increment, which stresses lock handoff rather than modeling
 // any real workload. BM_Handoff adds hold and think times and reports how long acquisitions wait.

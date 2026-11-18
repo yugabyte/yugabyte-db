@@ -32,9 +32,9 @@
 
 #include "yb/util/rwc_lock.h"
 
-#include <algorithm>
-
 #include <absl/time/time.h>
+
+#include <algorithm>
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"

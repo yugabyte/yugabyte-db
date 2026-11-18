@@ -31,10 +31,10 @@
 //
 #pragma once
 
+#include <absl/synchronization/mutex.h>
+
 #include <atomic>
 #include <condition_variable>
-
-#include <absl/synchronization/mutex.h>
 
 #include "yb/gutil/macros.h"
 
