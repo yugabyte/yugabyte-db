@@ -2886,7 +2886,6 @@ TEST_P(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
   }
 }
 
-// The RC case retries just the statement, which only fetches the failed read point's limits.
 TEST_P(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
   auto writer = ASSERT_RESULT(ConnectWriter());
   // An injected restart lands no later than the current time, so every retry is restarted again
