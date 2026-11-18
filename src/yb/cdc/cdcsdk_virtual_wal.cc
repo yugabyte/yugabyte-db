@@ -308,7 +308,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
   for (const auto& table_id : table_list) {
     // TODO: Make parallel calls or introduce a batch GetTabletListToPoll API in CDC which takes a
     // list of tables and provide the information in one shot.
-    auto s = GetTabletListAndCheckpoint(table_id, hostport, deadline);
+    s = GetTabletListAndCheckpoint(table_id, hostport, deadline);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Format(
           "Error fetching tablet list & checkpoints for table_id $0: $1", table_id));
@@ -504,16 +504,16 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     }
 
     // Skip a hidden tablet the master will delete, so that GetChanges does not fail on it later:
-    // - hidden_table_released_by_cdc: no slot needs the tablet any more.
+    // - hidden_tablet_released_by_cdcsdk: no slot needs the tablet any more.
     // - hide time before this slot's restart time: this slot has already streamed everything from
     //   the tablet, but a slower slot keeps the flag unset until it catches up.
     const auto& tablet_locations = tablet_checkpoint_pair.tablet_locations();
-    if (tablet_locations.hidden_table_released_by_cdc() ||
+    if (tablet_locations.hidden_tablet_released_by_cdcsdk() ||
         (tablet_locations.has_hide_hybrid_time() &&
          HybridTime(tablet_locations.hide_hybrid_time()) <
              last_persisted_record_id_commit_time_)) {
-      LOG_WITH_PREFIX(INFO) << "Not adding tablet " << tablet_id
-                            << " of a hidden table released by CDC";
+      LOG_WITH_PREFIX(INFO) << "Not adding hidden tablet " << tablet_id
+                            << " as this slot no longer needs it";
       continue;
     }
 

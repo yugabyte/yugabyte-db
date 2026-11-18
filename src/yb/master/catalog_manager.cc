@@ -13545,7 +13545,7 @@ Status CatalogManager::GetTableLocations(
       continue;
     }
     if (tablets_released_by_cdc.contains(tablet->id())) {
-      locs_pb->set_hidden_table_released_by_cdc(true);
+      locs_pb->set_hidden_tablet_released_by_cdcsdk(true);
     }
   }
 

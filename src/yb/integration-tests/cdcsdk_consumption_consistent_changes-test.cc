@@ -5490,8 +5490,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       true /* populate_safepoint_record */));
 
   // Hold the CDC deletion task until after the rebuild, so the tablet and its cdc_state rows still
-  // exist then and only hidden_table_released_by_cdc can leave the tablet off the rebuilt poll
-  // list.
+  // exist then and only the virtual WAL's skip can leave the tablet off the rebuilt poll list.
   SyncPoint::GetInstance()->LoadDependency(
       {{"CDCTest::VWALRebuilt", "DoProcessCDCSDKHiddenObjectDeletion::Start"}});
   SyncPoint::GetInstance()->EnableProcessing();
@@ -5522,7 +5521,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       stream_id, dropped_table, no_replacement_table));
 
   // Ask with include_inactive, as the virtual WAL does, so the master sets
-  // hidden_table_released_by_cdc.
+  // hidden_tablet_released_by_cdcsdk.
   YBTableName dropped_table_by_id;
   dropped_table_by_id.set_table_id(dropped_table.table_id());
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> dropped_tablets;
@@ -5530,7 +5529,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       dropped_table_by_id, 0, &dropped_tablets, nullptr, RequireTabletsRunning::kFalse,
       master::IncludeInactive::kTrue));
   ASSERT_EQ(dropped_tablets.size(), 1);
-  ASSERT_TRUE(dropped_tablets[0].hidden_table_released_by_cdc());
+  ASSERT_TRUE(dropped_tablets[0].hidden_tablet_released_by_cdcsdk());
 
   ASSERT_OK(DestroyVirtualWAL(kVWALSessionId1));
   ASSERT_OK(InitVirtualWAL(
@@ -5557,8 +5556,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   ASSERT_EQ(change_resp.record_count[1], 1);  // INSERT
 }
 
-// A lagging slot keeps hidden_table_released_by_cdc unset. The rebuild of a slot that is already
-// past the dropped tablet's hide time must still leave the tablet off its poll list.
+// A lagging slot keeps hidden_tablet_released_by_cdcsdk unset. The rebuild of a slot that is
+// already past the dropped tablet's hide time must still leave the tablet off its poll list.
 TEST_F(CDCSDKConsumptionConsistentChangesTest,
        TestGetChangesSucceedsAfterVWALRefreshWithLaggingSlotAndHiddenTabletDeletion) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
