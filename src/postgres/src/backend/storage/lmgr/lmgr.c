@@ -921,6 +921,17 @@ SpeculativeInsertionLockAcquire(TransactionId xid)
 	if (speculativeInsertionToken == 0)
 		speculativeInsertionToken = 1;
 
+	/*
+	 * YB: With object locking, SpeculativeInsertionWait and
+	 * SpeculativeInsertionLockRelease are no-ops, so nobody can wait on this
+	 * lock.  Skip it: it is not a table lock, and in ExclusiveLock mode it
+	 * would otherwise become a global object lock acquired through the
+	 * master for every new key upserted into a temp table.  The token is
+	 * still needed in the tuple header.
+	 */
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
+		return speculativeInsertionToken;
+
 	SET_LOCKTAG_SPECULATIVE_INSERTION(tag, xid, speculativeInsertionToken);
 
 	(void) LockAcquire(&tag, ExclusiveLock, false, false);

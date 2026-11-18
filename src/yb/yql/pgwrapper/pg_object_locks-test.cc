@@ -320,6 +320,33 @@ TEST_F(PgObjectLocksTestRF1, TestSanity) {
   ASSERT_OK(AssertNumLocks(0 /* granted locks*/, 0 /* waiting locks */));
 }
 
+// DML on a temp table must not take global object locks. Temp tables are PG heap relations, so
+// INSERT ... ON CONFLICT takes a speculative insertion lock per new key, and GIN pending list
+// cleanup takes a page lock. Both are in ExclusiveLock mode and used to be sent to the master as
+// global object locks (GH #36323).
+TEST_F(PgObjectLocksTestRF1, TempTableDmlTakesNoGlobalLocks) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TEMP TABLE t (k INT PRIMARY KEY, v INT, a INT[])"));
+  ASSERT_OK(conn.Execute("CREATE INDEX ON t USING gin (a)"));
+  ASSERT_OK(WaitFor(
+      [this] { return NumGrantedLocksOnMaster() == 0; }, 5s * kTimeMultiplier,
+      "Wait for the DDLs to release their global locks"));
+
+  // Keep the transaction open: a global lock would stay granted on the master until commit.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT g, 0, ARRAY[g] FROM generate_series(1, 10) g "
+      "ON CONFLICT (k) DO UPDATE SET v = t.v + 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 0) ON CONFLICT (k) DO UPDATE SET v = t.v + 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (11, 0) ON CONFLICT (k) DO NOTHING"));
+  ASSERT_OK(conn.Fetch("SELECT gin_clean_pending_list('t_a_idx'::regclass)"));
+  ASSERT_EQ(NumGrantedLocksOnMaster(), 0);
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t")), 11);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT sum(v) FROM t")), 1);
+}
+
 TEST_F(PgObjectLocksTestRF1, TestWaitingOnConflictingLocks) {
   CreateTestTable();
 
