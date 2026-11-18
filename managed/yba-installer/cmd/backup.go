@@ -222,7 +222,7 @@ func RestoreBackupScriptHelper(inputPath string, destination string, skipRestart
 		if viper.GetString("postgres.useExisting.pg_restore_path") != "" {
 			args = append(args, "--pg_restore_path", viper.GetString(
 				"postgres.useExisting.pg_restore_path"))
-			if viper.GetString("postgress.useExisting.password") != "" {
+			if viper.GetString("postgres.useExisting.password") != "" {
 				createPgPass()
 				args = append(args, "--pgpass_path", common.PgpassPath())
 			}
