@@ -1463,7 +1463,7 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
     // transactions still mark the op as an xCluster one.
     vector_indexes_updater_.emplace(
         vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_, chunk_holds_,
-        xcluster_target_applied_ || HasExternalTransactions(put_batch_));
+        xcluster_target_applied_ || (vector_indexes_ && HasExternalTransactions(put_batch_)));
   }
 
   auto apply_external_transactions = VERIFY_RESULT(ExternalTxnApplyStateData::FromPB(put_batch_));

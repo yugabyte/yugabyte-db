@@ -85,6 +85,8 @@ DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_insert_tasks);
+DECLARE_uint64(vector_index_task_size);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
@@ -6861,6 +6863,12 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterMultiTransactionAppl
   constexpr size_t kChunkSize = 8;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
+  // An op's single insert is not bounded by any chunk or task limit. With one task per vector and
+  // a task limit that every consumer op reaches, its insert waits for the index to have no running
+  // tasks, as one of vector_index_max_insert_tasks * vector_index_task_size vectors (16k by
+  // default) does, on the apply and on the bootstrap replay.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_insert_tasks) = kRowsPerTxn;
   const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
   // Pause replication of the table, so the consumer later receives all transactions in one batch.
