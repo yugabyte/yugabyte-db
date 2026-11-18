@@ -58,12 +58,12 @@
 #include "storage/ipc.h"
 #include "storage/shmem.h"
 #include "utils/builtins.h"
-#include "utils/wait_event.h"
-#include "yb_ash.h"
 #include "utils/fmgroids.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "utils/wait_event.h"
+#include "yb_ash.h"
 #include "yb_file_utils.h"
 #include "yb_query_diagnostics.h"
 
@@ -966,16 +966,9 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 
 	if (entry)
 	{
-		/*
-		 * Make sure stats accumulation is done.  (Note: it's okay if several
-		 * levels of hook all do this.)
-		 */
-		/* YB_TODO_PG19MERGE: QueryDesc.totaltime no longer exists */
-#if 0
-		InstrEndLoop(queryDesc->totaltime);
-		double		totaltime_ms = queryDesc->totaltime->total * 1000.0;
-#endif
-		double		totaltime_ms = 0;
+		double		totaltime_ms = (queryDesc->query_instr ?
+									INSTR_TIME_GET_MILLISEC(queryDesc->query_instr->total) :
+									0);
 
 		if (entry->metadata.params.bind_var_query_min_duration_ms <= totaltime_ms &&
 			(queryDesc->params || query_constants.count > 0))
@@ -1111,11 +1104,18 @@ YbQueryDiagnosticsAccumulatePgss(int64 query_id, YbQdPgssStoreKind kind,
 		entry->pgss.counters.local_blks_written += bufusage->local_blks_written;
 		entry->pgss.counters.temp_blks_read += bufusage->temp_blks_read;
 		entry->pgss.counters.temp_blks_written += bufusage->temp_blks_written;
-		/* YB_TODO_PG19MERGE: blk_read_time, blk_write_time no longer exists in BufferUsage */
-#if 0
-		entry->pgss.counters.blk_read_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_read_time);
-		entry->pgss.counters.blk_write_time += INSTR_TIME_GET_MILLISEC(bufusage->blk_write_time);
-#endif
+		entry->pgss.counters.shared_blk_read_time +=
+			INSTR_TIME_GET_MILLISEC(bufusage->shared_blk_read_time);
+		entry->pgss.counters.shared_blk_write_time +=
+			INSTR_TIME_GET_MILLISEC(bufusage->shared_blk_write_time);
+		entry->pgss.counters.local_blk_read_time +=
+			INSTR_TIME_GET_MILLISEC(bufusage->local_blk_read_time);
+		entry->pgss.counters.local_blk_write_time +=
+			INSTR_TIME_GET_MILLISEC(bufusage->local_blk_write_time);
+		entry->pgss.counters.temp_blk_read_time +=
+			INSTR_TIME_GET_MILLISEC(bufusage->temp_blk_read_time);
+		entry->pgss.counters.temp_blk_write_time +=
+			INSTR_TIME_GET_MILLISEC(bufusage->temp_blk_write_time);
 		entry->pgss.counters.wal_records += walusage->wal_records;
 		entry->pgss.counters.wal_fpi += walusage->wal_fpi;
 		entry->pgss.counters.wal_bytes += walusage->wal_bytes;
@@ -1167,7 +1167,9 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 			 "mean_plan_time,mean_exec_time,stddev_plan_time,stddev_exec_time,"
 			 "rows,shared_blks_hit,shared_blks_read,shared_blks_dirtied,shared_blks_written,"
 			 "local_blks_hit,local_blks_read,local_blks_dirtied,local_blks_written,"
-			 "temp_blks_read,temp_blks_written,blk_read_time,blk_write_time,"
+			 "temp_blks_read,temp_blks_written,"
+			 "shared_blk_read_time,shared_blk_write_time,"
+			 "local_blk_read_time,local_blk_write_time,"
 			 "temp_blk_read_time,temp_blk_write_time,wal_records,wal_fpi,wal_bytes,"
 			 "jit_functions,jit_generation_time,jit_inlining_count,jit_inlining_time,"
 			 "jit_optimization_count,jit_optimization_time,jit_emission_count,jit_emission_time\n"
@@ -1175,7 +1177,7 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 			 "%lf,%lf,%lf,%lf,%lf,%lf,"
 			 "%lld,%lld,%lld,%lld,%lld,"
 			 "%lld,%lld,%lld,%lld,"
-			 "%lld,%lld,%lf,%lf,"
+			 "%lld,%lld,%lf,%lf,%lf,%lf,"
 			 "%lf,%lf,%lld,%lld,%llu,"
 			 "%lld,%lf,%lld,%lf,"
 			 "%lld,%lf,%lld,%lf\n",
@@ -1204,8 +1206,10 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 			 (long long) pgss.counters.local_blks_written,
 			 (long long) pgss.counters.temp_blks_read,
 			 (long long) pgss.counters.temp_blks_written,
-			 pgss.counters.blk_read_time,
-			 pgss.counters.blk_write_time,
+			 pgss.counters.shared_blk_read_time,
+			 pgss.counters.shared_blk_write_time,
+			 pgss.counters.local_blk_read_time,
+			 pgss.counters.local_blk_write_time,
 			 pgss.counters.temp_blk_read_time,
 			 pgss.counters.temp_blk_write_time,
 			 (long long) pgss.counters.wal_records,

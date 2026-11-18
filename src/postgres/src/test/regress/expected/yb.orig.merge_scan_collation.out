@@ -10,7 +10,7 @@
 \i :filename
 \set _echo_parameterized_query :ECHO
 \set ECHO none
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
 \set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 \set P1 ':explain'
@@ -48,7 +48,7 @@ SELECT $$COLLATE "POSIX" IN ('0', '1', '2')$$ AS "R3" \gset
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "C" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "C" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -68,7 +68,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
                Storage Index Rows Scanned: 1493
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -78,14 +78,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
          ->  Seq Scan on public.tv_tbl (actual rows=1493.00 loops=1)
+               Disabled: true
                Output: i2, i4, n, t
                Storage Filter: (tv_tbl.t = ANY ('{0,1,2}'::text[]))
                Storage Table Read Requests: 22
                Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
-(12 rows)
+(13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "POSIX" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "POSIX" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -95,14 +96,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
          ->  Seq Scan on public.tv_tbl (actual rows=1493.00 loops=1)
+               Disabled: true
                Output: i2, i4, n, t
                Storage Filter: ((tv_tbl.t)::text = ANY ('{0,1,2}'::text[]))
                Storage Table Read Requests: 22
                Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
-(12 rows)
+(13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "C" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "C" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -127,7 +129,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
                Storage Index Rows Scanned: 15
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -137,14 +139,15 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
          ->  Seq Scan on public.tv_tbl (actual rows=1493.00 loops=1)
+               Disabled: true
                Output: i2, i4, n, t
                Storage Filter: (tv_tbl.t = ANY ('{0,1,2}'::text[]))
                Storage Table Read Requests: 22
                Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
-(12 rows)
+(13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "POSIX" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 64)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "POSIX" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -154,12 +157,13 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Sort Key: tv_tbl.i2, tv_tbl.i4, tv_tbl.n
          Sort Method: top-N heapsort
          ->  Seq Scan on public.tv_tbl (actual rows=1493.00 loops=1)
+               Disabled: true
                Output: i2, i4, n, t
                Storage Filter: ((tv_tbl.t)::text = ANY ('{0,1,2}'::text[]))
                Storage Table Read Requests: 22
                Storage Table Read Ops: 98
                Storage Table Rows Scanned: 5048
-(12 rows)
+(13 rows)
 
 /*+IndexScan(tv_tbl idx) Set(yb_max_merge_scan_streams 0)*/ SELECT i2, i4, n, t FROM tv_tbl WHERE t COLLATE "C" IN ('0', '1', '2') ORDER BY i2, i4, n LIMIT 5;
  i2 | i4 |   n   | t 

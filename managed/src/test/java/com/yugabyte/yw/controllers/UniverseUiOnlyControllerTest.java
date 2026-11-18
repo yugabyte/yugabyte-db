@@ -47,6 +47,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -981,6 +982,84 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Update)));
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  // PLAT-23125: an edit request without otelCollectorEnabled must not turn it off for new nodes.
+  @Test
+  public void testUniverseUpdateCarriesOtelCollectorEnabledFromUniverse() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    PlacementInfo placementInfo = placement(p);
+    Universe u =
+        createUniverse(
+            "Test Universe", UUID.randomUUID(), customer.getId(), CloudType.aws, placementInfo);
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", u.getName())
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.getUuid().toString())
+            .put("accessKeyCode", accessKeyCode)
+            .set("deviceInfo", Json.toJson(ApiUtils.getDummyDeviceInfo(1, 1)));
+
+    ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
+    userIntentJson.set("regionList", regionList);
+
+    ArrayNode nodeDetailsJsonArray = Json.newArray();
+
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              // The request body below omits otelCollectorEnabled, as the CLI does.
+              universeDetails.otelCollectorEnabled = true;
+              Cluster cluster = universeDetails.clusters.get(0);
+              cluster.userIntent = Json.fromJson(userIntentJson, UserIntent.class);
+              for (int idx = 0; idx < 3; idx++) {
+                NodeDetails node = ApiUtils.getDummyNodeDetails(idx, NodeState.Live);
+                node.cloudInfo.instance_type = i.getInstanceTypeCode();
+                node.placementUuid = cluster.uuid;
+                node.azUuid = Arrays.asList(az1, az2, az3).get(idx).getUuid();
+                nodeDetailsJsonArray.add(Json.toJson(node));
+                universeDetails.nodeDetailsSet.add(node);
+              }
+            });
+    UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
+    Cluster cluster = universeDetails.clusters.get(0);
+    ObjectNode clusterJson = Json.newObject();
+    clusterJson.set("userIntent", userIntentJson);
+    clusterJson.set("uuid", Json.toJson(cluster.uuid));
+    clusterJson.set("placementInfo", Json.toJson(placementInfo));
+    ArrayNode clustersJsonArray = Json.newArray().add(clusterJson);
+
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.put("nodePrefix", u.getUniverseDetails().nodePrefix);
+    bodyJson.set("nodeDetailsSet", nodeDetailsJsonArray);
+
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    assertOk(result);
+    ArgumentCaptor<UniverseDefinitionTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), captor.capture());
+    // Nodes added by the edit install the OTEL collector only when this is set.
+    assertTrue(captor.getValue().otelCollectorEnabled);
   }
 
   @Test
@@ -2139,6 +2218,46 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
     assertErrorResponse(result, "Cannot change master gflags for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateFipsGFlagDisabledFail() {
+    Universe u = setUpUniverse();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), univ -> univ.getUniverseDetails().fipsEnabled = true);
+    for (String value : List.of("false", "True", "1")) {
+      u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+          SpecificGFlags.construct(
+              Collections.emptyMap(), Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, value));
+      String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+      JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+      Result result =
+          assertPlatformException(
+              () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+      assertErrorResponse(result, "FIPS enabled universe");
+    }
+  }
+
+  @Test
+  public void testUniverseUpdateKeepsStoredFipsGFlagValue() {
+    Universe u = setUpUniverse();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            univ -> {
+              univ.getUniverseDetails().fipsEnabled = true;
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      Collections.emptyMap(), Map.of(GFlagsUtil.OPENSSL_REQUIRE_FIPS, "false"));
+            });
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    // Unchanged gflags pass the FIPS check and reach the next validation.
+    assertErrorResponse(result, "No changes that could be applied by EditUniverse");
   }
 
   @Test

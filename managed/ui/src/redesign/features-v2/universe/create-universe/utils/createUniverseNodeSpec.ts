@@ -1,6 +1,17 @@
 import { createUniverseFormProps } from '../CreateUniverseContext';
-import { ClusterNodeSpec, ClusterStorageSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import {
+  ClusterNodeSpec,
+  ClusterStorageSpec,
+  ProviderNodeSpec,
+  ProviderRootNodesSpec
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { InstanceSettingProps } from '../steps/hardware-settings/dtos';
+import {
+  getPrimaryProvider,
+  getProviderConfigurations,
+  includesKubernetesCloud
+} from '../helpers/providerConfigurations';
 
 /**
  * Builds API storage_spec from form device info. Omits storage_type when unset (e.g. Kubernetes).
@@ -56,6 +67,15 @@ const fillNodeSpec = (
   };
 };
 
+/** Dedicated for a specific provider code (K8s is always dedicated). */
+export const useDedicatedNodesForProvider = (
+  providerCode: string | undefined,
+  useDedicatedNodes: boolean
+): boolean => {
+  if (providerCode === CloudType.kubernetes) return true;
+  return useDedicatedNodes;
+};
+
 /**
  * Dedicated-nodes toggle is hidden for Kubernetes; still treat K8s as dedicated for node_spec and API payload.
  */
@@ -64,18 +84,23 @@ export const effectiveUseDedicatedNodes = (formContext: createUniverseFormProps)
   if (!nodesAvailabilitySettings) {
     return false;
   }
-  if (generalSettings?.cloud === CloudType.kubernetes) {
+  if (
+    includesKubernetesCloud(generalSettings?.cloud) ||
+    getProviderConfigurations(generalSettings).some(
+      (provider) => provider.code === CloudType.kubernetes
+    )
+  ) {
     return true;
   }
   return nodesAvailabilitySettings.useDedicatedNodes;
 };
 
-export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSpec => {
-  const { generalSettings, instanceSettings, nodesAvailabilitySettings } = formContext;
-  if (!instanceSettings || !nodesAvailabilitySettings) {
-    throw new Error('Missing required form values to get node spec');
-  }
-  const useDedicated = effectiveUseDedicatedNodes(formContext);
+/** Build ClusterNodeSpec from a single provider's instance settings. */
+export const getNodeSpecFromInstanceSettings = (
+  instanceSettings: InstanceSettingProps,
+  providerCode: string | undefined,
+  useDedicated: boolean
+): ClusterNodeSpec => {
   if (!useDedicated) {
     return fillNodeSpec(
       instanceSettings.instanceType,
@@ -90,7 +115,7 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
 
   // Kubernetes: K8s custom resources may have null instanceType; fillNodeSpec would throw.
   // When master/tserver settings match, both pods use tserver resource spec.
-  if (generalSettings?.cloud === CloudType.kubernetes) {
+  if (providerCode === CloudType.kubernetes) {
     const tserverK8s = instanceSettings.tserverK8SNodeResourceSpec;
     const masterK8s = instanceSettings.keepMasterTserverSame
       ? tserverK8s
@@ -154,5 +179,83 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
       ebsKms
     ),
     tserver: tserverSpec
+  };
+};
+
+export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSpec => {
+  const { generalSettings, instanceSettings, nodesAvailabilitySettings } = formContext;
+  if (!instanceSettings || !nodesAvailabilitySettings) {
+    throw new Error('Missing required form values to get node spec');
+  }
+  const providerCode =
+    getPrimaryProvider(generalSettings)?.code ??
+    (typeof generalSettings?.cloud === 'string' ? generalSettings.cloud : undefined);
+  return getNodeSpecFromInstanceSettings(
+    instanceSettings,
+    providerCode,
+    effectiveUseDedicatedNodes(formContext)
+  );
+};
+
+function toProviderNodeSpec(
+  partial: {
+    instance_type?: string;
+    storage_spec?: ClusterStorageSpec;
+    k8s_node_resource_spec?: ProviderNodeSpec['k8s_node_resource_spec'];
+  }
+): ProviderNodeSpec {
+  return {
+    ...(partial.instance_type ? { instance_type: partial.instance_type } : {}),
+    ...(partial.storage_spec ? { storage_spec: partial.storage_spec } : {}),
+    ...(partial.k8s_node_resource_spec
+      ? { k8s_node_resource_spec: partial.k8s_node_resource_spec }
+      : {})
+  };
+}
+
+/** Map ClusterNodeSpec → ProviderRootNodesSpec for multicloud provider_specs[].nodes_specs. */
+export const toProviderNodesSpecs = (
+  nodeSpec: ClusterNodeSpec,
+  providerCode: string | undefined,
+  useDedicated: boolean
+): ProviderRootNodesSpec => {
+  if (providerCode === CloudType.kubernetes) {
+    return {
+      tserver_specification: toProviderNodeSpec({
+        instance_type: nodeSpec.instance_type,
+        storage_spec: nodeSpec.storage_spec,
+        k8s_node_resource_spec: nodeSpec.k8s_tserver_resource_spec
+      }),
+      master_specification: toProviderNodeSpec({
+        instance_type: nodeSpec.instance_type,
+        storage_spec: nodeSpec.master?.storage_spec ?? nodeSpec.storage_spec,
+        k8s_node_resource_spec: nodeSpec.k8s_master_resource_spec
+      })
+    };
+  }
+
+  if (!useDedicated) {
+    return {
+      tserver_specification: toProviderNodeSpec({
+        instance_type: nodeSpec.instance_type,
+        storage_spec: nodeSpec.storage_spec
+      })
+    };
+  }
+
+  const tserver = nodeSpec.tserver ?? {
+    instance_type: nodeSpec.instance_type,
+    storage_spec: nodeSpec.storage_spec
+  };
+  const master = nodeSpec.master ?? tserver;
+  return {
+    tserver_specification: toProviderNodeSpec({
+      instance_type: tserver.instance_type,
+      storage_spec: tserver.storage_spec
+    }),
+    master_specification: toProviderNodeSpec({
+      instance_type: master.instance_type,
+      storage_spec: master.storage_spec
+    })
   };
 };

@@ -97,6 +97,7 @@ DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_bool(TEST_cdc_snapshot_failure);

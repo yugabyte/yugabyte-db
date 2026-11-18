@@ -959,13 +959,19 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     return client().GetNamespaceInfo(GetPgsqlNamespaceId(req.oid()), resp->mutable_info());
   }
 
-  Status IsDatabaseColocated(
+  void IsDatabaseColocated(
       const PgIsDatabaseColocatedRequestPB& req, PgIsDatabaseColocatedResponsePB* resp,
-      rpc::RpcContext* context) {
-    auto info = VERIFY_RESULT(db_cache_.GetColocationInfo(req.database_oid()));
-    resp->set_colocated(info.colocated);
-    resp->set_legacy_colocated_database(info.legacy_colocated_database);
-    return Status::OK();
+      rpc::RpcContext context) {
+    db_cache_.GetColocationInfo(
+        req.database_oid(),
+        [resp, context = std::make_shared<rpc::RpcContext>(std::move(context))](
+            Result<PgDbCache::ColocationInfo> info) {
+          if (info.ok()) {
+            resp->set_colocated(info->colocated);
+            resp->set_legacy_colocated_database(info->legacy_colocated_database);
+          }
+          Respond(ResultToStatus(info), resp, context.get());
+        });
   }
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(

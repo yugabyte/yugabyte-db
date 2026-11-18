@@ -200,10 +200,6 @@ Status SnapshotOperation::CheckOperationAllowed(
 // ------------------------------------------------------------------------------------------------
 
 Status SnapshotOperation::Prepare(IsLeaderSide is_leader_side) {
-  TRACE("PREPARE SNAPSHOT: Starting");
-  RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())->snapshots().Prepare(this));
-
-  TRACE("PREPARE SNAPSHOT: finished");
   return Status::OK();
 }
 

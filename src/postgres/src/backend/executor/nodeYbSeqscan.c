@@ -145,13 +145,10 @@ YbSeqNext(YbSeqScanState *node)
 		};
 
 		/*
-		 * YB_TODO_PG19MERGE: PG19 gave the table_beginscan family a
-		 * user-facing flags parameter (upstream
-		 * 681daed93169ff5bed2796dd5c8c76ee2fae1ebd and
-		 * 50eb5faea2959125a575bae0a062ccb33b49c43d).  SO_NONE below
-		 * reproduces master's behaviour exactly, since master's _yb
-		 * helpers computed only the internal flags.  Decide whether any
-		 * user flags should actually be set.
+		 * No user flags apply to YB relations: SO_HINT_REL_READ_ONLY only
+		 * drives heap page pruning, and SO_SCAN_INSTRUMENT collects
+		 * ReadStream I/O stats that YB scans don't produce and EXPLAIN (IO)
+		 * doesn't show for YB scan nodes.
 		 */
 		node->ss.ss_currentScanDesc = tsdesc =
 			table_beginscan_yb(node->ss.ss_currentRelation,
@@ -327,17 +324,6 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 	 * get information from node
 	 */
 	tsdesc = node->ss.ss_currentScanDesc;
-
-	/*
-	 * YB_TODO_PG19MERGE: PG commit d060e921ea5aa47b6265174c32e1128cebdbc3df
-	 * removed ExecFreeExprContext
-	 */
-	/*
-	 * clean out the tuple table
-	 */
-	if (node->ss.ps.ps_ResultTupleSlot)
-		ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	/*
 	 * close heap scan

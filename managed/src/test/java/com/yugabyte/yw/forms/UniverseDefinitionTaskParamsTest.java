@@ -13,20 +13,25 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.Test;
@@ -45,7 +50,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException ex =
         assertThrows(
             IllegalStateException.class,
-            () -> cluster.validate(false, false, false, Collections.emptySet()));
+            () -> cluster.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
 
@@ -55,7 +60,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException exGcp =
         assertThrows(
             IllegalStateException.class,
-            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+            () -> clusterGcp.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
   }
@@ -68,7 +73,7 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException ex =
         assertThrows(
             IllegalStateException.class,
-            () -> cluster.validate(false, false, false, Collections.emptySet()));
+            () -> cluster.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(ex.getMessage().contains(MASTER_FIELDS_ERROR));
 
@@ -78,19 +83,68 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
     IllegalStateException exGcp =
         assertThrows(
             IllegalStateException.class,
-            () -> clusterGcp.validate(false, false, false, Collections.emptySet()));
+            () -> clusterGcp.validate(false, false, false, false, Collections.emptySet()));
 
     assertTrue(exGcp.getMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void validateChecksOnlyNodesInThisCluster() {
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(false, false, false, Common.CloudType.aws);
+    NodeDetails thisClusterNode = node(cluster.uuid, "m5.large");
+    NodeDetails otherClusterEphemeral = node(UUID.randomUUID(), "i3.xlarge");
+
+    // i3 on another cluster is ephemeral; it must not fail this cluster's GP2 storage check.
+    cluster.validate(false, false, false, Set.of(thisClusterNode, otherClusterEphemeral));
+
+    NodeDetails thisClusterEphemeral = node(cluster.uuid, "i3.xlarge");
+    PlatformServiceException storageEx =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> cluster.validate(false, false, false, Set.of(thisClusterEphemeral)));
+    assertTrue(storageEx.getMessage().contains("ephemeral storage"));
+
+    UserIntent userIntent = new UserIntent();
+    TestUtils.specificationProviderInitializer(userIntent, UUID.randomUUID())
+        .setProviderType(Common.CloudType.gcp)
+        .setInstanceType("n1-standard-2");
+    Cluster multicloud = new Cluster(ClusterType.PRIMARY, userIntent);
+    multicloud.uuid = UUID.randomUUID();
+    multicloud.placementInfo = new PlacementInfo();
+
+    multicloud.validate(false, false, false, Set.of(node(UUID.randomUUID(), "m5.large")));
+
+    assertThrows(
+        NoSuchElementException.class,
+        () -> multicloud.validate(false, false, false, Set.of(node(multicloud.uuid, "m5.large"))));
   }
 
   @Test
   public void validateAllowsMasterFieldsWhenDedicatedNodesEnabled() {
     Cluster cluster =
         buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.kubernetes);
-    cluster.validate(false, false, false, Collections.emptySet());
+    cluster.validate(false, false, false, false, Collections.emptySet());
     Cluster clusterGcp =
         buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.gcp);
-    clusterGcp.validate(false, false, false, Collections.emptySet());
+    clusterGcp.validate(false, false, false, false, Collections.emptySet());
+  }
+
+  @Test
+  public void validateChecksClientCertGFlagsAgainstPrimarySetting() {
+    // A read replica's own intent leaves useNodeToNodeClientCerts false; the primary's applies.
+    Cluster cluster =
+        buildClusterForMasterFieldsValidation(true, true, true, Common.CloudType.kubernetes);
+    cluster.userIntent.tserverGFlags =
+        new HashMap<>(Map.of(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID, "yugabyte"));
+
+    cluster.validate(false, false, false, false, Collections.emptySet());
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> cluster.validate(false, false, false, true, Collections.emptySet()));
+
+    assertTrue(ex.getMessage(), ex.getMessage().contains(GFlagsUtil.NODE_TO_NODE_REQUIRED_UID));
   }
 
   @Test
@@ -643,6 +697,16 @@ public class UniverseDefinitionTaskParamsTest extends FakeDBApplication {
 
     // Verify: azOverrides should be null since cgroupSize was the only value
     assertNull(overrides.getAzOverrides());
+  }
+
+  private static NodeDetails node(UUID placementUuid, String instanceType) {
+    NodeDetails node = new NodeDetails();
+    node.placementUuid = placementUuid;
+    node.nodeName = "n-" + UUID.randomUUID();
+    node.azUuid = UUID.randomUUID();
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.instance_type = instanceType;
+    return node;
   }
 
   private Cluster buildClusterForMasterFieldsValidation(

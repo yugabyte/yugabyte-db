@@ -84,6 +84,10 @@ class FlushJob {
 
   Result<FileNumbersHolder> Run(FileMetaData* file_meta = nullptr);
   TableProperties GetTableProperties() const { return table_properties_; }
+  bool filter_failed() const { return filter_failed_; }
+
+  // False when Run found no memtable to flush, e.g. the flush filter held them all back.
+  bool picked_memtables() const { return picked_memtables_; }
 
  private:
   void ReportStartedFlush();
@@ -102,6 +106,7 @@ class FlushJob {
   std::vector<SequenceNumber> existing_snapshots_;
   SequenceNumber earliest_write_conflict_snapshot_;
   MemTableFilter mem_table_flush_filter_;
+  bool filter_failed_ = false;
   FileNumbersProvider* file_numbers_provider_;
   JobContext* job_context_;
   LogBuffer* log_buffer_;
@@ -113,6 +118,7 @@ class FlushJob {
   EventLogger* event_logger_;
   yb::ash::WaitStateInfoPtr wait_state_;
   TableProperties table_properties_;
+  bool picked_memtables_ = false;
 };
 
 }  // namespace rocksdb

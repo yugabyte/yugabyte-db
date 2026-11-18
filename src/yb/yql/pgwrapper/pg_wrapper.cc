@@ -488,6 +488,11 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_test_fatal_after_notifs_queue_write, false,
     "When true, the notifications poller exits with FATAL after writing NOTIFY entries to the "
     "async queue but before persisting the CDC virtual-WAL ack. For testing purposes.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notifs_poller_init_delay_ms, 0,
+    "Time in milliseconds for which the notifications poller waits before it initializes. "
+    "For testing purposes.");
+DEFINE_validator(ysql_yb_test_notifs_poller_init_delay_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
@@ -826,7 +831,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
     metricsLibs.push_back("pg_documentdb_gw_host");
   }
 
-  // YB_TODO_PG19MERGE: mage is not currently built in the YB PG19 tree
+  // TODO(#35023): mage is not currently built in the YB PG19 tree
   // (not in build_postgres.py external_extension_subdirs). Preloading it
   // makes every backend fail to start when ysql_yb_enable_mage is set,
   // which TestYbBackup does clusterwide. Re-add with the mage port.

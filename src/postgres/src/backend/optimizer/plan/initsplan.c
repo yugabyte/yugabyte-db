@@ -4529,7 +4529,6 @@ typedef struct YbSubstituteContext
 	Index		target_rti;
 	bool		failed;			/* Set to true if any Var couldn't be
 								 * substituted */
-	Relids		nullable_relids;
 } YbSubstituteContext;
 
 /*
@@ -4557,14 +4556,7 @@ yb_substitute_ec_members_mutator(Node *node, void *context)
 																	 ctx->target_rti);
 
 			if (ec_member != NULL)
-			{
-				/*
-				 * YB_TODO_PG19MERGE: PG dropped EquivalenceMember.em_nullable_relids
-				 * Replaced with em_relids for now.
-				 */
-				ctx->nullable_relids = bms_union(ctx->nullable_relids, ec_member->em_relids);
 				return (Node *) ec_member->em_expr;
-			}
 
 			/* can't substitute this Var - mark as failed */
 			ctx->failed = true;
@@ -4582,7 +4574,7 @@ yb_substitute_ec_members_mutator(Node *node, void *context)
  */
 static Expr *
 yb_try_substitute_ec_members(PlannerInfo *root, Expr *expr, Index rti,
-							 Index target_rti, Relids *nullable_relids)
+							 Index target_rti)
 {
 	YbSubstituteContext context;
 	Expr	   *result;
@@ -4591,10 +4583,8 @@ yb_try_substitute_ec_members(PlannerInfo *root, Expr *expr, Index rti,
 	context.rti = rti;
 	context.target_rti = target_rti;
 	context.failed = false;
-	context.nullable_relids = NULL;
 
 	result = (Expr *) yb_substitute_ec_members_mutator((Node *) expr, &context);
-	*nullable_relids = context.nullable_relids;
 
 	return context.failed ? NULL : result;
 }
@@ -4628,30 +4618,29 @@ yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
  * yb_make_derived_restrictinfo
  *	  Wrap a derived equality clause in a RestrictInfo, tagging it with the
  *	  current qual security level and running the mergejoinable/batchable
- *	  checks.  nullable_relids is the set of outer-join-nullable rels whose
- *	  Vars appear in the clause; pass NULL for a single-rel clause (e.g. when
- *	  the substituted side is a Const).
+ *	  checks.  The clause's relids come from pull_varnos, so they include any
+ *	  outer joins that can null its Vars; only a clause on a single base rel
+ *	  that no outer join can null is pushed down.
  *
  * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
  * (yb_try_derive_equal_from_clauses) derivation paths.
  */
 RestrictInfo *
-yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
+yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause)
 {
 	Relids		clause_relids = pull_varnos(root, (Node *) clause);
-	bool		outerjoin_delayed = !bms_is_empty(nullable_relids);
-	bool		is_pushed_down = (bms_num_members(clause_relids) == 1 && !outerjoin_delayed);
+	bool		is_pushed_down = (bms_num_members(clause_relids) == 1);
 
 	RestrictInfo *rinfo = make_restrictinfo(root,
 											(Expr *) clause,
 											is_pushed_down,
-											false /* has_clone */,
-											false /* is_clone */,
+											false,	/* has_clone */
+											false,	/* is_clone */
 											false,
 											root->qual_security_level,
 											clause_relids,
-											nullable_relids /* incompatible_relids */,
-											NULL /* outer_relids */);
+											NULL,	/* incompatible_relids */
+											NULL);	/* outer_relids */
 
 	check_mergejoinable(rinfo);
 	yb_check_batchable(root, rinfo);
@@ -4771,12 +4760,10 @@ yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
 							Oid opfamily)
 {
 	Expr	   *substituted = NULL;
-	Relids		nullable_relids = NULL;
 	OpExpr	   *clause = NULL;
 
 	substituted = yb_try_substitute_ec_members(root, generation_expr, rti,
-											   target_rti,
-											   &nullable_relids);
+											   target_rti);
 	if (substituted)
 	{
 		/*
@@ -4791,15 +4778,11 @@ yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
 
 		if (folded == NULL ||
 			(!IsA(folded, Const) && !yb_expr_safe_to_derive(generation_expr)))
-		{
-			bms_free(nullable_relids);
 			return NULL;
-		}
 		clause = yb_create_derived_clause(inferrable_expr, substituted,
 										  opfamily);
 	}
 	if (clause)
-		return yb_make_derived_restrictinfo(root, clause, nullable_relids);
-	bms_free(nullable_relids);
+		return yb_make_derived_restrictinfo(root, clause);
 	return NULL;
 }

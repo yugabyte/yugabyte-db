@@ -101,6 +101,7 @@ DECLARE_int32(scheduled_full_compaction_jitter_factor_percentage);
 DECLARE_int32(auto_compact_memory_cleanup_interval_sec);
 DECLARE_bool(allow_encryption_at_rest);
 DECLARE_bool(enable_tiered_storage);
+DECLARE_bool(enforce_xcluster_guarded_lease);
 DECLARE_int32(db_block_cache_num_shard_bits);
 DECLARE_int32(num_cpus);
 DECLARE_bool(enable_db_history_retention_pins);
@@ -153,6 +154,9 @@ class TsTabletManagerTest : public YBTest {
 
     // Disallow encryption at rest as there is no master.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+
+    // There is no master to grant the xCluster-guarded information lease.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
 
     mini_server_ = std::make_unique<MiniTabletServer>(paths, paths, 0, *options_result, 0);
   }
@@ -924,10 +928,11 @@ class TsTabletManagerTieredDriveTest : public TsTabletManagerTest {
     auto options_result = TabletServerOptions::CreateTabletServerOptions();
     ASSERT_OK(options_result);
 
-    // Disable AutoFlags management and encryption at rest, same as the base fixture (there's
-    // no master here).
+    // Disable AutoFlags management, encryption at rest, and the xCluster-guarded information
+    // lease, same as the base fixture (there's no master here).
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_auto_flags_management) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_encryption_at_rest) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = false;
     // Tiered drives only exist with the preview feature on.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tiered_storage) = true;
 

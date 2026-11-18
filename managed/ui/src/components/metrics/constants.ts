@@ -404,3 +404,80 @@ export const DEFAULT_OUTLIER_NUM_NODES = 3;
 export const MIN_OUTLIER_NUM_NODES = 1;
 export const MAX_OUTLIER_NUM_NODES = 5;
 export const MAX_OUTLIER_NUM_TABLES = 7;
+
+// Kubernetes universes read these panels from cAdvisor and kubelet instead of the node.
+export const KUBERNETES_METRIC_KEYS: Readonly<Record<string, string>> = {
+  cpu_usage: 'k8s_cpu_usage',
+  memory_usage: 'k8s_memory_usage',
+  disk_used_size_total: 'k8s_volume_disk_used_size_total',
+  disk_usage_percent: 'k8s_volume_disk_usage_percent',
+  disk_volume_used: 'k8s_volume_disk_volume_used',
+  disk_volume_usage_percent: 'k8s_volume_disk_volume_usage_percent'
+};
+
+export const METRICS_UNAVAILABLE_ON_KUBERNETES: readonly string[] = ['system_load_over_time'];
+
+export const NODE_EXPORTER_MEMORY_METRIC_KEY = 'k8s_node_exporter_memory_usage';
+
+// Master processes export the same DB metrics under their own names.
+export const MASTER_DISK_IO_METRIC_KEYS: Readonly<Record<string, string>> = {
+  lsm_rocksdb_flush_size: 'master_lsm_rocksdb_flush_size',
+  lsm_rocksdb_compaction: 'master_lsm_rocksdb_compaction',
+  lsm_rocksdb_compaction_time: 'master_lsm_rocksdb_compaction_time',
+  tserver_log_bytes_read: 'master_log_bytes_read',
+  tserver_log_bytes_written: 'master_log_bytes_written'
+};
+
+/**
+ * Returns the metric keys to query for a tab, adjusted for Kubernetes universes and for master
+ * servers.
+ */
+export const metricsForTab = (type: string, isKubernetes: boolean, isMaster: boolean): string[] => {
+  const tab = (MetricTypesWithOperations as Record<string, { metrics: readonly string[] }>)[type];
+  let metrics: string[] = [...tab.metrics];
+  if (isKubernetes) {
+    metrics = metrics
+      .filter((metric) => !METRICS_UNAVAILABLE_ON_KUBERNETES.includes(metric))
+      .map((metric) => KUBERNETES_METRIC_KEYS[metric] ?? metric);
+    if (type === MetricTypes.SERVER) {
+      metrics.push(NODE_EXPORTER_MEMORY_METRIC_KEY);
+    }
+  }
+  if (isMaster && type === MetricTypes.DISK_IO) {
+    metrics = metrics.map((metric) => MASTER_DISK_IO_METRIC_KEYS[metric] ?? metric);
+  }
+  return metrics;
+};
+
+// Series the node_exporter sidecar publishes about its own checks, queried with the tabs it feeds.
+export const NODE_EXPORTER_CHECK_METRIC_KEY = 'node_exporter_check';
+export const NODE_EXPORTER_COLLECTOR_METRIC_KEY = 'node_exporter_collector_success';
+
+const NODE_EXPORTER_DISK_SOURCES = {
+  checks: ['data_volume', 'diskstats'],
+  collectors: ['diskstats']
+};
+
+// The sidecar checks and collectors each panel depends on.
+export const NODE_EXPORTER_PANEL_SOURCES: Readonly<
+  Record<string, { checks: string[]; collectors: string[] }>
+> = {
+  disk_iops: NODE_EXPORTER_DISK_SOURCES,
+  disk_bytes_per_second_per_node: NODE_EXPORTER_DISK_SOURCES,
+  disk_io_time: NODE_EXPORTER_DISK_SOURCES,
+  disk_io_queue_depth: NODE_EXPORTER_DISK_SOURCES,
+  disk_io_read_latency: NODE_EXPORTER_DISK_SOURCES,
+  disk_io_write_latency: NODE_EXPORTER_DISK_SOURCES,
+  network_packets: { checks: [], collectors: ['netdev'] },
+  network_bytes: { checks: [], collectors: ['netdev'] },
+  network_errors: { checks: [], collectors: ['netdev'] },
+  network_tcp_retransmits: { checks: [], collectors: ['netstat'] }
+};
+
+export const NODE_EXPORTER_CHECK_REASONS: Readonly<Record<string, string>> = {
+  no_mount: 'nothing is mounted at the data volume',
+  bind_mount: 'the data volume is a bind mount of a node directory, not a dedicated volume',
+  virtual_fs: 'the data volume is on a virtual filesystem with no block device',
+  no_diskstats_row: 'the device of the data volume has no row in /proc/diskstats',
+  no_data_volumes: 'the pod has no data volumes'
+};

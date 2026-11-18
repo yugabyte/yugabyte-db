@@ -74,6 +74,7 @@ import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -157,6 +158,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   private final LocalhostAccessChecker localhostChecker;
   private final RoleBindingUtil roleBindingUtil;
   private final KubernetesOverridesHandler kubernetesOverridesHandler;
+  private final MetricService metricService;
 
   @Inject
   public UniverseManagementHandler(
@@ -174,8 +176,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
       FileCollectionDownloader fileCollectionDownloader,
       LocalhostAccessChecker localhostChecker,
       RoleBindingUtil roleBindingUtil,
-      KubernetesOverridesHandler kubernetesOverridesHandler) {
+      KubernetesOverridesHandler kubernetesOverridesHandler,
+      MetricService metricService) {
     super(auditService);
+    this.metricService = metricService;
     this.confGetter = confGetter;
     this.releaseManager = releaseManager;
     this.swamperHelper = swamperHelper;
@@ -904,6 +908,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         nodeInstance.delete();
       }
       Universe.delete(universe.getUniverseUUID());
+      metricService.markSourceRemoved(customer.getUuid(), universe.getUniverseUUID());
     } else {
       throw new PlatformServiceException(
           BAD_REQUEST,

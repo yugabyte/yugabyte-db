@@ -1,0 +1,6 @@
+####################################################################################################
+# WITHOUT OVERLAPS Testsuite
+# Port of the without_overlaps test from parallel_schedule.
+# Covers psql \d printing of PRIMARY KEY / UNIQUE ... WITHOUT OVERLAPS.
+####################################################################################################
+test: yb.port.without_overlaps

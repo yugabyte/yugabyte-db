@@ -888,34 +888,32 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT node_id, COUNT(*) FROM "gv$node_metrics"
 GROUP BY node_id
 ORDER BY node_id;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Sort
-   Output: "gv$node_metrics_1".node_id, (count(*))
-   Sort Key: "gv$node_metrics_1".node_id
-   ->  Finalize HashAggregate
-         Output: "gv$node_metrics_1".node_id, count(*)
-         Group Key: "gv$node_metrics_1".node_id
-         ->  Append
-               ->  Partial HashAggregate
-                     Output: "gv$node_metrics_1".node_id, PARTIAL count(*)
-                     Group Key: "gv$node_metrics_1".node_id
-                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
-                           Output: "gv$node_metrics_1".node_id
-                           Remote SQL: SELECT node_id FROM public.local_node_metrics
-               ->  Partial HashAggregate
-                     Output: "gv$node_metrics_2".node_id, PARTIAL count(*)
-                     Group Key: "gv$node_metrics_2".node_id
-                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
-                           Output: "gv$node_metrics_2".node_id
-                           Remote SQL: SELECT node_id FROM public.local_node_metrics
-               ->  Partial HashAggregate
-                     Output: "gv$node_metrics_3".node_id, PARTIAL count(*)
-                     Group Key: "gv$node_metrics_3".node_id
-                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
-                           Output: "gv$node_metrics_3".node_id
-                           Remote SQL: SELECT node_id FROM public.local_node_metrics
-(25 rows)
+                                                  QUERY PLAN                                                   
+---------------------------------------------------------------------------------------------------------------
+ Finalize GroupAggregate
+   Output: "gv$node_metrics_1".node_id, count(*)
+   Group Key: "gv$node_metrics_1".node_id
+   ->  Merge Append
+         Sort Key: "gv$node_metrics_1".node_id
+         ->  Partial GroupAggregate
+               Output: "gv$node_metrics_1".node_id, PARTIAL count(*)
+               Group Key: "gv$node_metrics_1".node_id
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".node_id
+                     Remote SQL: SELECT node_id FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST
+         ->  Partial GroupAggregate
+               Output: "gv$node_metrics_2".node_id, PARTIAL count(*)
+               Group Key: "gv$node_metrics_2".node_id
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".node_id
+                     Remote SQL: SELECT node_id FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST
+         ->  Partial GroupAggregate
+               Output: "gv$node_metrics_3".node_id, PARTIAL count(*)
+               Group Key: "gv$node_metrics_3".node_id
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".node_id
+                     Remote SQL: SELECT node_id FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST
+(23 rows)
 
 SELECT node_id, COUNT(*) FROM "gv$node_metrics"
 GROUP BY node_id

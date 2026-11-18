@@ -19,9 +19,13 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
@@ -31,6 +35,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -326,6 +331,67 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
         "Backup task associated with Configuration " + configUUID.toString() + " is in progress.");
     assertEquals(1, CustomerConfig.getAll(defaultCustomer.getUuid()).size());
     assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  private static final String BACKUPS_BEING_DELETED =
+      "Backups stored with configuration %s are still being deleted, which can take a few garbage"
+          + " collector runs. Try again once their deletion finishes, or use the V2 delete, which"
+          + " removes the configuration once it does.";
+
+  /** A config backup in one of the deletion states, as left by a delete the GC has yet to run. */
+  private Backup backupBeingDeleted(UUID configUUID, Backup.BackupState state) {
+    Backup backup =
+        ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), configUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+    backup.transitionState(Backup.BackupState.QueuedForDeletion);
+    backup.transitionState(state);
+    assertEquals(state, backup.getState());
+    return backup;
+  }
+
+  @Test
+  public void testDeleteStorageConfigWithBackupsBeingDeleted() {
+    int i = 0;
+    for (Backup.BackupState state : Backup.DELETION_STATES) {
+      CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "DEL" + i++);
+      UUID configUUID = config.getConfigUUID();
+      backupBeingDeleted(configUUID, state);
+      for (String query : new String[] {"", "?isDeleteBackups=true"}) {
+        String url =
+            "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID + query;
+        Result result =
+            assertPlatformException(
+                () -> doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+        assertBadRequest(result, String.format(BACKUPS_BEING_DELETED, config.getConfigName()));
+        assertNotNull(CustomerConfig.get(configUUID));
+      }
+    }
+    verify(mockCommissioner, times(0)).submit(any(), any());
+    assertAuditEntry(0, defaultCustomer.getUuid());
+  }
+
+  @Test
+  public void testDeleteStorageConfigIgnoresOtherConfigsBackupsBeingDeleted() {
+    UUID otherConfigUUID =
+        ModelFactory.createS3StorageConfig(defaultCustomer, "OTHER").getConfigUUID();
+    backupBeingDeleted(otherConfigUUID, Backup.BackupState.QueuedForDeletion);
+    UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST14").getConfigUUID();
+    String url = "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID;
+    assertOk(doRequestWithAuthToken("DELETE", url, defaultUser.createAuthToken()));
+    assertNull(CustomerConfig.get(configUUID));
+  }
+
+  /** The operator deletes through the service, not the controller. */
+  @Test
+  public void testServiceDeleteRefusedWhileBackupsBeingDeleted() {
+    CustomerConfig config = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST15");
+    backupBeingDeleted(config.getConfigUUID(), Backup.BackupState.DeleteInProgress);
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> customerConfigService.delete(defaultCustomer.getUuid(), config.getConfigUUID()));
+    assertEquals(String.format(BACKUPS_BEING_DELETED, config.getConfigName()), e.getMessage());
+    assertNotNull(CustomerConfig.get(config.getConfigUUID()));
   }
 
   @Test

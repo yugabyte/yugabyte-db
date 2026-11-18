@@ -1156,8 +1156,20 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     return MakeFuture<Status>([&, handle](auto callback) {
       manager_->rpcs().RegisterAndStart(
+          // Include no origination info on this heartbeat, unlike the normal PENDING heartbeats
+          // sent by SendHeartbeat.
+          //
+          // If we include origination info, then the coordinator might refuse the heartbeat with
+          // Expired and abort the transaction (see
+          // TransactionCoordinatorContext::CheckTransactionMayContinue).  However,
+          // RollbackToSubTransaction treats an Expired reply as a successful rollback, so that
+          // refusal would never be recorded on the transaction.  The next heartbeat would then find
+          // the transaction already aborted and record a generic "expired or aborted" error
+          // (SQLSTATE YB001), so the user would never learn that an xCluster operation was the
+          // cause.  Leaving this heartbeat unchecked lets the next normal heartbeat be refused
+          // instead, recording the persistence gate's error.
           PrepareHeartbeatRPC(
-              deadline, status_tablet, TransactionStatus::PENDING,
+              deadline, status_tablet, TransactionStatus::PENDING, OriginationInfo(),
               [&, callback, handle](const auto& status, const auto& req, const auto& resp) {
                 UpdateClock(resp, manager_);
                 manager_->rpcs().Unregister(handle);
@@ -1551,8 +1563,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     // up intents before receiving the UpdateTransaction(PROMOTING) RPC, so we send one last
     // UpdateTransaction(PENDING) first, and abort instead if it fails.
     VLOG_WITH_PREFIX(1) << "Last heartbeat to old status tablet failed, resending before COMMIT";
+    // Include no origination info on this heartbeat, unlike the normal PENDING heartbeats sent by
+    // SendHeartbeat.  The commit meets the persistence gate at the new status tablet regardless,
+    // and the old status tablet's TServer, whose persistence block map may lag, should not fail a
+    // commit that gate would accept.
     return PrepareHeartbeatRPC(
-        deadline, old_status_tablet_, TransactionStatus::PENDING,
+        deadline, old_status_tablet_, TransactionStatus::PENDING, OriginationInfo(),
         [this, deadline, seal_only, transaction](
             const auto& status, const auto& req, const auto& resp) {
           UpdateClock(resp, manager_);
@@ -1577,7 +1593,8 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   rpc::RpcCommandPtr PrepareHeartbeatRPC(
       CoarseTimePoint deadline, const internal::RemoteTabletPtr& status_tablet,
-      TransactionStatus status, UpdateTransactionCallback callback,
+      TransactionStatus status, const OriginationInfo& origination_info,
+      UpdateTransactionCallback callback,
       std::optional<SubtxnSet> aborted_set_for_rollback_heartbeat = std::nullopt,
       const TabletStates& tablets_with_locks = {},
       const std::optional<TransactionMetadata>& background_transaction = std::nullopt) {
@@ -1617,6 +1634,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     if (background_transaction) {
       background_transaction->ToPB(state.mutable_background_transaction_meta());
+    }
+
+    // Send origination info so the coordinator can abort a pending transaction whose database is
+    // blocked.
+    if (status == TransactionStatus::PENDING && origination_info.IsSet()) {
+      origination_info.ToPB(state.mutable_origination_info());
     }
 
     return UpdateTransaction(
@@ -2250,7 +2273,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         }
       }
       rpc = PrepareHeartbeatRPC(
-          CoarseMonoClock::now() + timeout, status_tablet, status,
+          CoarseMonoClock::now() + timeout, status_tablet, status, origination_info_,
           std::bind(
               &Impl::HeartbeatDone, this, _1, _2, _3, status, transaction, send_to_new_tablet),
           std::nullopt, tablets_, background_transaction);

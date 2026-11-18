@@ -307,7 +307,8 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Returns a list of catalog tables which gets streamed. (Currently 'pg_class',
   // 'pg_publication_rel', 'pg_replication_origin' and 'pg_publication' are streamed. When
-  // ysql_yb_enable_replication_slot_transactional_ddl is enabled, 'pg_attribute' is also streamed).
+  // ysql_yb_enable_replication_slot_transactional_ddl is enabled, 'pg_attribute' and
+  // 'pg_publication_rel_prpubid_index' are also streamed).
   // 'namespace_id' is the id of namespace on which stream was created.
   static Result<std::vector<TableId>> GetStreamableCatalogTables(const NamespaceId& namespace_id);
 

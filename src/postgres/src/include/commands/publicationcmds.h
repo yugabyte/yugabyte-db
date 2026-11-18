@@ -40,4 +40,7 @@ extern bool pub_contains_invalid_column(Oid pubid, Relation relation,
 										bool *invalid_gen_col);
 extern void InvalidatePubRelSyncCache(Oid pubid, bool puballtables);
 
+/* YB declarations */
+extern bool YbIsSimpleRowFilterExpr(Node *node);
+
 #endif							/* PUBLICATIONCMDS_H */

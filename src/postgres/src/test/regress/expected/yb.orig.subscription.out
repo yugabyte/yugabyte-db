@@ -1,0 +1,25 @@
+--
+-- Subscription options that YugabyteDB does not support
+--
+-- retain_dead_tuples needs the conflict detection slot, which has no
+-- counterpart in DocDB.
+-- fail
+CREATE SUBSCRIPTION regress_testsub CONNECTION 'dbname=regress_doesnotexist' PUBLICATION testpub WITH (connect = false, retain_dead_tuples = true);
+ERROR:  retain_dead_tuples is not supported in YugabyteDB
+-- ok
+CREATE SUBSCRIPTION regress_testsub CONNECTION 'dbname=regress_doesnotexist' PUBLICATION testpub WITH (connect = false, retain_dead_tuples = false);
+WARNING:  subscription was created, but is not connected
+HINT:  To initiate replication, you must manually create the replication slot, enable the subscription, and alter the subscription to refresh publications.
+-- fail
+ALTER SUBSCRIPTION regress_testsub SET (retain_dead_tuples = true);
+ERROR:  retain_dead_tuples is not supported in YugabyteDB
+-- ok
+ALTER SUBSCRIPTION regress_testsub SET (retain_dead_tuples = false);
+SELECT subname, subretaindeadtuples FROM pg_subscription WHERE subname = 'regress_testsub';
+     subname     | subretaindeadtuples 
+-----------------+---------------------
+ regress_testsub | f
+(1 row)
+
+ALTER SUBSCRIPTION regress_testsub SET (slot_name = NONE);
+DROP SUBSCRIPTION regress_testsub;

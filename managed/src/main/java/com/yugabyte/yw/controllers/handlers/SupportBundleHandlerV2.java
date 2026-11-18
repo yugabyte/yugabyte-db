@@ -13,7 +13,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleFormDataV2Mapper;
@@ -513,9 +512,10 @@ public class SupportBundleHandlerV2 {
   private void pruneK8sUnsupportedPromExports(
       SupportBundleFormDataV2 bundleData, Universe universe) {
     if (bundleData.prometheusMetricsTypes == null
-        || (confGetter.getConfForScope(universe, UniverseConfKeys.k8sNodeExporterEnabled)
-            && KubernetesUtil.isNodeExporterSidecarSupported(
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion))
+        || KubernetesUtil.isNodeExporterSidecarEnabled(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            universe,
+            confGetter)
         || !bundleData.prometheusMetricsTypes.remove(PrometheusMetricsType.NODE_EXPORT)) {
       return;
     }

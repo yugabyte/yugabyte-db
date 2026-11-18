@@ -10,7 +10,7 @@
 \i :filename
 \set _echo_parameterized_query :ECHO
 \set ECHO none
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
 \set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 \set P1 ':explain'
@@ -41,7 +41,7 @@ SET ROLE regress_merge_scan_rls_user;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -59,7 +59,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
          Storage Table Rows Scanned: 15
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops on)*/ SELECT r1, r2, r3, r4, r5 FROM bkt_tbl ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
                                                             QUERY PLAN                                                             
 -----------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -102,7 +102,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, bkt FROM bkt_tbl WHERE bkt IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(bkt_tbl bkt_tbl_pkey) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, bkt FROM bkt_tbl WHERE bkt IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -140,7 +140,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
                                                              QUERY PLAN                                                              
 -------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -175,7 +175,7 @@ RESET ROLE;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(bkt_tbl bkt_tbl_expr_idx) Set(yb_max_merge_scan_streams 64) Set(yb_enable_derived_saops off)*/ SELECT r1, r2, r3, r4, r5, yb_hash_code(r3, r2, r4, r5, r1) % 3 FROM bkt_tbl WHERE yb_hash_code(r3, r2, r4, r5, r1) % 3 IN (0, 1, 2) ORDER BY r1, r2, r3, r4, r5 LIMIT 5;
                                                             QUERY PLAN                                                             
 -----------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -233,7 +233,7 @@ SET ROLE regress_merge_scan_rls_user;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
                                                                  QUERY PLAN                                                                 
 --------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=4.00 loops=1)
@@ -251,9 +251,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Rows Scanned: 202
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
 (output identical to previous)
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
                                                               QUERY PLAN                                                              
 --------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=4.00 loops=1)
@@ -291,7 +291,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 0)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
                                                                       QUERY PLAN                                                                       
 -------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=4.00 loops=1)
@@ -309,9 +309,9 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
                Storage Table Rows Scanned: 51
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
 (output identical to previous)
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/ SELECT c, s, d FROM rls_ec_tbl WHERE s IN (1, 2) AND d = make_date(2020, 1, 2) AND t = make_timestamp(2020, 1, 2, 0, 0, 0) ORDER BY c LIMIT 4;
                                                                    QUERY PLAN                                                                    
 -------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=4.00 loops=1)

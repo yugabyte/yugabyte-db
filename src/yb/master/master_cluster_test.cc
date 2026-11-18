@@ -21,6 +21,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
@@ -403,11 +404,36 @@ Status MasterClusterTest::DrainTabletServer(
   auto& hp = tserver_it->registration().common().broadcast_addresses(0);
   RETURN_NOT_OK(client.BlacklistHost(HostPortPB(hp)));
 
+  // A balancer run that read the old blacklist may have queued an add to this ts, and that task
+  // outlives the run. Only trust the checks below once a run that started after the blacklist
+  // change has ended with no balancer tasks pending.
+  auto latest_balancer_activity = [this]() -> Result<ClusterBalancerActivityInfo> {
+    auto* leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    return leader->catalog_manager_impl().cluster_balancer()->GetLatestActivityInfo();
+  };
+  const auto blacklist_time = MonoTime::Now();
+  RETURN_NOT_OK(WaitFor(
+      [&latest_balancer_activity, blacklist_time]() -> Result<bool> {
+        return VERIFY_RESULT(latest_balancer_activity()).run_end_time_ > blacklist_time;
+      },
+      timeout, "Cluster balancer run after blacklist change"));
+  const auto fresh_run_start = MonoTime::Now();
+
   // Now wait for the cluster balancer to move all tablets off the tserver.
   auto ts_proxy = VERIFY_RESULT(CreateTabletServerServiceProxy(uuid));
   std::string message;
   return WaitFor(
-      [this, &ts_proxy, &message, &uuid, &client]() -> Result<bool> {
+      [this, &ts_proxy, &message, &uuid, &client, &latest_balancer_activity,
+       fresh_run_start]() -> Result<bool> {
+        auto activity = VERIFY_RESULT(latest_balancer_activity());
+        if (activity.run_end_time_ <= fresh_run_start) {
+          message = "waiting for a cluster balancer run that saw the blacklist";
+          return false;
+        }
+        if (!activity.IsIdle()) {
+          message = "waiting for the cluster balancer to have no pending tasks";
+          return false;
+        }
         auto resp = VERIFY_RESULT(ListTabletsForTabletServer(ts_proxy));
         for (const auto& entry : resp.entries()) {
           if (entry.state() != tablet::RaftGroupStatePB::SHUTDOWN) {

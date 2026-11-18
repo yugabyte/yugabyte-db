@@ -48,6 +48,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
@@ -73,6 +74,15 @@ DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(TEST_pause_obj_lock_release_before_persist);
 DECLARE_bool(TEST_pause_ysql_lease_refresh_after_epoch_update);
 DECLARE_bool(TEST_tserver_enable_ysql_lease_refresh);
+DECLARE_uint64(object_lock_release_retry_timeout_ms);
+DECLARE_uint64(object_lock_release_fence_after_ms);
+DECLARE_uint32(object_lock_release_fence_min_failures);
+DECLARE_uint32(object_lock_release_fence_hold_off_lease_periods);
+DECLARE_string(TEST_fail_release_object_locks_on_tserver_uuid);
+DECLARE_bool(TEST_fail_release_object_locks);
+DECLARE_bool(TEST_fail_master_local_release_once);
+
+METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_ReleaseObjectLocks);
 namespace yb {
 
 namespace {
@@ -1156,6 +1166,294 @@ TEST_F(ObjectLockTest, TServerLeaseExpiresBeforeExclusiveLockRequest) {
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(1), kTxn2, kDatabaseID, kRelationId));
   ASSERT_OK(cluster_->mini_tablet_server(idx_to_take_down)->Start());
+}
+
+// A tserver that keeps refreshing its lease but fails every release must lose its lease, so that
+// the release completes without it, and must not get a new lease until the hold-off passes.
+TEST_F(ObjectLockTest, FenceTServerThatFailsReleases) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_retry_timeout_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_after_ms) = 2000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_min_failures) = 3;
+  const auto hold_off = MonoDelta::FromMilliseconds(
+      FLAGS_master_ysql_operation_lease_ttl_ms *
+      FLAGS_object_lock_release_fence_hold_off_lease_periods);
+  // Slack for the cleanup poller interval and for polling the master from the test.
+  const MonoDelta kSlack = 1s;
+  constexpr size_t kWedgedIdx = 2;
+  const auto& wedged_uuid = TSUuid(kWedgedIdx);
+  auto* wedged_ts = cluster_->mini_tablet_server(kWedgedIdx);
+  const auto old_lease_epoch =
+      ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, wedged_uuid)).lease_epoch();
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(0), kTxn1, kDatabaseID, kRelationId));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks_on_tserver_uuid) =
+      wedged_uuid;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = true;
+  LOG(INFO) << "First release attempt: "
+            << ReleaseLockGloballyAt(&master_proxy, TSUuid(0), kTxn1);
+
+  // Poll at a fixed short interval so that the observed expiry time is close to the real one,
+  // which the hold-off assertions below are measured from.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return !VERIFY_RESULT(GetTServerLeaseInfo(*cluster_, wedged_uuid)).is_live();
+      },
+      30s, "Wait for the fenced lease to expire on the master", 100ms /* initial_delay */,
+      1 /* delay_multiplier */));
+  const auto lease_expired_at = MonoTime::Now();
+  LOG(INFO) << "Lease of tserver " << wedged_uuid << " expired on the master";
+
+  // With the fenced tserver out of the fan-out, a retry completes the release.
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  ASSERT_OK(WaitFor(
+      [&]() { return master_local_lock_manager->TEST_GrantedLocksSize() == 0; }, kTimeout,
+      "Wait for the stuck release to complete"));
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(1), kTxn2, kDatabaseID, kRelationId));
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(1), kTxn2));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = false;
+
+  // The tserver keeps asking for a lease throughout; it must be refused during the hold-off.
+  // Only the master's view is checked: MiniCluster disables the tserver's own lease expiry check.
+  const auto refuse_until = lease_expired_at + hold_off - kSlack;
+  while (MonoTime::Now() < refuse_until) {
+    ASSERT_FALSE(ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, wedged_uuid)).is_live());
+    SleepFor(200ms);
+  }
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return VERIFY_RESULT(GetTServerLeaseInfo(*cluster_, wedged_uuid)).is_live();
+      },
+      hold_off + kTimeout, "Wait for the tserver to be granted a new lease"));
+  ASSERT_GE(MonoTime::Now() - lease_expired_at, hold_off - kSlack);
+  ASSERT_GT(
+      ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, wedged_uuid)).lease_epoch(), old_lease_epoch);
+  ASSERT_OK(WaitForTabletServersToAcquireYSQLLeases({wedged_ts}, kTimeout));
+}
+
+// A tserver that failed a release and then got a newer lease epoch is not retried: the new lease
+// was bootstrapped without the release's locks. It keeps failing releases throughout, so the
+// release can only complete by skipping it.
+TEST_F(ObjectLockTest, RetrySkipsTServerWithNewerLeaseEpoch) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_retry_timeout_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_after_ms) = 0;
+  constexpr size_t kStuckIdx = 2;
+  // A copy: the reference TSUuid returns dangles once the tserver is shut down.
+  const std::string stuck_uuid = TSUuid(kStuckIdx);
+  auto* stuck_ts = cluster_->mini_tablet_server(kStuckIdx);
+  const auto old_lease_epoch =
+      ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, stuck_uuid)).lease_epoch();
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(0), kTxn1, kDatabaseID, kRelationId));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks_on_tserver_uuid) = stuck_uuid;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = true;
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), kTxn1));
+
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  // Retries keep failing on the stuck tserver while it keeps its lease.
+  SleepFor(MonoDelta::FromMilliseconds(4 * FLAGS_object_lock_cleanup_interval_ms));
+  ASSERT_GT(master_local_lock_manager->TEST_GrantedLocksSize(), 0);
+
+  // The restart is shorter than the lease TTL, so the master sees the old lease live until the new
+  // instance gets a newer lease epoch.
+  ASSERT_OK(RestartTabletServer(*stuck_ts, kTimeout));
+  ASSERT_GT(
+      ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, stuck_uuid)).lease_epoch(), old_lease_epoch);
+  ASSERT_OK(WaitFor(
+      [&] { return master_local_lock_manager->TEST_GrantedLocksSize() == 0; }, kTimeout,
+      "Wait for the release to complete without the re-leased tserver"));
+}
+
+// A fenced tserver that restarts gets a lease without waiting out the hold-off.
+TEST_F(ObjectLockTest, RestartLiftsLeaseFence) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_retry_timeout_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_after_ms) = 2000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_min_failures) = 3;
+  // Far longer than the restart is allowed to take below.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_hold_off_lease_periods) = 20;
+  constexpr size_t kWedgedIdx = 2;
+  // A copy: the reference TSUuid returns dangles once the tserver is shut down.
+  const std::string wedged_uuid = TSUuid(kWedgedIdx);
+  auto* wedged_ts = cluster_->mini_tablet_server(kWedgedIdx);
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(0), kTxn1, kDatabaseID, kRelationId));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks_on_tserver_uuid) =
+      wedged_uuid;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = true;
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), kTxn1));
+  ASSERT_OK(WaitForTServerLeaseToExpire(wedged_uuid, 30s));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = false;
+
+  ASSERT_OK(RestartTabletServer(*wedged_ts, kTimeout));
+  ASSERT_TRUE(ASSERT_RESULT(GetTServerLeaseInfo(*cluster_, wedged_uuid)).is_live());
+}
+
+// Retries of a failed release go only to the tservers that have not acked it.
+TEST_F(ObjectLockTest, RetriedReleaseSkipsTServersThatAcked) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_retry_timeout_ms) = 1000;
+  // Keep the tserver failing releases without losing its lease.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_after_ms) = 0;
+  constexpr size_t kStuckIdx = 2;
+  auto release_rpcs = [this](size_t idx) {
+    return cluster_->mini_tablet_server(idx)
+        ->metric_entity()
+        .FindOrCreateMetric<Histogram>(
+            &METRIC_handler_latency_yb_tserver_TabletServerService_ReleaseObjectLocks)
+        ->underlying()
+        ->TotalCount();
+  };
+  auto release_rpcs_at_all = [&] {
+    std::vector<uint64_t> counts;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      counts.push_back(release_rpcs(i));
+    }
+    return counts;
+  };
+  auto wait_for_retries_at_stuck_tserver = [&](uint64_t num_retries) {
+    const auto target = release_rpcs(kStuckIdx) + num_retries;
+    return WaitFor(
+        [&] { return release_rpcs(kStuckIdx) >= target; }, kTimeout,
+        Format("Wait for $0 retries to reach the stuck tserver", num_retries));
+  };
+
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(0), kTxn1, kDatabaseID, kRelationId));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks_on_tserver_uuid) =
+      TSUuid(kStuckIdx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = true;
+  // Without wait_for_completion the master responds once the fan-out is scheduled.
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, TSUuid(0), kTxn1));
+
+  // Baseline after the first fan-out reached every tserver and a retry reached the stuck one.
+  ASSERT_OK(WaitFor(
+      [&] {
+        auto counts = release_rpcs_at_all();
+        return std::ranges::all_of(counts, [](auto count) { return count >= 1; });
+      },
+      kTimeout, "Wait for the first fan-out to reach every tserver"));
+  ASSERT_OK(wait_for_retries_at_stuck_tserver(1));
+  const auto baseline = release_rpcs_at_all();
+  ASSERT_OK(wait_for_retries_at_stuck_tserver(3));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = false;
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  ASSERT_OK(WaitFor(
+      [&]() { return master_local_lock_manager->TEST_GrantedLocksSize() == 0; }, kTimeout,
+      "Wait for the release to complete once the tserver recovers"));
+  ASSERT_EQ(
+      cluster_->mini_tablet_server(kStuckIdx)->server()->ts_local_lock_manager()
+          ->TEST_GrantedLocksSize(),
+      0);
+
+  const auto final_counts = release_rpcs_at_all();
+  for (size_t i = 0; i < final_counts.size(); ++i) {
+    if (i == kStuckIdx) {
+      ASSERT_GT(final_counts[i], baseline[i]);
+    } else {
+      ASSERT_EQ(final_counts[i], baseline[i]) << "Retry was sent to tserver " << i;
+    }
+  }
+}
+
+// A release whose local release on the master fails after it was persisted is retried.
+TEST_F(ObjectLockTest, MasterLocalReleaseFailureIsRetried) {
+  const auto& session_host = TSUuid(0);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, session_host, kTxn1, kDatabaseID, kRelationId));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_master_local_release_once) = true;
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, session_host, kTxn1));
+
+  auto* olm = cluster_->mini_master()->master()->catalog_manager_impl()->object_lock_info_manager();
+  auto master_local_lock_manager = olm->TEST_ts_local_lock_manager();
+  ASSERT_OK(WaitFor(
+      [&] { return master_local_lock_manager->TEST_GrantedLocksSize() == 0; }, kTimeout,
+      "Wait for the retried local release on the master"));
+  ASSERT_FALSE(FLAGS_TEST_fail_master_local_release_once);
+  ASSERT_EQ(
+      ASSERT_RESULT(olm->TEST_GetObjectLockInfoPB(session_host)).in_progress_release_request_size(),
+      0);
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, TSUuid(1), kTxn2, kDatabaseID, kRelationId));
+}
+
+// A persisted sync release reports success even if a tserver has not applied it yet.
+TEST_F(ObjectLockTest, SyncReleaseSucceedsOncePersisted) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_after_ms) = 0;
+  constexpr size_t kStuckIdx = 2;
+  const auto& session_host = TSUuid(0);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, session_host, kTxn1, kDatabaseID, kRelationId));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks_on_tserver_uuid) =
+      TSUuid(kStuckIdx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = true;
+
+  auto req = ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(session_host, kTxn1);
+  req.set_wait_for_completion(true);
+  master::ReleaseObjectLocksGlobalResponsePB resp;
+  auto controller = RpcController();
+  ASSERT_OK(master_proxy.ReleaseObjectLocksGlobal(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  auto* olm = cluster_->mini_master()->master()->catalog_manager_impl()->object_lock_info_manager();
+  ASSERT_EQ(
+      ASSERT_RESULT(olm->TEST_GetObjectLockInfoPB(session_host)).in_progress_release_request_size(),
+      1);
+  ASSERT_GT(olm->TEST_ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = false;
+  ASSERT_OK(WaitFor(
+      [&] { return olm->TEST_ts_local_lock_manager()->TEST_GrantedLocksSize() == 0; }, kTimeout,
+      "Wait for the master to apply the persisted release"));
+}
+
+// While an expired lease epoch's release keeps failing, cleanup must not add a request per pass.
+TEST_F(ObjectLockTest, ExpiredLeaseReleaseIsNotDuplicatedWhileFailing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_object_lock_release_fence_after_ms) = 0;
+  constexpr size_t kExpiringIdx = 0;
+  constexpr size_t kStuckIdx = 2;
+  // A copy: the reference TSUuid returns dangles once the tserver is shut down.
+  const std::string expiring_uuid = TSUuid(kExpiringIdx);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, expiring_uuid, kTxn1, kDatabaseID, kRelationId));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks_on_tserver_uuid) =
+      TSUuid(kStuckIdx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = true;
+  cluster_->mini_tablet_server(kExpiringIdx)->Shutdown();
+  ASSERT_OK(WaitForTServerLeaseToExpire(expiring_uuid, kTimeout));
+
+  auto* olm = cluster_->mini_master()->master()->catalog_manager_impl()->object_lock_info_manager();
+  auto num_in_progress = [&]() -> Result<int> {
+    return VERIFY_RESULT(olm->TEST_GetObjectLockInfoPB(expiring_uuid))
+        .in_progress_release_request_size();
+  };
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return VERIFY_RESULT(num_in_progress()) > 0; }, kTimeout,
+      "Wait for the expired lease epoch's release to be persisted"));
+  SleepFor(MonoDelta::FromMilliseconds(10 * FLAGS_object_lock_cleanup_interval_ms));
+  ASSERT_EQ(ASSERT_RESULT(num_in_progress()), 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_release_object_locks) = false;
+  auto master_local_lock_manager = olm->TEST_ts_local_lock_manager();
+  ASSERT_OK(WaitFor(
+      [&] { return master_local_lock_manager->TEST_GrantedLocksSize() == 0; }, kTimeout,
+      "Wait for the release to complete once the tserver recovers"));
+  ASSERT_OK(cluster_->mini_tablet_server(kExpiringIdx)->Start());
 }
 
 TEST_F(ObjectLockTest, AcquireBetweenLeaseEpochUpdateAndLockManagerReset) {

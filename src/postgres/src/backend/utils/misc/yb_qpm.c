@@ -29,6 +29,7 @@
 #include <zlib.h>
 
 #include "access/hash.h"
+#include "access/parallel.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_namespace.h"
@@ -827,6 +828,14 @@ qpmProcess(QueryDesc *queryDesc)
 {
 	/* Do not track or store query plans in initdb mode */
 	if (YBIsInitDbModeEnvVarSet())
+		return;
+
+	/*
+	 * A parallel worker's plan is only the subtree below the Gather; its
+	 * PARAM_EXEC references can't be deparsed, and the leader records the
+	 * full plan anyway.
+	 */
+	if (IsParallelWorker())
 		return;
 
 	if (YbQpmIsEnabled() &&

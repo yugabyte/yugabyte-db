@@ -86,23 +86,18 @@ ANALYZE pagg_tab2;
                       QUERY PLAN                       
 -------------------------------------------------------
  Aggregate
-   ->  Append
-         ->  Hash Join
-               Hash Cond: (t1_1.x = t2_1.y)
+   ->  Hash Join
+         Hash Cond: (t1.x = t2.y)
+         ->  Append
                ->  Seq Scan on pagg_tab1_p1 t1_1
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p1 t2_1
-         ->  Hash Join
-               Hash Cond: (t1_2.x = t2_2.y)
                ->  Seq Scan on pagg_tab1_p2 t1_2
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p2 t2_2
-         ->  Hash Join
-               Hash Cond: (t1_3.x = t2_3.y)
                ->  Seq Scan on pagg_tab1_p3 t1_3
-               ->  Hash
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on pagg_tab2_p1 t2_1
+                     ->  Seq Scan on pagg_tab2_p2 t2_2
                      ->  Seq Scan on pagg_tab2_p3 t2_3
-(17 rows)
+(12 rows)
 
                          QUERY PLAN                          
 -------------------------------------------------------------
@@ -192,23 +187,18 @@ ANALYZE pagg_tab2;
                       QUERY PLAN                      
 ------------------------------------------------------
  Aggregate
-   ->  Append
-         ->  Hash Left Join
-               Hash Cond: (a_1.x = b_1.y)
+   ->  Hash Left Join
+         Hash Cond: (a.x = b.y)
+         ->  Append
                ->  Seq Scan on pagg_tab1_p1 a_1
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p1 b_1
-         ->  Hash Left Join
-               Hash Cond: (a_2.x = b_2.y)
                ->  Seq Scan on pagg_tab1_p2 a_2
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p2 b_2
-         ->  Hash Left Join
-               Hash Cond: (a_3.x = b_3.y)
                ->  Seq Scan on pagg_tab1_p3 a_3
-               ->  Hash
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on pagg_tab2_p1 b_1
+                     ->  Seq Scan on pagg_tab2_p2 b_2
                      ->  Seq Scan on pagg_tab2_p3 b_3
-(17 rows)
+(12 rows)
 
                          QUERY PLAN                         
 ------------------------------------------------------------
@@ -251,23 +241,18 @@ ANALYZE pagg_tab2;
                       QUERY PLAN                      
 ------------------------------------------------------
  Aggregate
-   ->  Append
-         ->  Hash Right Join
-               Hash Cond: (a_1.x = b_1.y)
+   ->  Hash Right Join
+         Hash Cond: (a.x = b.y)
+         ->  Append
                ->  Seq Scan on pagg_tab1_p1 a_1
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p1 b_1
-         ->  Hash Right Join
-               Hash Cond: (a_2.x = b_2.y)
                ->  Seq Scan on pagg_tab1_p2 a_2
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p2 b_2
-         ->  Hash Right Join
-               Hash Cond: (a_3.x = b_3.y)
                ->  Seq Scan on pagg_tab1_p3 a_3
-               ->  Hash
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on pagg_tab2_p1 b_1
+                     ->  Seq Scan on pagg_tab2_p2 b_2
                      ->  Seq Scan on pagg_tab2_p3 b_3
-(17 rows)
+(12 rows)
 
                          QUERY PLAN                         
 ------------------------------------------------------------
@@ -310,23 +295,18 @@ ANALYZE pagg_tab2;
                       QUERY PLAN                      
 ------------------------------------------------------
  Aggregate
-   ->  Append
-         ->  Hash Full Join
-               Hash Cond: (a_1.x = b_1.y)
+   ->  Hash Full Join
+         Hash Cond: (a.x = b.y)
+         ->  Append
                ->  Seq Scan on pagg_tab1_p1 a_1
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p1 b_1
-         ->  Hash Full Join
-               Hash Cond: (a_2.x = b_2.y)
                ->  Seq Scan on pagg_tab1_p2 a_2
-               ->  Hash
-                     ->  Seq Scan on pagg_tab2_p2 b_2
-         ->  Hash Full Join
-               Hash Cond: (a_3.x = b_3.y)
                ->  Seq Scan on pagg_tab1_p3 a_3
-               ->  Hash
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on pagg_tab2_p1 b_1
+                     ->  Seq Scan on pagg_tab2_p2 b_2
                      ->  Seq Scan on pagg_tab2_p3 b_3
-(17 rows)
+(12 rows)
 
                          QUERY PLAN                         
 ------------------------------------------------------------

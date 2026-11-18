@@ -21,9 +21,21 @@ rightNav:
 
 ### 2026
 
+#### November 2, 2026
+
+##### New features
+
+- {{<tags/feature/ga>}}[Multi-account](../managed-security/manage-accounts/) support. Create multiple accounts for your organization, each with its own access control. For example, you might create separate accounts for different environments, such as development, staging, and production.
+- Support for [exporting logs and metrics](../cloud-monitor/managed-integrations/) to [Tsuga](https://www.tsuga.com/).
+- Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to [Grafana Mimir](https://grafana.com/docs/mimir/latest/).
+
+##### Database
+
+- Extended track updated to v2025.2.8.0.
+
 #### October 7, 2026
 
-##### New feature
+##### New features
 
 - {{<tags/feature/ea>}}Support for autoscaling. Autoscaling adds or removes nodes in a YugabyteDB Aeon cluster as CPU and connection load rise and fall, keeping the cluster sized to match gradual, sustained changes in demand. To try this feature, contact {{% support-cloud %}}.
 - {{<tags/feature/ga idea="1368">}}Support for built-in [YSQL Connection Pooling](../../additional-features/connection-manager-ysql/) is now GA for YugabyteDB v2026.1 and later.

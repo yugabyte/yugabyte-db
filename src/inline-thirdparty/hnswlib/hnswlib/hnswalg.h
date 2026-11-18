@@ -2,7 +2,9 @@
 
 #include "visited_list_pool.h"
 #include "hnswlib.h"
+#include <algorithm>
 #include <atomic>
+#include <bit>
 #include <random>
 #include <stdlib.h>
 #include <assert.h>
@@ -10,6 +12,7 @@
 #include <list>
 #include <tuple>
 #include <memory>
+#include <new>
 #include <utility>
 
 namespace hnswlib {
@@ -41,6 +44,124 @@ struct InternalParameters {
     size_t size_links_level0 = 0;
 
     size_t bytes_per_vector = 0;
+};
+
+// Fixed-size elements stored in power-of-two segments of roughly 1 MB, each allocated when the
+// first of its elements is. Unlike one block sized for the capacity, a reserved but unused slot
+// costs nothing, which lets an index be opened with a large capacity cheaply.
+//
+// Segments never move once allocated, so a lock-free reader may dereference any segment it
+// reaches. The segment pointers are atomics, stored with release and loaded relaxed: a reader has
+// to learn an element's id in a way ordered after its segment store, see HierarchicalNSW::level0_.
+// Ensure() calls must be serialized by the caller. Init(), Resize() and Free() must not run
+// concurrently with anything else.
+class SegmentedStorage {
+ public:
+    SegmentedStorage() = default;
+    SegmentedStorage(const SegmentedStorage&) = delete;
+    SegmentedStorage& operator=(const SegmentedStorage&) = delete;
+
+    ~SegmentedStorage() {
+        Free();
+    }
+
+    // Frees the current segments and sizes the segment table for `capacity` elements of
+    // `element_size` bytes. The segment length is a power of two chosen so that a segment is
+    // roughly kTargetSegmentBytes, bounding the growth step for small and large elements alike.
+    void Init(size_t capacity, size_t element_size) {
+        Free();
+
+        // A segment never has to be larger than the storage itself.
+        const size_t target_per_segment = kTargetSegmentBytes / std::max<size_t>(element_size, 1);
+        const size_t per_segment = std::bit_floor(std::clamp<size_t>(
+            std::min(target_per_segment, capacity), 1, kMaxElementsPerSegment));
+
+        element_size_ = element_size;
+        elements_per_segment_ = per_segment;
+        segment_mask_ = per_segment - 1;
+        segment_shift_ = std::countr_zero(per_segment);
+        num_segments_ = (capacity + per_segment - 1) / per_segment;
+        segments_.reset(new std::atomic<char*>[num_segments_]());
+    }
+
+    // Replaces the segment table to fit `capacity` elements, keeping the allocated segments, so no
+    // element moves. Every allocated segment must hold an element below `capacity`. The segment
+    // length stays the one Init() chose, so storage grown from a small capacity uses small
+    // segments.
+    void Resize(size_t capacity) {
+        size_t new_num_segments = (capacity + elements_per_segment_ - 1) / elements_per_segment_;
+        std::unique_ptr<std::atomic<char*>[]> new_segments(
+            new std::atomic<char*>[new_num_segments]());
+        for (size_t i = 0; i < std::min(num_segments_, new_num_segments); ++i)
+            new_segments[i].store(
+                segments_[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        segments_ = std::move(new_segments);
+        num_segments_ = new_num_segments;
+    }
+
+    // Allocates the segment holding element `id` unless it exists. Throws std::bad_alloc.
+    void Ensure(size_t id) {
+        auto& slot = segments_[id >> segment_shift_];
+        if (slot.load(std::memory_order_relaxed) == nullptr) {
+            char* segment = static_cast<char*>(malloc(elements_per_segment_ * element_size_));
+            if (segment == nullptr)
+                throw std::bad_alloc();
+            slot.store(segment, std::memory_order_release);
+            segments_allocated_.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
+    // Address of element `id`, whose segment must exist.
+    inline char* Get(size_t id) const {
+        char *base = segments_[id >> segment_shift_].load(std::memory_order_relaxed);
+        return base + (id & segment_mask_) * element_size_;
+    }
+
+#ifdef USE_SSE
+    // Prefetches `offset` bytes into element `id`, where `id` may be arbitrary: hnswlib reads
+    // neighbour lists one entry past their end to drive prefetching. Flat addressing tolerated
+    // that because _mm_prefetch ignores a bad address, but a segment lookup has to range-check.
+    inline void Prefetch(size_t id, size_t offset) const {
+        size_t segment = id >> segment_shift_;
+        if (segment < num_segments_) {
+            char *base = segments_[segment].load(std::memory_order_relaxed);
+            if (base != nullptr) {
+                _mm_prefetch(base + (id & segment_mask_) * element_size_ + offset, _MM_HINT_T0);
+            }
+        }
+    }
+#endif
+
+    // Bytes of the allocated segments.
+    size_t AllocatedBytes() const {
+        return segments_allocated_.load(std::memory_order_relaxed) * elements_per_segment_ *
+               element_size_;
+    }
+
+    size_t elements_per_segment() const {
+        return elements_per_segment_;
+    }
+
+    void Free() {
+        for (size_t i = 0; i < num_segments_; ++i)
+            free(segments_[i].load(std::memory_order_relaxed));
+        segments_.reset();
+        num_segments_ = 0;
+        segments_allocated_.store(0, std::memory_order_relaxed);
+    }
+
+ private:
+    static constexpr size_t kTargetSegmentBytes = size_t{1} << 20;
+    static constexpr size_t kMaxElementsPerSegment = 4096;
+    static_assert(std::has_single_bit(kMaxElementsPerSegment));
+
+    std::unique_ptr<std::atomic<char*>[]> segments_;
+    size_t num_segments_ = 0;
+    std::atomic<size_t> segments_allocated_{0};
+    size_t element_size_ = 0;
+    size_t elements_per_segment_ = 0;
+    size_t segment_shift_ = 0;
+    size_t segment_mask_ = 0;
 };
 
 template<typename dist_t, typename label_t>
@@ -84,7 +205,16 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
     size_t size_links_level0_{0};
     size_t offsetData_{0}, offsetLevel0_{0}, label_offset_{ 0 };
 
-    char *data_level0_memory_{nullptr};
+    // Links, vector and label of every element. Ensure() is serialized by label_lookup_lock.
+    // A search reads a new element's id from a neighbour list, then loads its segment pointer
+    // with a relaxed load. The C++ memory model doesn't order these two loads. Like the rest of
+    // hnswlib's lock-free search, this relies on the hardware: addPoint stores the segment
+    // pointer (release) before it adds the element to any neighbour list, and the reader computes
+    // the segment slot's address from that id, so x86 and ARMv8 keep the loads in order. Making
+    // the slot load acquire wouldn't fix this, because the unordered read is the neighbour-list
+    // read.
+    SegmentedStorage level0_;
+
     char **linkLists_{nullptr};
     std::vector<int> element_levels_;  // keeps level of each element
 
@@ -171,9 +301,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         label_offset_ = size_links_level0_ + data_size_;
         offsetLevel0_ = 0;
 
-        data_level0_memory_ = (char *) malloc(max_elements_ * size_data_per_element_);
-        if (data_level0_memory_ == nullptr)
-            throw std::runtime_error("Not enough memory");
+        level0_.Init(max_elements_, size_data_per_element_);
 
         cur_element_count = 0;
 
@@ -185,7 +313,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
         linkLists_ = (char **) malloc(sizeof(void *) * max_elements_);
         if (linkLists_ == nullptr)
-            throw std::runtime_error("Not enough memory: HierarchicalNSW failed to allocate linklists");
+            throw std::bad_alloc();
         size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
         mult_ = 1 / log(1.0 * M_);
         revSize_ = 1.0 / mult_;
@@ -197,8 +325,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
     }
 
     void clear() {
-        free(data_level0_memory_);
-        data_level0_memory_ = nullptr;
+        level0_.Free();
         for (tableint i = 0; i < cur_element_count; i++) {
             if (element_levels_[i] > 0)
                 free(linkLists_[i]);
@@ -232,24 +359,24 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
     inline label_t getExternalLabel(tableint internal_id) const {
         label_t return_label;
-        memcpy(&return_label, (data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_), sizeof(label_t));
+        memcpy(&return_label, level0_.Get(internal_id) + label_offset_, sizeof(label_t));
         return return_label;
     }
 
 
     inline void setExternalLabel(tableint internal_id, label_t label) const {
-        memcpy((data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_), &label, sizeof(label_t));
+        memcpy(level0_.Get(internal_id) + label_offset_, &label, sizeof(label_t));
     }
 
 
     // NB! Dereferencing the returned pointer is an undefined behavior, mem copy must be used instead.
     inline label_t *getExternalLabeLp(tableint internal_id) const {
-        return (label_t *) (data_level0_memory_ + internal_id * size_data_per_element_ + label_offset_);
+        return reinterpret_cast<label_t*>(level0_.Get(internal_id) + label_offset_);
     }
 
 
     inline char *getDataByInternalId(tableint internal_id) const {
-        return (data_level0_memory_ + internal_id * size_data_per_element_ + offsetData_);
+        return level0_.Get(internal_id) + offsetData_;
     }
 
 
@@ -315,8 +442,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 #ifdef USE_SSE
             _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
             _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
-            _mm_prefetch(getDataByInternalId(*datal), _MM_HINT_T0);
-            _mm_prefetch(getDataByInternalId(*(datal + 1)), _MM_HINT_T0);
+            level0_.Prefetch(*datal, offsetData_);
+            level0_.Prefetch(*(datal + 1), offsetData_);
 #endif
 
             for (size_t j = 0; j < size; j++) {
@@ -324,7 +451,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 //                    if (candidate_id == 0) continue;
 #ifdef USE_SSE
                 _mm_prefetch((char *) (visited_array + *(datal + j + 1)), _MM_HINT_T0);
-                _mm_prefetch(getDataByInternalId(*(datal + j + 1)), _MM_HINT_T0);
+                level0_.Prefetch(*(datal + j + 1), offsetData_);
 #endif
                 if (visited_array[candidate_id] == visited_array_tag) continue;
                 visited_array[candidate_id] = visited_array_tag;
@@ -419,7 +546,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 #ifdef USE_SSE
             _mm_prefetch((char *) (visited_array + *(data + 1)), _MM_HINT_T0);
             _mm_prefetch((char *) (visited_array + *(data + 1) + 64), _MM_HINT_T0);
-            _mm_prefetch(data_level0_memory_ + (*(data + 1)) * size_data_per_element_ + offsetData_, _MM_HINT_T0);
+            level0_.Prefetch(*(data + 1), offsetData_);
             _mm_prefetch((char *) (data + 2), _MM_HINT_T0);
 #endif
 
@@ -428,8 +555,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 //                    if (candidate_id == 0) continue;
 #ifdef USE_SSE
                 _mm_prefetch((char *) (visited_array + *(data + j + 1)), _MM_HINT_T0);
-                _mm_prefetch(data_level0_memory_ + (*(data + j + 1)) * size_data_per_element_ + offsetData_,
-                                _MM_HINT_T0);  ////////////
+                level0_.Prefetch(*(data + j + 1), offsetData_);
 #endif
                 if (!(visited_array[candidate_id] == visited_array_tag)) {
                     visited_array[candidate_id] = visited_array_tag;
@@ -447,9 +573,8 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                     if (flag_consider_candidate) {
                         candidate_set.emplace(-dist, candidate_id);
 #ifdef USE_SSE
-                        _mm_prefetch(data_level0_memory_ + candidate_set.top().second * size_data_per_element_ +
-                                        offsetLevel0_,  ///////////
-                                        _MM_HINT_T0);  ////////////////////////
+                        _mm_prefetch(level0_.Get(candidate_set.top().second) + offsetLevel0_,
+                                        _MM_HINT_T0);
 #endif
 
                         if (bare_bone_search ||
@@ -533,12 +658,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
 
     linklistsizeint *get_linklist0(tableint internal_id) const {
-        return (linklistsizeint *) (data_level0_memory_ + internal_id * size_data_per_element_ + offsetLevel0_);
-    }
-
-
-    linklistsizeint *get_linklist0(tableint internal_id, char *data_level0_memory_) const {
-        return (linklistsizeint *) (data_level0_memory_ + internal_id * size_data_per_element_ + offsetLevel0_);
+        return reinterpret_cast<linklistsizeint*>(level0_.Get(internal_id) + offsetLevel0_);
     }
 
 
@@ -689,11 +809,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
         std::vector<std::mutex>(new_max_elements).swap(link_list_locks_);
 
-        // Reallocate base layer
-        char * data_level0_memory_new = (char *) realloc(data_level0_memory_, new_max_elements * size_data_per_element_);
-        if (data_level0_memory_new == nullptr)
-            throw std::runtime_error("Not enough memory: resizeIndex failed to allocate base layer");
-        data_level0_memory_ = data_level0_memory_new;
+        level0_.Resize(new_max_elements);
 
         // Reallocate all other layers
         char ** linkLists_new = (char **) realloc(linkLists_, sizeof(void *) * new_max_elements);
@@ -750,7 +866,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         writeBinaryPOD(output, mult_);
         writeBinaryPOD(output, ef_construction_);
 
-        output.write(data_level0_memory_, cur_element_count * size_data_per_element_);
+        // Written as one contiguous run, as before, so the on-disk format is unchanged.
+        for (size_t i = 0; i < cur_element_count; i += level0_.elements_per_segment()) {
+            size_t count = std::min<size_t>(level0_.elements_per_segment(), cur_element_count - i);
+            output.write(level0_.Get(i), count * size_data_per_element_);
+        }
 
         for (size_t i = 0; i < cur_element_count; i++) {
             unsigned int linkListSize = element_levels_[i] > 0 ? size_links_per_element_ * element_levels_[i] : 0;
@@ -823,10 +943,12 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
         input.seekg(pos, input.beg);
 
-        data_level0_memory_ = (char *) malloc(max_elements * size_data_per_element_);
-        if (data_level0_memory_ == nullptr)
-            throw std::runtime_error("Not enough memory: loadIndex failed to allocate level0");
-        input.read(data_level0_memory_, cur_element_count * size_data_per_element_);
+        level0_.Init(max_elements_, size_data_per_element_);
+        for (size_t i = 0; i < cur_element_count; i += level0_.elements_per_segment()) {
+            size_t count = std::min<size_t>(level0_.elements_per_segment(), cur_element_count - i);
+            level0_.Ensure(i);
+            input.read(level0_.Get(i), count * size_data_per_element_);
+        }
 
         size_links_per_element_ = maxM_ * sizeof(tableint) + sizeof(linklistsizeint);
 
@@ -1139,11 +1261,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
                     int size = getListCount(data);
                     tableint *datal = (tableint *) (data + 1);
 #ifdef USE_SSE
-                    _mm_prefetch(getDataByInternalId(*datal), _MM_HINT_T0);
+                    level0_.Prefetch(*datal, offsetData_);
 #endif
                     for (int i = 0; i < size; i++) {
 #ifdef USE_SSE
-                        _mm_prefetch(getDataByInternalId(*(datal + i + 1)), _MM_HINT_T0);
+                        level0_.Prefetch(*(datal + i + 1), offsetData_);
 #endif
                         tableint cand = datal[i];
                         dist_t d = fstdistfunc_(dataPoint, getDataByInternalId(cand), dist_func_param_);
@@ -1201,6 +1323,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
 
     tableint addPoint(const void *data_point, label_t label, int level) {
         tableint cur_c = 0;
+        int curlevel = 0;
         {
             // Checking if the element with the same label already exists
             // if so, updating it *instead* of creating a new element.
@@ -1228,11 +1351,24 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
             }
 
             cur_c = cur_element_count;
-            cur_element_count++;
+            curlevel = level > 0 ? level : getRandomLevel(mult_);
+            // Everything that can fail happens before the element becomes reachable -- through
+            // cur_element_count for iteration, and through the neighbour lists linked below for
+            // search -- so a failed allocation leaves the index unchanged.
+            level0_.Ensure(cur_c);
+            std::unique_ptr<char, decltype(&free)> link_list(nullptr, &free);
+            if (curlevel) {
+                const auto list_mem_size = size_links_per_element_ * curlevel + sizeof(void*);
+                link_list.reset(static_cast<char*>(malloc(list_mem_size)));
+                if (!link_list)
+                    throw std::bad_alloc();
+                memset(link_list.get(), 0, list_mem_size);
+            }
             label_lookup_[label] = cur_c;
+            if (curlevel)
+                linkLists_[cur_c] = link_list.release();
+            cur_element_count++;
         }
-
-        int curlevel = level > 0 ? level : getRandomLevel(mult_);
 
         std::unique_lock <std::mutex> templock(global);
         int maxlevelcopy = maxlevel_;
@@ -1245,19 +1381,11 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         tableint currObj = enterpoint_node_;
         tableint enterpoint_copy = enterpoint_node_;
 
-        memset(data_level0_memory_ + cur_c * size_data_per_element_ + offsetLevel0_, 0, size_data_per_element_);
+        memset(level0_.Get(cur_c) + offsetLevel0_, 0, size_data_per_element_);
 
         // Initialisation of the data and label
         memcpy(getExternalLabeLp(cur_c), &label, sizeof(label_t));
         memcpy(getDataByInternalId(cur_c), data_point, data_size_);
-
-        if (curlevel) {
-            const auto list_mem_size = size_links_per_element_ * curlevel + sizeof(void*);
-            linkLists_[cur_c] = (char *) malloc(list_mem_size);
-            if (linkLists_[cur_c] == nullptr)
-                throw std::runtime_error("Not enough memory: addPoint failed to allocate linklist");
-            memset(linkLists_[cur_c], 0, list_mem_size);
-        }
 
         if ((signed)currObj != -1) {
             if (curlevel < maxlevelcopy) {
@@ -1488,7 +1616,9 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         const size_t max_elements = max_elements_;
         const size_t cur_count = cur_element_count.load();
 
-        size_t bytes = max_elements * (size_data_per_element_ + PER_ELEMENT_BOOKKEEPING_BYTES);
+        // Level-0 data is charged per allocated segment, not per reserved slot.
+        size_t bytes = level0_.AllocatedBytes();
+        bytes += max_elements * PER_ELEMENT_BOOKKEEPING_BYTES;
         double expected_extra_levels = M_ > 1 ? 1.0 / std::log(static_cast<double>(M_)) : 0.0;
         bytes += static_cast<size_t>(static_cast<double>(cur_count) * expected_extra_levels) * size_links_per_element_;
         bytes += cur_count * PER_INSERTED_LABEL_LOOKUP_BYTES;

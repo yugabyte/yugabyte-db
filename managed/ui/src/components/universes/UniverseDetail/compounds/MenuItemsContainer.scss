@@ -28,4 +28,30 @@
   &__submenu-frame {
     min-width: 100%;
   }
+
+  // The main frame keeps its fixed width (it is slid out of view by that width); only the
+  // container and the submenu grow, to the submenu's widest item.
+  // The container's width jumps to the submenu's, so sliding the main frame looks broken; switch
+  // frames instantly instead, in both directions.
+  &--no-slide &__main-frame {
+    transition: none;
+  }
+
+  &--fit-submenu {
+    width: max-content;
+    min-width: $menu-width;
+
+    // Pinned to the slide distance: left to its content, it grows past the menu width and
+    // part of it stays in view beside the submenu.
+    .menu-items-container__main-frame {
+      flex: none;
+      width: $menu-width;
+      min-width: $menu-width;
+      overflow: hidden;
+    }
+
+    .menu-items-container__submenu-frame {
+      min-width: $menu-width;
+    }
+  }
 }

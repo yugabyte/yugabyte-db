@@ -477,31 +477,31 @@ CREATE TEMP TABLE ck_ne_ptk_tmp_p2 PARTITION OF ck_ne_ptk_tmp_base (ck PRIMARY K
 INSERT INTO ck_ne_ptk_tmp_base VALUES (1, 5, 1), (2, 5, 2), (3, 15, 3), (4, 5, 4), (5, 5, 5), (6, 15, 6), (7, 5, 7), (8, 5, 8);
 
 -- 11a. Cross-partition update via leaf with clustering key in WHERE. Should fail.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 16 WHERE ck = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 16 WHERE ck = 1;
 SELECT * FROM ck_ne_ptk_tmp_p1 ORDER BY ck;
 SELECT * FROM ck_ne_ptk_tmp_p2 ORDER BY ck;
 
 -- 11b. Cross-partition update via leaf without clustering key in WHERE. Should fail.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 17 WHERE ptk = 5;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 17 WHERE ptk = 5;
 SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
 
 -- 11c. Same-partition clustering key update via leaf.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck = 3;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p2 SET ck = 10 WHERE ck = 3;
 
 -- 11d. Non-partition column update via leaf.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE ck = 7;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET v = v + 1 WHERE ck = 7;
 
 -- 11e. Partition key update to a value that stays in the same partition.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck = 8;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) UPDATE ck_ne_ptk_tmp_p1 SET ptk = 6 WHERE ck = 8;
 
 -- 11f. INSERT ... ON CONFLICT ... DO UPDATE.
 INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 9), (11, 5, 11);
 
 -- Same-partition partition key update via upsert. Should succeed.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (9, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 6, v = EXCLUDED.v;
 
 -- Cross-partition partition key update via upsert. Should fail.
-EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
+EXPLAIN (ANALYZE, DIST, COSTS OFF, BUFFERS OFF) INSERT INTO ck_ne_ptk_tmp_p1 VALUES (11, 5, 99) ON CONFLICT (ck) DO UPDATE SET ptk = 16, v = EXCLUDED.v;
 
 SELECT * FROM ck_ne_ptk_tmp_base ORDER BY ck;
 DROP TABLE ck_ne_ptk_tmp_base CASCADE;

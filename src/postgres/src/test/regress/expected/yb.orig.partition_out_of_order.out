@@ -10,6 +10,9 @@ DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE base ATTACH PARTITION part2 FOR VALUES FROM (21) TO (31);
 ALTER TABLE base ATTACH PARTITION part3 FOR VALUES FROM (31) TO (41);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 CREATE TABLE part4 (a BOOL, c TEXT, b INT4 PRIMARY KEY);
 -- Error: names and types of columns should match
 ALTER TABLE base ATTACH PARTITION part4 FOR VALUES FROM (41) TO (51);

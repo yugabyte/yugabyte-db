@@ -20,7 +20,7 @@ The following SMTs are bundled with the connector jar file available on [GitHub 
 
 {{< note title="Important" >}}
 
-These SMTs are only compatible with the [yboutput plugin](../key-concepts#output-plugin).
+These SMTs are only compatible with the [yboutput plugin](../key-concepts/#output-plugin).
 
 {{< /note >}}
 

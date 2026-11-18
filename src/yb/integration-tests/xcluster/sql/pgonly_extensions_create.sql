@@ -15,11 +15,6 @@ CREATE EXTENSION "uuid-ossp";
 
 CREATE EXTENSION hypopg;
 
--- YB_TODO_PG19MERGE: pg_stat_monitor is not built on pg19; see
--- external_extension_subdirs in python/yugabyte/build_postgres.py. Re-enable
--- once the extension is ported.
--- CREATE EXTENSION pg_stat_monitor;
-
 CREATE EXTENSION pgaudit;
 
 

@@ -9,7 +9,7 @@
 \i :filename
 \set _echo_parameterized_query :ECHO
 \set ECHO none
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 \set off '/*+Set(yb_max_merge_scan_streams 0)*/'
 \set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 \set P1 ':explain'
@@ -32,7 +32,7 @@ SET yb_enable_derived_saops = true;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl;
                         QUERY PLAN                        
 ----------------------------------------------------------
  Seq Scan on public.bkt_tbl (actual rows=5048.00 loops=1)
@@ -42,14 +42,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
    Storage Table Rows Scanned: 5048
 (5 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl;
 (output identical to previous)
 -- No limit
 \set query ':explain :Q SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Sort (actual rows=5048.00 loops=1)
@@ -63,7 +63,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
          Storage Table Rows Scanned: 5048
 (9 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Index Scan using bkt_tbl_pkey on public.bkt_tbl (actual rows=5048.00 loops=1)
@@ -83,7 +83,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -99,7 +99,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 5048
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1, r2, r3, n LIMIT 5;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -138,7 +138,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -154,7 +154,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 5048
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r1 DESC, r2 DESC, r3 DESC, n LIMIT 5;
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -193,7 +193,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -213,7 +213,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Rows Scanned: 2476
 (15 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT r1, r2, r3 FROM bkt_tbl ORDER BY r1, r2, r3 LIMIT 5;
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -250,7 +250,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -269,7 +269,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Rows Scanned: 5048
 (14 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT COUNT(*), r1, r2, r3 FROM bkt_tbl GROUP BY r1, r2, r3 ORDER BY r1, r2, r3 LIMIT 5;
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -306,7 +306,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -323,7 +323,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 3367
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2) ORDER BY r1, r2, r3, n LIMIT 5;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -362,7 +362,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -379,7 +379,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 3367
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r2, r3, n, bkt FROM bkt_tbl WHERE bkt IN (1, 2, 3, 4) ORDER BY r1, r2, r3, n LIMIT 5;
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -427,7 +427,7 @@ SPLIT AT VALUES (
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Sort (actual rows=5048.00 loops=1)
@@ -441,14 +441,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
          Storage Table Rows Scanned: 5048
 (9 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1;
 (output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -464,7 +464,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 5048
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3, r2, r1, n LIMIT 5;
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -506,7 +506,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -522,7 +522,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 5048
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM bkt_tbl ORDER BY r3 DESC, r2 DESC, r1 DESC, n LIMIT 5;
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -577,7 +577,7 @@ ANALYZE r5n;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n ORDER BY r2, r3;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n ORDER BY r2, r3;
                          QUERY PLAN                         
 ------------------------------------------------------------
  Sort (actual rows=5048.00 loops=1)
@@ -591,14 +591,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
          Storage Table Rows Scanned: 5048
 (9 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n ORDER BY r2, r3;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n ORDER BY r2, r3;
 (output identical to previous)
 -- Forward scan
 \set query ':P :Q SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -614,7 +614,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 5048
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n ORDER BY r2, r3, n LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -656,7 +656,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -674,7 +674,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 5048
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2) ORDER BY r2, r3, n LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -716,7 +716,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -734,7 +734,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 5048
 (13 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n, yb_hash_code(r2, r3, r4) % 3 FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 in (0, 2, 4, 8) ORDER BY r2, r3, n LIMIT 5;
                                                                                       QUERY PLAN                                                                                       
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -777,7 +777,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -798,7 +798,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5;
 (output identical to previous)
 -- Range filter; no ORDER BY
 -- Merge scan should not be used.
@@ -806,7 +806,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -819,7 +819,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
          Storage Table Rows Scanned: 16
 (8 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT * FROM r5n WHERE r2 > 1 LIMIT 5;
 (output identical to previous)
 -- (Drop this index)
 DROP INDEX r5n_expr_r2_r3_r4_idx;
@@ -841,7 +841,7 @@ ANALYZE r5n;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -862,14 +862,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Index Rows Scanned: 21
 (16 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
 (output identical to previous)
 -- Expression in sort, so not derived (v2)
 \set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -886,7 +886,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 1489
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -930,7 +930,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -947,7 +947,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 492
 (12 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
                                                          QUERY PLAN                                                         
 ----------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -972,7 +972,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Index Rows Scanned: 105
 (20 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
 (output identical to previous)
 /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5;
  r1 | r3 | r4 |   n   
@@ -992,13 +992,13 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 -- Following queries send various numbers of requests/scan various number of
 -- rows due to non-deterministic order of equal rows in merge sort.  Hide their
 -- DIST.
-\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 -- Derived with multiple stream keys
 \set query ':P :Q SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;'
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
+EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1012,7 +1012,7 @@ EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_par
                Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
 (9 rows)
 
-EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
+EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
                                                                      QUERY PLAN                                                                      
 -----------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1044,7 +1044,7 @@ EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_par
 /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r3, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r3, r4, n LIMIT 5;
 (output identical to previous)
 -- (Reset the explain change)
-\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF)'
 -- (Drop this index)
 DROP INDEX r5n_r1_expr_r3_r4_idx;
 --
@@ -1063,7 +1063,7 @@ ANALYZE parent;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1095,7 +1095,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Rows Scanned: 1299
 (27 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM parent ORDER BY r2, r3, n LIMIT 5;
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1178,7 +1178,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1200,7 +1200,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Table Rows Scanned: 714
 (17 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1 ORDER BY r2, r3, n LIMIT 5;
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1257,7 +1257,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1273,7 +1273,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                Storage Table Rows Scanned: 714
 (11 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r2, r3, n FROM child1b ORDER BY r2, r3, n LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1337,7 +1337,7 @@ ANALYZE parent;
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1380,14 +1380,14 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                            Storage Table Rows Scanned: 5048
 (38 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY r5n.r2 LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
    Output: r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n
    ->  Nested Loop (actual rows=5.00 loops=1)
          Output: r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n
-         Join Filter: (parent.r3 = r5n.r3)
+         Join Filter: (r5n.r3 = parent.r3)
          Rows Removed by Join Filter: 37
          ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=1.00 loops=1)
                Output: r5n.r2, r5n.r3, r5n.n
@@ -1443,7 +1443,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1486,7 +1486,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                            Storage Table Rows Scanned: 5048
 (38 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT parent.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM parent JOIN r5n ON r5n.r3 = parent.r3 ORDER BY parent.r2 LIMIT 5;
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1592,38 +1592,45 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
 \i :run_query
 \set _echo_run_query :ECHO
 \set ECHO none
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
    Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
    ->  Unique (actual rows=5.00 loops=1)
          Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
-         ->  Sort (actual rows=2547.00 loops=1)
+         ->  Incremental Sort (actual rows=2547.00 loops=1)
                Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
                Sort Key: r5n.r3, r5n.r4
-               Sort Method: external merge
-               ->  Hash Join (actual rows=73863.00 loops=1)
+               Presorted Key: r5n.r3
+               Full-sort Groups: 1  Sort Method: quicksort
+               Pre-sorted Groups: 1  Sort Method: quicksort
+               ->  Merge Join (actual rows=6157.00 loops=1)
                      Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
-                     Hash Cond: (r5n.r3 = parent_1.r3)
-                     ->  Index Scan using r5n_pkey on public.r5n (actual rows=1512.00 loops=1)
-                           Output: r5n.r2, r5n.r3, r5n.n, r5n.r4
-                           Index Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
-                           Storage Table Read Requests: 68
-                           Storage Table Read Ops: 100
-                           Storage Table Rows Scanned: 1512
-                     ->  Hash (actual rows=489.00 loops=1)
+                     Merge Cond: (parent_1.r3 = r5n.r3)
+                     ->  Sort (actual rows=39.00 loops=1)
                            Output: parent_1.p1, parent_1.r3, parent_1.n
-                           Buckets: 1024 (originally 1024)  Original Batches: 1
+                           Sort Key: parent_1.r3
+                           Sort Method: quicksort
                            ->  Seq Scan on public.child3 parent_1 (actual rows=489.00 loops=1)
                                  Output: parent_1.p1, parent_1.r3, parent_1.n
                                  Storage Filter: (parent_1.p1 = 9)
                                  Storage Table Read Requests: 31
                                  Storage Table Read Ops: 31
                                  Storage Table Rows Scanned: 1299
-(26 rows)
+                     ->  Sort (actual rows=6157.00 loops=1)
+                           Output: r5n.r2, r5n.r3, r5n.n, r5n.r4
+                           Sort Key: r5n.r3
+                           Sort Method: quicksort
+                           ->  Index Scan using r5n_pkey on public.r5n (actual rows=1512.00 loops=1)
+                                 Output: r5n.r2, r5n.r3, r5n.n, r5n.r4
+                                 Index Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
+                                 Storage Table Read Requests: 68
+                                 Storage Table Read Ops: 100
+                                 Storage Table Rows Scanned: 1512
+(33 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                                                       QUERY PLAN                                                                      
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1645,7 +1652,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                      Storage Index Read Requests: 2
                      Storage Index Read Ops: 27
                      Storage Index Rows Scanned: 189
-               ->  Memoize (actual rows=37.00 loops=68)
+               ->  Memoize (actual rows=37.46 loops=68)
                      Output: parent_1.p1, parent_1.r3, parent_1.n
                      Cache Key: r5n.r3
                      Cache Mode: logical
@@ -1657,38 +1664,45 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(enab
                            Storage Table Rows Scanned: 38
 (29 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
    Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
    ->  Unique (actual rows=5.00 loops=1)
          Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
-         ->  Sort (actual rows=2547.00 loops=1)
+         ->  Incremental Sort (actual rows=2547.00 loops=1)
                Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
                Sort Key: r5n.r3, r5n.r4
-               Sort Method: external merge
-               ->  Hash Join (actual rows=73863.00 loops=1)
+               Presorted Key: r5n.r3
+               Full-sort Groups: 1  Sort Method: quicksort
+               Pre-sorted Groups: 1  Sort Method: quicksort
+               ->  Merge Join (actual rows=6157.00 loops=1)
                      Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
-                     Hash Cond: (parent_1.r3 = r5n.r3)
-                     ->  Seq Scan on public.child3 parent_1 (actual rows=489.00 loops=1)
+                     Merge Cond: (parent_1.r3 = r5n.r3)
+                     ->  Sort (actual rows=39.00 loops=1)
                            Output: parent_1.p1, parent_1.r3, parent_1.n
-                           Storage Filter: (parent_1.p1 = 9)
-                           Storage Table Read Requests: 31
-                           Storage Table Read Ops: 31
-                           Storage Table Rows Scanned: 1299
-                     ->  Hash (actual rows=1512.00 loops=1)
+                           Sort Key: parent_1.r3
+                           Sort Method: quicksort
+                           ->  Seq Scan on public.child3 parent_1 (actual rows=489.00 loops=1)
+                                 Output: parent_1.p1, parent_1.r3, parent_1.n
+                                 Storage Filter: (parent_1.p1 = 9)
+                                 Storage Table Read Requests: 31
+                                 Storage Table Read Ops: 31
+                                 Storage Table Rows Scanned: 1299
+                     ->  Sort (actual rows=6157.00 loops=1)
                            Output: r5n.r2, r5n.r3, r5n.n, r5n.r4
-                           Buckets: 2048 (originally 2048)  Original Batches: 1
+                           Sort Key: r5n.r3
+                           Sort Method: quicksort
                            ->  Index Scan using r5n_pkey on public.r5n (actual rows=1512.00 loops=1)
                                  Output: r5n.r2, r5n.r3, r5n.n, r5n.r4
                                  Index Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
                                  Storage Table Read Requests: 68
                                  Storage Table Read Ops: 100
                                  Storage Table Rows Scanned: 1512
-(26 rows)
+(33 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoin(parent r5n) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+MergeJoin(parent r5n) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                                                       QUERY PLAN                                                                      
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
@@ -1723,21 +1737,23 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                            Storage Table Rows Scanned: 1299
 (30 rows)
 
-EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoin(parent r5n) Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
+EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF, BUFFERS OFF) /*+MergeJoin(parent r5n) Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/ SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5.00 loops=1)
    Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
    ->  Unique (actual rows=5.00 loops=1)
          Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
-         ->  Sort (actual rows=2547.00 loops=1)
+         ->  Incremental Sort (actual rows=2547.00 loops=1)
                Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
                Sort Key: r5n.r3, r5n.r4
-               Sort Method: external merge
-               ->  Merge Join (actual rows=73863.00 loops=1)
+               Presorted Key: r5n.r3
+               Full-sort Groups: 1  Sort Method: quicksort
+               Pre-sorted Groups: 1  Sort Method: quicksort
+               ->  Merge Join (actual rows=6157.00 loops=1)
                      Output: parent_1.p1, r5n.r2, r5n.r3, parent_1.r3, r5n.n, parent_1.n, r5n.r4
                      Merge Cond: (parent_1.r3 = r5n.r3)
-                     ->  Sort (actual rows=489.00 loops=1)
+                     ->  Sort (actual rows=39.00 loops=1)
                            Output: parent_1.p1, parent_1.r3, parent_1.n
                            Sort Key: parent_1.r3
                            Sort Method: quicksort
@@ -1747,7 +1763,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                                  Storage Table Read Requests: 31
                                  Storage Table Read Ops: 31
                                  Storage Table Rows Scanned: 1299
-                     ->  Sort (actual rows=73811.00 loops=1)
+                     ->  Sort (actual rows=6157.00 loops=1)
                            Output: r5n.r2, r5n.r3, r5n.n, r5n.r4
                            Sort Key: r5n.r3
                            Sort Method: quicksort
@@ -1757,5 +1773,5 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+MergeJoi
                                  Storage Table Read Requests: 68
                                  Storage Table Read Ops: 100
                                  Storage Table Rows Scanned: 1512
-(31 rows)
+(33 rows)
 

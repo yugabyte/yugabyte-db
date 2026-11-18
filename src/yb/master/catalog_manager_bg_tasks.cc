@@ -35,7 +35,6 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/cdcsdk_manager.h"
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
@@ -307,8 +306,6 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
 
   // Run background tasks related to XCluster & CDC Schema.
   catalog_manager_->RunXReplBgTasks(epoch);
-
-  catalog_manager_->cdcsdk_manager_->RunBgTasks(epoch);
 
   catalog_manager_->GetXClusterManager()->RunBgTasks(epoch);
 

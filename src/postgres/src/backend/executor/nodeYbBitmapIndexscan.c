@@ -231,14 +231,6 @@ ExecEndYbBitmapIndexScan(YbBitmapIndexScanState *node)
 	indexRelationDesc = node->biss_RelationDesc;
 	indexScanDesc = node->biss_ScanDesc;
 
-	/*
-	 * Free the exprcontext ... now dead code, see ExecFreeExprContext
-	 */
-#ifdef NOT_USED
-	if (node->biss_RuntimeContext)
-		FreeExprContext(node->biss_RuntimeContext, true);
-#endif
-
 	if (IsYugaByteEnabled())
 	{
 		if (indexScanDesc && indexScanDesc->yb_idx_pushdown)

@@ -3028,12 +3028,17 @@ INSTANTIATE_TEST_CASE_P(
     AddColumnDefault, YBAddColumnDefaultBackupTest,
     ::testing::Values(std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse),
         std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kTrue),
-        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse),
-        std::make_tuple(PackedRowsEnabled::kTrue, SourceDatabaseIsColocated::kFalse)));
+        std::make_tuple(PackedRowsEnabled::kFalse, SourceDatabaseIsColocated::kFalse)));
 
 class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDdlAtomicityTestBase {
  public:
   Status RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error);
+
+  // TODO(Yamen): Remove this override once GH-28766 is fixed. Skipping here rather than in the
+  // test bodies avoids starting the external cluster for tests that never run.
+  void SetUp() override {
+    GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
+  }
 
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Disable table locks to avoid issues during SuccessfulDdlAtomicityTest
@@ -3110,14 +3115,10 @@ Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjectio
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(SuccessfulDdlAtomicityTest)) {
-  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kFalse));
 }
 
 TEST_F(YBDdlAtomicityBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(DdlRollbackAtomicityTest)) {
-  // TODO(Yamen): Remove this skip once GH-28766 is fixed.
-  GTEST_SKIP() << "Temporarily disabled until GH-28766 is fixed";
   ASSERT_OK(RunDdlAtomicityTest(pgwrapper::DdlErrorInjection::kTrue));
 }
 

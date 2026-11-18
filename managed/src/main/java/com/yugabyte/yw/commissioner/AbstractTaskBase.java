@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -102,6 +103,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final GFlagsValidation gFlagsValidation;
   protected final NodeUniverseManager nodeUniverseManager;
   protected final NodeAgentClient nodeAgentClient;
+  protected final AuditService auditService;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -132,6 +134,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.gFlagsValidation = baseTaskDependencies.getGFlagsValidation();
     this.nodeUniverseManager = baseTaskDependencies.getNodeUniverseManager();
     this.nodeAgentClient = baseTaskDependencies.getNodeAgentClient();
+    this.auditService = baseTaskDependencies.getAuditService();
   }
 
   protected ITaskParams taskParams() {

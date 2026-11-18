@@ -309,6 +309,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/upgrade/node-agent'
     },
+    MANAGE_CROSS_CLOUD_FEDERATION: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/api/v2/customers/$cUUID<[^/]+>/universes/$uniUUID<[^/]+>/cross-cloud-federation'
+    },
     GET_PROVIDERS: { requestType: ApiRequestType.GET, endpoint: '/providers' },
     CREATE_PROVIDER: { requestType: ApiRequestType.POST, endpoint: '/providers' },
     GET_PROVIDER_BY_ID: {

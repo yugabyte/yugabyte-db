@@ -7,6 +7,7 @@ import com.google.re2j.Matcher;
 import com.google.re2j.Pattern;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
+import com.yugabyte.yw.common.operator.utils.ResourceOperatorOwned;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.UUID;
@@ -52,7 +53,7 @@ public class BlockOperatorResourceHandler extends Action<BlockOperatorResource> 
           log.warn(
               "blocking api call {}, universe is owned by kubernetes operator", request.path());
           return CompletableFuture.completedFuture(
-              Results.forbidden("resource is controlled by kubernetes operator"));
+              Results.forbidden(ResourceOperatorOwned.CONTROLLED_BY_OPERATOR_MESSAGE));
         }
         return delegate.call(request);
       case PROVIDER:
@@ -69,7 +70,7 @@ public class BlockOperatorResourceHandler extends Action<BlockOperatorResource> 
           log.warn(
               "blocking api call {}, provider is owned by kubernetes operator", request.path());
           return CompletableFuture.completedFuture(
-              Results.forbidden("resource is controlled by kubernetes operator"));
+              Results.forbidden(ResourceOperatorOwned.CONTROLLED_BY_OPERATOR_MESSAGE));
         }
         return delegate.call(request);
       default:

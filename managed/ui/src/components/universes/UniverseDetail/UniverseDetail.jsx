@@ -57,6 +57,8 @@ import { EnableYCQLModal } from '../../../redesign/features/universe/universe-ac
 import { EditPGCompatibilityModal } from '../../../redesign/features/universe/universe-actions/edit-pg-compatibility/EditPGCompatibilityModal';
 import { EditConnectionPoolModal } from '../../../redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
 import { EditMultiTenancyModal } from '../../../redesign/features/universe/universe-actions/edit-multi-tenancy/EditMultiTenancyModal';
+import { CrossCloudFederationModal } from '../../../redesign/features/universe/universe-actions/cross-cloud-federation/CrossCloudFederationModal';
+import { isCrossCloudFederatedIamEnabled } from '../../backupv2/common/BackupUtils';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
 import { EditUniverseTabs } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseContext';
@@ -470,6 +472,7 @@ class UniverseDetail extends Component {
       showEnableYCQLModal,
       showPGCompatibilityModal,
       showConnectionPoolModal,
+      showCrossCloudFederationModal,
       showMultiTenancyModal,
       updateBackupState,
       closeModal,
@@ -521,6 +524,11 @@ class UniverseDetail extends Component {
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
     const isProviderNodeAgentEnabled = provider?.details?.enableNodeAgent;
+    // Shown even when the provider has federation off: the modal then explains that the provider
+    // must be configured first, and a configured universe can still be disabled.
+    const isCrossCloudFederationAvailable =
+      isCrossCloudFederatedIamEnabled(runtimeConfigs?.data) &&
+      ['aws', 'gcp', 'onprem'].includes(provider?.code);
     const isNodeAgentMissing = universe?.currentUniverse?.data?.universeDetails?.nodeAgentMissing;
 
     const onPremWithoutSudoAccess =
@@ -1131,6 +1139,7 @@ class UniverseDetail extends Component {
           >
             <MenuItemsContainer
               parentDropdownOpen={this.state.actionsDropdownOpen}
+              fitSubmenuToContent
               mainMenu={(setActiveSubmenu) => (
                 <>
                   {!universePaused && !isRollBackFeatureEnabled && (
@@ -1820,6 +1829,27 @@ class UniverseDetail extends Component {
                           )}
                         </RbacValidator>
                       )}
+                    {!universePaused && isCrossCloudFederationAvailable && (
+                      <RbacValidator
+                        accessRequiredOn={{
+                          onResource: uuid,
+                          ...ApiPermissionMap.MANAGE_CROSS_CLOUD_FEDERATION
+                        }}
+                        isControl
+                      >
+                        {withDisabledActionTooltip(
+                          k8OperatorTooltipTitle,
+                          <YBMenuItem
+                            disabled={isUniverseStatusPending || isK8ActionsDisabled}
+                            onClick={showCrossCloudFederationModal}
+                          >
+                            <YBLabelWithIcon icon="fa fa-cloud fa-fw">
+                              {i18n.t('universeActions.crossCloudFederation.menuLabel')}
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
+                      </RbacValidator>
+                    )}
                     {!universePaused && (
                       <RbacValidator
                         isControl
@@ -2309,6 +2339,20 @@ class UniverseDetail extends Component {
           }}
           universeData={currentUniverse.data}
         />
+
+        {/* Mounted only while open so the toggle re-reads federationConfigured each time. */}
+        {showModal && visibleModal === 'crossCloudFederationModal' && (
+          <CrossCloudFederationModal
+            open
+            onClose={() => {
+              closeModal();
+              this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+            }}
+            universeData={currentUniverse.data}
+            provider={provider}
+          />
+        )}
 
         <InstallNodeAgentModal
           modalProps={{

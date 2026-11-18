@@ -116,8 +116,11 @@
 #include "utils/wait_event.h"
 
 /* YB includes */
+#include "catalog/pg_publication.h"
+#include "catalog/pg_publication_rel.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
+#include "utils/catcache.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 
 /*
@@ -594,6 +597,7 @@ ReorderBufferFreeChange(ReorderBuffer *rb, ReorderBufferChange *change,
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			break;
 	}
 
@@ -2674,6 +2678,19 @@ ReorderBufferProcessTXN(ReorderBuffer *rb, ReorderBufferTXN *txn,
 					YBReorderBufferSchemaChange(rb,
 												change->data.yb_ddl.table_oid);
 					break;
+
+				case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
+					/*
+					 * An explicit ALTER PUBLICATION took effect at this point
+					 * of the transaction. Flushing these catalog caches and
+					 * invalidating every relation sync entry makes the output
+					 * plugin rebuild its publication info on the next change,
+					 * under that change's historical read context.
+					 */
+					CatalogCacheFlushCatalog(PublicationRelationId);
+					CatalogCacheFlushCatalog(PublicationRelRelationId);
+					CallRelSyncCallbacks(InvalidOid);
+					break;
 			}
 
 			/*
@@ -4420,6 +4437,7 @@ ReorderBufferSerializeChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -4689,6 +4707,7 @@ ReorderBufferChangeSize(ReorderBufferChange *change)
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			/* ReorderBufferChange contains everything important */
 			break;
 	}
@@ -5008,6 +5027,7 @@ ReorderBufferRestoreChange(ReorderBuffer *rb, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_INTERNAL_COMMAND_ID:
 		case REORDER_BUFFER_CHANGE_INTERNAL_TUPLECID:
 		case YB_REORDER_BUFFER_CHANGE_DDL:
+		case YB_REORDER_BUFFER_CHANGE_PUBLICATION_INVALIDATION:
 			break;
 	}
 

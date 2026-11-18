@@ -2717,13 +2717,22 @@ public class PlacementInfoUtil {
         }
       }
 
-      // One master could left because of the rounding error.
-      if (mastersLeft != 0) {
+      // Math.round can leave more than one master unplaced (RF 9 across 6 zones
+      // leaves two). Keep seeding, in zone priority order, while a zone has a free node.
+      while (mastersLeft > 0) {
+        boolean placed = false;
         for (RegionWithAz zone : zones) {
-          if (availableNodes.get(zone) > allocatedMastersRgAz.get(zone)) {
-            allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + 1);
+          if (mastersLeft == 0) {
             break;
           }
+          if (availableNodes.get(zone) > allocatedMastersRgAz.get(zone)) {
+            allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + 1);
+            mastersLeft--;
+            placed = true;
+          }
+        }
+        if (!placed) {
+          break;
         }
       }
     }

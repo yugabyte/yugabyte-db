@@ -1,1 +1,5 @@
 /.github/** @yugabyte/devops
+
+# xCluster team:
+/src/**/*xcluster*  @yugabyte/xcluster
+/src/**/*xrepl*     @yugabyte/xcluster

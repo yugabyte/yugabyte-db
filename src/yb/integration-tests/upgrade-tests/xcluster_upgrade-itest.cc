@@ -386,7 +386,7 @@ class XClusterUpgradeTest : public XClusterUpgradeTestBase,
 };
 
 INSTANTIATE_TEST_SUITE_P(
-    UpgradeFrom_2024_2_4_0, XClusterUpgradeTest, ::testing::Values(kBuild_2024_2_4_0));
+    UpgradeFrom_2026_1_4_0, XClusterUpgradeTest, ::testing::Values(kBuild_2026_1_4_0));
 INSTANTIATE_TEST_SUITE_P(
     UpgradeFrom_2_25_0_0, XClusterUpgradeTest, ::testing::Values(kBuild_2_25_0_0));
 

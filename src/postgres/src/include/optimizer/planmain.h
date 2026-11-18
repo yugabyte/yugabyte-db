@@ -148,8 +148,7 @@ extern RestrictInfo *yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti,
 extern OpExpr *yb_create_derived_clause(Expr *inferrable_expr,
 										Expr *substituted_expr, Oid opfamily);
 extern RestrictInfo *yb_make_derived_restrictinfo(PlannerInfo *root,
-												  OpExpr *clause,
-												  Relids nullable_relids);
+												  OpExpr *clause);
 extern Node *yb_safely_fold_substituted(PlannerInfo *root, Expr *substituted);
 
 #endif							/* PLANMAIN_H */

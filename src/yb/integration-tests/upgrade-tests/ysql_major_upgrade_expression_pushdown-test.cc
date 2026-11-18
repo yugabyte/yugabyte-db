@@ -198,13 +198,13 @@ class YsqlMajorUpgradeExpressionPushdownTest : public YsqlMajorUpgradeTestBase {
       auto status = conn.Execute(Format("$0 $1", prefix, expr.expr_));
 
       SCHECK_FORMAT(!status.ok(), InternalError,
-                    "Expected $0 to not be a viable PG11 expression: $1",
+                    "Expected $0 to not be a viable expression in this version: $1",
                     expr.expr_, status.ToString());
 
       auto expected_err = VERIFY_RESULT(expr.GetExpectedError(ts_id));
       SCHECK_NE(status.ToString().find(expected_err), std::string::npos, InternalError,
                 Format("Expected $0 to fail with in $1: $2",
-                       expr.expr_, ts_id == kMixedModeTserverPg11 ? "PG11" : "PG15",
+                       expr.expr_, ts_id == kMixedModeTserverPg11 ? "PG15" : "PG19",
                        status.ToString()));
 
       return Status::OK();
@@ -637,23 +637,18 @@ TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestSystemTables) {
   }));
 }
 
-TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestNewPg15Functions) {
+TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestNewPg19Functions) {
   ASSERT_OK(TestPushdowns(Format("EXPLAIN $0 SELECT * FROM $1 WHERE", kExplainArgs, kTableName), {
-    Expression(Format("(('[(1,1),(1,1)]'::lseg <-> $0) < '1'::double precision)", kBoxColumn),
-               Behaviour::kPushable), // lseg <-> box existed in PG11
-    Expression(Format("(($0 <-> '[(1,1),(1,1)]'::lseg) < '1'::double precision)", kBoxColumn),
-               Behaviour::kFunctionError, Behaviour::kPushable), // box <-> lseg was added in PG15
-    Expression(Format("(hashtid($0) = 1)", kTidColumn),
+    Expression(Format("(to_bin($0) = '1'::text)", kInt4Column),
                Behaviour::kFunctionError, Behaviour::kPushable),
-    Expression(Format("(log10(($0)::double precision) < '10'::double precision)", kInt4Column),
+    Expression(Format("(uuid_extract_version($0) = 5)", kUuidColumn),
                Behaviour::kFunctionError, Behaviour::kPushable),
-    Expression(Format("($0 |>> '(1,1)'::point)", kPointColumn),
-               Behaviour::kOperatorError, Behaviour::kPushable),
-    Expression(Format("($0 <<| '(1,1)'::point)", kPointColumn),
-               Behaviour::kOperatorError, Behaviour::kPushable),
-    Expression(Format("(('((1,0),(1,1),(1,1))'::polygon <-> $0) < '10'::double precision)",
-                      kCircleColumn),
-               Behaviour::kOperatorError, Behaviour::kPushable),
+    Expression(Format("(tid_block($0) = 42)", kTidColumn),
+               Behaviour::kFunctionError, Behaviour::kPushable),
+    Expression(Format("(erf($0) < '1'::double precision)", kFloat8Column),
+               Behaviour::kFunctionError, Behaviour::kPushable),
+    Expression(Format("(gamma($0) < '1000'::double precision)", kFloat8Column),
+               Behaviour::kFunctionError, Behaviour::kPushable),
   }));
 }
 
@@ -702,16 +697,9 @@ TEST_F(YsqlMajorUpgradeExpressionPushdownTest, TestStringOperations) {
   exprs.push_back(Expression(Format("notlike($0, 'h%'::text)", kTextColumn), // F_NOTLIKE_TEXT_TEXT
                              Behaviour::kMMPushable, ".*notlike.*"));
 
-  // these functions don't exist in PG11, so they can't be pushed
-  exprs.push_back(Expression(Format("regexp_like($0, 'h.*'::text)", kTextColumn),
-                             Behaviour::kFunctionError, Behaviour::kPushable, ".*regexp_like.*"));
-
-  for (const auto& cond : {
-    Format("(regexp_substr($0, 'h.'::text) = 'he'::text)", kTextColumn),
-    Format("(regexp_substr($0, 'h.'::text, 1) = 'he'::text)", kTextColumn),
-  }) {
-    exprs.push_back(Expression(cond, Behaviour::kFunctionError, Behaviour::kPushable));
-  }
+  // casefold was added in PG18, so it doesn't exist in PG15
+  exprs.push_back(Expression(Format("(casefold($0) = 'hello'::text)", kTextColumn),
+                             Behaviour::kFunctionError, Behaviour::kPushable));
 
   const auto prefix = Format("EXPLAIN $0 SELECT * FROM $1 WHERE", kExplainArgs, kTable);
   ASSERT_OK(TestPushdowns(prefix, exprs));

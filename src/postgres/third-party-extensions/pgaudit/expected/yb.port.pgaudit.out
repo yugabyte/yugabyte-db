@@ -2753,8 +2753,9 @@ NOTICE:  drop cascades to 2 other objects
 WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements CASCADE,<not logged>
 SET pgaudit.log_level = 'notice';
 -- Check that password redaction works with CREATE/ALTER USER MAPPING
-CREATE EXTENSION postgres_fdw;
+CREATE EXTENSION postgres_fdw; -- YB: already installed by default
 NOTICE:  AUDIT: SESSION,6,1,DDL,CREATE EXTENSION,,,CREATE EXTENSION postgres_fdw,<not logged>
+ERROR:  extension "postgres_fdw" already exists
 CREATE SERVER fdw_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'foo', dbname 'foodb', port '5432');
 NOTICE:  no server_type specified. Defaulting to PostgreSQL.
 NOTICE:  AUDIT: SESSION,7,1,DDL,CREATE SERVER,,,"CREATE SERVER fdw_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'foo', dbname 'foodb', port '5432')",<not logged>
@@ -2766,8 +2767,13 @@ DROP USER MAPPING FOR regress_user1 SERVER fdw_server;
 NOTICE:  AUDIT: SESSION,10,1,DDL,DROP USER MAPPING,,,DROP USER MAPPING FOR regress_user1 SERVER fdw_server,<not logged>
 DROP SERVER fdw_server;
 NOTICE:  AUDIT: SESSION,11,1,DDL,DROP SERVER,,,DROP SERVER fdw_server,<not logged>
-DROP EXTENSION postgres_fdw;
-NOTICE:  AUDIT: SESSION,12,1,DDL,DROP EXTENSION,,,DROP EXTENSION postgres_fdw,<not logged>
+SELECT 'yb'; -- YB: replaces DROP EXTENSION postgres_fdw, which global views depend on
+NOTICE:  AUDIT: SESSION,12,1,READ,SELECT,,,SELECT 'yb',<not logged>
+ ?column? 
+----------
+ yb
+(1 row)
+
 --
 -- Test logging in parallel workers
 SET pgaudit.log = 'read';

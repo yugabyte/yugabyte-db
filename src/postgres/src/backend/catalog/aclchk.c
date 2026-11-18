@@ -179,6 +179,7 @@ static void recordExtensionInitPrivWorker(Oid objoid, Oid classoid, int objsubid
 /* YB declarations */
 static void ExecGrant_Tablegroup(InternalGrant *grantStmt);
 static bool YbCheckAclCopiesEqual(Acl *old_acl, Acl *new_acl);
+static void YbPgStatStatementsAclReset(ObjectWithArgs *func);
 
 
 /*
@@ -411,6 +412,14 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	ListCell   *cell;
 	const char *errormsg;
 	AclMode		all_privileges;
+
+	/* YB: a PG15 backup's dump names the 3-argument pg_stat_statements_reset */
+	if (yb_binary_restore && stmt->targtype == ACL_TARGET_OBJECT &&
+		stmt->objtype == OBJECT_FUNCTION)
+	{
+		foreach(cell, stmt->objects)
+			YbPgStatStatementsAclReset(lfirst_node(ObjectWithArgs, cell));
+	}
 
 	/*
 	 * Turn the regular GrantStmt into the InternalGrant form.
@@ -2116,6 +2125,14 @@ ExecGrant_Relation(InternalGrant *istmt)
 
 				newtuple = heap_modify_tuple(tuple, RelationGetDescr(relation),
 											 values, nulls, replaces);
+
+				/* YB: test hook to let another session commit in this window. */
+				if (yb_test_delay_relation_grant_update_ms > 0)
+				{
+					elog(LOG, "sleeping for %d ms before updating relacl",
+						 yb_test_delay_relation_grant_update_ms);
+					pg_usleep(yb_test_delay_relation_grant_update_ms * 1000L);
+				}
 
 				CatalogTupleUpdate(relation, &newtuple->t_self, newtuple);
 				UnlockTuple(relation, &tuple->t_self, InplaceUpdateTupleLock);
@@ -4481,7 +4498,7 @@ pg_largeobject_aclcheck_snapshot(Oid lobj_oid, Oid roleid, AclMode mode,
 	 else
 		 return ACLCHECK_NO_PRIV;
  }
- 
+
 /*
  * Generic ownership check for an object
  */
@@ -5454,4 +5471,17 @@ YbCheckAclCopiesEqual(Acl *old_acl, Acl *new_acl)
 	pfree(old_acl);
 	pfree(new_acl);
 	return is_equal;
+}
+
+/* Points pg_stat_statements 1.10's 3-argument reset at the 4-argument one. */
+static void
+YbPgStatStatementsAclReset(ObjectWithArgs *func)
+{
+	if (list_length(func->objargs) == 3 &&
+		strcmp(NameListToString(func->objname),
+			   "pg_catalog.pg_stat_statements_reset") == 0)
+	{
+		func->objargs = lappend(func->objargs, makeTypeNameFromOid(BOOLOID, -1));
+		func->objfuncargs = NIL;
+	}
 }

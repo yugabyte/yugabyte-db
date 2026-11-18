@@ -133,6 +133,8 @@ public class CustomerConfigController extends AuthenticatedController {
                 + configUUID.toString()
                 + " is in progress.");
       }
+      // Also checked by customerConfigService.delete, which the isDeleteBackups task skips.
+      customerConfigService.checkNoBackupsBeingDeleted(customerConfig);
 
       preBackupConfigDeleteValidation(customerConfig);
 

@@ -112,7 +112,7 @@ analyze s;
 -- boundary, that saving tips the colocated plan from bitmap to a plain
 -- index scan.
 --
--- Bitmap shape coverage: Q1, Q3, Q6 exercise BitmapAnd; Q4, Q5, Q7
+-- Bitmap shape coverage: Q1, Q3, Q6 exercise BitmapAnd; Q4, Q5, Q8
 -- exercise BitmapOr.  Q2 sits on the cost crossover between an
 -- index-only scan on the wide covering index and a plain index scan
 -- on the narrow c index, where the colo/uncolo ybctid back-transfer
@@ -155,6 +155,12 @@ analyze s;
 --             single c-scan (same colocation flip as Q1).
 --
 --   Q7 (join, inner "b = x OR b = y"):
+--       the OR becomes "b = ANY (ARRAY[x, y])", which a plain index
+--       scan can take, so no bitmap is needed.
+--       [1] index-only via covering.
+--       [2,3] index scan on b per inner iteration.
+--
+--   Q8 (join, inner "b = x OR c = y"):
 --       bitmap-OR per inner iteration in any setting.
 create table queries (id serial, query text, expected text[], primary key (id asc));
 insert into queries values
@@ -197,6 +203,12 @@ insert into queries values
     (DEFAULT,
         '/*+ Leading((s r)) */'||
         'select b, c from r, s where b = x or b = y',
+        '{"index only", "index scan", "index scan"}'::text[]
+        ),
+    -- Q8: join with inner predicate "b = x OR c = y".
+    (DEFAULT,
+        '/*+ Leading((s r)) */'||
+        'select b, c from r, s where b = x or c = y',
         '{"bitmap", "bitmap", "bitmap"}'::text[]
         );
 -- Insert similar queries against colocated table and split up expected outcome
@@ -278,17 +290,25 @@ select explain(1, query, expected) from queries order by id;
          Storage Filter: (s.y = c)
  (5 rows)
  
- /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: bitmap
+ /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: index only
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Only Scan using r_b_a_c_d_idx on r
+         Index Cond: (b = ANY (ARRAY[s.x, s.y]))
+ (4 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x or c = y  -- expected: bitmap
  ----------------
  Nested Loop
    ->  Seq Scan on s
    ->  YB Bitmap Table Scan on r
-         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         Storage Recheck Cond: ((b = s.x) OR (c = s.y))
          ->  BitmapOr
                ->  Bitmap Index Scan on r_b_a_c_d_idx
                      Index Cond: (b = s.x)
-               ->  Bitmap Index Scan on r_b_a_c_d_idx
-                     Index Cond: (b = s.y)
+               ->  Bitmap Index Scan on r_c_idx
+                     Index Cond: (c = s.y)
  (9 rows)
  
  select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index only
@@ -342,17 +362,25 @@ select explain(1, query, expected) from queries order by id;
          Storage Filter: (s.y = c)
  (5 rows)
  
- /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: bitmap
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: index only
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Only Scan using rc_b_a_c_d_idx on rc r
+         Index Cond: (b = ANY (ARRAY[s.x, s.y]))
+ (4 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or c = y  -- expected: bitmap
  ----------------
  Nested Loop
    ->  Seq Scan on s
    ->  YB Bitmap Table Scan on rc r
-         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         Storage Recheck Cond: ((b = s.x) OR (c = s.y))
          ->  BitmapOr
                ->  Bitmap Index Scan on rc_b_a_c_d_idx
                      Index Cond: (b = s.x)
-               ->  Bitmap Index Scan on rc_b_a_c_d_idx
-                     Index Cond: (b = s.y)
+               ->  Bitmap Index Scan on rc_c_idx
+                     Index Cond: (c = s.y)
  (9 rows)
  
 
@@ -424,17 +452,25 @@ select explain(2, query, expected) from queries order by id;
                      Index Cond: (b = s.x)
  (9 rows)
  
- /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: bitmap
+ /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: index scan
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Scan using r_b_idx on r
+         Index Cond: (b = ANY (ARRAY[s.x, s.y]))
+ (4 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x or c = y  -- expected: bitmap
  ----------------
  Nested Loop
    ->  Seq Scan on s
    ->  YB Bitmap Table Scan on r
-         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         Storage Recheck Cond: ((b = s.x) OR (c = s.y))
          ->  BitmapOr
                ->  Bitmap Index Scan on r_b_idx
                      Index Cond: (b = s.x)
-               ->  Bitmap Index Scan on r_b_idx
-                     Index Cond: (b = s.y)
+               ->  Bitmap Index Scan on r_c_idx
+                     Index Cond: (c = s.y)
  (9 rows)
  
  select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: bitmap
@@ -495,17 +531,25 @@ select explain(2, query, expected) from queries order by id;
          Storage Filter: (s.x = b)
  (5 rows)
  
- /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: bitmap
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: index scan
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Scan using rc_b_idx on rc r
+         Index Cond: (b = ANY (ARRAY[s.x, s.y]))
+ (4 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or c = y  -- expected: bitmap
  ----------------
  Nested Loop
    ->  Seq Scan on s
    ->  YB Bitmap Table Scan on rc r
-         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         Storage Recheck Cond: ((b = s.x) OR (c = s.y))
          ->  BitmapOr
                ->  Bitmap Index Scan on rc_b_idx
                      Index Cond: (b = s.x)
-               ->  Bitmap Index Scan on rc_b_idx
-                     Index Cond: (b = s.y)
+               ->  Bitmap Index Scan on rc_c_idx
+                     Index Cond: (c = s.y)
  (9 rows)
  
 
@@ -567,17 +611,25 @@ select explain(3, query, expected) from queries order by id;
                      Index Cond: (b = s.x)
  (9 rows)
  
- /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: bitmap
+ /*+ Leading((s r)) */select b, c from r, s where b = x or b = y  -- expected: index scan
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Scan using r_b_idx on r
+         Index Cond: (b = ANY (ARRAY[s.x, s.y]))
+ (4 rows)
+ 
+ /*+ Leading((s r)) */select b, c from r, s where b = x or c = y  -- expected: bitmap
  ----------------
  Nested Loop
    ->  Seq Scan on s
    ->  YB Bitmap Table Scan on r
-         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         Storage Recheck Cond: ((b = s.x) OR (c = s.y))
          ->  BitmapOr
                ->  Bitmap Index Scan on r_b_idx
                      Index Cond: (b = s.x)
-               ->  Bitmap Index Scan on r_b_idx
-                     Index Cond: (b = s.y)
+               ->  Bitmap Index Scan on r_c_idx
+                     Index Cond: (c = s.y)
  (9 rows)
  
  select b, c from rC r where b in (1, 2, 3, 4, 5) and c in (50, 60, 70, 80, 90, 100)  -- expected: index scan
@@ -626,17 +678,25 @@ select explain(3, query, expected) from queries order by id;
          Storage Filter: (s.x = b)
  (5 rows)
  
- /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: bitmap
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or b = y  -- expected: index scan
+ ----------------
+ Nested Loop
+   ->  Seq Scan on s
+   ->  Index Scan using rc_b_idx on rc r
+         Index Cond: (b = ANY (ARRAY[s.x, s.y]))
+ (4 rows)
+ 
+ /*+ Leading((s r)) */select b, c from rC r, s where b = x or c = y  -- expected: bitmap
  ----------------
  Nested Loop
    ->  Seq Scan on s
    ->  YB Bitmap Table Scan on rc r
-         Storage Recheck Cond: ((b = s.x) OR (b = s.y))
+         Storage Recheck Cond: ((b = s.x) OR (c = s.y))
          ->  BitmapOr
                ->  Bitmap Index Scan on rc_b_idx
                      Index Cond: (b = s.x)
-               ->  Bitmap Index Scan on rc_b_idx
-                     Index Cond: (b = s.y)
+               ->  Bitmap Index Scan on rc_c_idx
+                     Index Cond: (c = s.y)
  (9 rows)
  
 

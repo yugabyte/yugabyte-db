@@ -25,6 +25,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
@@ -280,6 +281,12 @@ bool YBCStatusIsTryAgain(YbcStatus s) {
 
 bool YBCStatusIsTimedOut(YbcStatus s) {
   return StatusWrapper(s)->IsTimedOut();
+}
+
+bool YBCStatusIsRetryableRequestTooOld(YbcStatus s) {
+  StatusWrapper wrapper(s);
+  return wrapper->IsExpired() &&
+         MinRunningRequestIdStatusData::ValueFromStatus(*wrapper).has_value();
 }
 
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {

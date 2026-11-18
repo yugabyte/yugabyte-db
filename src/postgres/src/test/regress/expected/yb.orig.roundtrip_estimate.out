@@ -789,6 +789,9 @@ order by qid, nid;
 set yb_fetch_size_limit = 0;
 set yb_fetch_row_limit = 128;
 update explain_query_options set with_analyze = false;
+-- enable_sort is off for the measured queries; the EXCEPT ALL below needs it
+-- back on, or the planner picks a hash set op sized from the CTE estimates.
+set enable_sort = on;
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -806,6 +809,7 @@ union all
 -----+-----+-----------+------------+------------+----------------------+----------------+--------
 (0 rows)
 
+set enable_sort = off;
 update explain_query_options set with_analyze = true;
 -- should not return any row; columns surface per-field counts on failure.
 select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
@@ -826,6 +830,9 @@ order by qid, nid;
 set yb_fetch_size_limit = '8kB';
 set yb_fetch_row_limit = 0;
 update explain_query_options set with_analyze = false;
+-- enable_sort is off for the measured queries; the EXCEPT ALL below needs it
+-- back on, or the planner picks a hash set op sized from the CTE estimates.
+set enable_sort = on;
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -843,6 +850,7 @@ union all
 -----+-----+-----------+------------+------------+----------------------+----------------+--------
 (0 rows)
 
+set enable_sort = off;
 update explain_query_options set with_analyze = true;
 -- should not return any row; columns surface per-field counts on failure.
 select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
@@ -863,6 +871,9 @@ order by qid, nid;
 set yb_fetch_size_limit = 0;
 set yb_fetch_row_limit = 0;
 update explain_query_options set with_analyze = false;
+-- enable_sort is off for the measured queries; the EXCEPT ALL below needs it
+-- back on, or the planner picks a hash set op sized from the CTE estimates.
+set enable_sort = on;
 (table baseline_scan_nodes
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
@@ -880,6 +891,7 @@ union all
 -----+-----+-----------+------------+------------+----------------------+----------------+--------
 (0 rows)
 
+set enable_sort = off;
 update explain_query_options set with_analyze = true;
 -- should not return any row; columns surface per-field counts on failure.
 select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,

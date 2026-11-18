@@ -109,7 +109,10 @@ public class CommonUtils {
           // CipherTrust KMS fields
           "KEY_ALGORITHM",
           "KEY_SIZE",
-          "KEY_NAME");
+          "KEY_NAME",
+          // OCI KMS fields
+          "OCIKEYNAME",
+          "OCIKEYOCID");
 
   public static final Map<Character, Character> CHAR_MAP =
       Map.ofEntries(

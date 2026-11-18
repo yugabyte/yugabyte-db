@@ -143,6 +143,10 @@ class IndexContext : public docdb::DocVectorIndexContext {
     return reader;
   }
 
+  const docdb::KeyBounds& key_bounds() const override {
+    return tablet_.key_bounds();
+  }
+
   Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(
       HybridTime read_ht, std::optional<Slice> start_key) const {
     auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
@@ -1227,20 +1231,43 @@ Status VectorIndexList::WaitForFlush() {
     return Status::OK();
   }
 
+  Status result;
   for (const auto& index : *list_) {
-    RETURN_NOT_OK(index->WaitForFlush());
+    auto status = index->WaitForFlush();
+    if (result.ok()) {
+      result = status;
+    }
   }
 
-  return Status::OK();
+  return result;
 }
 
-void VectorIndexList::Flush() {
+Status VectorIndexList::Flush() {
   if (!list_) {
-    return;
+    return Status::OK();
   }
+
+  Status result;
   for (const auto& index : *list_) {
-    WARN_NOT_OK(index->Flush(), "Flush vector index");
+    auto status = index->Flush();
+    if (status.ok()) {
+      continue;
+    }
+    status = status.CloneAndPrepend(Format("Flush vector index $0", index->table_id()));
+    // Only a drop shuts down a single index, and a dropped index's rows are not needed. Tablet
+    // shutdown stops every index, and Tablet::Flush reports it. A flush executor that is shutting
+    // down fails WaitForFlush instead.
+    if (status.IsShutdownInProgress()) {
+      LOG(INFO) << status;
+      continue;
+    }
+    LOG(WARNING) << status;
+    if (result.ok()) {
+      result = std::move(status);
+    }
   }
+
+  return result;
 }
 
 void VectorIndexList::EnableAutoCompactions() {

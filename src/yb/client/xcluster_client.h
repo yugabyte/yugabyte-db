@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <map>
 #include <string>
 #include <google/protobuf/repeated_field.h>
 
@@ -190,6 +191,11 @@ class XClusterClient {
   Status DeleteXClusterWalAnchorStreams(
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& source_table_ids);
+
+  // Records the tablets whose checkpoints were written to cdc_state for each stream. See
+  // master::XClusterStreamBootstrapInfoPB.
+  Status RecordXClusterStreamBootstrapInfo(
+      const std::map<xrepl::StreamId, std::vector<TabletId>>& stream_tablets);
 
   Result<xrepl::StreamId> CreateXClusterStream(
       const TableId& table_id, bool active, cdc::StreamModeTransactional transactional);

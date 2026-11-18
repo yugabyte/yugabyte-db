@@ -170,6 +170,24 @@ Status XClusterCheckpointNamespaceTask::MarkTablesAsCheckpointed(
     return Status::OK();
   }
 
+  if (result && result->first.empty()) {
+    // Every table is checkpointed.  A transaction whose provisional writes precede a tablet's
+    // checkpoint but commits after that checkpoint and the backup the caller takes next cannot be
+    // replicated; accordingly, checkpointing attempted to abort such transactions.  However, it
+    // does so in a best effort manner that can fail due to timeouts or other corner cases.  Example
+    // corner case: transactions in the middle of committing are not aborted but can still commit at
+    // a time stamp after the backup.
+    //
+    // In automatic mode setup (not switchover):
+    //
+    // To cover for those failures, we additionally use StartPersisting here, which provides a
+    // guarantee rather than best effort, to block these transactions from committing.  This must
+    // happen before the namespace is marked READY, since the caller backs it up once it is, and a
+    // commit after the backup's read time would then reach neither the backup nor the stream.
+    RETURN_NOT_OK(
+        outbound_replication_group_.MaybeBlockWritesStartedBeforeCheckpoint(namespace_id_, epoch_));
+  }
+
   if (VERIFY_RESULT(outbound_replication_group_.MarkBootstrapTablesAsCheckpointed(
           namespace_id_, std::move(result), epoch_))) {
     // All tables have been checkpointed and the replication group is now READY.

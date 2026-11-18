@@ -5,3 +5,4 @@
 # regression tests.
 ###########################################################################
 test: yb.port.partition_join
+test: yb.orig.partitionwise_bitmap

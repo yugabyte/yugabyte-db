@@ -362,6 +362,16 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 
 			opts->specified_opts |= SUBOPT_RETAIN_DEAD_TUPLES;
 			opts->retaindeadtuples = defGetBoolean(defel);
+
+			/*
+			 * YB: Retaining dead tuples needs the conflict detection slot,
+			 * which holds back the xmin horizon of a physical slot.  DocDB has
+			 * no such horizon, and YB replication slots are CDC streams.
+			 */
+			if (IsYugaByteEnabled() && opts->retaindeadtuples)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("retain_dead_tuples is not supported in YugabyteDB")));
 		}
 		else if (IsSet(supported_opts, SUBOPT_MAX_RETENTION_DURATION) &&
 				 strcmp(defel->defname, "max_retention_duration") == 0)

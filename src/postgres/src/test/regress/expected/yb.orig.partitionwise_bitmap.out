@@ -1,0 +1,141 @@
+--
+-- Partitionwise nestloop whose inner path is a YB bitmap scan.
+--
+-- reparameterize_path_by_child() and path_is_reparameterizable_by_child()
+-- both special-case YbBitmapTablePath. A temp table is not a YB relation, so
+-- it takes BitmapHeapPath and never enters those arms. d > 0 is not indexed,
+-- so it stays in baserestrictinfo and has to be translated onto the child
+-- partition. The first bitmapqual is one index path; the second is a BitmapOr.
+--
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS pwjb_outer;
+DROP TABLE IF EXISTS pwjb_inner;
+CREATE TABLE pwjb_outer (a integer, b integer, c integer, d integer)
+  PARTITION BY RANGE (a);
+CREATE TABLE pwjb_outer_1 PARTITION OF pwjb_outer FOR VALUES FROM (1) TO (11);
+CREATE TABLE pwjb_outer_2 PARTITION OF pwjb_outer FOR VALUES FROM (11) TO (21);
+CREATE TABLE pwjb_outer_3 PARTITION OF pwjb_outer FOR VALUES FROM (21) TO (31);
+CREATE TABLE pwjb_inner (a integer, b integer, c integer, d integer)
+  PARTITION BY RANGE (a);
+CREATE TABLE pwjb_inner_1 PARTITION OF pwjb_inner FOR VALUES FROM (1) TO (11);
+CREATE TABLE pwjb_inner_2 PARTITION OF pwjb_inner FOR VALUES FROM (11) TO (21);
+CREATE TABLE pwjb_inner_3 PARTITION OF pwjb_inner FOR VALUES FROM (21) TO (31);
+INSERT INTO pwjb_outer
+  SELECT 1 + i % 30, i, i, 1 FROM generate_series(1, 1000) i;
+INSERT INTO pwjb_inner
+  SELECT 1 + i % 30, i, i, 1
+  FROM generate_series(1, 500) i, generate_series(1, 10) j;
+CREATE INDEX pwjb_inner_b_idx ON pwjb_inner (b);
+CREATE INDEX pwjb_inner_c_idx ON pwjb_inner (c);
+ANALYZE pwjb_outer;
+ANALYZE pwjb_inner;
+-- YB defaults will not pick a partitionwise YB bitmap nestloop.
+SET enable_partitionwise_join = on;
+SET yb_enable_bitmapscan = on;
+SET enable_indexscan = off;
+SET enable_indexonlyscan = off;
+SET enable_seqscan = off;
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET yb_prefer_bnl = off;
+SET enable_material = off;
+SET max_parallel_workers_per_gather = 0;
+-- BitmapAnd of two outer-parameterized index clauses. A constant index
+-- condition can be satisfied without reparameterizing the bitmap path.
+EXPLAIN (COSTS OFF)
+SELECT * FROM pwjb_outer
+WHERE NOT EXISTS (
+    SELECT 1 FROM pwjb_inner
+    WHERE pwjb_inner.a = pwjb_outer.a
+      AND pwjb_inner.b = pwjb_outer.b
+      AND pwjb_inner.c = pwjb_outer.c + 1
+      AND pwjb_inner.d > 0)
+  AND a < 20 AND c = 120;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Append
+   ->  Nested Loop Anti Join
+         ->  Seq Scan on pwjb_outer_1
+               Disabled: true
+               Storage Filter: ((a < 20) AND (c = 120))
+         ->  YB Bitmap Table Scan on pwjb_inner_1
+               Storage Recheck Cond: (c = (pwjb_outer_1.c + 1))
+               Storage Filter: ((d > 0) AND (a = pwjb_outer_1.a) AND (b = pwjb_outer_1.b))
+               ->  Bitmap Index Scan on pwjb_inner_1_c_idx
+                     Index Cond: (c = (pwjb_outer_1.c + 1))
+   ->  Nested Loop Anti Join
+         ->  Seq Scan on pwjb_outer_2
+               Disabled: true
+               Storage Filter: ((a < 20) AND (c = 120))
+         ->  YB Bitmap Table Scan on pwjb_inner_2
+               Storage Recheck Cond: (c = (pwjb_outer_2.c + 1))
+               Storage Filter: ((d > 0) AND (a = pwjb_outer_2.a) AND (b = pwjb_outer_2.b))
+               ->  Bitmap Index Scan on pwjb_inner_2_c_idx
+                     Index Cond: (c = (pwjb_outer_2.c + 1))
+(19 rows)
+
+SELECT * FROM pwjb_outer
+WHERE NOT EXISTS (
+    SELECT 1 FROM pwjb_inner
+    WHERE pwjb_inner.a = pwjb_outer.a
+      AND pwjb_inner.b = pwjb_outer.b
+      AND pwjb_inner.c = pwjb_outer.c + 1
+      AND pwjb_inner.d > 0)
+  AND a < 20 AND c = 120;
+ a |  b  |  c  | d 
+---+-----+-----+---
+ 1 | 120 | 120 | 1
+(1 row)
+
+-- BitmapOr of (b = outer.b + 1) and (c = 99).
+EXPLAIN (COSTS OFF)
+SELECT * FROM pwjb_outer
+WHERE NOT EXISTS (
+    SELECT 1 FROM pwjb_inner
+    WHERE pwjb_inner.a = pwjb_outer.a
+      AND (pwjb_inner.b = pwjb_outer.b + 1 OR pwjb_inner.c = 99)
+      AND pwjb_inner.d > 0)
+  AND a < 20 AND c = 91;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Append
+   ->  Nested Loop Anti Join
+         ->  Seq Scan on pwjb_outer_1
+               Disabled: true
+               Storage Filter: ((a < 20) AND (c = 91))
+         ->  YB Bitmap Table Scan on pwjb_inner_1
+               Storage Recheck Cond: ((b = (pwjb_outer_1.b + 1)) OR (c = 99))
+               Storage Filter: ((d > 0) AND (a = pwjb_outer_1.a))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on pwjb_inner_1_b_idx
+                           Index Cond: (b = (pwjb_outer_1.b + 1))
+                     ->  Bitmap Index Scan on pwjb_inner_1_c_idx
+                           Index Cond: (c = 99)
+   ->  Nested Loop Anti Join
+         ->  Seq Scan on pwjb_outer_2
+               Disabled: true
+               Storage Filter: ((a < 20) AND (c = 91))
+         ->  YB Bitmap Table Scan on pwjb_inner_2
+               Storage Recheck Cond: ((b = (pwjb_outer_2.b + 1)) OR (c = 99))
+               Storage Filter: ((d > 0) AND (a = pwjb_outer_2.a))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on pwjb_inner_2_b_idx
+                           Index Cond: (b = (pwjb_outer_2.b + 1))
+                     ->  Bitmap Index Scan on pwjb_inner_2_c_idx
+                           Index Cond: (c = 99)
+(25 rows)
+
+SELECT * FROM pwjb_outer
+WHERE NOT EXISTS (
+    SELECT 1 FROM pwjb_inner
+    WHERE pwjb_inner.a = pwjb_outer.a
+      AND (pwjb_inner.b = pwjb_outer.b + 1 OR pwjb_inner.c = 99)
+      AND pwjb_inner.d > 0)
+  AND a < 20 AND c = 91;
+ a | b  | c  | d 
+---+----+----+---
+ 2 | 91 | 91 | 1
+(1 row)
+
+DROP TABLE pwjb_outer;
+DROP TABLE pwjb_inner;

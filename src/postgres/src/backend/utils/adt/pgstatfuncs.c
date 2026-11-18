@@ -186,14 +186,6 @@ PG_STAT_GET_RELENTRY_TIMESTAMPTZ(lastscan)
 /* pg_stat_get_stat_reset_time */
 PG_STAT_GET_RELENTRY_TIMESTAMPTZ(stat_reset_time)
 
-/*
- * YB_TODO_PG19MERGE: PG commits 3d51cb5197ea7eabc65f5e0184aae60b8f7f9528 and
- * 024c521117579a6d356050ad3d78fdc95e44eefa reworked/renamed pgstate beentry
- * retrieval functions. Temporarily patched up YB call sites for now; however,
- * these need to be revisited (should the YB functions expect a proc number as an
- * argument or an index? Also there seems to be no equivalent of the old
- * pgstat_fetch_stat_local_beentry).
- */
 Datum
 pg_stat_get_function_calls(PG_FUNCTION_ARGS)
 {

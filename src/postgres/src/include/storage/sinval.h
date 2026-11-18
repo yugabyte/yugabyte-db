@@ -174,10 +174,15 @@ typedef struct
 typedef struct
 {
 	int8		id;				/* type field --- must be first */
+	int8		yb_version;		/* version of this type (id) of message ---
+								 * must be second */
+	pid_t		yb_sender_pid;	/* ID of a process which sent the message ---
+								 * must be third */
 	Oid			dbId;			/* database ID */
 	Oid			relid;			/* relation ID, or 0 if whole
 								 * RelationSyncCache */
 } SharedInvalRelSyncMsg;
+#define YbSharedInvalRelSyncMsgVersion 0
 
 typedef union
 {

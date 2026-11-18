@@ -1158,6 +1158,9 @@ void od_rules_print(od_rules_t *rules, od_logger_t *logger)
 		od_log(logger, "rules", NULL, NULL,
 		       "  pool idle_in_transaction_timeout  %d",
 		       rule->pool->idle_in_transaction_timeout);
+		od_log(logger, "rules", NULL, NULL,
+		       "  pool attach_check                 %s",
+		       rule->pool->attach_check ? "yes" : "no");
 		if (rule->pool->pool != OD_RULE_POOL_SESSION) {
 			od_log(logger, "rules", NULL, NULL,
 			       "  pool prepared statement support   %s",

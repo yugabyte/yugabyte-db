@@ -253,6 +253,9 @@ class TransactionParticipant : public TransactionStatusManager {
 
   size_t GetNumRunningTransactions() const;
 
+  // Whether the transactions in the intents DB were loaded after start.
+  bool AllTransactionsLoaded() const;
+
   void SetMinReplayTxnFirstWriteTimeUpdateCallback(std::function<void(HybridTime)> callback);
 
   struct CountIntentsResult {

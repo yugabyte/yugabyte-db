@@ -572,21 +572,17 @@ public class NodeUniverseManager extends DevopsBase {
     if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
       bashCommand.add("export sslmode=\"require\";");
     }
+    String port =
+        String.valueOf(cpEnabled ? node.internalYsqlServerRpcPort : node.ysqlServerRpcPort);
     bashCommand.add(getYbHomeDir(node, universe) + "/tserver/bin/ysqlsh");
     bashCommand.add("-h");
     if (authEnabled) {
-      bashCommand.add(
-          String.format(
-              "$(dirname \"$(ls -t %s/.yb.*/.s.PGSQL.* | head -1)\")", customTmpDirectory));
+      bashCommand.add(getYsqlSocketDirExpression(customTmpDirectory, port));
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
     bashCommand.add("-p");
-    if (cpEnabled) {
-      bashCommand.add(String.valueOf(node.internalYsqlServerRpcPort));
-    } else {
-      bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
-    }
+    bashCommand.add(port);
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
     if (StringUtils.isNotEmpty(dbName)) {
@@ -619,6 +615,16 @@ public class NodeUniverseManager extends DevopsBase {
             .redactedVals(valsToRedact)
             .build();
     return runCommand(node, universe, command, context);
+  }
+
+  // ysqlsh opens <dir>/.s.PGSQL.<port>, so ignore sockets a SIGKILLed postmaster left on another
+  // port. Postgres falls back to /tmp when tmp_dir is too long; the newest socket wins.
+  static String getYsqlSocketDirExpression(String tmpDirectory, String port) {
+    String sockets = tmpDirectory + "/.yb.*/.s.PGSQL." + port;
+    if (!"/tmp".equals(tmpDirectory)) {
+      sockets += " /tmp/.yb.*/.s.PGSQL." + port;
+    }
+    return String.format("$(dirname \"$(ls -t %s 2>/dev/null | head -1)\")", sockets);
   }
 
   /**

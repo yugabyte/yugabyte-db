@@ -17,6 +17,13 @@ import BookIcon from '../../../../../assets/blue-book.svg';
 import BulbIcon from '../../../../../assets/bulb.svg';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
+import { getEffectiveRegions } from '../../helpers/placementsByProvider';
+import { AVAILABILITY_ZONES_BY_PROVIDER } from '../../fields/FieldNames';
+import {
+  flattenAvailabilityZonesByProvider,
+  type AvailabilityZonesByProvider
+} from '../../helpers/nodesByProvider';
 
 const { MenuItem, Typography, IconButton, Link, styled, Divider } = mui;
 
@@ -29,6 +36,8 @@ interface ZoneProps {
   setValue: UseFormSetValue<NodeAvailabilityProps>;
   /** When NODE_LEVEL total nodes are below RF (lessNodes / lessNodesDedicated). */
   showNodesCountError?: boolean;
+  /** Multi-provider: nest zone field paths under availabilityZonesByProvider[uuid]. */
+  providerUuid?: string;
 }
 
 const menuProps = {
@@ -106,7 +115,8 @@ export const Zone: FC<ZoneProps> = ({
   remove,
   regionIndex,
   setValue,
-  showNodesCountError = false
+  showNodesCountError = false,
+  providerUuid
 }) => {
   const {
     formState: { errors, isSubmitted }
@@ -115,22 +125,36 @@ export const Zone: FC<ZoneProps> = ({
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
   const { t: tCommon } = useTranslation('translation', { keyPrefix: 'common' });
-  const [{ resilienceAndRegionsSettings, generalSettings }] = useContext(
+  const [{ resilienceAndRegionsSettings, generalSettings, placementsByProvider }] = useContext(
     CreateUniverseContext
   ) as unknown as CreateUniverseContextMethods;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
   const isPrefferedAllowed = ![FaultToleranceType.NODE_LEVEL, FaultToleranceType.NONE].includes(
     resilienceAndRegionsSettings!.faultToleranceType
   );
 
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
 
-  const availabilityZones = useWatch({ name: 'availabilityZones', control });
+  const singularAvailabilityZones = useWatch({ name: 'availabilityZones', control });
+  const availabilityZonesByProvider = useWatch({
+    name: AVAILABILITY_ZONES_BY_PROVIDER,
+    control
+  }) as AvailabilityZonesByProvider | undefined;
   const useDedicatedNodes = useWatch({ name: 'useDedicatedNodes', control });
 
-  const selectedAzCountInRegion = availabilityZones?.[region.code]?.length ?? 0;
+  const availabilityZones = providerUuid
+    ? flattenAvailabilityZonesByProvider(availabilityZonesByProvider)
+    : singularAvailabilityZones;
+  const regionZonesPath = providerUuid
+    ? `${AVAILABILITY_ZONES_BY_PROVIDER}.${providerUuid}.${region.code}`
+    : `availabilityZones.${region.code}`;
+  const zonePath = `${regionZonesPath}.${index}`;
+
+  const selectedAzCountInRegion = providerUuid
+    ? availabilityZonesByProvider?.[providerUuid]?.[region.code]?.length ?? 0
+    : singularAvailabilityZones?.[region.code]?.length ?? 0;
   const selectedAzNames = useMemo(
     () =>
       new Set(
@@ -157,7 +181,10 @@ export const Zone: FC<ZoneProps> = ({
     [availabilityZones]
   );
 
-  const selectedRegionCount = resilienceAndRegionsSettings?.regions?.length ?? 0;
+  const selectedRegionCount = getEffectiveRegions(
+    resilienceAndRegionsSettings,
+    placementsByProvider
+  ).length;
   const showCrossRegionRankingHint = selectedRegionCount > 1;
 
   const preferredMenuItems = isPrefferedAllowed
@@ -202,9 +229,30 @@ export const Zone: FC<ZoneProps> = ({
     : null;
 
   const updateNodeCountAcrossRegions = (nodeCount: number) => {
-    const updatedAz = { ...availabilityZones };
-    Object.keys(updatedAz).forEach((region) => {
-      updatedAz[region] = updatedAz[region].map((zone) => {
+    if (providerUuid) {
+      const updatedByProvider: AvailabilityZonesByProvider = {
+        ...(availabilityZonesByProvider ?? {})
+      };
+      for (const [uuid, zonesByRegion] of Object.entries(updatedByProvider)) {
+        updatedByProvider[uuid] = Object.fromEntries(
+          Object.entries(zonesByRegion ?? {}).map(([code, zones]) => [
+            code,
+            (zones ?? []).map((zone) =>
+              zone.nodeCount !== nodeCount ? { ...zone, nodeCount } : zone
+            )
+          ])
+        );
+      }
+      setValue(AVAILABILITY_ZONES_BY_PROVIDER, updatedByProvider as any, {
+        shouldValidate: false,
+        shouldDirty: true
+      });
+      return;
+    }
+
+    const updatedAz = { ...singularAvailabilityZones };
+    Object.keys(updatedAz).forEach((regionCode) => {
+      updatedAz[regionCode] = updatedAz[regionCode].map((zone) => {
         if (zone.nodeCount !== nodeCount) {
           return { ...zone, nodeCount };
         }
@@ -221,7 +269,7 @@ export const Zone: FC<ZoneProps> = ({
   };
 
   const zone = useWatch({
-    name: `availabilityZones.${region.code}.${index}`,
+    name: zonePath as any,
     control
   });
   const isGuidedMode =
@@ -232,21 +280,24 @@ export const Zone: FC<ZoneProps> = ({
     isSubmitted && (errors as any)?.lesserNodes?.message === 'errMsg.expertAzBlank' && !zone?.name;
   const showOnPremNodeCountError =
     isSubmitted &&
-    (errors as any)?.availabilityZones?.[region.code]?.[index]?.nodeCount?.message ===
+    (providerUuid
+      ? (errors as any)?.[AVAILABILITY_ZONES_BY_PROVIDER]?.[providerUuid]?.[region.code]?.[index]
+          ?.nodeCount?.message
+      : (errors as any)?.availabilityZones?.[region.code]?.[index]?.nodeCount?.message) ===
       'errMsg.onPremFreeNodesExceeded';
 
   return (
-    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '0px 8px' }}>
-      <span style={{ marginTop: '24px', lineHeight: 0 }}>
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingLeft: '8px' }}>
+      <span style={{ marginTop: '24px', marginRight: '8px', lineHeight: 0 }}>
         <Return />
       </span>
       <Controller
         control={control}
-        name={`availabilityZones.${region.code}.${index}`}
+        name={zonePath as any}
         render={({ field }) => (
           <YBSelect
             label={t('availabilityZone')}
-            sx={{ width: '300px' }}
+            sx={{ flex: 1, minWidth: 0 }}
             error={showAzSelectError}
             value={zone?.name ?? ''}
             renderValue={(value) =>
@@ -268,13 +319,13 @@ export const Zone: FC<ZoneProps> = ({
             menuProps={menuProps}
             dataTestId="availability-zone-select"
           >
-            {region.zones.map((zone) => (
+            {region.zones.map((zoneOption) => (
               <MenuItem
-                key={zone.uuid}
-                value={zone.name}
-                disabled={selectedAzNames.has(zone.name) && zone.name !== field.value?.name}
+                key={zoneOption.uuid}
+                value={zoneOption.name}
+                disabled={selectedAzNames.has(zoneOption.name) && zoneOption.name !== field.value?.name}
               >
-                {zone.name}
+                {zoneOption.name}
               </MenuItem>
             ))}
           </YBSelect>
@@ -282,7 +333,7 @@ export const Zone: FC<ZoneProps> = ({
       />
       <Controller
         control={control}
-        name={`availabilityZones.${region.code}.${index}.nodeCount`}
+        name={`${zonePath}.nodeCount` as any}
         render={({ field }) => (
           <YBTooltip
             title={
@@ -303,8 +354,9 @@ export const Zone: FC<ZoneProps> = ({
               )
             }
           >
-            <span style={{ display: 'inline-block' }}>
+            <span style={{ display: 'inline-block', width: '96px', flexShrink: 0 }}>
               <YBInput
+                fullWidth
                 type="number"
                 label={
                   useDedicatedNodes
@@ -336,7 +388,7 @@ export const Zone: FC<ZoneProps> = ({
       {isPrefferedAllowed && (
         <Controller
           control={control}
-          name={`availabilityZones.${region.code}.${index}.preffered`}
+          name={`${zonePath}.preffered` as any}
           render={({ field }) => (
             <YBSelect
               label={
@@ -352,7 +404,7 @@ export const Zone: FC<ZoneProps> = ({
                   )}
                 </>
               }
-              sx={{ width: '90px' }}
+              sx={{ width: '92px', flexShrink: 0 }}
               value={field.value}
               onChange={(e) => {
                 field.onChange(e.target.value);

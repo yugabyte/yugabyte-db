@@ -85,8 +85,9 @@ struct ElectionResult;
 
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
-YB_STRONGLY_TYPED_BOOL(WriteEmpty);
+YB_STRONGLY_TYPED_BOOL(IgnorePeersInTransition);
 YB_STRONGLY_TYPED_BOOL(PreElected);
+YB_STRONGLY_TYPED_BOOL(WriteEmpty);
 
 YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
@@ -163,6 +164,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   Status StepDown(const LeaderStepDownRequestPB* req,
                   LeaderStepDownResponsePB* resp) override;
+
+  // With ignore_peers_in_transition, steps down even while a live PRE_VOTER or PRE_OBSERVER may
+  // still be in remote bootstrap.  That remote bootstrap must then be redone if the new leader has
+  // GCed the WAL its new peer needs to catch up.
+  Status StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp,
+                  IgnorePeersInTransition ignore_peers_in_transition);
 
   Status TEST_Replicate(const ConsensusRoundPtr& round) override;
   Status ReplicateBatch(const ConsensusRounds& rounds) override;
@@ -250,6 +257,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   OpId GetLastAppliedOpId() override;
 
   OpId GetAllAppliedOpId();
+
+  // Index of the last op replicated to all peers, as known by the leader. On a follower it is the
+  // value most recently sent by a leader.
+  int64_t GetAllReplicatedIndex() const;
 
   struct WalGcRetentionOpIdInfo {
     OpId committed_op_id = OpId::Max();
@@ -768,6 +779,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // the request will be ignored. This prevents abandoned or partitioned
   // nodes from disturbing the healthy leader.
   std::atomic<MonoTime> withhold_votes_until_;
+
+  std::atomic<int64_t> all_replicated_index_from_leader_{0};
 
   // UUID of new desired leader during stepdown.
   TabletServerId protege_leader_uuid_;

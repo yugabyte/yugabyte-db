@@ -367,10 +367,6 @@ bool TabletSnapshots::IsLastSnapshotTimeFilePath(const std::string& dir) {
   return dir.starts_with(kLastSnapshotPrefix);
 }
 
-Status TabletSnapshots::Prepare(SnapshotOperation* operation) {
-  return Status::OK();
-}
-
 Status TabletSnapshots::Create(SnapshotOperation* operation) {
   return Create(CreateSnapshotData {
     .snapshot_hybrid_time = HybridTime::FromPB(operation->request()->snapshot_hybrid_time()),
@@ -395,12 +391,15 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
+    // Flush all DBs, not just the regular DB, so the flushes triggered internally by checkpoint
+    // creation below need not flush intents while additionally holding create_checkpoint_lock().
+    // Preflushing before submission does not cover intervening writes or follower catch-up.
+    s = Flush(FlushMode::kSync, FlushFlags::kAllDbs, rocksdb::FlushReason::kSnapshotCreation);
   }
 
   if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "RocksDB flush status: " << s;
-    return s.CloneAndPrepend("Unable to flush RocksDB");
+    LOG_WITH_PREFIX(WARNING) << "Tablet flush status: " << s;
+    return s.CloneAndPrepend("Unable to flush tablet storages");
   }
 
   const std::string& snapshot_dir = data.snapshot_dir;
@@ -770,7 +769,8 @@ Status TabletSnapshots::RestoreCheckpoint(
   bool need_flush = false;
 
   if (restore_metadata.schema) {
-    // TODO(pitr) check deleted columns
+    // SetSchema forgets deleted columns that the restored schema brings back.
+    // TODO(pitr) record the columns that the restore removes as deleted.
     // OpId::Invalid() is used to indicate the callee to not
     // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
@@ -810,6 +810,23 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (need_flush) {
     RETURN_NOT_OK(tablet().metadata()->Flush());
     RefreshYBMetaDataCache();
+  }
+
+  // The snapshot holds the storage of every vector index the tablet had at snapshot time, including
+  // dropped ones a snapshot schedule retains and, in a clone, ones the clone does not have. A
+  // storage dir is named by index oid, so a later index of a clone that reuses such an oid would
+  // load its chunks. Best effort: a failure here would fail the restore apply, which is fatal for
+  // the tserver, after the frontier patch that keeps the restore from being replayed. A crash
+  // before this point is covered by the startup sweep in TSTabletManager.
+  // Runs after MergeWithRestored: it can change the id, and so the storage dir, of a listed index.
+  if (!snapshot_dir.empty()) {
+    auto children = env().GetChildren(snapshot_dir, ExcludeDots::kTrue);
+    if (children.ok()) {
+      metadata().DeleteUnlistedVectorIndexStorages(*children);
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Failed to list " << snapshot_dir
+                               << " for vector index storages to delete: " << children.status();
+    }
   }
 
   // Reopen database from copied checkpoint.
@@ -1305,10 +1322,12 @@ Status TabletSnapshots::DoCreateCheckpoint(
       // A vector index checkpoint only takes chunks that are already flushed. Vectors are queued
       // inside the write that adds their row, so flushing after the regular DB checkpoint puts the
       // vectors of every row in it into the chunks below, including rows written during the
-      // checkpoint. See #34759. A failed chunk save leaves WaitForFlush blocked, and other flush
-      // errors are only logged (#35156).
-      vector_indexes.Flush();
-      RETURN_NOT_OK(vector_indexes.WaitForFlush());
+      // checkpoint. See #34759.
+      // Waits for the saves started by the other indexes also when one failed.
+      auto flush_status = vector_indexes.Flush();
+      auto wait_status = vector_indexes.WaitForFlush();
+      RETURN_NOT_OK(flush_status);
+      RETURN_NOT_OK(wait_status);
     }
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
