@@ -20,6 +20,8 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
@@ -76,6 +78,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -206,7 +209,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     "aws, GP2, false",
     "gcp, Persistent, false",
     "gcp, Hyperdisk_Balanced, true",
-    "azu, null, false"
+    "azu, null, false",
+    "azu, PremiumV2_LRS, false",
+    "azu, UltraSSD_LRS, false"
   })
   @Test
   public void testResizeNodeIopsThroughputAvailable(
@@ -224,8 +229,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Parameters({
+    // The disk controller of the nodes is unknown here, see testResizeNodeAzuLiveExpandDisks.
     "10, Standard_DS2_v2, Standard_DS2_v2, UltraSSD_LRS, false",
+    "10, Standard_DS2_v2, Standard_DS2_v2, PremiumV2_LRS, false",
     "0, Standard_DS2_v2, Standard_DS4_v2, UltraSSD_LRS, true",
+    "0, Standard_DS2_v2, Standard_DS4_v2, PremiumV2_LRS, true",
+    "5000, Standard_DS2_v2, Standard_DS2_v2, Premium_LRS, false",
     "10, Standard_DS2_v2, Standard_DS2_v2, StandardSSD_LRS, true",
     "10, Standard_DS2_v2, Standard_DS4_v2, StandardSSD_LRS, true",
     "10, Standard_DS2_v2, Standard_E2as_v5, StandardSSD_LRS, false", // local to no local
@@ -251,6 +260,77 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         false /* volumeThroughputChange */,
         PublicCloudConstants.StorageType.valueOf(volumeType),
         expected);
+  }
+
+  // Premium SSD v2 and Ultra disks are expanded in place only when the VM uses NVMe controller.
+  @Parameters({
+    "10, Standard_DS2_v2, PremiumV2_LRS, NVME, true",
+    "10, Standard_DS2_v2, UltraSSD_LRS, NVME, true",
+    "10, Standard_DS4_v2, PremiumV2_LRS, NVME, true", // with instance type change
+    "10, Standard_DS2_v2, PremiumV2_LRS, SCSI, false",
+    "10, Standard_DS2_v2, UltraSSD_LRS, SCSI, false",
+    "10, Standard_DS4_v2, PremiumV2_LRS, SCSI, false",
+    "10, Standard_DS2_v2, PremiumV2_LRS, UNKNOWN, false",
+    "10, Standard_DS2_v2, PremiumV2_LRS, ERROR, false",
+    "-10, Standard_DS2_v2, PremiumV2_LRS, NVME, false", // decrease volume
+    // The 4 TiB no-downtime limit does not apply to Premium SSD v2 and Ultra disks.
+    "5000, Standard_DS2_v2, PremiumV2_LRS, NVME, true",
+    "5000, Standard_DS2_v2, UltraSSD_LRS, NVME, true",
+    "5000, Standard_DS2_v2, PremiumV2_LRS, SCSI, false",
+  })
+  @Test
+  public void testResizeNodeAzuLiveExpandDisks(
+      int volumeSizeDiff,
+      String targetInstanceTypeCode,
+      String volumeType,
+      String diskController,
+      boolean expected) {
+    switch (diskController) {
+      case "NVME":
+        when(cloudAPI.usesNvmeDiskController(any(), any())).thenReturn(Optional.of(true));
+        break;
+      case "SCSI":
+        when(cloudAPI.usesNvmeDiskController(any(), any())).thenReturn(Optional.of(false));
+        break;
+      case "UNKNOWN":
+        when(cloudAPI.usesNvmeDiskController(any(), any())).thenReturn(Optional.empty());
+        break;
+      default:
+        when(cloudAPI.usesNvmeDiskController(any(), any()))
+            .thenThrow(new RuntimeException("Azure is unreachable"));
+    }
+    testResizeNodeAvailable(
+        Common.CloudType.azu.toString(),
+        0,
+        volumeSizeDiff,
+        "Standard_DS2_v2",
+        targetInstanceTypeCode,
+        false /* volumeIopsChange */,
+        false /* volumeThroughputChange */,
+        PublicCloudConstants.StorageType.valueOf(volumeType),
+        expected);
+  }
+
+  // The controller is looked up only when a Premium SSD v2 or Ultra disk is being resized.
+  @Parameters({
+    "10, Standard_DS2_v2, StandardSSD_LRS",
+    "10, Standard_DS2_v2, Premium_LRS",
+    "0, Standard_DS4_v2, PremiumV2_LRS"
+  })
+  @Test
+  public void testResizeNodeAzuSkipsDiskControllerLookup(
+      int volumeSizeDiff, String targetInstanceTypeCode, String volumeType) {
+    testResizeNodeAvailable(
+        Common.CloudType.azu.toString(),
+        0,
+        volumeSizeDiff,
+        "Standard_DS2_v2",
+        targetInstanceTypeCode,
+        false /* volumeIopsChange */,
+        false /* volumeThroughputChange */,
+        PublicCloudConstants.StorageType.valueOf(volumeType),
+        true);
+    verify(cloudAPI, never()).usesNvmeDiskController(any(), any());
   }
 
   private void testResizeNodeAvailable(
