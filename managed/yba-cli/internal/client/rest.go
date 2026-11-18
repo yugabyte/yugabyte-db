@@ -6,11 +6,14 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 )
 
 // RestAPIParameters is a struct to hold the parameters for a REST API call
@@ -19,6 +22,23 @@ type RestAPIParameters struct {
 	method          string
 	urlRoute        string
 	operationString string
+}
+
+// errorMessageFromBody renders the server's own message when the body carries one, and falls back
+// to the raw body. The Error nil check is load-bearing: util.ErrorFromResponseBody dereferences
+// YbaStructuredError.Error without one and panics on a body that has no error key.
+func errorMessageFromBody(body []byte) string {
+	responseBodyError := util.YbaStructuredError{}
+	if err := json.Unmarshal(body, &responseBodyError); err == nil &&
+		responseBodyError.Error != nil {
+		// Trimmed: ErrorFromResponseBody prepends a space for the structured form.
+		return strings.TrimSpace(util.ErrorFromResponseBody(responseBodyError))
+	}
+	trimmed := string(body)
+	if len(trimmed) > 512 {
+		trimmed = trimmed[:512] + "..."
+	}
+	return trimmed
 }
 
 // RestAPICall makes a REST API call to the YW API

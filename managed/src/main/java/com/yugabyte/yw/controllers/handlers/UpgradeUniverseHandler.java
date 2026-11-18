@@ -13,6 +13,8 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ReleaseContainer;
+import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -97,6 +99,7 @@ public class UpgradeUniverseHandler {
   private final XClusterUniverseService xClusterUniverseService;
   private final TelemetryProviderService telemetryProviderService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final ReleaseManager releaseManager;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -109,7 +112,8 @@ public class UpgradeUniverseHandler {
       AutoFlagUtil autoFlagUtil,
       XClusterUniverseService xClusterUniverseService,
       TelemetryProviderService telemetryProviderService,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      ReleaseManager releaseManager) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -120,6 +124,7 @@ public class UpgradeUniverseHandler {
     this.xClusterUniverseService = xClusterUniverseService;
     this.telemetryProviderService = telemetryProviderService;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.releaseManager = releaseManager;
   }
 
   public UUID restartUniverse(
@@ -146,6 +151,10 @@ public class UpgradeUniverseHandler {
     }
     // Verify request params
     requestParams.verifyParams(universe, true);
+    ReleaseContainer release = releaseManager.getReleaseByVersion(requestParams.ybSoftwareVersion);
+    if (release != null) {
+      release.raiseIfDisabledOrDeleted();
+    }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     requestParams.ybPrevSoftwareVersion = userIntent.ybSoftwareVersion;
