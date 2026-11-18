@@ -2536,8 +2536,8 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "yb.storage_config.validation_timeout",
           ScopeType.GLOBAL,
           "Storage config validation timeout",
-          "How long the v2 storage config API waits for the storage validators to reach the"
-              + " backup storage before it answers that validation timed out.",
+          "How long the storage check of a storage config created or validated through the v2 API"
+              + " may take to reach the backup storage before it fails as timed out.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> taskExecutorShutdownMaxWaitTime =
