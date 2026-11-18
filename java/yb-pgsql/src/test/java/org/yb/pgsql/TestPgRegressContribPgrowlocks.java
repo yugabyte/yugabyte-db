@@ -29,7 +29,8 @@ public class TestPgRegressContribPgrowlocks extends BasePgRegressTest {
   @Test
   public void schedule() throws Exception {
     runPgRegressTest(
-        new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/pgrowlocks"),
+        new File(TestUtils.getBuildRootDir(),
+                 "postgres_build/contrib/pgrowlocks"),
         "yb_schedule");
   }
 }
