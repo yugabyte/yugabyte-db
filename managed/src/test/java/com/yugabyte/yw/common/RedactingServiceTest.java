@@ -658,6 +658,89 @@ public class RedactingServiceTest {
     assertTrue(redactedLogLine.contains("REDACTED"));
   }
 
+  private static final String YAML_OVERRIDES =
+      "gflags:\n"
+          + "  tserver:\n"
+          + "    ycql_ldap_bind_passwd: plainSecret\n"
+          + "      foldedSecret\n"
+          + "    webserver_port: 9100\n"
+          + "  master:\n"
+          + "    ycql_ldap_bind_passwd: \"dq \\\"Secret\\\"\"\n"
+          + "    ldapBindPassword: 'sq ''Secret'''\n"
+          + "    ldapServiceAccountPassword: |\n"
+          + "      blockSecret\n"
+          + "      blockSecret2\n"
+          + "    ysql_enable_auth: true\n"
+          + "  - ycql_ldap_bind_passwd:\n"
+          + "      nextLineSecret\n"
+          + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapbindpasswd=hbaSecret"
+          + " ldapserver=ldap.example.com\"\n";
+
+  private static final String YAML_OVERRIDES_REDACTED =
+      "gflags:\n"
+          + "  tserver:\n"
+          + "    ycql_ldap_bind_passwd: "
+          + SECRET_REPLACEMENT
+          + "\n"
+          + "    webserver_port: 9100\n"
+          + "  master:\n"
+          + "    ycql_ldap_bind_passwd: \""
+          + SECRET_REPLACEMENT
+          + "\"\n"
+          + "    ldapBindPassword: '"
+          + SECRET_REPLACEMENT
+          + "'\n"
+          + "    ldapServiceAccountPassword: "
+          + SECRET_REPLACEMENT
+          + "\n"
+          + "    ysql_enable_auth: true\n"
+          + "  - ycql_ldap_bind_passwd: "
+          + SECRET_REPLACEMENT
+          + "\n"
+          + "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapbindpasswd="
+          + SECRET_REPLACEMENT
+          + "\n";
+
+  @Test
+  public void testRedactsYamlKeyValue() {
+    assertEquals(
+        YAML_OVERRIDES_REDACTED, RedactingService.redactSensitiveInfoInString(YAML_OVERRIDES));
+    assertEquals(
+        YAML_OVERRIDES_REDACTED,
+        RedactingService.redactSensitiveInfoInString(YAML_OVERRIDES_REDACTED));
+    // The backslash and n are part of the password, not a line break.
+    assertEquals(
+        "    ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
+        RedactingService.redactSensitiveInfoInString("    ycql_ldap_bind_passwd: before\\nafter"));
+  }
+
+  @Test(timeout = 10_000)
+  public void testYamlRedactionStaysLinearWithManyValuesOnOneLine() {
+    StringBuilder line = new StringBuilder();
+    for (int i = 0; i < 40_000; i++) {
+      line.append("ycql_ldap_bind_passwd: \"v\" ");
+    }
+    assertFalse(RedactingService.redactSensitiveInfoInString(line.toString()).contains("\"v\""));
+  }
+
+  @Test
+  public void testLogsRedactionRedactsYamlOverridesInsideJson() {
+    ObjectNode payload = Json.newObject();
+    payload.put("universeOverrides", YAML_OVERRIDES);
+    payload.putObject("azOverrides").put("az-1", "ycql_ldap_bind_passwd: azSecret");
+    payload.put("upgradeOption", "Rolling");
+
+    JsonNode redacted =
+        RedactingService.filterSecretFields(payload, RedactionTarget.LOGS, null, null, false);
+
+    assertFalse(redacted.has("_redactionParseError"));
+    assertEquals(YAML_OVERRIDES_REDACTED, redacted.get("universeOverrides").asText());
+    assertEquals(
+        "ycql_ldap_bind_passwd: " + SECRET_REPLACEMENT,
+        redacted.get("azOverrides").get("az-1").asText());
+    assertEquals("Rolling", redacted.get("upgradeOption").asText());
+  }
+
   @Test
   public void testAuditAdditionalDetailsGflagsRedaction() {
     // Test redaction of sensitive gflags in audit additionalDetails section
