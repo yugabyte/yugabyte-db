@@ -1058,8 +1058,8 @@ spec:
                       scrapeConfigTargets:
                         description: >
                           Endpoints to scrape. Only pod-local targets exist on Kubernetes.
-                          NODE_EXPORT scrapes the node_exporter sidecar of the pods that run it
-                          and exports nothing from pods without it. The VM-only
+                          NODE_EXPORT scrapes the node_exporter sidecar of the pods that run it;
+                          pods without it export no node_exporter metrics. The VM-only
                           NODE_AGENT_EXPORT target is absent from this enum on purpose, because
                           there is no node agent in the DB pods. When omitted, the operator
                           scrapes all six supported targets.
