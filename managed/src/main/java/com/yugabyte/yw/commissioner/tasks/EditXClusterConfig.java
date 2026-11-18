@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.util.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;

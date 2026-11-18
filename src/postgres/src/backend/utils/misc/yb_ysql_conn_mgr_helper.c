@@ -85,6 +85,17 @@ YbIsClientYsqlConnMgr()
 	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
+/*
+ * The connection manager sets the addr and port together, so the addr alone
+ * decides, the same way pg_stat_activity does.
+ */
+bool
+YbHasConnMgrLogicalClientAddr(void)
+{
+	return YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
+		   yb_ycm_internal_client_addr[0] != '\0';
+}
+
 bool		yb_conn_mgr_is_auth_passthrough_backend = false;
 
 bool

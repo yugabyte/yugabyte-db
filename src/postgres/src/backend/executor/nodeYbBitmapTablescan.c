@@ -260,10 +260,12 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	if (!scanstate->recheck_local_quals)
 		plan.recheck_local_quals = NULL;
 
-	yb_pushdown = YbInstantiatePushdownExprs((scanstate->work_mem_exceeded ?
-											  &plan.fallback_pushdown :
-											  &plan.rel_pushdown),
-											 scanstate->ss.ps.state);
+	YbResetScanPushdownCxt(scanstate->pushdown_cxt);
+	yb_pushdown = YbInstantiateScanPushdownExprs(&scanstate->pushdown_cxt,
+												 scanstate->ss.ps.state,
+												 (scanstate->work_mem_exceeded ?
+												  &plan.fallback_pushdown :
+												  &plan.rel_pushdown));
 
 	{
 		YbTableScanOptions yb_options = {
@@ -288,19 +290,15 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 									   &yb_options);
 	}
 
-	if (yb_pushdown)
-		pfree(yb_pushdown);
-
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
-		YbPushdownExprs *recheck_pushdown = YbInstantiatePushdownExprs(&plan.recheck_pushdown,
-																	   scanstate->ss.ps.state);
+		YbPushdownExprs *recheck_pushdown =
+			YbInstantiateScanPushdownExprs(&scanstate->pushdown_cxt,
+										   scanstate->ss.ps.state,
+										   &plan.recheck_pushdown);
 
 		if (recheck_pushdown)
-		{
 			yb_scan_desc_apply_primary_pushdown(tsdesc, recheck_pushdown);
-			pfree(recheck_pushdown);
-		}
 	}
 
 	return tsdesc;

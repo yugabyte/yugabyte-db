@@ -353,6 +353,13 @@ message IndexInfoPB {
   // When backfill fails, the status it failed with. Unlike backfill_error_message, this
   // preserves error codes such as the PostgreSQL error code.
   optional AppStatusPB backfill_status = 38;
+
+  // The origination time (HybridTime value) of the CREATE INDEX statement that created this YSQL
+  // index, set only for an index built with backfill.  A backfill done for any other statement,
+  // e.g., an in-place rebuild of an existing index, must carry that statement's origination time
+  // instead.  In the indexed table's list of indexes, master clears it when it moves the index to
+  // any permission other than INDEX_PERM_DO_BACKFILL.
+  optional fixed64 backfill_origination_ht = 39;
 }
 
 // The possible order modes for clients.

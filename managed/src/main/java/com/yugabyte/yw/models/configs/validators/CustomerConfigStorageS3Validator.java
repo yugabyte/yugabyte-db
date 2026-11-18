@@ -102,7 +102,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
       }
     } catch (S3Exception e) {
       throwBeanConfigDataValidatorError(
-          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, e.getMessage());
+          CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, e.getMessage(), e);
     } finally {
       // Re-enable cert checking as it applies globally
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enforceCertVerificationBackupRestore)) {
@@ -137,9 +137,9 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
         String exceptionMsg = s3Exception.getMessage();
         if (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))
           exceptionMsg += " " + s3UriPath;
-        throwBeanConfigDataValidatorError(fieldName, exceptionMsg);
+        throwBeanConfigDataValidatorError(fieldName, exceptionMsg, s3Exception);
       } catch (SdkClientException e) {
-        throwBeanConfigDataValidatorError(fieldName, e.getMessage());
+        throwBeanConfigDataValidatorError(fieldName, e.getMessage(), e);
       }
     }
   }

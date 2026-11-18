@@ -881,7 +881,7 @@ Status TsAdminClient::AlterTabletTier(
   const auto& migration = resp.migration();
   std::cout << "Tablet <" << tablet_id << "> target tier set to <" << target_tier
             << ">: migration " << TierMigrationStatusPB::State_Name(migration.state())
-            << (migration.pass_in_flight() ? ", pass in flight" : "") << ", "
+            << (migration.migration_pass_in_flight() ? ", migration pass in flight" : "") << ", "
             << migration.files_moved() << "/" << migration.files_total()
             << " SST file(s) of the current pass moved. Use get_tablet_tier_info to poll progress."
             << std::endl;
@@ -984,8 +984,8 @@ Status TsAdminClient::GetTabletTierInfo(const TabletId& tablet_id) {
     jw.StartObject();
     jw.String("state");
     jw.String(TierMigrationStatusPB::State_Name(migration.state()));
-    jw.String("pass_in_flight");
-    jw.Bool(migration.pass_in_flight());
+    jw.String("migration_pass_in_flight");
+    jw.Bool(migration.migration_pass_in_flight());
     jw.String("files_moved");
     jw.Uint(migration.files_moved());
     jw.String("files_total");

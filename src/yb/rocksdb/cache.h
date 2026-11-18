@@ -37,6 +37,7 @@
 
 #include <stdint.h>
 
+#include <limits>
 #include <memory>
 
 #include "yb/rocksdb/statistics.h"
@@ -212,6 +213,10 @@ class Cache {
 
   // Tries to evict specified amount of bytes from cache.
   virtual size_t Evict(size_t required) { return 0; }
+
+  // Evicts every unreferenced entry. Not max(): EvictFromLRU compares usage + required against
+  // capacity, and max() overflows that sum.
+  size_t EvictAll() { return Evict(std::numeric_limits<size_t>::max() / 2); }
 
   // Returns the single-touch and multi-touch cache usages for each of the shard.
   virtual std::vector<std::pair<size_t, size_t>> TEST_GetIndividualUsages() = 0;

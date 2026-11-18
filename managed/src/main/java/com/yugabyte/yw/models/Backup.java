@@ -52,6 +52,7 @@ import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -538,6 +539,11 @@ public class Backup extends Model {
 
   public void updateBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
+    // Keep the column in sync: queries filter and group backups by it. Deleting a backup with
+    // another storage config changes the config in backup_info.
+    if (params.storageConfigUUID != null) {
+      this.storageConfigUUID = params.storageConfigUUID;
+    }
     save();
   }
 
@@ -872,16 +878,37 @@ public class Backup extends Model {
     this.backupInfo.backupSizeInBytes = backupSize;
   }
 
-  public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {
+  /**
+   * Universes that have in-progress or completed backups of the customer, grouped by the storage
+   * config the backups use. Selects only the storage config and universe UUID columns, so it does
+   * not load and deserialize backup_info, which gets expensive for customers with many backups.
+   */
+  public static Map<UUID, Set<UUID>> getInProgressAndCompletedUniversesByStorageConfig(
+      UUID customerUUID) {
+    Map<UUID, Set<UUID>> result = new HashMap<>();
+    find.query()
+        .setDistinct(true)
+        .select("storageConfigUUID, universeUUID")
+        .where()
+        .eq("customerUUID", customerUUID)
+        .in("state", BackupState.InProgress, BackupState.Completed)
+        .findList()
+        .forEach(
+            backup ->
+                result
+                    .computeIfAbsent(backup.getStorageConfigUUID(), k -> new HashSet<>())
+                    .add(backup.getUniverseUUID()));
+    return result;
+  }
+
+  public static boolean existsInProgressOrCompletedWithStorageConfig(
+      UUID customerUUID, UUID storageConfigUUID) {
     return find.query()
         .where()
-        .eq("customer_uuid", customerUUID)
+        .eq("customerUUID", customerUUID)
+        .eq("storageConfigUUID", storageConfigUUID)
         .in("state", BackupState.InProgress, BackupState.Completed)
-        .or()
-        .eq("state", BackupState.Completed)
-        .eq("state", BackupState.InProgress)
-        .endOr()
-        .findList();
+        .exists();
   }
 
   public static List<Backup> findAllBackupsQueuedForDeletion(UUID customerUUID) {
@@ -992,15 +1019,10 @@ public class Backup extends Model {
   }
 
   public static Set<Universe> getAssociatedUniverses(UUID customerUUID, UUID configUUID) {
-    Set<UUID> universeUUIDs = new HashSet<>();
-    List<Backup> backupList = getInProgressAndCompleted(customerUUID);
-    backupList =
-        backupList.stream()
-            .filter(
-                b ->
-                    b.getBackupInfo().storageConfigUUID.equals(configUUID)
-                        && universeUUIDs.add(b.getBackupInfo().getUniverseUUID()))
-            .collect(Collectors.toList());
+    Set<UUID> universeUUIDs =
+        new HashSet<>(
+            getInProgressAndCompletedUniversesByStorageConfig(customerUUID)
+                .getOrDefault(configUUID, Collections.emptySet()));
 
     List<Schedule> scheduleList =
         Schedule.find

@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleSubTaskBuilder;
 import com.yugabyte.yw.common.supportbundle.SupportBundleSubTaskBuilder.ComponentDownloadRequest;
 import com.yugabyte.yw.common.supportbundle.SupportBundleSubTaskBuilder.SubTaskGroupRegistry;
+import com.yugabyte.yw.common.supportbundle.SupportBundleTaskTiming;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.SupportBundle;
@@ -86,9 +87,10 @@ public class CreateSupportBundle extends AbstractTaskBase {
 
   @Override
   public void run() {
+    SupportBundleTaskTiming timing = SupportBundleTaskTiming.start();
     SupportBundle supportBundle = taskParams().supportBundle;
     try {
-      Path gzipPath = generateBundle(supportBundle);
+      Path gzipPath = generateBundle(supportBundle, timing);
       supportBundle.setPathObject(gzipPath);
 
       // Upload support bundle to configured destinations with universe context
@@ -122,58 +124,88 @@ public class CreateSupportBundle extends AbstractTaskBase {
         throw new RuntimeException(t);
       }
     } finally {
+      timing.logTotalCompleted(
+          log,
+          "v1",
+          supportBundle.getBundleUUID(),
+          getUserTaskUUID(),
+          taskParams().universe.getName(),
+          supportBundle.getStatus().name());
       supportBundle.update();
     }
   }
 
   public Path generateBundle(SupportBundle supportBundle) throws Exception {
-    Customer customer = taskParams().customer;
-    Universe universe = taskParams().universe;
-    Path bundlePath = subTaskBuilder.buildBundlePath(universe);
-    supportBundle.setPathObject(bundlePath);
-    Files.createDirectories(bundlePath);
-    log.debug("Fetching Universe {} logs", universe.getName());
+    return generateBundle(supportBundle, SupportBundleTaskTiming.start());
+  }
 
-    Pair<Date, Date> datePair =
-        supportBundleUtil.getValidStartAndEndDates(
-            staticConfig, supportBundle.getStartDate(), supportBundle.getEndDate());
-    Date startDate = datePair.getFirst(), endDate = datePair.getSecond();
+  public Path generateBundle(SupportBundle supportBundle, SupportBundleTaskTiming timing)
+      throws Exception {
+    timing.startCollection();
+    String collectionStatus = "Failed";
+    try {
+      Customer customer = taskParams().customer;
+      Universe universe = taskParams().universe;
+      Path bundlePath = subTaskBuilder.buildBundlePath(universe);
+      supportBundle.setPathObject(bundlePath);
+      Files.createDirectories(bundlePath);
+      log.debug("Fetching Universe {} logs", universe.getName());
 
-    // Add the supportBundle metadata into the bundle
-    subTaskBuilder.saveManifest(customer, bundlePath, supportBundle);
+      Pair<Date, Date> datePair =
+          supportBundleUtil.getValidStartAndEndDates(
+              staticConfig, supportBundle.getStartDate(), supportBundle.getEndDate());
+      Date startDate = datePair.getFirst(), endDate = datePair.getSecond();
 
-    int nodeReachableTimeout =
-        confGetter.getGlobalConf(GlobalConfKeys.supportBundleNodeCheckTimeoutSec);
-    Set<NodeDetails> reachableNodes = ConcurrentHashMap.newKeySet();
+      // Add the supportBundle metadata into the bundle
+      subTaskBuilder.saveManifest(customer, bundlePath, supportBundle);
 
-    // Run checks to all nodes in parallel to optimise bundle creation time.
-    subTaskBuilder.addNodeReachabilityChecks(
-        subTaskGroupRegistry, universe.getNodes(), universe, nodeReachableTimeout, reachableNodes);
-    getRunnableTask().runSubTasks();
+      int nodeReachableTimeout =
+          confGetter.getGlobalConf(GlobalConfKeys.supportBundleNodeCheckTimeoutSec);
+      Set<NodeDetails> reachableNodes = ConcurrentHashMap.newKeySet();
 
-    // Clear previous subtask so its not run again.
-    getRunnableTask().reset();
+      // Run checks to all nodes in parallel to optimise bundle creation time.
+      subTaskBuilder.addNodeReachabilityChecks(
+          subTaskGroupRegistry,
+          universe.getNodes(),
+          universe,
+          nodeReachableTimeout,
+          reachableNodes);
+      getRunnableTask().runSubTasks();
 
-    // Create new subtask groups, one for each component.
-    subTaskBuilder.addComponentDownloadTasks(
-        subTaskGroupRegistry,
-        ComponentDownloadRequest.builder()
-            .bundleDetails(supportBundle.getBundleDetails())
-            .v1TaskParams(taskParams())
-            .customer(customer)
-            .universe(universe)
-            .reachableNodes(reachableNodes)
-            .startDate(startDate)
-            .endDate(endDate)
-            .bundlePath(bundlePath)
-            .ybaOnly(false)
-            .build());
-    getRunnableTask().runSubTasks();
+      // Clear previous subtask so its not run again.
+      getRunnableTask().reset();
 
-    // Tar the support bundle directory and delete the original folder
-    Path gzipPath = Util.zipAndDeleteDir(bundlePath);
-    log.debug(
-        "Finished aggregating logs for support bundle with UUID {}", supportBundle.getBundleUUID());
-    return gzipPath;
+      // Create new subtask groups, one for each component.
+      subTaskBuilder.addComponentDownloadTasks(
+          subTaskGroupRegistry,
+          ComponentDownloadRequest.builder()
+              .bundleDetails(supportBundle.getBundleDetails())
+              .v1TaskParams(taskParams())
+              .customer(customer)
+              .universe(universe)
+              .reachableNodes(reachableNodes)
+              .startDate(startDate)
+              .endDate(endDate)
+              .bundlePath(bundlePath)
+              .ybaOnly(false)
+              .build());
+      getRunnableTask().runSubTasks();
+
+      // Tar the support bundle directory and delete the original folder
+      Path gzipPath = Util.zipAndDeleteDir(bundlePath);
+      log.debug(
+          "Finished aggregating logs for support bundle with UUID {}",
+          supportBundle.getBundleUUID());
+      collectionStatus = "Success";
+      return gzipPath;
+    } finally {
+      timing.logCollectionCompleted(
+          log,
+          "v1",
+          supportBundle.getBundleUUID(),
+          getUserTaskUUID(),
+          taskParams().universe.getName(),
+          collectionStatus);
+    }
   }
 }

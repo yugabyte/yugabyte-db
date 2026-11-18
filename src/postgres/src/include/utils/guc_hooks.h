@@ -235,6 +235,8 @@ extern bool yb_check_extra_commands_to_retry_in_proc(char **newval,
 													 GucSource source);
 extern void yb_assign_extra_commands_to_retry_in_proc(const char *newval,
 													   void *extra);
+extern void yb_assign_conn_mgr_replication_origin_permanent_sticky(bool newval,
+																   void *extra);
 extern bool yb_check_neg_catcache_ids(char **newval, void **extra,
 									  GucSource source);
 extern bool yb_check_no_txn(int *newval, void **extra, GucSource source);

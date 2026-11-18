@@ -130,6 +130,29 @@ message BackfillIndexResponsePB {
   map<string, double> num_rows_backfilled_in_index = 6;
 }
 
+message TableBackfillChunkRequestPB {
+  optional bytes dest_uuid = 1;
+  required bytes tablet_id = 2;
+  optional fixed64 read_at_hybrid_time = 3;
+  // The previous chunk's backfilled_until. Empty starts at the beginning of the tablet.
+  optional bytes start_key = 4;
+  optional string namespace_name = 5;
+  optional uint32 source_table_oid = 6;
+  optional uint32 target_table_oid = 7;
+  optional uint32 transform_fn_oid = 8;
+  optional fixed64 propagated_hybrid_time = 9;
+  optional int64 pg_job_id = 10;
+}
+
+message TableBackfillChunkResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  // Key of the next row to copy, sent back as the next chunk's start_key. Empty means the tablet is
+  // fully copied.
+  optional bytes backfilled_until = 3;
+  optional uint64 num_rows_processed = 4;
+}
+
 // A create tablet request.
 message CreateTabletRequestPB {
   // UUID of server this request is addressed to.
@@ -322,10 +345,13 @@ message FlushTabletsResponsePB {
 
 // Records target_tier as the tablet replica's placement intent and starts moving its live SSTs
 // there, one DB path move per SST on the compaction/flush thread pool. Returns as soon as the moves
-// are scheduled; the tablet stays RUNNING throughout. If a migration pass is already in flight the
-// intent is still recorded and the response describes that pass. Poll GetTabletTierInfo for
-// progress. Whatever a pass leaves behind is retried by the background reconciler (follow-up
-// work), as is master dispatch of this RPC.
+// are scheduled; the tablet stays RUNNING throughout. A tier with no disks on this node is refused
+// with NotFound, even when it is the persisted one. While a migration pass is in flight, the same
+// target is accepted as any re-assert is (new flushes re-pointed, failed-pass count restarted) and
+// returns that pass's progress, and a different target is refused with ServiceUnavailable and
+// records nothing: retry once the pass ends. Poll GetTabletTierInfo for progress. Whatever a pass
+// leaves behind is retried by the background reconciler. Master dispatch of this RPC is follow-up
+// work.
 message AlterTabletTierRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
@@ -336,7 +362,7 @@ message AlterTabletTierRequestPB {
 message AlterTabletTierResponsePB {
   optional TabletServerErrorPB error = 1;
 
-  // The pass now in flight, or just completed if there was nothing to move.
+  // On success: the pass now in flight, or just completed if there was nothing to move.
   optional TierMigrationStatusPB migration = 2;
 }
 
@@ -375,7 +401,7 @@ message TierMigrationStatusPB {
   optional uint32 obsoleted = 7;
 
   // True while the most recent pass still has moves outstanding.
-  optional bool pass_in_flight = 8;
+  optional bool migration_pass_in_flight = 8;
   // Passes in a row that hit a hard error without moving a single file.
   optional uint32 consecutive_failed_passes = 9;
 }
@@ -431,8 +457,9 @@ message GetTabletTierInfoResponsePB {
   // with target_tier; ignore if target_tier is unset.
   optional uint32 target_tier_path_id = 8;
 
-  // Progress of the most recent (or currently running) AlterTabletTier migration on this
-  // replica. Unset if AlterTabletTier has never been called since this tserver process started.
+  // Where this replica stands relative to target_tier, as of the most recent migration pass,
+  // whether AlterTabletTier or the background reconciler ran it. Unset until something has looked
+  // at this tablet since the tserver process started.
   optional TierMigrationStatusPB migration = 9;
 }
 
@@ -442,6 +469,18 @@ message CountIntentsRequestPB {
 message CountIntentsResponsePB {
   optional TabletServerErrorPB error = 1;
   optional int64 num_intents = 2;
+}
+
+message ClearRocksDBCacheRequestPB {
+  optional bytes dest_uuid = 1;
+}
+
+message ClearRocksDBCacheResponsePB {
+  optional TabletServerErrorPB error = 1;
+  // Unset when the block cache is disabled on this tablet server.
+  optional uint64 block_cache_evicted_bytes = 2;
+  // Open SST table readers closed across every tablet's regular and intents RocksDB.
+  optional uint64 table_readers_evicted = 3;
 }
 
 message AddTableToTabletRequestPB {
@@ -613,6 +652,10 @@ service TabletServerAdminService {
     option (yb.rpc.send_metadata) = true;
   }
 
+  // Copies one chunk of one source tablet of an online schema change backfill. Sent to the tablet
+  // leader.
+  rpc TableBackfillChunk(TableBackfillChunkRequestPB) returns (TableBackfillChunkResponsePB);
+
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 
   // Records target_tier as a tablet replica's placement intent and starts moving its SSTs there
@@ -623,6 +666,8 @@ service TabletServerAdminService {
   rpc GetTabletTierInfo(GetTabletTierInfoRequestPB) returns (GetTabletTierInfoResponsePB);
 
   rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
+
+  rpc ClearRocksDBCache(ClearRocksDBCacheRequestPB) returns (ClearRocksDBCacheResponsePB);
 
   rpc AddTableToTablet(AddTableToTabletRequestPB) returns (AddTableToTabletResponsePB);
 

@@ -696,6 +696,9 @@ typedef struct ResultRelInfo
 	 * pushdown GUC setting for the ON CONFLICT action.
 	 */
 	bool		ri_ybUseIocPushdown;
+
+	bool		ri_ybUpsertModeChecked; /* YbCanUseUpsertMode() has run */
+	bool		ri_ybUpsertModeAllowed; /* YbCanUseUpsertMode() result */
 } ResultRelInfo;
 
 /* ----------------
@@ -1643,6 +1646,23 @@ typedef struct ModifyTableState
 	 * the ModifyTable plan.
 	 */
 	struct YbInsertOnConflictBatchState *yb_ioc_state;
+
+	/*
+	 * YB: true if this INSERT uses upsert mode (yb_enable_upsert_mode).  Set
+	 * at executor startup instead of in the plan, because a cached plan is
+	 * reused after the setting changes.
+	 */
+	bool		yb_use_upsert_mode;
+
+	/*
+	 * YB: INSERT ON CONFLICT read batch size for this statement, taken from
+	 * yb_insert_on_conflict_read_batch_size at executor startup; 0 means no
+	 * read batching.  The setting can change while the statement runs (for
+	 * example, set_config() in an expression), so the batch arrays, the
+	 * full-batch check, and each partition's batching decision use this saved
+	 * value.
+	 */
+	int			yb_ioc_batch_size;
 } ModifyTableState;
 
 /* ----------------
@@ -1818,6 +1838,7 @@ typedef struct YbSeqScanState
 	Size		pscan_len;		/* size of parallel heap scan descriptor */
 	List	   *aggrefs;		/* aggregate pushdown information */
 	struct YBParallelPartitionKeysData *pscan;	/* parallel scan data */
+	MemoryContext pushdown_cxt;	/* see YbInstantiateScanPushdownExprs */
 } YbSeqScanState;
 
 /* ----------------
@@ -1927,6 +1948,7 @@ typedef struct IndexScanState
 	/* YB specific attributes. */
 	bool		yb_iss_might_recheck;
 	List	   *yb_iss_aggrefs;
+	MemoryContext yb_iss_pushdown_cxt;	/* see YbInstantiateScanPushdownExprs */
 } IndexScanState;
 
 /* ----------------
@@ -1985,6 +2007,7 @@ typedef struct IndexOnlyScanState
 	int			yb_ioss_num_decoded_pk_cols;		/* number of decoded PK columns */
 	AttrNumber *yb_ioss_decoded_pk_base_attnums;	/* base table attnums */
 	Oid		   *yb_ioss_decoded_pk_typids;			/* column type OIDs */
+	MemoryContext yb_ioss_pushdown_cxt;	/* see YbInstantiateScanPushdownExprs */
 } IndexOnlyScanState;
 
 /* ----------------
@@ -2042,6 +2065,7 @@ typedef struct YbBitmapIndexScanState
 	Relation	biss_RelationDesc;
 	struct IndexScanDescData *biss_ScanDesc;
 	bool		biss_might_recheck;
+	MemoryContext biss_pushdown_cxt;	/* see YbInstantiateScanPushdownExprs */
 } YbBitmapIndexScanState;
 
 /* ----------------
@@ -2103,6 +2127,7 @@ typedef struct YbBitmapTableScanState
 	size_t		average_ybctid_bytes;
 	int			skipped_tuples;
 	List	   *aggrefs;		/* aggregate pushdown information */
+	MemoryContext pushdown_cxt;	/* see YbInstantiateScanPushdownExprs */
 } YbBitmapTableScanState;
 
 /* ----------------
@@ -2124,6 +2149,7 @@ typedef struct TidScanState
 	int			tss_TidPtr;
 	ItemPointerData *tss_TidList;
 	List	   *yb_tss_aggrefs;
+	MemoryContext yb_tss_pushdown_cxt;	/* see YbInstantiateScanPushdownExprs */
 } TidScanState;
 
 /* ----------------
@@ -3150,7 +3176,7 @@ typedef struct LimitState
  *	 YbInsertOnConflictBatchState information
  *
  *		INSERT ... ON CONFLICT read batching state for Yugabyte relations.  The
- *		batch size is taken from GUC yb_insert_on_conflict_read_batch_size.
+ *		batch size is ModifyTableState.yb_ioc_batch_size.
  * ----------------
  */
 typedef struct YbInsertOnConflictBatchState

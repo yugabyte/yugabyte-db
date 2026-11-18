@@ -101,7 +101,9 @@ CREATE OR REPLACE FUNCTION pg_stat_statements(IN showtext boolean,
     OUT docdb_nexts int8,
     OUT docdb_prevs int8,
     OUT docdb_read_time float8,
-    OUT docdb_write_time float8
+    OUT docdb_write_time float8,
+    OUT docdb_bloom_filter_useful int8,
+    OUT docdb_bloom_filter_checked int8
 )
 RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'yb_pg_stat_statements_1_13'

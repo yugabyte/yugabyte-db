@@ -1422,7 +1422,17 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnConsumer)
   // Now delete replication and verify that the tablet can now be split.
   ASSERT_OK(tools::RunAdminToolCommand(
       cluster_->GetMasterAddresses(), "delete_universe_replication", kProducerClusterId));
-  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
+  // After the restart, the master may not have learned the tablet leader from heartbeats yet.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
+    if (s.ok()) {
+      return true;
+    }
+    if (s.status().message().ToBuffer().find("No leader found") != std::string::npos) {
+      return false;
+    }
+    return s.status();
+  }, 30s * kTimeMultiplier, "Split tablet after deleting xCluster replication"));
 
   producer_cluster->Shutdown();
 }

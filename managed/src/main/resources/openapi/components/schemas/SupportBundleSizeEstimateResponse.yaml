@@ -1,6 +1,6 @@
 title: SupportBundleSizeEstimateResponse
 x-yba-api-visibility: internal
-description: Support bundle size estimate per node and component (same as V1).
+description: 'Support bundle size estimate per node and component. V2 responses use logical component names from specs (e.g. UniverseLogs, ysql_yugabyte_queries) rather than bucket enum names (FilesComponent). Global component sizes are mapped to the YBA node key.'
 type: object
 properties:
   data:
