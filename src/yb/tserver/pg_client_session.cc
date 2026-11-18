@@ -168,7 +168,7 @@ DEFINE_test_flag(bool, pause_session_lock_before_release, false,
     "Pause before releasing session object lock.");
 
 DEFINE_test_flag(bool, fail_cached_connection_prefetch, false,
-    "Fail the rounds of a connection start's prefetch that send caching info, with a "
+    "Fail the rounds of a connection start's prefetch that the cache gives a setter, with a "
     "snapshot-too-old error. PG then falls through its cached prefetch starters to the one that "
     "reads without the cache, which otherwise needs a real read to run out of snapshot three "
     "times over.");
