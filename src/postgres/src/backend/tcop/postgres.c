@@ -6428,7 +6428,7 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 	YbResetRetryCounts();
 
 	if (IsYugaByteEnabled())
-		YBCPgResetRetryReadTimeConstraints();
+		YBCPgResetRetryReadLimitCaps();
 
 	/*
 	 * Reset the flag that tracks whether a non-atomic (in-procedure) COMMIT

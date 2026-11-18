@@ -2242,8 +2242,8 @@ Status PgApiImpl::RestartReadPoint() {
   return pg_txn_manager_->RestartReadPoint(ClearSessionState());
 }
 
-void PgApiImpl::ResetRetryReadTimeConstraints() {
-  pg_txn_manager_->ResetRetryReadTimeConstraints();
+void PgApiImpl::ResetRetryReadLimitCaps() {
+  pg_txn_manager_->ResetRetryReadLimitCaps();
 }
 
 bool PgApiImpl::IsReadRestartRetryInProgress() const {

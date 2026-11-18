@@ -167,6 +167,11 @@ ConsistentReadPoint::HybridTimeMap ConsistentReadPoint::RestartLocalLimits() con
   return IsRestartRequiredUnlocked() ? restarts_ : local_limits_;
 }
 
+HybridTime ConsistentReadPoint::GetRestartReadHt() const {
+  std::lock_guard lock(mutex_);
+  return restart_read_ht_;
+}
+
 void ConsistentReadPoint::Defer() {
   std::lock_guard lock(mutex_);
   read_time_.read = read_time_.global_limit;

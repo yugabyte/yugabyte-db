@@ -804,7 +804,7 @@ YbcStatus YBCPgRestartTransaction();
 YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
 YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
-void YBCPgResetRetryReadTimeConstraints();
+void YBCPgResetRetryReadLimitCaps();
 bool YBCPgIsReadRestartRetryInProgress();
 YbcStatus YBCPgCommitPlainTransaction();
 YbcStatus YBCPgCommitPlainTransactionContainingDDL(

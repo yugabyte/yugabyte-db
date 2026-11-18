@@ -79,6 +79,9 @@ class ConsistentReadPoint {
   // Per-tablet local limits a restarted read keeps: those of the pending restart, if any.
   [[nodiscard]] HybridTimeMap RestartLocalLimits() const EXCLUDES(mutex_);
 
+  // Read time a restart would move the read to. Meaningful only if IsRestartRequired().
+  [[nodiscard]] HybridTime GetRestartReadHt() const EXCLUDES(mutex_);
+
   // Defer read hybrid time to global limit.
   void Defer() EXCLUDES(mutex_);
 

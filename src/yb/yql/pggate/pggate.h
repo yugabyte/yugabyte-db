@@ -706,7 +706,7 @@ class PgApiImpl {
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
-  void ResetRetryReadTimeConstraints();
+  void ResetRetryReadLimitCaps();
   bool IsReadRestartRetryInProgress() const;
   Status CommitPlainTransaction(
         const std::optional<PgDdlCommitInfo>& ddl_commit_info = std::nullopt);

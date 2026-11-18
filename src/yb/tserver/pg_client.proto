@@ -1051,7 +1051,8 @@ message PgRollbackToSubTransactionResponsePB {
 
 message PgRestartTransactionForRetryRequestPB {
   enum Kind {
-    // Set up the session as the options dictate; a bumped txn_serial_no replaces the transaction.
+    // Retries of errors other than read restarts (conflicts, deadlocks, aborts): set up the session
+    // as the options dictate, where pggate's bumped txn_serial_no replaces the transaction.
     DEFAULT = 0;
     // Replace the distributed transaction with a new one, keeping the txn_serial_no.
     REPLACE_DIST_TRANSACTION_ONLY = 1;

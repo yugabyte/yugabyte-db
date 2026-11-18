@@ -38,10 +38,11 @@ bool ShouldInjectReadRestart(const ReadHybridTime& read_time) {
 }
 
 HybridTime InjectedReadRestartTime(const ReadHybridTime& read_time, const HybridTime safe_time) {
-  // Like a real conflicting write, the restart time is no later than the tablet's current time,
-  // which the response propagates to the reader's clock. It is also
-  // 1. > read_time (necessary to make progress)
-  // 2. <= global_limit (invariant necessary to avoid inconsistent reads)
+  // Like a real conflicting write, the restart time is no later than the tablet's safe time, which
+  // the response propagates to the reader's clock, unless the read time is already at or past the
+  // safe time: then it is read + 1, which the reader's clock passed when it picked the read time.
+  // The restart time must be > read (for the retry to make progress) and <= global_limit (so reads
+  // stay consistent).
   return std::min(std::max(safe_time, read_time.read.Incremented()), read_time.global_limit);
 }
 

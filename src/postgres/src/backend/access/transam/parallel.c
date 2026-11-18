@@ -605,8 +605,9 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 	if (IsYugaByteEnabled())
 	{
 		/*
-		 * Semantics of the "EnsureReadPoint" contradicts "RestartReadPoint".
-		 * Hence, if we are restarting, proceed without parallel workers.
+		 * Workers don't get the read limit caps of a read restart retry, so
+		 * their reads would get fresh uncertainty windows and could keep
+		 * restarting. Hence, while retrying, proceed without parallel workers.
 		 */
 		if (YBCPgIsReadRestartRetryInProgress())
 			return;

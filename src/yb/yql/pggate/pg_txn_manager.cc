@@ -499,7 +499,7 @@ void PgTxnManager::CapRetryReadLimits(const tserver::PgRestartTransactionForRetr
   }
 }
 
-void PgTxnManager::ResetRetryReadTimeConstraints() {
+void PgTxnManager::ResetRetryReadLimitCaps() {
   retry_global_limit_cap_ = HybridTime::kInvalid;
   retry_local_limit_caps_.clear();
   read_restart_retry_in_progress_ = false;
@@ -570,6 +570,9 @@ DdlMode PgTxnManager::GetDdlModeFromDdlState(
 
 Status PgTxnManager::FinishPlainTransaction(
     Commit commit, const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
+  // A query can end the transaction its retried statement ran in (a procedure's COMMIT) and start
+  // another, whose reads must get full uncertainty windows.
+  ResetRetryReadLimitCaps();
   if (PREDICT_FALSE(IsDdlMode() && IsDdlModeWithSeparateTransaction())) {
     // GH #22353 - A DML txn must be aborted or committed only when there is no active DDL txn
     // (ie. after any active DDL txn has itself committed or aborted). Silently ignoring this

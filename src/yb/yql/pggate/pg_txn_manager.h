@@ -89,7 +89,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint(SetupPerformOptionsAccessorTag tag);
-  void ResetRetryReadTimeConstraints();
+  void ResetRetryReadLimitCaps();
   bool IsReadRestartRetryInProgress() const { return read_restart_retry_in_progress_; }
   void SetActiveSubTransactionId(SubTransactionId id);
   Status SetDdlStateInPlainTransaction();

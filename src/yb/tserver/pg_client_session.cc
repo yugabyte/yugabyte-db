@@ -2276,6 +2276,13 @@ class PgClientSession::Impl {
           local_limits[tablet] = local_limit.ToUint64();
         }
       }
+      // The retry reads at the current time, so it must already be past the restart time, which
+      // the restarting read's response propagated to this clock.
+      if (read_point.IsRestartRequired()) {
+        const auto restart_read_ht = read_point.GetRestartReadHt();
+        LOG_IF_WITH_PREFIX(DFATAL, read_point.Now() <= restart_read_ht)
+            << "Clock is not past the restart time " << restart_read_ht;
+      }
     }
     switch (req.kind()) {
       case PgRestartTransactionForRetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY:
@@ -2291,9 +2298,11 @@ class PgClientSession::Impl {
     return STATUS_FORMAT(InvalidArgument, "Unexpected retry kind: $0", req.kind());
   }
 
-  // The retry's next request starts a new distributed transaction for the same txn_serial_no. A
-  // non-transactional session has nothing to replace: the retry's new read_time_serial_no resets
-  // its read point.
+  // The retry's next request starts a new distributed transaction for the same txn_serial_no, with
+  // the replaced transaction's priority. The read point is reset so the new transaction does not
+  // take the failed attempt's read time as its own (BeginTransactionIfNecessary keeps a read time
+  // the session already has), whether the retry reads or writes first. A non-transactional session
+  // has nothing to replace: the retry's new read_time_serial_no resets its read point.
   Status ReplacePlainTransaction(CoarseTimePoint deadline) {
     constexpr auto kKind = PgClientSessionKind::kPlain;
     auto& session_data = GetSessionData(kKind);
@@ -2302,9 +2311,11 @@ class PgClientSession::Impl {
       return Status::OK();
     }
     RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kKind, deadline));
+    saved_priority_ = txn->GetPriority();
     txn->Abort();
-    ClearTransaction(*session_data.session);
+    session_data.session->SetTransaction(nullptr);
     txn = nullptr;
+    ResetReadPoint(kKind);
     return Status::OK();
   }
 
@@ -4266,8 +4277,21 @@ class PgClientSession::Impl {
             << session.read_point()->GetReadTime();
       }
 
+      // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
+      if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
+        RSTATUS_DCHECK(
+          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
+        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
+        VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
+      }
+
+      // After clamping, so a clamped read keeps its empty uncertainty window. A reset read point
+      // (e.g. non-transactional writes) must get its read time from the storage layer, so it is
+      // not capped.
       if (const auto cap = HybridTime::FromPB(read_time_options.global_limit_cap_ht());
           cap && kind == PgClientSessionKind::kPlain &&
+          !IsReadPointResetRequested(read_time_options) &&
           !(txn && txn->isolation() == SERIALIZABLE_ISOLATION)) {
         // A read time picked by DocDB would get an uncapped global limit.
         if (!session.read_point()->GetReadTime()) {
@@ -4280,15 +4304,6 @@ class PgClientSession::Impl {
           using rpc::map_util::ExtractValue;
           read_point.CapLocalLimit(ExtractKey(entry), HybridTime(ExtractValue(entry)));
         }
-      }
-
-      // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
-      if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
-        RSTATUS_DCHECK(
-          options.uses_catalog_snapshot() || !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping applies to SERIALIZABLE txns only for catalog snapshot reads.");
-        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
-        VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
     }
 
