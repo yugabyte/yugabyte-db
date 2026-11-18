@@ -2137,20 +2137,6 @@ ybGetMergeScanInfo(Scan *scan)
 }
 
 /*
- * For a merge scan, whether the merge sort happens between the index and table
- * requests.  This is the case for a plain index scan of a secondary index that
- * is not embedded in its table.
- */
-static bool
-ybMergesInIndexRequest(YbOpaque ybScan)
-{
-	Assert(ybScan->index);
-	return (!ybScan->prepare_params.index_only_scan &&
-			!ybScan->index->rd_index->indisprimary &&
-			!ybScan->prepare_params.embedded_idx);
-}
-
-/*
  * Verify that every index column the planner declared in
  * yb_merge_scan_info->stream_cols got a usable bound condition: a single
  * equality value or a plain scalar IN list.  The merge scan would silently
@@ -3346,6 +3332,21 @@ ybcBuildRequiredAttrs(YbOpaque yb_scan, YbScanPlan scan_plan,
 }
 
 /*
+ * For a merge scan, whether the scan has a separate index request, so that the
+ * merge sort happens between the index and table requests.  This is the case
+ * for a plain index scan of a secondary index that is not embedded in its
+ * table.
+ */
+static bool
+ybHasSeparateIndexRequest(YbOpaque ybScan)
+{
+	Assert(ybScan->index);
+	return !(ybScan->prepare_params.index_only_scan ||
+			 ybScan->index->rd_index->indisprimary ||
+			 ybScan->prepare_params.embedded_idx);
+}
+
+/*
  * YbAddSortTarget - add specified attribute to the secondary index scan as a target
  *
  * Typically the only target on the secondary index scan is the base table ybctid.
@@ -3382,7 +3383,7 @@ ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan)
 	YbMergeScanInfo *merge_scan_info = ybGetMergeScanInfo(scan);
 	YbSortInfo *sort_info;
 
-	if (!merge_scan_info || !ybMergesInIndexRequest(ybScan))
+	if (!merge_scan_info || !ybHasSeparateIndexRequest(ybScan))
 		return;
 
 	sort_info = merge_scan_info->sort_cols;
@@ -3445,6 +3446,8 @@ YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 
 	if (!merge_scan_info)
 		return;
+	Assert(IsA(pg_scan_plan, IndexOnlyScan) ==
+		   ybScan->prepare_params.index_only_scan);
 	sort_info = merge_scan_info->sort_cols;
 	indexorderdir = (IsA(pg_scan_plan, IndexScan) ?
 					 ((IndexScan *) pg_scan_plan)->indexorderdir :
@@ -3460,7 +3463,7 @@ YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 	 * TODO(#38296): share this mapping with ybcSetupScanPlan.
 	 */
 	if (!ybScan->prepare_params.index_only_scan &&
-		!ybMergesInIndexRequest(ybScan))
+		!ybHasSeparateIndexRequest(ybScan))
 		indkey_values = ybScan->index->rd_index->indkey.values;
 
 	/* Create and apply sort keys */
@@ -3628,6 +3631,9 @@ YbBeginScan(Relation table,
 	 * - not aggregate pushdown
 	 * This ought to be reworked once aggregate pushdown supports a mix of
 	 * non-aggregate and aggregate targets.
+	 *
+	 * Either way, ybSetupMergeSortTargets then adds the merge sort columns to
+	 * a separate index request, if the scan has one.
 	 */
 	if (aggrefs != NIL)
 		YbDmlAppendTargetsAggregate(aggrefs, pg_scan_plan, ybScan->target_desc,
@@ -3661,8 +3667,7 @@ YbBeginScan(Relation table,
 	if (distinct_prefixlen > 0)
 		YBCPgSetDistinctPrefixLength(ybScan->handle, distinct_prefixlen);
 
-	if (pg_scan_plan)
-		YbApplyMergeSortKeys(ybScan, pg_scan_plan);
+	YbApplyMergeSortKeys(ybScan, pg_scan_plan);
 
 	bms_free(scan_plan.hash_key_cols);
 	bms_free(scan_plan.key_cols);
