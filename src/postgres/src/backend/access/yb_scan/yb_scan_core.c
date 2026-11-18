@@ -3358,7 +3358,7 @@ ybHasSeparateIndexRequest(YbOpaque ybScan)
  * TODO(#38296): share this mapping with ybcSetupScanPlan.
  */
 static AttrNumber
-ybMergeSortValueAttno(YbOpaque ybScan, AttrNumber indexattno)
+ybMergeSortTargetAttno(YbOpaque ybScan, AttrNumber indexattno)
 {
 	AttrNumber	attno;
 
@@ -3423,8 +3423,8 @@ ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan,
 	sort_info = merge_scan_info->sort_cols;
 	for (int i = 0; i < sort_info->numCols; i++)
 	{
-		AttrNumber	attno = ybMergeSortValueAttno(ybScan,
-												  sort_info->sortColIdx[i]);
+		AttrNumber	attno = ybMergeSortTargetAttno(ybScan,
+												   sort_info->sortColIdx[i]);
 
 		if (separate_index_request)
 			YbAddSortTarget(ybScan->handle, RelationGetDescr(ybScan->index),
@@ -3507,8 +3507,8 @@ YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 		YbcSortKey *key = &yb_sort_keys[i];
 
 		key->att_idx = sort_info->sortColIdx[i] - 1;
-		key->value_idx = ybMergeSortValueAttno(ybScan,
-											   sort_info->sortColIdx[i]) - 1;
+		key->value_idx = ybMergeSortTargetAttno(ybScan,
+												sort_info->sortColIdx[i]) - 1;
 		key->comparator = yb_sort_comparator_adapter;
 		key->sortstate = palloc0(sizeof(SortSupportData));
 		SortSupport sort_support = (SortSupport) key->sortstate;
