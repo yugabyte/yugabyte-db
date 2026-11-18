@@ -3423,14 +3423,14 @@ ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan,
 	sort_info = merge_scan_info->sort_cols;
 	for (int i = 0; i < sort_info->numCols; i++)
 	{
-		AttrNumber	indexattno = sort_info->sortColIdx[i];
+		AttrNumber	attno = ybMergeSortValueAttno(ybScan,
+												  sort_info->sortColIdx[i]);
 
 		if (separate_index_request)
 			YbAddSortTarget(ybScan->handle, RelationGetDescr(ybScan->index),
-							indexattno);
+							attno);
 		else
-			ybcAttnumBmsAdd(attnums,
-							ybMergeSortValueAttno(ybScan, indexattno));
+			ybcAttnumBmsAdd(attnums, attno);
 	}
 }
 
