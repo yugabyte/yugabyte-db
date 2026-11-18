@@ -50,15 +50,20 @@ CREATE TABLE yb_t (k int PRIMARY KEY, v int);
 CREATE INDEX yb_t_v_idx ON yb_t (v);
 INSERT INTO yb_t SELECT g, g FROM generate_series(1, 10) g;
 SELECT * FROM pgstattuple('yb_t');
-ERROR:  cannot get tuple-level statistics for YugabyteDB relation "yb_t"
+ERROR:  cannot access pages of YugabyteDB relation "yb_t"
+DETAIL:  YugabyteDB relations are stored in DocDB, not in PostgreSQL pages.
 SELECT * FROM pgstattuple('yb_t_pkey');
-ERROR:  cannot get tuple-level statistics for YugabyteDB relation "yb_t_pkey"
+ERROR:  cannot access pages of YugabyteDB relation "yb_t_pkey"
+DETAIL:  YugabyteDB relations are stored in DocDB, not in PostgreSQL pages.
 SELECT * FROM pgstattuple_approx('yb_t');
-ERROR:  cannot get tuple-level statistics for YugabyteDB relation "yb_t"
+ERROR:  cannot access pages of YugabyteDB relation "yb_t"
+DETAIL:  YugabyteDB relations are stored in DocDB, not in PostgreSQL pages.
 SELECT pg_relpages('yb_t');
-ERROR:  cannot get page count of YugabyteDB relation "yb_t"
+ERROR:  cannot access pages of YugabyteDB relation "yb_t"
+DETAIL:  YugabyteDB relations are stored in DocDB, not in PostgreSQL pages.
 SELECT pg_relpages('yb_t_v_idx');
-ERROR:  cannot get page count of YugabyteDB relation "yb_t_v_idx"
+ERROR:  cannot access pages of YugabyteDB relation "yb_t_v_idx"
+DETAIL:  YugabyteDB relations are stored in DocDB, not in PostgreSQL pages.
 SELECT * FROM pgstatindex('yb_t_v_idx');
 ERROR:  relation "yb_t_v_idx" is not a btree index
 -- Temp tables are heap tables and keep working

@@ -37,8 +37,8 @@ SELECT extname, extversion FROM pg_extension WHERE extname = 'pgrowlocks';
 CREATE TABLE yb_t (k int PRIMARY KEY, v int);
 INSERT INTO yb_t SELECT g, g FROM generate_series(1, 10) g;
 SELECT * FROM pgrowlocks('yb_t');
-ERROR:  cannot get row locks of YugabyteDB table "yb_t"
-HINT:  Query the pg_locks view instead.
+ERROR:  cannot access pages of YugabyteDB relation "yb_t"
+DETAIL:  YugabyteDB relations are stored in DocDB, not in PostgreSQL pages.
 BEGIN;
 SELECT k FROM yb_t WHERE k = 1 FOR UPDATE;
  k 
@@ -47,8 +47,8 @@ SELECT k FROM yb_t WHERE k = 1 FOR UPDATE;
 (1 row)
 
 SELECT * FROM pgrowlocks('yb_t');
-ERROR:  cannot get row locks of YugabyteDB table "yb_t"
-HINT:  Query the pg_locks view instead.
+ERROR:  cannot access pages of YugabyteDB relation "yb_t"
+DETAIL:  YugabyteDB relations are stored in DocDB, not in PostgreSQL pages.
 ROLLBACK;
 -- Temp tables are heap tables and keep working
 CREATE TEMP TABLE tmp_t (k int PRIMARY KEY, v int);

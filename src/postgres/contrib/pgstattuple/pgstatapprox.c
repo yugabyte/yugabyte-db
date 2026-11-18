@@ -284,11 +284,7 @@ pgstattuple_approx_internal(Oid relid, FunctionCallInfo fcinfo)
 				 errmsg("cannot access temporary tables of other sessions")));
 
 	/* YB: YB relations have no heap pages, visibility map, or free space map. */
-	if (IsYBRelation(rel))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot get tuple-level statistics for YugabyteDB relation \"%s\"",
-						RelationGetRelationName(rel))));
+	YbRejectPageAccess(rel);
 
 	/*
 	 * We support only relation kinds with a visibility map and a free space

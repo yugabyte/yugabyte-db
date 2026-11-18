@@ -104,12 +104,7 @@ pgrowlocks(PG_FUNCTION_ARGS)
 	 * YB: row locks on YB tables are held in DocDB, not in tuple headers, and
 	 * the heap scan below would misread the YB scan descriptor.
 	 */
-	if (IsYBRelation(rel))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot get row locks of YugabyteDB table \"%s\"",
-						RelationGetRelationName(rel)),
-				 errhint("Query the pg_locks view instead.")));
+	YbRejectPageAccess(rel);
 
 	/*
 	 * check permissions: must have SELECT on table or be in

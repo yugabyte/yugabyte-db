@@ -468,11 +468,7 @@ pg_relpages_impl(Relation rel)
 				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
 
 	/* YB: YB relations have no pages, so the count would always be 0. */
-	if (IsYBRelation(rel))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot get page count of YugabyteDB relation \"%s\"",
-						RelationGetRelationName(rel))));
+	YbRejectPageAccess(rel);
 
 	/* note: this will work OK on non-local temp tables */
 

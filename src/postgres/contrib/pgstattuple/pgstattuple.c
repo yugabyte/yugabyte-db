@@ -256,11 +256,7 @@ pgstat_relation(Relation rel, FunctionCallInfo fcinfo)
 				 errmsg("cannot access temporary tables of other sessions")));
 
 	/* YB: YB relations have no heap or index pages to inspect. */
-	if (IsYBRelation(rel))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot get tuple-level statistics for YugabyteDB relation \"%s\"",
-						RelationGetRelationName(rel))));
+	YbRejectPageAccess(rel);
 
 	if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind) ||
 		rel->rd_rel->relkind == RELKIND_SEQUENCE)
