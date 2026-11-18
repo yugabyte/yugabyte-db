@@ -156,6 +156,15 @@ class ConsensusFrontier : public storage::UserFrontier {
     return has_vector_deletion_;
   }
 
+  // Only meaningful on a smallest frontier, see ConsensusFrontierPB::hybrid_time_bounds_entries.
+  bool hybrid_time_bounds_entries() const {
+    return hybrid_time_bounds_entries_;
+  }
+
+  void set_hybrid_time_bounds_entries(bool value) {
+    hybrid_time_bounds_entries_ = value;
+  }
+
   uint64_t split_generation() const {
     return split_generation_;
   }
@@ -206,6 +215,7 @@ class ConsensusFrontier : public storage::UserFrontier {
   bool backfill_done_ = false;
   std::string backfill_key_;
   bool has_vector_deletion_ = false;
+  bool hybrid_time_bounds_entries_ = false;
   // The tablet's split_generation recorded when split_min_chunk_serial_no was stamped.
   // Used to detect whether a new split requires a new split_min_chunk_serial_no.
   uint64_t split_generation_ = 0;

@@ -56,6 +56,9 @@ Status HistoryCutoffOperation::Apply(int64_t leader_term) {
     rocksdb::WriteBatch batch;
     docdb::ConsensusFrontiers frontiers;
     frontiers.Largest().set_history_cutoff_information(history_cutoff);
+    // No entries, so the frontiers bound them all: keep the memtable's frontier usable by a
+    // restore.
+    frontiers.Smallest().set_hybrid_time_bounds_entries(true);
     batch.SetFrontiers(&frontiers);
     rocksdb::WriteOptions options;
     InitRocksDBWriteOptions(&options);

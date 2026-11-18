@@ -884,4 +884,56 @@ TEST_F(NonTransactionalBatchWriterTest, PackedRowSchemaVersionReachesFrontiers) 
   ASSERT_EQ(smallest_schema_versions(), expected(2));
 }
 
+// Rows written at an external hybrid time (xCluster, index backfill) are older than the Raft
+// operation. The smallest frontier must still bound them, so that a restore can trust it.
+TEST_F(NonTransactionalBatchWriterTest, ExternalWriteLowersSmallestFrontier) {
+  const auto kWriteHT = 4000_usec_ht;
+  const auto kBatchHT = 9000_usec_ht;
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  for (const auto& [row, ht] : {std::pair{"row1", 3000_usec_ht}, std::pair{"row2", 2000_usec_ht}}) {
+    const DocKey doc_key(MakeKeyEntryValues(row));
+    auto* write_pair = put_batch.add_write_pairs();
+    write_pair->dup_key(EncodeDocPathKey(
+        DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)))).AsSlice());
+    write_pair->dup_value(EncodeValue(QLValue::Primitive("v")));
+    write_pair->set_external_hybrid_time(ht.ToUint64());
+  }
+  ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
+
+  auto smallest = regular_db_->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
+  ASSERT_TRUE(smallest);
+  const auto& frontier = down_cast<ConsensusFrontier&>(*smallest);
+  ASSERT_EQ(frontier.hybrid_time(), 2000_usec_ht);
+  ASSERT_TRUE(frontier.hybrid_time_bounds_entries());
+}
+
+// An external transaction is applied at its commit hybrid time on the producer, which is older than
+// the operation applying it.
+TEST_F(NonTransactionalBatchWriterTest, ExternalApplyLowersSmallestFrontier) {
+  const DocKey hk(0, MakeKeyEntryValues("h1"));
+  const Uuid involved_tablet = ASSERT_RESULT(Uuid::FromString(kTabletUUID));
+  const TransactionId txn = ASSERT_RESULT(FullyDecodeTransactionId(kTxnId));
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  std::vector<ExternalIntent> intents = {
+      {DocPath(hk.Encode()), EncodeValue(QLValue::Primitive("value1"))}};
+  AddExternalIntentsWritePair(&put_batch, txn, kMinSubTransactionId, intents, involved_tablet);
+  ASSERT_OK(SendWriteBatch(put_batch, 6000_usec_ht, 5000_usec_ht));
+
+  const auto kCommitHT = 3000_usec_ht;
+  put_batch.Clear();
+  AddApplyExternalTxn(&put_batch, txn, kCommitHT);
+  ASSERT_OK(SendWriteBatch(put_batch, 9000_usec_ht, 8000_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey(0x0000, ["h1"], []), [HT{ physical: 3000 }]) -> "value1"
+    )#");
+  auto smallest = regular_db_->GetInMemoryFrontier(storage::UpdateUserValueType::kSmallest);
+  ASSERT_TRUE(smallest);
+  const auto& frontier = down_cast<ConsensusFrontier&>(*smallest);
+  ASSERT_EQ(frontier.hybrid_time(), kCommitHT);
+  ASSERT_TRUE(frontier.hybrid_time_bounds_entries());
+}
+
 }  // namespace yb::docdb
