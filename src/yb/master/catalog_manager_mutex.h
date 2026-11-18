@@ -22,7 +22,8 @@
 namespace yb::master {
 
 // Reader/writer lock for CatalogManager, chosen by --catalog_manager_mutex_type when the lock is
-// constructed: rw_spinlock, a writer-preferring RWMutex (pthread rwlock), or absl::Mutex.
+// constructed: rw_spinlock, an RWMutex (pthread rwlock, writer-preferring on Linux), or
+// absl::Mutex.
 //
 // rw_spinlock waiters poll every microsecond (nanosleep) and never block. When thousands of RPC
 // threads queue behind a long shared holder, the polling uses most of the CPU, which slows the
@@ -34,6 +35,8 @@ class CAPABILITY("mutex") CatalogManagerMutex {
 
   CatalogManagerMutex();
 
+  // NO_THREAD_SAFETY_ANALYSIS: each method acquires or releases the inner lock that type_ selects
+  // at runtime, not *this, which the analysis cannot follow.
   void lock() ACQUIRE() NO_THREAD_SAFETY_ANALYSIS {
     switch (type_) {
       case Type::kSpinlock: spinlock_.lock(); return;

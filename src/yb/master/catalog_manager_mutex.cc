@@ -16,14 +16,10 @@
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 
-static constexpr char kSpinlock[] = "spinlock";
-static constexpr char kRWMutex[] = "rwmutex";
-static constexpr char kAbsl[] = "absl";
-
-DEFINE_NON_RUNTIME_string(catalog_manager_mutex_type, kSpinlock,
+DEFINE_NON_RUNTIME_string(catalog_manager_mutex_type, "spinlock",
     "Lock type for the catalog manager's locks: \"spinlock\" (rw_spinlock, waiters poll), "
     "\"rwmutex\" (writer-preferring pthread rwlock) or \"absl\" (absl::Mutex).");
-DEFINE_validator(catalog_manager_mutex_type, FLAG_IN_SET_VALIDATOR(kSpinlock, kRWMutex, kAbsl));
+DEFINE_validator(catalog_manager_mutex_type, FLAG_IN_SET_VALIDATOR("spinlock", "rwmutex", "absl"));
 TAG_FLAG(catalog_manager_mutex_type, advanced);
 
 namespace yb::master {
@@ -31,10 +27,10 @@ namespace yb::master {
 namespace {
 
 CatalogManagerMutex::Type TypeFromFlag() {
-  if (FLAGS_catalog_manager_mutex_type == kRWMutex) {
+  if (FLAGS_catalog_manager_mutex_type == "rwmutex") {
     return CatalogManagerMutex::Type::kRWMutex;
   }
-  if (FLAGS_catalog_manager_mutex_type == kAbsl) {
+  if (FLAGS_catalog_manager_mutex_type == "absl") {
     return CatalogManagerMutex::Type::kAbsl;
   }
   return CatalogManagerMutex::Type::kSpinlock;
