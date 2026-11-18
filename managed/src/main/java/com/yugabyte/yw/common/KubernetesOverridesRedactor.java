@@ -47,10 +47,10 @@ import play.libs.Json;
  * base64, overrides with a key or any other string that mentions a secret, whose value could be
  * anywhere in that string or in the ones after it, and overrides that hold a secret and use YAML
  * the rewrite doesn't follow: anchors and aliases, which can carry a value to another key, other
- * tags, keys that aren't strings, a secret or ysql_hba_conf_csv that isn't a scalar, and a repeated
+ * tags, keys that aren't scalars, a secret or ysql_hba_conf_csv that isn't a scalar, and a repeated
  * secret key. Overrides rarely use these, and hiding them whole fails closed. Overrides whose
- * redaction fails for any other reason are hidden whole too, and redact never throws. Sent back
- * unchanged, hidden overrides restore the stored text; an edit has to submit them in full.
+ * redaction fails for any other reason are hidden whole too, and redact throws no exception. Sent
+ * back unchanged, hidden overrides restore the stored text; an edit has to submit them in full.
  */
 @Slf4j
 public final class KubernetesOverridesRedactor {
@@ -281,17 +281,31 @@ public final class KubernetesOverridesRedactor {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "%s contain %s, and the stored value is %s too, so the real value cannot be"
+                "%s contain %s, and the stored value %s %s too, so the real value cannot be"
                     + " recovered. Submit the actual value.",
-                name, REDACTED, REDACTED));
+                name, REDACTED, secret.kind == Kind.HBA ? "holds" : "is", REDACTED));
       }
-      if (secret.kind == Kind.HBA && !secret.kind.redact(storedValue).equals(value)) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "%s contain %s but differ from the stored value in the rest of it. To change it,"
-                    + " submit the value with the actual secret.",
-                name, REDACTED));
+      if (secret.kind == Kind.HBA) {
+        String storedRedacted;
+        try {
+          storedRedacted = secret.kind.redact(storedValue);
+        } catch (RuntimeException e) {
+          log.warn("Failed to redact a stored ysql_hba_conf_csv to restore it.", e);
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "%s contain %s, and the stored value cannot be compared with it. Submit the"
+                      + " actual value.",
+                  name, REDACTED));
+        }
+        if (!storedRedacted.equals(value)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "%s contain %s but differ from the stored value in the rest of it. To change"
+                      + " it, submit the value with the actual secret.",
+                  name, REDACTED));
+        }
       }
       replacements.add(
           replaceScalar(submitted, secret, storedScalarText(stored, storedSecret, secret.inFlow)));
@@ -425,7 +439,7 @@ public final class KubernetesOverridesRedactor {
           Node keyNode = tuple.getKeyNode();
           Node value = tuple.getValueNode();
           if (!(keyNode instanceof ScalarNode)) {
-            unsupported = "have a key that is not a string";
+            unsupported = "have a key that is not a scalar";
             collect(keyNode, path, childInFlow, inList);
             collect(value, path, childInFlow, inList);
             continue;
