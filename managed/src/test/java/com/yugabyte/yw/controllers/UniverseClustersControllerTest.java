@@ -18,6 +18,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -28,6 +29,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.HbaConfRedactor;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RedactingService;
@@ -55,6 +57,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -437,6 +441,30 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
         UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
             paramsFromResponse(universe), universe, UniverseDefinitionTaskParams.class);
     assertEquals(stored, merged.getPrimaryCluster().userIntent.universeOverrides);
+  }
+
+  @Test
+  public void editRestoresKubernetesOverridesWhoseRedactionFails() {
+    enableGFlagsSensitiveDataApiRedaction();
+    // Redacted nowhere else, so the redactor's cache can't skip the failing rewrite.
+    String stored = K8S_AZ_OVERRIDES.get("az-1") + "tserver:\n  podLabels:\n    edit: fails\n";
+    Universe universe = createUniverseWithK8sOverrides(stored, Map.of("az-1", stored));
+    try (MockedStatic<HbaConfRedactor> hba =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      hba.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new IllegalStateException());
+      UniverseDefinitionTaskParams params = paramsFromResponse(universe);
+      UserIntent sent = params.getPrimaryCluster().userIntent;
+      assertEquals(SECRET_REPLACEMENT, sent.universeOverrides);
+      assertEquals(Map.of("az-1", SECRET_REPLACEMENT), sent.azOverrides);
+
+      UserIntent merged =
+          UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+                  params, universe, UniverseDefinitionTaskParams.class)
+              .getPrimaryCluster()
+              .userIntent;
+      assertEquals(stored, merged.universeOverrides);
+      assertEquals(Map.of("az-1", stored), merged.azOverrides);
+    }
   }
 
   @Test
