@@ -7359,8 +7359,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALDetectAddDropColumnFromPg
 }
 
 // The walsender reads the catalog within the transaction of each record. Intents of a
-// subtransaction rolled back to a savepoint are still in the intents DB, so the BEGIN record of
-// such a transaction carries the aborted subtransactions for the walsender to skip them (#36047).
+// subtransaction rolled back to a savepoint are still in the intents DB, so the response carries
+// the aborted subtransactions of such a transaction for the walsender to skip them (#36047).
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTransactionalDdl) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) = true;
   ToggleDDLMode(/* use_legacy = */ false);
@@ -7414,28 +7414,27 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALShipsAbortedSubtxnsOfTran
   ASSERT_EQ(inserted_keys, (std::vector<int32_t>{1, 3, 4, 5}));
   ASSERT_NE(savepoint_txn_id, other_txn_id);
 
-  // Only the BEGIN record of the transaction with the savepoint rollback carries the set.
-  int savepoint_txn_begin_records = 0;
-  int other_txn_begin_records = 0;
+  // Only the transaction with the savepoint rollback has a set, and it comes only in the response
+  // map, not on any record.
+  ASSERT_EQ(resp.aborted_subtxns.size(), 1);
+  const auto& [aborted_txn_id, aborted_entry] = *resp.aborted_subtxns.begin();
+  ASSERT_EQ(aborted_txn_id, savepoint_txn_id);
+  auto aborted = ASSERT_RESULT(SubtxnSet::FromPB(aborted_entry.aborted_subtxns().set()));
+  ASSERT_FALSE(aborted.IsEmpty());
+
+  int begin_records = 0;
   for (const auto& record : resp.records) {
     const auto& row_message = record.row_message();
     SCOPED_TRACE(record.ShortDebugString());
-    if (row_message.op() == RowMessage_Op_BEGIN &&
-        row_message.transaction_id() == savepoint_txn_id) {
-      ASSERT_TRUE(row_message.has_aborted_subtxns());
-      auto aborted = ASSERT_RESULT(SubtxnSet::FromPB(row_message.aborted_subtxns().set()));
-      ASSERT_FALSE(aborted.IsEmpty());
-      ++savepoint_txn_begin_records;
-      continue;
-    }
     ASSERT_FALSE(row_message.has_aborted_subtxns());
     if (row_message.op() == RowMessage_Op_BEGIN) {
-      ASSERT_EQ(row_message.transaction_id(), other_txn_id);
-      ++other_txn_begin_records;
+      ++begin_records;
+      if (row_message.transaction_id() == savepoint_txn_id) {
+        ASSERT_EQ(aborted_entry.commit_time(), row_message.commit_time());
+      }
     }
   }
-  ASSERT_EQ(savepoint_txn_begin_records, 1);
-  ASSERT_EQ(other_txn_begin_records, 1);
+  ASSERT_EQ(begin_records, 2);
   CheckRecordCount(resp, kExpectedDmlRecords);
 }
 

@@ -235,9 +235,18 @@ message GetConsistentChangesResponsePB {
   // transaction. Only set together with publication_refresh_record_time.
   optional bytes publication_refresh_txn_id = 7;
 
-  // Aborted subtransactions of that transaction, when the walsender has not received them on a
-  // record yet. See RowMessage.aborted_subtxns.
-  optional SubtxnSetPB publication_refresh_aborted_subtxns = 8;
+  // Aborted subtransactions of the transactions whose BEGIN records the virtual WAL read for this
+  // response, keyed by DocDB transaction id. This is the only place the walsender gets them from,
+  // including for the transactions that the virtual WAL merges into one because they commit at
+  // the same time and whose BEGIN records it does not ship. Only set with transactional DDL.
+  map<string, CDCSDKAbortedSubtxnsPB> aborted_subtxns = 8;
+}
+
+message CDCSDKAbortedSubtxnsPB {
+  // Commit time of the transaction. The walsender keeps the set until it has streamed a COMMIT at
+  // or after this time.
+  optional fixed64 commit_time = 1;
+  optional SubtxnSetPB aborted_subtxns = 2;
 }
 
 message DestroyVirtualWALForCDCRequestPB {
@@ -596,11 +605,9 @@ message RowMessage {
   // Replication origin id associated with the transaction. Set on BEGIN, DML and COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
 
-  // Subtransactions of the transaction rolled back to a savepoint. Only set for the walsender with
-  // transactional DDL, when not empty. The aborted sub-transactions is set on the BEGIN records. In
-  // the case of commit-time ties, the virtual WAL groups different DocDB transactions into a single
-  // BEGIN/COMMIT. In such cases, the set is populated on the first record of the transaction -
-  // INSERT / UPDATE / DELETE / Publication Refresh.
+  // Subtransactions of the transaction rolled back to a savepoint. Only set on BEGIN records with
+  // transactional DDL, when not empty. The virtual WAL moves it to
+  // GetConsistentChangesResponsePB.aborted_subtxns.
   optional SubtxnSetPB aborted_subtxns = 20;
 }
 

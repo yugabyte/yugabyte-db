@@ -774,11 +774,16 @@ typedef struct {
   // DocDB transaction id associated with the record.
   bool has_docdb_txn_id;
   char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
-  // Subtransactions of the DocDB transaction rolled back to a savepoint, run length encoded as in
-  // SubtxnSetPB. See RowMessage.aborted_subtxns for the records it is set on.
-  uint32_t* aborted_subtxn_set;
-  int aborted_subtxn_set_size;
 } YbcPgRowMessage;
+
+// Subtransactions of a DocDB transaction rolled back to a savepoint.
+typedef struct {
+  char docdb_txn_id[37]; /* UUID string length (36) + null terminator */
+  uint64_t commit_time_ht;
+  // Run length encoded as in SubtxnSetPB.
+  uint32_t* set;
+  int set_size;
+} YbcPgAbortedSubtxnSet;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
@@ -790,8 +795,8 @@ typedef struct {
   bool explicit_alter_publication_detected;
   uint64_t publication_refresh_record_time;
   char publication_refresh_txn_id[37]; /* UUID string length (36) + null terminator */
-  uint32_t* publication_refresh_aborted_subtxn_set;
-  int publication_refresh_aborted_subtxn_set_size;
+  YbcPgAbortedSubtxnSet* aborted_subtxn_sets;
+  int aborted_subtxn_sets_count;
 } YbcPgChangeRecordBatch;
 
 typedef struct {

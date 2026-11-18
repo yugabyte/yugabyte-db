@@ -28,7 +28,6 @@ YBTableSpaceOpts
 YBTaggedQueryString
 YBUnackedTransactionInfo
 YBUpdateOptimizationOptions
-YbAbortedSubtxnSet
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
 YbAnalyzeRelEnd_hook_type
@@ -302,6 +301,7 @@ YbcOrderingMode
 YbcOtelNodeSpan
 YbcOtelSpanContext
 YbcPallocFn
+YbcPgAbortedSubtxnSet
 YbcPgAshConfig
 YbcPgAttrValueDescriptor
 YbcPgBoundType

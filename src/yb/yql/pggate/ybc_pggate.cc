@@ -3085,8 +3085,6 @@ YbcStatus YBCPgGetCDCConsistentChanges(
   bool explicit_alter_publication_detected = resp.explicit_alter_publication_detected();
   uint64_t publication_refresh_record_time = resp.publication_refresh_record_time();
   const auto& publication_refresh_txn_id = resp.publication_refresh_txn_id();
-  const auto& publication_refresh_aborted_subtxns_pb =
-      resp.publication_refresh_aborted_subtxns().set();
 
   size_t row_idx = 0;
   for (const auto& row_pb : resp_rows_pb) {
@@ -3202,15 +3200,6 @@ YbcStatus YBCPgGetCDCConsistentChanges(
     const auto& docdb_txn_id = row_message_pb.transaction_id();
     const bool has_docdb_txn_id = !docdb_txn_id.empty();
 
-    const auto& aborted_subtxn_set_pb = row_message_pb.aborted_subtxns().set();
-    uint32_t* aborted_subtxn_set = nullptr;
-    if (!aborted_subtxn_set_pb.empty()) {
-      aborted_subtxn_set = static_cast<uint32_t*>(
-          YBCPAlloc(sizeof(uint32_t) * aborted_subtxn_set_pb.size()));
-      std::copy(
-          aborted_subtxn_set_pb.begin(), aborted_subtxn_set_pb.end(), aborted_subtxn_set);
-    }
-
     new (&resp_rows[row_idx]) YbcPgRowMessage{
         .col_count = col_count,
         .cols = cols,
@@ -3227,9 +3216,7 @@ YbcStatus YBCPgGetCDCConsistentChanges(
         .xrepl_origin_id =
             row_message_pb.has_xrepl_origin_id() ? row_message_pb.xrepl_origin_id() : 0,
         .has_docdb_txn_id = has_docdb_txn_id,
-        .docdb_txn_id = {},
-        .aborted_subtxn_set = aborted_subtxn_set,
-        .aborted_subtxn_set_size = aborted_subtxn_set_pb.size()};
+        .docdb_txn_id = {}};
     if (has_docdb_txn_id) {
       snprintf(
           resp_rows[row_idx].docdb_txn_id, sizeof(resp_rows[row_idx].docdb_txn_id), "%s",
@@ -3253,22 +3240,35 @@ YbcStatus YBCPgGetCDCConsistentChanges(
       .explicit_alter_publication_detected = explicit_alter_publication_detected,
       .publication_refresh_record_time = publication_refresh_record_time,
       .publication_refresh_txn_id = {},
-      .publication_refresh_aborted_subtxn_set = nullptr,
-      .publication_refresh_aborted_subtxn_set_size = publication_refresh_aborted_subtxns_pb.size(),
+      .aborted_subtxn_sets = nullptr,
+      .aborted_subtxn_sets_count = 0,
   };
-  if (!publication_refresh_aborted_subtxns_pb.empty()) {
-    auto* aborted_subtxn_set = static_cast<uint32_t*>(
-        YBCPAlloc(sizeof(uint32_t) * publication_refresh_aborted_subtxns_pb.size()));
-    std::copy(
-        publication_refresh_aborted_subtxns_pb.begin(),
-        publication_refresh_aborted_subtxns_pb.end(), aborted_subtxn_set);
-    (*record_batch)->publication_refresh_aborted_subtxn_set = aborted_subtxn_set;
-  }
   if (!publication_refresh_txn_id.empty()) {
     snprintf(
         (*record_batch)->publication_refresh_txn_id,
         sizeof((*record_batch)->publication_refresh_txn_id), "%s",
         publication_refresh_txn_id.c_str());
+  }
+
+  const auto& aborted_subtxns_pb = resp.aborted_subtxns();
+  if (!aborted_subtxns_pb.empty()) {
+    auto* aborted_subtxn_sets = static_cast<YbcPgAbortedSubtxnSet*>(
+        YBCPAlloc(sizeof(YbcPgAbortedSubtxnSet) * aborted_subtxns_pb.size()));
+    int idx = 0;
+    for (const auto& [docdb_txn_id, entry_pb] : aborted_subtxns_pb) {
+      const auto& set_pb = entry_pb.aborted_subtxns().set();
+      auto& entry = aborted_subtxn_sets[idx++];
+      entry = YbcPgAbortedSubtxnSet{
+          .docdb_txn_id = {},
+          .commit_time_ht = entry_pb.commit_time(),
+          .set = static_cast<uint32_t*>(YBCPAlloc(sizeof(uint32_t) * set_pb.size())),
+          .set_size = set_pb.size(),
+      };
+      snprintf(entry.docdb_txn_id, sizeof(entry.docdb_txn_id), "%s", docdb_txn_id.c_str());
+      std::copy(set_pb.begin(), set_pb.end(), entry.set);
+    }
+    (*record_batch)->aborted_subtxn_sets = aborted_subtxn_sets;
+    (*record_batch)->aborted_subtxn_sets_count = idx;
   }
 
   if (row_count > 0) {

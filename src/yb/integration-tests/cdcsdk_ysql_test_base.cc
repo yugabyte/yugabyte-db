@@ -2117,6 +2117,8 @@ CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
           resp.records.push_back(change_resp.cdc_sdk_proto_records(i));
           UpdateRecordCount(change_resp.cdc_sdk_proto_records(i), count);
         }
+        resp.aborted_subtxns.insert(
+            change_resp.aborted_subtxns().begin(), change_resp.aborted_subtxns().end());
 
         begin_records = count[6];
         commit_records = count[7];

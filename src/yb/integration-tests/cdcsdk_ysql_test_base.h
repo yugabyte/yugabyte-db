@@ -244,6 +244,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     CDCSDKCheckpointPB checkpoint;
     int64 safe_hybrid_time = -1;
     bool has_publication_refresh_indicator = false;
+    // GetConsistentChangesResponsePB.aborted_subtxns of all the responses.
+    std::map<std::string, CDCSDKAbortedSubtxnsPB> aborted_subtxns;
   };
 
   Result<string> GetUniverseId(PostgresMiniCluster* cluster);
