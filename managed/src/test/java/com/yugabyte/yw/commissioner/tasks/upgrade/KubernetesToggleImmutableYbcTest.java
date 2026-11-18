@@ -237,6 +237,27 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
   }
 
+  // Only the tservers roll, so the masters keep the sidecar's TLS from their last render.
+  @Test
+  public void testToggleImmutableYbcKeepsSidecarTlsRecord() {
+    setupUniverseSingleAZ(false, false);
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          params.setEnableYbc(true);
+          params.setYbcInstalled(true);
+          params.setYbcSoftwareVersion("2.0.0.0-b0");
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater, false);
+    recordNodeExporterHttps();
+    kubernetesToggleImmutableYbc.setUserTaskUUID(UUID.randomUUID());
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(true);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(isNodeExporterHttpsRecorded());
+  }
+
   @Test
   public void testToggleImmutableYbcRollingUpgradeMultiAZ() {
     setupUniverseMultiAZ(false, false);

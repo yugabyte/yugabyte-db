@@ -165,6 +165,10 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             default:
               throw new RuntimeException("Invalid Upgrade type!");
           }
+          // The node_exporter sidecar's scrape scheme follows the TLS the restarted pods render.
+          if (taskParams().upgradeOption != UpgradeOption.NON_RESTART_UPGRADE) {
+            createSwamperTargetUpdateTask(false /* removeFile */);
+          }
           installThirdPartyPackagesTaskK8s(
               universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
           // task to persist changed GFlags to universe in DB
