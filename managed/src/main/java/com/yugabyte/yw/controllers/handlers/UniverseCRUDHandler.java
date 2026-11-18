@@ -1544,6 +1544,16 @@ public class UniverseCRUDHandler {
     // Clients such as the CLI omit it; new nodes need it to get the OTEL collector.
     taskParams.otelCollectorEnabled = u.getUniverseDetails().otelCollectorEnabled;
 
+    // Only the cross-cloud federation API changes it on an existing cluster, and clients such as
+    // the CLI omit it. The edit would then clear it, and with it federation on the nodes later
+    // edits add, so keep each existing cluster's stored value.
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster stored = u.getUniverseDetails().getClusterByUuid(cluster.uuid);
+      if (stored != null) {
+        cluster.userIntent.setFederationConfigured(stored.userIntent.isFederationConfigured());
+      }
+    }
+
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
 
