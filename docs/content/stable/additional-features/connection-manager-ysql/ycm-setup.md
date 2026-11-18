@@ -283,7 +283,7 @@ Independent of the adoption strategy, the `ysql_conn_mgr_alter_guc_stale_backend
 
 ## Audit logging with pgaudit
 
-[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager. Configure pgaudit parameters with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or the `ysql_pg_conf_csv` flag rather than with `SET` in client sessions. Setting a string-type pgaudit parameter (`pgaudit.log`, `pgaudit.log_level`, or `pgaudit.role`) during a session makes the connection [sticky](#sticky-connections); Settings applied in the other ways don't.
+[pgaudit](../../../secure/audit-logging/audit-logging-ysql/) works with YSQL Connection Manager. Configure pgaudit parameters with `ALTER ROLE ... SET`, `ALTER DATABASE ... SET`, or the `ysql_pg_conf_csv` flag rather than with `SET` in client sessions.
 
 pgaudit behaves differently from PostgreSQL in the following ways:
 
