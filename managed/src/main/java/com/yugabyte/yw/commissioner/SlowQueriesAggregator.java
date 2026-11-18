@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -48,7 +49,7 @@ public class SlowQueriesAggregator {
   private final String DELETE_DATA_QUERY =
       "DELETE FROM %s WHERE timestamp < now() - interval '%d days';";
   private final String INSERT_DATA_QUERY =
-      "INSERT INTO %s VALUES ('%s', %s, %s, %s, $$%s$$, '%s', %s, %s, %s, %s);";
+      "INSERT INTO %s VALUES ('%s', %s, %s, %s, %s, %s, %s, %s, %s, %s);";
   private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
   @Inject
@@ -124,19 +125,29 @@ public class SlowQueriesAggregator {
                     data.get("dbid").asText(),
                     data.get("userid").asText(),
                     data.get("queryid").asText(),
-                    data.get("query").asText(),
-                    data.get("datname").asText(),
+                    toEscapeStringLiteral(data.get("query").asText()),
+                    toEscapeStringLiteral(data.get("datname").asText()),
                     data.get("P99").asText(),
                     data.get("rows").asText(),
                     data.get("calls").asText(),
                     data.get("mean_time").asText()));
           }
-          queryExecutor.executeQueryBatchInNodeShell(
-              universe,
-              Util.SYSTEM_PLATFORM_DB,
-              insertQueries,
-              node,
-              !slowQueryDisableCommandLogging);
+          JsonNode result =
+              queryExecutor.executeQueryBatchInNodeShell(
+                  universe,
+                  Util.SYSTEM_PLATFORM_DB,
+                  insertQueries,
+                  node,
+                  !slowQueryDisableCommandLogging);
+          if (result != null && result.has("error")) {
+            // The error can quote the failed INSERT, which holds users' query text.
+            log.error(
+                "Failed to save slow queries data for universe {}: {}",
+                universe.getName(),
+                slowQueryDisableCommandLogging
+                    ? Util.REDACTED_YSQL_QUERY
+                    : result.get("error").asText());
+          }
         }
       } catch (Exception e) {
         log.error(
@@ -145,5 +156,11 @@ public class SlowQueriesAggregator {
             e.getMessage());
       }
     }
+  }
+
+  // An E'' literal reads backslashes the same whatever standard_conforming_strings is set to.
+  @VisibleForTesting
+  static String toEscapeStringLiteral(String value) {
+    return "E'" + value.replace("\\", "\\\\").replace("'", "''") + "'";
   }
 }
