@@ -7,6 +7,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,10 +16,12 @@ import com.google.inject.Injector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.List;
+import java.util.Optional;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -53,6 +57,16 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testReplaceRootVolumeOciNotForced() {
     List<String> command = runOciReplaceRootVolume(false);
     assertFalse(command.toString(), command.contains("--force_replacement"));
+  }
+
+  @Test
+  public void testReplaceRootVolumeWithoutNodeAgentConnection() {
+    NodeAgentClient nodeAgentClient = mock(NodeAgentClient.class);
+    when(nodeAgentClient.maybeGetAndUpgrade(any())).thenReturn(Optional.of(new NodeAgent()));
+    nodeManager.nodeAgentClient = nodeAgentClient;
+    List<String> command = runOciReplaceRootVolume(false);
+    assertFalse(command.toString(), command.contains("--connection_type"));
+    verify(nodeAgentClient, never()).maybeGetAndUpgrade(any());
   }
 
   private List<String> runOciReplaceRootVolume(boolean force) {

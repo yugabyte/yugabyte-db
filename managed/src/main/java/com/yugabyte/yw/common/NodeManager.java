@@ -2548,7 +2548,11 @@ public class NodeManager extends DevopsBase {
       default:
         break;
     }
-    addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
+    // The node restarts from a new root volume without a node agent, so ybops must wait for SSH
+    // rather than for the node agent, even while the node agent record still exists.
+    if (type != NodeCommandType.Replace_Root_Volume) {
+      addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
+    }
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
     if (provider.getCloudCode() == CloudType.local) {
       if (sensitiveData.containsKey("--gflags")) {

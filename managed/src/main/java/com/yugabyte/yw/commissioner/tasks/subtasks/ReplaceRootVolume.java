@@ -65,8 +65,6 @@ public class ReplaceRootVolume extends NodeTaskBase {
     taskParams().capacityReservation =
         CapacityReservationUtil.getReservationIfPresent(
             getTaskCache(), provider, taskParams().nodeName);
-    // Delete node agent record as the image is going to be replaced.
-    deleteNodeAgent(nodeDetails);
     if (taskParams().rootDevicePerZone != null) {
       String rootDeviceName = taskParams().rootDevicePerZone.get(azUuid);
       taskParams().rootDeviceName = rootDeviceName;
@@ -74,6 +72,9 @@ public class ReplaceRootVolume extends NodeTaskBase {
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Replace_Root_Volume, taskParams())
         .processErrors();
+    // Only once the root volume is replaced. A failed replacement leaves the node on its old root
+    // volume, whose node agent later tasks still use.
+    deleteNodeAgent(nodeDetails);
 
     // On OCI, replacementDisk is an image, and ybops does not report the new boot volume's ID.
     if (!isOci) {

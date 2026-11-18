@@ -75,9 +75,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -778,6 +780,58 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testVMImageUpgradeOciPurgesNodeAgentAfterReplacement() {
+    ImageBundle ociBundle = addOciNodes();
+    Set<String> nodeAgentIps = createOciNodeAgents();
+
+    submitOciOnlyUpgrade(ociBundle, false);
+    assertEquals(nodeAgentIps, getPurgedNodeAgentIps());
+  }
+
+  @Test
+  public void testVMImageUpgradeOciFailedReplacementKeepsNodeAgent() {
+    ImageBundle ociBundle = addOciNodes();
+    createOciNodeAgents();
+    when(mockNodeManager.nodeCommand(eq(NodeCommandType.Replace_Root_Volume), any()))
+        .thenReturn(ShellResponse.create(1, "Boot volume replacement is not supported"));
+
+    TaskInfo taskInfo = submitOciOnlyUpgradeTask(ociBundle, false);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertFalse(getReplaceRootVolumeParams().isEmpty());
+    assertEquals(Collections.emptySet(), getPurgedNodeAgentIps());
+  }
+
+  /** Registers a node agent for each OCI node that addOciNodes added, and returns their IPs. */
+  private Set<String> createOciNodeAgents() {
+    List<NodeDetails> ociNodes =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNodes().stream()
+            .filter(n -> CloudType.oci.toString().equals(n.cloudInfo.cloud))
+            .collect(Collectors.toList());
+    assertEquals(2, ociNodes.size());
+    Set<String> nodeAgentIps = new HashSet<>();
+    for (NodeDetails node : ociNodes) {
+      NodeAgent nodeAgent = new NodeAgent();
+      nodeAgent.setIp(node.cloudInfo.private_ip);
+      nodeAgent.setName(node.nodeName);
+      nodeAgent.setCustomerUuid(defaultCustomer.getUuid());
+      nodeAgent.setOsType(NodeAgent.OSType.LINUX);
+      nodeAgent.setArchType(NodeAgent.ArchType.AMD64);
+      nodeAgent.setState(NodeAgent.State.READY);
+      nodeAgent.setVersion("2024.2.4.0");
+      nodeAgent.setHome("/home/yugabyte/node-agent");
+      nodeAgent.save();
+      nodeAgentIps.add(nodeAgent.getIp());
+    }
+    return nodeAgentIps;
+  }
+
+  private Set<String> getPurgedNodeAgentIps() {
+    ArgumentCaptor<NodeAgent> captor = ArgumentCaptor.forClass(NodeAgent.class);
+    verify(mockNodeAgentManager, atLeast(0)).purge(captor.capture());
+    return captor.getAllValues().stream().map(NodeAgent::getIp).collect(Collectors.toSet());
+  }
+
+  @Test
   public void testVMImageUpgradeV2Spec() {
     ImageBundle bundle =
         ImageBundle.create(defaultProvider, "ib-1", getImageBundleDetails(1), true);
@@ -866,6 +920,15 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
   }
 
   private TaskInfo submitOciOnlyUpgrade(ImageBundle ociBundle, boolean force) {
+    TaskInfo taskInfo = submitOciOnlyUpgradeTask(ociBundle, force);
+    if (taskInfo.getTaskState() == TaskInfo.State.Failure) {
+      throw new IllegalStateException(
+          "Task failed " + LocalProviderUniverseTestBase.getAllErrorsStr(taskInfo));
+    }
+    return taskInfo;
+  }
+
+  private TaskInfo submitOciOnlyUpgradeTask(ImageBundle ociBundle, boolean force) {
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     VMImageUpgradeParams taskParams = new VMImageUpgradeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
@@ -877,12 +940,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
                 taskParams.clusters.get(0).uuid,
                 ociBundle.getUuid(),
                 ociBundle.getProvider().getUuid()));
-    TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    if (taskInfo.getTaskState() == TaskInfo.State.Failure) {
-      throw new IllegalStateException(
-          "Task failed " + LocalProviderUniverseTestBase.getAllErrorsStr(taskInfo));
-    }
-    return taskInfo;
+    return submitTask(taskParams, defaultUniverse.getVersion());
   }
 
   /**
