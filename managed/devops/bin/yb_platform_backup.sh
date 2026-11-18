@@ -326,8 +326,10 @@ db_exists() {
     probe="$(dirname "${pg_helper_path}")/psql"
   fi
 
-  local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} -tAc \
-\"SELECT 1 FROM pg_database WHERE datname='${db_name}'\""
+  # Without -d, psql connects to a database named after the user, which an external
+  # Postgres may not have. The platform DB always exists by the time this runs.
+  local probe_cmd="${probe} -h ${db_host} -p ${db_port} -U ${db_username} \
+-d ${PLATFORM_DB_NAME} -tAc \"SELECT 1 FROM pg_database WHERE datname='${db_name}'\""
   local probe_out
   probe_out=$(docker_aware_cmd "postgres" "${probe_cmd}" 2>/dev/null) || return 1
   [[ "${probe_out}" = "1" ]]
@@ -1136,8 +1138,10 @@ restore_backup() {
   # Not covered by --disable_version_check, which HA sync always passes.
   backup_fips=$(tar -xzOf "${input_path}" "./${FIPS_MARKER_FNAME}" 2>/dev/null || true)
   if [[ -n "${backup_fips}" ]] && [[ "${backup_fips}" != "${fips}" ]]; then
+    # stderr: yba-ctl reports only the restore script's stderr when it fails.
     echo "This backup was taken on a YugabyteDB Anywhere with FIPS mode $(fips_mode_str \
-      "${backup_fips}") and cannot be restored on one with FIPS mode $(fips_mode_str "${fips}")."
+      "${backup_fips}") and cannot be restored on one with FIPS mode $(fips_mode_str \
+      "${fips}")." >&2
     exit 1
   fi
 

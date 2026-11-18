@@ -560,6 +560,23 @@ Status XClusterClient::DeleteXClusterWalAnchorStreams(
   return Status::OK();
 }
 
+Status XClusterClient::RecordXClusterStreamBootstrapInfo(
+    const std::map<xrepl::StreamId, std::vector<TabletId>>& stream_tablets) {
+  master::RecordXClusterStreamBootstrapInfoRequestPB req;
+  for (const auto& [stream_id, tablet_ids] : stream_tablets) {
+    auto* stream = req.add_streams();
+    stream->set_stream_id(stream_id.ToString());
+    stream->mutable_checkpointed_tablet_ids()->Add(tablet_ids.begin(), tablet_ids.end());
+  }
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(RecordXClusterStreamBootstrapInfo, req);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
 Result<xrepl::StreamId> XClusterClient::CreateXClusterStream(
     const TableId& table_id, bool active, cdc::StreamModeTransactional transactional) {
   std::promise<Result<xrepl::StreamId>> promise;

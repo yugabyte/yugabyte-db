@@ -1,0 +1,39 @@
+title: OciStorageSpec
+description: |
+  OciStorageSpec
+
+  OCI Object Storage, through its native API or its S3-compatible API. Part of StorageSpec.
+type: object
+required:
+  - storage_type
+  - backup_location
+  - region
+  - credentials
+properties:
+  storage_type:
+    $ref: "./StorageType.yaml"
+  backup_location:
+    description: 'Default location of backups: an Object Storage URL, https://objectstorage.<region>.oraclecloud.com/n/<namespace>/b/<bucket>/o[/<path>], with IAM credentials, or s3://<bucket>[/<path>] with S3_COMPATIBLE credentials. Can''t be changed after creation.'
+    type: string
+    minLength: 1
+  immutable_storage:
+    description: 'Whether the bucket keeps objects immutable (retention rules). If true, deleting a backup removes only its YBA metadata, not its files.'
+    type: boolean
+    default: false
+  region:
+    description: 'OCI region of Object Storage. With S3_COMPATIBLE credentials, also the signing region.'
+    type: string
+    example: us-sanjose-1
+    minLength: 1
+  namespace:
+    description: Object Storage namespace. Required with IAM credentials; must match the namespace in an Object Storage URL.
+    type: string
+  credentials:
+    $ref: "./OciCredentials.yaml"
+  region_locations:
+    description: 'Per-region backup locations, for universes that store each region''s backup in that region'
+    type: array
+    items:
+      $ref: "./OciRegionLocation.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

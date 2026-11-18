@@ -1,0 +1,176 @@
+-------------------------------------------------------------------------------
+-- Bindings to useful functions in pg_catalog
+-------------------------------------------------------------------------------
+
+SET search_path = '';
+
+--
+-- This section is undocumented and unsupported.
+-- Kept for backward compatibility with rules written for version 1.3
+--
+CREATE OR REPLACE FUNCTION anon.age(TIMESTAMP, TIMESTAMP)
+  RETURNS INTERVAL AS
+  $$ SELECT pg_catalog.age($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.age(TIMESTAMP)
+  RETURNS INTERVAL AS
+  $$ SELECT pg_catalog.age($1) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.concat(TEXT,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.concat($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.concat(TEXT,TEXT,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.concat($1,$2,$3) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.date_add(TIMESTAMP WITH TIME ZONE,INTERVAL)
+  RETURNS TIMESTAMP WITH TIME ZONE AS
+  $$ SELECT $1 + $2; $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.date_part(TEXT,TIMESTAMP)
+  RETURNS double precision AS
+  $$ SELECT pg_catalog.date_part($1,$2); $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.date_part(TEXT,INTERVAL)
+  RETURNS double precision AS
+  $$ SELECT pg_catalog.date_part($1,$2); $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.date_subtract(TIMESTAMP WITH TIME ZONE, INTERVAL )
+  RETURNS TIMESTAMP WITH TIME ZONE AS
+  $$ SELECT $1 - $2; $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.date_trunc(TEXT,TIMESTAMP)
+  RETURNS TIMESTAMP AS
+  $$ SELECT pg_catalog.date_trunc($1,$2); $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.date_trunc(TEXT,TIMESTAMP WITH TIME ZONE)
+  RETURNS TIMESTAMP WITH TIME ZONE AS
+  $$ SELECT pg_catalog.date_trunc($1,$2); $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.date_trunc(TEXT,INTERVAL)
+  RETURNS INTERVAL AS
+  $$ SELECT pg_catalog.date_trunc($1,$2); $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.left(TEXT, INTEGER)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.left($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.length(TEXT)
+  RETURNS INTEGER AS
+  $$ SELECT pg_catalog.length($1) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.lower(TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.lower($1) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.make_date(INT,INT,INT )
+  RETURNS date AS
+  $$ SELECT pg_catalog.make_date($1,$2,$3); $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.make_time(INT,INT,DOUBLE PRECISION)
+  RETURNS time AS
+  $$ SELECT pg_catalog.make_time($1,$2,$3); $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.md5(TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.md5($1) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.now()
+  RETURNS TIMESTAMP WITH TIME ZONE AS
+  $$ SELECT pg_catalog.now() $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.random()
+  RETURNS DOUBLE PRECISION AS
+  $$ SELECT pg_catalog.random() $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.replace(TEXT,TEXT,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.replace($1,$2,$3) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.regexp_replace(TEXT,TEXT,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.regexp_replace($1,$2,$3) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.regexp_replace(TEXT,TEXT,TEXT,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.regexp_replace($1,$2,$3,$4) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.right(TEXT,INTEGER)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.right($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.substr(TEXT,INTEGER)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.substr($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.substr(TEXT,INTEGER,INTEGER)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.substr($1,$2,$3) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.to_char(TIMESTAMP,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.to_char($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.to_char(TIMESTAMP WITH TIME ZONE, TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.to_char($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.to_char(INTERVAL,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.to_char($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.to_char(NUMERIC,TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.to_char($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.to_date(TEXT,TEXT)
+  RETURNS DATE AS
+  $$ SELECT pg_catalog.to_date($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.to_number(TEXT,TEXT)
+  RETURNS NUMERIC AS
+  $$ SELECT pg_catalog.to_number($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.to_timestamp(TEXT,TEXT)
+  RETURNS TIMESTAMP WITH TIME ZONE AS
+  $$ SELECT pg_catalog.to_timestamp($1,$2) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+CREATE OR REPLACE FUNCTION anon.upper(TEXT)
+  RETURNS TEXT AS
+  $$ SELECT pg_catalog.upper($1) $$
+  LANGUAGE SQL PARALLEL SAFE SECURITY INVOKER SET search_path='';
+
+RESET search_path;

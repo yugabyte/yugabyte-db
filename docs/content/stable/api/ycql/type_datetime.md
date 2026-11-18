@@ -248,4 +248,4 @@ ycqlsh:example> SELECT * FROM sensor_data;
 ## See also
 
 - [Date and time functions](../function_datetime)
-- [Data types](..#data-types)
+- [Data types](../#data-types)

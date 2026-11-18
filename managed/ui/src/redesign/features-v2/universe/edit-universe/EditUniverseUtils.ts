@@ -42,6 +42,21 @@ export const getClusterByType = (universeData: Universe, type: ClusterSpecCluste
   return universeData.spec?.clusters.find((cluster) => cluster.cluster_type === type);
 };
 
+/** Multi-provider uses provider_specs; single-provider uses provider_spec. */
+export const getClusterProviderUuids = (cluster?: ClusterSpec): string[] => {
+  const fromSpecs = (cluster?.provider_specs ?? [])
+    .map((spec) => spec.provider)
+    .filter((uuid): uuid is string => !!uuid);
+  if (fromSpecs.length > 0) {
+    return fromSpecs;
+  }
+  return cluster?.provider_spec?.provider ? [cluster.provider_spec.provider] : [];
+};
+
+/** First provider settings entry (provider_spec, or provider_specs[0] for multi-provider). */
+export const getClusterProviderSpec = (cluster?: ClusterSpec) =>
+  cluster?.provider_spec ?? cluster?.provider_specs?.[0];
+
 export const getProviderIcon = (providerCode?: string) => {
   if (!providerCode) return null;
 

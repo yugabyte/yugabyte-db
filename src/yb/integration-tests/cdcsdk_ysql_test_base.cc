@@ -1434,6 +1434,20 @@ void CDCSDKYsqlTest::CheckRecordWithThreeColumns(
   }
 }
 
+void CDCSDKYsqlTest::CheckTextTuple(
+    const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id,
+    const std::optional<std::string>& value) {
+  ASSERT_EQ(tuple.size(), 2);
+  ASSERT_TRUE(tuple.Get(0).has_datum_int32());
+  ASSERT_EQ(tuple.Get(0).datum_int32(), id);
+  if (value) {
+    ASSERT_TRUE(tuple.Get(1).has_datum_string());
+    ASSERT_EQ(tuple.Get(1).datum_string(), *value);
+  } else {
+    ASSERT_EQ(tuple.Get(1).datum_case(), DatumMessagePB::DATUM_NOT_SET);
+  }
+}
+
 void CDCSDKYsqlTest::CheckCount(const uint32_t* expected_count, uint32_t* count) {
   for (int i = 0; i < 6; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
@@ -1530,7 +1544,7 @@ Status CDCSDKYsqlTest::InitVirtualWAL(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
     const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range,
     bool include_oid_to_relfilenode, int timeout,
-    const std::vector<uint32_t>& publication_oids, bool pub_all_tables) {
+    const std::vector<uint32_t>& publication_oids, bool pub_all_tables, RetryInit retry) {
   InitVirtualWALForCDCRequestPB init_req;
   init_req.set_stream_id(stream_id.ToString());
   init_req.set_session_id(session_id);
@@ -1567,6 +1581,9 @@ Status CDCSDKYsqlTest::InitVirtualWAL(
           if (status.IsAlreadyPresent() || status.IsInvalidArgument()|| status.IsNotFound()) {
             RETURN_NOT_OK(status);
           }
+        }
+        if (!retry) {
+          RETURN_NOT_OK(status);
         }
 
         return false;
@@ -2631,10 +2648,7 @@ void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
             auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
             const auto pg_database_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
                 Format("SELECT oid FROM pg_database WHERE datname = '$0'", test_namespace_name)));
-            all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
-            all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
-            all_expected_table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
-            all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
+            AddCatalogTableIdsPolledByCDC(pg_database_oid, &all_expected_table_ids);
           }
           const uint64_t table_info_size = get_resp->table_info_size();
 
@@ -2690,10 +2704,7 @@ void CDCSDKYsqlTest::VerifyTablesAndStateInStreamMetadata(
           auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
           const auto pg_database_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
               Format("SELECT oid FROM pg_database WHERE datname = '$0'", test_namespace_name)));
-          all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
-          all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
-          all_expected_table_ids.insert(GetPgsqlTableId(kTemplate1Oid, kPgReplicationOriginOid));
-          all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationOid));
+          AddCatalogTableIdsPolledByCDC(pg_database_oid, &all_expected_table_ids);
         }
 
         if (static_cast<size_t>(stream_lock->pb.table_id_size()) != all_expected_table_ids.size()) {
@@ -3061,6 +3072,13 @@ void CDCSDKYsqlTest::ValidateInsertCounts(const GetChangesResponsePB& resp,
     }
   }
   ASSERT_EQ(insert_count, excepted_insert_counts);
+}
+
+void CDCSDKYsqlTest::WaitUntilPeerLeaderState(
+    const tablet::TabletPeerPtr& peer, bool is_leader_and_ready, const std::string& description) {
+  ASSERT_OK(WaitFor(
+      [&] { return peer->IsLeaderAndReady() == is_leader_and_ready; },
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, description));
 }
 
 void CDCSDKYsqlTest::WaitUntilSplitIsSuccesful(
@@ -4470,7 +4488,14 @@ void CDCSDKYsqlTest::CheckRecordsConsistencyFromVWAL(
       prev_primary_key = record.row_message().primary_key();
     }
 
-    if (record.row_message().op() == RowMessage::DDL) {
+    if (record.row_message().op() == RowMessage::DDL &&
+        FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl && in_transaction) {
+      ASSERT_EQ(record.row_message().commit_time(), prev_commit_time);
+      ASSERT_EQ(record.row_message().pg_transaction_id(), prev_txn_id);
+      ASSERT_TRUE(record.row_message().has_pg_lsn());
+      ASSERT_GT(record.row_message().pg_lsn(), prev_lsn);
+      prev_lsn = record.row_message().pg_lsn();
+    } else if (record.row_message().op() == RowMessage::DDL) {
       if (prev_op == RowMessage::DDL) {
         // There can be two DDLs received back to back with the same commit_time.
         ASSERT_GE(record.row_message().commit_time(), prev_commit_time);
@@ -4844,6 +4869,33 @@ void CDCSDKYsqlTest::LogRetentionBarrierDetails(
             << ", Intents protected from: " << tablet_peer->cdc_sdk_min_checkpoint_op_id();
 }
 
+void CDCSDKYsqlTest::VerifyCDCSDKRetentionBarriers(const TableId& table_id, bool expected) {
+  const auto tablet_ids = ListTabletIdsForTable(test_cluster(), table_id);
+  ASSERT_FALSE(tablet_ids.empty()) << "No tablets for table " << table_id;
+  auto all_peers_match = [&]() {
+    size_t num_peers = 0;
+    for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+      for (const auto& peer : test_cluster()->GetTabletPeers(i)) {
+        if (!tablet_ids.contains(peer->tablet_id())) {
+          continue;
+        }
+        ++num_peers;
+        if ((peer->cdc_sdk_min_checkpoint_op_id() != OpId::Invalid()) != expected) {
+          return false;
+        }
+      }
+    }
+    return num_peers > 0;
+  };
+  if (expected) {
+    ASSERT_OK(WaitFor(
+        all_peers_match, MonoDelta::FromSeconds(60),
+        Format("Retention barriers not set on table $0", table_id)));
+  } else {
+    ASSERT_TRUE(all_peers_match()) << "Retention barriers set on table " << table_id;
+  }
+}
+
 void CDCSDKYsqlTest::ConsumeSnapshotAndVerifyRecords(
     const xrepl::StreamId& stream_id,
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -5055,19 +5107,23 @@ std::string CDCSDKYsqlTest::GetPubRefreshTimesString(vector<uint64_t> pub_refres
 
 Status CDCSDKYsqlTest::ExecuteYBAdminCommand(
     const std::string& command_name, const std::vector<string>& command_args) {
-  string tool_path = GetToolPath("../bin", "yb-admin");
-  vector<string> argv;
-  argv.push_back(tool_path);
-  argv.push_back("--master_addresses");
-  argv.push_back(AsString(test_cluster_.mini_cluster_->GetMasterAddresses()));
-  argv.push_back(command_name);
-  for (const auto& command_arg : command_args) {
-    argv.push_back(command_arg);
-  }
-
-  RETURN_NOT_OK(Subprocess::Call(argv));
-
+  RETURN_NOT_OK(ExecuteYBAdminCommand(
+      test_cluster_.mini_cluster_->GetMasterAddresses(), command_name, command_args));
   return Status::OK();
+}
+
+Result<std::string> CDCSDKYsqlTest::ExecuteYBAdminCommand(
+    const std::string& master_addresses, const std::string& command_name,
+    const std::vector<string>& command_args) {
+  vector<string> argv{
+      GetToolPath("../bin", "yb-admin"), "--master_addresses", master_addresses, command_name};
+  argv.insert(argv.end(), command_args.begin(), command_args.end());
+  std::string output, error;
+  auto status = Subprocess::Call(argv, &output, &error);
+  if (!status.ok()) {
+    return status.CloneAndAppend(error);
+  }
+  return output;
 }
 
 Status CDCSDKYsqlTest::DisableDynamicTableAdditionOnCDCSDKStream(
@@ -5088,6 +5144,58 @@ Status CDCSDKYsqlTest::RemoveUserTableFromCDCSDKStream(
   RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
 
   return Status::OK();
+}
+
+Result<std::string> CDCSDKYsqlTest::PrepareReplicationSlotsForTransactionalDDL(
+    const std::string& master_addresses, const std::string& slot_name) {
+  vector<string> command_args;
+  if (!slot_name.empty()) {
+    command_args.push_back(slot_name);
+  }
+  return ExecuteYBAdminCommand(
+      master_addresses, "prepare_replication_slots_for_transactional_ddl", command_args);
+}
+
+Result<xrepl::StreamId> CDCSDKYsqlTest::CreatePubRefreshSlot(const std::string& slot_name) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  auto stream_id = CreateConsistentSnapshotStreamWithReplicationSlot(slot_name);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  return stream_id;
+}
+
+Result<std::vector<CDCSDKProtoRecordPB>> CDCSDKYsqlTest::SetBarrierAndPause(
+    const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
+    pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
+  RETURN_NOT_OK(WriteRows(key, key + 1, &test_cluster_, {} /* optional_cols_name */, conn));
+  RETURN_NOT_OK(ExecuteYBAdminCommand("set_replication_slot_catalog_barrier", {slot_name}));
+  if (key_after_barrier) {
+    // The barrier time is at least the master's time plus the maximum clock skew.
+    SleepFor(
+        MonoDelta::FromMicroseconds(FLAGS_max_clock_skew_usec) + MonoDelta::FromMilliseconds(100));
+    RETURN_NOT_OK(WriteRows(
+        *key_after_barrier, *key_after_barrier + 1, &test_cluster_, {} /* optional_cols_name */,
+        conn));
+  }
+  RETURN_NOT_OK(InitVirtualWAL(stream_id, {table_id}));
+  std::vector<CDCSDKProtoRecordPB> records;
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          records.push_back(record);
+          if (record.row_message().op() == RowMessage_Op_COMMIT) {
+            const auto lsn = record.row_message().pg_lsn();
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn + 1));
+          }
+        }
+        return ExecuteYBAdminCommand("pause_replication_slot", {slot_name, "1"}).ok();
+      },
+      MonoDelta::FromSeconds(60) * kTimeMultiplier, "Waiting for the slot to pause"));
+  RETURN_NOT_OK(DestroyVirtualWAL());
+  return records;
 }
 
 Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(

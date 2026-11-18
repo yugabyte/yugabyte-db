@@ -67,11 +67,14 @@ YB_DEFINE_ENUM(YsqlColocationConfig, (kNotColocated)(kDBColocated));
 class YBBackupDuringDdl : public pgwrapper::PgMiniTestBase, public YBBackupTestBase {
  public:
   void SetUp() {
+    // Skip before TEST_SETUP_SUPER starts the cluster, so sanitizer builds do not pay for it.
+    // Derived fixtures must chain through TEST_SETUP_SUPER as well, or they would run their own
+    // setup against the cluster this skip never started.
+    YB_SKIP_TEST_IN_SANITIZERS();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     // We need the following to be able to run yb-controller with MiniCluster.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
     TEST_SETUP_SUPER(PgMiniTestBase);
-    YB_SKIP_TEST_IN_SANITIZERS();
     ASSERT_OK(CreateClient());
     // Start Yb Controllers for backup/restore.
     if (UseYbController()) {
@@ -235,7 +238,7 @@ class YBBackupTestWithColocationParam : public YBBackupDuringDdl,
                                         public ::testing::WithParamInterface<YsqlColocationConfig> {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, GetParam());
   }
 };
@@ -611,7 +614,7 @@ class YBBackupDuringAlterTable : public YBBackupDuringDdl,
                                  public ::testing::WithParamInterface<YsqlColocationConfig> {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, GetParam());
   }
 
@@ -936,7 +939,7 @@ class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
       GTEST_SKIP() << "Test requires YBC";
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName);
   }
 
@@ -948,13 +951,8 @@ class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION anon"));
     RETURN_NOT_OK(conn.Execute("CREATE TABLE test_table (oid SERIAL PRIMARY KEY, name TEXT)"));
 
-    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = TRUE"));
-    auto init_result = VERIFY_RESULT(
-        conn.FetchRow<bool>("SELECT anon.start_dynamic_masking()"));
-    SCHECK(init_result, IllegalState, "start_dynamic_masking() returned false");
-    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = FALSE"));
-    RETURN_NOT_OK(conn.CommitTransaction());
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "ALTER DATABASE $0 SET anon.transparent_dynamic_masking TO true", kBackupSourceDbName));
 
     RETURN_NOT_OK(conn.Execute("CREATE ROLE Bob LOGIN"));
     RETURN_NOT_OK(conn.Execute("SECURITY LABEL FOR anon ON ROLE Bob IS 'MASKED'"));
@@ -968,13 +966,24 @@ class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
 
     return conn;
   }
+
+  // Checks that the given database has the rows and the anon labels that SetUpAnonymizer() created,
+  // with the masked role renamed to Eve.
+  static void CheckRestoredAnonymizer(pgwrapper::PGConn& conn) {
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM test_table")), 100);
+    auto labels = ASSERT_RESULT(conn.FetchRows<std::string>(
+        "SELECT objtype || ' ' || objname || ' ' || label FROM pg_seclabels "
+        "WHERE provider = 'anon' AND objtype IN ('column', 'role') ORDER BY 1"));
+    ASSERT_VECTORS_EQ(labels, (decltype(labels){
+        "column test_table.name MASKED WITH FUNCTION anon.fake_last_name()",
+        "role eve MASKED"}));
+  }
 };
 
-// Repro for https://github.com/yugabyte/yugabyte-db/issues/26555.
-// PG Anonymizer adds statements (e.g. GRANTs) to the ysql_dump output that reference roles by
-// name. When a role is renamed after the backup is taken, the dump replayed during restore
-// encounters "role does not exist" errors for the GRANT statements. The restore itself
-// should succeed and ignore the errors because --dump-role-checks is used.
+// A database that uses anon masking restores (and clones) with its rows and anon security labels
+// after the masked role is renamed.  https://github.com/yugabyte/yugabyte-db/issues/26555 broke the
+// restore with anon 1.x, which granted privileges to masked roles by name.  The generic rename and
+// --dump-role-checks case is covered by TestYbBackup.doTestBackupRestoreRoles.
 TEST_F(YBBackupWithAnonymizerTest, RestoreAfterRoleRenameWithAnonymizer) {
 
   auto conn = ASSERT_RESULT(SetUpAnonymizer());
@@ -992,16 +1001,14 @@ TEST_F(YBBackupWithAnonymizerTest, RestoreAfterRoleRenameWithAnonymizer) {
       cluster_.get()));
 
   auto restored_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
-  auto row_count = ASSERT_RESULT(
-      restored_conn.FetchRow<int64_t>("SELECT count(*) FROM test_table"));
-  ASSERT_EQ(row_count, 100);
+  ASSERT_NO_FATALS(CheckRestoredAnonymizer(restored_conn));
 }
 
 class YBCloneWithAnonymizerTest : public YBBackupWithAnonymizerTest {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_beta_features) = true;
-    YBBackupWithAnonymizerTest::SetUp();
+    TEST_SETUP_SUPER(YBBackupWithAnonymizerTest);
   }
 };
 
@@ -1022,14 +1029,13 @@ TEST_F(YBCloneWithAnonymizerTest, CloneAfterRoleRenameWithAnonymizer) {
       kRestoreTargetDbName, kBackupSourceDbName, clone_time.ToInt64()));
 
   auto cloned_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
-  auto row_count = ASSERT_RESULT(cloned_conn.FetchRow<int64_t>("SELECT count(*) FROM test_table"));
-  ASSERT_EQ(row_count, 100);
+  ASSERT_NO_FATALS(CheckRestoredAnonymizer(cloned_conn));
 }
 
 class YBBackupOfColocatedCloneTest : public YBBackupDuringDdl {
  public:
   void SetUp() override {
-    YBBackupDuringDdl::SetUp();
+    TEST_SETUP_SUPER(YBBackupDuringDdl);
     CreateDatabase(kBackupSourceDbName, YsqlColocationConfig::kDBColocated);
   }
 };

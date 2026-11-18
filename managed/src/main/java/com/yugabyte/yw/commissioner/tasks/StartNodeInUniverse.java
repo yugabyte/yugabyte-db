@@ -177,15 +177,14 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      // Add node to load balancer.
-      createManageLoadBalancerTasks(
-          createLoadBalancerMap(
-              universe.getUniverseDetails(),
-              ImmutableList.of(cluster),
-              null,
-              ImmutableSet.of(currentNode)));
-
       if (startTserver) {
+        // Add node to load balancer. Only tservers are load balancer targets.
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universe.getUniverseDetails(),
+                ImmutableList.of(cluster),
+                null,
+                ImmutableSet.of(currentNode)));
         // Update the DNS entry for this universe.
         createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
             .setSubTaskGroupType(SubTaskGroupType.StartingNode);
@@ -195,6 +194,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       // It is required because the node could be removed from the swamper file
       // between the Stop/Start actions as Inactive.
       createSwamperTargetUpdateTask(false /* removeFile */);
+
+      // The node may have lost its master while stopped; a master start rewrites it on its own.
+      if (!startMaster
+          && cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY
+          && currentNode.dedicatedTo != ServerType.TSERVER) {
+        queueOtelCollectorConfigRewrite(nodeCollection, false /* ignoreErrors */);
+      }
 
       // Mark universe update success to true
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);

@@ -123,6 +123,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
       consensus::ReplicateMsgPtr replicate_msg = operation_->NewReplicateMsg();
       auto round = make_scoped_refptr<ConsensusRound>(consensus_, std::move(replicate_msg));
       round->BindToTerm(term);
+      round->set_replication_deferrable(operation_->replication_deferrable());
       round->SetCallback(this);
       mutable_operation()->set_consensus_round(std::move(round));
     }

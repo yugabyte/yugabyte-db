@@ -10,7 +10,7 @@ If you want to publish any data in this issue, please add a note stating that
 you have the right to do so.
 
 If secrets were accidentally shared or attached to a support ticket, please
-notifiy us immediately to ensure this data is redacted and deleted. Conversely,
+notify us immediately to ensure this data is redacted and deleted. Conversely,
 if we suspect that secrets were accidentally submitted to an issue, we will
 bring this to your attention and take action to remove any sensitive information.
 

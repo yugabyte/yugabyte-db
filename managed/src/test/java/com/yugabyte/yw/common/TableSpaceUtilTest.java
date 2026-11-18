@@ -5,18 +5,24 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.generateTablespaceParams;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.backuprestore.Tablespace;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Rule;
@@ -193,5 +199,71 @@ public class TableSpaceUtilTest extends FakeDBApplication {
     assertEquals(3, info.numReplicas);
     assertNotNull(info.placementBlocks);
     assertEquals(3, info.placementBlocks.size());
+  }
+
+  private static TableSpaceQueryResponse tablespaceResponse(String replicaPlacement) {
+    TableSpaceQueryResponse response = new TableSpaceQueryResponse();
+    response.tableSpaceName = "ts";
+    response.tableSpaceOptions =
+        Collections.singletonList(TableSpaceUtil.REPLICA_PLACEMENT_TEXT + replicaPlacement);
+    return response;
+  }
+
+  @Test
+  public void testParseToTableSpaceInfo_WithMaxNumReplicas() {
+    TableSpaceQueryResponse response =
+        tablespaceResponse(
+            "{\"num_replicas\":2,\"placement_blocks\":"
+                + "[{\"cloud\":\"aws\",\"region\":\"r1\",\"zone\":\"az1\","
+                + "\"min_num_replicas\":1,\"max_num_replicas\":1},"
+                + "{\"cloud\":\"aws\",\"region\":\"r1\",\"zone\":\"az2\","
+                + "\"min_num_replicas\":1}]}");
+
+    TableSpaceInfo info = TableSpaceUtil.parseToTableSpaceInfo(response);
+    assertEquals(Integer.valueOf(1), info.placementBlocks.get(0).maxNumReplicas);
+    assertNull(info.placementBlocks.get(1).maxNumReplicas);
+
+    Tablespace tablespace = Tablespace.getTablespaceFromTablespaceQueryResponse(response);
+    List<PlacementBlock> blocks = tablespace.replicaPlacement.placementBlocks;
+    assertEquals(1, blocks.get(0).getPlacementBlockPB().getMaxNumReplicas());
+    assertFalse(blocks.get(1).getPlacementBlockPB().hasMaxNumReplicas());
+  }
+
+  @Test
+  public void testParseTablespace_IgnoresUnknownKeys() {
+    TableSpaceQueryResponse response =
+        tablespaceResponse(
+            "{\"num_replicas\":1,\"placement_uuid\":\"abc\",\"placement_blocks\":"
+                + "[{\"cloud\":\"aws\",\"region\":\"r1\",\"zone\":\"az1\","
+                + "\"min_num_replicas\":1,\"leader_preferance\":1}]}");
+
+    TableSpaceInfo info = TableSpaceUtil.parseToTableSpaceInfo(response);
+    assertEquals(1, info.numReplicas);
+    assertEquals(1, info.placementBlocks.size());
+    assertNull(info.placementBlocks.get(0).leaderPreference);
+
+    Tablespace tablespace = Tablespace.getTablespaceFromTablespaceQueryResponse(response);
+    assertEquals(1, tablespace.replicaPlacement.placementBlocks.size());
+  }
+
+  @Test
+  public void testValidateTablespaces_MaxLessThanMin() {
+    Provider provider = ModelFactory.newProvider(customer, CloudType.onprem);
+    Universe universe = createFromConfig(provider, "Existing", "r1-az1-4-1;r1-az2-3-1;r1-az3-4-1");
+
+    CreateTablespaceParams params =
+        generateTablespaceParams(
+            universe.getUniverseUUID(), provider.getCode(), 4, "r1-az1-2;r1-az2-1;r1-az3-1");
+    params.tablespaceInfos.get(0).placementBlocks.get(0).maxNumReplicas = 2;
+    TableSpaceUtil.validateTablespaces(params, universe);
+
+    params.tablespaceInfos.get(0).placementBlocks.get(0).maxNumReplicas = 1;
+    RuntimeException re =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> TableSpaceUtil.validateTablespaces(params, universe));
+    assertEquals(
+        "Maximum replicas 1 is less than minimum replicas 2 for cloud onprem, region r1, zone az1",
+        re.getMessage());
   }
 }

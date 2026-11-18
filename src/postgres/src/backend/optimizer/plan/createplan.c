@@ -45,6 +45,7 @@
 
 /* YB includes */
 #include "access/htup_details.h"
+#include "access/yb_scan_plan.h"
 #include "access/yb_target.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am.h"
@@ -54,8 +55,8 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "executor/ybExpr.h"
-#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
+#include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
@@ -381,11 +382,7 @@ static ModifyTable *make_modifytable(PlannerInfo *root, Plan *subplan,
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 											 GatherMergePath *best_path);
 
-/* YB declarations */
 static void yb_assign_unique_plan_node_id(PlannerInfo *root, Plan *plan);
-static bool yb_agg_pushdown_subplan_ok(Plan *subplan);
-static Plan *yb_plan_below_removed_levels(Plan *plan);
-static int	yb_plan_docdb_result_width(Plan *plan);
 
 extern int	yb_bnl_batch_size;
 bool		yb_bnl_optimize_first_batch;
@@ -2800,36 +2797,6 @@ create_agg_plan(PlannerInfo *root, AggPath *best_path)
 
 	copy_generic_path_info(&plan->plan, (Path *) best_path);
 
-	/*
-	 * YB: the pushdown planned on the paths assumes that no plan node ends
-	 * up between the Agg and the scan; withdraw it where one does.
-	 */
-	plan->yb_pushdown_decision = best_path->yb_pushdown_decision;
-	if (plan->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON &&
-		!yb_agg_pushdown_subplan_ok(subplan))
-		plan->yb_pushdown_decision = YB_AGG_PUSHDOWN_PLANNED_OFF;
-
-	/*
-	 * YB: label the scan below a plain Agg with the width of the rows DocDB
-	 * returns to it where its target list does not give that width: under
-	 * a pushdown the scan returns the partial-aggregate row, and when the
-	 * Agg reads no column the target list is empty although DocDB still
-	 * returns something for each row (yb_get_docdb_result_width).  The YB
-	 * cost model charges the transfer from DocDB by this width, a cost PG
-	 * does not have.  A plain Agg never reads its input's plan_width; only
-	 * a hashing Agg sizes its hash table from it.
-	 */
-	if (plan->aggstrategy == AGG_PLAIN)
-	{
-		Plan	   *input = yb_plan_below_removed_levels(subplan);
-		int			width = yb_plan_docdb_result_width(input);
-
-		if (width > 0 &&
-			(plan->yb_pushdown_decision == YB_AGG_PUSHDOWN_PLANNED_ON ||
-			 input->plan_width == 0))
-			input->plan_width = width;
-	}
-
 	return plan;
 }
 
@@ -3438,6 +3405,33 @@ has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *updated_attr
 }
 
 /*
+ * Returns true if the given relation captures transition tables for the given
+ * operation.  For a partitioned target, the transition-table triggers live
+ * only on the relation named in the query, not on the leaf that
+ * has_applicable_triggers() examines.
+ */
+static bool
+yb_target_has_transition_tables(Oid relid, CmdType operation)
+{
+	Relation	target_rel;
+	TriggerDesc *trigdesc;
+	bool		result = false;
+
+	target_rel = RelationIdGetRelation(relid);
+	trigdesc = target_rel->trigdesc;
+	if (trigdesc)
+	{
+		if (operation == CMD_DELETE)
+			result = trigdesc->trig_delete_old_table;
+		else if (operation == CMD_UPDATE)
+			result = (trigdesc->trig_update_old_table ||
+					  trigdesc->trig_update_new_table);
+	}
+	RelationClose(target_rel);
+	return result;
+}
+
+/*
  * yb_leaf_update_modifies_partition_key
  *
  * Returns true if any column in the input bitmapset is a partition key column
@@ -3524,6 +3518,47 @@ yb_fetch_subpaths(ModifyTablePath *path, IndexPath **index_path,
 }
 
 /*
+ * yb_single_row_key_value
+ *
+ * Helper function for yb_single_row_update_or_delete_path.  Return the
+ * expression for the one primary key value that "column = expr" can match, or
+ * NULL to use the scan path instead.  expr can be of another type than the
+ * column, as in int4_col = int8_value.
+ */
+static Expr *
+yb_single_row_key_value(Expr *expr, Oid coltype)
+{
+	Oid			valtype = exprType((Node *) expr);
+	Oid			basetype = getBaseType(coltype);
+
+	if (valtype == coltype)
+		return expr;
+
+	/*
+	 * True if the value's bytes mean the same value in the column's type: then
+	 * only the type label changes.
+	 */
+	if (IsBinaryCoercible(valtype, basetype))
+		return (Expr *) makeRelabelType(expr, coltype, -1,
+										get_typcollation(coltype),
+										COERCE_IMPLICIT_CAST);
+
+	/*
+	 * Otherwise:
+	 * (1) A value that scan keys bind with the column's type
+	 *     (YbIsScanCompatible): an integer of another width, a text, varchar
+	 *     or bpchar value for a column of another of these types, or an OID
+	 *     type value for a column of another OID type.  Keep it, and let
+	 *     YBCComputeYBTupleIdFromSlot bind it with the column's type.
+	 * (2) Any other type, such as a double for a real column: use the scan.
+	 */
+	if (!YbIsScanCompatible(basetype, valtype, false /* is_value_scalar */ ,
+							(Datum) 0))
+		return NULL;
+	return expr;
+}
+
+/*
  * yb_single_row_update_or_delete_path
  *
  * Returns whether a path can support a YB single row modify. The advantage of
@@ -3577,6 +3612,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 {
 	RelOptInfo *relInfo = NULL;
 	Oid			relid;
+	Oid			query_target_relid;
 	Relation	relation;
 	TupleDesc	tupDesc;
 	IndexPath  *index_path;
@@ -3696,7 +3732,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		foreach(values, build_path_tlist(root, (Path *) projection_path))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
-			AttrNumber	varattno = InvalidAttrNumber;
 
 			/* Ignore junk columns. */
 			if (IsA(tle->expr, Var))
@@ -3710,8 +3745,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				{
 					continue;
 				}
-
-				varattno = var->varattno;
 			}
 
 			/*
@@ -3762,32 +3795,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			{
 				RelationClose(relation);
 				return false;
-			}
-
-			/* The column is set to itself (SET col = col). */
-			if (varattno == resno)
-			{
-				/*
-				 * If the column has a NOT NULL constraint, avoid the single row
-				 * path. NOT NULL constraint checks happen in the postgres
-				 * executor and require the value of the column to be populated.
-				 * Since the single row path skips fetching the target tuple,
-				 * the check cannot correctly distinguish between missing values
-				 * and NULL values.
-				 * TODO(kramanathan): Optimizing this path requires code
-				 * refactor.
-				 */
-				if (TupleDescAttr(tupDesc, resno - 1)->attnotnull)
-				{
-					RelationClose(relation);
-					return false;
-				}
-
-				/*
-				 * In all other cases, the column has no impact on the single
-				 * row computation.
-				 */
-				continue;
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
@@ -3910,8 +3917,15 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	/*
 	 * Cannot support before row triggers for single-row update/delete, as the
 	 * old row will need to be passed to the trigger, requiring the scan.
+	 * Transition tables likewise need the old row.
 	 */
-	*no_row_trigger = !has_applicable_triggers(relation, path->operation, update_attrs);
+	query_target_relid = planner_rt_fetch(root->parse->resultRelation,
+										  root)->relid;
+	*no_row_trigger = (!has_applicable_triggers(relation, path->operation,
+												update_attrs) &&
+					   (relid == query_target_relid ||
+						!yb_target_has_transition_tables(query_target_relid,
+														 path->operation)));
 	if (!*no_row_trigger)
 	{
 		RelationClose(relation);
@@ -4054,17 +4068,12 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		var = castNode(Var, leftop);
 
-		/*
-		 * If const expression has a different type than the column (var), wrap in a relabel
-		 * expression with the proper type so it is coerced at execution time.
-		 */
-		if (IsA(expr, Const) && castNode(Const, expr)->consttype != var->vartype)
+		/* The value may be of another type than the column. */
+		expr = yb_single_row_key_value(expr, var->vartype);
+		if (expr == NULL)
 		{
-			expr = (Expr *) makeRelabelType(expr,
-											var->vartype,
-											-1,
-											get_typcollation(var->vartype),
-											COERCE_IMPLICIT_CAST);
+			RelationClose(relation);
+			return false;
 		}
 
 		tle = makeNode(TargetEntry);
@@ -4713,8 +4722,12 @@ create_indexscan_plan(PlannerInfo *root,
 		 * base-table attnums that DocDB cannot evaluate.
 		 */
 		if (indexonly && best_path->indexinfo->yb_num_decoded_pk_cols > 0)
-			decoded_pk_attnums =
-				yb_get_non_pushable_attnums(best_path->indexinfo);
+		{
+			IndexOptInfo *idxinfo = best_path->indexinfo;
+			int			phys_natts = idxinfo->ncolumns - idxinfo->yb_num_decoded_pk_cols;
+			for (int i = phys_natts; i < idxinfo->ncolumns; i++)
+				decoded_pk_attnums = bms_add_member(decoded_pk_attnums, idxinfo->indexkeys[i]);
+		}
 
 		/*
 		 * First, include other clauses from the bitmap branch (if any) as index
@@ -4800,7 +4813,27 @@ create_indexscan_plan(PlannerInfo *root,
 		}
 	}
 
-	YbMergeScanInfo *yb_merge_scan_info = yb_make_merge_scan_info(best_path);
+	YbMergeScanInfo *yb_merge_scan_info = NULL;
+
+	if (best_path->yb_index_path_info.merge_scan_info)
+	{
+		ListCell   *yb_lc;
+
+		yb_merge_scan_info = makeNode(YbMergeScanInfo);
+		/* setrefs.c repoints each entry's clause, so copy the entries. */
+		foreach(yb_lc,
+				best_path->yb_index_path_info.merge_scan_info->stream_cols)
+		{
+			YbMergeScanStreamColInfo *yb_info =
+				makeNode(YbMergeScanStreamColInfo);
+
+			*yb_info = *lfirst_node(YbMergeScanStreamColInfo, yb_lc);
+			yb_merge_scan_info->stream_cols =
+				lappend(yb_merge_scan_info->stream_cols, yb_info);
+		}
+		yb_merge_scan_info->sort_cols =
+			best_path->yb_index_path_info.merge_scan_info->sort_cols;
+	}
 
 	/* Finally ready to build the plan node */
 	if (indexonly)
@@ -4856,40 +4889,17 @@ create_indexscan_plan(PlannerInfo *root,
 		scan_plan = (Scan *) index_scan_plan;
 	}
 
-	if (yb_merge_scan_info)
-	{
-		Bitmapset  *yb_stream_col_idxs = NULL;
-		ListCell   *yb_lc;
-		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
-			makeNode(YbSortInfo);
-
-		foreach(yb_lc, yb_merge_scan_info->stream_cols)
-		{
-			YbMergeScanStreamColInfo *yb_stream_col_info =
-				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
-
-			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
-												yb_stream_col_info->indexcol);
-		}
-
-		yb_sort_info->type = T_YbSortInfo;
-		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
-									   best_path->path.pathkeys,
-									   best_path->path.parent->relids,
-									   yb_stream_col_idxs,
-									   &yb_sort_info->numCols,
-									   &yb_sort_info->sortColIdx,
-									   &yb_sort_info->sortOperators,
-									   &yb_sort_info->collations,
-									   &yb_sort_info->nullsFirst);
-	}
-
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
 
 	if (IsYugaByteEnabled())
 	{
 		Assert(indexinfo->ybIndexName != NULL);
 		scan_plan->ybScannedObjectName = pstrdup(indexinfo->ybIndexName);
+
+		if (indexinfo->yb_options != NIL)
+		{
+			scan_plan->ybOptions = copyObject(indexinfo->yb_options);
+		}
 	}
 
 	return scan_plan;
@@ -7438,6 +7448,9 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	List	   *fixed_indexquals;
 	ListCell   *lc;
 
+	YbMergeScanInfo *yb_merge_scan_info =
+		index_path->yb_index_path_info.merge_scan_info;
+
 	stripped_indexquals = fixed_indexquals = NIL;
 
 	yb_get_batched_indexquals(root, index_path, &stripped_indexquals,
@@ -7473,10 +7486,10 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * yb_index_path_info.merge_scan_info.  Add these to ..._indexquals
 	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
+	foreach(lc, yb_merge_scan_info ? yb_merge_scan_info->stream_cols : NIL)
 	{
 		YbMergeScanStreamColInfo *info =
 			lfirst_node(YbMergeScanStreamColInfo, lc);
@@ -9946,158 +9959,4 @@ is_projection_capable_plan(Plan *plan)
 			break;
 	}
 	return true;
-}
-
-/*
- * yb_fix_indexqual_references
- *	  fix_indexqual_references for callers outside this file that need an
- *	  index path's quals in the form the executor's indexqual machinery
- *	  takes.
- */
-void
-yb_fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
-							List **stripped_indexquals_p,
-							List **fixed_indexquals_p)
-{
-	fix_indexqual_references(root, index_path, stripped_indexquals_p,
-							 fixed_indexquals_p);
-}
-
-/*
- * yb_make_merge_scan_info
- *	  Build the YbMergeScanInfo an IndexScan or IndexOnlyScan plan carries
- *	  for 'index_path', or NULL when the path streams no merge scan column.
- *
- * Only 'stream_cols' is filled; create_indexscan_plan adds 'sort_cols' once
- * the plan node exists.  The entries are copied because setrefs.c repoints
- * each entry's clause.  The planner's aggregate pushdown decision builds the
- * stand-in scan node of its recheck dry run with this function too, so that
- * the dry run binds the same stream columns the plan does.
- */
-YbMergeScanInfo *
-yb_make_merge_scan_info(IndexPath *index_path)
-{
-	YbMergeScanInfo *merge_scan_info;
-	ListCell   *lc;
-
-	if (index_path->yb_index_path_info.merge_scan_stream_cols == NIL)
-		return NULL;
-
-	merge_scan_info = makeNode(YbMergeScanInfo);
-	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
-	{
-		YbMergeScanStreamColInfo *info = makeNode(YbMergeScanStreamColInfo);
-
-		*info = *lfirst_node(YbMergeScanStreamColInfo, lc);
-		merge_scan_info->stream_cols = lappend(merge_scan_info->stream_cols,
-											   info);
-	}
-
-	return merge_scan_info;
-}
-
-/*
- * yb_plan_docdb_result_width
- *	  The estimated width of the rows DocDB returns to a YB scan node, as its
- *	  cost function recorded it; 0 for any other node.
- */
-static int
-yb_plan_docdb_result_width(Plan *plan)
-{
-	YbPlanInfo *info;
-
-	switch (nodeTag(plan))
-	{
-		case T_YbSeqScan:
-			info = &((YbSeqScan *) plan)->yb_plan_info;
-			break;
-		case T_IndexScan:
-			info = &((IndexScan *) plan)->yb_plan_info;
-			break;
-		case T_IndexOnlyScan:
-			info = &((IndexOnlyScan *) plan)->yb_plan_info;
-			break;
-		case T_YbBitmapTableScan:
-			info = &((YbBitmapTableScan *) plan)->yb_plan_info;
-			break;
-		default:
-			return 0;
-	}
-
-	return info->estimated_docdb_result_width;
-}
-
-/*
- * yb_agg_pushdown_subplan_ok
- *	  Whether the Agg's input, once setrefs.c has removed the plan levels it
- *	  removes, is a scan node that takes aggregates and evaluates no qual of
- *	  its own: one built from a path yb_agg_pushdown_eligible accepts, whose
- *	  state YbPlanStateTryGetAggrefs hands aggregates to.
- *
- * yb_agg_pushdown_subpath looked through those levels on the paths; whether
- * a SubqueryScan goes depends on the target lists the plan ends up with, and
- * any other node createplan.c puts in between makes the Agg evaluate the
- * aggregates itself.  The quals are read off the plan node, as
- * yb_agg_pushdown_supported reads them off the scan state: a pushed-down
- * aggregate row satisfies none, and a bitmap table scan evaluates its
- * fallback quals itself once the bitmap exceeds work_mem.  Its recheck quals
- * apply to a lossy bitmap only, and the path is accepted only when it
- * predicts no recheck while it has any.
- */
-static bool
-yb_agg_pushdown_subplan_ok(Plan *subplan)
-{
-	Plan	   *scan = yb_plan_below_removed_levels(subplan);
-
-	switch (nodeTag(scan))
-	{
-		case T_YbSeqScan:
-		case T_IndexScan:
-		case T_IndexOnlyScan:
-		case T_TidScan:
-			break;
-		case T_YbBitmapTableScan:
-			if (((YbBitmapTableScan *) scan)->fallback_local_quals != NIL)
-				return false;
-			break;
-		default:
-			return false;
-	}
-
-	return scan->qual == NIL;
-}
-
-/*
- * yb_plan_below_removed_levels
- *	  The node that takes the place of 'plan' once set_plan_references has
- *	  removed a SubqueryScan that trivial_subqueryscan accepts and an Append
- *	  with one child whose parallel awareness, after the child's own
- *	  removals, is the Append's.
- *
- * A MergeAppend needs no step: yb_agg_pushdown_subpath never looks through a
- * MergeAppendPath.
- */
-static Plan *
-yb_plan_below_removed_levels(Plan *plan)
-{
-	for (;;)
-	{
-		if (IsA(plan, SubqueryScan) &&
-			trivial_subqueryscan((SubqueryScan *) plan))
-			plan = ((SubqueryScan *) plan)->subplan;
-		else if (IsA(plan, Append) &&
-				 list_length(((Append *) plan)->appendplans) == 1)
-		{
-			Plan	   *child = linitial(((Append *) plan)->appendplans);
-
-			child = yb_plan_below_removed_levels(child);
-			if (child->parallel_aware != plan->parallel_aware)
-				break;
-			plan = child;
-		}
-		else
-			break;
-	}
-
-	return plan;
 }

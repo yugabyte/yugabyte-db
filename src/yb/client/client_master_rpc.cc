@@ -97,7 +97,10 @@ void ClientMasterRpcBase::Finished(const Status& status) {
 
   if (client_data_->Closing()) {
     auto retained_self = client_data_->rpcs_.Unregister(&retained_self_);
-    ProcessResponse(new_status);
+    // Returning here skips the code further down that replaces an OK new_status with resp_status.
+    // Make the same replacement now, so ProcessResponse sees what ResponseStatus() reports
+    // instead of an OK status; a new_status that already failed is reported unchanged.
+    ProcessResponse(new_status.ok() ? resp_status : new_status);
     return;
   }
 

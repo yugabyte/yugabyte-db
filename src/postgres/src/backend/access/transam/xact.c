@@ -73,6 +73,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "tcop/tcopprot.h"
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -2309,7 +2310,18 @@ StartTransaction(void)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCSetObjectLockingInfraForCurrTxn();
+		/*
+		 * A statement keeps the object locking mode of its first transaction,
+		 * so that it never builds state in one mode and uses it in the other.
+		 * Upstream gets the same effect for its own settings by applying a
+		 * config reload only between client messages, but a statement's first
+		 * transaction can start in an earlier message (Parse or Bind) than the
+		 * one that runs it (Execute), and a statement can start more
+		 * transactions while it runs (ANALYZE of several tables, CREATE INDEX,
+		 * COMMIT in a procedure).
+		 */
+		if (!YbIsStatementTransactionStarted())
+			YbSetObjectLockingForCurrTxn();
 
 		/*
 		 * A background worker receives no messages, so it takes a fresh
@@ -2651,7 +2663,10 @@ CommitTransaction(void)
 	AtEOXact_Snapshot(true, false);
 	AtEOXact_ApplyLauncher(true);
 	if (IsYugaByteEnabled())
+	{
 		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -2953,7 +2968,10 @@ PrepareTransaction(void)
 	/* don't call AtEOXact_PgStat here; we fixed pgstat state above */
 	AtEOXact_Snapshot(true, true);
 	if (IsYugaByteEnabled())
+	{
 		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 	pgstat_report_xact_timestamp(0);
 
 	CurrentResourceOwner = NULL;
@@ -3185,11 +3203,14 @@ AbortTransaction(void)
 
 	/*
 	 * YB: This is done outside the block above, which is skipped when the
-	 * transaction fails before creating a resource owner.  A stale stamp has
-	 * to be cleared on every exit.
+	 * transaction fails before creating a resource owner.  A stale stamp or
+	 * upgrade OID counter has to be cleared on every exit.
 	 */
 	if (IsYugaByteEnabled())
+	{
 		YbAtEOXact_ReplicationOrigin();
+		YbAtEOXact_UpgradeNextOid();
+	}
 
 	YBCAbortTransaction();
 	YB_DIST_TRACE_END_SPAN();
@@ -3405,12 +3426,13 @@ YbCommitTransactionCommandIntermediate(void)
 	StartTransactionCommand();
 
 	/*
-	 * YB: The new transaction latched the object locking infra auto flag
-	 * afresh. If it disagrees with what this statement started with, the rest
-	 * of the statement would run in the other mode while the state it already
-	 * built belongs to this one, so fail the statement instead.
-	 * TODO(#34635): Keep the statement in one mode by pinning the latched
-	 * value across the intermediate commit.
+	 * YB: A caller that runs inside a client statement kept the object
+	 * locking mode in the new transaction (see StartTransaction). A caller
+	 * outside one reads the flag again here: a pg_cron background worker that
+	 * runs a scheduled ANALYZE of several tables, for example. If the mode
+	 * changed, the rest of the statement would run in the other mode while
+	 * the state it already built belongs to this one, so fail the statement
+	 * instead.
 	 */
 	if (YBIsDdlTransactionBlockEnabled() != ddl_txn_block_enabled)
 		ereport(ERROR,

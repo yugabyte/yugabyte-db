@@ -101,7 +101,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   Status Finish();
   Status AddWeakIntent(
       const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
-      const std::array<Slice, 4>& value,
+      const std::array<Slice, 3>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
 
   const LWKeyValueWriteBatchPB& put_batch_;
@@ -170,7 +170,13 @@ class IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler& handler) = 0;
 
-  virtual Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) = 0;
+  // ids are the vector ids deleted by a batch of subtransaction_id. A
+  // ValueEntryType::kDeleteVectorIds record has no subtransaction id and passes
+  // kMinSubTransactionId, so it is applied even when the subtransaction of its batch was rolled
+  // back.
+  virtual Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) = 0;
 
   virtual Status Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) = 0;
 
@@ -286,15 +292,18 @@ class VectorIndexesUpdater {
   // vector_index::VectorLSMInsertContext::chunk_holds.
   VectorIndexesUpdater(
       DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, HybridTime commit_ht,
-      std::reference_wrapper<IntraTxnWriteId> write_id,
+      ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages,
       vector_index::VectorLSMChunkHolds& chunk_holds, bool xcluster_target = false);
 
-  Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
+  // write_time is the time the regular record is written at. The reverse mapping entry is written
+  // at the same time, and the vector index feed is gated by it.
+  Status Feed(
+      rocksdb::DirectWriteHandler& handler, Slice key, Slice value, DocHybridTime write_time);
   Status Complete();
 
-  // Whether an index this update applies to takes the row with the specified key.
-  bool AppliesToRow(Slice key) const;
+  // Whether an index this update applies to takes the row with the specified key, written at
+  // write_ht.
+  bool AppliesToRow(Slice key, HybridTime write_ht) const;
 
  private:
   template <class Decoder>
@@ -316,7 +325,8 @@ class VectorIndexesUpdater {
     return apply_to_storages_.TestVectorIndex(index);
   }
 
-  bool IntentApplyShouldUpdateVectorIndex(const DocVectorIndex& vector_index) const;
+  bool IntentApplyShouldUpdateVectorIndex(
+      const DocVectorIndex& vector_index, HybridTime write_ht) const;
 
   // Whether the table with the specified key prefix writes the vector reverse mapping. Fixed at
   // table creation, so it does not depend on the schema version the row is packed with.
@@ -326,10 +336,10 @@ class VectorIndexesUpdater {
   SchemaPackingProvider& schema_packing_provider_;
   ConsensusFrontiers& frontiers_;
   StorageSet apply_to_storages_;
-  const HybridTime commit_ht_;
-  const IntraTxnWriteId& write_id_;
   vector_index::VectorLSMChunkHolds& chunk_holds_;
   const bool xcluster_target_;
+  // Write time of the record being fed, see Feed.
+  DocHybridTime write_time_;
 
   struct IndexBatch {
     // TODO(#30819 vector_index) Optimize memory management
@@ -371,7 +381,9 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
 
   Status Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
 
-  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+  Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) override;
 
   // Releases the holds on the vector index chunks the applied intents were inserted into.
   void WriteApplied() override;
@@ -411,7 +423,9 @@ class RemoveIntentsContext : public IntentsWriterContext {
 
   Status Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
 
-  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+  Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) override;
 
  private:
   uint8_t reason_;
@@ -525,7 +539,9 @@ class DumpIntentsContext : public IntentsWriterContextBase {
       const Slice& reverse_index_key, const Slice& reverse_index_value, bool metadata,
       rocksdb::DirectWriteHandler& handler) override;
 
-  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+  Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) override;
 
   Status Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) override;
 

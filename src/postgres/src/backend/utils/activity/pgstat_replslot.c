@@ -82,6 +82,14 @@ pgstat_report_replslot(ReplicationSlot *slot, const PgStat_StatReplSlotEntry *re
 	PgStat_StatReplSlotEntry *statent;
 	int			idx = get_replslot_index(NameStr(slot->data.name));
 
+	/*
+	 * YB: The slot has no ReplicationSlotCtl entry if it was released after
+	 * the slot was dropped via another node. Keep no stats for it, rather
+	 * than creating an entry at index -1.
+	 */
+	if (idx == -1)
+		return;
+
 	entry_ref = pgstat_get_entry_ref_locked(PGSTAT_KIND_REPLSLOT, InvalidOid,
 											idx, false);
 	shstatent = (PgStatShared_ReplSlot *) entry_ref->shared_stats;

@@ -1,0 +1,73 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+--
+-- This test illustrate why natural keys are a bad design practice.
+-- Do not try this at home
+--
+CREATE TABLE author (
+  name TEXT UNIQUE NOT NULL,
+  birth DATE
+);
+INSERT INTO author
+VALUES
+  ('Stephen Stirling', '1953-09-30');
+CREATE TABLE book (
+  id SERIAL UNIQUE,
+  name TEXT,
+  fk_author_name TEXT,
+  FOREIGN KEY (fk_author_name) REFERENCES author(name)
+);
+INSERT INTO book
+VALUES (1,'T2: Infiltrator','Stephen Stirling');
+SECURITY LABEL FOR anon ON COLUMN author.name
+  IS 'MASKED WITH FUNCTION anon.dummy_name()';
+SAVEPOINT init;
+DO $$
+BEGIN
+  PERFORM anon.anonymize_database();
+  EXCEPTION WHEN foreign_key_violation
+  THEN RAISE NOTICE 'foreign_key_violation';
+END$$;
+NOTICE:  foreign_key_violation
+ROLLBACK TO init;
+-- ON UPDATE CASCADE
+ALTER TABLE book DROP CONSTRAINT book_fk_author_name_fkey;
+ALTER TABLE book
+ADD CONSTRAINT book_fk_author_name_fkey
+    FOREIGN KEY (fk_author_name)
+    REFERENCES author(name)
+    ON UPDATE CASCADE
+;
+SELECT anon.anonymize_database();
+ anonymize_database 
+--------------------
+ t
+(1 row)
+
+ROLLBACK TO init;
+-- DEFERRABLE
+ALTER TABLE book DROP CONSTRAINT book_fk_author_name_fkey;
+ALTER TABLE book
+ADD CONSTRAINT book_fk_author_name_fkey
+    FOREIGN KEY (fk_author_name)
+    REFERENCES author(name)
+    DEFERRABLE
+;
+SECURITY LABEL FOR anon ON COLUMN author.name
+  IS 'MASKED WITH FUNCTION anon.pseudo_last_name(name)';
+SECURITY LABEL FOR anon ON COLUMN book.fk_author_name
+  IS 'MASKED WITH FUNCTION anon.pseudo_last_name(name)';
+SELECT anon.init();
+ init 
+------
+ t
+(1 row)
+
+SELECT anon.anonymize_database();
+ anonymize_database 
+--------------------
+ t
+(1 row)
+
+ROLLBACK TO init;
+ROLLBACK;

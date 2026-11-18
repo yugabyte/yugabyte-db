@@ -32,6 +32,7 @@
 #include "yb/gutil/map-util.h"
 
 #include "yb/tserver/pg_client.messages.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/status_format.h"
@@ -213,6 +214,18 @@ Status CombineNonEmptyErrorsToStatus(
                   /* file_name_len= */ size_t(0));
   }
 
+  // A transaction refused by the persistence gate fails every op with its own status
+  // (Batcher::Abort), so listing the ops' errors would only repeat the message.  Other statuses, or
+  // any op failing with a different status, keep the list.
+  if (TabletServerError(status).value() == TabletServerErrorPB::PERSISTING_BLOCKED &&
+      std::all_of(errors.begin(), errors.end(), [&status](const auto& error) {
+        const auto& op_status = error->status();
+        return op_status.code() == status.code() && op_status.message() == status.message() &&
+               op_status.ErrorCodesSlice() == status.ErrorCodesSlice();
+      })) {
+    return status;
+  }
+
   const auto result = status.ok()
       ? STATUS(InternalError, GetStatusStringSet(errors))
       : status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
@@ -224,6 +237,13 @@ Status CombineNonEmptyErrorsToStatus(
 
 Status CombineErrorsToStatus(const client::CollectedErrors& errors, const Status& status) {
   return errors.empty() ? status : CombineNonEmptyErrorsToStatus(errors, status);
+}
+
+void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
+  read_point.SetReadTime(
+      ReadHybridTime::SingleTime(
+          read_point.Now().AddMilliseconds(-static_cast<int64_t>(staleness_ms))),
+      {});
 }
 
 Status HandleOperationResponse(uint64_t session_id,

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useContext,
   useEffect,
   useImperativeHandle,
@@ -32,9 +33,30 @@ import {
 } from '../../CreateUniverseContext';
 import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { NodeAvailabilityProps } from './dtos';
-import { Region } from '../../../../../helpers/dtos';
+import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 import { ResilienceFormMode, type ResilienceAndRegionsProps } from '../resilence-regions/dtos';
-import { REPLICATION_FACTOR, RESILIENCE_FACTOR } from '../../fields/FieldNames';
+import {
+  ENABLE_MULTI_PROVIDER_CREATE,
+  getPrimaryProvider,
+  getProviderConfigurations,
+  isMultiProvider
+} from '../../helpers/providerConfigurations';
+import { withEffectiveRegions } from '../../helpers/placementsByProvider';
+import {
+  AVAILABILITY_ZONES_BY_PROVIDER,
+  REPLICATION_FACTOR,
+  RESILIENCE_FACTOR
+} from '../../fields/FieldNames';
+import {
+  availabilityZonesByProviderFromNodes,
+  buildNodesByProvider,
+  countZonesInByProvider,
+  flattenAvailabilityZonesByProvider,
+  partitionAvailabilityZonesByProvider,
+  singularNodesFromMultiForm,
+  unflattenAvailabilityZonesByProvider,
+  type AvailabilityZonesByProvider
+} from '../../helpers/nodesByProvider';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../helpers/constants';
 import { CloudType } from '../../../../../helpers/dtos';
 import { NodeAgentAPI, QUERY_KEY as NodeAgentQueryKey } from '../../../../../features/NodeAgent/api';
@@ -73,15 +95,45 @@ function regionCodesMatchAvailabilityZones(
   return true;
 }
 
+function regionsMatchAvailabilityZonesByProvider(
+  regions: Region[],
+  byProvider: AvailabilityZonesByProvider | null | undefined
+): boolean {
+  const expected = new Set(
+    regions
+      .filter((region) => !!region.providerUuid)
+      .map((region) => `${region.providerUuid}:${region.code}`)
+  );
+  const actual = new Set<string>();
+  for (const [providerUuid, zonesByRegion] of Object.entries(byProvider ?? {})) {
+    for (const regionCode of Object.keys(zonesByRegion ?? {})) {
+      actual.add(`${providerUuid}:${regionCode}`);
+    }
+  }
+  if (expected.size !== actual.size) return false;
+  for (const key of expected) {
+    if (!actual.has(key)) return false;
+  }
+  return true;
+}
+
 /** Initializes or refreshes placement from resilience settings when zones are empty (or cleared). */
 export function applyNodesStepPlacementFromResilience(
   methods: UseFormReturn<NodeAvailabilityProps>,
   resilienceAndRegionsSettings: ResilienceAndRegionsProps,
   saveResilienceAndRegionsSettings: (data: ResilienceAndRegionsProps) => void,
-  enablePrimaryRf9 = false
+  options?: {
+    multiPlacement?: boolean;
+    providers?: ReturnType<typeof getProviderConfigurations>;
+    enablePrimaryRf9?: boolean;
+  }
 ): void {
   const isExpert =
     resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.EXPERT_MODE;
+  const multiPlacement = !!options?.multiPlacement;
+  const providers = options?.providers ?? [];
+  const enablePrimaryRf9 = options?.enablePrimaryRf9 ?? false;
+  const regions = resilienceAndRegionsSettings.regions ?? [];
 
   if (resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.GUIDED) {
     methods.setValue(
@@ -93,26 +145,56 @@ export function applyNodesStepPlacementFromResilience(
     );
   }
 
-  const zonesSnapshot = methods.getValues('availabilityZones');
-  if (isEmpty(zonesSnapshot)) {
+  const matches = multiPlacement
+    ? regionsMatchAvailabilityZonesByProvider(
+        regions,
+        methods.getValues(AVAILABILITY_ZONES_BY_PROVIDER) as AvailabilityZonesByProvider
+      )
+    : regionCodesMatchAvailabilityZones(regions, methods.getValues('availabilityZones'));
+
+  if (!matches) {
     if (isExpert) {
       const expertPlacement = getExpertAvailabilityZonesOrEmpty(
         resilienceAndRegionsSettings,
         enablePrimaryRf9
       );
-      methods.setValue(REPLICATION_FACTOR, expertPlacement.replicationFactor);
-      methods.setValue('availabilityZones', expertPlacement.availabilityZones);
-      if (
-        expertPlacement.replicationFactor !== resilienceAndRegionsSettings.resilienceFactor
-      ) {
+      const replicationFactor = expertPlacement.replicationFactor;
+      methods.setValue(REPLICATION_FACTOR, replicationFactor);
+      if (multiPlacement) {
+        // One universe placement across all regions, then partition (same as Guided).
+        methods.setValue('availabilityZones', {});
+        methods.setValue(
+          AVAILABILITY_ZONES_BY_PROVIDER,
+          partitionAvailabilityZonesByProvider(
+            expertPlacement.availabilityZones,
+            regions,
+            providers
+          ) as any
+        );
+      } else {
+        methods.setValue('availabilityZones', expertPlacement.availabilityZones);
+        methods.setValue(AVAILABILITY_ZONES_BY_PROVIDER, undefined as any);
+      }
+      if (replicationFactor !== resilienceAndRegionsSettings.resilienceFactor) {
         saveResilienceAndRegionsSettings({
           ...resilienceAndRegionsSettings,
-          [RESILIENCE_FACTOR]: expertPlacement.replicationFactor
+          [RESILIENCE_FACTOR]: replicationFactor
         });
       }
     } else {
+      // Guided: assign once across the full region set, then partition for multi-provider.
+      // Per-provider assign re-applied the full FT budget to each slice (extra AZs/nodes).
       const nextZones = assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
-      methods.setValue('availabilityZones', nextZones);
+      if (multiPlacement) {
+        methods.setValue('availabilityZones', {});
+        methods.setValue(
+          AVAILABILITY_ZONES_BY_PROVIDER,
+          partitionAvailabilityZonesByProvider(nextZones, regions, providers) as any
+        );
+      } else {
+        methods.setValue('availabilityZones', nextZones);
+        methods.setValue(AVAILABILITY_ZONES_BY_PROVIDER, undefined as any);
+      }
     }
   } else if (isExpert) {
     const currentRf = methods.getValues(REPLICATION_FACTOR);
@@ -180,6 +262,8 @@ export type UseNodesAvailabilityStepResult = {
   resilienceAndRegionsSettings?: ResilienceAndRegionsProps;
   inferredResilience: ReturnType<typeof inferResilience>;
   effectiveReplicationFactor: number;
+  /** Present when multi-provider Nodes UI groups cards by provider. */
+  providers?: ReturnType<typeof getProviderConfigurations>;
 };
 
 export type UseNodesAvailabilityStepOptions = {
@@ -193,24 +277,51 @@ export function useNodesAvailabilityStep(
 ): UseNodesAvailabilityStepResult {
   const isGeoPartition = options?.isGeoPartition ?? false;
   const [
-    { generalSettings, resilienceAndRegionsSettings, nodesAvailabilitySettings },
+    {
+      generalSettings,
+      resilienceAndRegionsSettings,
+      nodesAvailabilitySettings,
+      placementsByProvider,
+      nodesByProvider
+    },
     {
       moveToPreviousPage,
       moveToNextPage,
       saveNodesAvailabilitySettings,
+      saveNodesByProvider,
       saveResilienceAndRegionsSettings
     }
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+
+  const providers = useMemo(
+    () => getProviderConfigurations(generalSettings),
+    [generalSettings?.providerConfigurations]
+  );
+  const multiPlacement =
+    ENABLE_MULTI_PROVIDER_CREATE && isMultiProvider(generalSettings);
+
+  const resilienceForPlacement = useMemo(
+    () =>
+      resilienceAndRegionsSettings
+        ? withEffectiveRegions(resilienceAndRegionsSettings, placementsByProvider)
+        : undefined,
+    [resilienceAndRegionsSettings, placementsByProvider]
+  );
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability'
   });
   const { enablePrimaryRf9 } = useRuntimeConfigValues();
 
-  const providerUuid = generalSettings?.providerConfiguration?.uuid;
+  const placementApplyOptions = useMemo(
+    () => ({ multiPlacement, providers, enablePrimaryRf9 }),
+    [multiPlacement, providers, enablePrimaryRf9]
+  );
+
+  const providerUuid = getPrimaryProvider(generalSettings)?.uuid;
   const isOnPrem =
     generalSettings?.cloud === CloudType.onprem ||
-    generalSettings?.providerConfiguration?.code === CloudType.onprem;
+    getPrimaryProvider(generalSettings)?.code === CloudType.onprem;
 
   const {
     data: onPremProviderNodes,
@@ -238,21 +349,62 @@ export function useNodesAvailabilityStep(
     [isOnPrem, freeNodesByAzUuid, isOnPremNodesLoaded]
   );
 
-  const regions = resilienceAndRegionsSettings?.regions ?? [];
+  const regions = resilienceForPlacement?.regions ?? [];
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
 
   const resolver = useMemo(
-    () => yupResolver(NodesAvailabilitySchema(resilienceAndRegionsSettings, onPremContext)),
-    [resilienceAndRegionsSettings, onPremContext]
+    () => yupResolver(NodesAvailabilitySchema(resilienceForPlacement, onPremContext)),
+    [resilienceForPlacement, onPremContext]
   );
 
+  const formDefaultValues: NodeAvailabilityProps = {
+    ...(nodesAvailabilitySettings ?? {
+      availabilityZones: {},
+      useDedicatedNodes: false
+    }),
+    ...(multiPlacement
+      ? {
+          availabilityZones: {},
+          [AVAILABILITY_ZONES_BY_PROVIDER]: availabilityZonesByProviderFromNodes(
+            nodesByProvider,
+            providers
+          )
+        }
+      : { [AVAILABILITY_ZONES_BY_PROVIDER]: undefined })
+  };
+
   const methods = useForm<NodeAvailabilityProps>({
-    defaultValues: nodesAvailabilitySettings,
+    defaultValues: formDefaultValues,
     resolver
   });
-  usePersistStepFormValues(methods.watch, methods.getValues, saveNodesAvailabilitySettings);
+
+  const persistNodes = useCallback(
+    (data: NodeAvailabilityProps) => {
+      if (multiPlacement) {
+        const byProvider = (data[AVAILABILITY_ZONES_BY_PROVIDER] ??
+          {}) as AvailabilityZonesByProvider;
+        saveNodesByProvider?.(buildNodesByProvider(byProvider, providers));
+        saveNodesAvailabilitySettings(singularNodesFromMultiForm(data));
+        return;
+      }
+      saveNodesByProvider?.({});
+      const { [AVAILABILITY_ZONES_BY_PROVIDER]: _drop, ...rest } = data as NodeAvailabilityProps & {
+        [AVAILABILITY_ZONES_BY_PROVIDER]?: AvailabilityZonesByProvider;
+      };
+      saveNodesAvailabilitySettings(rest);
+    },
+    [multiPlacement, providers, saveNodesByProvider, saveNodesAvailabilitySettings]
+  );
+
+  usePersistStepFormValues(methods.watch, methods.getValues, persistNodes);
   const { trigger } = methods;
   const availabilityZones = methods.watch('availabilityZones');
+  const availabilityZonesByProvider = methods.watch(
+    AVAILABILITY_ZONES_BY_PROVIDER
+  ) as AvailabilityZonesByProvider | undefined;
+  const effectiveAvailabilityZones = multiPlacement
+    ? flattenAvailabilityZonesByProvider(availabilityZonesByProvider)
+    : availabilityZones;
   const watchedReplicationFactor = methods.watch(REPLICATION_FACTOR);
   const isExpertMode =
     resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.EXPERT_MODE;
@@ -260,13 +412,12 @@ export function useNodesAvailabilityStep(
     ? watchedReplicationFactor ?? resilienceAndRegionsSettings?.resilienceFactor ?? 1
     : resilienceAndRegionsSettings?.resilienceFactor ?? 1;
   const faultToleranceNeeded = isExpertMode ? effectiveRf : getFaultToleranceNeeded(effectiveRf);
-  const totalAzCount = values(availabilityZones).reduce(
-    (acc, zones) => acc + zones.length,
-    0
-  );
+  const totalAzCount = multiPlacement
+    ? countZonesInByProvider(availabilityZonesByProvider)
+    : values(availabilityZones).reduce((acc, zones) => acc + zones.length, 0);
   const onPremNodeViolation =
     isOnPrem && isOnPremNodesLoaded
-      ? findFirstOnPremNodeViolation(availabilityZones ?? {}, freeNodesByAzUuid)
+      ? findFirstOnPremNodeViolation(effectiveAvailabilityZones ?? {}, freeNodesByAzUuid)
       : null;
   const lesserNodesTransValues = {
     faultToleranceNeeded,
@@ -284,15 +435,15 @@ export function useNodesAvailabilityStep(
   // availabilityZones object reference, so listing only that object made useMemo skip updates.
   // availabilityZones is still read inside from the latest render when totalAzCount changes.
   const inferredResilience = useMemo(() => {
-    if (!resilienceAndRegionsSettings) {
+    if (!resilienceForPlacement) {
       return null;
     }
-    return inferResilience(resilienceAndRegionsSettings, {
-      availabilityZones: availabilityZones ?? {},
+    return inferResilience(resilienceForPlacement, {
+      availabilityZones: effectiveAvailabilityZones ?? {},
       replicationFactor: effectiveRf,
       useDedicatedNodes: false
     });
-  }, [resilienceAndRegionsSettings, totalAzCount, effectiveRf]);
+  }, [resilienceForPlacement, totalAzCount, effectiveRf, effectiveAvailabilityZones]);
 
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const previousReplicationFactorRef = useRef<number | undefined>(undefined);
@@ -309,7 +460,8 @@ export function useNodesAvailabilityStep(
   useEffect(() => {
     if (showErrorsAfterSubmit) trigger();
   }, [
-    JSON.stringify(availabilityZones),
+    JSON.stringify(effectiveAvailabilityZones),
+    JSON.stringify(availabilityZonesByProvider),
     showErrorsAfterSubmit,
     trigger,
     watchedReplicationFactor,
@@ -377,13 +529,17 @@ export function useNodesAvailabilityStep(
     if (
       previousReplicationFactor === undefined ||
       watchedReplicationFactor >= previousReplicationFactor ||
-      !availabilityZones
+      !(multiPlacement ? availabilityZonesByProvider : availabilityZones)
     ) {
       return;
     }
 
-    const currentAzCount = values(availabilityZones).reduce((count, zones) => count + zones.length, 0);
-    const currentNodeCount = getNodeCount(availabilityZones);
+    const zonesForTrim = multiPlacement
+      ? flattenAvailabilityZonesByProvider(availabilityZonesByProvider)
+      : availabilityZones;
+
+    const currentAzCount = values(zonesForTrim).reduce((count, zones) => count + zones.length, 0);
+    const currentNodeCount = getNodeCount(zonesForTrim);
     if (
       currentAzCount <= watchedReplicationFactor &&
       currentNodeCount <= watchedReplicationFactor
@@ -391,7 +547,7 @@ export function useNodesAvailabilityStep(
       return;
     }
 
-    const trimmedAvailabilityZones = Object.entries(availabilityZones).reduce<
+    const trimmedAvailabilityZones = Object.entries(zonesForTrim).reduce<
       NodeAvailabilityProps['availabilityZones']
     >((acc, [regionCode, zones]) => {
       acc[regionCode] = zones.map((z) => ({ ...z }));
@@ -441,19 +597,36 @@ export function useNodesAvailabilityStep(
 
     reduceExpertNodeCountsToAtMostRf(trimmedAvailabilityZones, watchedReplicationFactor);
 
-    methods.setValue('availabilityZones', trimmedAvailabilityZones, {
-      shouldValidate: true,
-      shouldDirty: true
-    });
-  }, [isExpertMode, watchedReplicationFactor, availabilityZones, methods]);
+    if (multiPlacement) {
+      methods.setValue(
+        AVAILABILITY_ZONES_BY_PROVIDER,
+        unflattenAvailabilityZonesByProvider(trimmedAvailabilityZones, providers) as any,
+        { shouldValidate: true, shouldDirty: true }
+      );
+      methods.setValue('availabilityZones', {}, { shouldValidate: false });
+    } else {
+      methods.setValue('availabilityZones', trimmedAvailabilityZones, {
+        shouldValidate: true,
+        shouldDirty: true
+      });
+    }
+  }, [
+    isExpertMode,
+    watchedReplicationFactor,
+    availabilityZones,
+    availabilityZonesByProvider,
+    multiPlacement,
+    providers,
+    methods
+  ]);
 
   useMount(() => {
-    if (!resilienceAndRegionsSettings) return;
+    if (!resilienceForPlacement) return;
     applyNodesStepPlacementFromResilience(
       methods,
-      resilienceAndRegionsSettings,
+      resilienceForPlacement,
       saveResilienceAndRegionsSettings,
-      enablePrimaryRf9
+      placementApplyOptions
     );
   });
 
@@ -461,12 +634,12 @@ export function useNodesAvailabilityStep(
     if (!isGeoPartition) {
       return null;
     }
-    const r = resilienceAndRegionsSettings;
+    const r = resilienceForPlacement;
     if (!r || r.resilienceFormMode !== ResilienceFormMode.GUIDED) {
       return null;
     }
     return getGuidedPlacementSyncSignature(r);
-  }, [isGeoPartition, resilienceAndRegionsSettings]);
+  }, [isGeoPartition, resilienceForPlacement]);
 
   const lastGuidedPlacementSignatureRef = useRef<string | null>(null);
 
@@ -483,30 +656,35 @@ export function useNodesAvailabilityStep(
     }
     lastGuidedPlacementSignatureRef.current = guidedPlacementSyncSignature;
 
-    const currentAvailabilityZones = methods.getValues('availabilityZones');
-    const hasExistingZones = !isEmpty(currentAvailabilityZones);
-    const selectedRegions = resilienceAndRegionsSettings?.regions ?? [];
-    const selectedRegionsMatchAvailabilityZones = regionCodesMatchAvailabilityZones(
-      selectedRegions,
-      currentAvailabilityZones
-    );
-    if (hasExistingZones && selectedRegionsMatchAvailabilityZones) {
+    const selectedRegions = resilienceForPlacement?.regions ?? [];
+    const matches = multiPlacement
+      ? regionsMatchAvailabilityZonesByProvider(
+          selectedRegions,
+          methods.getValues(AVAILABILITY_ZONES_BY_PROVIDER) as AvailabilityZonesByProvider
+        )
+      : regionCodesMatchAvailabilityZones(
+          selectedRegions,
+          methods.getValues('availabilityZones')
+        );
+    if (matches) {
       return;
     }
 
     methods.setValue('availabilityZones', {});
+    methods.setValue(AVAILABILITY_ZONES_BY_PROVIDER, undefined as any);
     applyNodesStepPlacementFromResilience(
       methods,
-      resilienceAndRegionsSettings!,
+      resilienceForPlacement!,
       saveResilienceAndRegionsSettings,
-      enablePrimaryRf9
+      placementApplyOptions
     );
   }, [
     guidedPlacementSyncSignature,
     methods,
-    resilienceAndRegionsSettings,
+    resilienceForPlacement,
     saveResilienceAndRegionsSettings,
-    enablePrimaryRf9
+    multiPlacement,
+    placementApplyOptions
   ]);
 
   // Re-sync when resilience/region context changes — not on every availabilityZones edit (that
@@ -514,32 +692,38 @@ export function useNodesAvailabilityStep(
   // Covers expert mode and guided (non-geo) create-universe. Guided geo-partition is handled by
   // the dedicated guidedPlacementSyncSignature effect above.
   useEffect(() => {
-    if (!resilienceAndRegionsSettings) return;
-    const formMode = resilienceAndRegionsSettings.resilienceFormMode;
+    if (!resilienceForPlacement) return;
+    const formMode = resilienceForPlacement.resilienceFormMode;
     const isExpert = formMode === ResilienceFormMode.EXPERT_MODE;
     const isGuidedNonGeo = formMode === ResilienceFormMode.GUIDED && !isGeoPartition;
     if (!isExpert && !isGuidedNonGeo) {
       return;
     }
-    const regionList = resilienceAndRegionsSettings.regions ?? [];
-    const currentZones = methods.getValues('availabilityZones');
-    const matches = regionCodesMatchAvailabilityZones(regionList, currentZones);
+    const regionList = resilienceForPlacement.regions ?? [];
+    const matches = multiPlacement
+      ? regionsMatchAvailabilityZonesByProvider(
+          regionList,
+          methods.getValues(AVAILABILITY_ZONES_BY_PROVIDER) as AvailabilityZonesByProvider
+        )
+      : regionCodesMatchAvailabilityZones(regionList, methods.getValues('availabilityZones'));
     if (matches) {
       return;
     }
     methods.setValue('availabilityZones', {});
+    methods.setValue(AVAILABILITY_ZONES_BY_PROVIDER, undefined as any);
     applyNodesStepPlacementFromResilience(
       methods,
-      resilienceAndRegionsSettings,
+      resilienceForPlacement,
       saveResilienceAndRegionsSettings,
-      enablePrimaryRf9
+      placementApplyOptions
     );
   }, [
-    resilienceAndRegionsSettings,
+    resilienceForPlacement,
     methods,
     saveResilienceAndRegionsSettings,
     isGeoPartition,
-    enablePrimaryRf9
+    multiPlacement,
+    placementApplyOptions
   ]);
 
   useImperativeHandle(
@@ -575,8 +759,9 @@ export function useNodesAvailabilityStep(
     lesserNodesTransValues,
     errors,
     t,
-    resilienceAndRegionsSettings,
+    resilienceAndRegionsSettings: resilienceForPlacement ?? resilienceAndRegionsSettings,
     inferredResilience,
-    effectiveReplicationFactor: effectiveRf
+    effectiveReplicationFactor: effectiveRf,
+    providers: multiPlacement ? providers : undefined
   };
 }

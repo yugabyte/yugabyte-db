@@ -1,4 +1,5 @@
-Upgrade
+# Upgrade
+
 ==============================================================================
 
 
@@ -7,8 +8,55 @@ The operation `ALTER EXTENSION ... UPDATE ...` is not supported.
 
 You need to drop and recreate the extension after every upgrade.
 
+## Upgrade to version 3.0 and further versions
 
-Upgrade to version 1.3 and further versions
+-------------------------------------------------------------------------------
+
+### PostgreSQL 13 is not supported anymore
+
+PostgreSQL 13 is now EOL.
+If you're running PostgreSQL Anonymizer on an
+obsolete PostgreSQL version, please upgrade your instance first.
+
+### Legacy Dynamic Masking is fully removed
+
+The "Legacy Dynamic Masking" was the dynamic masking method used in version
+1.x. It is now completely removed and replaced by "Transparent Dynamic Masking".
+
+If you are still using Legacy Dynamic Masking in version 2.x, you must
+disable it **BEFORE** upgrading the extension with:
+
+``` sql
+SELECT anon.stop_legacy_dynamic_masking();
+```
+
+### Breaking changes in internal catalogs
+
+If you wrote SQL requests using the `anon.pg_masking_rules` view, you must
+replace them with `anon.user_rules` view and adapt accordingly.
+
+
+## Upgrade to version 2.0 and further versions
+
+-------------------------------------------------------------------------------
+
+With version 2, the entire core library was rewritten in Rust. This is a major
+change that brings new features, better performances and improved stability.
+
+However the changes are mostly internal and for the most part the public
+interface of the extension does not change. A masking policy written with
+version 1.3 should work with version 2.0 !
+
+!!! warning New RPM repository !
+
+    Version 2.0 is not available on the PGDG RPM repository.
+    If you installed PostgreSQL Anonymizer 1.x using the RPM package, you need
+    to install the Dalibo Labs repository with the following command:
+    `dnf install https://yum.dalibo.org/labs/dalibo-labs-4-1.noarch.rpm`
+
+
+## Upgrade to version 1.3 and further versions
+
 -------------------------------------------------------------------------------
 
 Starting with version 1.3, the extension enforces a series of security checks

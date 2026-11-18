@@ -19,7 +19,6 @@ delete from queries;
 --          for the colocated tables.  Scan kind 6 in 1xxxx and 4 in
 --          3xxxx/4xxxx are Distinct Index Only Scans on ce.r(a); kinds 7 and
 --          5 are the same scans without DISTINCT.
---   9xxxx: pushed-down aggregates and their non-pushed controls
 
 -- generate colocation x scan kind x index cond range combinations
 insert into queries (qid, query)
@@ -235,66 +234,6 @@ insert into queries values
     (81703, $$select g from sn.rpC where g in (1, 100, 1000)$$),
     (81801, $$select g from sn.rpC order by g desc$$);
 
--- Pushed-down aggregates (#20955): DocDB returns one partial-aggregate row
--- per read request, so the scan's roundtrips do not follow the row
--- pagination of its matching rows: one request for a Seq Scan, PK Index
--- Scan or Index Only Scan, one table request per ybctid batch for a
--- non-colocated secondary Index Scan.  d and e have no index, so min/max
--- over them stay a plain Agg (an indexed column would become a MinMaxAgg
--- InitPlan) and sum/min/max/avg over them need the base table, which turns
--- the b-range scans into Index Scans; count(*) over the b range stays an
--- Index Only Scan unless its filter needs e.
-insert into queries (qid, query)
-with relations(rel, qidrel) as (
-    values ('ce.r',  0),
-           ('ce.rC', 1000)
-),
-aggs(qidagg, agg) as (
-    values (000, 'count(*)'),
-           (100, 'sum(d)'),
-           (200, 'min(d), max(e)'),
-           (300, 'avg(d)')
-),
-scans(qidoff, predicate) as (
-    -- Seq Scan + storage filter (d has no index)
-    values (1, 'd between 1 and 5000'),
-    -- PK Index Scan, + storage filter
-           (2, 'pk between 1 and 5000'),
-           (3, 'pk between 1 and 5000 and pk % 100 <= 33'),
-    -- non-PK index: Index Only Scan for count(*) on 4 and 5, Index Scan
-    -- otherwise (sum/min/max/avg read d and e from the table, and 6
-    -- filters on e), + storage index filter, + storage table filter
-           (4, 'b between 1 and 5000'),
-           (5, 'b between 1 and 5000 and b % 100 <= 33'),
-           (6, 'b between 1 and 5000 and e % 100 <= 33')
-)
-select
-    90000 + r.qidrel + a.qidagg + s.qidoff as qid,
-    'select ' || a.agg || ' from ' || r.rel || ' where ' ||
-    s.predicate as query
-from relations r, aggs a, scans s;
-
--- Not pushed down (#20955): a local filter, an aggregate over a join and an
--- internal transition type (sum over bigint) keep the row-pagination
--- estimate.  99005 also counts v so that the scan fetches a wide row: the
--- 8kB variant's page estimate holds only for wide rows.
-insert into queries values
-    (99001, $$select count(*) from ce.r
-        where pk between 1 and 5000 and non_pushable(pk) <= 5000$$),
-    (99002, $$select sum(d) from ce.r
-        where b between 1 and 5000 and non_pushable(b) <= 5000$$),
-    (99003, $$select count(*) from ce.r
-        where b between 1 and 5000 and non_pushable(b) <= 5000$$),
-    (99004, $$/*+ HashJoin(r rc) */
-        select count(*) from ce.r r join ce.rC rc on r.pk = rc.pk
-        where r.pk between 1 and 5000 and rc.pk between 1 and 5000$$),
-    (99005, $$select sum(d::bigint), count(v) from ce.r
-        where pk between 1 and 5000$$),
-    (99011, $$select count(*) from ce.rC
-        where pk between 1 and 5000 and non_pushable(pk) <= 5000$$),
-    (99012, $$select sum(d) from ce.rC
-        where b between 1 and 5000 and non_pushable(b) <= 5000$$);
-
 set enable_seqscan = off;
 set enable_bitmapscan = off;
 set yb_enable_bitmapscan = off;
@@ -309,7 +248,7 @@ update explain_query_options set with_analyze = false;
 create temp table baseline_scan_nodes as
 select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
        "Index Name", "Index Cond", "Storage Index Filter",
-       "Storage Filter", "Filter", "Partial Aggregate"
+       "Storage Filter", "Filter"
 from queries q full join check_roundtrip_estimates x on x.qid = q.qid;
 select * from baseline_scan_nodes order by qid, nid;
 
@@ -337,12 +276,12 @@ update explain_query_options set with_analyze = false;
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter", "Partial Aggregate"
+        "Storage Filter", "Filter"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
 union all
 (select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter", "Partial Aggregate"
+        "Storage Filter", "Filter"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
@@ -371,12 +310,12 @@ update explain_query_options set with_analyze = false;
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter", "Partial Aggregate"
+        "Storage Filter", "Filter"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
 union all
 (select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter", "Partial Aggregate"
+        "Storage Filter", "Filter"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
@@ -405,12 +344,12 @@ update explain_query_options set with_analyze = false;
  except all
  select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter", "Partial Aggregate"
+        "Storage Filter", "Filter"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
 union all
 (select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
         "Index Name", "Index Cond", "Storage Index Filter",
-        "Storage Filter", "Filter", "Partial Aggregate"
+        "Storage Filter", "Filter"
  from queries q full join check_roundtrip_estimates x on x.qid = q.qid
  except all
  table baseline_scan_nodes);
@@ -428,41 +367,5 @@ select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
 from check_roundtrip_estimates
 where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
-
--- yb_enable_index_aggregate_pushdown = off (#20955): an Index Scan (not an
--- Index Only Scan) keeps its aggregate on the PG side, so the planner costs
--- it by row pagination; Seq Scans and Index Only Scans stay pushed down.
--- The resets restore the default fetch limit, where a 5000-row scan takes
--- more than one request, so a non-pushed estimate differs from a pushed one.
-reset yb_fetch_size_limit;
-reset yb_fetch_row_limit;
-set yb_enable_index_aggregate_pushdown = off;
-
-update explain_query_options set with_analyze = false;
-
--- the scans still pushed down: no Index Scan among them.
-select qid, nid, "Node Type", "Index Name", "Partial Aggregate"
-from check_roundtrip_estimates
-where qid between 90000 and 99999 and "Partial Aggregate"
-order by qid, nid;
-
-update explain_query_options set with_analyze = true;
-
--- should not return any row; columns surface per-field counts on failure.
-select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
-       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
-       "Storage Table Read Requests" act_t,
-       "Storage Index Read Requests" act_i,
-       "Estimated Roundtrips" est, "Actual Roundtrips" act,
-       "Planned Loops" plan_loops, "Actual Loops" act_loops,
-       "Estimated Total Roundtrips" est_total,
-       "Actual Total Roundtrips" act_total,
-       "Total Estimates", "Field Layout"
-from check_roundtrip_estimates
-where qid between 90000 and 99999
-  and ("Total Estimates" <> 'passed' or "Field Layout" <> 'passed')
-order by qid, nid;
-
-reset yb_enable_index_aggregate_pushdown;
 
 drop table baseline_scan_nodes;

@@ -179,10 +179,7 @@ void CombineExternalIntents(
   buffer.Clear();
   buffer.AppendKeyEntryType(KeyEntryType::kUuid);
   buffer.AppendRawBytes(provider->InvolvedTablet().AsSlice());
-  if (subtransaction_id != kMinSubTransactionId) {
-    buffer.AppendKeyEntryType(KeyEntryType::kSubTransactionId);
-    buffer.AppendUInt32(subtransaction_id);
-  }
+  buffer.AppendRawBytes(EncodeSubTransactionId(subtransaction_id).AsSlice());
   buffer.AppendKeyEntryType(KeyEntryType::kExternalIntents);
   while (auto key_value = provider->Next()) {
     buffer.AppendUInt64AsVarInt(key_value->first.size());
@@ -192,6 +189,17 @@ void CombineExternalIntents(
   }
   buffer.AppendUInt64AsVarInt(0);
   provider->SetValue(buffer.AsSlice());
+}
+
+bool IsNonRecordStrongWriteIntent(
+    Slice doc_path, const dockv::DecodedIntentValue& decoded_value, const SubtxnSet& aborted) {
+  if (dockv::IsTopLevelIntentKey(doc_path) && decoded_value.body.empty()) {
+    return true;
+  }
+  if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
+    return true;
+  }
+  return aborted.Test(decoded_value.subtransaction_id);
 }
 
 }  // namespace yb::docdb

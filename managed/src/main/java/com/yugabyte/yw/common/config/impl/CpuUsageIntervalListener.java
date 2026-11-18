@@ -9,6 +9,7 @@
  */
 package com.yugabyte.yw.common.config.impl;
 
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
@@ -21,12 +22,16 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 @Singleton
 public class CpuUsageIntervalListener implements RuntimeConfigChangeListener {
+
+  private static final Set<AlertTemplate> CPU_USAGE_TEMPLATES =
+      ImmutableSet.of(AlertTemplate.NODE_CPU_USAGE, AlertTemplate.DB_K8S_CPU_USAGE);
 
   private final AlertConfigurationService alertConfigurationService;
 
@@ -48,7 +53,7 @@ public class CpuUsageIntervalListener implements RuntimeConfigChangeListener {
   public void processGlobal() {
     List<AlertConfiguration> affectedConfigs =
         alertConfigurationService.list(
-            AlertConfigurationFilter.builder().template(AlertTemplate.NODE_CPU_USAGE).build());
+            AlertConfigurationFilter.builder().templates(CPU_USAGE_TEMPLATES).build());
     processConfigs(affectedConfigs);
   }
 
@@ -57,7 +62,7 @@ public class CpuUsageIntervalListener implements RuntimeConfigChangeListener {
     List<AlertConfiguration> affectedConfigs =
         alertConfigurationService.list(
             AlertConfigurationFilter.builder()
-                .template(AlertTemplate.NODE_CPU_USAGE)
+                .templates(CPU_USAGE_TEMPLATES)
                 .customerUuid(customer.getUuid())
                 .build());
     processConfigs(affectedConfigs);
@@ -68,7 +73,7 @@ public class CpuUsageIntervalListener implements RuntimeConfigChangeListener {
     List<AlertConfiguration> affectedConfigs =
         alertConfigurationService.list(
             AlertConfigurationFilter.builder()
-                .template(AlertTemplate.NODE_CPU_USAGE)
+                .templates(CPU_USAGE_TEMPLATES)
                 .customerUuid(Customer.get(universe.getCustomerId()).getUuid())
                 .build());
     processConfigs(affectedConfigs);

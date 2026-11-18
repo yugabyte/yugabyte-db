@@ -75,15 +75,11 @@ Once **all** conflicts are resolved (and only then):
 
 2. `git cherry-pick --continue --no-edit` to land the resolved commit. Use `--no-edit` so the original commit message is preserved verbatim — the script re-derives the subject/body from `$commitid` on rerun, so anything you type here gets discarded anyway. If the resolved diff is empty, run `git cherry-pick --skip` instead.
 
-3. **Track every resolution, trivial or not.** Any conflict you touched by hand needs a paper trail in Step 4 so a reviewer can see what was changed vs. the original commit. Record `<path>:<line>` and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Also remember **which branch** the resolution was on. Example:
+3. **Track every resolution, trivial or not.** Any conflict you touched by hand needs a paper trail in Step 4 so a reviewer can see what was changed vs. the original commit. Record each one as an entry for Step 4: `<path>:<line>`, a short reason code such as `adjacent-lines` (only the surrounding lines differ on the branch) or `missing-prerequisite` (something the change depends on is not on the branch), and a short summary of the resolution. For trivial cases a one-liner is fine ("accepted cherry-pick's added block; branch had no code at that location"); for non-trivial cases, expand to one line per hunk you reasoned about. May be multiple lines per file. Group the entries by step: the branch the cherry-pick came from (check the script output for the source) and the branch it went to. Example:
    ```
-   2024.2 (non-trivial):
-     src/yb/master/catalog_manager.cc:1843 — kept master's call signature; release branch lost the `epoch` arg
-     src/yb/master/catalog_manager.cc:2017 — re-applied the cherry-picked guard around the older AddTask path
-     src/yb/master/catalog_manager.h:412 — moved the new method below the existing private block
-
-   2025.2 (trivial):
-     src/yb/master/master-path-handlers.cc:1015 — accepted cherry-pick's added block; branch had no code at that location
+   ### master --> 2025.2
+   - `src/yb/master/catalog_manager.cc:1843` — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
+   - `src/yb/master/catalog_manager.h:412` — [adjacent-lines] placed the new method after 2025.2's extra private method
    ```
 
 4. **Run the linter** from the repo root and confirm it is clean before re-running:
@@ -104,11 +100,11 @@ If a *later* branch in the same run also hits conflicts, repeat this step for th
 
 Extract every `https://github.com/...` URL printed by `gh pr create` from the (possibly multi-run) script output. Each successfully backported branch produces one PR.
 
-### Step 4: Annotate the PR body for every branch where a conflict was resolved by hand
+### Step 4: Annotate the PR body with its merge conflicts
 
-Any branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly) needs an annotation, **regardless of whether the resolution was trivial or non-trivial**. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
+Annotate the PR of every branch where you ran `git cherry-pick --continue` (vs. it auto-applying cleanly), **regardless of whether the resolution was trivial or non-trivial**, and of every branch chained from another branch's backport. Reviewers shouldn't have to diff the backport against the original commit to discover there was a manual step. "Trivial" describes how easy the resolution was, not whether it warrants disclosure.
 
-Branches that picked up a resolved diff via chaining don't need annotation — that's already implicit in the upstream branch they chained from.
+A chained branch lists every cherry-pick step, starting with the one onto this branch and ending with the one from `master`; a step that applied cleanly gets `No conflicts.` The script rebuilds each PR body from the original commit, so copy the earlier steps in yourself.
 
 For each such PR:
 
@@ -116,14 +112,17 @@ For each such PR:
 gh pr view <pr-number> -R yugabyte/yugabyte-db --json body -q .body > /tmp/claude/pr-body-<pr-number>.md
 ```
 
-Append a `## Merge conflicts` section using the entries you recorded in Step 2 (substep 3) for that branch. For example:
+Append a `## Merge conflicts` section listing those steps. For example, a 2024.2 PR chained cleanly from the 2025.2 backport, which needed resolution:
 
 ```
 ## Merge conflicts
 
-- `src/yb/master/catalog_manager.cc:1843` — kept master's call signature; release branch lost the `epoch` arg
-- `src/yb/master/catalog_manager.cc:2017` — re-applied the cherry-picked guard around the older AddTask path
-- `src/yb/master/catalog_manager.h:412` — moved the new method below the existing private block
+### 2025.2 --> 2024.2
+No conflicts.
+
+### master --> 2025.2
+- `src/yb/master/catalog_manager.cc:1843` — [missing-prerequisite] dropped the `epoch` argument, which 2025.2's `AddTask` signature lacks
+- `src/yb/master/catalog_manager.h:412` — [adjacent-lines] placed the new method after 2025.2's extra private method
 ```
 
 Then push the new body via the REST API. **Do not use `gh pr edit --body-file`** — it errors with `GraphQL: Projects (classic) is being deprecated... (repository.pullRequest.projectCards)` on this repo:

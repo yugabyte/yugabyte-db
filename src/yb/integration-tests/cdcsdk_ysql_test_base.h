@@ -13,6 +13,7 @@
 #pragma once
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -61,6 +62,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/tablet/tablet_types.pb.h"
@@ -97,6 +99,7 @@ DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_int32(catalog_manager_cdc_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
 DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_bool(TEST_cdc_snapshot_failure);
@@ -172,8 +175,8 @@ DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
 DECLARE_int32(max_concurrent_alter_table_rpcs);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
 DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
-DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);
 DECLARE_bool(cdc_skip_unqualified_tables_for_polling);
+DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 
@@ -189,6 +192,7 @@ namespace cdc {
 
 YB_DEFINE_ENUM(IntentCountCompareOption, (GreaterThanOrEqualTo)(GreaterThan)(EqualTo)(LessThan));
 YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
+YB_STRONGLY_TYPED_BOOL(RetryInit);
 
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
@@ -519,6 +523,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void CheckCount(const uint32_t* expected_count, uint32_t* count);
 
+  void CheckTextTuple(
+      const google::protobuf::RepeatedPtrField<DatumMessagePB>& tuple, int id,
+      const std::optional<std::string>& value);
+
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::VaryingExpectedRecord expected_records,
       uint32_t* count, uint32_t num_cols);
@@ -567,7 +575,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       bool include_oid_to_relfilenode = false,
       int timeout = kRpcTimeout,
       const std::vector<uint32_t>& publication_oids = {},
-      bool pub_all_tables = false);
+      bool pub_all_tables = false,
+      RetryInit retry = RetryInit::kTrue);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -719,6 +728,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const TabletId& tablet_id, const yb::client::YBTableName& table,
       const int expected_num_tablets = 2);
 
+  void WaitUntilPeerLeaderState(
+      const tablet::TabletPeerPtr& peer, bool is_leader_and_ready, const std::string& description);
+
   void PollUntilTabletSplit(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -867,6 +879,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void LogRetentionBarrierDetails(const tablet::TabletPeerPtr& tablet_peer);
 
+  // If 'expected', waits until every peer of the table's tablets has CDCSDK retention barriers.
+  // Otherwise asserts that no peer has them.
+  void VerifyCDCSDKRetentionBarriers(const TableId& table_id, bool expected);
+
   void ConsumeSnapshotAndVerifyRecords(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -929,11 +945,29 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status ExecuteYBAdminCommand(
       const std::string& command_name, const std::vector<string>& command_args);
 
+  Result<std::string> ExecuteYBAdminCommand(
+      const std::string& master_addresses, const std::string& command_name,
+      const std::vector<string>& command_args);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(const xrepl::StreamId& stream_id);
 
   void TestDisableOfDynamicTableAdditionOnCDCStream(bool use_consistent_snapshot_stream);
 
   Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
+
+  Result<std::string> PrepareReplicationSlotsForTransactionalDDL(
+      const std::string& master_addresses, const std::string& slot_name);
+
+  // Creates a slot that detects publication changes through publication refresh, as on a
+  // release without implicit detection.
+  Result<xrepl::StreamId> CreatePubRefreshSlot(const std::string& slot_name);
+
+  // Inserts key, sets the catalog barrier with the consumer stopped, optionally inserts
+  // key_after_barrier once the barrier time has passed, and then streams and acknowledges until the
+  // slot pauses. Returns the records streamed.
+  Result<std::vector<CDCSDKProtoRecordPB>> SetBarrierAndPause(
+      const std::string& slot_name, const xrepl::StreamId& stream_id, const TableId& table_id,
+      pgwrapper::PGConn* conn, int key, std::optional<int> key_after_barrier = std::nullopt);
 
   void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
 

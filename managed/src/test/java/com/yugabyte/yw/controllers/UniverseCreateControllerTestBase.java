@@ -696,6 +696,46 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   @Test
+  public void testUniverseCreateWithDisabledReleaseFails() {
+    String ybVersion = "0.0.0.1-b1";
+    ReleaseManager.ReleaseMetadata rm = ReleaseManager.ReleaseMetadata.create(ybVersion);
+    rm.state = ReleaseManager.ReleaseState.DISABLED;
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            new ReleaseContainer(rm, mockCloudUtilFactory, mockRuntimeConfig, mockReleasesUtils));
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 1", "subnet-1");
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "DisabledReleaseUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.getUuid().toString())
+            .put("ybSoftwareVersion", ybVersion);
+    userIntentJson.set("regionList", Json.newArray().add(r.getUuid().toString()));
+    userIntentJson.put("accessKeyCode", accessKeyCode);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+    setClustersAndNodeDetailsSet(bodyJson, userIntentJson, placement(p), i.getInstanceTypeCode());
+
+    Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
+    assertBadRequest(result, "Release " + ybVersion + " is not ACTIVE");
+    verify(mockCommissioner, times(0))
+        .submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class));
+  }
+
+  @Test
   @Parameters(method = "parametersToDeviceInfoValidation")
   public void testUniverseCreateDeviceInfoValidation(
       Common.CloudType cloudType,

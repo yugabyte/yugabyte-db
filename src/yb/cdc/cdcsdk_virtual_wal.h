@@ -221,8 +221,22 @@ class CDCSDKVirtualWAL {
 
   Status UpdateRestartTimeIfRequired();
 
-  bool DeterminePubRefreshFromMasterRecord(
-      const RecordInfo& record_info, bool* explicit_alter_publication_detected);
+  // The catalog change behind a publication refresh, as detected from a sys catalog record.
+  enum class PubRefreshTrigger {
+    kNone,
+    // A pg_publication_rel row added or removed: ALTER PUBLICATION ADD / DROP / SET TABLE, or a
+    // member table dropped.
+    kPublicationTableChanged,
+    // A pg_publication row updated: ALTER PUBLICATION SET (...), RENAME, OWNER.
+    kPublicationUpdated,
+    // A relation created under a FOR ALL TABLES publication.
+    kTableCreated,
+    kTableRewritten,
+    kTableDropped,
+    kReplicationOriginChanged,
+  };
+
+  PubRefreshTrigger DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
 
   bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
 
@@ -387,6 +401,10 @@ class CDCSDKVirtualWAL {
   // polling.
   TableId pg_publication_rel_table_id_;
 
+  // The table ID of pg_publication_rel_prpubid_index. Only populated when transactional DDL is
+  // enabled.
+  TableId pg_publication_rel_prpubid_index_table_id_;
+
   // The table ID of pg_replication_origin catalog.
   TableId pg_replication_origin_table_id_;
 
@@ -415,6 +433,11 @@ class CDCSDKVirtualWAL {
   // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
   // tablet for determining changes to the publication.
   bool detect_publication_changes_implicitly_ = false;
+
+  // Set on a pub-refresh slot that is being prepared for conversion to an implicit slot. No change
+  // committed after it is shipped, since it would be shipped again after the conversion with an
+  // LSN computed for an implicit slot.
+  HybridTime implicit_conversion_stop_time_ = HybridTime::kInvalid;
 };
 
 }  // namespace cdc

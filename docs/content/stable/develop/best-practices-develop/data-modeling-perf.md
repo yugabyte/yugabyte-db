@@ -12,7 +12,27 @@ menu:
 type: docs
 ---
 
-Designing efficient, high-performance YSQL applications requires thoughtful data modeling and an understanding of how YugabyteDB handles distributed workloads. This guide offers a collection of best practices, from leveraging colocation and indexing techniques to optimizing transactions and parallelizing queries, that can help you build scalable, globally distributed applications with low latency and high availability. Whether you're developing new applications or tuning existing ones, these tips will help you make the most of YSQL's capabilities
+Designing efficient, high-performance YSQL applications requires thoughtful data modeling and an understanding of how YugabyteDB handles distributed workloads. This guide offers a collection of best practices, from leveraging colocation and indexing techniques to optimizing transactions and parallelizing queries, that can help you build scalable, globally distributed applications with low latency and high availability. Whether you're developing new applications or tuning existing ones, these tips will help you make the most of YSQL's capabilities.
+
+## Use YSQL with an AI coding agent
+
+If an AI coding agent (such as Claude Code, Cursor, or Codex) designs a YSQL application for you, install the official [ysql skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/ysql) first. The skill supplies schema, driver, and migration guidance, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s ysql
+```
+
+To review an existing YSQL schema, install the official [yb-model skill](https://github.com/yugabyte/yugabytedb-skills/tree/main/skills/yb-model). The skill checks sharding, indexes, partitions, and statistics from a captured schema, so the agent makes fewer errors.
+
+To install the skill, run the following command:
+
+```sh
+npx skills add yugabyte/yugabytedb-skills -s yb-model
+```
+
+For more information, see the [yugabytedb-skills](https://github.com/yugabyte/yugabytedb-skills) repository.
 
 ## Use application patterns
 

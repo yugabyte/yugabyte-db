@@ -24,6 +24,7 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 
+#include "yb/util/fast_varint.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -196,8 +197,11 @@ TEST(DocVectorIdTest, MetaValueToStringTombstone) {
 
 TEST(DocVectorIdTest, VectorIndexPayload) {
   const Slice kYbctid("test_ybctid");
-  auto payload = DocVectorIndexPayload(kYbctid);
+  auto payload = DocVectorIndexPayload(kYbctid, /* tenant_prefix_size= */ 0);
+  // Only the ybctid flag, which older releases read.
+  ASSERT_EQ(payload.AsSlice()[0], 0x01);
   ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
+  ASSERT_TRUE(ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice())).tenant.empty());
 
   // The ybctid is extractable when the payload contains more data after it.
   payload.Append(Slice("future covering index columns"));
@@ -206,6 +210,37 @@ TEST(DocVectorIdTest, VectorIndexPayload) {
   // Truncated payload is detected.
   auto truncated = payload.AsSlice().Prefix(kYbctid.size() / 2);
   ASSERT_NOK(DocVectorIndexPayloadYbctid(truncated));
+}
+
+TEST(DocVectorIdTest, VectorIndexPayloadWithTenant) {
+  const Slice kYbctid("test_ybctid");
+  constexpr size_t kTenantPrefixSize = 4;
+  auto payload = DocVectorIndexPayload(kYbctid, kTenantPrefixSize);
+  auto content = ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice()));
+  ASSERT_EQ(content.ybctid, kYbctid);
+  ASSERT_EQ(content.tenant, kYbctid.Prefix(kTenantPrefixSize));
+  ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
+
+  // Missing tenant prefix size.
+  ASSERT_NOK(DecodeDocVectorIndexPayload(payload.AsSlice().WithoutSuffix(1)));
+
+  // Tenant prefix longer than the ybctid.
+  auto broken = payload.AsSlice().WithoutSuffix(1).ToBuffer();
+  char tenant[kMaxVarIntBufferSize];
+  broken.append(tenant, FastEncodeUnsignedVarInt(kYbctid.size() + 1, tenant));
+  ASSERT_NOK(DecodeDocVectorIndexPayload(broken));
+
+  // Unknown flags fail the full decode, but the ybctid is still extractable.
+  broken = payload.AsSlice().ToBuffer();
+  broken[0] = 0x7f;
+  ASSERT_NOK(DecodeDocVectorIndexPayload(broken));
+  ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(broken)), kYbctid);
+
+  // No ybctid flag.
+  broken[0] = 0x02;
+  ASSERT_NOK(DecodeDocVectorIndexPayload(broken));
+  ASSERT_NOK(DocVectorIndexPayloadYbctid(broken));
+  ASSERT_NOK(DecodeDocVectorIndexPayload(Slice()));
 }
 
 } // namespace yb::dockv

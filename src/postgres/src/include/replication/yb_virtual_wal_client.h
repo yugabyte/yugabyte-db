@@ -28,11 +28,13 @@
 #include "access/xlogreader.h"
 #include "nodes/pg_list.h"
 #include "replication/yb_virtual_wal_client_typedefs.h"
+#include "utils/palloc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 extern void YBCInitVirtualWal(List *yb_publication_names);
 extern void YBCValidateBoundPublication(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();
+extern MemoryContext YBCGetDecodeRecordContext(void);
 extern void YBCGetTableHashRange(List **options);
 
 extern YbVirtualWalRecord *YBXLogReadRecord(XLogReaderState *state,
@@ -45,5 +47,8 @@ extern XLogRecPtr YBCGetFlushRecPtr(void);
 extern XLogRecPtr YBCCalculatePersistAndGetRestartLSN(XLogRecPtr confirmed_flush);
 
 extern void YBCTrackFilteredTransaction(XLogRecPtr commit_lsn);
+
+extern const uint32_t *YBCGetAbortedSubtxnSet(const char *docdb_txn_id,
+											  int *size);
 
 #endif
