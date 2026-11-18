@@ -13,6 +13,13 @@
 # The targets cover each kind of lock COPY holds: the table and its indexes,
 # a partition (locked when the first row is routed to it), and a sequence used
 # by a column default.
+#
+# The parent table of a foreign key is different. COPY queues the foreign key
+# check of each row and runs the queued checks at the end of a batch, or at the
+# end of the statement when it is not batched. Until then it holds no lock on
+# the parent table, so a DDL on the parent table does not wait while COPY is
+# stopped at row 25. The last two permutations record this, and that COPY then
+# completes against the changed parent table.
 
 setup
 {
@@ -31,6 +38,7 @@ setup
   CREATE TABLE t (k int PRIMARY KEY, b int, CONSTRAINT gate CHECK (copy_gate(k)));
   CREATE TABLE pt (k int PRIMARY KEY, b int, CONSTRAINT gate CHECK (copy_gate(k))) PARTITION BY RANGE (k);
   CREATE TABLE pt1 PARTITION OF pt FOR VALUES FROM (1) TO (1000);
+  CREATE TABLE c (k int PRIMARY KEY, b int REFERENCES p (id), CONSTRAINT gate CHECK (copy_gate(k)));
   CREATE SEQUENCE sq;
   CREATE TABLE ts (k int PRIMARY KEY, b int, s int DEFAULT nextval('sq'), CONSTRAINT gate CHECK (copy_gate(k)));
 }
@@ -40,6 +48,7 @@ teardown
   DROP TABLE t;
   DROP TABLE pt;
   DROP TABLE ts;
+  DROP TABLE c;
   DROP SEQUENCE sq;
   DROP TABLE p;
   DROP FUNCTION reject_big_b();
@@ -51,6 +60,8 @@ step s1_copy_t			{ COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 
 step s1_copy_t_null		{ COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g," 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); }
 step s1_copy_pt			{ COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); }
 step s1_copy_ts			{ COPY ts (k, b) FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); }
+step s1_copy_c			{ COPY c FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); }
+step s1_copy_c_unbatched	{ COPY c FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 0); }
 
 session s2
 step s2_create_trigger	{ CREATE TRIGGER reject_big_b BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION reject_big_b(); }
@@ -60,6 +71,8 @@ step s2_add_fk			{ ALTER TABLE t ADD CONSTRAINT b_fk FOREIGN KEY (b) REFERENCES 
 step s2_create_index	{ CREATE INDEX NONCONCURRENTLY t_b_idx ON t (b); }
 step s2_index_partition	{ CREATE INDEX NONCONCURRENTLY pt1_b_idx ON pt1 (b); }
 step s2_alter_sequence	{ ALTER SEQUENCE sq MAXVALUE 1000000; }
+step s2_alter_fk_parent	{ ALTER TABLE p ADD COLUMN note text; }
+step s2_count_c			{ SELECT count(*) FROM c; }
 step s2_counts_t		{ SELECT b, count(*) FROM t GROUP BY b ORDER BY b; }
 step s2_count_pt		{ SELECT count(*) FROM pt; }
 step s2_count_ts		{ SELECT count(*) FROM ts; }
@@ -75,6 +88,7 @@ step s3_triggers		{ SELECT count(*) FROM pg_trigger WHERE tgrelid = 't'::regclas
 step s3_constraints		{ SELECT count(*) FROM pg_constraint WHERE conrelid = 't'::regclass AND conname IN ('b_small', 'b_fk'); }
 step s3_not_null		{ SELECT attnotnull FROM pg_attribute WHERE attrelid = 't'::regclass AND attname = 'b'; }
 step s3_indexes			{ SELECT count(*) FROM pg_class WHERE relname IN ('t_b_idx', 'pt1_b_idx'); }
+step s3_parent_columns	{ SELECT count(*) FROM pg_attribute WHERE attrelid = 'p'::regclass AND attname = 'note'; }
 step s3_sequence_max	{ SELECT seqmax FROM pg_sequence WHERE seqrelid = 'sq'::regclass; }
 
 # The target table.
@@ -89,3 +103,7 @@ permutation s3_lock s1_copy_pt s2_index_partition(s1_copy_pt) s3_indexes s3_unlo
 
 # A sequence that a column default of the target table reads.
 permutation s3_lock s1_copy_ts s2_alter_sequence(s1_copy_ts) s3_sequence_max s3_unlock s2_count_ts
+
+# The parent table of a foreign key on the target table: the DDL does not wait.
+permutation s3_lock s1_copy_c s2_alter_fk_parent s3_parent_columns s3_unlock s2_count_c
+permutation s3_lock s1_copy_c_unbatched s2_alter_fk_parent s3_parent_columns s3_unlock s2_count_c

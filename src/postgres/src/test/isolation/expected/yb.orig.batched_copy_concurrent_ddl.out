@@ -246,3 +246,61 @@ count
    40
 (1 row)
 
+
+starting permutation: s3_lock s1_copy_c s2_alter_fk_parent s3_parent_columns s3_unlock s2_count_c
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_c: COPY c FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_alter_fk_parent: ALTER TABLE p ADD COLUMN note text;
+step s3_parent_columns: SELECT count(*) FROM pg_attribute WHERE attrelid = 'p'::regclass AND attname = 'note';
+count
+-----
+    1
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_c: <... completed>
+step s2_count_c: SELECT count(*) FROM c;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_c_unbatched s2_alter_fk_parent s3_parent_columns s3_unlock s2_count_c
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_c_unbatched: COPY c FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 0); <waiting ...>
+step s2_alter_fk_parent: ALTER TABLE p ADD COLUMN note text;
+step s3_parent_columns: SELECT count(*) FROM pg_attribute WHERE attrelid = 'p'::regclass AND attname = 'note';
+count
+-----
+    1
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_c_unbatched: <... completed>
+step s2_count_c: SELECT count(*) FROM c;
+count
+-----
+   40
+(1 row)
+
