@@ -1608,6 +1608,21 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
         k8sMetricsConfig(EnumSet.of(ScrapeConfigTargetType.TSERVER_EXPORT), null), withNodeExport);
   }
 
+  // The fallback to the unfiltered targets keeps the master job on a release without masters, and
+  // adds no node job for pods without the sidecar.
+  @Test
+  public void getOtelColConfigK8sMetricsFallbackAddsNoNodeJobWithoutSidecar() {
+    String withNodeExport =
+        k8sMetricsConfig(
+            EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT, ScrapeConfigTargetType.NODE_EXPORT),
+            null,
+            false /* hasMasters */);
+    assertNull(scrapeJob(withNodeExport, "node"));
+    assertEquals(
+        k8sMetricsConfig(EnumSet.of(ScrapeConfigTargetType.MASTER_EXPORT), null, false),
+        withNodeExport);
+  }
+
   // A receiver with no scrape jobs is invalid, so NODE_EXPORT alone keeps the node job even when
   // the pods run no sidecar.
   @SuppressWarnings("unchecked")
@@ -1625,6 +1640,13 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   private String k8sMetricsConfig(
       Set<ScrapeConfigTargetType> targets,
       OtelCollectorConfigGenerator.K8sNodeExporterSidecar nodeExporterSidecar) {
+    return k8sMetricsConfig(targets, nodeExporterSidecar, true /* hasMasters */);
+  }
+
+  private String k8sMetricsConfig(
+      Set<ScrapeConfigTargetType> targets,
+      OtelCollectorConfigGenerator.K8sNodeExporterSidecar nodeExporterSidecar,
+      boolean hasMasters) {
     DataDogConfig config = new DataDogConfig();
     config.setType(ProviderType.DATA_DOG);
     config.setSite("ddsite");
@@ -1642,7 +1664,12 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
             provider,
             universe,
             TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build(),
-            null,
+            new OtelCollectorConfigGenerator.K8sPodPlacement(
+                "kubernetes",
+                "us-west1",
+                "us-west1-b",
+                UniverseDefinitionTaskParams.ClusterType.PRIMARY,
+                hasMasters),
             "%m [%p] ",
             intent,
             nodeExporterSidecar)

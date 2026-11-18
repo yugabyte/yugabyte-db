@@ -1323,13 +1323,16 @@ public class OtelCollectorConfigGenerator {
             metricsExportConfig.getScrapeConfigTargets());
     boolean scrapeNodeExporter =
         nodeExporterSidecar != null && scrapeTargets.contains(ScrapeConfigTargetType.NODE_EXPORT);
-    // A receiver needs at least one job, so fall back to the unfiltered targets. When NODE_EXPORT
-    // is the only target and the pods run no sidecar, that leaves a node job whose target is down.
+    // A receiver needs at least one job, so fall back to the unfiltered targets. Without the
+    // sidecar, the node job is kept only when no yugabyte job is left, so that NODE_EXPORT alone
+    // still gives the receiver a job, whose target is down.
     if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
         && !scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)
         && !scrapeNodeExporter) {
       scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
-      scrapeNodeExporter = scrapeTargets.contains(ScrapeConfigTargetType.NODE_EXPORT);
+      scrapeNodeExporter =
+          !OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
+              && scrapeTargets.contains(ScrapeConfigTargetType.NODE_EXPORT);
     }
 
     // Shared prometheus receiver scraping pod-local endpoints.
