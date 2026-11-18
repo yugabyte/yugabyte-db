@@ -3891,6 +3891,52 @@ YbHasActiveOrPendingListen(void)
 	return listenChannels != NIL || YbHasPendingListenAction();
 }
 
+/*
+ * Mark of pending notifications, including those in open subtransactions.
+ * READ COMMITTED merges the previous statement's notifications into the top
+ * level when the next statement starts, so the mark must include them to
+ * prevent rollback from dropping them.
+ */
+int
+YbPendingNotifiesMark(void)
+{
+	int			mark = 0;
+
+	for (NotificationList *notifies = pendingNotifies; notifies != NULL;
+		 notifies = notifies->upper)
+		mark += list_length(notifies->events);
+	return mark;
+}
+
+/*
+ * Drop the top-level pending notifications queued after mark. The query layer
+ * calls this when it retries a statement: the attempt it discards may have
+ * queued notifications that the retry queues again.
+ */
+void
+YbRollbackPendingNotifiesTo(int mark)
+{
+	NotificationList **notifies = &pendingNotifies;
+
+	while (*notifies != NULL && (*notifies)->nestingLevel > 1)
+		notifies = &(*notifies)->upper;
+	if (*notifies == NULL || list_length((*notifies)->events) <= mark)
+		return;
+
+	if (mark == 0)
+	{
+		*notifies = NULL;
+		return;
+	}
+
+	(*notifies)->events = list_truncate((*notifies)->events, mark);
+	if ((*notifies)->hashtab != NULL)
+	{
+		hash_destroy((*notifies)->hashtab);
+		(*notifies)->hashtab = NULL;
+	}
+}
+
 static void
 ybListenNotifyPreChecks(void)
 {
