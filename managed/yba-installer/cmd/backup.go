@@ -292,13 +292,7 @@ func addYbdbArgs(args []string) []string {
 }
 
 func createPgPass() {
-	data := []byte(fmt.Sprintf("%s:%s:yugaware:%s:%s",
-		viper.GetString("postgres.useExisting.host"),
-		viper.GetString("postgres.useExisting.port"),
-		viper.GetString("postgres.useExisting.username"),
-		viper.GetString("postgres.useExisting.password"),
-	))
-	err := os.WriteFile(common.PgpassPath(), data, 0600)
+	err := os.WriteFile(common.PgpassPath(), []byte(common.PgpassEntry()), 0600)
 	if err != nil {
 		log.Fatal("could not create pgpass file: " + err.Error())
 	}
