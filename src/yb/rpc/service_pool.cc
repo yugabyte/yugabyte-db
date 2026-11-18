@@ -181,7 +181,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     LOG_IF(DFATAL, closing_.load(std::memory_order_relaxed))
         << "Calling Process on closed service pool";
     auto thread_pool = thread_pool_provider_(call->pool_tag());
-    if (!queue && thread_pool->OwnsThisThread()) {
+    if (!queue && (call->allow_inline_dispatch() || thread_pool->OwnsThisThread())) {
       Handle(std::move(call));
       return;
     }

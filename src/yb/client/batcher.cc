@@ -61,6 +61,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pgsql_utils.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
@@ -95,6 +96,21 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "Probability for simulating the error that happens when a key is not in the key "
                  "range of the resolved tablet's partition.");
 DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
+
+DEFINE_RUNTIME_bool(batch_write_rpcs_per_tserver, false,
+    "Send the Write RPCs of one flush that go to the same tablet server as one WriteBatch RPC. "
+    "Each tablet's write still selects its server, and handles its response and retries, on its "
+    "own. Also requires --enable_batched_tserver_rpcs.");
+
+DEFINE_RUNTIME_bool(batch_read_rpcs_per_tserver, false,
+    "Send the Read RPCs of one flush that go to the same tablet server as one ReadBatch RPC. Each "
+    "tablet's read still selects its server, and handles its response and retries, on its own. "
+    "Also requires --enable_batched_tserver_rpcs.");
+
+DEFINE_RUNTIME_bool(txn_batch_wait_for_async_writes, false,
+    "Instead of sending WaitForAsyncWrite for each pipelined write as it returns, wait for the "
+    "writes at commit, with one WaitForAsyncWrites RPC per leader tablet server. Also requires "
+    "--enable_batched_tserver_rpcs.");
 
 DEFINE_RUNTIME_AUTO_bool(enable_write_pipelining_infra, kLocalVolatile, false, true,
     "Enable the infrastructure required for write pipelining. Pipelined writes are sent with "
@@ -696,8 +712,20 @@ void Batcher::ExecuteOperations(Initial initial) {
   }
 
   outstanding_rpcs_.store(rpcs.size());
+  std::shared_ptr<RpcCoalescer> coalescer;
+  if (rpcs.size() > 1 && FLAGS_enable_batched_tserver_rpcs &&
+      (FLAGS_batch_write_rpcs_per_tserver || FLAGS_batch_read_rpcs_per_tserver)) {
+    coalescer = std::make_shared<RpcCoalescer>(
+        FLAGS_batch_write_rpcs_per_tserver, FLAGS_batch_read_rpcs_per_tserver);
+    for (const auto& rpc : rpcs) {
+      rpc->set_coalescer(coalescer);
+    }
+  }
   for (const auto& rpc : rpcs) {
     rpc->SendRpc();
+  }
+  if (coalescer) {
+    coalescer->Flush();
   }
 }
 
@@ -1013,13 +1041,27 @@ void Batcher::HandleAsyncWriteResponse(
   }
 
   const auto op_id = OpId::FromPB(async_write_op_id);
+  if (FLAGS_txn_batch_wait_for_async_writes && FLAGS_enable_batched_tserver_rpcs) {
+    transaction->RecordDeferredAsyncWrite(AsyncWriteWait {
+      .tracking_tablet_id = tablet.tablet_id(),
+      .partition_key = tablet.partition().partition_key_start(),
+      .table = table,
+      .op_id = op_id,
+      .tablet = RemoteTabletPtr(const_cast<RemoteTablet*>(&tablet)),
+      .wait_state = wait_state,
+    });
+    return;
+  }
   if (transaction->RecordAsyncWrite(tablet.tablet_id(), op_id)) {
     // Multiple write operations can get combined into the same async write RPC resulting in
     // duplicate OpIds.
     // We need to be able to track this tablet across splits, so pass in the tablet's key_start.
     auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
-        shared_from_this(), tablet.tablet_id(), tablet.partition().partition_key_start(), table,
-        op_id, wait_state);
+        client_, deadline(), transaction->id(), tablet.tablet_id(),
+        tablet.partition().partition_key_start(), table, op_id, wait_state,
+        [transaction](const TabletId& tablet_id, const OpId& op_id, const Status& status) {
+      transaction->RecordAsyncWriteCompletion(tablet_id, op_id, status);
+    });
     wait_for_async_write_rpc->SendRpc();
   }
 }

@@ -52,6 +52,17 @@ void WriteBuffer::AddBlock(const RefCntBuffer& buffer, size_t skip) {
   last_block_free_begin_ = last_block_free_end_ = buffer.end();
 }
 
+void WriteBuffer::AddBlock(const RefCntBuffer& buffer, size_t skip, size_t size) {
+  ShrinkLastBlock();
+  size_without_last_block_ += filled_in_last_block();
+  blocks_.emplace_back(buffer, skip, size);
+  if (consumption_ && *consumption_) {
+    consumption_->Add(size);
+  }
+  // No free space: the rest of buffer belongs to someone else. ShrinkLastBlock drops it.
+  last_block_free_begin_ = last_block_free_end_ = buffer.data() + skip + size;
+}
+
 void WriteBuffer::ShrinkLastBlock() {
   if (blocks_.empty()) {
     return;

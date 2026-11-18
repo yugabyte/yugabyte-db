@@ -21,6 +21,7 @@
 #include <unordered_set>
 #include <boost/atomic.hpp>
 
+#include "yb/client/async_rpc.h"
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/in_flight_op.h"
@@ -651,6 +652,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       EXCLUDES(mutex_) {
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
+    std::vector<internal::AsyncWriteWait> deferred_waits;
     {
       UniqueLock lock(async_write_query_mutex_);
       auto status = async_write_status_;
@@ -674,6 +676,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         // last async write.
         ASH_ENABLE_CONCURRENT_UPDATES();
         SET_WAIT_STATUS(YBClient_WaitingForPipelinedWrites);
+        deferred_waits.swap(deferred_async_write_waits_);
+        lock.unlock();
+        SendDeferredAsyncWriteWaits(std::move(deferred_waits), AdjustDeadline(deadline));
         return;
       }
     }
@@ -1392,6 +1397,45 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     std::lock_guard l(async_write_query_mutex_);
     return InsertIfNotPresent(&inflight_async_writes_[tablet_id].op_ids, op_id);
+  }
+
+  void RecordDeferredAsyncWrite(internal::AsyncWriteWait wait)
+      EXCLUDES(async_write_query_mutex_) {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << YB_STRUCT_TO_STRING(wait.tracking_tablet_id, wait.op_id);
+
+    std::lock_guard l(async_write_query_mutex_);
+    if (InsertIfNotPresent(&inflight_async_writes_[wait.tracking_tablet_id].op_ids, wait.op_id)) {
+      deferred_async_write_waits_.push_back(std::move(wait));
+    }
+  }
+
+  void SendDeferredAsyncWriteWaits(
+      std::vector<internal::AsyncWriteWait> waits, CoarseTimePoint deadline) {
+    if (waits.empty()) {
+      return;
+    }
+    auto* client = manager_->client();
+    auto transaction_id = metadata_.transaction_id;
+    internal::AsyncWriteCompletionCallback callback =
+        [transaction = transaction_->shared_from_this()](
+            const TabletId& tablet_id, const OpId& op_id, const Status& status) {
+      transaction->RecordAsyncWriteCompletion(tablet_id, op_id, status);
+    };
+    std::unordered_map<internal::RemoteTabletServer*, std::vector<internal::AsyncWriteWait>>
+        by_leader;
+    for (auto& wait : waits) {
+      auto* leader = wait.tablet ? wait.tablet->LeaderTServer() : nullptr;
+      if (!leader) {
+        std::make_shared<internal::WaitForAsyncWriteRpc>(
+            client, deadline, transaction_id, wait, callback)->SendRpc();
+        continue;
+      }
+      by_leader[leader].push_back(std::move(wait));
+    }
+    for (auto& [leader, leader_waits] : by_leader) {
+      internal::SendWaitForAsyncWrites(
+          client, leader, deadline, transaction_id, std::move(leader_waits), callback);
+    }
   }
 
   void RecordAsyncWriteCompletion(
@@ -2936,6 +2980,9 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   std::unordered_map<TabletId, AsyncWriteQuery> inflight_async_writes_
       GUARDED_BY(async_write_query_mutex_);
   StdStatusCallback async_write_commit_waiter_ GUARDED_BY(async_write_query_mutex_);
+  // Async writes recorded with RecordDeferredAsyncWrite, whose waits are sent at commit.
+  std::vector<internal::AsyncWriteWait> deferred_async_write_waits_
+      GUARDED_BY(async_write_query_mutex_);
   Status async_write_status_ GUARDED_BY(async_write_query_mutex_);
 
   // Ops this transaction has successfully flushed. If write_pipelining_abort_ is set, then these
@@ -3195,6 +3242,10 @@ void YBTransaction::SetBackgroundTransaction(const YBTransactionPtr& background_
 
 bool YBTransaction::RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id) {
   return impl_->RecordAsyncWrite(tablet_id, op_id);
+}
+
+void YBTransaction::RecordDeferredAsyncWrite(internal::AsyncWriteWait wait) {
+  impl_->RecordDeferredAsyncWrite(std::move(wait));
 }
 
 void YBTransaction::RecordAsyncWriteCompletion(

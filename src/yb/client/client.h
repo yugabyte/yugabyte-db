@@ -1155,6 +1155,9 @@ class YBClient {
 
   rpc::ProxyCache& proxy_cache() const;
 
+  // Batches UpdateTransaction requests per tablet server, see update_transaction_batcher.h.
+  UpdateTransactionBatcher& update_transaction_batcher();
+
   const std::string& proxy_uuid() const;
 
   // Id of this client instance.

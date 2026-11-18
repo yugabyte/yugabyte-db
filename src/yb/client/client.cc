@@ -62,7 +62,8 @@
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction_status_tablets.h"
-#include "yb/client/yb_table_name.h"
+#include "yb/client/update_transaction_batcher.h"
+
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
@@ -2629,6 +2630,13 @@ Status YBClient::GetLocationsByTableIdAndUpdateCache(
 
 rpc::Messenger* YBClient::messenger() const {
   return data_->messenger_;
+}
+
+UpdateTransactionBatcher& YBClient::update_transaction_batcher() {
+  std::call_once(data_->update_transaction_batcher_once_, [this] {
+    data_->update_transaction_batcher_ = std::make_shared<UpdateTransactionBatcher>(this);
+  });
+  return *data_->update_transaction_batcher_;
 }
 
 const scoped_refptr<MetricEntity>& YBClient::metric_entity() const {

@@ -54,6 +54,9 @@ class Sidecars {
 
   size_t Transfer(Sidecars* dest);
 
+  // Copies sidecars [begin, end) to dest. Returns the index of the first one in dest.
+  size_t CopyRangeTo(Sidecars* dest, size_t begin, size_t end) const;
+
   void MoveOffsetsTo(size_t body_size, google::protobuf::RepeatedField<uint32_t>* dest);
 
   size_t size() const {

@@ -144,4 +144,27 @@ TEST(WriteBufferTest, RandomTruncate) {
             << " truncates: " << truncate_count;
 }
 
+// Blocks added from parts of a shared buffer must not change that buffer when shrunk.
+TEST(WriteBufferTest, AddBlockPartOfSharedBuffer) {
+  RefCntBuffer shared(32);
+  for (size_t i = 0; i != shared.size(); ++i) {
+    shared.data()[i] = static_cast<char>('a' + i % 26);
+  }
+  WriteBuffer first(16);
+  WriteBuffer second(16);
+  first.AddBlock(shared, 2, 5);
+  first.Append("XY", 2);
+  second.AddBlock(shared, 10, 4);
+  second.AddBlock(shared, 20, 3);
+
+  std::string out;
+  first.AssignTo(&out);
+  ASSERT_EQ(out, "cdefgXY");
+  second.AssignTo(&out);
+  ASSERT_EQ(out, "klmnuvw");
+  ASSERT_EQ(shared.size(), 32);
+  ASSERT_EQ(first.size(), 7);
+  ASSERT_EQ(second.size(), 7);
+}
+
 }  // namespace yb

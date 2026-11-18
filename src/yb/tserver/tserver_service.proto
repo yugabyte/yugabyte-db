@@ -57,7 +57,18 @@ service TabletServerService {
   rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
+  rpc WaitForAsyncWrites(WaitForAsyncWritesRequestPB) returns (WaitForAsyncWritesResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc Read(ReadRequestPB) returns (ReadResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+    option (yb.rpc.lightweight_method).sides = BOTH;
+  }
+  rpc WriteBatch(WriteBatchRequestPB) returns (WriteBatchResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+    option (yb.rpc.lightweight_method).sides = BOTH;
+  }
+  rpc ReadBatch(ReadBatchRequestPB) returns (ReadBatchResponsePB) {
     option (yb.rpc.send_metadata) = true;
     option (yb.rpc.lightweight_method).sides = BOTH;
   }
@@ -81,6 +92,7 @@ service TabletServerService {
   rpc UpdateTransaction(UpdateTransactionRequestPB) returns (UpdateTransactionResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
+  rpc UpdateTransactions(UpdateTransactionsRequestPB) returns (UpdateTransactionsResponsePB);
   // Returns transaction status at coordinator, i.e. PENDING, ABORTED, COMMITTED etc.
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
   // Returns the oldest transactions (older than a specified age) from a specified status tablet.
@@ -360,6 +372,10 @@ message UpdateTransactionRequestPB {
   optional fixed64 start_time = 5;
 
   reserved 6; // ASH metadata is now passed in RequestHeader PB
+
+  // APPLYING only: the coordinator accepts UpdateTransactionResponsePB.applied in place of a
+  // separate APPLIED_IN_ONE_OF_INVOLVED_TABLETS request.
+  optional bool accepts_applied_in_response = 7;
 }
 
 message UpdateTransactionResponsePB {
@@ -367,6 +383,25 @@ message UpdateTransactionResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional fixed64 propagated_hybrid_time = 2;
+
+  // APPLYING only: the participant finished applying the transaction while handling the request,
+  // and does not send APPLIED_IN_ONE_OF_INVOLVED_TABLETS for it.
+  optional bool applied = 3;
+}
+
+// A batch of UpdateTransaction requests, possibly for different tablets, all led by the receiving
+// tablet server. Each entry is handled as if it was sent alone.
+message UpdateTransactionsRequestPB {
+  repeated UpdateTransactionRequestPB requests = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+}
+
+message UpdateTransactionsResponsePB {
+  // Error that applies to the whole batch, if any.
+  optional TabletServerErrorPB error = 1;
+  // One entry per request, in the same order.
+  repeated UpdateTransactionResponsePB responses = 2;
+  optional fixed64 propagated_hybrid_time = 3;
 }
 
 message GetTransactionStatusRequestPB {

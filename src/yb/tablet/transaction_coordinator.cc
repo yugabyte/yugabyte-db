@@ -27,7 +27,9 @@
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
+#include "yb/client/update_transaction_batcher.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/advisory_locks_error.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
@@ -128,6 +130,14 @@ DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
 DEFINE_test_flag(bool, skip_returning_old_transactions, false,
                  "When set, the coordinator returns an empty response to all GetOldTransactions "
                  "requests.");
+
+DEFINE_RUNTIME_bool(txn_apply_ack_in_applying_response, false,
+    "Ask transaction participants to report a finished apply in the APPLYING response, instead of "
+    "sending a separate APPLIED_IN_ONE_OF_INVOLVED_TABLETS request to the status tablet.");
+
+DEFINE_RUNTIME_bool(txn_batch_applying_rpcs, false,
+    "Send APPLYING requests to participant tablets through per-tablet-server UpdateTransactions "
+    "batches. Also requires --enable_batched_tserver_rpcs.");
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
@@ -1706,20 +1716,24 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       state.set_xrepl_origin_id(action.xrepl_origin_id);
     }
     *state.mutable_aborted() = action.aborted;
+    if (FLAGS_txn_apply_ack_in_applying_response) {
+      req.set_accepts_applied_in_response(true);
+    }
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {
-      *handle = UpdateTransaction(
-          deadline,
-          nullptr /* remote_tablet */,
-          context_.client_future().get(),
-          &req,
-          [this, handle, action]
-              (const Status& status,
-               const tserver::UpdateTransactionRequestPB& req,
-               const tserver::UpdateTransactionResponsePB& resp) {
-            ApplyingReplicated(handle, action, status, resp);
-          });
+      auto* client = context_.client_future().get();
+      auto callback = [this, handle, action](
+          const Status& status, const tserver::UpdateTransactionRequestPB& req,
+          const tserver::UpdateTransactionResponsePB& resp) {
+        ApplyingReplicated(handle, action, status, resp);
+      };
+      if (FLAGS_txn_batch_applying_rpcs && FLAGS_enable_batched_tserver_rpcs) {
+        *handle = client::BatchedUpdateTransaction(deadline, client, &req, std::move(callback));
+      } else {
+        *handle = UpdateTransaction(
+            deadline, nullptr /* remote_tablet */, client, &req, std::move(callback));
+      }
       (**handle).SendRpc();
     }
   }
@@ -1732,6 +1746,19 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     // used through `this`.
     auto unregister_rpc = rpcs_.UnregisterOnScopeExit(handle);
     if (status.ok()) {
+      if (resp.applied()) {
+        // The participant reported the apply here instead of sending
+        // APPLIED_IN_ONE_OF_INVOLVED_TABLETS.
+        Lock lock(this, context_.LeaderTerm());
+        auto it = managed_transactions_.find(action.transaction);
+        if (it != managed_transactions_.end()) {
+          managed_transactions_.modify(it, [&action](TransactionState& state) {
+            WARN_NOT_OK(
+                state.AppliedInOneOfInvolvedTablets(action.tablet),
+                "AppliedInOneOfInvolvedTablets from APPLYING response failed");
+          });
+        }
+      }
       return;
     }
 

@@ -37,7 +37,15 @@ class UpdateTxnOperation
   // the client was acked, just as the client's next transaction starts writing to the same tablets.
   bool replication_deferrable() const override;
 
+  // APPLYING on the leader: the requester accepts the apply ack in the RPC response. If set, the
+  // participant stores true here instead of sending APPLIED_IN_ONE_OF_INVOLVED_TABLETS.
+  void set_applied_in_response(std::shared_ptr<std::atomic<bool>> value) {
+    applied_in_response_ = std::move(value);
+  }
+
  private:
+  std::shared_ptr<std::atomic<bool>> applied_in_response_;
+
   Result<TransactionCoordinator*> transaction_coordinator() const;
   Status Prepare(IsLeaderSide is_leader_side) override;
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;

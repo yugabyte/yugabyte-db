@@ -180,6 +180,21 @@ message WaitForAsyncWriteRequestPB {
 
 message WaitForAsyncWriteResponsePB { optional TabletServerErrorPB error = 1; }
 
+// Waits for several async writes, possibly to different tablets on the receiving tablet server.
+message WaitForAsyncWritesRequestPB {
+  message EntryPB {
+    optional bytes tablet_id = 1;
+    optional OpIdPB op_id = 2;
+  }
+  repeated EntryPB entries = 1;
+}
+
+// One error per request entry, in the same order; an entry without error has been verified.
+message WaitForAsyncWritesResponsePB {
+  optional TabletServerErrorPB error = 1;
+  repeated WaitForAsyncWriteResponsePB responses = 2;
+}
+
 // A list tablets request
 message ListTabletsRequestPB {
   optional bool include_user_tablets_only = 1 [ default = false ];
@@ -330,6 +345,38 @@ message ReadResponsePB {
   // If this is set, then the client needs to wait for the async write to
   // complete using WaitForAsyncWrite before committing the transaction.
   optional OpIdPB async_write_op_id = 13;
+}
+
+// Write requests for several tablets led by the receiving tablet server. Each one is handled as if
+// it was sent alone.
+message WriteBatchRequestPB {
+  repeated WriteRequestPB requests = 1;
+}
+
+// One response per request, in the same order. The sidecars of responses[i] are
+// [sidecar_offsets[i], sidecar_offsets[i] + sidecar_counts[i]), and its sidecar indexes are
+// relative to sidecar_offsets[i].
+message WriteBatchResponsePB {
+  repeated WriteResponsePB responses = 1;
+  repeated uint32 sidecar_offsets = 2;
+  optional TabletServerErrorPB error = 3;
+  repeated uint32 sidecar_counts = 4;
+}
+
+// Read requests for several tablets led by the receiving tablet server. Each one is handled as if
+// it was sent alone.
+message ReadBatchRequestPB {
+  repeated ReadRequestPB requests = 1;
+}
+
+// One response per request, in the same order. The sidecars of responses[i] are
+// [sidecar_offsets[i], sidecar_offsets[i] + sidecar_counts[i]), and its sidecar indexes are
+// relative to sidecar_offsets[i].
+message ReadBatchResponsePB {
+  repeated ReadResponsePB responses = 1;
+  repeated uint32 sidecar_offsets = 2;
+  optional TabletServerErrorPB error = 3;
+  repeated uint32 sidecar_counts = 4;
 }
 
 message GetTabletKeyRangesRequestPB {

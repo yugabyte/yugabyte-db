@@ -42,6 +42,10 @@ class Trace;
 
 namespace client {
 
+namespace internal {
+struct AsyncWriteWait;
+} // namespace internal
+
 using Waiter = boost::function<void(const Status&)>;
 using PrepareChildCallback = std::function<void(const Result<ChildTransactionDataPB>&)>;
 
@@ -244,6 +248,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // Records the Async Write OpId. Returns true if the query was recorded, false if it already
   // existed.
   bool RecordAsyncWrite(const TabletId& tablet_id, const OpId& op_id);
+  // Records the async write like RecordAsyncWrite, but waits for it only at commit, where the
+  // waits for all such writes led by the same tablet server go in one RPC.
+  void RecordDeferredAsyncWrite(internal::AsyncWriteWait wait);
   void RecordAsyncWriteCompletion(
       const TabletId& tablet_id, const OpId& op_id, const Status& status);
   // Last pending async write of each term, for the server to verify before serving a read.

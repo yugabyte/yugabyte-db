@@ -85,6 +85,9 @@ class ReceivedSidecars {
 
   size_t Transfer(const RefCntBuffer& buffer, Sidecars* dest);
 
+  // Transfers sidecars [begin, end) only.
+  size_t Transfer(const RefCntBuffer& buffer, Sidecars* dest, size_t begin, size_t end);
+
   Status Parse(Slice message, const boost::iterator_range<const uint32_t*>& offsets);
 
   size_t DynamicMemoryUsage() const {

@@ -15,9 +15,14 @@
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/tserver/tserver_types.messages.h"
+
 namespace yb::tserver {
 
-void SetupError(TabletServerErrorPB* error, const Status& s) {
+namespace {
+
+template <class Error>
+void DoSetupError(Error* error, const Status& s) {
   auto ts_error = TabletServerError::FromStatus(s);
   auto code = ts_error ? ts_error->value() : TabletServerErrorPB::UNKNOWN_ERROR;
   if (code == TabletServerErrorPB::UNKNOWN_ERROR) {
@@ -28,6 +33,16 @@ void SetupError(TabletServerErrorPB* error, const Status& s) {
   }
   StatusToPB(s, error->mutable_status());
   error->set_code(code);
+}
+
+} // namespace
+
+void SetupError(TabletServerErrorPB* error, const Status& s) {
+  DoSetupError(error, s);
+}
+
+void SetupError(LWTabletServerErrorPB* error, const Status& s) {
+  DoSetupError(error, s);
 }
 
 void SetupError(AppStatusPB* error, const Status& s) {

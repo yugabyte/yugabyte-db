@@ -72,6 +72,8 @@ class LocalOutboundCall : public OutboundCall {
 
   Result<RefCntSlice> ExtractSidecar(size_t idx) const override;
   size_t TransferSidecars(Sidecars* context) override;
+  size_t TransferSidecars(Sidecars* dest, size_t begin, size_t end) override;
+  size_t GetSidecarsCount() const override;
 
  private:
   friend class LocalYBInboundCall;
@@ -93,6 +95,9 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
                      CallStateListenerFactory* call_state_listener_factory);
 
   bool IsLocalCall() const override { return true; }
+
+  bool allow_inline_dispatch() const override { return inline_dispatch_; }
+  void set_inline_dispatch(bool value) { inline_dispatch_ = value; }
 
   // Request and response are owned by the caller, and stay valid until this call responds.
   const AnyMessageConstPtr& request() const { return request_; }
@@ -135,6 +140,8 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
 
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;
+
+  bool inline_dispatch_ = false;
 
   const AnyMessageConstPtr request_;
   const AnyMessagePtr response_;

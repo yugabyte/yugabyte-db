@@ -18,10 +18,12 @@
 
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/rpc/periodic.h"
 
 #include "yb/util/dist_trace.h"
+#include "yb/util/memory/arena.h"
 #include "yb/util/flags.h"
 
 using namespace std::literals;
@@ -29,6 +31,16 @@ using namespace std::placeholders;
 
 DEFINE_UNKNOWN_bool(enable_multi_raft_heartbeat_batcher, false,
             "If true, enables multi-Raft batching of raft heartbeats.");
+
+DEFINE_RUNTIME_bool(multi_raft_batch_data_requests, false,
+    "Send Raft requests that carry operations through the per-tablet-server multi-Raft batcher, "
+    "so that the requests of all tablets led by this server to the same follower server go out "
+    "as one MultiRaftUpdateConsensus RPC. Applies to peers created after it is set. Also requires "
+    "--enable_batched_tserver_rpcs.");
+
+DEFINE_RUNTIME_uint32(multi_raft_batch_max_in_flight, 2,
+    "Maximum number of multi-Raft batches in flight to one tablet server before a batch with "
+    "operations waits for one of them to return.");
 
 DEFINE_UNKNOWN_uint64(multi_raft_heartbeat_interval_ms, 50,
               "The heartbeat interval for batch Raft replication.");
@@ -39,27 +51,26 @@ DEFINE_UNKNOWN_uint64(multi_raft_batch_size, 0,
 TAG_FLAG(multi_raft_batch_size, advanced);
 
 DECLARE_int32(consensus_rpc_timeout_ms);
+DECLARE_bool(enable_batched_tserver_rpcs);
 
 namespace yb {
 namespace consensus {
 
 using rpc::PeriodicTimer;
 
-namespace {
-
-// Tracks a single peers ConsensusResponsePB as well as its ProcessResponse callback.
-struct ResponseCallbackData {
-  ConsensusResponsePB* resp;
-  HeartbeatResponseCallback callback;
-};
-
-}
-
 struct MultiRaftHeartbeatBatcher::MultiRaftConsensusData {
-  MultiRaftConsensusRequestPB batch_req;
-  MultiRaftConsensusResponsePB batch_res;
+  MultiRaftConsensusData()
+      : batch_req(arena.NewObject<LWMultiRaftConsensusRequestPB>(&arena)),
+        batch_res(arena.NewObject<LWMultiRaftConsensusResponsePB>(&arena)) {}
+
+  ThreadSafeArena arena;
+  LWMultiRaftConsensusRequestPB* batch_req;
+  LWMultiRaftConsensusResponsePB* batch_res;
   rpc::RpcController controller;
-  std::vector<ResponseCallbackData> response_callback_data;
+  std::vector<MultiRaftResponseCallback> callbacks;
+  // Keep the operations of data requests alive while the batch exists.
+  std::vector<LWReplicateMsgsHolder> msgs_holders;
+  bool has_data = false;
 };
 
 MultiRaftHeartbeatBatcher::MultiRaftHeartbeatBatcher(
@@ -87,25 +98,39 @@ void MultiRaftHeartbeatBatcher::Start() {
 
 MultiRaftHeartbeatBatcher::~MultiRaftHeartbeatBatcher() {
   std::lock_guard lock(mutex_);
-  LOG_IF(DFATAL, current_batch_ && !current_batch_->response_callback_data.empty())
+  LOG_IF(DFATAL, current_batch_ && !current_batch_->callbacks.empty())
       << "Not empty batch in ~MultiRaftHeartbeatBatcher";
 }
 
-void MultiRaftHeartbeatBatcher::AddRequestToBatch(ConsensusRequestPB* request,
-                                                  ConsensusResponsePB* response,
-                                                  HeartbeatResponseCallback callback) {
+void MultiRaftHeartbeatBatcher::AddHeartbeatToBatch(
+    const LWConsensusRequestPB& request, MultiRaftResponseCallback callback) {
   std::shared_ptr<MultiRaftConsensusData> data = nullptr;
   {
     std::lock_guard lock(mutex_);
-    current_batch_->response_callback_data.push_back({
-      .resp = response,
-      .callback = std::move(callback)
-    });
-    // Add a ConsensusRequestPB to the batch
-    current_batch_->batch_req.add_consensus_request()->Swap(request);
+    current_batch_->callbacks.push_back(std::move(callback));
+    current_batch_->batch_req->add_consensus_request()->CopyFrom(request);
     if (FLAGS_multi_raft_batch_size > 0
-        && current_batch_->response_callback_data.size() >= FLAGS_multi_raft_batch_size) {
+        && current_batch_->callbacks.size() >= FLAGS_multi_raft_batch_size) {
       data = PrepareNextBatchRequest();
+    }
+  }
+  SendBatchRequest(data);
+}
+
+void MultiRaftHeartbeatBatcher::AddDataRequestToBatch(
+    LWConsensusRequestPB* request, LWReplicateMsgsHolder msgs_holder,
+    MultiRaftResponseCallback callback) {
+  std::shared_ptr<MultiRaftConsensusData> data = nullptr;
+  {
+    std::lock_guard lock(mutex_);
+    current_batch_->callbacks.push_back(std::move(callback));
+    current_batch_->msgs_holders.push_back(std::move(msgs_holder));
+    current_batch_->batch_req->mutable_consensus_request()->push_back_ref(request);
+    current_batch_->has_data = true;
+    if (in_flight_ < std::max<uint32_t>(FLAGS_multi_raft_batch_max_in_flight, 1)) {
+      data = PrepareNextBatchRequest();
+    } else {
+      data_pending_ = true;
     }
   }
   SendBatchRequest(data);
@@ -122,12 +147,14 @@ void MultiRaftHeartbeatBatcher::PrepareAndSendBatchRequest() {
 
 std::shared_ptr<MultiRaftHeartbeatBatcher::MultiRaftConsensusData>
     MultiRaftHeartbeatBatcher::PrepareNextBatchRequest() {
-  if (!current_batch_ || current_batch_->batch_req.consensus_request_size() == 0) {
+  if (!current_batch_ || current_batch_->callbacks.empty()) {
     return nullptr;
   }
   batch_sender_->Snooze();
   auto data = std::make_shared<MultiRaftConsensusData>();
   current_batch_.swap(data);
+  data_pending_ = false;
+  ++in_flight_;
   auto running_calls = ++*running_calls_;
   LOG_IF(DFATAL, running_calls <= 0) << "Wrong number or running calls: " << running_calls;
   return data;
@@ -142,20 +169,42 @@ void MultiRaftHeartbeatBatcher::SendBatchRequest(std::shared_ptr<MultiRaftConsen
 
   data->controller.Reset();
   data->controller.set_timeout(MonoDelta::FromMilliseconds(
-      FLAGS_consensus_rpc_timeout_ms * data->batch_req.consensus_request_size()));
-  auto callback = [data, running_calls = running_calls_]() {
-    --*running_calls;
-    auto status = data->controller.status();
-    for (int i = 0; i < data->batch_req.consensus_request_size(); i++) {
-      auto callback_data = data->response_callback_data[i];
-      if (status.ok()) {
-        callback_data.resp->Swap(data->batch_res.mutable_consensus_response(i));
-      }
-      callback_data.callback(status);
-    }
-  };
+      data->has_data ? FLAGS_consensus_rpc_timeout_ms
+                     : FLAGS_consensus_rpc_timeout_ms * data->callbacks.size()));
+  data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   consensus_proxy_->MultiRaftUpdateConsensusAsync(
-      data->batch_req, &data->batch_res, &data->controller, callback);
+      *data->batch_req, data->batch_res, &data->controller,
+      [self = shared_from_this(), data] { self->BatchDone(data); });
+}
+
+void MultiRaftHeartbeatBatcher::BatchDone(std::shared_ptr<MultiRaftConsensusData> data) {
+  auto status = data->controller.status();
+  const auto num_requests = data->callbacks.size();
+  if (status.ok() && data->batch_res->consensus_response().size() != num_requests) {
+    status = STATUS_FORMAT(
+        IllegalState, "Wrong number of responses in MultiRaftUpdateConsensus: $0, expected $1",
+        data->batch_res->consensus_response().size(), num_requests);
+  }
+  std::shared_ptr<MultiRaftConsensusData> next;
+  {
+    std::lock_guard lock(mutex_);
+    --in_flight_;
+    if (data_pending_) {
+      next = PrepareNextBatchRequest();
+    }
+  }
+  --*running_calls_;
+  auto response = status.ok() ? data->batch_res->consensus_response().begin()
+                              : data->batch_res->consensus_response().end();
+  for (auto& callback : data->callbacks) {
+    if (status.ok()) {
+      callback(status, &*response);
+      ++response;
+    } else {
+      callback(status, nullptr);
+    }
+  }
+  SendBatchRequest(next);
 }
 
 void MultiRaftHeartbeatBatcher::Shutdown() {
@@ -166,8 +215,8 @@ void MultiRaftHeartbeatBatcher::Shutdown() {
     batch.swap(current_batch_);
   }
   static const Status status = STATUS(Aborted, "MultiRaft shutdown");
-  for (const auto& callback : batch->response_callback_data) {
-    callback.callback(status);
+  for (const auto& callback : batch->callbacks) {
+    callback(status, nullptr);
   }
 }
 
@@ -178,7 +227,8 @@ MultiRaftManager::MultiRaftManager(rpc::Messenger* messenger,
       local_peer_cloud_info_pb_(std::move(local_peer_cloud_info_pb)) {}
 
 MultiRaftHeartbeatBatcherPtr MultiRaftManager::AddOrGetBatcher(const RaftPeerPB& remote_peer_pb) {
-  if (!FLAGS_enable_multi_raft_heartbeat_batcher) {
+  if (!FLAGS_enable_multi_raft_heartbeat_batcher &&
+      !(FLAGS_multi_raft_batch_data_requests && FLAGS_enable_batched_tserver_rpcs)) {
     return nullptr;
   }
 

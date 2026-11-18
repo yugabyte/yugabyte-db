@@ -49,6 +49,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_context.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -58,7 +59,10 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.service.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_service.service.h"
+
+#include "yb/util/status_callback.h"
 
 namespace yb {
 class Schema;
@@ -79,8 +83,20 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void Write(
       const WriteRequestMsg* req, WriteResponseMsg* resp, rpc::RpcContext context) override;
 
+  void WriteBatch(
+      const LWWriteBatchRequestPB* req, LWWriteBatchResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ReadBatch(
+      const LWReadBatchRequestPB* req, LWReadBatchResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void WaitForAsyncWrite(
       const WaitForAsyncWriteRequestPB* req, WaitForAsyncWriteResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void WaitForAsyncWrites(
+      const WaitForAsyncWritesRequestPB* req, WaitForAsyncWritesResponsePB* resp,
       rpc::RpcContext context) override;
 
   void Read(const ReadRequestMsg* req, ReadResponseMsg* resp, rpc::RpcContext context) override;
@@ -122,6 +138,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void UpdateTransaction(const UpdateTransactionRequestPB* req,
                          UpdateTransactionResponsePB* resp,
                          rpc::RpcContext context) override;
+
+  void UpdateTransactions(const UpdateTransactionsRequestPB* req,
+                          UpdateTransactionsResponsePB* resp,
+                          rpc::RpcContext context) override;
 
   void GetTransactionStatus(const GetTransactionStatusRequestPB* req,
                             GetTransactionStatusResponsePB* resp,
@@ -285,6 +305,19 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   void Shutdown() override;
 
  private:
+  // A proxy to this tablet server, for handling batched requests as local calls.
+  TabletServerServiceProxy& LocalProxy();
+
+  std::once_flag local_proxy_once_;
+  std::unique_ptr<rpc::ProxyCache> local_proxy_cache_;
+  std::unique_ptr<TabletServerServiceProxy> local_proxy_;
+
+  // Handles one UpdateTransaction request. Calls done exactly once; on failure resp has no error
+  // filled in yet, done receives the status.
+  void DoUpdateTransaction(
+      const UpdateTransactionRequestPB& req, UpdateTransactionResponsePB* resp,
+      StdStatusCallback done);
+
   Status PerformWrite(
       const WriteRequestMsg* req, WriteResponseMsg* resp, rpc::RpcContext* context);
 
@@ -479,8 +512,8 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                        consensus::LWConsensusResponsePB *resp,
                        rpc::RpcContext context) override;
 
-  void MultiRaftUpdateConsensus(const consensus::MultiRaftConsensusRequestPB *req,
-                                consensus::MultiRaftConsensusResponsePB *resp,
+  void MultiRaftUpdateConsensus(const consensus::LWMultiRaftConsensusRequestPB *req,
+                                consensus::LWMultiRaftConsensusResponsePB *resp,
                                 rpc::RpcContext context) override;
 
   void RequestConsensusVote(const consensus::VoteRequestPB* req,

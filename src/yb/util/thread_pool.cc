@@ -22,12 +22,20 @@
 
 #include <boost/intrusive/list.hpp>
 
+#ifdef __linux__
+#include <linux/futex.h>
+#endif
+
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/linux_syscall_support.h"
+
 #include "yb/util/cgroups.h"
 #include "yb/util/enum_parse.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/monotime.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
@@ -56,6 +64,18 @@ DEFINE_NON_RUNTIME_string(thread_pool_worker_wake_order, "mixed",
     "longest parked workers, waking them last, so that idle ones are reclaimed.");
 DEFINE_validator(thread_pool_worker_wake_order,
     FLAG_OK_VALIDATOR(yb::ParseWorkerWakeOrder(_value)));
+
+DEFINE_RUNTIME_bool(thread_pool_notify_outside_lock, false,
+    "Wake a parked thread pool worker after releasing the worker's mutex, so that the woken worker "
+    "does not block on the mutex it was just signalled from.");
+
+DEFINE_NON_RUNTIME_bool(thread_pool_futex_park, false,
+    "Park idle thread pool workers on a per-worker futex instead of a condition variable, and wake "
+    "them after releasing the worker's mutex. Linux only. Applies to pools created after start.");
+
+DEFINE_RUNTIME_uint32(thread_pool_park_spin_us, 0,
+    "With --thread_pool_futex_park, how long an idle worker spins waiting for a task before it "
+    "parks in the kernel. 0 parks at once.");
 
 static bool detailed_logging = true;
 namespace yb {
@@ -96,6 +116,8 @@ struct ThreadPoolShare {
   std::atomic<size_t> task_queue_size{0};
   const std::unique_ptr<WaitingWorkers> waiting_workers;
   std::atomic<size_t> num_workers{0};
+  // Fixed for the pool's lifetime, so that a waker and a parked worker always agree on how to wake.
+  const bool futex_park;
 
   explicit ThreadPoolShare(ThreadPoolOptions o)
       : options(std::move(o))
@@ -103,6 +125,7 @@ struct ThreadPoolShare {
         , cgroup(options.cgroup)
 #endif
         , waiting_workers(CreateWaitingWorkers(options.wake_order))
+        , futex_park(FLAGS_thread_pool_futex_park)
   {}
 
   Cgroup* GetCgroup() const {
@@ -165,24 +188,47 @@ class Worker : public boost::intrusive::list_base_hook<> {
         --share_.num_workers;
       }
       task = std::exchange(task_, nullptr);
-      cond_.notify_one();
+      if (!futex_park_) {
+        cond_.notify_one();
+      }
+    }
+    if (futex_park_) {
+      FutexWake();
     }
     if (task) {
       task->Done(kShuttingDownStatus);
     }
   }
 
+  // The worker stays alive after the mutex is released: a worker that is handed a task does not
+  // stop on idle timeout, and Shutdown waits for in-flight Enqueue calls before destroying workers.
   WorkerState Notify(ThreadPoolTask* task) {
-    std::lock_guard lock(mutex_);
-    added_to_waiting_workers_ = false;
-    // There could be cases when we popped task after adding ourselves to worker queue (see below).
-    // So we are already processing task, but reside in worker queue.
-    if (state_ == WorkerState::kWaitingTask) {
-      DCHECK(!task_);
-      task_ = task;
-      cond_.notify_one();
+    WorkerState state;
+    bool wake_after_unlock = false;
+    {
+      std::lock_guard lock(mutex_);
+      added_to_waiting_workers_ = false;
+      state = state_;
+      // There could be cases when we popped task after adding ourselves to worker queue (see
+      // below). So we are already processing task, but reside in worker queue.
+      if (state_ == WorkerState::kWaitingTask) {
+        DCHECK(!task_);
+        task_ = task;
+        if (futex_park_ || FLAGS_thread_pool_notify_outside_lock) {
+          wake_after_unlock = true;
+        } else {
+          cond_.notify_one();
+        }
+      }
     }
-    return state_;
+    if (wake_after_unlock) {
+      if (futex_park_) {
+        FutexWake();
+      } else {
+        cond_.notify_one();
+      }
+    }
+    return state;
   }
 
   bool Idle() const {
@@ -291,7 +337,9 @@ class Worker : public boost::intrusive::list_base_hook<> {
       }
 
       bool timeout;
-      if (!persistent_ && share_.options.idle_timeout) {
+      if (futex_park_) {
+        timeout = FutexPark(lock);
+      } else if (!persistent_ && share_.options.idle_timeout) {
         CHECK(!task_);
         auto duration = share_.options.idle_timeout.ToSteadyDuration();
         timeout = cond_.wait_for(GetLockForCondition(lock), duration) == std::cv_status::timeout;
@@ -342,6 +390,69 @@ class Worker : public boost::intrusive::list_base_hook<> {
     }
   }
 
+  // Bumps the wake sequence and enters the kernel only when the worker is, or is about to be,
+  // asleep in FutexPark. Called without mutex_ held.
+  void FutexWake() {
+    wake_seq_.fetch_add(1, std::memory_order_seq_cst);
+#ifdef __linux__
+    if (parked_.load(std::memory_order_seq_cst)) {
+      sys_futex(reinterpret_cast<int32_t*>(&wake_seq_), FUTEX_WAKE | FUTEX_PRIVATE_FLAG, 1,
+                nullptr, nullptr, 0);
+    }
+#endif
+  }
+
+  // Releases mutex_ while waiting for FutexWake, an idle timeout, or a spurious wakeup, and
+  // reacquires it before returning. Returns true on idle timeout.
+  bool FutexPark(UniqueLock<std::mutex>& lock) REQUIRES(mutex_) {
+    const auto seq = wake_seq_.load(std::memory_order_acquire);
+    const bool timed = !persistent_ && share_.options.idle_timeout;
+    const auto deadline = timed ? CoarseMonoClock::now() + share_.options.idle_timeout
+                                : CoarseTimePoint::max();
+    auto& std_lock = GetLockForCondition(lock);
+    std_lock.unlock();
+    auto relock = ScopeExit([&std_lock] { std_lock.lock(); });
+
+    auto changed = [this, seq] { return wake_seq_.load(std::memory_order_acquire) != seq; };
+    if (auto spin_us = FLAGS_thread_pool_park_spin_us) {
+      auto spin_deadline = CoarseMonoClock::now() + std::chrono::microseconds(spin_us);
+      do {
+        for (int i = 0; i != 64; ++i) {
+          if (changed()) {
+            return false;
+          }
+          base::subtle::PauseCPU();
+        }
+      } while (CoarseMonoClock::now() < spin_deadline);
+    }
+
+#ifdef __linux__
+    parked_.store(true, std::memory_order_seq_cst);
+    auto unpark = ScopeExit([this] { parked_.store(false, std::memory_order_relaxed); });
+    if (changed()) {
+      return false;
+    }
+    struct timespec ts;
+    struct timespec* ts_ptr = nullptr;
+    if (timed) {
+      auto now = CoarseMonoClock::now();
+      if (now >= deadline) {
+        return true;
+      }
+      MonoDelta(deadline - now).ToTimeSpec(&ts);
+      ts_ptr = &ts;
+    }
+    sys_futex(reinterpret_cast<int32_t*>(&wake_seq_), FUTEX_WAIT | FUTEX_PRIVATE_FLAG,
+              static_cast<int32_t>(seq), reinterpret_cast<struct kernel_timespec*>(ts_ptr),
+              nullptr, 0);
+#else
+    while (!changed() && CoarseMonoClock::now() < deadline) {
+      std::this_thread::sleep_for(100us);
+    }
+#endif
+    return !changed() && timed && CoarseMonoClock::now() >= deadline;
+  }
+
   ThreadPoolShare& share_;
   const bool persistent_;
   WorkerLink* link_ = nullptr;
@@ -351,6 +462,9 @@ class Worker : public boost::intrusive::list_base_hook<> {
 #endif
   mutable std::mutex mutex_;
   std::condition_variable cond_;
+  const bool futex_park_;
+  std::atomic<uint32_t> wake_seq_{0};
+  std::atomic<bool> parked_{false};
   WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
   bool added_to_waiting_workers_ GUARDED_BY(mutex_) = false;
   ThreadPoolTask* task_ GUARDED_BY(mutex_) = nullptr;
@@ -512,7 +626,8 @@ FreeWorkerLinks free_worker_links_;
 
 Worker::Worker(ThreadPoolShare& share, bool persistent)
     : share_(share), persistent_(persistent),
-      link_(free_worker_links_.Acquire()) {
+      link_(free_worker_links_.Acquire()),
+      futex_park_(share.futex_park) {
   link_->worker = this;
 }
 
@@ -818,6 +933,11 @@ bool YBThreadPool::Owns(Thread* thread) {
 
 bool YBThreadPool::OwnsThisThread() {
   return Owns(Thread::current_thread());
+}
+
+bool YBThreadPool::IsCurrentThreadPoolWorker() {
+  auto* thread = Thread::current_thread();
+  return thread && thread->user_data() != nullptr;
 }
 
 bool YBThreadPool::BusyWait(MonoTime deadline) {

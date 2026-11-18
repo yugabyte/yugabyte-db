@@ -56,6 +56,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/thread_pool.h"
 #include "yb/util/flags.h"
 
 DEFINE_UNKNOWN_int32(num_connections_to_server, 8,
@@ -184,10 +185,15 @@ void Proxy::AsyncLocalCall(
     RpcController* controller, ResponseCallback callback,
     const bool force_run_callback_on_reactor, bool send_metadata,
     std::shared_ptr<void> buffers_holder) {
+  // Inline only on a thread pool worker: never run a handler on a reactor or a caller-owned thread.
+  const bool inline_call =
+      controller->inline_local_call() && YBThreadPool::IsCurrentThreadPoolWorker();
   controller->call_ = std::make_shared<LocalOutboundCall>(
       *method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
       std::move(callback),
-      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
+      inline_call ? nullptr
+                  : GetCallbackThreadPool(
+                        force_run_callback_on_reactor, controller->invoke_callback_mode()));
   if (!PrepareCall(req, controller)) {
     return;
   }
@@ -207,7 +213,10 @@ void Proxy::AsyncLocalCall(
       static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall(
           send_metadata ? context_->call_state_listener_factory() : nullptr,
           std::move(buffers_holder));
-  Queue queue(!controller->allow_local_calls_in_curr_thread());
+  if (inline_call) {
+    local_call->set_inline_dispatch(true);
+  }
+  Queue queue(!inline_call && !controller->allow_local_calls_in_curr_thread());
   context_->HandleLocal(local_call, queue);
 }
 

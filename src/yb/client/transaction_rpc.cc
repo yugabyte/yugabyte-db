@@ -30,9 +30,21 @@
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
+
+DEFINE_RUNTIME_bool(rpc_cheap_callbacks_on_reactor, false,
+    "Run the response callbacks that only do bookkeeping on the reactor thread instead of handing "
+    "them to a thread pool: UpdateTransaction for PENDING (heartbeat), APPLYING and "
+    "APPLIED_IN_ONE_OF_INVOLVED_TABLETS, UpdateTransactions batches and WaitForAsyncWrite.");
+
+DEFINE_RUNTIME_bool(rpc_inline_local_txn_calls, false,
+    "When a thread pool worker sends UpdateTransaction (APPLYING or "
+    "APPLIED_IN_ONE_OF_INVOLVED_TABLETS) or WaitForAsyncWrite to its own tablet server, run the "
+    "handler on the calling thread and the response callback on the thread that responds, instead "
+    "of handing both to thread pools.");
 
 namespace yb {
 namespace client {
@@ -165,9 +177,25 @@ template <class Req>
 void PrepareRequest(Req& req, rpc::RpcController& controller) {}
 
 void PrepareRequest(tserver::UpdateTransactionRequestPB& req, rpc::RpcController& controller) {
-  if (req.state().status() == TransactionStatus::CREATED) {
-    auto id = TransactionId::GenerateRandom();
-    req.mutable_state()->set_transaction_id(id.data(), id.size());
+  switch (req.state().status()) {
+    case TransactionStatus::CREATED: {
+      auto id = TransactionId::GenerateRandom();
+      req.mutable_state()->set_transaction_id(id.data(), id.size());
+      break;
+    }
+    case TransactionStatus::APPLYING: [[fallthrough]];
+    case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS:
+      if (FLAGS_rpc_inline_local_txn_calls) {
+        controller.set_inline_local_call(true);
+      }
+      [[fallthrough]];
+    case TransactionStatus::PENDING:
+      if (FLAGS_rpc_cheap_callbacks_on_reactor) {
+        controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+      }
+      break;
+    default:
+      break;
   }
 }
 

@@ -76,6 +76,7 @@
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_rowblock.h"
 
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/thread_pool.h"
@@ -168,6 +169,11 @@ DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
 DEPRECATE_FLAG(int32, max_wait_for_safe_time_ms, "02_2024");
+
+DEFINE_RUNTIME_bool(read_batch_inline_all_reads, false,
+    "Run every read of a ReadBatch on the thread that handles the batch, one after another. By "
+    "default only the last one does, and the others are queued so that reads waiting for safe time "
+    "do not wait for each other.");
 
 DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
     "Maximum number of concurrent backfill jobs that is allowed to run.");
@@ -1594,41 +1600,104 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
                                           UpdateTransactionResponsePB* resp,
                                           rpc::RpcContext context) {
   TRACE("UpdateTransaction");
+  VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
+          << ", context: " << context.ToString();
+  UpdateClock(*req, server_->Clock());
+  DoUpdateTransaction(
+      *req, resp,
+      [context = std::make_shared<rpc::RpcContext>(std::move(context)), resp,
+       clock = server_->Clock()](const Status& status) {
+    SetPropagatedHybridTimeIfHasField(*resp, *clock);
+    if (!status.ok()) {
+      SetupErrorAndRespond(*resp, status, *context);
+    } else {
+      context->RespondSuccess();
+    }
+  });
+}
 
+void TabletServiceImpl::UpdateTransactions(const UpdateTransactionsRequestPB* req,
+                                           UpdateTransactionsResponsePB* resp,
+                                           rpc::RpcContext context) {
+  TRACE("UpdateTransactions");
+  VLOG(1) << "UpdateTransactions: " << req->ShortDebugString()
+          << ", context: " << context.ToString();
+  UpdateClock(*req, server_->Clock());
+  if (req->requests().empty()) {
+    SetPropagatedHybridTimeIfHasField(*resp, *server_->Clock());
+    context.RespondSuccess();
+    return;
+  }
+  for (int i = 0; i != req->requests_size(); ++i) {
+    resp->add_responses();
+  }
+  struct BatchState {
+    std::atomic<int> pending;
+    rpc::RpcContext context;
+  };
+  // One extra pending entry for this loop: entries can complete synchronously, and the call, with
+  // req and resp, is gone once the batch responds.
+  auto batch = std::make_shared<BatchState>(req->requests_size() + 1, std::move(context));
+  auto entry_done = [batch, resp, clock = server_->Clock()] {
+    if (batch->pending.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      SetPropagatedHybridTimeIfHasField(*resp, *clock);
+      batch->context.RespondSuccess();
+    }
+  };
+  // Responses are added before any entry is handled, so their addresses stay fixed.
+  for (int i = 0; i != req->requests_size(); ++i) {
+    auto* entry_resp = resp->mutable_responses(i);
+    DoUpdateTransaction(
+        req->requests(i), entry_resp, [entry_resp, entry_done](const Status& status) {
+      if (!status.ok()) {
+        SetupError(entry_resp->mutable_error(), status);
+      }
+      entry_done();
+    });
+  }
+  entry_done();
+}
+
+void TabletServiceImpl::DoUpdateTransaction(
+    const UpdateTransactionRequestPB& request, UpdateTransactionResponsePB* resp,
+    StdStatusCallback done) {
+  const auto* req = &request;
   if (req->state().status() == TransactionStatus::CREATED &&
       RandomActWithProbability(TEST_delay_create_transaction_probability)) {
     std::this_thread::sleep_for(
         (FLAGS_transaction_rpc_timeout_ms + RandomUniformInt(-200, 200)) * 1ms);
   }
 
-  VLOG(1) << "UpdateTransaction: " << req->ShortDebugString()
-          << ", context: " << context.ToString();
   LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
       << __func__ << " missing propagated hybrid time for "
       << TransactionStatus_Name(req->state().status());
-  UpdateClock(*req, server_->Clock());
 
   LeaderTabletPeer tablet;
   auto txn_status = req->state().status();
   auto cleanup = txn_status == TransactionStatus::IMMEDIATE_CLEANUP ||
                  txn_status == TransactionStatus::GRACEFUL_CLEANUP;
   if (cleanup) {
-    auto peer_tablet = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
-        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
-    tablet.FillTabletPeer(std::move(peer_tablet));
+    auto peer_tablet = LookupTabletPeer(server_->tablet_peer_lookup(), req->tablet_id());
+    if (!peer_tablet.ok()) {
+      done(peer_tablet.status());
+      return;
+    }
+    tablet.FillTabletPeer(std::move(*peer_tablet));
     tablet.leader_term = OpId::kUnknownTerm;
   } else {
-    tablet = LookupLeaderTabletOrRespond(
-        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  }
-  if (!tablet) {
-    return;
+    auto leader = LookupLeaderTablet(server_->tablet_peer_lookup(), req->tablet_id(), resp);
+    if (!leader.ok()) {
+      done(leader.status());
+      return;
+    }
+    resp->clear_error();
+    tablet = std::move(*leader);
   }
 
   if (txn_status == TransactionStatus::COMMITTED && req->state().has_origination_info()) {
     auto status = CheckPersistenceTestRejection(req->state().origination_info());
     if (!status.ok()) {
-      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      done(status);
       return;
     }
     TEST_SYNC_POINT_CALLBACK(
@@ -1638,8 +1707,20 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
 
   auto state = std::make_unique<tablet::UpdateTxnOperation>(tablet.tablet);
   state->AllocateRequest()->CopyFrom(req->state());
-  state->set_completion_callback(MakeRpcOperationCompletionCallback(
-      std::move(context), resp, server_->Clock()));
+  if (txn_status == TransactionStatus::APPLYING && req->accepts_applied_in_response()) {
+    // The participant sets the flag if it applies the transaction before the operation completes.
+    auto applied = std::make_shared<std::atomic<bool>>(false);
+    state->set_applied_in_response(applied);
+    state->set_completion_callback(
+        [done = std::move(done), applied, resp](const Status& status) {
+      if (status.ok() && applied->load(std::memory_order_acquire)) {
+        resp->set_applied(true);
+      }
+      done(status);
+    });
+  } else {
+    state->set_completion_callback(std::move(done));
+  }
 
   if (req->state().status() == TransactionStatus::APPLYING ||
       req->state().status() == TransactionStatus::PROMOTING ||
@@ -3056,6 +3137,162 @@ void TabletServiceImpl::WaitForAsyncWrite(
       OpId::FromPB(req->op_id()), std::move(callback));
 }
 
+namespace {
+
+struct LocalCallsBatch {
+  LocalCallsBatch(size_t size, rpc::RpcContext context_)
+      : pending(size), controllers(size), sidecar_offsets(size), sidecar_counts(size),
+        context(std::move(context_)) {}
+
+  std::atomic<size_t> pending;
+  std::vector<rpc::RpcController> controllers;
+  std::vector<uint32_t> sidecar_offsets;
+  std::vector<uint32_t> sidecar_counts;
+  std::mutex sidecars_mutex;
+  rpc::RpcContext context;
+};
+
+// Handles each request of a batch as a local call on this thread, so that it goes through exactly
+// the same code as a request sent alone, and responds once all of them have responded. The
+// sidecars of all sub-responses are appended to the batch response's sidecars.
+// With inline_all false only the last request runs on this thread and the others are queued, so
+// that requests that can block, such as reads waiting for safe time, run concurrently.
+template <class BatchReq, class BatchResp, class Invoke>
+void HandleBatchAsLocalCalls(
+    const BatchReq& req, BatchResp* resp, rpc::RpcContext context, bool inline_all,
+    const Invoke& invoke) {
+  const auto& requests = req.requests();
+  const auto size = requests.size();
+  if (size == 0) {
+    context.RespondSuccess();
+    return;
+  }
+  using SubResp = std::remove_pointer_t<decltype(resp->add_responses())>;
+  std::vector<SubResp*> sub_resps;
+  sub_resps.reserve(size);
+  for (size_t i = 0; i != size; ++i) {
+    sub_resps.push_back(resp->add_responses());
+  }
+  // One extra pending call for this loop: calls can complete synchronously, and the batch call,
+  // with req and resp, is gone once it responds.
+  auto batch = std::make_shared<LocalCallsBatch>(size, std::move(context));
+  batch->pending.fetch_add(1, std::memory_order_relaxed);
+  auto call_done = [batch, resp] {
+    if (batch->pending.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      for (size_t j = 0; j != batch->sidecar_offsets.size(); ++j) {
+        resp->add_sidecar_offsets(batch->sidecar_offsets[j]);
+        resp->add_sidecar_counts(batch->sidecar_counts[j]);
+      }
+      batch->context.RespondSuccess();
+    }
+  };
+  const auto deadline = batch->context.GetClientDeadline();
+  size_t i = 0;
+  for (const auto& sub_req : requests) {
+    auto& controller = batch->controllers[i];
+    if (deadline != CoarseTimePoint::max()) {
+      controller.set_deadline(deadline);
+    }
+    controller.set_allow_local_calls_in_curr_thread(inline_all || i + 1 == size);
+    // The callback only moves data, so run it on the thread that responds.
+    controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+    auto* sub_resp = sub_resps[i];
+    invoke(sub_req, sub_resp, &controller, [batch, sub_resp, i, call_done] {
+      auto& controller = batch->controllers[i];
+      auto status = controller.status();
+      if (!status.ok()) {
+        sub_resp->Clear();
+        SetupError(sub_resp->mutable_error(), status);
+      } else {
+        std::lock_guard lock(batch->sidecars_mutex);
+        batch->sidecar_counts[i] = narrow_cast<uint32_t>(controller.GetSidecarsCount());
+        batch->sidecar_offsets[i] = narrow_cast<uint32_t>(
+            controller.TransferSidecars(&batch->context.sidecars()));
+      }
+      call_done();
+    });
+    ++i;
+  }
+  call_done();
+}
+
+} // namespace
+
+TabletServerServiceProxy& TabletServiceImpl::LocalProxy() {
+  std::call_once(local_proxy_once_, [this] {
+    local_proxy_cache_ = std::make_unique<rpc::ProxyCache>(
+        server_->GetMessenger(ash::Component::kTServer));
+    local_proxy_ = std::make_unique<TabletServerServiceProxy>(local_proxy_cache_.get(), HostPort());
+  });
+  return *local_proxy_;
+}
+
+void TabletServiceImpl::WriteBatch(
+    const LWWriteBatchRequestPB* req, LWWriteBatchResponsePB* resp, rpc::RpcContext context) {
+  TRACE("WriteBatch");
+  auto& proxy = LocalProxy();
+  HandleBatchAsLocalCalls(
+      *req, resp, std::move(context), /* inline_all= */ true,
+      [&proxy](const auto& sub_req, auto* sub_resp, rpc::RpcController* controller,
+               rpc::ResponseCallback callback) {
+    proxy.WriteAsync(sub_req, sub_resp, controller, std::move(callback));
+  });
+}
+
+void TabletServiceImpl::ReadBatch(
+    const LWReadBatchRequestPB* req, LWReadBatchResponsePB* resp, rpc::RpcContext context) {
+  TRACE("ReadBatch");
+  auto& proxy = LocalProxy();
+  HandleBatchAsLocalCalls(
+      *req, resp, std::move(context), FLAGS_read_batch_inline_all_reads,
+      [&proxy](const auto& sub_req, auto* sub_resp, rpc::RpcController* controller,
+               rpc::ResponseCallback callback) {
+    proxy.ReadAsync(sub_req, sub_resp, controller, std::move(callback));
+  });
+}
+
+void TabletServiceImpl::WaitForAsyncWrites(
+    const WaitForAsyncWritesRequestPB* req, WaitForAsyncWritesResponsePB* resp,
+    rpc::RpcContext context) {
+  if (req->entries().empty()) {
+    context.RespondSuccess();
+    return;
+  }
+  for (int i = 0; i != req->entries_size(); ++i) {
+    resp->add_responses();
+  }
+  struct BatchState {
+    std::atomic<int> pending;
+    rpc::RpcContext context;
+  };
+  // One extra pending entry for this loop, see UpdateTransactions.
+  auto batch = std::make_shared<BatchState>(req->entries_size() + 1, std::move(context));
+  ASH_ENABLE_CONCURRENT_UPDATES();
+  SET_WAIT_STATUS(Raft_WaitingForPipelinedReplication);
+  for (int i = 0; i != req->entries_size(); ++i) {
+    const auto& entry = req->entries(i);
+    auto callback = [batch, entry_resp = resp->mutable_responses(i)](const Status& status) {
+      if (!status.ok()) {
+        SetupError(entry_resp->mutable_error(), status);
+      }
+      if (batch->pending.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        batch->context.RespondSuccess();
+      }
+    };
+    // As in WaitForAsyncWrite, a follower or post-split parent can still verify writes.
+    auto tablet_result = LookupTabletPeer(server_->tablet_peer_lookup(), entry.tablet_id());
+    if (!tablet_result) {
+      callback(tablet_result.status());
+      continue;
+    }
+    tablet_result->tablet_peer->RegisterAsyncWriteCompletion(
+        OpId::FromPB(entry.op_id()), std::move(callback));
+  }
+  if (batch->pending.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+    batch->context.RespondSuccess();
+  }
+}
+
 void TabletServiceImpl::Read(const ReadRequestMsg* req,
                              ReadResponseMsg* resp,
                              rpc::RpcContext context) {
@@ -3108,60 +3345,55 @@ void ConsensusServiceImpl::CompleteUpdateConsensusResponse(
 }
 
 void ConsensusServiceImpl::MultiRaftUpdateConsensus(
-      const consensus::MultiRaftConsensusRequestPB *req,
-      consensus::MultiRaftConsensusResponsePB *resp,
+      const consensus::LWMultiRaftConsensusRequestPB* req,
+      consensus::LWMultiRaftConsensusResponsePB* resp,
       rpc::RpcContext context) {
-    DVLOG(3) << "Received Batch Consensus Update RPC: " << req->ShortDebugString();
-    // Effectively performs ConsensusServiceImpl::UpdateConsensus for
-    // each ConsensusRequestPB in the batch but does not fail the entire
-    // batch if a single request fails.
-    for (int i = 0; i < req->consensus_request_size(); i++) {
-      // Unfortunately, we have to use const_cast here,
-      // because the protobuf-generated interface only gives us a const request
-      // but we need to be able to move messages out of the request for efficiency.
-      auto consensus_req = const_cast<ConsensusRequestPB*>(&req->consensus_request(i));
-      auto consensus_resp = resp->add_consensus_response();;
+  DVLOG(3) << "Received Batch Consensus Update RPC: " << req->ShortDebugString();
+  // Effectively performs ConsensusServiceImpl::UpdateConsensus for each request in the batch, one
+  // after another, but does not fail the entire batch if a single request fails.
+  for (const auto& consensus_req_ref : req->consensus_request()) {
+    // As in UpdateConsensus, operations are moved out of the request, which the shared params of
+    // the call keep alive.
+    auto consensus_req = const_cast<consensus::LWConsensusRequestPB*>(&consensus_req_ref);
+    auto consensus_resp = resp->add_consensus_response();
 
-      auto uuid_match_res = CheckUuidMatch(tablet_manager_, "UpdateConsensus", consensus_req,
-                                           context.requestor_string());
-      if (!uuid_match_res.ok()) {
-        SetupError(consensus_resp->mutable_error(), uuid_match_res.status());
-        continue;
-      }
-
-      auto peer_tablet_res = LookupTabletPeer(tablet_manager_, consensus_req->tablet_id());
-      if (!peer_tablet_res.ok()) {
-        SetupError(consensus_resp->mutable_error(), peer_tablet_res.status());
-        continue;
-      }
-      auto tablet_peer = peer_tablet_res.get().tablet_peer;
-
-      // Submit the update directly to the TabletPeer's Consensus instance.
-      auto consensus_res = GetConsensus(tablet_peer);
-      if (!consensus_res.ok()) {
-        SetupError(consensus_resp->mutable_error(), consensus_res.status());
-        continue;
-      }
-      auto consensus = *consensus_res;
-
-      // TODO(lw_uc) effective update for multiraft.
-      auto temp_resp = rpc::MakeSharedMessage<consensus::LWConsensusResponsePB>();
-      Status s = consensus->Update(
-         rpc::CopySharedMessage(*consensus_req),
-         temp_resp.get(), context.GetClientDeadline());
-      if (PREDICT_FALSE(!s.ok())) {
-        // Clear the response first, since a partially-filled response could
-        // result in confusing a caller, or in having missing required fields
-        // in embedded optional messages.
-        consensus_resp->Clear();
-        SetupError(consensus_resp->mutable_error(), s);
-        continue;
-      }
-
-      CompleteUpdateConsensusResponse(tablet_peer, temp_resp.get());
-      temp_resp->ToGoogleProtobuf(consensus_resp);
+    auto uuid_match_res = CheckUuidMatch(tablet_manager_, "UpdateConsensus", consensus_req,
+                                         context.requestor_string());
+    if (!uuid_match_res.ok()) {
+      SetupError(consensus_resp->mutable_error(), uuid_match_res.status());
+      continue;
     }
-    context.RespondSuccess();
+
+    auto peer_tablet_res = LookupTabletPeer(tablet_manager_, consensus_req->tablet_id());
+    if (!peer_tablet_res.ok()) {
+      SetupError(consensus_resp->mutable_error(), peer_tablet_res.status());
+      continue;
+    }
+    auto tablet_peer = peer_tablet_res.get().tablet_peer;
+
+    // Submit the update directly to the TabletPeer's Consensus instance.
+    auto consensus_res = GetConsensus(tablet_peer);
+    if (!consensus_res.ok()) {
+      SetupError(consensus_resp->mutable_error(), consensus_res.status());
+      continue;
+    }
+    auto consensus = *consensus_res;
+
+    Status s = consensus->Update(
+        SharedField(context.shared_params(), consensus_req), consensus_resp,
+        context.GetClientDeadline());
+    if (PREDICT_FALSE(!s.ok())) {
+      // Clear the response first, since a partially-filled response could
+      // result in confusing a caller, or in having missing required fields
+      // in embedded optional messages.
+      consensus_resp->Clear();
+      SetupError(consensus_resp->mutable_error(), s);
+      continue;
+    }
+
+    CompleteUpdateConsensusResponse(tablet_peer, consensus_resp);
+  }
+  context.RespondSuccess();
 }
 
 void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB* req,

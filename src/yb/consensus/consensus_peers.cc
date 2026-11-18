@@ -89,6 +89,8 @@ TAG_FLAG(collect_update_consensus_traces, advanced);
 DECLARE_int32(raft_heartbeat_interval_ms);
 
 DECLARE_bool(enable_multi_raft_heartbeat_batcher);
+DECLARE_bool(multi_raft_batch_data_requests);
+DECLARE_bool(enable_batched_tserver_rpcs);
 
 DEFINE_test_flag(double, fault_crash_on_leader_request_fraction, 0.0,
                  "Fraction of the time when the leader will crash just before sending an "
@@ -399,16 +401,14 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       return;
     }
 
-    // TODO(lw_uc) support multiraft heartbeat with LW
-    update_request_->ToGoogleProtobuf(&heartbeat_request_);
-    update_response_->ToGoogleProtobuf(&heartbeat_response_);
     cur_heartbeat_id_++;
     processing_lock.unlock();
-    performing_update_lock.unlock();
+    // The batcher copies the request, so update_request_ can be reused right away.
+    auto request = update_request_;
     performing_heartbeat_lock.release();
-    multi_raft_batcher_->AddRequestToBatch(
-        &heartbeat_request_, &heartbeat_response_,
-        std::bind(&Peer::ProcessHeartbeatResponse, retain_self, _1));
+    multi_raft_batcher_->AddHeartbeatToBatch(
+        *request, std::bind(&Peer::ProcessHeartbeatResponse, retain_self, _1, _2));
+    performing_update_lock.unlock();
     return;
   }
 
@@ -426,6 +426,15 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   minimum_viable_heartbeat_ = cur_heartbeat_id_ + 1;
   processing_lock.unlock();
   performing_update_lock.release();
+  if (multi_raft_batcher_ && FLAGS_multi_raft_batch_data_requests &&
+      FLAGS_enable_batched_tserver_rpcs) {
+    last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
+    // update_request_ stays valid while performing_update_mutex_ is held, i.e. until the response.
+    multi_raft_batcher_->AddDataRequestToBatch(
+        update_request_, std::move(msgs_holder),
+        std::bind(&Peer::ProcessBatchedResponse, retain_self, trace, _1, _2));
+    return;
+  }
   controller_.set_invoke_callback_mode(rpc::InvokeCallbackMode::kThreadPoolHigh);
   last_rpc_start_time_.store(CoarseMonoClock::now(), std::memory_order_release);
   proxy_->UpdateAsync(update_request_, trigger_mode, update_response_, &controller_,
@@ -517,10 +526,24 @@ void Peer::ProcessResponse(TracePtr trace) {
   if (status.ok()) {
     status = controller_.thread_pool_failure();
   }
-  last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
   controller_.Reset();
+  DoProcessResponse(status);
+}
 
-  if (update_response_->has_trace_buffer()) {
+void Peer::ProcessBatchedResponse(
+    TracePtr trace, const Status& status, const LWConsensusResponsePB* response) {
+  ADOPT_TRACE(trace.get());
+  DCHECK(performing_update_mutex_.is_locked()) << "Got a response when nothing was pending.";
+  if (response) {
+    update_response_->CopyFrom(*response);
+  }
+  DoProcessResponse(status);
+}
+
+void Peer::DoProcessResponse(const Status& status) {
+  last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
+
+  if (status.ok() && update_response_->has_trace_buffer()) {
     TRACE(
         "Received response from $0:\nBEGIN UpdateConsensus\n$1END UpdateConsensus",
         peer_pb_.permanent_uuid(), update_response_->trace_buffer().ToBuffer());
@@ -539,9 +562,9 @@ void Peer::ProcessResponse(TracePtr trace) {
   }
 }
 
-void Peer::ProcessHeartbeatResponse(const Status& status) {
+void Peer::ProcessHeartbeatResponse(
+    const Status& status, const LWConsensusResponsePB* response) {
   DCHECK(performing_heartbeat_mutex_.is_locked()) << "Got a heartbeat when nothing was pending.";
-  DCHECK(heartbeat_request_.ops().empty()) << "Got a heartbeat with a non-zero number of ops.";
   last_rpc_start_time_.store(CoarseTimePoint::min(), std::memory_order_release);
 
   auto performing_heartbeat_lock = LockPerformingHeartbeat(std::adopt_lock);
@@ -558,9 +581,9 @@ void Peer::ProcessHeartbeatResponse(const Status& status) {
     return;
   }
 
-  // TODO(lw_uc) support multiraft heartbeat with LW
-  auto lw_response = rpc::CopySharedMessage(heartbeat_response_);
-  bool more_pending = ProcessResponseWithStatus(status, lw_response.get());
+  // The response stays valid until this callback returns, and nobody else reads it.
+  bool more_pending = ProcessResponseWithStatus(
+      status, const_cast<LWConsensusResponsePB*>(response));
 
   if (more_pending) {
     auto performing_update_lock = LockPerformingUpdate(std::try_to_lock);

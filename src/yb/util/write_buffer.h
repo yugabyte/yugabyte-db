@@ -92,6 +92,8 @@ class WriteBuffer {
   }
 
   void AddBlock(const RefCntBuffer& buffer, size_t skip);
+  // Adds only size bytes of buffer, starting at skip.
+  void AddBlock(const RefCntBuffer& buffer, size_t skip, size_t size);
   void Take(WriteBuffer* source);
   void Reset();
   void Flush(boost::container::small_vector_base<RefCntSlice>* output);
@@ -291,8 +293,12 @@ class WriteBuffer {
     explicit Block(size_t size) : buffer_(size), skip_(0) {}
     Block(const RefCntBuffer& buffer, size_t skip) : buffer_(buffer), skip_(skip) {}
 
+    // A block of size bytes of a buffer that others may use too, so it is never shrunk in place.
+    Block(const RefCntBuffer& buffer, size_t skip, size_t size)
+        : buffer_(buffer), skip_(skip), end_(skip + size) {}
+
     size_t size() const {
-      return buffer_.size() - skip_;
+      return limit() - skip_;
     }
 
     char* data() const {
@@ -300,15 +306,19 @@ class WriteBuffer {
     }
 
     char* end() const {
-      return buffer_.end();
+      return buffer_.data() + limit();
     }
 
     void Shrink(size_t size) {
-      buffer_.Shrink(size + skip_);
+      if (end_) {
+        end_ = skip_ + size;
+      } else {
+        buffer_.Shrink(size + skip_);
+      }
     }
 
     Slice AsSlice() const {
-      return Slice(data(), buffer_.end());
+      return Slice(data(), end());
     }
 
     const RefCntBuffer& buffer() const {
@@ -321,8 +331,14 @@ class WriteBuffer {
     }
 
    private:
+    size_t limit() const {
+      return end_ ? end_ : buffer_.size();
+    }
+
     RefCntBuffer buffer_;
     size_t skip_;
+    // Exclusive end of the block in buffer_, or 0 for the end of buffer_.
+    size_t end_ = 0;
   };
 
   const size_t block_size_;

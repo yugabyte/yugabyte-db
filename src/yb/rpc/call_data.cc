@@ -33,6 +33,17 @@ size_t ReceivedSidecars::Transfer(const RefCntBuffer& buffer, Sidecars* dest) {
   return dest->Take(buffer, sidecar_bounds_);
 }
 
+size_t ReceivedSidecars::Transfer(
+    const RefCntBuffer& buffer, Sidecars* dest, size_t begin, size_t end) {
+  end = std::min(end, GetCount());
+  if (begin >= end) {
+    return dest->Take(buffer, decltype(sidecar_bounds_)());
+  }
+  decltype(sidecar_bounds_) bounds(
+      sidecar_bounds_.begin() + begin, sidecar_bounds_.begin() + end + 1);
+  return dest->Take(buffer, bounds);
+}
+
 Status ReceivedSidecars::Parse(
     Slice message, const boost::iterator_range<const uint32_t*>& offsets) {
   sidecar_bounds_.reserve(offsets.size() + 1);

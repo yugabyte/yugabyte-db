@@ -38,6 +38,11 @@ TAG_FLAG(ysql_disable_index_backfill, advanced);
 DEPRECATE_FLAG(bool, enable_pg_savepoints, "04_2024");
 DEPRECATE_FLAG(bool, ysql_yb_disable_ddl_transaction_block_for_read_committed, "09_2026");
 
+DEFINE_RUNTIME_AUTO_bool(enable_batched_tserver_rpcs, kLocalVolatile, false, true,
+    "Whether tablet servers may send the RPCs that carry entries for several tablets: "
+    "UpdateTransactions, WaitForAsyncWrites, WriteBatch, ReadBatch and data-bearing "
+    "MultiRaftUpdateConsensus. Each batching feature is also controlled by its own flag.");
+
 DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, true,
     "If false, disables automatic tablet splitting driven from the yb-master side, and in this "
     "case the value of tserver's ysql_num_tablets is recommended to be set to -1.");

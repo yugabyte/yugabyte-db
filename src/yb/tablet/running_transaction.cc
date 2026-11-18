@@ -644,6 +644,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
 
     apply_data_ = *data;
     apply_data_.apply_state = &apply_state_;
+    // The pointer is owned by the operation, which is gone by the time the async apply runs.
+    apply_data_.applied_in_response = nullptr;
 
     LOG_IF_WITH_PREFIX(DFATAL, local_commit_time_ != data->commit_ht)
         << "Commit time does not match: " << local_commit_time_ << " vs " << data->commit_ht;

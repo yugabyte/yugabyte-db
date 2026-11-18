@@ -641,7 +641,9 @@ service ConsensusService {
 
   // Similar to UpdateConsensus but takes a batch of ConsensusRequestPB
   // and returns a batch of ConsensusResponsePB.
-  rpc MultiRaftUpdateConsensus(MultiRaftConsensusRequestPB) returns (MultiRaftConsensusResponsePB);
+  rpc MultiRaftUpdateConsensus(MultiRaftConsensusRequestPB) returns (MultiRaftConsensusResponsePB) {
+    option (yb.rpc.lightweight_method).sides = BOTH;
+  };
 
   // RequestVote() from Raft.
   rpc RequestConsensusVote(VoteRequestPB) returns (VoteResponsePB);

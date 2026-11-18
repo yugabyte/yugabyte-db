@@ -13,6 +13,11 @@
 
 #pragma once
 
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <vector>
+
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
 
@@ -25,7 +30,9 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/opid.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
 
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver.pb.h"
@@ -88,6 +95,49 @@ struct FlushExtraResult {
   ReadHybridTime used_read_time;
 };
 
+class AsyncRpc;
+
+// A call that carries the requests of several AsyncRpcs, see RpcCoalescer.
+struct CoalescedCall {
+  CoalescedCall();
+  virtual ~CoalescedCall();
+
+  rpc::RpcController controller;
+};
+
+// Number of CoalescedCall objects alive in this process.
+int64_t TEST_NumLiveCoalescedCalls();
+
+// Packs the first attempts of the Write and Read RPCs of one batcher flush that go to the same
+// tablet server into one WriteBatch or ReadBatch call. Each AsyncRpc still selects its tablet
+// server and handles its response, errors and retries on its own; only the transport is shared.
+// An rpc that does not reach SendRpcToTserver before Flush, for example because it waits for a
+// tablet lookup, is sent alone.
+class RpcCoalescer {
+ public:
+  RpcCoalescer(bool coalesce_writes, bool coalesce_reads)
+      : coalesce_writes_(coalesce_writes), coalesce_reads_(coalesce_reads) {}
+
+  // Returns true if the coalescer took the rpc, which is then sent by Flush.
+  bool Add(AsyncRpc* rpc, const RemoteTabletServer* tserver);
+
+  // Sends the rpcs taken so far. Later Add calls return false.
+  void Flush();
+
+ private:
+  struct Entry {
+    const RemoteTabletServer* tserver;
+    bool is_write;
+    std::shared_ptr<AsyncRpc> rpc;
+  };
+
+  const bool coalesce_writes_;
+  const bool coalesce_reads_;
+  std::mutex mutex_;
+  bool flushed_ = false;
+  std::vector<Entry> entries_;
+};
+
 // An Async RPC which is in-flight to a tablet. Initially, the RPC is sent
 // to the leader replica, but it may be retried with another replica if the
 // leader fails.
@@ -116,14 +166,37 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // out local call could still be filling it.
   bool HasResponse() const;
 
+  bool allow_local_calls_in_curr_thread() const {
+    return retrier().controller().allow_local_calls_in_curr_thread();
+  }
+
+  // The first attempt of this rpc goes through coalescer.
+  void set_coalescer(std::shared_ptr<RpcCoalescer> coalescer) {
+    coalescer_ = std::move(coalescer);
+  }
+
+  virtual void CallRemoteMethod() = 0;
+
  protected:
+  friend class RpcCoalescer;
+
+  // The sidecars of the response, which come either from this rpc's own call or from its part of
+  // a coalesced call.
+  Result<RefCntSlice> ExtractResponseSidecar(size_t idx) const;
+  size_t TransferResponseSidecars(rpc::Sidecars* dest);
+  RefCntBuffer ResponseDataHolder() const;
+
+  // Set while this rpc's response comes from a coalesced call.
+  std::shared_ptr<CoalescedCall> coalesced_call_;
+  size_t coalesced_sidecar_offset_ = 0;
+  size_t coalesced_sidecar_count_ = 0;
+  std::shared_ptr<RpcCoalescer> coalescer_;
+
   void Finished(const Status& status) override;
 
   void HandleFinished(RefCntBuffer data_holder, const Status& status);
 
   void SendRpcToTserver(int attempt_num) override;
-
-  virtual void CallRemoteMethod() = 0;
 
   // This is the last step where errors and responses are collected from the response and
   // stored in batcher. If there's a callback from the user, it is done in this step.
@@ -177,6 +250,13 @@ class AsyncRpcBase : public AsyncRpc {
   const Resp& resp() const { return resp_; }
   Resp& resp() { return resp_; }
 
+  Req& req() { return req_; }
+
+  // Completes this rpc with its part of a coalesced call. sub_resp is null when the call failed.
+  void FinishCoalesced(
+      std::shared_ptr<CoalescedCall> call, const Resp* sub_resp, size_t sidecar_offset,
+      size_t sidecar_count, const Status& status);
+
   bool RefreshMetaCacheWithResponse() override;
 
   void SetRequestRaftConfigOpidIndex(int64_t opid_index) override;
@@ -210,9 +290,10 @@ class WriteRpc : public AsyncRpcBase<tserver::LWWriteRequestPB, tserver::LWWrite
 
   std::string GetRpcName() override { return "Write"; }
 
+  void CallRemoteMethod() override;
+
  private:
   Status SwapResponses(RefCntBuffer data_holder) override;
-  void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
 };
 
@@ -227,10 +308,26 @@ class ReadRpc : public AsyncRpcBase<tserver::LWReadRequestPB, tserver::LWReadRes
 
   std::string GetRpcName() override { return "Read"; }
 
+  void CallRemoteMethod() override;
+
  private:
   Status SwapResponses(RefCntBuffer data_holder) override;
-  void CallRemoteMethod() override;
   void NotifyBatcher(const Status& status) override;
+};
+
+// Called once per async write wait, with the tablet the write was sent to.
+using AsyncWriteCompletionCallback =
+    std::function<void(const TabletId& tracking_tablet_id, const OpId& op_id, const Status&)>;
+
+// An async write whose completion the transaction still has to verify.
+struct AsyncWriteWait {
+  TabletId tracking_tablet_id;
+  PartitionKey partition_key;
+  std::shared_ptr<const YBTable> table;
+  OpId op_id;
+  // The tablet the write went to, used to find the leader when waits are batched.
+  RemoteTabletPtr tablet;
+  ash::WaitStateInfoPtr wait_state;
 };
 
 class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
@@ -238,9 +335,17 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   // Uses partition_key to handle potential tablet splits. tracking_tablet_id always points to the
   // original parent for tracking purposes.
   WaitForAsyncWriteRpc(
-      const BatcherPtr& batcher, TabletId tracking_tablet_id, PartitionKey partition_key,
+      YBClient* client, CoarseTimePoint deadline, TransactionId transaction_id,
+      TabletId tracking_tablet_id, PartitionKey partition_key,
       const std::shared_ptr<const YBTable>& table, const OpId& op_id,
-      const ash::WaitStateInfoPtr& issuing_wait_state);
+      const ash::WaitStateInfoPtr& issuing_wait_state, AsyncWriteCompletionCallback callback);
+
+  WaitForAsyncWriteRpc(
+      YBClient* client, CoarseTimePoint deadline, TransactionId transaction_id,
+      const AsyncWriteWait& wait, AsyncWriteCompletionCallback callback)
+      : WaitForAsyncWriteRpc(
+            client, deadline, transaction_id, wait.tracking_tablet_id, wait.partition_key,
+            wait.table, wait.op_id, wait.wait_state, std::move(callback)) {}
 
   ~WaitForAsyncWriteRpc() = default;
 
@@ -262,10 +367,12 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
   void OnKeyLookup(const Result<internal::RemoteTabletPtr>& result);
   void FinishOrRetry(Status&& status, bool allow_retry = true);
 
+  YBClient* const client_;
+  const TransactionId transaction_id_;
   const TabletId tracking_tablet_id_;
   const PartitionKey partition_key_;
   const OpId op_id_;
-  BatcherPtr batcher_;
+  const AsyncWriteCompletionCallback callback_;
   const std::shared_ptr<const YBTable> table_;
   TabletInvoker tablet_invoker_;
   tserver::WaitForAsyncWriteRequestPB req_;
@@ -276,6 +383,14 @@ class WaitForAsyncWriteRpc : public rpc::Rpc, public TabletRpc {
 
   rpc::RpcCommandPtr retained_self_;
 };
+
+// Verifies the given async writes, all led by one tablet server, with one WaitForAsyncWrites RPC.
+// A write that the batch does not verify is waited for alone with WaitForAsyncWriteRpc, which
+// handles leader changes and tablet splits.
+void SendWaitForAsyncWrites(
+    YBClient* client, RemoteTabletServer* tserver, CoarseTimePoint deadline,
+    TransactionId transaction_id, std::vector<AsyncWriteWait> waits,
+    AsyncWriteCompletionCallback callback);
 
 }  // namespace internal
 }  // namespace client

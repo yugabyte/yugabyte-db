@@ -13,6 +13,8 @@
 
 #include "yb/client/async_rpc.h"
 
+#include <atomic>
+
 #include "yb/ash/wait_state.h"
 
 #include "yb/client/batcher.h"
@@ -111,6 +113,8 @@ DEFINE_test_flag(bool, asyncrpc_common_response_check_fail_once, false,
     "For testing only. When set to true triggers AsyncRpc::Failure() with RuntimeError status "
     "inside AsyncRpcBase::CommonResponseCheck() and returns false from this method.");
 
+DECLARE_bool(rpc_cheap_callbacks_on_reactor);
+DECLARE_bool(rpc_inline_local_txn_calls);
 DECLARE_bool(collect_end_to_end_traces);
 
 using namespace std::placeholders;
@@ -226,7 +230,33 @@ std::shared_ptr<const YBTable> AsyncRpc::table() const {
 }
 
 bool AsyncRpc::HasResponse() const {
+  if (coalesced_call_) {
+    return coalesced_call_->controller.status().ok();
+  }
   return retrier().controller().status().ok();
+}
+
+Result<RefCntSlice> AsyncRpc::ExtractResponseSidecar(size_t idx) const {
+  if (coalesced_call_) {
+    SCHECK_LT(idx, coalesced_sidecar_count_, InvalidArgument, "Sidecar index out of range");
+    return coalesced_call_->controller.ExtractSidecar(coalesced_sidecar_offset_ + idx);
+  }
+  return retrier().controller().ExtractSidecar(idx);
+}
+
+size_t AsyncRpc::TransferResponseSidecars(rpc::Sidecars* dest) {
+  if (coalesced_call_) {
+    return coalesced_call_->controller.TransferSidecars(
+        dest, coalesced_sidecar_offset_, coalesced_sidecar_offset_ + coalesced_sidecar_count_);
+  }
+  return mutable_retrier()->mutable_controller()->TransferSidecars(dest);
+}
+
+RefCntBuffer AsyncRpc::ResponseDataHolder() const {
+  if (coalesced_call_) {
+    return coalesced_call_->controller.data_holder();
+  }
+  return retrier().controller().data_holder();
 }
 
 rpc::RpcController* AsyncRpc::PrepareController() {
@@ -254,7 +284,7 @@ void AsyncRpc::Finished(const Status& status) {
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:1");
       DEBUG_ONLY_TEST_SYNC_POINT("AsyncRpc::Finished:SetTimedOut:2");
     }
-    data_holder = retrier().controller().data_holder();
+    data_holder = ResponseDataHolder();
   }
   if (tablet_invoker_.Done(&new_status)) {
     HandleFinished(std::move(data_holder), new_status);
@@ -501,6 +531,7 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
   if (async_rpc_metrics_) {
     async_rpc_metrics_->time_to_send->Increment(ToMicroseconds(CoarseMonoClock::Now() - start_));
   }
+  coalesced_call_ = nullptr;
   auto callback = [this](const Status& status) {
     TRACE_TO(trace_, "AsyncRpc::SendRpcToTserver WaitForAsyncWrites completed");
     if (!status.ok()) {
@@ -509,6 +540,14 @@ void AsyncRpc::SendRpcToTserver(int attempt_num) {
     }
 
     ts_proxy_ = tablet_invoker_.proxy();
+    if (auto coalescer = std::move(coalescer_)) {
+      // Account for the attempt as if the call was sent alone. Not AsyncRpc::PrepareController,
+      // whose local call buffers holder would never be released without a call.
+      rpc::Rpc::PrepareController();
+      if (coalescer->Add(this, &tablet_invoker_.current_ts())) {
+        return;
+      }
+    }
     CallRemoteMethod();
   };
 
@@ -690,6 +729,19 @@ void AsyncRpcBase<Req, Resp>::ProcessResponseFromTserver(
   if (!swap_status.ok()) {
     Failed(swap_status);
   }
+}
+
+template <class Req, class Resp>
+void AsyncRpcBase<Req, Resp>::FinishCoalesced(
+    std::shared_ptr<CoalescedCall> call, const Resp* sub_resp, size_t sidecar_offset,
+    size_t sidecar_count, const Status& status) {
+  if (sub_resp) {
+    resp_.CopyFrom(*sub_resp);
+    coalesced_call_ = std::move(call);
+    coalesced_sidecar_offset_ = sidecar_offset;
+    coalesced_sidecar_count_ = sidecar_count;
+  }
+  Finished(status);
 }
 
 template <class Req, class Resp>
@@ -923,7 +975,7 @@ Status WriteRpc::SwapResponses(RefCntBuffer data_holder) {
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
           ql_op->set_rows_data(VERIFY_RESULT(
-              retrier().controller().ExtractSidecar(ql_response.rows_data_sidecar())));
+              ExtractResponseSidecar(ql_response.rows_data_sidecar())));
         }
         ql_idx++;
         break;
@@ -942,8 +994,7 @@ Status WriteRpc::SwapResponses(RefCntBuffer data_holder) {
             // Transfer all sidecars from downcall to upcall. Remembering index of the first
             // sidecar in upcall. So we could convert downcall sidecar index to upcall index
             // using simple addition.
-            pgsql_upcall_sidecar_offset = mutable_retrier()->mutable_controller()->TransferSidecars(
-                &pgsql_op->sidecars());
+            pgsql_upcall_sidecar_offset = TransferResponseSidecars(&pgsql_op->sidecars());
           }
           pgsql_op->SetSidecarIndex(
               pgsql_upcall_sidecar_offset + pgsql_response.rows_data_sidecar());
@@ -1080,7 +1131,7 @@ Status ReadRpc::SwapResponses(RefCntBuffer data_holder) {
         if (ql_response.has_rows_data_sidecar()) {
           // TODO avoid copying sidecar here.
           ql_op->set_rows_data(VERIFY_RESULT(
-              retrier().controller().ExtractSidecar(ql_response.rows_data_sidecar())));
+              ExtractResponseSidecar(ql_response.rows_data_sidecar())));
         }
         ql_idx++;
         break;
@@ -1099,8 +1150,7 @@ Status ReadRpc::SwapResponses(RefCntBuffer data_holder) {
         const auto& pgsql_response = pgsql_op->response();
         if (pgsql_response.has_rows_data_sidecar()) {
           if (pgsql_upcall_sidecar_offset == -1) {
-            pgsql_upcall_sidecar_offset = mutable_retrier()->mutable_controller()->TransferSidecars(
-                &pgsql_op->sidecars());
+            pgsql_upcall_sidecar_offset = TransferResponseSidecars(&pgsql_op->sidecars());
           }
           pgsql_op->SetSidecarIndex(
               pgsql_upcall_sidecar_offset + pgsql_response.rows_data_sidecar());
@@ -1128,18 +1178,21 @@ void ReadRpc::NotifyBatcher(const Status& status) {
 }
 
 WaitForAsyncWriteRpc::WaitForAsyncWriteRpc(
-    const BatcherPtr& batcher, TabletId tracking_tablet_id, PartitionKey partition_key,
+    YBClient* client, CoarseTimePoint deadline, TransactionId transaction_id,
+    TabletId tracking_tablet_id, PartitionKey partition_key,
     const std::shared_ptr<const YBTable>& table, const OpId& op_id,
-    const ash::WaitStateInfoPtr& issuing_wait_state)
-    : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
+    const ash::WaitStateInfoPtr& issuing_wait_state, AsyncWriteCompletionCallback callback)
+    : Rpc(deadline, client->messenger(), &client->proxy_cache()),
+      client_(client),
+      transaction_id_(transaction_id),
       tracking_tablet_id_(std::move(tracking_tablet_id)),
       partition_key_(std::move(partition_key)),
       op_id_(op_id),
-      batcher_(batcher),
+      callback_(std::move(callback)),
       table_(table),
       tablet_invoker_(
           /*local_tserver_only=*/false,
-          /*consistent_prefix=*/false, batcher->client_, this, this,
+          /*consistent_prefix=*/false, client, this, this,
           /*tablet=*/nullptr, table, mutable_retrier(), trace_.get()),
       wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   TRACE_TO(trace_, "WaitForAsyncWrite initiated");
@@ -1161,7 +1214,7 @@ void WaitForAsyncWriteRpc::SendRpc() {
   retained_self_ = shared_from_this();
   tablet_invoker_.Reset();
   // Always lookup by key to correctly resolve any tablet splits.
-  batcher_->client_->LookupTabletByKey(
+  client_->LookupTabletByKey(
       std::const_pointer_cast<YBTable>(table_), partition_key_, retrier().deadline(),
       [this](const Result<internal::RemoteTabletPtr>& result) { OnKeyLookup(result); });
 }
@@ -1187,8 +1240,14 @@ void WaitForAsyncWriteRpc::OnKeyLookup(const Result<internal::RemoteTabletPtr>& 
 void WaitForAsyncWriteRpc::SendRpcToTserver(int attempt_num) {
   ADOPT_WAIT_STATE(wait_state_);
   auto proxy = tablet_invoker_.proxy();
-  proxy->WaitForAsyncWriteAsync(
-      req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
+  auto* controller = PrepareController();
+  if (FLAGS_rpc_cheap_callbacks_on_reactor) {
+    controller->set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+  }
+  if (FLAGS_rpc_inline_local_txn_calls) {
+    controller->set_inline_local_call(true);
+  }
+  proxy->WaitForAsyncWriteAsync(req_, &resp_, controller, [this] { Finished(Status::OK()); });
 }
 
 void WaitForAsyncWriteRpc::Finished(const Status& status) {
@@ -1216,21 +1275,225 @@ void WaitForAsyncWriteRpc::FinishOrRetry(Status&& status, bool allow_retry) {
       return;
     }
   }
-  batcher_->RecordAsyncWriteCompletion(tracking_tablet_id_, op_id_, status);
+  callback_(tracking_tablet_id_, op_id_, status);
   retained_self_.reset();
 }
 
 std::string WaitForAsyncWriteRpc::ToString() const {
-  const auto& metadata = batcher_->in_flight_ops().metadata;
   return Format(
-      "WaitForAsyncWrite(tablet: $0, op_id: $1, num_attempts: $2, txn: $3, subtxn: $4)",
-      tracking_tablet_id_, op_id_, num_attempts(), metadata.transaction.transaction_id,
-      metadata.subtransaction_pb ? AsString(metadata.subtransaction_pb->subtransaction_id())
-                                 : "[none]");
+      "WaitForAsyncWrite(tablet: $0, op_id: $1, num_attempts: $2, txn: $3)",
+      tracking_tablet_id_, op_id_, num_attempts(), transaction_id_);
 }
 
 void WaitForAsyncWriteRpc::Failed(const Status& status) {
   VLOG_WITH_FUNC(4) << ToString() << " status: " << status;
+}
+
+namespace {
+
+std::atomic<int64_t> num_live_coalesced_calls{0};
+
+} // namespace
+
+CoalescedCall::CoalescedCall() {
+  num_live_coalesced_calls.fetch_add(1, std::memory_order_relaxed);
+}
+
+CoalescedCall::~CoalescedCall() {
+  num_live_coalesced_calls.fetch_sub(1, std::memory_order_relaxed);
+}
+
+int64_t TEST_NumLiveCoalescedCalls() {
+  return num_live_coalesced_calls.load(std::memory_order_relaxed);
+}
+
+namespace {
+
+template <class Rpc, class BatchReq, class BatchResp>
+struct CoalescedCallImpl : public CoalescedCall {
+  CoalescedCallImpl()
+      : req(arena.NewObject<BatchReq>(&arena)), resp(arena.NewObject<BatchResp>(&arena)) {}
+
+  ThreadSafeArena arena;
+  BatchReq* req;
+  BatchResp* resp;
+  std::vector<std::shared_ptr<Rpc>> rpcs;
+};
+
+template <class Rpc, class BatchReq, class BatchResp, class Invoke>
+void SendCoalesced(
+    const RemoteTabletServer* tserver, std::vector<std::shared_ptr<AsyncRpc>> rpcs,
+    const Invoke& invoke) {
+  auto call = std::make_shared<CoalescedCallImpl<Rpc, BatchReq, BatchResp>>();
+  auto deadline = CoarseTimePoint::max();
+  bool allow_local_calls_in_curr_thread = false;
+  for (auto& rpc : rpcs) {
+    auto typed_rpc = std::static_pointer_cast<Rpc>(rpc);
+    call->req->mutable_requests()->push_back_ref(&typed_rpc->req());
+    deadline = std::min(deadline, typed_rpc->deadline());
+    allow_local_calls_in_curr_thread =
+        allow_local_calls_in_curr_thread ||
+        typed_rpc->allow_local_calls_in_curr_thread();
+    call->rpcs.push_back(std::move(typed_rpc));
+  }
+  call->controller.set_deadline(deadline);
+  call->controller.set_allow_local_calls_in_curr_thread(allow_local_calls_in_curr_thread);
+  invoke(
+      tserver->proxy().get(), *call->req, call->resp, &call->controller, [call] {
+    // Each rpc keeps the call, with the response it reads, until it is done. The call must not
+    // keep the rpcs in turn, or neither is ever freed.
+    auto rpcs = std::move(call->rpcs);
+    auto status = call->controller.status();
+    const auto num_rpcs = rpcs.size();
+    if (status.ok() && call->resp->has_error()) {
+      status = StatusFromPB(call->resp->error().status());
+    }
+    if (status.ok() && (call->resp->responses().size() != num_rpcs ||
+                        call->resp->sidecar_offsets().size() != num_rpcs ||
+                        call->resp->sidecar_counts().size() != num_rpcs)) {
+      status = STATUS_FORMAT(
+          IllegalState, "Wrong number of responses in coalesced call: $0, expected $1",
+          call->resp->responses().size(), num_rpcs);
+    }
+    if (!status.ok()) {
+      for (auto& rpc : rpcs) {
+        rpc->FinishCoalesced(call, /* sub_resp= */ nullptr, 0, 0, status);
+      }
+      return;
+    }
+    auto sub_resp = call->resp->responses().begin();
+    auto offset = call->resp->sidecar_offsets().begin();
+    auto count = call->resp->sidecar_counts().begin();
+    for (auto& rpc : rpcs) {
+      rpc->FinishCoalesced(call, &*sub_resp, *offset, *count, Status::OK());
+      ++sub_resp;
+      ++offset;
+      ++count;
+    }
+  });
+}
+
+} // namespace
+
+bool RpcCoalescer::Add(AsyncRpc* rpc, const RemoteTabletServer* tserver) {
+  const bool is_write = dynamic_cast<WriteRpc*>(rpc) != nullptr;
+  if (is_write ? !coalesce_writes_ : !coalesce_reads_) {
+    return false;
+  }
+  std::lock_guard lock(mutex_);
+  if (flushed_) {
+    return false;
+  }
+  entries_.push_back(Entry {
+    .tserver = tserver,
+    .is_write = is_write,
+    .rpc = std::static_pointer_cast<AsyncRpc>(rpc->shared_from_this()),
+  });
+  return true;
+}
+
+void RpcCoalescer::Flush() {
+  std::vector<Entry> entries;
+  {
+    std::lock_guard lock(mutex_);
+    flushed_ = true;
+    entries.swap(entries_);
+  }
+  std::stable_sort(entries.begin(), entries.end(), [](const Entry& lhs, const Entry& rhs) {
+    return std::pair(lhs.tserver, lhs.is_write) < std::pair(rhs.tserver, rhs.is_write);
+  });
+  for (auto it = entries.begin(); it != entries.end();) {
+    auto group_end = std::find_if(it, entries.end(), [it](const Entry& entry) {
+      return entry.tserver != it->tserver || entry.is_write != it->is_write;
+    });
+    if (group_end - it == 1) {
+      it->rpc->CallRemoteMethod();
+      it = group_end;
+      continue;
+    }
+    std::vector<std::shared_ptr<AsyncRpc>> rpcs;
+    for (auto i = it; i != group_end; ++i) {
+      rpcs.push_back(std::move(i->rpc));
+    }
+    if (it->is_write) {
+      SendCoalesced<WriteRpc, tserver::LWWriteBatchRequestPB, tserver::LWWriteBatchResponsePB>(
+          it->tserver, std::move(rpcs),
+          [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
+        proxy->WriteBatchAsync(req, resp, controller, std::move(callback));
+      });
+    } else {
+      SendCoalesced<ReadRpc, tserver::LWReadBatchRequestPB, tserver::LWReadBatchResponsePB>(
+          it->tserver, std::move(rpcs),
+          [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
+        proxy->ReadBatchAsync(req, resp, controller, std::move(callback));
+      });
+    }
+    it = group_end;
+  }
+}
+
+namespace {
+
+struct WaitForAsyncWritesData {
+  std::vector<AsyncWriteWait> waits;
+  tserver::WaitForAsyncWritesRequestPB req;
+  tserver::WaitForAsyncWritesResponsePB resp;
+  rpc::RpcController controller;
+};
+
+void SendAlone(
+    YBClient* client, CoarseTimePoint deadline, TransactionId transaction_id,
+    const AsyncWriteWait& wait, const AsyncWriteCompletionCallback& callback) {
+  auto rpc = std::make_shared<WaitForAsyncWriteRpc>(
+      client, deadline, transaction_id, wait, callback);
+  rpc->SendRpc();
+}
+
+} // namespace
+
+void SendWaitForAsyncWrites(
+    YBClient* client, RemoteTabletServer* tserver, CoarseTimePoint deadline,
+    TransactionId transaction_id, std::vector<AsyncWriteWait> waits,
+    AsyncWriteCompletionCallback callback) {
+  auto status = tserver->InitProxy(client);
+  if (!status.ok() || waits.size() == 1) {
+    for (const auto& wait : waits) {
+      SendAlone(client, deadline, transaction_id, wait, callback);
+    }
+    return;
+  }
+  auto data = std::make_shared<WaitForAsyncWritesData>();
+  data->waits = std::move(waits);
+  for (const auto& wait : data->waits) {
+    auto& entry = *data->req.add_entries();
+    entry.set_tablet_id(wait.tablet->tablet_id());
+    wait.op_id.ToPB(entry.mutable_op_id());
+  }
+  data->controller.set_deadline(deadline);
+  if (FLAGS_rpc_cheap_callbacks_on_reactor) {
+    data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+  }
+  tserver->proxy()->WaitForAsyncWritesAsync(
+      data->req, &data->resp, &data->controller,
+      [client, deadline, transaction_id, data, callback = std::move(callback)] {
+    auto status = data->controller.status();
+    bool batch_ok = status.ok() && !data->resp.has_error() &&
+                    data->resp.responses_size() == std::ssize(data->waits);
+    if (!batch_ok) {
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << "WaitForAsyncWrites failed: "
+          << (status.ok() ? data->resp.ShortDebugString() : status.ToString())
+          << ", waiting for " << data->waits.size() << " writes one by one";
+    }
+    for (size_t i = 0; i != data->waits.size(); ++i) {
+      const auto& wait = data->waits[i];
+      if (batch_ok && !data->resp.responses(narrow_cast<int>(i)).has_error()) {
+        callback(wait.tracking_tablet_id, wait.op_id, Status::OK());
+      } else {
+        SendAlone(client, deadline, transaction_id, wait, callback);
+      }
+    }
+  });
 }
 
 }  // namespace yb::client::internal

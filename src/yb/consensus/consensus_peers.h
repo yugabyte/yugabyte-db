@@ -189,8 +189,18 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // requires IO or may block.
   void ProcessResponse(TracePtr trace);
 
-  // Signals that a heartbeat response was received from the peer.
-  void ProcessHeartbeatResponse(const Status& status);
+  // Handles the response to update_request_ with the given status. response is update_response_,
+  // or null if status is not OK.
+  void DoProcessResponse(const Status& status);
+
+  // Signals that the response to an update_request_ sent through the multi-Raft batcher was
+  // received. response is null if status is not OK.
+  void ProcessBatchedResponse(
+      TracePtr trace, const Status& status, const LWConsensusResponsePB* response);
+
+  // Signals that a heartbeat response was received from the peer. response is null if status is
+  // not OK.
+  void ProcessHeartbeatResponse(const Status& status, const LWConsensusResponsePB* response);
 
   // Returns true if there are more pending ops to process, false otherwise.
   bool ProcessResponseWithStatus(const Status& status,
@@ -240,10 +250,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
   ThreadSafeArena arena_;
   LWConsensusRequestPB* update_request_ = nullptr;
   LWConsensusResponsePB* update_response_ = nullptr;
-
-  // Latest heartbeat request and response
-  ConsensusRequestPB heartbeat_request_;
-  ConsensusResponsePB heartbeat_response_;
 
   // Each time a heartbeat request is sent this value is incremented.
   int64_t cur_heartbeat_id_ = 0;

@@ -28,7 +28,9 @@
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_status_tablets.h"
+#include "yb/client/update_transaction_batcher.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 
@@ -128,6 +130,10 @@ DEFINE_test_flag(int32, stopactivetxns_sleep_in_abort_cb_ms, 0,
 
 DEFINE_test_flag(bool, no_schedule_remove_intents, false,
                  "Don't schedule remove intents when transaction is cleaned from memory.");
+
+DEFINE_RUNTIME_bool(txn_batch_applied_rpcs, false,
+    "Send APPLIED_IN_ONE_OF_INVOLVED_TABLETS requests to status tablets through "
+    "per-tablet-server UpdateTransactions batches. Also requires --enable_batched_tserver_rpcs.");
 
 DECLARE_int64(transaction_abort_check_timeout_ms);
 
@@ -1107,6 +1113,7 @@ class TransactionParticipant::Impl
           .apply_data = data,
           .apply_state = apply_state,
         });
+        deferred_apply_intents_tasks_.back().apply_data.applied_in_response = nullptr;
       }
     } else if (applying_txn) {
       // E.g. ignored after restore, so its apply does not continue.
@@ -1118,6 +1125,10 @@ class TransactionParticipant::Impl
   void NotifyApplied(const TransactionApplyData& data) {
     VLOG_WITH_PREFIX(4) << Format("NotifyApplied($0)", data);
 
+    if (data.applied_in_response && data.leader_term != OpId::kUnknownTerm) {
+      data.applied_in_response->store(true, std::memory_order_release);
+      return;
+    }
     NotifyApplied(data.leader_term, data.status_tablet, data.transaction_id);
   }
 
@@ -1151,19 +1162,21 @@ class TransactionParticipant::Impl
 
     auto handle = rpcs_.Prepare();
     if (handle != rpcs_.InvalidHandle()) {
-      *handle = UpdateTransaction(
-          TransactionRpcDeadline(),
-          /*tablet=*/nullptr,
-          client,
-          &req,
-          GuardedByWeak(weak_from_this(), [this, handle](
-              const Status& status,
-              const tserver::UpdateTransactionRequestPB& req,
-              const tserver::UpdateTransactionResponsePB& resp) {
-            client::UpdateClock(resp, &participant_context_);
-            rpcs_.Unregister(handle);
-            LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
-          }));
+      auto callback = GuardedByWeak(weak_from_this(), [this, handle](
+          const Status& status,
+          const tserver::UpdateTransactionRequestPB& req,
+          const tserver::UpdateTransactionResponsePB& resp) {
+        client::UpdateClock(resp, &participant_context_);
+        rpcs_.Unregister(handle);
+        LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Failed to send applied: " << status;
+      });
+      if (FLAGS_txn_batch_applied_rpcs && FLAGS_enable_batched_tserver_rpcs) {
+        *handle = client::BatchedUpdateTransaction(
+            TransactionRpcDeadline(), client, &req, std::move(callback));
+      } else {
+        *handle = UpdateTransaction(
+            TransactionRpcDeadline(), /*tablet=*/nullptr, client, &req, std::move(callback));
+      }
       (**handle).SendRpc();
     }
   }
@@ -2494,6 +2507,7 @@ class TransactionParticipant::Impl
       .sealed = data.sealed,
       .status_tablet = data.state.tablets().front().ToBuffer(),
       .apply_to_storages = data.apply_to_storages,
+      .applied_in_response = data.applied_in_response,
     };
     return ProcessApply(apply_data);
   }

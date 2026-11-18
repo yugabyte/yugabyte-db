@@ -104,6 +104,10 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // Is this a local call?
   virtual bool IsLocalCall() const { return false; }
 
+  // Whether the service may run the handler on the thread that dispatches the call, whichever
+  // thread pool that thread belongs to.
+  virtual bool allow_inline_dispatch() const { return false; }
+
   // Return the serialized request parameter protobuf.
   Slice serialized_request() const {
     return serialized_request_;
