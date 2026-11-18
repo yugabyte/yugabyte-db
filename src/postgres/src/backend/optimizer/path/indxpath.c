@@ -5281,7 +5281,7 @@ yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 		yb_finalize_merge_scan_info(index, rel->relids,
 									yb_merge_scan_stream_cols, index_clauses,
 									&useful_pathkeys, yb_distinct_nkeys,
-									embedded);
+									embedded, scandir);
 	if (*yb_merge_scan_info == NULL)
 		useful_pathkeys =
 			yb_useful_pathkeys_without_merge_scan(root, rel, index, scandir,

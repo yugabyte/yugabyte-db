@@ -30,8 +30,10 @@
 -- - hint5, on a partial index whose predicate implies the equality.  The
 --   planner drops the f4 equality index condition, and every index row carries
 --   the constant anyway, so f4 should not be declared a stream key.  Neither
---   value errors.
+--   value errors.  f4 is a gap column, so the merge also sorts on it.
 -- TODO(#33450): the planner should pick a plan that does not throw an error.
+-- TODO(#37784): the hint5 merge should leave out f4, which the predicate
+-- implies.
 CREATE INDEX NONCONCURRENTLY num_tbl_i2_f4_id_idx ON num_tbl (i2 ASC, f4 ASC, id ASC);
 CREATE INDEX NONCONCURRENTLY num_tbl_f4_hash_idx ON num_tbl (f4 HASH, i2 ASC, id ASC);
 CREATE INDEX NONCONCURRENTLY num_tbl_dup_idx ON num_tbl (i2 ASC, f4 ASC, f4 ASC, id ASC);
