@@ -237,10 +237,109 @@ public class HbaConfRedactorTest {
             + "      REDACTED\n"
             + "    max_log_size: 256\n",
         HbaConfRedactor.redactFreeText(yaml));
+    // Helm usually folds before ldapbindpasswd, so the rest of the value shares its line's indent.
+    assertEquals(
+        "    ysql_hba_conf_csv: local all yugabyte trust,host all all 0.0.0.0/0 ldap ldapserver=h\n"
+            + "      ldapport=389 ldapbindpasswd=REDACTED\n"
+            + "      REDACTED\n"
+            + "    max_log_size: 256",
+        HbaConfRedactor.redactFreeText(
+            "    ysql_hba_conf_csv: local all yugabyte trust,host all all 0.0.0.0/0 ldap"
+                + " ldapserver=h\n"
+                + "      ldapport=389 ldapbindpasswd=\"long pass\n"
+                + "      phrase tail\" ldaptls=1\n"
+                + "    max_log_size: 256"));
+    assertEquals(
+        "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapserver=h\n"
+            + "      ldapbindpasswd=REDACTED\n"
+            + "      REDACTED\n"
+            + "    max_log_size: 256",
+        HbaConfRedactor.redactFreeText(
+            "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapserver=h\n"
+                + "      ldapbindpasswd=\\\"long pass\n"
+                + "      phrase tail\\\" ldaptls=1\"\n"
+                + "    max_log_size: 256"));
+    // A JSON or YAML entry starts its own value, so the entries after it are kept.
+    assertEquals(
+        "{\n  \"gflags\": {\n    \"ysql_hba_conf_csv\": \""
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n    \"max_log_size\": \"256\"\n  }\n}",
+        HbaConfRedactor.redactFreeText(
+            "{\n  \"gflags\": {\n    \"ysql_hba_conf_csv\": \""
+                + LDAP
+                + "ldapbindpasswd=x\",\n    \"max_log_size\": \"256\"\n  }\n}"));
+    assertEquals(
+        "args:\n  - --ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n  - --max_log_size=256",
+        HbaConfRedactor.redactFreeText(
+            "args:\n  - --ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=x\n  - --max_log_size=256"));
     // Java stack frames are indented with a tab, not spaces.
     assertEquals(
         "error: ldapbindpasswd=REDACTED\n\tat com.yugabyte.Foo",
         HbaConfRedactor.redactFreeText("error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"));
+    // JSON array elements and indented log lines don't continue a value.
+    assertEquals(
+        "  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n    \"--max_log_size=256\"\n  ]",
+        HbaConfRedactor.redactFreeText(
+            "  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv="
+                + LDAP
+                + "ldapbindpasswd=x\",\n    \"--max_log_size=256\"\n  ]"));
+    assertEquals(
+        "Running command:\n  yb-admin ldapbindpasswd=REDACTED\n  next output line",
+        HbaConfRedactor.redactFreeText(
+            "Running command:\n  yb-admin ldapbindpasswd=x\n  next output line"));
+    // Neither do the lines of a YAML literal block.
+    for (String block : new String[] {"ysql_hba.conf: |", "- |-"}) {
+      assertEquals(
+          block + "\n  " + LDAP + "ldapbindpasswd=REDACTED\n  local all all trust",
+          HbaConfRedactor.redactFreeText(
+              block + "\n  " + LDAP + "ldapbindpasswd=x\n  local all all trust"));
+    }
+    // A value can start on the line below its key.
+    assertEquals(
+        "    ysql_hba_conf_csv:\n      "
+            + LDAP
+            + "\n      ldapbindpasswd=REDACTED\n      REDACTED\n    max_log_size: 256",
+        HbaConfRedactor.redactFreeText(
+            "    ysql_hba_conf_csv:\n      "
+                + LDAP
+                + "\n"
+                + "      ldapbindpasswd=\"long pass\n"
+                + "      phrase tail\"\n"
+                + "    max_log_size: 256"));
+  }
+
+  @Test
+  public void testFreeTextRedactsAKeysValueOnTheNextLine() {
+    assertEquals(
+        "\"ldapbindpasswdREDACTED\nREDACTED\n\"next\": 1",
+        HbaConfRedactor.redactFreeText("\"ldapbindpasswd\":\n\"secret\",\n\"next\": 1"));
+    assertEquals(
+        "  \"ldapbindpasswdREDACTED\n\n  REDACTED",
+        HbaConfRedactor.redactFreeText("  \"ldapbindpasswd\":\n\n  \"secret\""));
+  }
+
+  @Test
+  public void testFreeTextFoldsAfterGflagLineRedactedToEnd() {
+    assertEquals(
+        "--ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n      REDACTED\n--max_log_size=256",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv="
+                + LDAP
+                + "ldapbindpasswd=pa\n      ss-tail\n--max_log_size=256"));
+    assertEquals(
+        "--ysql_hba_conf_csv=\"" + LDAP + "ldapbindpasswd=REDACTED\"\n  REDACTED",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv=\"" + LDAP + "ldapbindpasswd=pa\"\n  ss-tail"));
+    assertEquals(
+        "--ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=REDACTED ldaptls=1\n  next",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=pa ldaptls=1\n  next"));
   }
 
   /**
