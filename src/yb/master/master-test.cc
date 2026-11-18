@@ -87,6 +87,7 @@
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -356,12 +357,25 @@ TEST_F(MasterTest, TestMatchingUniverseUuid) {
   }
 }
 
+namespace {
+
+// Compares field by field, because protobuf does not guarantee the serialization order of maps.
+void AssertPBsEqual(
+    const google::protobuf::Message& expected, const google::protobuf::Message& actual) {
+  std::string diff;
+  ASSERT_TRUE(pb_util::ArePBsEqual(expected, actual, &diff)) << diff;
+}
+
+}  // namespace
+
+// Only a TServer whose cluster config version is behind the master's gets the config version,
+// replication info, and consumer registry.
 TEST_F(MasterTest, HeartbeatClusterConfigVersionGating) {
   auto& catalog_manager = mini_master_->catalog_manager_impl();
-  auto cluster_config = catalog_manager.ClusterConfig();
-  SysClusterConfigEntryPB config;
+  auto cluster_config_info = catalog_manager.ClusterConfig();
+  SysClusterConfigEntryPB cluster_config;
   {
-    auto l = cluster_config->LockForWrite();
+    auto l = cluster_config_info->LockForWrite();
     auto& pb = l.mutable_data()->pb;
     pb.set_version(pb.version() + 1);
     pb.mutable_replication_info()->mutable_live_replicas()->set_placement_uuid("live-placement");
@@ -372,36 +386,37 @@ TEST_F(MasterTest, HeartbeatClusterConfigVersionGating) {
     stream.set_producer_table_id("producer-table");
     (*stream.mutable_consumer_producer_tablet_map())["consumer-tablet"].add_tablets(
         "producer-tablet");
-    config = pb;
+    cluster_config = pb;
     l.Commit();
   }
 
   TSHeartbeatRequestPB req;
   req.mutable_common()->mutable_ts_instance()->set_permanent_uuid("ts-1");
-  for (auto version : {config.version() - 1, config.version(), config.version() + 1}) {
+  for (auto version :
+       {cluster_config.version() - 1, cluster_config.version(), cluster_config.version() + 1}) {
     SCOPED_TRACE(version);
     req.set_cluster_config_version(version);
     TSHeartbeatResponsePB resp;
     ASSERT_OK(catalog_manager.FillHeartbeatResponse(req, &resp));
-    const bool stale = version < config.version();
-    ASSERT_EQ(resp.has_cluster_config_version(), stale);
-    ASSERT_EQ(resp.has_cluster_replication_info(), stale);
-    ASSERT_EQ(resp.has_consumer_registry(), stale);
-    if (stale) {
-      ASSERT_EQ(resp.cluster_config_version(), config.version());
-      ASSERT_EQ(resp.cluster_replication_info().SerializeAsString(),
-                config.replication_info().SerializeAsString());
-      ASSERT_EQ(resp.consumer_registry().SerializeAsString(),
-                config.consumer_registry().SerializeAsString());
+    const bool expect_cluster_config = version < cluster_config.version();
+    ASSERT_EQ(resp.has_cluster_config_version(), expect_cluster_config);
+    ASSERT_EQ(resp.has_cluster_replication_info(), expect_cluster_config);
+    ASSERT_EQ(resp.has_consumer_registry(), expect_cluster_config);
+    if (expect_cluster_config) {
+      ASSERT_EQ(resp.cluster_config_version(), cluster_config.version());
+      ASSERT_NO_FATALS(
+          AssertPBsEqual(cluster_config.replication_info(), resp.cluster_replication_info()));
+      ASSERT_NO_FATALS(
+          AssertPBsEqual(cluster_config.consumer_registry(), resp.consumer_registry()));
     }
   }
 
   {
-    auto l = cluster_config->LockForWrite();
+    auto l = cluster_config_info->LockForWrite();
     l.mutable_data()->pb.clear_consumer_registry();
     l.Commit();
   }
-  req.set_cluster_config_version(config.version() - 1);
+  req.set_cluster_config_version(cluster_config.version() - 1);
   TSHeartbeatResponsePB resp;
   ASSERT_OK(catalog_manager.FillHeartbeatResponse(req, &resp));
   ASSERT_TRUE(resp.has_cluster_replication_info());
@@ -425,21 +440,33 @@ TEST_F(MasterTest, HeartbeatEncryptionRegistryResend) {
   TSHeartbeatRequestPB req;
   req.mutable_common()->mutable_ts_instance()->set_permanent_uuid("ts-1");
   req.set_cluster_config_version(ASSERT_RESULT(catalog_manager.GetClusterConfigVersion()));
-  for (int heartbeat = 0; heartbeat < 4; ++heartbeat) {
-    SCOPED_TRACE(heartbeat);
-    if (heartbeat == 2) {
+  const auto check_heartbeat = [&](bool has_registration, bool expect_key_registry) {
+    if (has_registration) {
       req.mutable_registration();
     } else {
       req.clear_registration();
     }
     TSHeartbeatResponsePB resp;
     ASSERT_OK(catalog_manager.FillHeartbeatResponse(req, &resp));
-    ASSERT_EQ(resp.has_universe_key_registry(), heartbeat == 0 || heartbeat == 2);
+    ASSERT_EQ(resp.has_universe_key_registry(), expect_key_registry);
     ASSERT_FALSE(resp.has_cluster_replication_info());
-    if (resp.has_universe_key_registry()) {
-      ASSERT_EQ(resp.universe_key_registry().SerializeAsString(), registry.SerializeAsString());
+    if (expect_key_registry) {
+      ASSERT_NO_FATALS(AssertPBsEqual(registry, resp.universe_key_registry()));
     }
-  }
+  };
+
+  // First heartbeat from ts-1: the master has not sent it the registry yet.
+  ASSERT_NO_FATALS(check_heartbeat(
+      /* has_registration= */ false, /* expect_key_registry= */ true));
+  // Already sent, and nothing has changed.
+  ASSERT_NO_FATALS(check_heartbeat(
+      /* has_registration= */ false, /* expect_key_registry= */ false));
+  // A heartbeat that carries a registration always gets the registry.
+  ASSERT_NO_FATALS(check_heartbeat(
+      /* has_registration= */ true, /* expect_key_registry= */ true));
+  // The resend happens once.
+  ASSERT_NO_FATALS(check_heartbeat(
+      /* has_registration= */ false, /* expect_key_registry= */ false));
 }
 
 TEST_F(MasterTest, HeartbeatOidInvalidationsAndLeaderBlacklist) {
@@ -496,10 +523,11 @@ class MasterHeartbeatResponseTest : public MasterTest, public ::testing::WithPar
  protected:
   void SetUp() override {
     ASSERT_NO_FATALS(MasterTest::SetUp());
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_fields_moved_to_xcluster_guarded_info) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_fields_moved_to_xcluster_guarded_info) =
+        SkipFieldsMovedToGuardedInfo();
 
-    key_registry_.set_latest_version_id("key-1");
-    (*key_registry_.mutable_universe_keys())["key-1"].set_data_key(std::string(32, 'k'));
+    universe_key_registry_.set_latest_version_id("key-1");
+    (*universe_key_registry_.mutable_universe_keys())["key-1"].set_data_key(std::string(32, 'k'));
     {
       auto l = mini_master_->catalog_manager_impl().ClusterConfig()->LockForWrite();
       auto& pb = l.mutable_data()->pb;
@@ -510,18 +538,21 @@ class MasterHeartbeatResponseTest : public MasterTest, public ::testing::WithPar
           .set_disable_stream(true);
       auto* encryption_info = pb.mutable_encryption_info();
       encryption_info->set_encryption_enabled(false);
-      encryption_info->set_universe_key_registry_encoded(key_registry_.SerializeAsString());
-      config_ = pb;
+      encryption_info->set_universe_key_registry_encoded(
+          universe_key_registry_.SerializeAsString());
+      cluster_config_ = pb;
       l.Commit();
     }
-    req_.mutable_common()->mutable_ts_instance()->set_permanent_uuid("ts-1");
-    req_.mutable_common()->mutable_ts_instance()->set_instance_seqno(1);
-    req_.set_universe_uuid(config_.universe_uuid());
-    req_.set_cluster_config_version(config_.version() - 1);
+    heartbeat_req_.mutable_common()->mutable_ts_instance()->set_permanent_uuid("ts-1");
+    heartbeat_req_.mutable_common()->mutable_ts_instance()->set_instance_seqno(1);
+    heartbeat_req_.set_universe_uuid(cluster_config_.universe_uuid());
+    heartbeat_req_.set_cluster_config_version(cluster_config_.version() - 1);
   }
 
+  bool SkipFieldsMovedToGuardedInfo() const { return GetParam(); }
+
   void AddRegistration() {
-    auto* registration = req_.mutable_registration();
+    auto* registration = heartbeat_req_.mutable_registration();
     *registration->mutable_common()->add_private_rpc_addresses() =
         MakeHostPortPB("ts.example.com", 9100);
     registration->mutable_resources();
@@ -529,104 +560,112 @@ class MasterHeartbeatResponseTest : public MasterTest, public ::testing::WithPar
 
   Status SendRequest(TSHeartbeatResponsePB* resp) {
     resp->Clear();
-    return proxy_heartbeat_->TSHeartbeat(req_, resp, ResetAndGetController());
+    return proxy_heartbeat_->TSHeartbeat(heartbeat_req_, resp, ResetAndGetController());
   }
 
-  void CheckInitialPayloads(const TSHeartbeatResponsePB& resp, bool stale, bool send_keys) {
-    ASSERT_TRUE(resp.leader_master());
+  // The Check* helpers list fields in master_heartbeat.proto order.
+  void CheckInitialPayloads(
+      const TSHeartbeatResponsePB& resp, bool expect_cluster_config, bool expect_key_registry) {
     ASSERT_EQ(resp.master_instance().permanent_uuid(), mini_master_->permanent_uuid());
-    ASSERT_EQ(resp.has_cluster_config_version(), stale);
-    ASSERT_EQ(resp.has_cluster_replication_info(), stale);
-    ASSERT_EQ(resp.has_consumer_registry(), stale);
-    if (stale) {
-      ASSERT_EQ(resp.cluster_config_version(), config_.version());
-      ASSERT_EQ(resp.cluster_replication_info().SerializeAsString(),
-                config_.replication_info().SerializeAsString());
-      ASSERT_EQ(resp.consumer_registry().SerializeAsString(),
-                config_.consumer_registry().SerializeAsString());
+    ASSERT_TRUE(resp.leader_master());
+    ASSERT_EQ(resp.has_cluster_uuid(), heartbeat_req_.has_registration());
+    if (heartbeat_req_.has_registration()) {
+      ASSERT_EQ(resp.cluster_uuid(), cluster_config_.cluster_uuid());
     }
-    ASSERT_EQ(resp.has_universe_key_registry(), send_keys);
-    if (send_keys) {
-      ASSERT_EQ(
-          resp.universe_key_registry().SerializeAsString(), key_registry_.SerializeAsString());
+    ASSERT_EQ(resp.has_universe_key_registry(), expect_key_registry);
+    if (expect_key_registry) {
+      ASSERT_NO_FATALS(AssertPBsEqual(universe_key_registry_, resp.universe_key_registry()));
+    }
+    ASSERT_EQ(resp.has_consumer_registry(), expect_cluster_config);
+    ASSERT_EQ(resp.has_cluster_config_version(), expect_cluster_config);
+    if (expect_cluster_config) {
+      ASSERT_NO_FATALS(
+          AssertPBsEqual(cluster_config_.consumer_registry(), resp.consumer_registry()));
+      ASSERT_EQ(resp.cluster_config_version(), cluster_config_.version());
     }
     ASSERT_TRUE(resp.has_snapshots_info());
-    ASSERT_EQ(resp.has_deprecated_xcluster_heartbeat_info(), !GetParam());
-    ASSERT_EQ(resp.has_cluster_uuid(), req_.has_registration());
-    if (req_.has_registration()) {
-      ASSERT_EQ(resp.cluster_uuid(), config_.cluster_uuid());
+    ASSERT_EQ(resp.has_deprecated_xcluster_heartbeat_info(), !SkipFieldsMovedToGuardedInfo());
+    ASSERT_EQ(resp.has_cluster_replication_info(), expect_cluster_config);
+    if (expect_cluster_config) {
+      ASSERT_NO_FATALS(
+          AssertPBsEqual(cluster_config_.replication_info(), resp.cluster_replication_info()));
     }
-  }
-
-  void CheckNoPostRegistrationFields(const TSHeartbeatResponsePB& resp) {
-    ASSERT_FALSE(resp.has_xcluster_guarded_info());
-    ASSERT_FALSE(resp.has_xcluster_guarded_lease_duration_ms());
-    ASSERT_FALSE(resp.has_tablet_report_limit());
-    ASSERT_FALSE(resp.has_tablet_report());
-    ASSERT_EQ(resp.tservers_size(), 0);
-    ASSERT_FALSE(resp.has_deprecated_oid_cache_invalidations_count());
-    ASSERT_EQ(resp.leader_blacklisted_tservers_with_no_leaders_size(), 0);
-    ASSERT_FALSE(resp.has_transaction_tables_version());
-    ASSERT_FALSE(resp.has_auto_flags_config());
-    ASSERT_FALSE(resp.has_db_catalog_version_data());
-    ASSERT_FALSE(resp.has_ysql_catalog_version());
   }
 
   void CheckNoInitialPayloads(const TSHeartbeatResponsePB& resp) {
     ASSERT_FALSE(resp.has_cluster_uuid());
-    ASSERT_FALSE(resp.has_cluster_config_version());
-    ASSERT_FALSE(resp.has_cluster_replication_info());
-    ASSERT_FALSE(resp.has_consumer_registry());
     ASSERT_FALSE(resp.has_universe_key_registry());
+    ASSERT_FALSE(resp.has_consumer_registry());
+    ASSERT_FALSE(resp.has_cluster_config_version());
     ASSERT_FALSE(resp.has_snapshots_info());
     ASSERT_FALSE(resp.has_deprecated_xcluster_heartbeat_info());
+    ASSERT_FALSE(resp.has_cluster_replication_info());
   }
 
-  SysClusterConfigEntryPB config_;
-  encryption::UniverseKeyRegistryPB key_registry_;
-  TSHeartbeatRequestPB req_;
+  void CheckNoPostRegistrationFields(const TSHeartbeatResponsePB& resp) {
+    ASSERT_FALSE(resp.has_tablet_report());
+    ASSERT_EQ(resp.tservers_size(), 0);
+    ASSERT_FALSE(resp.has_ysql_catalog_version());
+    ASSERT_FALSE(resp.has_db_catalog_version_data());
+    ASSERT_FALSE(resp.has_tablet_report_limit());
+    ASSERT_FALSE(resp.has_transaction_tables_version());
+    ASSERT_FALSE(resp.has_auto_flags_config());
+    ASSERT_FALSE(resp.has_deprecated_oid_cache_invalidations_count());
+    ASSERT_EQ(resp.leader_blacklisted_tservers_with_no_leaders_size(), 0);
+    ASSERT_FALSE(resp.has_xcluster_guarded_info());
+    ASSERT_FALSE(resp.has_xcluster_guarded_lease_duration_ms());
+  }
+
+  SysClusterConfigEntryPB cluster_config_;
+  encryption::UniverseKeyRegistryPB universe_key_registry_;
+  TSHeartbeatRequestPB heartbeat_req_;
 };
 
 INSTANTIATE_TEST_CASE_P(GuardedInfo, MasterHeartbeatResponseTest, ::testing::Bool());
 
 TEST_P(MasterHeartbeatResponseTest, RegistrationRequired) {
-  for (bool registered : {false, true}) {
-    SCOPED_TRACE(registered);
-    const auto uuid = registered ? "registered-ts" : "unknown-ts";
-    req_.mutable_common()->mutable_ts_instance()->set_permanent_uuid(uuid);
-    if (registered) {
-      // A known UUID with a mismatched instance sequence also requires registration.
-      ASSERT_RESULT(SendNewTSRegistrationHeartbeat(uuid, 2));
-    }
-    bool send_keys = !registered;
-    for (auto version : {config_.version() - 1, config_.version()}) {
-      SCOPED_TRACE(version);
-      req_.set_cluster_config_version(version);
-      TSHeartbeatResponsePB resp;
-      ASSERT_OK(SendRequest(&resp));
-      ASSERT_FALSE(resp.has_error());
-      ASSERT_TRUE(resp.needs_reregister());
-      ASSERT_TRUE(resp.needs_full_tablet_report());
-      ASSERT_NO_FATALS(CheckInitialPayloads(resp, version < config_.version(), send_keys));
-      ASSERT_NO_FATALS(CheckNoPostRegistrationFields(resp));
-      send_keys = false;
-    }
-  }
-}
-
-TEST_P(MasterHeartbeatResponseTest, RegistrationHostPortCollision) {
-  ASSERT_RESULT(SendNewTSRegistrationHeartbeat("existing-ts", 2));
-  auto desc = ASSERT_RESULT(mini_master_->ts_manager().LookupTSByUUID("existing-ts"));
-  *req_.mutable_registration() = desc->GetTSRegistrationPB();
-  for (auto version : {config_.version() - 1, config_.version()}) {
-    SCOPED_TRACE(version);
-    req_.set_cluster_config_version(version);
+  const auto check_reregister_response = [this](
+      int32_t tserver_config_version, bool expect_key_registry) {
+    heartbeat_req_.set_cluster_config_version(tserver_config_version);
     TSHeartbeatResponsePB resp;
     ASSERT_OK(SendRequest(&resp));
     ASSERT_FALSE(resp.has_error());
     ASSERT_TRUE(resp.needs_reregister());
     ASSERT_TRUE(resp.needs_full_tablet_report());
-    ASSERT_NO_FATALS(CheckInitialPayloads(resp, version < config_.version(), true));
+    ASSERT_NO_FATALS(CheckInitialPayloads(
+        resp, tserver_config_version < cluster_config_.version(), expect_key_registry));
+    ASSERT_NO_FATALS(CheckNoPostRegistrationFields(resp));
+  };
+  const auto stale_version = cluster_config_.version() - 1;
+  const auto current_version = cluster_config_.version();
+
+  // Unknown UUID. The master sends the key registry on the first heartbeat from a UUID.
+  heartbeat_req_.mutable_common()->mutable_ts_instance()->set_permanent_uuid("unknown-ts");
+  ASSERT_NO_FATALS(check_reregister_response(stale_version, /* expect_key_registry= */ true));
+  ASSERT_NO_FATALS(check_reregister_response(current_version, /* expect_key_registry= */ false));
+
+  // Known UUID with a mismatched instance sequence. Registering it already sent the key registry.
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat("registered-ts", 2));
+  heartbeat_req_.mutable_common()->mutable_ts_instance()->set_permanent_uuid("registered-ts");
+  ASSERT_NO_FATALS(check_reregister_response(stale_version, /* expect_key_registry= */ false));
+  ASSERT_NO_FATALS(check_reregister_response(current_version, /* expect_key_registry= */ false));
+}
+
+TEST_P(MasterHeartbeatResponseTest, RegistrationHostPortCollision) {
+  ASSERT_RESULT(SendNewTSRegistrationHeartbeat("existing-ts", 2));
+  auto desc = ASSERT_RESULT(mini_master_->ts_manager().LookupTSByUUID("existing-ts"));
+  *heartbeat_req_.mutable_registration() = desc->GetTSRegistrationPB();
+  for (auto version : {cluster_config_.version() - 1, cluster_config_.version()}) {
+    SCOPED_TRACE(version);
+    heartbeat_req_.set_cluster_config_version(version);
+    TSHeartbeatResponsePB resp;
+    ASSERT_OK(SendRequest(&resp));
+    ASSERT_FALSE(resp.has_error());
+    ASSERT_TRUE(resp.needs_reregister());
+    ASSERT_TRUE(resp.needs_full_tablet_report());
+    // The request carries a registration, so every response gets the key registry.
+    ASSERT_NO_FATALS(CheckInitialPayloads(
+        resp, version < cluster_config_.version(), /* expect_key_registry= */ true));
     ASSERT_NO_FATALS(CheckNoPostRegistrationFields(resp));
   }
   ASSERT_NOK(mini_master_->ts_manager().LookupTSByUUID("ts-1"));
@@ -636,7 +675,7 @@ TEST_P(MasterHeartbeatResponseTest, IncompatibleTServerVersion) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_tserver_version_checks) = false;
   AddRegistration();
-  req_.mutable_registration()->mutable_version_info()->set_ysql_major_version(0);
+  heartbeat_req_.mutable_registration()->mutable_version_info()->set_ysql_major_version(0);
   TSHeartbeatResponsePB resp;
   ASSERT_OK(SendRequest(&resp));
   ASSERT_TRUE(resp.has_error());
@@ -644,7 +683,8 @@ TEST_P(MasterHeartbeatResponseTest, IncompatibleTServerVersion) {
   ASSERT_STR_CONTAINS(resp.error().status().message(), "does not match the cluster version");
   ASSERT_TRUE(resp.is_fatal_error());
   ASSERT_FALSE(resp.has_needs_reregister());
-  ASSERT_NO_FATALS(CheckInitialPayloads(resp, true, true));
+  ASSERT_NO_FATALS(CheckInitialPayloads(
+      resp, /* expect_cluster_config= */ true, /* expect_key_registry= */ true));
   ASSERT_NO_FATALS(CheckNoPostRegistrationFields(resp));
   ASSERT_NOK(mini_master_->ts_manager().LookupTSByUUID("ts-1"));
 }
@@ -653,21 +693,21 @@ TEST_P(MasterHeartbeatResponseTest, UniverseErrorsPrecedePayloads) {
   AddRegistration();
   for (bool set_empty : {false, true}) {
     if (set_empty) {
-      req_.set_universe_uuid("");
+      heartbeat_req_.set_universe_uuid("");
     } else {
-      req_.clear_universe_uuid();
+      heartbeat_req_.clear_universe_uuid();
     }
     TSHeartbeatResponsePB resp;
     ASSERT_OK(SendRequest(&resp));
     ASSERT_TRUE(resp.has_error());
     ASSERT_EQ(resp.error().code(), MasterErrorPB::INVALID_REQUEST);
-    ASSERT_EQ(resp.universe_uuid(), config_.universe_uuid());
+    ASSERT_EQ(resp.universe_uuid(), cluster_config_.universe_uuid());
     ASSERT_NO_FATALS(CheckNoInitialPayloads(resp));
     ASSERT_NO_FATALS(CheckNoPostRegistrationFields(resp));
   }
 
   ASSERT_OK(SET_FLAG(TEST_master_universe_uuid, "00000000-0000-0000-0000-000000000000"));
-  req_.set_universe_uuid(config_.universe_uuid());
+  heartbeat_req_.set_universe_uuid(cluster_config_.universe_uuid());
   TSHeartbeatResponsePB resp;
   ASSERT_OK(SendRequest(&resp));
   ASSERT_TRUE(resp.has_error());
@@ -679,10 +719,16 @@ TEST_P(MasterHeartbeatResponseTest, UniverseErrorsPrecedePayloads) {
 
 TEST_P(MasterHeartbeatResponseTest, InvalidUniverseRpcFailure) {
   AddRegistration();
-  for (const auto& universe_uuid : {std::string("not-a-uuid"), Uuid::Generate().ToString()}) {
-    req_.set_universe_uuid(universe_uuid);
+  // Unlike the nil UUIDs in UniverseErrorsPrecedePayloads, these fail the RPC itself instead of
+  // setting resp.error(). The master has already set leader_master and master_instance in resp,
+  // and the failed RPC must not carry them.
+  for (const auto& [universe_uuid, expected_error] : {
+           std::pair{std::string("not-a-uuid"), "Couldn't read Uuid from string"},
+           std::pair{Uuid::Generate().ToString(), "Received wrong universe_uuid"}}) {
+    SCOPED_TRACE(universe_uuid);
+    heartbeat_req_.set_universe_uuid(universe_uuid);
     TSHeartbeatResponsePB resp;
-    ASSERT_NOK(SendRequest(&resp));
+    ASSERT_NOK_STR_CONTAINS(SendRequest(&resp), expected_error);
     ASSERT_EQ(resp.ByteSizeLong(), 0);
   }
   ASSERT_NOK(mini_master_->ts_manager().LookupTSByUUID("ts-1"));
@@ -701,7 +747,8 @@ TEST_P(MasterHeartbeatResponseTest, MissingUniverseKeyOmitsRegistry) {
   ASSERT_OK(SendRequest(&resp));
   ASSERT_FALSE(resp.has_error());
   ASSERT_TRUE(resp.needs_reregister());
-  ASSERT_NO_FATALS(CheckInitialPayloads(resp, true, false));
+  ASSERT_NO_FATALS(CheckInitialPayloads(
+      resp, /* expect_cluster_config= */ true, /* expect_key_registry= */ false));
   ASSERT_NO_FATALS(CheckNoPostRegistrationFields(resp));
 }
 

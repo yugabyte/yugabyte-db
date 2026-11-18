@@ -1123,8 +1123,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // must have updated the config in the meantime.
   Result<SysClusterConfigEntryPB> GetClusterConfig() override;
   struct ClusterConfigUuids {
-    std::string universe_uuid;
     std::string cluster_uuid;
+    std::string universe_uuid;
   };
   Result<ClusterConfigUuids> GetClusterConfigUuids();
   Result<int32_t> GetClusterConfigVersion();
@@ -3273,6 +3273,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const ReplicationSlotName& slot_name, bool force_delete) REQUIRES_SHARED(mutex_);
 
   void FillHeartbeatResponseClusterConfig(
+      const SysClusterConfigEntryPB& cluster_config,
+      const TSHeartbeatRequestPB& req,
+      TSHeartbeatResponsePB* resp);
+
+  void FillHeartbeatResponseCDCClusterConfig(
       const SysClusterConfigEntryPB& cluster_config,
       const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);

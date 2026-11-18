@@ -13580,7 +13580,8 @@ Result<CatalogManager::ClusterConfigUuids> CatalogManager::GetClusterConfigUuids
   auto cluster_config = ClusterConfig();
   SCHECK_NOTNULL(cluster_config);
   auto l = cluster_config->LockForRead();
-  return ClusterConfigUuids{l->pb.universe_uuid(), l->pb.cluster_uuid()};
+  return ClusterConfigUuids{
+      .cluster_uuid = l->pb.cluster_uuid(), .universe_uuid = l->pb.universe_uuid()};
 }
 
 Result<int32_t> CatalogManager::GetClusterConfigVersion() {

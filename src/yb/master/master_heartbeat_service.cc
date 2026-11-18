@@ -1646,7 +1646,7 @@ Status MasterHeartbeatServiceImpl::ValidateTServerUniverseOrRespond(
   auto cluster_config_uuids = catalog_manager_->GetClusterConfigUuids();
   if (!cluster_config_uuids.ok()) {
     auto& s = cluster_config_uuids.status();
-    LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
+    LOG(WARNING) << "Unable to get cluster configuration UUIDs: " << s.ToString();
     rpc->RespondFailure(s);
     return s;
   }

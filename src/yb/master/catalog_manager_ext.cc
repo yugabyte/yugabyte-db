@@ -3706,6 +3706,8 @@ bool ShouldResendRegistry(
 
 Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
                                              TSHeartbeatResponsePB* resp) {
+  // TSHeartbeat holds ScopedLeaderSharedLock, so catalog load cannot replace cluster_config_
+  // while this runs. See the comment on cluster_config_.
   auto cluster_config = ClusterConfig();
   SCHECK_NOTNULL(cluster_config);
   std::optional<EncryptionInfoPB> encryption_info;
@@ -3719,6 +3721,7 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
       encryption_info = config.encryption_info();
     }
     FillHeartbeatResponseClusterConfig(config, req, resp);
+    FillHeartbeatResponseCDCClusterConfig(config, req, resp);
   }
 
   // Key lookup can perform file I/O, and the other managers acquire their own locks. Do not
@@ -3737,9 +3740,6 @@ void CatalogManager::FillHeartbeatResponseClusterConfig(
   if (req.cluster_config_version() < cluster_config.version()) {
     resp->set_cluster_config_version(cluster_config.version());
     *resp->mutable_cluster_replication_info() = cluster_config.replication_info();
-    if (cluster_config.has_consumer_registry()) {
-      *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
-    }
   }
 }
 

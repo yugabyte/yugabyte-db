@@ -6503,6 +6503,19 @@ Result<scoped_refptr<TableInfo>> CatalogManager::GetTableById(const TableId& tab
   return FindTableById(table_id);
 }
 
+void CatalogManager::FillHeartbeatResponseCDCClusterConfig(
+    const SysClusterConfigEntryPB& cluster_config,
+    const TSHeartbeatRequestPB& req,
+    TSHeartbeatResponsePB* resp) {
+  if (cluster_config.has_consumer_registry()) {
+    if (req.cluster_config_version() < cluster_config.version()) {
+      const auto& consumer_registry = cluster_config.consumer_registry();
+      resp->set_cluster_config_version(cluster_config.version());
+      *resp->mutable_consumer_registry() = consumer_registry;
+    }
+  }
+}
+
 Status CatalogManager::FillHeartbeatResponseCDC(
     const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB* resp) {
