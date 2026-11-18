@@ -37,14 +37,18 @@
 #include "commands/dbcommands.h"
 #include "common/ip.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
+#include "common/string.h"
 #include "libpq/libpq-be.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
+#include "postmaster/postmaster.h"
 #include "storage/dsm_impl.h"
 #include "storage/procarray.h"
 #include "utils/acl.h"
+#include "utils/backend_status.h"
 #include "utils/guc.h"
+#include "utils/guc_hooks.h"
 #include "utils/syscache.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 #include "yb_ysql_conn_mgr_helper.h"
@@ -1125,4 +1129,181 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
+}
+
+bool
+check_yb_conn_mgr_client_addr(char **newval, void **extra, GucSource source)
+{
+	char	   *clean;
+	char	   *ret;
+
+	/* Always allow reset to empty string */
+	if ((*newval)[0] == '\0')
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_addr.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_addr,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_ycm_internal_client_addr can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	/* Basic sanity: clean the string of non-ASCII bytes */
+	clean = pg_clean_ascii(*newval, MCXT_ALLOC_NO_OOM);
+	if (!clean)
+		return false;
+
+	ret = guc_strdup(LOG, clean);
+	if (!ret)
+	{
+		pfree(clean);
+		return false;
+	}
+
+	guc_free(*newval);
+
+	pfree(clean);
+	*newval = ret;
+	return true;
+}
+
+void
+assign_yb_conn_mgr_client_addr(const char *newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_addr() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	if (YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort))
+	{
+		/*
+		 * Resolve the logical-client hostname once during authentication.
+		 */
+		if (newval[0] != '\0' && log_hostname)
+		{
+			struct addrinfo hints;
+			struct addrinfo *gai_result;
+
+			MemSet(&hints, 0, sizeof(hints));
+			hints.ai_flags = AI_NUMERICHOST;
+			hints.ai_socktype = SOCK_STREAM;
+
+			if (getaddrinfo(newval, NULL, &hints, &gai_result) == 0)
+			{
+				char		remote_hostname[NI_MAXHOST];
+				int			ret;
+
+				ret = pg_getnameinfo_all((const struct sockaddr_storage *) gai_result->ai_addr,
+										 gai_result->ai_addrlen,
+										 remote_hostname, sizeof(remote_hostname),
+										 NULL, 0,
+										 NI_NAMEREQD);
+				freeaddrinfo(gai_result);
+
+				if (ret != 0)
+					ereport(WARNING,
+							(errmsg_internal("pg_getnameinfo_all() failed: %s",
+											 gai_strerror(ret))));
+				else
+					SetConfigOption("yb_conn_mgr_client_hostname",
+									remote_hostname,
+									PGC_USERSET, PGC_S_CLIENT);
+			}
+		}
+	}
+
+	yb_pgstat_set_ycm_client_info(newval,
+								  NULL,
+								  newval[0] == '\0' ? "" : NULL);
+}
+
+bool
+check_yb_conn_mgr_client_hostname(char **newval, void **extra, GucSource source)
+{
+	char	   *clean;
+	char	   *ret;
+
+	/* Always allow reset to empty string */
+	if ((*newval)[0] == '\0')
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_port.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_ycm_internal_client_port,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_conn_mgr_client_hostname can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	/* Only allow clean ASCII chars in the hostname */
+	clean = pg_clean_ascii(*newval, MCXT_ALLOC_NO_OOM);
+	if (!clean)
+		return false;
+
+	ret = guc_strdup(LOG, clean);
+	if (!ret)
+	{
+		pfree(clean);
+		return false;
+	}
+
+	guc_free(*newval);
+
+	pfree(clean);
+	*newval = ret;
+	return true;
+}
+
+void
+assign_yb_conn_mgr_client_hostname(const char *newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_hostname() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	yb_pgstat_set_ycm_client_info(NULL, NULL, newval);
+}
+
+bool
+check_yb_conn_mgr_client_port(int *newval, void **extra, GucSource source)
+{
+	/* Always allow reset to -1 */
+	if (*newval == -1)
+		return true;
+
+	/*
+	 * Parallel workers are background processes and don't have any client_hostname.
+	 * Postgres keeps it NULL so does connection manager too.
+	 * yb_is_client_ysqlconnmgr may get set before/after yb_conn_mgr_client_hostname,
+	 * therefore explicitly check for parallel workers.
+	 */
+	if (!YbIsClientYsqlConnMgr() && !yb_is_parallel_worker)
+	{
+		GUC_check_errmsg("yb_ycm_internal_client_port can only be set by "
+						 "YSQL Connection Manager");
+		return false;
+	}
+
+	return true;
+}
+
+void
+assign_yb_conn_mgr_client_port(int newval, void *extra)
+{
+	/* See comment in check_yb_conn_mgr_client_port() about parallel workers. */
+	if (!YbIsClientYsqlConnMgr() || yb_is_parallel_worker)
+		return;
+
+	yb_pgstat_set_ycm_client_info(NULL, &newval, NULL);
 }
