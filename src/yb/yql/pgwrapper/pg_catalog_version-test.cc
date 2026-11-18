@@ -2438,13 +2438,14 @@ DROP TABLE tempTable2;
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
   // Concurrent CREATE INDEX produces one extra invalidation message with object locking
-  // (post-backfill WaitForBackendsCatalogVersion).
+  // (post-backfill WaitForBackendsCatalogVersion). Object locking is off by default in debug
+  // builds (fastdebug, ASAN, TSAN), so they check the second pair of values.
   if (IsObjectLockingEnabled()) {
     ASSERT_EQ(result.size(), 83914U);
     ASSERT_EQ(fingerprint, 2733663305904414579UL);
   } else {
-    ASSERT_EQ(result.size(), 80692U);
-    ASSERT_EQ(fingerprint, 4661495031371014786UL);
+    ASSERT_EQ(result.size(), 83860U);
+    ASSERT_EQ(fingerprint, 9039095303751064355UL);
   }
 }
 
