@@ -407,17 +407,16 @@ SELECT $$
 $$ AS query \gset
 \i :run_query
 
--- The hash primary key cannot serve the k_text ranges, so these have no bitmap
--- path. Name the primary key in the hint to keep pk_text_v_int_idx out of the
--- fallback plan.
-\set Q2 '/*+ BitmapScan(pk_text pk_text_pkey) */'
+-- The hash primary key cannot serve the k_text ranges, so these statements
+-- have no bitmap path. Name the primary key in the hint to keep
+-- pk_text_v_int_idx out of the fallback plan.
 SELECT $$
-:P :Q2 SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
+:P /*+ BitmapScan(pk_text pk_text_pkey) */ SELECT * FROM pk_text WHERE (v_int < 10 AND v_int % 2 = 1) OR (k_text LIKE '999%' AND k_text LIKE '%5') ORDER BY v_int;
 $$ AS query \gset
 \i :run_query
 
 SELECT $$
-:P :Q2 SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
+:P /*+ BitmapScan(pk_text pk_text_pkey) */ SELECT * FROM pk_text WHERE v_int < 5 OR k_text < '11' ORDER BY v_int;
 $$ AS query \gset
 \i :run_query
 
