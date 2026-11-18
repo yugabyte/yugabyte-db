@@ -163,6 +163,8 @@
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
+#include "storage/latch.h"
+#include "utils/wait_event.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 /*
@@ -3231,7 +3233,15 @@ ybStartNotifsPollerBgWorker(void)
 		}
 
 		CHECK_FOR_INTERRUPTS();
-		pg_usleep(10000L);
+
+		/*
+		 * Wait on the latch, not pg_usleep: TSAN can defer a signal arriving
+		 * during pg_usleep's select() until the loop exits, losing a query
+		 * cancel. The cancel handler sets MyLatch, so this wakes at once.
+		 */
+		(void) WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
+						 10L, WAIT_EVENT_BGWORKER_STARTUP);
+		ResetLatch(MyLatch);
 	}
 
 	pfree(local_handle);
