@@ -641,9 +641,10 @@ static YbListenerQueueScanCurrentXactState ybListenerQueueScanCurrentXactState =
 
 /*
  * Shared memory state reporting how the node's 'notifications poller' bg
- * worker initialized. Every LISTEN waits on it. The poller sets SUCCESS or
- * FAILED, and ybCleanupListenState sets FAILED if the LISTEN starting the
- * poller ends first.
+ * worker last initialized; a poller restarted after a crash initializes
+ * again. Every LISTEN waits on it. The poller sets SUCCESS or FAILED, and
+ * ybCleanupListenState sets FAILED if the LISTEN that started the poller
+ * ends before the poller reports.
  */
 typedef enum
 {
@@ -660,8 +661,8 @@ typedef struct
 
 	/*
 	 * Identifies the poller started for the node's current listeners; zero
-	 * when there are none, or once the LISTEN that started a poller which
-	 * failed to initialize has unregistered. Protected by NotifyQueueLock.
+	 * when there are none, or once the LISTEN that started it has
+	 * unregistered before it reported. Protected by NotifyQueueLock.
 	 * The postmaster restarts a poller after a crash even if nothing tracks
 	 * it any more, so a poller whose id no longer matches exits instead of
 	 * running. A poller writes the fields above, and to the queue, only
@@ -676,10 +677,12 @@ typedef struct
 	bool		has_bgw_handle;
 
 	/*
-	 * The first listener, while it starts the poller; InvalidBackendId once
-	 * the poller has initialized. Protected by NotifyQueueLock. If this
-	 * backend unregisters before then, the poller will not come up, and the
-	 * LISTENs that joined meanwhile, waiting on init_status, must fail.
+	 * The first listener, which started the poller. Protected by
+	 * NotifyQueueLock. If it unregisters while init_status is still
+	 * NOT_STARTED, the poller will not come up, and the LISTENs that joined
+	 * meanwhile, waiting on init_status, must fail. Not reset when it leaves:
+	 * init_status is NOT_STARTED only until the poller reports, and it is
+	 * reset to NOT_STARTED only together with this field.
 	 */
 	BackendId	starter;
 } YbNotifsPollerShmemData;
@@ -1758,9 +1761,9 @@ YbCleanupListenStateForProc(PGPROC *proc)
  * unregistered.
  *
  * If there are no listening backends left on the node, terminate the
- * 'notifications poller' bg worker and replication slot. If "leaving" was
- * starting the poller and others remain, terminate the poller and fail the
- * LISTENs waiting for it.
+ * 'notifications poller' bg worker and replication slot. If "leaving" started
+ * the poller, which has not yet reported, and others remain, terminate the
+ * poller and fail the LISTENs waiting for it.
  *
  * Caller must hold exclusive NotifyQueueLock.
  *
@@ -1778,24 +1781,24 @@ ybCleanupListenState(BackendId leaving)
 
 	if (listenersRemain)
 	{
-		/* The remaining listeners keep the poller, unless it never came up. */
-		if (yb_poller_data->starter != leaving)
+		/*
+		 * "leaving" started the poller, which has not reported yet, so nobody
+		 * will see its startup through.
+		 */
+		bool		startupAbandoned =
+			yb_poller_data->starter == leaving &&
+			yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_NOT_STARTED;
+
+		/* Otherwise the remaining listeners keep the poller. */
+		if (!startupAbandoned)
 			return;
 
-		/*
-		 * The remaining listeners joined while "leaving" was starting the
-		 * poller, and still wait for it in ybWaitForNotifsPollerInit. The
-		 * poller may already have reported its failure.
-		 */
-		if (yb_poller_data->init_status != YB_NOTIFS_POLLER_INIT_FAILED)
-		{
-			yb_poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
-			strlcpy(yb_poller_data->error_message,
-					"The LISTEN that was starting it did not complete.",
-					sizeof(yb_poller_data->error_message));
-		}
+		/* Fail the remaining listeners, waiting in ybWaitForNotifsPollerInit. */
+		yb_poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
+		strlcpy(yb_poller_data->error_message,
+				"The LISTEN that was starting it did not complete.",
+				sizeof(yb_poller_data->error_message));
 	}
-	yb_poller_data->starter = InvalidBackendId;
 
 	/*
 	 * Any poller still around is now stale. It is terminated here if its
@@ -3263,9 +3266,10 @@ ybStartNotifsPollerBgWorker(void)
 /*
  * Wait for the node's notifications poller to initialize, and fail if it does
  * not. The poller reports how its initialization went in init_status, and so
- * does ybCleanupListenState if the listener starting the poller unregisters
- * first. A failed poller is terminated by ybCleanupListenState when the
- * LISTEN that started it unregisters, not by the LISTENs that joined it.
+ * does ybCleanupListenState if the listener that started the poller
+ * unregisters before the poller reports. A poller that failed to initialize
+ * keeps being restarted until the last listener unregisters and
+ * ybCleanupListenState terminates it.
  */
 static void
 ybWaitForNotifsPollerInit(void)
@@ -3450,7 +3454,6 @@ ybNotifsPollerInit(void)
 	if (ybIsStaleNotifsPoller())
 		ybExitStaleNotifsPoller(NULL);
 	poller_data->init_status = YB_NOTIFS_POLLER_INIT_SUCCESS;
-	poller_data->starter = InvalidBackendId;
 	LWLockRelease(NotifyQueueLock);
 }
 
