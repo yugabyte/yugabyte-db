@@ -1324,9 +1324,9 @@ public class RedactingService {
   }
 
   /**
-   * Redacts the LDAP secrets in Kubernetes overrides in API response JSON. Overrides that can't be
-   * redacted are hidden whole, and nothing else here throws, so no exception leaves overrides
-   * unredacted.
+   * Redacts the LDAP secrets in Kubernetes overrides in API response JSON. The redactor hides
+   * overrides it can't redact whole instead of throwing, and nothing else here throws, so no
+   * exception leaves overrides unredacted.
    */
   private static void redactKubernetesOverrides(JsonNode node) {
     if (node == null) {
@@ -1340,7 +1340,7 @@ public class RedactingService {
               fieldName -> {
                 JsonNode fieldValue = objNode.get(fieldName);
                 if (fieldValue.isTextual() && K8S_OVERRIDES_FIELDS.contains(fieldName)) {
-                  objNode.put(fieldName, redactOverridesOrHide(fieldValue.asText()));
+                  objNode.put(fieldName, KubernetesOverridesRedactor.redact(fieldValue.asText()));
                 } else if (fieldValue.isObject() && K8S_AZ_OVERRIDES_FIELDS.contains(fieldName)) {
                   ObjectNode azs = (ObjectNode) fieldValue;
                   azs.fieldNames()
@@ -1348,7 +1348,7 @@ public class RedactingService {
                           az -> {
                             JsonNode azValue = azs.get(az);
                             if (azValue.isTextual()) {
-                              azs.put(az, redactOverridesOrHide(azValue.asText()));
+                              azs.put(az, KubernetesOverridesRedactor.redact(azValue.asText()));
                             } else {
                               redactKubernetesOverrides(azValue);
                             }
@@ -1359,15 +1359,6 @@ public class RedactingService {
               });
     } else if (node.isArray()) {
       node.forEach(RedactingService::redactKubernetesOverrides);
-    }
-  }
-
-  private static String redactOverridesOrHide(String overrides) {
-    try {
-      return KubernetesOverridesRedactor.redact(overrides);
-    } catch (RuntimeException e) {
-      log.warn("Failed to redact Kubernetes overrides; hiding them.", e);
-      return SECRET_REPLACEMENT;
     }
   }
 

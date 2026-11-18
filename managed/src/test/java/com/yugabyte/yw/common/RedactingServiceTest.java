@@ -1218,22 +1218,21 @@ public class RedactingServiceTest {
 
   @Test
   public void testFilterSecretFieldsApisHidesKubernetesOverridesWhoseRedactionFails() {
+    // Redacted nowhere else, so the redactor's cache can't skip the failing rewrite.
+    String overrides =
+        "gflags:\n  master:\n    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap"
+            + " ldapbindpasswd=dummy-hba-pass\n    note: response-redaction-fails\n";
     ObjectNode root = mapper.createObjectNode();
-    root.put("universeOverrides", K8S_OVERRIDES);
-    root.putObject("azOverrides").put("az-1", K8S_OVERRIDES).put("az-2", "x: y\n");
-    root.put("ysql_hba_conf_csv", "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pass");
-    try (MockedStatic<KubernetesOverridesRedactor> redactor =
-        Mockito.mockStatic(KubernetesOverridesRedactor.class, Mockito.CALLS_REAL_METHODS)) {
-      redactor
-          .when(() -> KubernetesOverridesRedactor.redact(anyString()))
-          .thenThrow(new IllegalStateException());
+    root.put("universeOverrides", overrides);
+    root.putObject("azOverrides").put("az-1", overrides).put("az-2", "x: y\n");
+    try (MockedStatic<HbaConfRedactor> hba =
+        Mockito.mockStatic(HbaConfRedactor.class, Mockito.CALLS_REAL_METHODS)) {
+      hba.when(() -> HbaConfRedactor.redact(anyString())).thenThrow(new IllegalStateException());
       JsonNode out =
           RedactingService.filterSecretFields(root, RedactionTarget.APIS, null, null, true);
       assertEquals(SECRET_REPLACEMENT, out.get("universeOverrides").asText());
       assertEquals(SECRET_REPLACEMENT, out.at("/azOverrides/az-1").asText());
-      assertEquals(SECRET_REPLACEMENT, out.at("/azOverrides/az-2").asText());
-      // The fields after them are still redacted.
-      assertFalse(out.toString(), out.toString().contains("dummy-"));
+      assertEquals("x: y\n", out.at("/azOverrides/az-2").asText());
     }
   }
 
