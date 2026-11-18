@@ -11002,6 +11002,31 @@ YBHasSkippedIntentsWrite()
 	return skip_intents_txn_state.has_skipped_write;
 }
 
+/* Whether the current statement is a top-level one that is its whole transaction. */
+static bool
+YbIsSkipIntentsTopLevel()
+{
+	return !IsTransactionBlock() &&
+		GetCurrentTransactionNestLevel() == 1 &&
+		YbGetTriggerDepth() == 0 &&
+		!skip_intents_txn_state.has_seen_non_top_level;
+}
+
+/* Whether the table of an index was created, or had its storage swapped, in this transaction. */
+static bool
+YbIsIndexedTableNewInTxn(Relation index)
+{
+	Relation	table = RelationIdGetRelation(index->rd_index->indrelid);
+	bool		result;
+
+	if (!RelationIsValid(table))
+		return false;
+	result = table->rd_createSubid != InvalidSubTransactionId ||
+		table->rd_newRelfilenodeSubid != InvalidSubTransactionId;
+	RelationClose(table);
+	return result;
+}
+
 /*
  * Decides both halves of the skip intents optimization for one operation on rel. See
  * YbcPgSkipIntentsOptimizationInfo: the relation-static checks below decide
@@ -11053,6 +11078,20 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	}
 
 	/*
+	 * A read through an index takes its decision from the table (see YbNewSelect), so an index
+	 * must not be written past the intents db unless its table is read at in_txn_limit too.
+	 * Otherwise the rows of an index built on a table that existed before the transaction
+	 * would be above the read time of the transaction's later statements. A top-level
+	 * statement has no later statements.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_INDEX && !YbIsSkipIntentsTopLevel() &&
+		!YbIsIndexedTableNewInTxn(rel))
+	{
+		elog(DEBUG2, "Skip intents not applicable: the table of index %u was neither created nor swapped in this txn", rel->rd_id);
+		return info;
+	}
+
+	/*
 	 * Only this transaction can write to the relation, and it may already have put rows in the
 	 * regular db, so the read time has to account for them regardless of what the checks below
 	 * decide about this particular operation.
@@ -11072,10 +11111,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	 */
 	bool is_serializable = XactIsoLevel == XACT_SERIALIZABLE;
 	bool top_level_only = !skip_intents_txn_state.in_txn_blocks || is_serializable;
-	bool is_top_level = !IsTransactionBlock() &&
-						GetCurrentTransactionNestLevel() == 1 &&
-						YbGetTriggerDepth() == 0 &&
-						!skip_intents_txn_state.has_seen_non_top_level;
+	bool is_top_level = YbIsSkipIntentsTopLevel();
 	if (top_level_only)
 	{
 		if (!is_top_level)
