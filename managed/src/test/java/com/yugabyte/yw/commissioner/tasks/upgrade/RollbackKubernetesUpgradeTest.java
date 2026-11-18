@@ -15,22 +15,32 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.RpcClientCertTest;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,6 +50,7 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.yaml.snakeyaml.Yaml;
 import play.libs.Json;
 
 public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
@@ -396,5 +407,97 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         setupImmutableYbcRollback(
             "2025.2.1.0-b1", "2025.2.0.0-b1", SoftwareUpgradeState.PreFinalize);
     taskParams.verifyParams(defaultUniverse, true);
+  }
+
+  // Rolls a node-to-node universe with the node_exporter sidecar and TLS keys on back from one
+  // version to another.
+  private void rollBack(String fromVersion, String toVersion) throws Exception {
+    setupUniverseSingleAZ(false, true);
+    UUID rootCA = UUID.randomUUID();
+    CertificateInfo.create(
+        rootCA,
+        defaultCustomer.getUuid(),
+        "rollback-ca",
+        new Date(),
+        new Date(),
+        TestHelper.createTempFile(
+            TestHelper.TMP_PATH + "/" + rootCA,
+            "ca.key.pem",
+            CertificateHelper.getAsPemString(RpcClientCertTest.ROOT_CA.getLeft().getPrivate())),
+        TestHelper.createTempFile(
+            TestHelper.TMP_PATH + "/" + rootCA,
+            "ca.root.crt",
+            CertificateHelper.getAsPemString(RpcClientCertTest.ROOT_CA.getRight())),
+        CertConfigType.SelfSigned);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = true;
+          details.rootCA = rootCA;
+          universe.setUniverseDetails(details);
+        });
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "true");
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion(toVersion);
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, fromVersion);
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(toVersion));
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.rootCA = rootCA;
+    // The node-to-node setup above bumped the universe version.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 0;
+    taskParams.sleepAfterTServerRestartMillis = 0;
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.RollbackKubernetesUpgrade, taskParams));
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+  }
+
+  // The sidecar and its TLS are on at the recorded version and off at the target.
+  @Test
+  public void testRollbackBelowNodeExporterVersionRendersSidecarOff() throws Exception {
+    rollBackAcrossSidecarGate("2026.2.0.0-b10");
+    assertRenderedNodeExporter(false);
+  }
+
+  @Test
+  public void testRollbackAboveNodeExporterVersionRendersSidecarTlsOn() throws Exception {
+    rollBackAcrossSidecarGate("2026.2.0.0-b25");
+    assertRenderedNodeExporter(true);
+  }
+
+  // Rolls back from 2026.2.0.0-b30 with the stable sidecar gate raised to b20.
+  private void rollBackAcrossSidecarGate(String toVersion) throws Exception {
+    String sidecarStable = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+    try {
+      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = "2026.2.0.0-b20";
+      rollBack("2026.2.0.0-b30", toVersion);
+    } finally {
+      KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = sidecarStable;
+    }
+  }
+
+  private void assertRenderedNodeExporter(boolean on) throws Exception {
+    ArgumentCaptor<String> overrideFiles = ArgumentCaptor.forClass(String.class);
+    verify(mockKubernetesManager, atLeastOnce())
+        .helmUpgrade(any(), any(), any(), any(), any(), overrideFiles.capture(), any());
+    for (String overrideFile : overrideFiles.getAllValues()) {
+      try (InputStream is = new FileInputStream(overrideFile)) {
+        Map<String, Object> nodeExporter =
+            (Map<String, Object>) new Yaml().loadAs(is, Map.class).get("nodeExporter");
+        assertEquals(on, nodeExporter.get("enabled"));
+        assertEquals(Map.of("enabled", on), nodeExporter.get("tls"));
+      }
+    }
   }
 }

@@ -106,6 +106,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.InstallingThirdPartySoftware,
           TaskType.UpdateAndPersistGFlags,
           TaskType.UniverseUpdateSucceeded,
@@ -204,6 +206,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType", KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name())),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -312,6 +316,21 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     assertFalse(readReplicaGFlags.isInheritFromPrimary());
     assertEquals(
         Map.of("tserver-flag", "t1"), readReplicaGFlags.getGFlags(null, ServerType.TSERVER));
+  }
+
+  // Every pod rolled onto the new template, so the sidecar's TLS is recorded as rendered: off
+  // without node-to-node encryption.
+  @Test
+  public void testGFlagUpgradeRecordsSidecarTls() {
+    setupUniverseSingleAZ(false, false);
+    recordNodeExporterHttps();
+    gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertFalse(isNodeExporterHttpsRecorded());
   }
 
   @Test
