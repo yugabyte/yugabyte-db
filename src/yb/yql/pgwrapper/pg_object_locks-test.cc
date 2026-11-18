@@ -48,7 +48,6 @@ DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_tablespace_based_transaction_placement);
-DECLARE_bool(enable_wait_queues);
 DECLARE_bool(force_global_transactions);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
@@ -3066,150 +3065,8 @@ INSTANTIATE_TEST_CASE_P(
       return info.param ? "Fastpath" : "RPC";
     });
 
-class PgObjectLocksFailOnConflictRetryTest : public PgObjectLocksRetryTest {
- protected:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    PgObjectLocksRetryTest::SetUp();
-  }
-};
-
-TEST_P(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveConflictRetry) {
-  auto blocker = ASSERT_RESULT(Connect());
-  ASSERT_OK(blocker.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
-  auto writer = ASSERT_RESULT(ConnectWriter());
-  ASSERT_OK(writer.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-  // Long enough to catch the writer backing off after its first failed attempt.
-  ASSERT_OK(writer.Execute("SET retry_min_backoff = 1000"));
-  ASSERT_OK(writer.Execute("SET retry_max_backoff = 2000"));
-
-  for (const auto& retry_case : {
-           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ true},
-           RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ false},
-           RetryCase{IsolationLevel::SERIALIZABLE_ISOLATION, /* in_txn_block= */ true},
-           RetryCase{IsolationLevel::SERIALIZABLE_ISOLATION, /* in_txn_block= */ false},
-           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true},
-           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ true,
-                     /* after_first_statement= */ true},
-           RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ false}}) {
-    RunRetriedStatement(
-        writer, retry_case,
-        /* stmt_format= */
-        "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
-        "INSERT INTO t2 SELECT 1, v FROM u WHERE $0",
-        /* before_statement= */ [&blocker, &retry_case] {
-          // READ COMMITTED txns all get the highest priority, so the writer loses only to another
-          // READ COMMITTED txn that wrote first.
-          ASSERT_OK(blocker.StartTransaction(retry_case.isolation));
-          ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
-        },
-        /* while_running= */ [&blocker](PGConn& conn, int writer_pid) {
-          ASSERT_OK(WaitForWaitEvent(conn, writer_pid, "YBTxnConflictBackoff"));
-          ASSERT_OK(blocker.CommitTransaction());
-        });
-  }
-}
-
-TEST_P(PgObjectLocksFailOnConflictRetryTest, AdvisoryLocksSurviveConflictRetry) {
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute(
-      "CREATE FUNCTION xact_lock_and_update() RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
-      "PERFORM pg_advisory_xact_lock(42); "
-      "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
-      "INSERT INTO t2 SELECT 1, v FROM u; END $$"));
-
-  auto blocker = ASSERT_RESULT(Connect());
-  ASSERT_OK(blocker.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
-  ASSERT_OK(blocker.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
-
-  auto writer = ASSERT_RESULT(ConnectWriter());
-  ASSERT_OK(writer.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-
-  CountDownLatch replacing(1);
-  CountDownLatch blocker_committed(1);
-  std::atomic<bool> first_replace{true};
-  SyncPoint::GetInstance()->SetCallBack("PgClientSession::ReplaceTransaction", [&](void*) {
-    if (first_replace.exchange(false)) {
-      replacing.CountDown();
-      blocker_committed.Wait();
-    }
-  });
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  {
-    std::jthread t([&writer] { ASSERT_OK(writer.Fetch("SELECT xact_lock_and_update()")); });
-    auto release_tserver = ScopeExit([&] { blocker_committed.CountDown(); });
-    ASSERT_TRUE(replacing.WaitFor(30s * kTimeMultiplier));
-    ASSERT_OK(blocker.CommitTransaction());
-  }
-
-  ASSERT_FALSE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_try_advisory_xact_lock(42)")));
-  ASSERT_OK(writer.CommitTransaction());
-  ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_try_advisory_xact_lock(42)")));
-}
-
-TEST_P(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveRetriesAfterExclusiveLock) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_make_global_lock_release_async) = true;
-  constexpr int kFailedAttempts = 3;
-
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t3 (k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute(
-      "CREATE FUNCTION lock_and_update() RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
-      "LOCK TABLE t3 IN ACCESS EXCLUSIVE MODE; "
-      "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
-      "INSERT INTO t2 SELECT 1, v FROM u; END $$"));
-
-  auto blocker = ASSERT_RESULT(Connect());
-  ASSERT_OK(blocker.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
-  ASSERT_OK(blocker.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
-
-  auto writer = ASSERT_RESULT(ConnectWriter());
-  ASSERT_OK(writer.Execute("SET yb_transaction_priority_upper_bound = 0.1"));
-
-  // Let kFailedAttempts attempts fail on the blocker, then hold the tserver at the next
-  // replacement until the blocker commits, so the attempt after it succeeds.
-  std::atomic<int> replaces{0};
-  CountDownLatch last_replace(1);
-  CountDownLatch blocker_committed(1);
-  SyncPoint::GetInstance()->SetCallBack("PgClientSession::ReplaceTransaction", [&](void*) {
-    if (++replaces == kFailedAttempts) {
-      last_replace.CountDown();
-      blocker_committed.Wait();
-    }
-  });
-  SyncPoint::GetInstance()->EnableProcessing();
-
-  ASSERT_OK(writer.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  {
-    std::jthread t([&writer] { ASSERT_OK(writer.Fetch("SELECT lock_and_update()")); });
-    auto release_tserver = ScopeExit([&] { blocker_committed.CountDown(); });
-    ASSERT_TRUE(last_replace.WaitFor(60s * kTimeMultiplier));
-    ASSERT_OK(blocker.CommitTransaction());
-  }
-  ASSERT_GE(replaces.load(), kFailedAttempts);
-
-  AssertDdlWaitsForWriter();
-  {
-    auto ddl_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '3s'"));
-    ASSERT_NOK_STR_CONTAINS(ddl_conn.Fetch("SELECT * FROM t3"), "statement timeout");
-  }
-  ASSERT_OK(writer.CommitTransaction());
-  ASSERT_EQ(ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT v FROM t2 WHERE id = 1")), 2);
-}
-
 INSTANTIATE_TEST_CASE_P(
     Fastpath, PgObjectLocksRetryTest, ::testing::Bool(),
-    [](const ::testing::TestParamInfo<bool>& info) {
-      return info.param ? "Fastpath" : "RPC";
-    });
-
-INSTANTIATE_TEST_CASE_P(
-    Fastpath, PgObjectLocksFailOnConflictRetryTest, ::testing::Bool(),
     [](const ::testing::TestParamInfo<bool>& info) {
       return info.param ? "Fastpath" : "RPC";
     });

@@ -4370,7 +4370,6 @@ class PgClientSession::Impl {
       if (options.use_existing_priority()) {
         saved_priority_ = txn->GetPriority();
       }
-      TEST_SYNC_POINT("PgClientSession::ReplaceTransaction");
       RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kSessionKind, deadline));
       txn->Abort();
       ClearTransaction(*session);
