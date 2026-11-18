@@ -1782,14 +1782,14 @@ ybCleanupListenState(BackendId leaving)
 	if (listenersRemain)
 	{
 		/*
-		 * "leaving" started the poller, which has not reported yet, so nobody
-		 * will see its startup through.
+		 * The remaining listeners keep the poller, unless "leaving" started
+		 * it and it has not reported yet: then nobody will see its startup
+		 * through.
 		 */
 		bool		startupAbandoned =
 			yb_poller_data->starter == leaving &&
 			yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_NOT_STARTED;
 
-		/* Otherwise the remaining listeners keep the poller. */
 		if (!startupAbandoned)
 			return;
 
