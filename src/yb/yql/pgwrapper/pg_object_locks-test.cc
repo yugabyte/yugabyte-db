@@ -2869,8 +2869,9 @@ TEST_P(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
     restarts = 0;
     RunRetriedStatement(
         writer, retry_case,
+        /* stmt_format= */
         "INSERT INTO t2 SELECT 1, n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0",
-        inject_restart, wait_for_restart);
+        /* before_statement= */ inject_restart, /* while_running= */ wait_for_restart);
   }
 
   // A read-only autocommit statement runs without a distributed transaction.
@@ -2879,8 +2880,9 @@ TEST_P(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
     restarts = 0;
     RunRetriedStatement(
         writer, RetryCase{isolation, /* in_txn_block= */ false},
-        "SELECT n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0", inject_restart,
-        wait_for_restart, "ALTER TABLE gate ADD COLUMN extra INT");
+        /* stmt_format= */ "SELECT n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0",
+        /* before_statement= */ inject_restart, /* while_running= */ wait_for_restart,
+        /* ddl= */ "ALTER TABLE gate ADD COLUMN extra INT");
   }
 }
 
@@ -2941,15 +2943,16 @@ TEST_P(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveConflictRetry) {
            RetryCase{IsolationLevel::READ_COMMITTED, /* in_txn_block= */ false}}) {
     RunRetriedStatement(
         writer, retry_case,
+        /* stmt_format= */
         "WITH u AS (UPDATE hot SET v = v + 1 WHERE k = 1 RETURNING v) "
         "INSERT INTO t2 SELECT 1, v FROM u WHERE $0",
-        [&blocker, &retry_case] {
+        /* before_statement= */ [&blocker, &retry_case] {
           // READ COMMITTED txns all get the highest priority, so the writer loses only to another
           // READ COMMITTED txn that wrote first.
           ASSERT_OK(blocker.StartTransaction(retry_case.isolation));
           ASSERT_OK(blocker.Execute("UPDATE hot SET v = v + 1 WHERE k = 1"));
         },
-        [&blocker](PGConn& conn, int writer_pid) {
+        /* while_running= */ [&blocker](PGConn& conn, int writer_pid) {
           ASSERT_OK(WaitForWaitEvent(conn, writer_pid, "YBTxnConflictBackoff"));
           ASSERT_OK(blocker.CommitTransaction());
         });
