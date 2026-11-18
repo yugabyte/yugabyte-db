@@ -26,7 +26,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.Universe;
+import io.ebean.DB;
 import io.ebean.Model;
+import io.ebean.Transaction;
+import io.ebean.TransactionCallbackAdapter;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +37,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -92,6 +96,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private final Set<UUID> overriddenScopes;
   // Cache the resolved configs for scopes.
   private final Cache<UUID, Config> cachedConfigs;
+  // Incremented on every invalidation. Guava stores a value that was loading during an
+  // invalidation anyway, so a load that sees this change drops what it stored.
+  private final AtomicLong invalidations = new AtomicLong();
 
   @Inject
   public SettableRuntimeConfigFactory(
@@ -242,6 +249,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   @VisibleForTesting
   public void clearCache() {
     synchronized (overriddenScopes) {
+      invalidations.incrementAndGet();
       if (cachedConfigs != null) {
         cachedConfigs.invalidateAll();
       }
@@ -250,6 +258,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   }
 
   void removeCache(UUID scope) {
+    invalidations.incrementAndGet();
     if (cachedConfigs != null) {
       cachedConfigs.invalidate(scope);
     }
@@ -273,22 +282,30 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
         }
       }
     }
+
+    long invalidationsBefore = invalidations.get();
     try {
-      return cachedConfigs.get(
-          scope,
-          () -> {
-            Config config = supplier.get();
-            if (ScopedRuntimeConfig.isPresent(scope)) {
-              synchronized (overriddenScopes) {
-                // Override is present for this scope. Track it for invalidation on deletion.
-                // It is ok to add the scope for tracking after clearing the overriddenScopes.
-                // But, it is not ok to clear (tracking lost) after adding to overriddenScopes.
-                // Compare and clear is needed to avoid the latter case.
-                overriddenScopes.add(scope);
-              }
-            }
-            return config;
-          });
+      Config config =
+          cachedConfigs.get(
+              scope,
+              () -> {
+                Config loaded = supplier.get();
+                if (ScopedRuntimeConfig.isPresent(scope)) {
+                  synchronized (overriddenScopes) {
+                    // Override is present for this scope. Track it for invalidation on deletion.
+                    // It is ok to add the scope for tracking after clearing the overriddenScopes.
+                    // But, it is not ok to clear (tracking lost) after adding to overriddenScopes.
+                    // Compare and clear is needed to avoid the latter case.
+                    overriddenScopes.add(scope);
+                  }
+                }
+                return loaded;
+              });
+      if (invalidations.get() != invalidationsBefore) {
+        // The value may have been read before the change that caused the invalidation.
+        cachedConfigs.invalidate(scope);
+      }
+      return config;
     } catch (ExecutionException e) {
       // Actual loading is in this thread.
       throw new RuntimeException("Error loading config for scope " + scope, e);
@@ -324,10 +341,36 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
       if (type == ScopeType.GLOBAL || type == ScopeType.CUSTOMER) {
         // Finer grained invalidation can be implemented here if needed. For now we just clear the
         // cache to also remove the dependents due to fall-backs.
-        clearCache();
+        invalidateNowAndAfterTransaction(this::clearCache);
       } else {
-        removeCache(entry.getScopeUUID());
+        UUID scope = entry.getScopeUUID();
+        invalidateNowAndAfterTransaction(() -> removeCache(scope));
       }
     };
+  }
+
+  /**
+   * Runs the invalidation now and, when called inside a transaction, again once it commits or rolls
+   * back. Until the commit, other connections still read the old rows, so a concurrent request that
+   * loads a scope in between would put the old values back in the cache, where they would stay
+   * until the entry expires.
+   */
+  private void invalidateNowAndAfterTransaction(Runnable invalidation) {
+    invalidation.run();
+    Transaction transaction = DB.currentTransaction();
+    if (transaction != null && transaction.isActive()) {
+      transaction.register(
+          new TransactionCallbackAdapter() {
+            @Override
+            public void postCommit() {
+              invalidation.run();
+            }
+
+            @Override
+            public void postRollback() {
+              invalidation.run();
+            }
+          });
+    }
   }
 }
