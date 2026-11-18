@@ -159,6 +159,7 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
+DECLARE_int32(TEST_sleep_before_restore_checkpoint_resumes_ops_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
@@ -2416,6 +2417,67 @@ TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
 
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+}
+
+// A restored vector index that needs a compaction right away must not start it before the
+// restore resumes read/write operations. The compaction would fail with TryAgain, the index would
+// keep that failure, and the restore apply or the next write would crash the tserver. See DB-23803.
+TEST_P(PgVectorIndexTest, CompactionAfterSnapshotRestore) {
+  constexpr size_t kBatch = 8;
+
+  num_pre_split_tablets_ = 1;
+  // Accumulate enough chunks for a compaction, but let it start only from the restore.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  size_t num_rows = 0;
+  for (int i = 0; i != GetFileNumCompactionTrigger(); ++i) {
+    ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kBatch));
+    num_rows += kBatch;
+    // A lagging follower would put several batches into one chunk and have nothing to compact.
+    ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
+  }
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto hybrid_time = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
+
+  std::atomic<size_t> num_compacted{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::DoCompact:ChunksUpdated", [&num_compacted](void*) {
+    ++num_compacted;
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+  // Hold the pause long enough for a compaction enabled under it to reach its first read.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms) =
+      1000 * kTimeMultiplier;
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms) = 0;
+
+  // One compaction per tablet replica.
+  const auto num_indexes = ListVectorIndexes(cluster_.get()).size();
+  ASSERT_OK(LoggedWaitFor(
+      [&num_compacted, num_indexes] { return num_compacted >= num_indexes; },
+      30s * kTimeMultiplier, "Restored indexes compacted"));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
+  ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kBatch));
+  ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
 }
 
 void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(

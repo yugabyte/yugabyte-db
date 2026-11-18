@@ -105,8 +105,8 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
  public:
   Status Init(
       const Tablet& tablet, const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) {
-    // Using non-blocking operation to avoid deadlock during shutdown. This is safe because
-    // all callers handle errors from the underlying iterator gracefully.
+    // Using non-blocking operation to avoid deadlock during shutdown. A compaction that gets
+    // TryAgain here fails the index, so compactions must not start while operations are paused.
     rocksdb_op_ = tablet.CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 

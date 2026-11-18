@@ -4993,7 +4993,13 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   for (auto* op_pause : op_pauses.AsArray()) {
     LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
-  return DoEnableCompactions();
+
+  // Compactions are enabled only after the pause is released, see
+  // TabletSnapshots::RestoreCheckpoint. During bootstrap EnableCompactions does nothing, and
+  // CompleteStartup enables them.
+  op_pauses.Reset();
+  s = EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  return s.IsShutdownInProgress() ? Status::OK() : s;
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
