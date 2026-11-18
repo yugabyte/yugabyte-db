@@ -64,17 +64,15 @@ ANALYZE gap_idx_tbl;
 --
 -- ord1 = x compares timestamptz with timestamp, which is stable, so that filter
 -- runs locally, after the merge, while x = gap runs as a storage filter within
--- each stream.  The merge sorts on gap, but the primary key scan reads only the
--- columns that the targets and the local filter use, so when the query does not
--- select gap, the scan never reads it, and the merge compares NULLs on it.  The
--- decoy passes x = gap, fails ord1 = x, and comes first in stream bkt = 1, so
--- the first query returns the rows out of order.  The second query selects gap,
--- so the scan reads it, and the rows come out in order.
--- TODO(#38147): read every merge sort column, so that the first query returns
--- the rows in order.
+-- each stream.  No target or local filter uses gap, so the scan reads it only
+-- because the merge sorts on it.  The decoy passes x = gap, fails ord1 = x, and
+-- comes first in stream bkt = 1, so a merge that compared gap without reading
+-- it would return the rows out of order.  The primary key scan reads gap from
+-- the table row, and the index-only scan from the index row.
 SET TimeZone = 'UTC';
 CREATE TABLE gap_unread_tbl (bkt int, ord1 timestamptz, gap timestamp, ord2 int,
     x timestamp, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
+CREATE INDEX NONCONCURRENTLY gap_unread_tbl_idx ON gap_unread_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC) INCLUDE (x);
 INSERT INTO gap_unread_tbl VALUES
     (1, '2020-01-02', '2020-01-02', 10, '2020-01-02'),  -- stream bkt = 1
     (1, '2020-01-02', '2020-01-02', 30, '2020-01-02'),
@@ -83,8 +81,11 @@ INSERT INTO gap_unread_tbl VALUES
 ANALYZE gap_unread_tbl;
 
 \set query ':P :Q SELECT ord1, ord2, bkt FROM gap_unread_tbl WHERE bkt IN (1, 2) AND ord1 = x AND x = gap ORDER BY ord1, ord2;'
+\set Q1 '/*+IndexScan(gap_unread_tbl gap_unread_tbl_pkey) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexScan(gap_unread_tbl gap_unread_tbl_pkey) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
-\set query ':P :Q SELECT gap, ord1, ord2, bkt FROM gap_unread_tbl WHERE bkt IN (1, 2) AND ord1 = x AND x = gap ORDER BY ord1, ord2;'
+\set Q1 '/*+IndexOnlyScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 0)*/'
+\set Q2 '/*+IndexOnlyScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
 RESET TimeZone;
 
