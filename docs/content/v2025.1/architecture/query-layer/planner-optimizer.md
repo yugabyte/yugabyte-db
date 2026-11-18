@@ -81,9 +81,11 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 
 ### Best practices
 
-- If your table already has rows, and you create an additional index (for example, `create index i on t (k);`), you must re-run analyze to populate the index `pg_class.reltuples` with the correct row count. {{<issue 25394>}}
+- If your table already has rows, and you create an additional index (for example, `CREATE INDEX i ON t (k)`), run ANALYZE to populate the index `pg_class.reltuples` with the correct row count. {{<issue 25394>}}
 
-    If you need to create a new index to replace a old one while your application is running, create the new one first, run analyze, then drop the old one.
+    Starting in v2025.1.3.0, set `yb_enable_update_reltuples_after_create_index` to `on` so `CREATE INDEX` updates `reltuples` for the table and the new index. In v2025.1 this setting stays off when you enable the cost-based optimizer; turn it on explicitly.
+
+    To replace an index while the application is running, create the new index first, then drop the old one. Run ANALYZE after creating the index when `yb_enable_update_reltuples_after_create_index` is `off`.
 
 - After you restore a database in YugabyteDB Anywhere or Aeon, you need to run analyze because the statistics that were in the database when it was backed up do not get restored.
 
