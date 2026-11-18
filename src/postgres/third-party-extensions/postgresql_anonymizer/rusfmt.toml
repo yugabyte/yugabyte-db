@@ -1,0 +1,4 @@
+# Based on the PGRX rustfmt config
+# https://github.com/pgcentralfoundation/pgrx/blob/develop/rustfmt.toml
+use_small_heuristics = "Max"
+merge_derives = false

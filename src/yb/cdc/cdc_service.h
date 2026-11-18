@@ -368,6 +368,10 @@ class CDCServiceImpl : public CDCServiceIf {
     return cdc_master_bg_task_ran_once_.load(std::memory_order_acquire);
   }
 
+  // Releases the WAL, intent and history retention barriers of the sys catalog tablet on every
+  // master. Only called on the master leader.
+  Status ReleaseSysCatalogRetentionBarriers();
+
  private:
   friend class XClusterProducerBootstrap;
   friend class CDCSDKVirtualWAL;

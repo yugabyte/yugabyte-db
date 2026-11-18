@@ -1,0 +1,8 @@
+
+-- Sometimes the pg_regress will fail, leaving the contrib_database in an
+-- inconsistent state.
+-- Here's some preemptive cleaning
+
+SET client_min_messages TO ERROR;
+
+DROP SUBSCRIPTION IF EXISTS contrib_sub;

@@ -40,12 +40,14 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
+import com.yugabyte.yw.models.ContinuousBackupConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -576,6 +578,50 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
       assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
       assertEquals("Platform restarted.", taskInfo.getTaskError().getMessage());
     }
+  }
+
+  @Test
+  public void testDeletesStorageConfigsBeingValidated() {
+    // Created through v2: their ValidateStorageConfig task didn't survive the restart.
+    CustomerConfig validating = ModelFactory.createNfsStorageConfig(customer, "validating");
+    validating.setState(CustomerConfig.ConfigState.Validating);
+    validating.update();
+    Customer other = ModelFactory.testCustomer("other-customer");
+    CustomerConfig otherValidating = ModelFactory.createNfsStorageConfig(other, "validating");
+    otherValidating.setState(CustomerConfig.ConfigState.Validating);
+    otherValidating.update();
+    CustomerConfig active = ModelFactory.createNfsStorageConfig(customer, "active");
+    CustomerConfig queued = ModelFactory.createNfsStorageConfig(customer, "queued");
+    queued.setState(CustomerConfig.ConfigState.QueuedForDeletion);
+    queued.update();
+
+    taskManager.handleAllPendingTasks();
+
+    assertNull(CustomerConfig.get(customer.getUuid(), validating.getConfigUUID()));
+    assertNull(CustomerConfig.get(other.getUuid(), otherValidating.getConfigUUID()));
+    assertNotNull(CustomerConfig.get(customer.getUuid(), active.getConfigUUID()));
+    assertEquals(
+        CustomerConfig.ConfigState.QueuedForDeletion,
+        CustomerConfig.get(customer.getUuid(), queued.getConfigUUID()).getState());
+  }
+
+  @Test
+  public void testConfigThatFailsToDeleteKeepsTheOthers() {
+    // Created before continuous backup refused configs being validated: its foreign key keeps
+    // the config from being deleted.
+    CustomerConfig referenced = ModelFactory.createNfsStorageConfig(customer, "referenced");
+    referenced.setState(CustomerConfig.ConfigState.Validating);
+    referenced.update();
+    ContinuousBackupConfig.create(
+        referenced.getConfigUUID(), 1, com.yugabyte.yw.models.helpers.TimeUnit.HOURS, 1, "dir");
+    CustomerConfig other = ModelFactory.createNfsStorageConfig(customer, "other");
+    other.setState(CustomerConfig.ConfigState.Validating);
+    other.update();
+
+    taskManager.handleAllPendingTasks();
+
+    assertNotNull(CustomerConfig.get(customer.getUuid(), referenced.getConfigUUID()));
+    assertNull(CustomerConfig.get(customer.getUuid(), other.getConfigUUID()));
   }
 
   @Test

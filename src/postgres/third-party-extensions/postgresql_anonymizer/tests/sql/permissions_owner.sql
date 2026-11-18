@@ -43,26 +43,8 @@ SELECT * FROM t1;
 
 UPDATE t1 SET t='test' WHERE i=1;
 
--- SHOULD FAIL
-SAVEPOINT fail_start_engine;
-SELECT anon.start_dynamic_masking();
-ROLLBACK TO fail_start_engine;
-
-RESET ROLE;
-SELECT anon.start_dynamic_masking();
-SET ROLE oscar_the_owner;
-
 SELECT * FROM t1;
 
---SELECT * FROM mask.t1;
-
--- SHOULD FAIL
-SAVEPOINT fail_stop_engine;
-SELECT anon.stop_dynamic_masking();
-ROLLBACK TO fail_stop_engine;
-
-RESET ROLE;
-SELECT anon.stop_dynamic_masking();
 SET ROLE oscar_the_owner;
 
 -- SHOULD FAIL

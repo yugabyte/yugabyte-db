@@ -1,0 +1,40 @@
+
+##
+## L I N T
+##
+
+lint-bash:
+  stage: lint
+  script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends shellcheck
+    - shellcheck bin/pg_dump_anon.sh
+    - shellcheck docker/anon.sh
+
+lint-go:
+  stage: lint
+  image: golang:alpine
+  script:
+    - apk add --no-cache gcc musl-dev
+    - cd ./pg_dump_anon/
+    - go mod download github.com/lib/pq
+    - go vet main.go
+
+##
+## R E L E A S E
+##
+
+release_pg_dump_anon:
+  stage: release
+  image:
+    name: goreleaser/goreleaser
+    entrypoint: ['']
+  only:
+    - tags
+  variables:
+    # Disable shallow cloning so that goreleaser can diff between tags to
+    # generate a changelog.
+    GIT_DEPTH: 0
+  script:
+    - cd pg_dump_anon
+    - goreleaser release --rm-dist

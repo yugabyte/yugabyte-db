@@ -8,3 +8,22 @@ repos:
       - id: end-of-file-fixer
         exclude: ^tests/expected/
       - id: check-added-large-files
+  - repo: local
+    hooks:
+      - id: codespell
+        name: codespell
+        entry: codespell
+        language: system
+        types: [file]
+  - repo: https://github.com/rvben/rumdl-pre-commit
+    rev: v0.2.13
+    hooks:
+      - id: rumdl-fmt  # Auto-format and fail if issues remain
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: rustfmt
+        description: Check if all files follow the rustfmt style
+        entry: cargo fmt --all
+        language: system
+        pass_filenames: false

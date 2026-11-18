@@ -140,6 +140,9 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<bool> detect_publication_changes_implicitly;
   bool is_notification_slot = false;
   std::optional<bool> xcluster_use_target_applied_filter;
+  bool paused_for_upgrade = false;
+  bool unusable_with_transactional_ddl = false;
+  std::optional<HybridTime> implicit_conversion_barrier_ht;
 
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
@@ -147,7 +150,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
       &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type,
       &replication_slot_ordering_mode, &detect_publication_changes_implicitly,
       &replication_slot_plugin_name, &is_notification_slot,
-      &xcluster_use_target_applied_filter));
+      &xcluster_use_target_applied_filter, &paused_for_upgrade,
+      &unusable_with_transactional_ddl, &implicit_conversion_barrier_ht));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -216,6 +220,9 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   replication_slot_ordering_mode_ = replication_slot_ordering_mode;
   detect_publication_changes_implicitly_ = detect_publication_changes_implicitly;
   is_notification_slot_ = is_notification_slot;
+  paused_for_upgrade_ = paused_for_upgrade;
+  unusable_with_transactional_ddl_ = unusable_with_transactional_ddl;
+  implicit_conversion_barrier_ht_ = implicit_conversion_barrier_ht;
   // xcluster_use_target_applied_filter is immutable per stream.
   const bool use_target_applied_filter = xcluster_use_target_applied_filter.value_or(false);
   if (is_refresh) {

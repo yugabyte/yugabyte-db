@@ -1,0 +1,79 @@
+BEGIN;
+
+-- Mallory is an active attacker
+CREATE USER mallory;
+
+--
+-- Starting with Postgres 15, unprivileged users are not allowed to create new
+-- objects in a database. And for all previous versions, the documentation now
+-- recommends to run `REVOKE CREATE ON SCHEMA public FROM PUBLIC;` (see link
+-- below )
+--
+-- With this restriction, the elevation attacks below are not possible. In order
+-- to test them on Postgres 15+, we have to restore the creation privilege and
+-- check that the extension has its own protections against it.
+--
+-- https://wiki.postgresql.org/wiki/A_Guide_to_CVE-2018-1058%3A_Protect_Your_Search_Path
+--
+
+GRANT ALL ON SCHEMA public TO mallory;
+
+SET ROLE mallory;
+
+-- Prepare Attack for TEST 1
+CREATE OR REPLACE FUNCTION public.multiply(a bigint, b double precision)
+RETURNS bigint AS $$
+BEGIN
+  RAISE WARNING 'Potential Privilege Elevation 1';
+  RETURN a OPERATOR(pg_catalog.*) b;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OPERATOR public.* (
+  LEFTARG = bigint,
+  RIGHTARG = double precision,
+  PROCEDURE = public.multiply
+);
+
+-- Prepare Attack for TEST2
+CREATE OR REPLACE FUNCTION public.modulo(a bigint, b int)
+RETURNS bigint AS $$
+BEGIN
+  RAISE WARNING 'Potential Privilege Elevation 2';
+  RETURN a OPERATOR(pg_catalog.%) b;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OPERATOR public.% (
+  LEFTARG = bigint,
+  RIGHTARG = int,
+  PROCEDURE = public.modulo
+);
+
+RESET ROLE;
+
+--
+-- TEST 1 : Attack when a superuser loads the extension
+--
+
+-- This is the classic "search_path attack" (CVE-2018-1058)
+SELECT 1::BIGINT*1::DOUBLE PRECISION;
+
+-- The extension init script is protected against it
+CREATE EXTENSION anon;
+
+
+
+--
+-- TEST 2 : Attack when a superuser launches a masking function
+--
+RESET search_path;
+
+-- Again this is the classic "search_path attack
+SELECT (pg_catalog.nextval('anon.random_id_seq')%2147483647)::INT IS NOT NULL;
+
+-- The anon functions are protected against it
+SELECT anon.random_id_int() IS NOT NULL;
+
+ROLLBACK;
+
