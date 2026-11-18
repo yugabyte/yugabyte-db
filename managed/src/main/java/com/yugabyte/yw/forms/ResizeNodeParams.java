@@ -375,8 +375,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
   /**
    * Premium SSD v2 and Ultra disks can be expanded without downtime only on a VM with an NVMe disk
    * controller, so smart resize is rejected for a node whose VM uses SCSI. Asks Azure for the
-   * node's controller. A node whose controller cannot be determined is rejected as well: letting
-   * it through would fail the resize in the middle of the task.
+   * node's controller. A node whose controller cannot be determined is rejected as well: letting it
+   * through would fail the resize in the middle of the task.
    *
    * @return null if the node's VM uses NVMe, otherwise the error message
    */
