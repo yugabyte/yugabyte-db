@@ -234,10 +234,6 @@ const std::string kDefaultIndexBuildOptions = "ef_construction = 256, m = 32, m0
 // care about the number of indexes rather than recall.
 const std::string kCheapIndexBuildOptions = "ef_construction = 50, m = 5, m0 = 8";
 
-const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
-  return pointer_cast<const unum::usearch::byte_t*>(vector.data());
-}
-
 YB_DEFINE_ENUM(VectorIndexEngine, (kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
@@ -786,11 +782,10 @@ Result<size_t> PgVectorIndexTestBase::FetchAndVerifyOrder(
 
   std::vector<typename unum::usearch::metric_punned_t::result_t> distances;
   distances.reserve(result.size());
-  const auto* query_byte_vector = VectorToBytePtr(query_vector);
   for (auto key : result) {
     size_t idx = VERIFY_RESULT(extractor(key));
-    const auto* byte_vector = VectorToBytePtr(vectors_[idx]);
-    distances.push_back(metric(query_byte_vector, byte_vector));
+    distances.push_back(
+        vector_index::MetricDistance(metric, query_vector.data(), vectors_[idx].data()));
   }
 
   LOG_WITH_FUNC(INFO) << "Requested: " << limit << ", found: " << result.size();
@@ -2677,8 +2672,8 @@ void PgVectorIndexTest::TestRandom() {
         [&metric, &query_vector, &vectors = vectors_](size_t li, size_t ri) {
       const auto& lhs = vectors[li];
       const auto& rhs = vectors[ri];
-      return metric(VectorToBytePtr(query_vector), VectorToBytePtr(lhs)) <
-             metric(VectorToBytePtr(query_vector), VectorToBytePtr(rhs));
+      return vector_index::MetricDistance(metric, query_vector.data(), lhs.data()) <
+             vector_index::MetricDistance(metric, query_vector.data(), rhs.data());
     });
     size_t ep = 0;
     for (int64_t id : rows) {
