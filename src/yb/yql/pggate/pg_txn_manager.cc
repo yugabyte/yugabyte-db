@@ -474,7 +474,7 @@ Status PgTxnManager::RestartTransaction(SetupPerformOptionsAccessorTag tag) {
 Result<tserver::PgRestartTransactionForRetryResponsePB> PgTxnManager::RestartTransactionForRetry(
     SetupPerformOptionsAccessorTag tag, RetryRequestPB::Kind kind) {
   tserver::PgPerformOptionsPB options;
-  if (kind != RetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY) {
+  if (kind == RetryRequestPB::DEFAULT) {
     RETURN_NOT_OK(SetupPerformOptions(
         tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
         SkipReadTimeOptions::kTrue));
@@ -752,6 +752,16 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
     tserver::ReadTimeManipulation manipulation,
     NonTransactionalWrites ops_has_non_transactional_writes) const {
   const auto has_read_time = read_time_options.has_read_time();
+
+  if (read_restart_retry_in_progress_) {
+    RSTATUS_DCHECK(
+        !IsSerializableIsolation(), IllegalState,
+        "Serializable transactions do not face read restart errors.");
+    RSTATUS_DCHECK(
+        !ShouldDeferReadPoint(), IllegalState, "Deferred reads do not face read restart errors.");
+    RSTATUS_DCHECK(
+        !UsesFollowerReads(), IllegalState, "Follower reads do not face read restart errors.");
+  }
 
   if (ShouldResetReadTime(read_time_action) || ops_has_non_transactional_writes) {
     RSTATUS_DCHECK(
@@ -1130,6 +1140,9 @@ Status PgTxnManager::CheckConflictWithCrossTxnSnapshotTime(
   SCHECK(
       !deferrable_,
       NotSupported, "Deferred read point can't be used with exported/imported snapshot.");
+  RSTATUS_DCHECK(
+      !read_restart_retry_in_progress_, IllegalState,
+      "Exported/imported snapshots must not be retried at a different read point.");
   SCHECK(
       !ShouldResetReadTime(read_time_action) && !ops_has_non_transactional_writes, NotSupported,
       "Cannot pick a read time in the storage layer with exported/imported snapshot.");

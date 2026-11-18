@@ -2714,7 +2714,8 @@ TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
 // GH #35007, #36262: a statement that is transparently retried must still hold its table locks
 // afterwards, so a conflicting DDL waits for it. Applying a txn restart on the tserver releases all
 // of the session's fastpath locks, so it must happen before the retry re-acquires them.
-class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
+class PgObjectLocksRetryTest : public PgObjectLocksTestRF1,
+                               public ::testing::WithParamInterface<bool> {
  protected:
   struct RetryCase {
     IsolationLevel isolation;
@@ -2728,9 +2729,18 @@ class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
     }
   };
 
+  void BeforePgProcessStart() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+  }
+
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
-    PgObjectLocksFastpathTest::SetUp();
+    PgObjectLocksTestRF1::SetUp();
+    if (GetParam()) {
+      auto& shared_object = *cluster_->mini_tablet_server(0)->server()->shared_object().get();
+      ASSERT_OK(shared_object.WaitAllocatorsInitialized());
+    }
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE hot (k INT PRIMARY KEY, v INT)"));
     ASSERT_OK(conn.Execute("INSERT INTO hot VALUES (1, 0)"));
@@ -2745,7 +2755,7 @@ class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
     SyncPoint::GetInstance()->DisableProcessing();
     SyncPoint::GetInstance()->ClearAllCallBacks();
     SyncPoint::GetInstance()->ClearTrace();
-    PgObjectLocksFastpathTest::DoTearDown();
+    PgObjectLocksTestRF1::DoTearDown();
   }
 
   Result<PGConn> ConnectWriter() {
@@ -2756,12 +2766,12 @@ class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
     return conn;
   }
 
-  void AssertDdlWaitsForWriter() {
+  static constexpr auto kT2Ddl = "ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID";
+
+  void AssertDdlWaitsForWriter(const std::string& ddl = kT2Ddl) {
     auto ddl_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '3s'"));
-    ASSERT_NOK_STR_CONTAINS(
-        ddl_conn.Execute("ALTER TABLE t2 ADD CONSTRAINT t2_nonneg CHECK (v >= 0) NOT VALID"),
-        "statement timeout");
+    ASSERT_NOK_STR_CONTAINS(ddl_conn.Execute(ddl), "statement timeout");
   }
 
   static Status WaitForWaitEvent(PGConn& conn, int writer_pid, const std::string& wait_event) {
@@ -2774,14 +2784,15 @@ class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
         30s * kTimeMultiplier, Format("writer waiting on $0", wait_event));
   }
 
-  // Runs stmt_format on the writer as retry_case dictates and asserts that the writer still holds
-  // its t2 lock afterwards. stmt_format's $0 is a filter that, outside a txn block, makes the
+  // Runs stmt_format on the writer as retry_case dictates and asserts that ddl still waits for the
+  // writer afterwards. stmt_format's $0 is a filter that, outside a txn block, makes the
   // statement sleep at its end, so the lock is checked while the statement still holds it.
   // before_statement runs just before the statement, while_running while it runs.
   void RunRetriedStatement(
       PGConn& writer, const RetryCase& retry_case, const std::string& stmt_format,
       const std::function<void()>& before_statement,
-      const std::function<void(PGConn&, int)>& while_running) {
+      const std::function<void(PGConn&, int)>& while_running,
+      const std::string& ddl = kT2Ddl) {
     SCOPED_TRACE(retry_case.ToString());
     LOG(INFO) << "Case: " << retry_case.ToString();
     auto conn = ASSERT_RESULT(Connect());
@@ -2804,11 +2815,11 @@ class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
     while_running(conn, writer_pid);
     if (!retry_case.in_txn_block) {
       ASSERT_OK(WaitForWaitEvent(conn, writer_pid, "PgSleep"));
-      AssertDdlWaitsForWriter();
+      AssertDdlWaitsForWriter(ddl);
     }
     thread_holder.JoinAll();
     if (retry_case.in_txn_block) {
-      AssertDdlWaitsForWriter();
+      AssertDdlWaitsForWriter(ddl);
       ASSERT_OK(writer.CommitTransaction());
     }
     ASSERT_OK(writer.Execute("DELETE FROM t2"));
@@ -2826,7 +2837,7 @@ class PgObjectLocksRetryTest : public PgObjectLocksFastpathTest {
   }
 };
 
-TEST_F(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
+TEST_P(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
   auto writer = ASSERT_RESULT(ConnectWriter());
   std::atomic<int> restarts{0};
   SyncPoint::GetInstance()->SetCallBack("PgClientSession::RestartTransactionForRetry", [&](void*) {
@@ -2834,6 +2845,14 @@ TEST_F(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
   });
   SyncPoint::GetInstance()->EnableProcessing();
+  const auto inject_restart = [] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0;
+  };
+  const auto wait_for_restart = [&restarts](PGConn&, int) {
+    ASSERT_OK(WaitFor(
+        [&restarts] { return restarts.load() >= 1; }, 30s * kTimeMultiplier,
+        "read restart retry"));
+  };
 
   for (const auto& retry_case : {
            RetryCase{IsolationLevel::SNAPSHOT_ISOLATION, /* in_txn_block= */ true},
@@ -2846,17 +2865,22 @@ TEST_F(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
     RunRetriedStatement(
         writer, retry_case,
         "INSERT INTO t2 SELECT 1, n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0",
-        [] { ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 1.0; },
-        [&restarts](PGConn&, int) {
-          ASSERT_OK(WaitFor(
-              [&restarts] { return restarts.load() >= 1; }, 30s * kTimeMultiplier,
-              "read restart retry"));
-        });
+        inject_restart, wait_for_restart);
+  }
+
+  // A read-only autocommit statement runs without a distributed transaction.
+  for (const auto isolation :
+       {IsolationLevel::SNAPSHOT_ISOLATION, IsolationLevel::READ_COMMITTED}) {
+    restarts = 0;
+    RunRetriedStatement(
+        writer, RetryCase{isolation, /* in_txn_block= */ false},
+        "SELECT n FROM (SELECT COUNT(*) AS n FROM gate) c WHERE $0", inject_restart,
+        wait_for_restart, "ALTER TABLE gate ADD COLUMN extra INT");
   }
 }
 
 // The RC case retries just the statement, which only fetches the failed read point's limits.
-TEST_F(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
+TEST_P(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
   auto writer = ASSERT_RESULT(ConnectWriter());
   // An injected restart lands no later than the current time, so every retry is restarted again
   // until its window closes: enough retries to outlast max_clock_skew, which a retry whose window
@@ -2892,7 +2916,7 @@ class PgObjectLocksFailOnConflictRetryTest : public PgObjectLocksRetryTest {
   }
 };
 
-TEST_F(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveConflictRetry) {
+TEST_P(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveConflictRetry) {
   auto blocker = ASSERT_RESULT(Connect());
   ASSERT_OK(blocker.Execute("SET yb_transaction_priority_lower_bound = 0.9"));
   auto writer = ASSERT_RESULT(ConnectWriter());
@@ -2927,7 +2951,7 @@ TEST_F(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveConflictRetry) {
   }
 }
 
-TEST_F(PgObjectLocksFailOnConflictRetryTest, AdvisoryLocksSurviveConflictRetry) {
+TEST_P(PgObjectLocksFailOnConflictRetryTest, AdvisoryLocksSurviveConflictRetry) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION xact_lock_and_update() RETURNS void LANGUAGE plpgsql AS $$ BEGIN "
@@ -2967,7 +2991,7 @@ TEST_F(PgObjectLocksFailOnConflictRetryTest, AdvisoryLocksSurviveConflictRetry) 
   ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>("SELECT pg_try_advisory_xact_lock(42)")));
 }
 
-TEST_F(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveRetriesAfterExclusiveLock) {
+TEST_P(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveRetriesAfterExclusiveLock) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_make_global_lock_release_async) = true;
   constexpr int kFailedAttempts = 3;
 
@@ -3018,6 +3042,18 @@ TEST_F(PgObjectLocksFailOnConflictRetryTest, TableLocksSurviveRetriesAfterExclus
   ASSERT_OK(writer.CommitTransaction());
   ASSERT_EQ(ASSERT_RESULT(writer.FetchRow<int32_t>("SELECT v FROM t2 WHERE id = 1")), 2);
 }
+
+INSTANTIATE_TEST_CASE_P(
+    Fastpath, PgObjectLocksRetryTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "Fastpath" : "RPC";
+    });
+
+INSTANTIATE_TEST_CASE_P(
+    Fastpath, PgObjectLocksFailOnConflictRetryTest, ::testing::Bool(),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "Fastpath" : "RPC";
+    });
 
 TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemAcquire) {
   auto conn = ASSERT_RESULT(Connect());

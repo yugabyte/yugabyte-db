@@ -296,8 +296,9 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
-  // Lowest global and per-tablet local limits among the read points that faced a read restart in
-  // the statement being retried; read points picked for the retry are capped at them.
+  // Each read restart of the statement being retried reports the global and per-tablet local limits
+  // of the read point that faced it; these keep the lowest of each across those restarts, and read
+  // points picked for the retry are capped at them.
   HybridTime retry_global_limit_cap_;
   google::protobuf::Map<std::string, uint64_t> retry_local_limit_caps_;
   bool read_restart_retry_in_progress_ = false;
