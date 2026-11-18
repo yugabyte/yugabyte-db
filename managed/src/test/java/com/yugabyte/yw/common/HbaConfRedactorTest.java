@@ -11,7 +11,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.CsvFieldSplitter.CsvField;
 import com.yugabyte.yw.common.HbaConfRedactor.Token;
 import com.yugabyte.yw.common.HbaConfRedactor.Tokens;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.Test;
@@ -237,10 +242,109 @@ public class HbaConfRedactorTest {
             + "      REDACTED\n"
             + "    max_log_size: 256\n",
         HbaConfRedactor.redactFreeText(yaml));
+    // Helm usually folds before ldapbindpasswd, so the rest of the value shares its line's indent.
+    assertEquals(
+        "    ysql_hba_conf_csv: local all yugabyte trust,host all all 0.0.0.0/0 ldap ldapserver=h\n"
+            + "      ldapport=389 ldapbindpasswd=REDACTED\n"
+            + "      REDACTED\n"
+            + "    max_log_size: 256",
+        HbaConfRedactor.redactFreeText(
+            "    ysql_hba_conf_csv: local all yugabyte trust,host all all 0.0.0.0/0 ldap"
+                + " ldapserver=h\n"
+                + "      ldapport=389 ldapbindpasswd=\"long pass\n"
+                + "      phrase tail\" ldaptls=1\n"
+                + "    max_log_size: 256"));
+    assertEquals(
+        "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapserver=h\n"
+            + "      ldapbindpasswd=REDACTED\n"
+            + "      REDACTED\n"
+            + "    max_log_size: 256",
+        HbaConfRedactor.redactFreeText(
+            "    ysql_hba_conf_csv: \"host all all 0.0.0.0/0 ldap ldapserver=h\n"
+                + "      ldapbindpasswd=\\\"long pass\n"
+                + "      phrase tail\\\" ldaptls=1\"\n"
+                + "    max_log_size: 256"));
+    // A JSON or YAML entry starts its own value, so the entries after it are kept.
+    assertEquals(
+        "{\n  \"gflags\": {\n    \"ysql_hba_conf_csv\": \""
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n    \"max_log_size\": \"256\"\n  }\n}",
+        HbaConfRedactor.redactFreeText(
+            "{\n  \"gflags\": {\n    \"ysql_hba_conf_csv\": \""
+                + LDAP
+                + "ldapbindpasswd=x\",\n    \"max_log_size\": \"256\"\n  }\n}"));
+    assertEquals(
+        "args:\n  - --ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n  - --max_log_size=256",
+        HbaConfRedactor.redactFreeText(
+            "args:\n  - --ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=x\n  - --max_log_size=256"));
     // Java stack frames are indented with a tab, not spaces.
     assertEquals(
         "error: ldapbindpasswd=REDACTED\n\tat com.yugabyte.Foo",
         HbaConfRedactor.redactFreeText("error: ldapbindpasswd=x\n\tat com.yugabyte.Foo"));
+    // JSON array elements and indented log lines don't continue a value.
+    assertEquals(
+        "  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n    \"--max_log_size=256\"\n  ]",
+        HbaConfRedactor.redactFreeText(
+            "  \"args\": [\n    \"--fs_data_dirs=/mnt/d0\",\n    \"--ysql_hba_conf_csv="
+                + LDAP
+                + "ldapbindpasswd=x\",\n    \"--max_log_size=256\"\n  ]"));
+    assertEquals(
+        "Running command:\n  yb-admin ldapbindpasswd=REDACTED\n  next output line",
+        HbaConfRedactor.redactFreeText(
+            "Running command:\n  yb-admin ldapbindpasswd=x\n  next output line"));
+    // Neither do the lines of a YAML literal block.
+    for (String block : new String[] {"ysql_hba.conf: |", "- |-"}) {
+      assertEquals(
+          block + "\n  " + LDAP + "ldapbindpasswd=REDACTED\n  local all all trust",
+          HbaConfRedactor.redactFreeText(
+              block + "\n  " + LDAP + "ldapbindpasswd=x\n  local all all trust"));
+    }
+    // A value can start on the line below its key.
+    assertEquals(
+        "    ysql_hba_conf_csv:\n      "
+            + LDAP
+            + "\n      ldapbindpasswd=REDACTED\n      REDACTED\n    max_log_size: 256",
+        HbaConfRedactor.redactFreeText(
+            "    ysql_hba_conf_csv:\n      "
+                + LDAP
+                + "\n"
+                + "      ldapbindpasswd=\"long pass\n"
+                + "      phrase tail\"\n"
+                + "    max_log_size: 256"));
+  }
+
+  @Test
+  public void testFreeTextRedactsAKeysValueOnTheNextLine() {
+    assertEquals(
+        "\"ldapbindpasswdREDACTED\nREDACTED\n\"next\": 1",
+        HbaConfRedactor.redactFreeText("\"ldapbindpasswd\":\n\"secret\",\n\"next\": 1"));
+    assertEquals(
+        "  \"ldapbindpasswdREDACTED\n\n  REDACTED",
+        HbaConfRedactor.redactFreeText("  \"ldapbindpasswd\":\n\n  \"secret\""));
+  }
+
+  @Test
+  public void testFreeTextFoldsAfterGflagLineRedactedToEnd() {
+    assertEquals(
+        "--ysql_hba_conf_csv="
+            + LDAP
+            + "ldapbindpasswd=REDACTED\n      REDACTED\n--max_log_size=256",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv="
+                + LDAP
+                + "ldapbindpasswd=pa\n      ss-tail\n--max_log_size=256"));
+    assertEquals(
+        "--ysql_hba_conf_csv=\"" + LDAP + "ldapbindpasswd=REDACTED\"\n  REDACTED",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv=\"" + LDAP + "ldapbindpasswd=pa\"\n  ss-tail"));
+    assertEquals(
+        "--ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=REDACTED ldaptls=1\n  next",
+        HbaConfRedactor.redactFreeText(
+            "--ysql_hba_conf_csv=" + LDAP + "ldapbindpasswd=pa ldaptls=1\n  next"));
   }
 
   /**
@@ -296,5 +400,161 @@ public class HbaConfRedactorTest {
     Matcher m = KEPT_KEY.matcher(line);
     assertTrue(line, m.find());
     assertEquals(line, line.substring(0, m.end()) + "REDACTED", redacted);
+  }
+
+  // Generated cases, made the same way by the Go port's hba_conf_test.go.
+  private static final long PARITY_SEED = 20261113L;
+  private static final int PARITY_CASES = 20000;
+
+  private static final String[] PARITY_KEYS = {
+    "ldapbindpasswd=", "ldapbindpasswd=", "ldapbindpasswd", "LdapBindPasswd=",
+    "\"ldapbindpasswd\"=", "ldap\"bind\"passwd=", "ldapbind\\,passwd=", "ldapbind\\\"passwd=",
+    "ldapb\u0130ndpasswd=", "ldapbindpasswd =", "ldapbindpasswd=\"\""
+  };
+
+  private static final String[] PARITY_PIECES = {
+    " ",
+    "  ",
+    "\t",
+    ",",
+    "\"",
+    "\"\"",
+    "#",
+    "\\",
+    "=",
+    "\r",
+    "\n",
+    "\n  ",
+    "\n--ysql_hba_conf_csv=",
+    "--ysql_hba_conf_csv=",
+    "host",
+    "local",
+    "all",
+    "0.0.0.0/0",
+    "ldap",
+    "trust",
+    "pw",
+    "p w",
+    "x=y",
+    "ldaptls=1",
+    "ldapserver=h",
+    "map=m",
+    "clientcert=verify-full",
+    "ldapsearchfilter=(cn=x)",
+    "radiussecrets=r",
+    "\u00e9"
+  };
+
+  private static final long FREE_TEXT_PARITY_SEED = 20261114L;
+
+  /** The structure redactFreeText's fold rules read: entries, list items, collections, indents. */
+  private static final String[] FREE_TEXT_PARITY_PIECES = {
+    "ldapbindpasswd=x",
+    "ldapbindpasswd: x",
+    "ldapbindpasswd:",
+    "\"ldapbindpasswd\":",
+    "\"ldapbindpasswd\": \"x\"",
+    "--ysql_hba_conf_csv=",
+    "host all all 0.0.0.0/0 ldap ",
+    "x",
+    " ",
+    "\"",
+    ",",
+    "#",
+    "k: ",
+    "k:",
+    "\"k\": ",
+    "- ",
+    "[",
+    "]",
+    "{",
+    "}",
+    "|",
+    "|-",
+    ">",
+    "Output:",
+    "\r\n",
+    "\n",
+    "\n  ",
+    "\n    ",
+    "\n\n"
+  };
+
+  /** SplitMix64, a generator simple enough to write the same in Go. */
+  private static long nextRandom(long[] state) {
+    long z = (state[0] += 0x9E3779B97F4A7C15L);
+    z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+    z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+    return z ^ (z >>> 31);
+  }
+
+  private static int pick(long[] state, int n) {
+    return (int) Long.remainderUnsigned(nextRandom(state), n);
+  }
+
+  private static String parityCase(long[] state) {
+    StringBuilder s = new StringBuilder();
+    for (int k = pick(state, 4); k > 0; k--) {
+      s.append(PARITY_PIECES[pick(state, PARITY_PIECES.length)]);
+    }
+    s.append(PARITY_KEYS[pick(state, PARITY_KEYS.length)]);
+    for (int k = pick(state, 8); k > 0; k--) {
+      s.append(PARITY_PIECES[pick(state, PARITY_PIECES.length)]);
+    }
+    return s.toString();
+  }
+
+  private static String freeTextParityCase(long[] state) {
+    StringBuilder s = new StringBuilder();
+    for (int k = pick(state, 12) + 1; k > 0; k--) {
+      s.append(FREE_TEXT_PARITY_PIECES[pick(state, FREE_TEXT_PARITY_PIECES.length)]);
+    }
+    return s.toString();
+  }
+
+  private static void update(MessageDigest digest, String output) {
+    digest.update(output.getBytes(StandardCharsets.UTF_8));
+    digest.update((byte) 0);
+  }
+
+  /**
+   * The support bundle's node-side redactor (managed/devops/supportbundle/serverconfredact) ports
+   * this class to Go and must produce the same output. hba_redactor_parity.txt holds digests of the
+   * output over the golden lines and two sets of generated cases, which the Go tests check too;
+   * after changing either redactor, port the change and update the digests in the file.
+   */
+  @Test
+  public void testOutputMatchesGoPort() throws Exception {
+    MessageDigest golden = MessageDigest.getInstance("SHA-256");
+    for (String row : TestUtils.readResource("redaction/hba_pg_rules.jsonl").split("\n")) {
+      String line = Json.parse(row).get(0).asText();
+      update(golden, HbaConfRedactor.redact("\"" + line.replace("\"", "\"\"") + "\""));
+      if (line.indexOf(',') < 0 && !line.startsWith("\"")) {
+        update(golden, HbaConfRedactor.redact(line));
+      }
+      update(golden, HbaConfRedactor.redactFreeText(line));
+    }
+    MessageDigest generated = MessageDigest.getInstance("SHA-256");
+    long[] state = {PARITY_SEED};
+    for (int c = 0; c < PARITY_CASES; c++) {
+      String value = parityCase(state);
+      update(generated, HbaConfRedactor.redact(value));
+      update(generated, HbaConfRedactor.redactFreeText(value));
+    }
+    MessageDigest freeText = MessageDigest.getInstance("SHA-256");
+    long[] freeTextState = {FREE_TEXT_PARITY_SEED};
+    for (int c = 0; c < PARITY_CASES; c++) {
+      update(freeText, HbaConfRedactor.redactFreeText(freeTextParityCase(freeTextState)));
+    }
+    Map<String, String> want = new HashMap<>();
+    for (String line : TestUtils.readResource("redaction/hba_redactor_parity.txt").split("\n")) {
+      String[] parts = line.split(" ");
+      if (!line.startsWith("#") && parts.length == 2) {
+        want.put(parts[0], parts[1]);
+      }
+    }
+    assertEquals("golden", want.get("golden"), HexFormat.of().formatHex(golden.digest()));
+    assertEquals("generated", want.get("generated"), HexFormat.of().formatHex(generated.digest()));
+    assertEquals("free_text", want.get("free_text"), HexFormat.of().formatHex(freeText.digest()));
   }
 }
