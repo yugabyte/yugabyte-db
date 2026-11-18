@@ -98,7 +98,7 @@ namespace yb {
 // never drops to 0) then UpgradeToCommitLock() may block arbitrarily long.
 class RWCLock {
  public:
-  RWCLock() = default;
+  RWCLock();
   ~RWCLock();
 
 #if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
@@ -147,44 +147,60 @@ class RWCLock {
   void CommitUnlock() RELEASE();
 
  private:
-  // Write mode is a flag under mutex_ rather than a mutex held until WriteUnlock(), because
-  // absl::Mutex has no timed lock. This gives thread-safety analysis a capability to name.
+  // Lets thread-safety analysis name write mode, which the absl implementation keeps as a flag
+  // rather than a mutex held until WriteUnlock().
   struct CAPABILITY("mutex") WriteMode {};
 
   bool DoReadLock(CoarseTimePoint deadline);
   bool DoWriteLock(CoarseTimePoint deadline);
 
-  // Sets write_locked_ once it is false, or returns false at the deadline.
+  // Takes write mode, or returns false at the deadline.
   bool AcquireWriteModeUntil(CoarseTimePoint deadline);
   void ReleaseWriteMode();
 
-  // Waits on mutex_, which must be held, until cond is true or until the deadline.
-  // CoarseTimePoint::max() means no deadline.
+  // absl implementation: waits on mutex_, which must be held, until cond is true or until the
+  // deadline. CoarseTimePoint::max() means no deadline.
   bool AwaitUntil(const absl::Condition& cond, CoarseTimePoint deadline) REQUIRES(mutex_);
 
   bool WriteUnlocked() const REQUIRES(mutex_) { return !write_locked_; }
   bool NoCommitter() const;
   bool ReadersDrained() const;
 
+  // --use_absl_rw_spinlock when this lock was constructed.
+  // - false: the original implementation. The writer holds write_mutex_ until WriteUnlock() or
+  //   CommitUnlock(), and commit_mutex_ with two condition variables coordinates commits.
+  // - true: write mode is write_locked_ under mutex_, and every wait is a condition on mutex_,
+  //   which absl re-evaluates whenever the mutex is released. absl::Mutex has no timed lock, so
+  //   write mode cannot be a held absl::Mutex.
+  const bool use_absl_;
+
   [[no_unique_address]] WriteMode write_mode_;
 
-  // Guards write_locked_ and changes to the commit bits of reader_counter_. Threads waiting for
-  // write mode, for readers to drain, or for a committer to finish wait on conditions of this
-  // mutex, which absl re-evaluates whenever the mutex is released.
-  mutable absl::Mutex mutex_;
+  // Original implementation.
+  // Thread sanitizer does not understand timed_mutex and cannot catch related issues.
+  // So use std::mutex with it.
+#if defined(THREAD_SANITIZER)
+  mutable std::mutex write_mutex_;
+#else
+  mutable std::timed_mutex write_mutex_;
+#endif
+  std::mutex commit_mutex_;
+  std::condition_variable no_readers_; // Always hold commit_mutex_ while using this.
+  std::condition_variable no_committer_; // Always hold commit_mutex_ while using this.
 
-  // True while some thread holds the lock in write or commit mode.
+  // absl implementation.
+  mutable absl::Mutex mutex_;
   bool write_locked_ GUARDED_BY(mutex_) = false;
 
   // Lower bits hold number of readers;
   // high bits (kCommitActive, kCommitPending) hold information about acquiring/holding commit mode.
-  // High bit changes require holding mutex_.
+  // High bit changes require holding commit_mutex_ (original) or mutex_ (absl).
   std::atomic<size_t> reader_counter_{0};
 
   //------------------------------------------------------------------------------------------------
   // Information stored about the last holder of the write lock.
 
-  mutable absl::Mutex write_lock_holder_info_mutex_;
+  mutable std::mutex write_lock_holder_info_mutex_;
 
   // Always available.
   CoarseTimePoint write_acquire_time_ GUARDED_BY(write_mode_);

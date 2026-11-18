@@ -11,10 +11,11 @@
 // under the License.
 //
 
-// Lock/unlock throughput of YB's mutex types as the number of contending threads grows, including
-// the polling rw_semaphore that rw_spinlock used before it moved to absl::Mutex.
-// The critical section is a single increment, so this stresses lock handoff rather than modeling
-// any real workload.
+// Lock/unlock throughput and handoff latency of YB's mutex types as the number of contending threads
+// grows. rw_spinlock (and RWCLock) follow --use_absl_rw_spinlock, so run once with
+// --use_absl_rw_spinlock=false (the original polling implementation) and once with true.
+// Most cases hold the lock for a single increment, which stresses lock handoff rather than modeling
+// any real workload. BM_Handoff adds hold and think times and reports how long acquisitions wait.
 //
 // Build and run (use a release build for meaningful numbers; add --full-lto to measure the
 // statically linked, LTO-optimized variant, as release servers are linked):
@@ -29,7 +30,6 @@
 
 #include <absl/synchronization/mutex.h>
 #include <benchmark/benchmark.h>
-#include <boost/smart_ptr/detail/yield_k.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -77,56 +77,6 @@ void BM_SimpleSpinlock(benchmark::State& state) {
 }
 BENCHMARK(BM_SimpleSpinlock)->ThreadRange(1, 64)->UseRealTime();
 
-// The rw_semaphore implementation that rw_spinlock used before it moved to absl::Mutex: waiters
-// retry a compare-and-swap, sleeping in nanosleep(1us) (~50us with default timer slack) between
-// attempts, and unlock wakes nobody.
-class LegacyRwSemaphore {
- public:
-  void lock_shared() {
-    int loop_count = 0;
-    auto cur_state = state_.load(std::memory_order_relaxed);
-    for (;;) {
-      auto expected = cur_state & kNumReadersMask;
-      if (state_.compare_exchange_strong(expected, expected + 1, std::memory_order_acquire)) {
-        return;
-      }
-      cur_state = expected;
-      boost::detail::yield(loop_count++);
-    }
-  }
-
-  void unlock_shared() {
-    state_.fetch_sub(1, std::memory_order_release);
-  }
-
-  void lock() {
-    int loop_count = 0;
-    auto cur_state = state_.load(std::memory_order_relaxed);
-    for (;;) {
-      auto expected = cur_state & kNumReadersMask;
-      if (state_.compare_exchange_strong(expected, kWriteFlag | expected)) {
-        break;
-      }
-      cur_state = expected;
-      boost::detail::yield(loop_count++);
-    }
-    loop_count = 0;
-    while (state_.load(std::memory_order_acquire) & kNumReadersMask) {
-      boost::detail::yield(loop_count++);
-    }
-  }
-
-  void unlock() {
-    state_.store(0, std::memory_order_release);
-  }
-
- private:
-  static constexpr uint32_t kNumReadersMask = 0x7fffffff;
-  static constexpr uint32_t kWriteFlag = 1u << 31;
-
-  std::atomic<uint32_t> state_{0};
-};
-
 // Every iteration takes the lock exclusively.
 template <class Mutex>
 void BM_Exclusive(benchmark::State& state) {
@@ -138,7 +88,6 @@ void BM_Exclusive(benchmark::State& state) {
   }
   state.SetItemsProcessed(state.iterations());
 }
-BENCHMARK(BM_Exclusive<LegacyRwSemaphore>)->ThreadRange(1, 64)->UseRealTime();
 BENCHMARK(BM_Exclusive<rw_spinlock>)->ThreadRange(1, 64)->UseRealTime();
 BENCHMARK(BM_Exclusive<RWCLock>)->ThreadRange(1, 64)->UseRealTime();
 
@@ -159,7 +108,6 @@ void BM_ReadMostly(benchmark::State& state) {
   }
   state.SetItemsProcessed(state.iterations());
 }
-BENCHMARK(BM_ReadMostly<LegacyRwSemaphore>)->ThreadRange(1, 64)->UseRealTime();
 BENCHMARK(BM_ReadMostly<rw_spinlock>)->ThreadRange(1, 64)->UseRealTime();
 BENCHMARK(BM_ReadMostly<std::shared_mutex>)->ThreadRange(1, 64)->UseRealTime();
 
@@ -247,11 +195,9 @@ void BM_Handoff(benchmark::State& state) {
 #define HANDOFF_ARGS \
     Args({1000, 10000})->Args({100000, 100000})->Threads(8)->Threads(32)->UseRealTime() \
         ->MeasureProcessCPUTime()
-BENCHMARK(BM_Handoff<LegacyRwSemaphore, false>)->HANDOFF_ARGS;
 BENCHMARK(BM_Handoff<rw_spinlock, false>)->HANDOFF_ARGS;
 BENCHMARK(BM_Handoff<std::mutex, false>)->HANDOFF_ARGS;
 BENCHMARK(BM_Handoff<simple_spinlock, false>)->HANDOFF_ARGS;
-BENCHMARK(BM_Handoff<LegacyRwSemaphore, true>)->HANDOFF_ARGS;
 BENCHMARK(BM_Handoff<rw_spinlock, true>)->HANDOFF_ARGS;
 BENCHMARK(BM_Handoff<std::shared_mutex, true>)->HANDOFF_ARGS;
 

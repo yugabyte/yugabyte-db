@@ -209,6 +209,7 @@ set(UTIL_SRCS
   ref_cnt_buffer.cc
   rolling_log.cc
   rw_mutex.cc
+  rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
   shutdown_controller.cc

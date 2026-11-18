@@ -98,7 +98,7 @@ struct padded_spinlock : public simple_spinlock {
 // annotations also assume that the same thread the takes the lock will unlock it.
 //
 // See rw_semaphore.h for documentation on the individual methods where unclear.
-// Despite the name, waiters block in absl::Mutex rather than spinning. See rw_semaphore.
+// Reader/writer lock implemented by rw_semaphore; see --use_absl_rw_spinlock.
 class CAPABILITY("mutex") rw_spinlock  {
  public:
   void lock_shared() NO_THREAD_SAFETY_ANALYSIS {

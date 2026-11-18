@@ -38,6 +38,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
+#include "yb/util/rw_semaphore.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tsan_util.h"
@@ -75,6 +76,8 @@ thread_local StackTrace rwc_read_lock_first_stack_trace;
 
 } // namespace
 
+RWCLock::RWCLock() : use_absl_(UseAbslRwSpinlock()) {}
+
 RWCLock::~RWCLock() {
   CHECK_EQ(reader_counter_.load(), 0);
 }
@@ -96,6 +99,38 @@ bool RWCLock::DoReadLock(CoarseTimePoint deadline) {
     if (!(reader_counter_.fetch_sub(1) & kCommitActive)) {
       continue;
     }
+    if (!use_absl_) {
+      std::unique_lock lock(commit_mutex_);
+      if (!(reader_counter_.load() & kCommitActive)) {
+        continue;
+      }
+
+      // wait for lock until it is time to log slow lock or until deadline
+      const auto slow_log_deadline = CoarseMonoClock::now() + FLAGS_slow_rwc_lock_log_ms * 1ms;
+      const auto first_deadline = std::min(deadline, slow_log_deadline);
+      if (no_committer_.wait_until(lock, first_deadline) == std::cv_status::timeout) {
+        if (deadline <= first_deadline) {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+          --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
+#endif
+          return false;
+        }
+        LOG(WARNING) << "Long time waiting for read lock due to committers holding lock";
+        // Is the blocking lock eventually released?  If so, log so the reader knows that lock was
+        // not held forever.
+        auto start = CoarseMonoClock::now();
+        // wait until actual deadline
+        if (no_committer_.wait_until(lock, deadline) == std::cv_status::timeout) {
+#if RWC_LOCK_TRACK_EXTERNAL_DEADLOCK
+          --rwc_read_lock_counter;  // Balance the increment above; we did not acquire.
+#endif
+          return false;
+        }
+        LOG(INFO) << "Committers no longer holding lock after " << (CoarseMonoClock::now() - start);
+      }
+      continue;
+    }
+
     absl::MutexLock lock(&mutex_);
     const absl::Condition no_committer(this, &RWCLock::NoCommitter);
 
@@ -155,6 +190,11 @@ void RWCLock::ReadUnlock() {
   --rwc_read_lock_counter;
 #endif
   if (reader_counter_.fetch_sub(1) - 1 == kCommitPending) {
+    if (!use_absl_) {
+      std::unique_lock lock(commit_mutex_);
+      no_readers_.notify_one();
+      return;
+    }
     // The committer waits for ReadersDrained(), which reads reader_counter_ outside of mutex_.
     // Releasing mutex_ makes absl re-evaluate that condition.
     absl::MutexLock lock(&mutex_);
@@ -177,7 +217,19 @@ bool RWCLock::AwaitUntil(const absl::Condition& cond, CoarseTimePoint deadline) 
   return mutex_.AwaitWithTimeout(cond, absl::FromChrono(deadline - CoarseMonoClock::now()));
 }
 
-bool RWCLock::AcquireWriteModeUntil(CoarseTimePoint deadline) {
+bool RWCLock::AcquireWriteModeUntil(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
+  if (!use_absl_) {
+#if defined(THREAD_SANITIZER)
+    write_mutex_.lock();
+    return true;
+#else
+    if (deadline == CoarseTimePoint::max()) {
+      write_mutex_.lock();
+      return true;
+    }
+    return write_mutex_.try_lock_until(deadline);
+#endif
+  }
   absl::MutexLock lock(&mutex_);
   if (!AwaitUntil(absl::Condition(this, &RWCLock::WriteUnlocked), deadline)) {
     return false;
@@ -186,7 +238,11 @@ bool RWCLock::AcquireWriteModeUntil(CoarseTimePoint deadline) {
   return true;
 }
 
-void RWCLock::ReleaseWriteMode() {
+void RWCLock::ReleaseWriteMode() NO_THREAD_SAFETY_ANALYSIS {
+  if (!use_absl_) {
+    write_mutex_.unlock();
+    return;
+  }
   absl::MutexLock lock(&mutex_);
   write_locked_ = false;
 }
@@ -199,7 +255,7 @@ bool RWCLock::DEBUG_HasWriteLock() const {
 #ifdef NDEBUG
   LOG(FATAL) << "attempt to use DEBUG_HasWriteLock() when DEBUG is false";
 #endif
-  absl::MutexLock lock(&write_lock_holder_info_mutex_);
+  std::lock_guard lock(write_lock_holder_info_mutex_);
   return write_lock_holder_thread_id_ == Thread::CurrentThreadId();
 }
 
@@ -213,7 +269,7 @@ bool RWCLock::DoWriteLock(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
       return false;
     }
     {
-      absl::MutexLock lock(&write_lock_holder_info_mutex_);
+      std::lock_guard lock(write_lock_holder_info_mutex_);
       std::string message =
           "Long time trying to take write lock due to others holding write/commit lock; Current "
           "write holder is ";
@@ -239,13 +295,13 @@ bool RWCLock::DoWriteLock(CoarseTimePoint deadline) NO_THREAD_SAFETY_ANALYSIS {
   write_acquire_time_ = CoarseMonoClock::now();
 #ifdef NDEBUG
   if (FLAGS_enable_rwc_lock_debugging) {
-    absl::MutexLock lock(&write_lock_holder_info_mutex_);
+    std::lock_guard lock(write_lock_holder_info_mutex_);
     write_lock_holder_thread_id_ = Thread::CurrentThreadId();
     write_lock_holder_stack_trace_ = GetStackTrace();
   }
 #else
   {
-    absl::MutexLock lock(&write_lock_holder_info_mutex_);
+    std::lock_guard lock(write_lock_holder_info_mutex_);
     write_lock_holder_thread_id_ = Thread::CurrentThreadId();
     if (FLAGS_enable_rwc_lock_debugging) {
       write_lock_holder_stack_trace_ = GetStackTrace();
@@ -275,6 +331,27 @@ void RWCLock::WriteUnlock() NO_THREAD_SAFETY_ANALYSIS {
 }
 
 void RWCLock::UpgradeToCommitLock() {
+  if (!use_absl_) {
+    std::unique_lock lock(commit_mutex_);
+    reader_counter_ += kCommitPending;
+    for (;;) {
+      size_t expected = kCommitPending;
+      if (reader_counter_.compare_exchange_strong(expected, kCommitActive)) {
+        break;
+      }
+      if (no_readers_.wait_for(lock, FLAGS_slow_rwc_lock_log_ms * 1ms) == std::cv_status::timeout) {
+        LOG(WARNING) << "Long time waiting to acquire commit lock due to readers";
+        // Is the blocking lock eventually released?  If so, log so the reader knows that lock was
+        // not held forever.
+        auto start = CoarseMonoClock::now();
+        no_readers_.wait(lock);
+        MonoDelta passed = CoarseMonoClock::now() - start;
+        LOG(INFO) << "Readers no longer holding lock after " << passed;
+      }
+    }
+    return;
+  }
+
   absl::MutexLock lock(&mutex_);
   const absl::Condition readers_drained(this, &RWCLock::ReadersDrained);
   reader_counter_ += kCommitPending;
@@ -298,7 +375,14 @@ void RWCLock::UpgradeToCommitLock() {
 
 void RWCLock::CommitUnlock() {
   auto write_acquire_time = write_acquire_time_;
-  {
+  if (!use_absl_) {
+    {
+      std::unique_lock lock(commit_mutex_);
+      reader_counter_ -= kCommitActive;
+      no_committer_.notify_all();
+    }
+    write_mutex_.unlock();
+  } else {
     absl::MutexLock lock(&mutex_);
     reader_counter_ -= kCommitActive;
     write_locked_ = false;
