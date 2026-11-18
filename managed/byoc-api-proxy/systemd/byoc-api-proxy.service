@@ -16,7 +16,7 @@ Environment=JAVA_HOME=/opt/yugabyte/jdk-17
 EnvironmentFile=-/etc/yugabyte/byoc-api-proxy/byoc-api-proxy.env
 Environment=SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:/etc/yugabyte/byoc-api-proxy/application.yaml
 
-ExecStart=/bin/sh -c 'exec "${JAVA_HOME}/bin/java" -Djdk.internal.httpclient.disableHostnameVerification=true -XX:+ExitOnOutOfMemoryError -jar /opt/yugabyte/byoc-api-proxy/byoc-api-proxy.jar'
+ExecStart=/bin/sh -c 'exec "${JAVA_HOME}/bin/java" -Djdk.internal.httpclient.disableHostnameVerification=true -XX:+ExitOnOutOfMemoryError -XX:-UseBASE64Intrinsics -jar /opt/yugabyte/byoc-api-proxy/byoc-api-proxy.jar'
 
 # Spring Boot handles SIGTERM; 143 is normal for Java on systemd stop.
 SuccessExitStatus=143
