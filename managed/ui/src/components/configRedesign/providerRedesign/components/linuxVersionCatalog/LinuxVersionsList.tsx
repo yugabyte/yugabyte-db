@@ -152,24 +152,22 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
         isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
       />
       <div style={{ marginTop: '24px' }} />
-      {providerType === ProviderCode.AWS && (
-        <LinuxVersionsCard
-          images={AarchImages}
-          archType={t('aarch64')}
-          setEditDetails={(img: ImageBundle) => {
-            setEditImageBundleDetails(img);
-          }}
-          setImageAsDefault={setImageAsDefault}
-          onDelete={(img) => {
-            setDeleteImageBundleDetails(img);
-          }}
-          viewMode={viewMode}
-          inUseImageBundleUuids={inUseImageBundleUuids}
-          showMoreActions={true}
-          errors={errors as any}
-          isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
-        />
-      )}
+      <LinuxVersionsCard
+        images={AarchImages}
+        archType={t('aarch64')}
+        setEditDetails={(img: ImageBundle) => {
+          setEditImageBundleDetails(img);
+        }}
+        setImageAsDefault={setImageAsDefault}
+        onDelete={(img) => {
+          setDeleteImageBundleDetails(img);
+        }}
+        viewMode={viewMode}
+        inUseImageBundleUuids={inUseImageBundleUuids}
+        showMoreActions={true}
+        errors={errors as any}
+        isImgBundleInUseEditEnabled={isImgBundleInUseEditEnabled}
+      />
 
       {editImageBundleDetails && (
         <AddLinuxVersionModal

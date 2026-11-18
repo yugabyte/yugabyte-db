@@ -69,6 +69,49 @@ func (a *AuthAPIClient) UpdateNewRelease(
 	return a.APIClient.NewReleaseManagementAPI.UpdateNewRelease(a.ctx, a.CustomerUUID, rUUID)
 }
 
+// UpdateNewReleaseRest updates a release with a body that leaves out empty artifact fields; see
+// util.UpdateReleaseRequest for why UpdateNewRelease can't be used to keep artifacts.
+func (a *AuthAPIClient) UpdateNewReleaseRest(
+	rUUID string,
+	reqBody util.UpdateReleaseRequest,
+) (ybaclient.YBPSuccess, error) {
+	errorTag := fmt.Errorf("Release, Operation: Update")
+
+	reqBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return ybaclient.YBPSuccess{}, fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	body, err := a.RestAPICall(
+		RestAPIParameters{
+			reqBytes:        reqBytes,
+			urlRoute:        fmt.Sprintf("ybdb_release/%s", rUUID),
+			method:          http.MethodPut,
+			operationString: "update YugabyteDB version",
+		},
+	)
+	if err != nil {
+		return ybaclient.YBPSuccess{}, fmt.Errorf("%w: %s", errorTag, err.Error())
+	}
+
+	responseBody := ybaclient.YBPSuccess{}
+	if err = json.Unmarshal(body, &responseBody); err != nil {
+		return ybaclient.YBPSuccess{},
+			fmt.Errorf("%w: Failed unmarshalling update YugabyteDB version response body %s",
+				errorTag,
+				err.Error())
+	}
+
+	if responseBody.GetSuccess() {
+		return responseBody, nil
+	}
+
+	return ybaclient.YBPSuccess{},
+		fmt.Errorf("%w: Error updating YugabyteDB version: %s",
+			errorTag,
+			errorMessageFromBody(body))
+}
+
 // UploadRelease API to upload URL
 func (a *AuthAPIClient) UploadRelease() ybaclient.UploadReleasePackagesAPIUploadReleaseRequest {
 	return a.APIClient.UploadReleasePackagesAPI.UploadRelease(a.ctx, a.CustomerUUID)

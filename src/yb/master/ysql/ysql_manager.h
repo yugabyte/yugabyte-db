@@ -188,8 +188,8 @@ class YsqlManager : public YsqlManagerIf {
 
   // Runs one iteration of the pg catalog versions refresh. Returns the delay to the next
   // iteration, or std::nullopt if the loop should stop (e.g. leadership lost). Used by the
-  // bg-pool body inside ScheduleRefreshPgCatalogVersionsTask to decide whether and when to
-  // reschedule itself.
+  // body that ScheduleRefreshPgCatalogVersionsTask submits to the catalog manager's async task
+  // pool to decide whether and when to reschedule itself.
   std::optional<std::chrono::milliseconds> RefreshPgCatalogVersionCacheOnce();
 
   // Background task (and its helper functions) related to LISTEN/NOTIFY.

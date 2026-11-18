@@ -3,7 +3,9 @@
 CREATE DATABASE contrib_regression_test_restore TEMPLATE template0;
 
 \! ${YB_BUILD_ROOT}/postgres/bin/ysqlsh contrib_regression_test_restore -c 'CREATE EXTENSION anon CASCADE;' # YB: Use ysqlsh
-\! ${YB_BUILD_ROOT}/postgres/bin/ysqlsh contrib_regression_test_restore -c 'BEGIN; SET yb_non_ddl_txn_for_sys_tables_allowed = true; SELECT anon.start_dynamic_masking(); COMMIT;' # YB: Use ysqlsh, wrap the anon.start_dynamic_masking() call in a transaction block with yb_non_ddl_txn_for_sys_tables_allowed on
+-- YB: anon 3.x has no anon.start_dynamic_masking(), so the upstream line below is commented out and transparent dynamic masking is enabled instead
+-- \! psql contrib_regression_test_restore -c 'SELECT anon.start_dynamic_masking();'
+\! ${YB_BUILD_ROOT}/postgres/bin/ysqlsh contrib_regression_test_restore -c 'ALTER DATABASE contrib_regression_test_restore SET anon.transparent_dynamic_masking TO true;' # YB
 \! ${YB_BUILD_ROOT}/postgres/bin/ysql_dump -h ${PGHOST} -Fc contrib_regression_test_restore > contrib_regression_test_restore.pgsql # YB: Use ysql_dump with the correct server
 
 DROP DATABASE contrib_regression_test_restore;

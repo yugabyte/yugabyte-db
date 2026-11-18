@@ -38,19 +38,30 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_pg_anonymizer", "true");
-    // to avoid batched copy warning when running anon.init() or
-    // anon.start_dynamic_masking() inside a transaction
+    // to avoid batched copy warning when running anon.init() inside a transaction
     appendToYsqlPgConf(flagMap, "yb_default_copy_from_rows_per_transaction=0");
+    // This framework does not run the Makefile's installcheck recipe (#35053), which sets three
+    // things on the test database before calling pg_regress:
+    // - session_preload_libraries = 'anon': covered by enable_pg_anonymizer above, which puts
+    //   anon in shared_preload_libraries instead.  That flag is how YugabyteDB users enable anon
+    //   (see the pg_anon docs page), so the test loads anon the same way.
+    // - anon.masking_policies = 'devtests, analytics, impexp': the policies the upstream tests
+    //   label objects for.  anon reads it when its library is loaded, and YB loads anon at server
+    //   start rather than at session start, so it has to be set server-wide here.  Spaces
+    //   separate the names to avoid a comma inside ysql_pg_conf_csv; anon's parser
+    //   (re::capture_guc_list) also splits on spaces.
+    // - client_min_messages = notice: already the default, so nothing to set.
+    appendToYsqlPgConf(flagMap, "anon.masking_policies='devtests analytics impexp'");
     flagMap.put("TEST_generate_ybrowid_sequentially", "true");
     // this is the default isolation level in upstream tests
     flagMap.put("yb_enable_read_committed_isolation", "true");
     // (Auto Analyze #28391) Restarting a DDL transaction not supported
     flagMap.put("ysql_enable_auto_analyze", "false");
-    // TODO(#26734): with concurrent DDL, anon.reset() fails in yb.port.init because its TRUNCATE
-    // now runs inside a transaction block and the test sets yb_enable_alter_table_rewrite=false
-    // ("unsafe TRUNCATE cannot be executed in a transaction block"), and yb.port.injection's
-    // manual DROP TABLE workarounds fail once the rollback undoes the DDL. Run in the legacy mode
-    // until both are addressed.
+    // TODO(#26734): with concurrent DDL, anon.reset() fails in yb.port.initialize because its
+    // TRUNCATE now runs inside a transaction block and the test sets
+    // yb_enable_alter_table_rewrite=false ("unsafe TRUNCATE cannot be executed in a transaction
+    // block"), and yb.port.injection's manual DROP TABLE workarounds fail once the rollback undoes
+    // the DDL. Run in the legacy mode until both are addressed.
     toggleDDLMode(flagMap, /* useLegacy */ true);
     return flagMap;
   }
@@ -75,5 +86,15 @@ public class TestPgRegressThirdPartyExtensionsPostgresqlAnonymizer extends BaseP
   @Test
   public void schedule3() throws Exception {
     runPgRegressTest(regress_schedule, "yb_3_schedule");
+  }
+
+  @Test
+  public void schedule4() throws Exception {
+    runPgRegressTest(regress_schedule, "yb_4_schedule");
+  }
+
+  @Test
+  public void schedule5() throws Exception {
+    runPgRegressTest(regress_schedule, "yb_5_schedule");
   }
 }

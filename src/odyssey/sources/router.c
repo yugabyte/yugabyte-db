@@ -1569,6 +1569,14 @@ void od_router_close(od_router_t *router, od_client_t *client)
 	assert(route != NULL);
 
 	od_server_t *server = client->server;
+
+	/*
+	 * YB: Mark the role's routes inactive if the role was dropped. The normal
+	 * path is at RFQ but this is added as a fallback if the backend dies
+	 * after sending the error but before sending RFQ.
+	 */
+	yb_apply_dropped_object(server);
+
 	od_backend_close_connection(server);
 
 	od_route_lock(route);

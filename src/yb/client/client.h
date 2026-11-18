@@ -743,7 +743,10 @@ class YBClient {
       std::optional<bool>* detect_publication_changes_implicitly = nullptr,
       std::optional<std::string>* replication_slot_plugin_name = nullptr,
       bool* is_notification_slot = nullptr,
-      std::optional<bool>* xcluster_use_target_applied_filter = nullptr);
+      std::optional<bool>* xcluster_use_target_applied_filter = nullptr,
+      bool* paused_for_upgrade = nullptr,
+      bool* unusable_with_transactional_ddl = nullptr,
+      std::optional<HybridTime>* implicit_conversion_barrier_ht = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -1076,10 +1079,8 @@ class YBClient {
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
 
-  // Provide the completion status of 'txn' to the YB-Master. propagated_hybrid_time is the caller's
-  // hybrid time; it should be >= the commit time of 'txn' when is_committed is true.
-  Status ReportYsqlDdlTxnStatus(
-      const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time);
+  // Provide the completion status of 'txn' to the YB-Master.
+  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
 

@@ -13,7 +13,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <ranges>
@@ -38,6 +40,7 @@
 
 #include "yb/rocksdb/cache.h"
 
+#include "yb/util/cast.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
@@ -61,6 +64,7 @@
 #include "yb/vector_index/hnsw_options.h"
 #include "yb/vector_index/hnsw_util.h"
 #include "yb/vector_index/sharded_index.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
 
@@ -160,6 +164,7 @@ struct BenchmarkArguments {
   std::string ef_values_comma_sep;
   size_t num_search_repeats = 0;
   size_t search_time_ms = 1000;
+  bool log_all_recall_levels = false;
 
   // Used only with --ann_method pgvector, from the --pg_* options.
   PgVectorConfig pg_vector;
@@ -191,7 +196,8 @@ struct BenchmarkArguments {
         block_cache_size_mb,
         ef_values_comma_sep,
         num_search_repeats,
-        search_time_ms
+        search_time_ms,
+        log_all_recall_levels
     );
   }
 
@@ -266,9 +272,22 @@ struct BenchmarkArguments {
       return STATUS(InvalidArgument, "pgvector is not supported with multiple index shards");
     }
     // A named index or bigint ids point at existing data, which must not be modified.
-    pg_vector.read_only =
-        !pg_vector.index.empty() || pg_vector.id_type == PgVectorIdType::kBigint;
-    pg_vector.random_vectors = build_vecs_path.empty();
+    if (!pg_vector.index.empty() || pg_vector.id_type == PgVectorIdType::kBigint) {
+      pg_vector.read_only = true;
+    }
+    if (pg_vector.read_only && ann_method != BenchmarkAnnMethod::kPgVector) {
+      return STATUS(
+          InvalidArgument, "--pg_read_only, --pg_index and --pg_id_type bigint need --ann_method "
+          "kPgVector");
+    }
+    if (pg_vector.read_only && build_vecs_path.empty() &&
+        (ground_truth_path.empty() || validate_ground_truth)) {
+      return STATUS(
+          InvalidArgument, "Read-only runs need --build_vecs_path to compute or validate the "
+          "ground truth");
+    }
+    // Read-only runs may omit only the base vectors file.
+    pg_vector.random_vectors = query_vecs_path.empty();
     pg_vector.num_connections = std::max(num_indexing_threads, num_query_threads);
     return Status::OK();
   }
@@ -317,9 +336,8 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
              ValidEnumValuesCommaSeparatedForHelp<DistanceKind>());
   const auto pg_id_type_help =
       Format("PgVector backend: type of the table's `id` column. Possible values: $0. Use Bigint "
-             "for tables loaded by other tools whose ids are the 0-based indexes of the vectors in "
-             "--build_vecs_path. Like --pg_index, Bigint never modifies the cluster and requires "
-             "--build_vecs_path.",
+             "for tables loaded by other tools whose ids are the 0-based indexes of the base "
+             "vectors. Bigint implies --pg_read_only.",
              ValidEnumValuesCommaSeparatedForHelp<PgVectorIdType>());
 
   result->desc.add_options()
@@ -419,10 +437,15 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "has the expected row count, `id` and `embedding` column types, and a ready ybhnsw index "
        "with the same distance and m, m0 and ef_construction. Otherwise it is dropped and "
        "recreated.")
+      ("pg_read_only", po::bool_switch(&args.pg_vector.read_only),
+       "PgVector backend: never modify the cluster. The tool fails instead of recreating "
+       "--pg_table when the table or its index does not fit this run, but accepts any row count, "
+       "and an index with other m, m0 and ef_construction when none has this run's. "
+       "--build_vecs_path may be omitted when --ground_truth_path provides the ground truth "
+       "without --validate_ground_truth.")
       (PG_VECTOR_ARG(index),
-       "PgVector backend: name of an existing ybhnsw index on --pg_table. When set, the "
-       "cluster is never modified and the tool fails if the index is missing or not ready. "
-       "Requires --build_vecs_path.")
+       "PgVector backend: name of an existing ybhnsw index on --pg_table. Implies "
+       "--pg_read_only, and the tool fails if the index is missing or not ready.")
       (PG_VECTOR_ARG(id_type),
        pg_id_type_help.c_str() /* Boost copies the string internally */)
       (PG_VECTOR_ARG(batch_size)->notifier(OptionLowerBound("pg_batch_size", 1)),
@@ -447,7 +470,9 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Number of times every index is measured by the search benchmark, in rotating order. "
        "Reported values are medians across repeats. 0 disables the search benchmark.")
       (OPTIONAL_ARG_FIELD(search_time_ms),
-       "Duration of a single search benchmark measurement.");
+       "Duration of a single search benchmark measurement.")
+      (BOOL_SWITCH_ARG_FIELD(log_all_recall_levels),
+       "Log j-recall@k for every j up to k, not only k-recall@k.");
 
 #undef OPTIONAL_ARG_FIELD
 #undef BOOL_SWITCH_ARG_FIELD
@@ -522,15 +547,19 @@ class BenchmarkTool {
     if (args_.num_index_shards > 1) {
       LOG(INFO) << "Using " << args_.num_index_shards << " index shards";
     }
-    indexed_vector_source_ = VERIFY_RESULT(CreateVectorSource(
-        args_.build_vecs_path, "vectors to build index on", args_.num_vectors_to_insert));
+    // Read-only runs need the base vectors only for the ground truth, see Finalize.
+    if (!args_.pg_vector.read_only || !args_.build_vecs_path.empty()) {
+      indexed_vector_source_ = VERIFY_RESULT(CreateVectorSource(
+          args_.build_vecs_path, "vectors to build index on", args_.num_vectors_to_insert));
+    }
     query_vector_source_ = VERIFY_RESULT(CreateVectorSource(
         args_.query_vecs_path, "vectors to query", args_.num_validation_queries));
     RETURN_NOT_OK(LoadPrecomputedGroundTruth());
 
-    RETURN_NOT_OK(PrepareInputVectors());
+    RETURN_NOT_OK(PrepareVertexIds());
 
-    if (indexed_vector_source_->is_file() != query_vector_source_->is_file()) {
+    if (indexed_vector_source_ &&
+        indexed_vector_source_->is_file() != query_vector_source_->is_file()) {
       return STATUS(
           InvalidArgument,
           "We must either load vectors to index from a file and load validation quries from "
@@ -540,6 +569,16 @@ class BenchmarkTool {
 
     PrintConfiguration();
 
+    // The brute force search computes the ground truth that was not loaded, and checks the loaded
+    // records with --validate_ground_truth, or a sample of them when it extends a partial file.
+    // A saved .ibin file also needs the distances.
+    const bool save_distances = !args_.save_ground_truth_path.empty() &&
+        VERIFY_RESULT(GetVectorFileType(args_.save_ground_truth_path)).format ==
+            VectorFileFormat::kBinGroundTruth;
+    if (loaded_ground_truth_.size() < num_queries() || args_.validate_ground_truth ||
+        save_distances) {
+      RETURN_NOT_OK(LoadInputVectors());
+    }
     // Before the index build, so that a mismatching --ground_truth_path fails early, and a saved
     // ground truth survives a failed build.
     RETURN_NOT_OK(PrepareGroundTruth());
@@ -710,7 +749,10 @@ class BenchmarkTool {
       auto& correct_top_k_vertex_ids = loaded_ground_truth_.back();
       correct_top_k_vertex_ids.reserve(args_.max_k);
       used_indexes.clear();
-      size_t total_num_vectors = indexed_vector_source_->num_points();
+      // Without the base vectors file, the ids cannot be checked: those missing from the cluster
+      // count as misses.
+      const auto total_num_vectors = indexed_vector_source_
+          ? indexed_vector_source_->num_points() : std::numeric_limits<size_t>::max();
       for (auto idx : ground_truth_vec) {
         static const char* kInvalidMsg =
             "0-based vector index in a ground truth file is out of range";
@@ -796,14 +838,25 @@ class BenchmarkTool {
   Status PrepareGroundTruth() {
     query_vectors_ = VERIFY_RESULT(query_vector_source_->LoadVectors(num_queries()));
 
-    auto distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
-        args_.hnsw_options.distance_kind);
-
-    auto vertex_id_to_query_distance_fn =
-      [this, distance_fn](VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
-        // Avoid vector_cast on the critical path of the brute force search here.
-        return distance_fn(input_vectors_[VertexIdToInputVectorIndex(vertex_id)], v);
-      };
+    VertexIdToVectorDistanceFunction<InputVector, InputDistanceResult>
+        vertex_id_to_query_distance_fn;
+    if constexpr (std::is_same_v<InputVector, FloatVector>) {
+      // Unlike the reference functions, usearch's metrics use SIMD; metric_punned_t has no u8_k.
+      vertex_id_to_query_distance_fn =
+          [this, metric = hnsw_options().template CreateMetric<FloatVector>()](
+              VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
+            return MetricDistance(
+                metric, input_vectors_[VertexIdToInputVectorIndex(vertex_id)].data(), v.data());
+          };
+    } else {
+      vertex_id_to_query_distance_fn =
+          [this, distance_fn = GetDistanceFunction<InputVector, InputDistanceResult>(
+              args_.hnsw_options.distance_kind)](
+              VectorId vertex_id, const InputVector& v) -> InputDistanceResult {
+            // Avoid vector_cast on the critical path of the brute force search here.
+            return distance_fn(input_vectors_[VertexIdToInputVectorIndex(vertex_id)], v);
+          };
+    }
 
     // The ground truth evaluation is always done in the input coordinate type.
     ground_truth_.emplace(
@@ -849,7 +902,8 @@ class BenchmarkTool {
             ground_truth_->EvaluateRecall(*reader, args_.num_query_threads, k, ef));
         auto elapsed_time = MonoTime::Now() - start_time;
         LOG(INFO) << "Validation finished in " << elapsed_time;
-        for (size_t j = 0; j < result.size(); ++j) {
+        for (size_t j = args_.log_all_recall_levels ? 0 : result.size() - 1; j < result.size();
+             ++j) {
           LOG(INFO) << (j + 1) << "-recall @ k=" << k << " ef=" << ef << ": "
                     << FixedPoint(result[j], 10);
         }
@@ -1111,31 +1165,61 @@ class BenchmarkTool {
     prev_elapsed_usec_ = elapsed_usec;
   }
 
-  Status PrepareInputVectors() {
-    size_t num_vectors_to_load = max_num_vectors_to_insert();
-
-    MonoTime load_start_time = MonoTime::Now();
-    LOG(INFO) << "Loading vectors from " << indexed_vector_source_->file_path() << "...";
-    input_vectors_ = VERIFY_RESULT(indexed_vector_source_->LoadVectors(num_vectors_to_load));
-    LOG(INFO) << "Loaded " << input_vectors_.size() << " vectors in "
-              << (MonoTime::Now() - load_start_time);
-
-    size_t num_points_used = 0;
+  Status PrepareVertexIds() {
+    if (!indexed_vector_source_) {
+      return Status::OK();
+    }
     const size_t max_to_insert = max_num_vectors_to_insert();
-
+    if (max_to_insert == 0) {
+      return STATUS(IllegalState, "Did not find any vectors to add to the index");
+    }
+    vertex_ids_to_insert_.reserve(max_to_insert);
     for (size_t i = 0; i < max_to_insert; ++i) {
       vertex_ids_to_insert_.push_back(InputVectorIndexToVectorId(i));
-      num_points_used++;
-    }
-
-    if (num_points_used == 0) {
-      return STATUS(IllegalState, "Did not find any vectors to add to the index");
     }
     return Status::OK();
   }
 
+  // Idempotent, since both the brute force search and BuildIndex may need the base vectors.
+  Status LoadInputVectors() {
+    if (!input_vectors_.empty()) {
+      return Status::OK();
+    }
+    SCHECK(indexed_vector_source_, IllegalState, "No base vectors to load");
+    MonoTime load_start_time = MonoTime::Now();
+    LOG(INFO) << "Loading vectors from " << indexed_vector_source_->file_path() << "...";
+    input_vectors_ = VERIFY_RESULT(
+        indexed_vector_source_->LoadVectors(vertex_ids_to_insert_.size()));
+    LOG(INFO) << "Loaded " << input_vectors_.size() << " vectors in "
+              << (MonoTime::Now() - load_start_time);
+    return Status::OK();
+  }
+
+  // Inner product ranks vectors that are not L2-normalized by raw dot product rather than cosine
+  // similarity, which is usually a configuration mistake.
+  void CheckNormalized(VectorId vertex_id, const InputVector& v) {
+    if constexpr (std::is_floating_point_v<typename InputVector::value_type>) {
+      if (args_.hnsw_options.distance_kind != DistanceKind::kInnerProduct) {
+        return;
+      }
+      double sum_sq = 0;
+      for (auto x : v) {
+        sum_sq += static_cast<double>(x) * x;
+      }
+      constexpr double kTolerance = 1e-3;
+      const auto norm = std::sqrt(sum_sq);
+      if (std::abs(norm - 1) > kTolerance &&
+          num_unnormalized_vectors_.fetch_add(1, std::memory_order_relaxed) == 0) {
+        LOG(WARNING) << "Inner product distance with base vectors that are not L2-normalized: "
+                     << "vector " << VertexIdToInputVectorIndex(vertex_id) << " has norm "
+                     << norm;
+      }
+    }
+  }
+
   Status InsertOneVector(VectorId vertex_id, MonoTime load_start_time) {
     const auto& v = GetVectorByVertexId(vertex_id);
+    CheckNormalized(vertex_id, v);
     Status s = vector_index_->Insert(vertex_id, vector_cast<IndexedVector>(v), Slice());
     if (s.ok()) {
       auto new_num_inserted = num_vectors_inserted_.fetch_add(1, std::memory_order_acq_rel) + 1;
@@ -1147,6 +1231,7 @@ class BenchmarkTool {
   Status InsertVectors() {
     const auto load_start_time = MonoTime::Now();
     num_vectors_inserted_ = 0;
+    num_unnormalized_vectors_ = 0;
     last_progress_report_count_ = 0;
 
     LOG(INFO) << "Inserting " << num_points_to_insert() << " vectors using " << args_.num_threads
@@ -1168,11 +1253,16 @@ class BenchmarkTool {
     LOG(INFO) << "Inserted " << num_inserted << " vectors with " << dimensions()
               << " dimensions in " << (load_elapsed_usec / 1000.0) << " ms using "
               << args_.num_threads << " threads";
+    if (auto num_unnormalized = num_unnormalized_vectors_.load()) {
+      LOG(WARNING) << num_unnormalized << " of " << num_inserted
+                   << " base vectors are not L2-normalized";
+    }
 
     return Status::OK();
   }
 
   Status BuildIndex() {
+    RETURN_NOT_OK(LoadInputVectors());
     return InsertVectors();
   }
 
@@ -1203,7 +1293,9 @@ class BenchmarkTool {
   }
 
   VectorId InputVectorIndexToVectorId(size_t input_vector_index) {
-    CHECK_LE(input_vector_index, indexed_vector_source_->num_points());
+    if (indexed_vector_source_) {
+      CHECK_LE(input_vector_index, indexed_vector_source_->num_points());
+    }
     return UIntToVectorId(input_vector_index + vertex_id_offset());
   }
 
@@ -1249,6 +1341,7 @@ class BenchmarkTool {
 
   // Atomics used in multithreaded index construction.
   std::atomic<size_t> num_vectors_inserted_{0};  // Total # vectors inserted.
+  std::atomic<size_t> num_unnormalized_vectors_{0};  // See CheckNormalized.
   std::atomic<int64_t> prev_elapsed_usec_{0};  // Previously reported elapsed time in microseconds.
   std::atomic<size_t> last_progress_report_count_{0};  // Last reported progress at this # vectors.
 

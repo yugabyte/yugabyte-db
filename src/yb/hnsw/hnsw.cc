@@ -1100,8 +1100,7 @@ const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
 
 HnswDistanceType UsearchMetric::Distance(
     const std::byte* lhs, const std::byte* rhs) {
-  using unum::usearch::byte_t;
-  return impl_(pointer_cast<const byte_t*>(lhs), pointer_cast<const byte_t*>(rhs));
+  return vector_index::MetricDistance(impl_, lhs, rhs);
 }
 
 
