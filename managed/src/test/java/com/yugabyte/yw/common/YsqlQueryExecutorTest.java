@@ -3,6 +3,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -14,6 +15,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -37,6 +42,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.pac4j.play.LogoutController;
+import org.slf4j.LoggerFactory;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 
@@ -280,6 +286,33 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
             anyBoolean(),
             anyBoolean(),
             eq(false));
+  }
+
+  @Test
+  @Parameters({"true", "false"})
+  public void testParseErrorLogsResponseOnlyWhenLoggingEnabled(boolean logCmdOutput) {
+    RunQueryFormData queryParams = new RunQueryFormData();
+    queryParams.setDbName("postgres");
+    queryParams.setQuery("SELECT query FROM pg_stat_statements");
+    when(mockNodeUniverseManager.runYsqlCommand(
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            ShellResponse.create(0, " jsonb_agg\n---\n [{\"query\": sentinel_query}]\n(1 row)"));
+    Logger logger = (Logger) LoggerFactory.getLogger(YsqlQueryExecutor.class);
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    JsonNode result;
+    try {
+      result = ysqlQueryExecutor.executeQueryInNodeShell(universe, queryParams, node, logCmdOutput);
+    } finally {
+      logger.detachAppender(appender);
+    }
+
+    assertTrue(result.has("error"));
+    assertEquals(1, appender.list.size());
+    String logged = appender.list.get(0).getFormattedMessage();
+    assertEquals(logged, logCmdOutput, logged.contains("sentinel_query"));
   }
 
   @Test

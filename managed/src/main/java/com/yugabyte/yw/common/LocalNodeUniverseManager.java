@@ -143,9 +143,12 @@ public class LocalNodeUniverseManager {
       if (process.isAlive()) {
         throw new RuntimeException("Timed out waiting for query");
       }
-      return ShellResponse.create(
-          process.exitValue(),
-          LocalNodeManager.COMMAND_OUTPUT_PREFIX + LocalNodeManager.getOutput(process));
+      ShellResponse response =
+          ShellResponse.create(
+              process.exitValue(),
+              LocalNodeManager.COMMAND_OUTPUT_PREFIX + LocalNodeManager.getOutput(process));
+      response.logCmdOutput = logCmdOutput;
+      return response;
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }

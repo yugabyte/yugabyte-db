@@ -311,7 +311,15 @@ public class YsqlQueryExecutor {
       }
 
     } catch (Exception e) {
-      LOG.error(e.getMessage(), e);
+      if (logCmdOutput) {
+        LOG.error(e.getMessage(), e);
+      } else {
+        // The parser's message can quote the response.
+        LOG.error(
+            "Failed to parse the response of a query on node {}: {}",
+            node.getNodeName(),
+            e.getClass().getSimpleName());
+      }
       response.put("error", "Failed to parse response: " + e.getMessage());
     }
     return response;

@@ -152,6 +152,7 @@ public class ShellProcessHandler {
 
     ShellResponse response = new ShellResponse();
     response.code = ERROR_CODE_GENERIC_ERROR;
+    response.logCmdOutput = context.isLogCmdOutput();
     String description =
         context.getDescription() == null
             ? StringUtils.abbreviateMiddle(String.join(" ", redactedCommand), " ... ", 140)

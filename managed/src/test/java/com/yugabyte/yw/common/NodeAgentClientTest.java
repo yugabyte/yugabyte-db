@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -66,6 +67,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -391,6 +393,15 @@ public class NodeAgentClientTest extends FakeDBApplication {
             .processErrors()
             .getMessage();
     assertEquals("hello", output);
+  }
+
+  @Test
+  public void testExecuteCommandRecordsWhetherOutputMayBeLogged() {
+    List<String> command = ImmutableList.of("echo", "hello");
+    ShellProcessContext logged = ShellProcessContext.builder().logCmdOutput(true).build();
+    ShellProcessContext unlogged = ShellProcessContext.builder().logCmdOutput(false).build();
+    assertTrue(nodeAgentClient.executeCommand(nodeAgent, command, logged).isLogCmdOutput());
+    assertFalse(nodeAgentClient.executeCommand(nodeAgent, command, unlogged).isLogCmdOutput());
   }
 
   @Test

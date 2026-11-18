@@ -1044,6 +1044,7 @@ public class NodeAgentClient {
       stub.executeCommand(builder.build(), responseObserver);
       ShellResponse response = responseObserver.getResponse();
       response.setDescription(description);
+      response.setLogCmdOutput(context.isLogCmdOutput());
       return response;
     } catch (Throwable e) {
       log.error("Error in running command. Error: {}", e.getMessage());

@@ -14,6 +14,7 @@ public class ShellResponse {
   // Some known error codes for shell process.
   @VisibleForTesting public static final String RUN_COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final String ERROR_OUTPUT_PREFIX = "ERROR:";
+  @VisibleForTesting static final String OUTPUT_NOT_LOGGED = "<not logged>";
   public static final int ERROR_CODE_SUCCESS = 0;
   public static final int ERROR_CODE_GENERIC_ERROR = -1;
   public static final int ERROR_CODE_EXECUTION_CANCELLED = -2;
@@ -23,6 +24,8 @@ public class ShellResponse {
   public String message = null;
   public long durationMs = 0;
   public String description = null;
+  // False when the command ran with logCmdOutput false: message must stay out of the log.
+  public boolean logCmdOutput = true;
 
   public static ShellResponse create(int code, String message) {
     ShellResponse sr = new ShellResponse();
@@ -52,23 +55,36 @@ public class ShellResponse {
     if (code != ERROR_CODE_SUCCESS) {
       String errorMessage = errorMessageSupplier.get();
       String formatted = StringUtils.isBlank(errorMessage) ? "Error occurred" : errorMessage;
+      String logged = formatted;
       try {
         switch (code) {
           case ERROR_CODE_EXECUTION_CANCELLED:
             formatted = String.format("%s. Command is cancelled.", formatted);
+            logged = formatted;
             throw new CancellationException(formatted);
           case ERROR_CODE_RECOVERABLE_ERROR:
-            formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
+            logged = withOutput(formatted, loggedOutput());
+            formatted = withOutput(formatted, message);
             throw new RecoverableException(formatted);
           default:
-            formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
+            logged = withOutput(formatted, loggedOutput());
+            formatted = withOutput(formatted, message);
             throw new RuntimeException(formatted);
         }
       } finally {
-        log.error(formatted);
+        log.error(logged);
       }
     }
     return this;
+  }
+
+  private String withOutput(String errorMessage, String output) {
+    return String.format("%s. Code: %d. Output: %s", errorMessage, code, output);
+  }
+
+  // The caller still gets the output through the exception.
+  private String loggedOutput() {
+    return logCmdOutput ? message : OUTPUT_NOT_LOGGED;
   }
 
   public static String cleanedUpErrorMessage(String message) {
