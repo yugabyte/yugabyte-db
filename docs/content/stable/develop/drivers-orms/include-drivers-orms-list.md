@@ -15,7 +15,7 @@ block_indexing = true
 | YugabyteDB JDBC Smart Driver<br/>[Recommended] | [{{< version-driver-java >}}](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/{{< version-driver-java >}}) | Full | [CRUD](/stable/develop/drivers-orms/java/yugabyte-jdbc/) |
 | YugabyteDB R2DBC Smart Driver | [1.1.0-yb-2](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/stable/develop/drivers-orms/java/yb-r2dbc/) |
 | PostgreSQL JDBC Driver  | [42.7.3](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.7.3) | Full | [CRUD](/stable/develop/drivers-orms/java/postgres-jdbc/) |
-| Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/stable/develop/drivers-orms/java/ysql-vertx-pg-client/) |
+| Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-pg-client/4.3.2) | Full | [CRUD](/stable/develop/drivers-orms/java/ysql-vertx-pg-client/) |
 | YugabyteDB Java Driver for YCQL | [3.10.3-yb-3](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-3) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql/) |
 | YugabyteDB Java Driver for YCQL | [4.19.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.19.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x/) |
 | **ORMs** | | | |

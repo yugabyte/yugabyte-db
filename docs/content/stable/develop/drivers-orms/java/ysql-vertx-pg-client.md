@@ -66,10 +66,6 @@ The following sections demonstrate how to perform common tasks required for Java
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
-{{< note title="Note" >}}
-The Vert.x PG Client `executeBatch()` API is supported in YugabyteDB version `2.15.2.0-b0` and later.
-{{< /note >}}
-
 ### Step 1: Set up the client dependency
 
 #### Maven dependency

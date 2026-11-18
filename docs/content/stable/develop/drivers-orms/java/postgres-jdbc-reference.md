@@ -53,7 +53,7 @@ To get the driver from [Maven](https://maven.apache.org), add the following depe
 <dependency>
   <groupId>org.postgresql</groupId>
   <artifactId>postgresql</artifactId>
-  <version>42.3.4</version>
+  <version>42.7.3</version>
 </dependency>
 ```
 
@@ -63,7 +63,7 @@ To get the driver, add the following dependencies to the Gradle project:
 
 ```java
 // https://mvnrepository.com/artifact/org.postgresql/postgresql
-implementation 'org.postgresql:postgresql:42.2.14'
+implementation 'org.postgresql:postgresql:42.7.3'
 ```
 
 ## Fundamentals

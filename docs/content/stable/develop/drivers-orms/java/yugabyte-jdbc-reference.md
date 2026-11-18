@@ -84,7 +84,7 @@ Learn how to perform common tasks required for Java application development usin
 
 {{< note title="Note">}}
 
-The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
+The driver requires Java 8 or above.
 
 {{< /note >}}
 
