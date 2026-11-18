@@ -1521,7 +1521,7 @@ public class RedactingService {
     telemetrySecretForms = null;
   }
 
-  /** Sets the cached credentials, so a unit test without the DB does not load providers. */
+  /** For unit tests without the DB. */
   @VisibleForTesting
   static void setTelemetrySecretsForTesting(List<String> secrets) {
     telemetrySecretForms = secrets == null ? null : secretForms(secrets);
@@ -1564,7 +1564,7 @@ public class RedactingService {
   private static List<String> secretForms(Collection<String> secrets) {
     Set<String> forms = new HashSet<>();
     for (String value : secrets) {
-      // Also the form without line breaks, as telemetry credentials are rendered that way.
+      // Telemetry credentials are rendered without line breaks.
       for (String secret : new String[] {value, TelemetryProviderConfig.removeLineBreaks(value)}) {
         if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
           continue;

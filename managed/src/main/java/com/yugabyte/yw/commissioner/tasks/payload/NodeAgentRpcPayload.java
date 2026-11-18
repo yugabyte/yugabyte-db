@@ -662,7 +662,6 @@ public class NodeAgentRpcPayload {
       installOtelCollectorInputBuilder.setOtelColConfigFile(
           customTmpDirectory + "/" + Paths.get(otelCollectorConfigFile).getFileName().toString());
 
-      // AWS keys and GCP creds file per exporter. The secret env is set above.
       for (TelemetryProvider exporter : exporters) {
         installOtelCollectorInputBuilder =
             setupInstallOtelCollectorBitsEnv(
@@ -678,7 +677,6 @@ public class NodeAgentRpcPayload {
     return installOtelCollectorInputBuilder.build();
   }
 
-  /** Every exporter the VM config renders. Fails for a UUID with no provider. */
   @VisibleForTesting
   List<TelemetryProvider> getVmExporters(TelemetryConfig telemetryConfig) {
     List<TelemetryProvider> exporters = new ArrayList<>();
@@ -688,10 +686,7 @@ public class NodeAgentRpcPayload {
     return exporters;
   }
 
-  /**
-   * Fails when a node-agent that is not upgraded yet would get credentials. It would drop
-   * otelColSecretEnv but install the config that refers to it.
-   */
+  /** An old node-agent would drop otelColSecretEnv but install the config that uses it. */
   @VisibleForTesting
   static void checkNodeAgentReadsSecretEnv(NodeAgent nodeAgent, Map<String, String> secretEnv) {
     if (!secretEnv.isEmpty()

@@ -2925,8 +2925,7 @@ public class NodeManager extends DevopsBase {
                   NodeAgent.maybeGetByIp(nodeDetails.cloudInfo.private_ip).orElse(null))
               .toAbsolutePath()
               .toString());
-      // No exporter credentials here: node-agent installs the collector and gets them over RPC,
-      // and this command line is logged.
+      // No credentials here: node-agent gets them over RPC, and this command line is logged.
     }
   }
 

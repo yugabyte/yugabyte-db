@@ -28,8 +28,7 @@ const (
 	otelCollectorInstalledBinary = "otelcol-contrib"
 	// Holds the exporter credentials that config.yml references as ${env:NAME}.
 	otelCollectorSecretEnvFile = "secrets.env"
-	// Env var that carries file content to the shell that writes it.
-	otelColFileContentEnv = "YB_OTEL_FILE_CONTENT"
+	otelColFileContentEnv      = "YB_OTEL_FILE_CONTENT"
 )
 
 type InstallOtelCollector struct {
@@ -95,7 +94,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 	ybUserHome := userInfo.User.HomeDir
-	// Checked before any change, so a bad credential leaves the running collector untouched.
+	// Checked first, so a bad credential leaves the running collector untouched.
 	if err = h.checkCredentials(); err != nil {
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
@@ -392,7 +391,6 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	return nil
 }
 
-// sortedSecretEnvKeys returns the names of the exporter credential env vars, sorted.
 func (h *InstallOtelCollector) sortedSecretEnvKeys() []string {
 	keys := make([]string, 0, len(h.param.GetOtelColSecretEnv()))
 	for key := range h.param.GetOtelColSecretEnv() {
@@ -402,7 +400,6 @@ func (h *InstallOtelCollector) sortedSecretEnvKeys() []string {
 	return keys
 }
 
-// secretEnvList returns the exporter credentials as KEY=VALUE pairs, sorted by key.
 func (h *InstallOtelCollector) secretEnvList() []string {
 	env := []string{}
 	for _, key := range h.sortedSecretEnvKeys() {
@@ -411,8 +408,7 @@ func (h *InstallOtelCollector) secretEnvList() []string {
 	return env
 }
 
-// writeSecretEnvFile writes the credentials in systemd EnvironmentFile format, readable only by
-// the collector user.
+// writeSecretEnvFile writes the credentials readable only by the collector user.
 func (h *InstallOtelCollector) writeSecretEnvFile(ctx context.Context, path string) error {
 	var content strings.Builder
 	for _, key := range h.sortedSecretEnvKeys() {
@@ -424,8 +420,7 @@ func (h *InstallOtelCollector) writeSecretEnvFile(ctx context.Context, path stri
 	return h.writeAsUser(ctx, "write-otel-collector-secret-env", cmd, content.String())
 }
 
-// checkCredentials rejects a credential with a line break. Both credential files hold one
-// value per line, so a line break would add or split lines.
+// checkCredentials rejects line breaks, which would split lines in the credential files.
 func (h *InstallOtelCollector) checkCredentials() error {
 	values := map[string]string{
 		"AWS access key": h.param.GetOtelColAwsAccessKey(),
@@ -442,8 +437,6 @@ func (h *InstallOtelCollector) checkCredentials() error {
 	return nil
 }
 
-// appendAwsCredsBlock appends the collector profile to the AWS credentials file. An earlier
-// step removes the old block.
 func (h *InstallOtelCollector) appendAwsCredsBlock(ctx context.Context, path string) error {
 	block := otelAwsBlockBegin + "\n" +
 		"[otel-collector]\n" +
@@ -455,16 +448,14 @@ func (h *InstallOtelCollector) appendAwsCredsBlock(ctx context.Context, path str
 	return h.writeAsUser(ctx, "append-otel-collector-creds", cmd, block)
 }
 
-// writeAsUser runs cmd as the task user, so a root node-agent cannot follow a symlink the user
-// planted. The content is passed in the env, not on the command line.
+// writeAsUser writes as the task user, so a root node-agent cannot follow a planted symlink.
 func (h *InstallOtelCollector) writeAsUser(ctx context.Context, desc, cmd, content string) error {
 	env := []string{otelColFileContentEnv + "=" + content}
 	_, err := module.RunShellCmdWithEnv(ctx, h.username, desc, cmd, env, h.logOut)
 	return err
 }
 
-// systemdEnvQuote double-quotes a value for a systemd EnvironmentFile. Inside double quotes,
-// systemd keeps the character after a backslash only for these four, so only they are escaped.
+// systemdEnvQuote double-quotes a value for a systemd EnvironmentFile.
 func systemdEnvQuote(value string) string {
 	var quoted strings.Builder
 	quoted.WriteByte('"')
@@ -564,8 +555,7 @@ const (
 	otelAwsBlockEnd   = "# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS"
 )
 
-// removeManagedBlockCmd removes a YB managed block from a file and keeps the rest. The mv gives
-// the file the mode of the tmp file, so the tmp file is created new under umask 077.
+// removeManagedBlockCmd creates the tmp file new under umask 077, as mv keeps its mode.
 func removeManagedBlockCmd(path, begin, end string) string {
 	tmp := shellSingleQuote(path + ".tmp")
 	return fmt.Sprintf(

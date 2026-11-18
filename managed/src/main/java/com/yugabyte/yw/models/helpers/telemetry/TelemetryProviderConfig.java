@@ -78,10 +78,7 @@ public class TelemetryProviderConfig {
     return Collections.emptyList();
   }
 
-  /**
-   * Removes line breaks from a single-line credential, which a paste often adds. A value that holds
-   * line breaks, such as a GCP private key, must keep its original form too.
-   */
+  /** Removes line breaks that a paste adds to a single-line credential. */
   public static String removeLineBreaks(String value) {
     return StringUtils.replaceChars(value, "\r\n", "");
   }

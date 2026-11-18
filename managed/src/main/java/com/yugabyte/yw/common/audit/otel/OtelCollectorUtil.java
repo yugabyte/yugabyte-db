@@ -284,10 +284,7 @@ public class OtelCollectorUtil {
     return uuids;
   }
 
-  /**
-   * Exporters that the VM collector config renders: the active ones, plus every listed audit
-   * exporter, because the VM config renders those even while audit export is paused.
-   */
+  /** Exporters the VM config renders, including paused audit exporters. */
   public static Set<UUID> getVmConfigExporterUuids(TelemetryConfig tc) {
     Set<UUID> uuids = getActiveExporterUuids(tc);
     if (tc != null

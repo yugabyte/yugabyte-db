@@ -3434,10 +3434,7 @@ public class OtelCollectorConfigGenerator {
   private static final String CRED_OTLP_BEARER_TOKEN = "OTLP_BEARER_TOKEN";
   private static final String CRED_OTLP_HEADER_PREFIX = "OTLP_HEADER_";
 
-  /**
-   * Credentials the exporter config of this provider references, keyed by env var name. They reach
-   * the collector out-of-band: a K8s Secret, or an env file on VM nodes.
-   */
+  /** Credentials the exporter config references, keyed by env var name. */
   public static Map<String, String> getCredentialEnv(TelemetryProvider telemetryProvider) {
     Map<String, String> env = new LinkedHashMap<>();
     cleanCredentialFields(telemetryProvider)
@@ -3450,7 +3447,7 @@ public class OtelCollectorConfigGenerator {
     return env;
   }
 
-  /** The config and the env use these values, so they agree on which credentials are set. */
+  /** Shared by the config and the env, so they agree on which credentials are set. */
   private static Map<String, String> cleanCredentialFields(TelemetryProvider telemetryProvider) {
     Map<String, String> fields = new LinkedHashMap<>();
     credentialFields(telemetryProvider.getConfig())
@@ -3459,7 +3456,6 @@ public class OtelCollectorConfigGenerator {
     return fields;
   }
 
-  /** Access key and secret key of an AWS or S3 provider, or null for other types. */
   public static Pair<String, String> getAwsKeys(TelemetryProvider telemetryProvider) {
     TelemetryProviderConfig config = telemetryProvider.getConfig();
     String accessKey;
@@ -3482,10 +3478,7 @@ public class OtelCollectorConfigGenerator {
         TelemetryProviderConfig.removeLineBreaks(secretKey));
   }
 
-  /**
-   * Credential values by field. Each is a {@link TelemetryProviderConfig#secretValues()} entry, so
-   * the base64 copy in a K8s Secret is redacted by value too.
-   */
+  /** Each value must be in secretValues(), so its K8s Secret copy is redacted too. */
   private static Map<String, String> credentialFields(TelemetryProviderConfig config) {
     Map<String, String> fields = new LinkedHashMap<>();
     switch (config.getType()) {
@@ -3514,7 +3507,7 @@ public class OtelCollectorConfigGenerator {
     return fields;
   }
 
-  /** Header names map to indexed fields, as a header name need not be a valid env var name. */
+  /** Indexed, as a header name need not be a valid env var name. */
   private static Map<String, String> otlpHeaderFields(OTLPConfig otlpConfig) {
     Map<String, String> fields = new LinkedHashMap<>();
     if (otlpConfig.getHeaders() != null) {
@@ -3531,7 +3524,6 @@ public class OtelCollectorConfigGenerator {
     return "YB_OTEL_" + providerUuid.toString().replace('-', '_').toUpperCase() + "_" + field;
   }
 
-  /** The config references a credential by env var, so its value never lands in the config. */
   private static String credentialRef(UUID providerUuid, String field, String value) {
     return StringUtils.isEmpty(value)
         ? value

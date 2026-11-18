@@ -41,8 +41,7 @@ type CommandInfo struct {
 	Desc string
 	Cmd  string
 	Args []string
-	// Env is added to the user environment by RunCmd only; RunSteps ignores it.
-	// It cannot override HOME, PWD or the user name vars.
+	// Used by RunCmd only. It cannot override HOME, PWD or the user name vars.
 	Env    []string
 	StdOut util.Buffer
 	StdErr util.Buffer
@@ -260,8 +259,7 @@ func RunShellCmd(
 	return RunShellCmdWithEnv(ctx, user, desc, cmdStr, nil, logOut)
 }
 
-// RunShellCmdWithEnv runs a shell command with the specified user and extra env variables. The
-// env is not logged, so it can carry credentials.
+// RunShellCmdWithEnv runs a shell command with extra env vars, which are not logged.
 func RunShellCmdWithEnv(
 	ctx context.Context,
 	user, desc, cmdStr string,
