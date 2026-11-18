@@ -2863,6 +2863,49 @@ TEST_F(PgObjectLocksFastpathTest, TestRepeatedLockRequestSkipped) {
   ASSERT_OK(conn.CommitTransaction());
 }
 
+// If DocDB aborts the transaction, its lock owner registration is cleared and its locks are
+// released. A lock tracked as held by the transaction must then not be served without a request.
+TEST_F(PgObjectLocksFastpathTest, TestRepeatedLockRequestAfterRemoteAbort) {
+  google::SetVLOGLevel("pg_client_session*", 1);
+  constexpr auto kRelationSizeQuery = "SELECT pg_relation_size('test'::regclass)";
+  auto& metric_entity = cluster_->mini_tablet_server(0)->metric_entity();
+  auto num_lock_requests = [&metric_entity] {
+    return metric_entity.FindOrNull<FunctionGauge<uint64_t>>(
+               METRIC_object_locking_fastpath_pg_acquires)->value() +
+           metric_entity.FindOrNull<FunctionGauge<uint64_t>>(
+               METRIC_object_locking_fastpath_tserver_acquires)->value() +
+           metric_entity.FindOrNull<Counter>(METRIC_object_locking_lock_acquires)->value();
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // A write makes the session's lock owner transaction its distributed transaction.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1)"));
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/0);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+
+  auto txn_id = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"));
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto log_waiter = StringWaiterLogSink("Clearing lock owner registration for remote aborted txn");
+  ASSERT_TRUE(ASSERT_RESULT(
+      conn2.FetchRow<bool>(Format("SELECT yb_cancel_transaction('$0')", txn_id))));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+
+  // The lock must be requested again rather than served from the tracked locks. The statement
+  // then fails when its write is prepared on the aborted transaction.
+  const auto requests_before = num_lock_requests();
+  ASSERT_NOK(conn.Execute("INSERT INTO test SELECT pg_relation_size('test'::regclass)"));
+  ASSERT_GT(num_lock_requests(), requests_before);
+  ASSERT_OK(conn.RollbackTransaction());
+}
+
 class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {

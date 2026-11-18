@@ -13,7 +13,6 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
-#include <boost/functional/hash/hash.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
@@ -36,6 +35,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/hash_util.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -273,16 +273,24 @@ void PgTxnManager::DEBUG_CheckOptionsForPerform(
 class PgTxnManager::HeldObjectLocks {
  public:
   struct Lock {
-    YbcObjectLockId lock_id;
+    uint32_t db_oid;
+    uint32_t relation_oid;
+    uint32_t object_oid;
+    uint32_t object_sub_oid;
     docdb::ObjectLockFastpathLockType lock_type;
 
-    bool operator==(const Lock& rhs) const {
-      return lock_id.db_oid == rhs.lock_id.db_oid &&
-             lock_id.relation_oid == rhs.lock_id.relation_oid &&
-             lock_id.object_oid == rhs.lock_id.object_oid &&
-             lock_id.object_sub_oid == rhs.lock_id.object_sub_oid &&
-             lock_type == rhs.lock_type;
+    static Lock Make(const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type) {
+      return Lock{
+          .db_oid = lock_id.db_oid,
+          .relation_oid = lock_id.relation_oid,
+          .object_oid = lock_id.object_oid,
+          .object_sub_oid = lock_id.object_sub_oid,
+          .lock_type = lock_type};
     }
+
+    bool operator==(const Lock&) const = default;
+
+    YB_STRUCT_DEFINE_HASH(Lock, db_oid, relation_oid, object_oid, object_sub_oid, lock_type);
   };
 
   [[nodiscard]] bool empty() const { return entries_.empty(); }
@@ -298,8 +306,6 @@ class PgTxnManager::HeldObjectLocks {
     entries_.insert(Entry{lock, subtxn_id});
   }
 
-  // Subtransaction ids only increase within a transaction, and every subtransaction created after
-  // `id` is nested in it, so this rollback releases the locks of all subtransactions >= `id`.
   void EraseFromSubTransaction(SubTransactionId subtxn_id) {
     auto& by_subtxn = entries_.get<BySubTransactionTag>();
     by_subtxn.erase(by_subtxn.lower_bound(subtxn_id), by_subtxn.end());
@@ -308,18 +314,6 @@ class PgTxnManager::HeldObjectLocks {
   void Clear() { entries_.clear(); }
 
  private:
-  struct LockHash {
-    size_t operator()(const Lock& lock) const {
-      size_t hash = 0;
-      boost::hash_combine(hash, lock.lock_id.db_oid);
-      boost::hash_combine(hash, lock.lock_id.relation_oid);
-      boost::hash_combine(hash, lock.lock_id.object_oid);
-      boost::hash_combine(hash, lock.lock_id.object_sub_oid);
-      boost::hash_combine(hash, std::to_underlying(lock.lock_type));
-      return hash;
-    }
-  };
-
   struct Entry {
     Lock lock;
     SubTransactionId subtxn_id;
@@ -333,8 +327,7 @@ class PgTxnManager::HeldObjectLocks {
       boost::multi_index::indexed_by<
           boost::multi_index::hashed_unique<
               boost::multi_index::tag<ByLockTag>,
-              boost::multi_index::member<Entry, Lock, &Entry::lock>,
-              LockHash>,
+              boost::multi_index::member<Entry, Lock, &Entry::lock>>,
           boost::multi_index::ordered_non_unique<
               boost::multi_index::tag<BySubTransactionTag>,
               boost::multi_index::member<Entry, SubTransactionId, &Entry::subtxn_id>>>>
@@ -1330,7 +1323,7 @@ bool PgTxnManager::IsObjectLockHeld(
     ClearHeldObjectLocks();
     return false;
   }
-  return held_object_locks_->Contains({lock_id, lock_type});
+  return held_object_locks_->Contains(HeldObjectLocks::Lock::Make(lock_id, lock_type));
 }
 
 void PgTxnManager::RecordObjectLockHeld(
@@ -1338,7 +1331,8 @@ void PgTxnManager::RecordObjectLockHeld(
   if (!client_->IsObjectLockSharedStateEnabled()) {
     return;
   }
-  held_object_locks_->Add({lock_id, lock_type}, active_sub_transaction_id_);
+  held_object_locks_->Add(
+      HeldObjectLocks::Lock::Make(lock_id, lock_type), active_sub_transaction_id_);
 }
 
 void PgTxnManager::ClearHeldObjectLocks() {
