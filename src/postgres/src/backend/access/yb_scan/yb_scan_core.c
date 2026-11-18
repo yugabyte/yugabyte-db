@@ -3664,9 +3664,6 @@ YbBeginScan(Relation table,
 	 * - not aggregate pushdown
 	 * This ought to be reworked once aggregate pushdown supports a mix of
 	 * non-aggregate and aggregate targets.
-	 *
-	 * Both cases set up the merge sort columns through
-	 * ybSetupMergeSortTargets.
 	 */
 	if (aggrefs != NIL)
 	{
