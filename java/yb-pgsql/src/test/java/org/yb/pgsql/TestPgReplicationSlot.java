@@ -43,12 +43,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -60,6 +63,7 @@ import org.yb.client.LocatedTablet;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterTypes.RelationType;
 import org.yb.pgsql.PgOutputMessageDecoder.*;
 import org.yb.util.BuildTypeUtil;
 
@@ -8071,15 +8075,44 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
       stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE TABLE yb_xcluster_ddl_replication.t2 (id int primary key)");
       stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
-      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables",
-          new Row("public", "t1"));
+      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables ORDER BY 1, 2",
+          new Row("public", "t1"), new Row("yb_xcluster_ddl_replication", "t2"));
     }
 
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
     createSlot(replConnection, "test_decoding_slot", "test_decoding");
     createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    // The walsender asks the master for every table in its list, so the list must equal the user
+    // tables in the slot's stream. The stream also holds the catalog tables that CDC polls.
+    Set<String> walsenderTables;
+    String streamId;
+    try (Statement stmt = connection.createStatement()) {
+      walsenderTables = getRowList(stmt,
+          "SELECT schemaname || '.' || tablename FROM pg_publication_tables").stream()
+          .map(row -> row.getString(0))
+          .collect(Collectors.toSet());
+      streamId = getSingleRow(stmt, "SELECT yb_stream_id FROM pg_replication_slots "
+          + "WHERE slot_name = 'yboutput_slot'").getString(0);
+    }
+    Map<String, String> userTableNamesById = new HashMap<>();
+    for (TableInfo table :
+        miniCluster.getClient().getTablesList(null, false, null).getTableInfoList()) {
+      if (table.getRelationType() == RelationType.USER_TABLE_RELATION) {
+        userTableNamesById.put(
+            table.getId().toStringUtf8(), table.getPgschemaName() + "." + table.getName());
+      }
+    }
+    Set<String> streamTables = miniCluster.getClient().getDBStreamInfo(streamId)
+        .getTableInfoList().stream()
+        .map(table -> userTableNamesById.get(table.getTableId().toStringUtf8()))
+        .filter(Objects::nonNull)
+        .collect(Collectors.toSet());
+    assertEquals(walsenderTables, streamTables);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES (1)");
     }

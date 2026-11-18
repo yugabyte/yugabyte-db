@@ -1406,6 +1406,10 @@ yb_is_publishable_relation(Relation rel)
 /*
  * Returns true if the table is created internally by a YugabyteDB
  * feature/extension and CDC must never stream it.
+ *
+ * Must exclude the same tables as the master
+ * (CatalogManager::IsInternalTableToBeExcludedFromCDCSDKStream): a slot fails
+ * to stream if it asks for a table that the master left out of its stream.
  */
 static bool
 yb_is_internal_table_to_be_excluded_from_cdc(Relation rel)

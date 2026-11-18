@@ -632,6 +632,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   bool IsXClusterDDLReplicationDDLQueueTable() const;
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
 
+  // CDCSDK streams exclude these tables, and the walsender excludes the same tables from logical
+  // replication slots: when adding a table here, also add it to
+  // yb_is_internal_table_to_be_excluded_from_cdc() in pg_publication.c.
   bool IsXClusterDDLReplicationTable() const {
     return IsXClusterDDLReplicationDDLQueueTable() || IsXClusterDDLReplicationReplicatedDDLsTable();
   }
