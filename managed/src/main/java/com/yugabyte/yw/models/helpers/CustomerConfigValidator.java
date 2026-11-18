@@ -31,9 +31,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
@@ -114,6 +116,15 @@ public class CustomerConfigValidator extends BaseBeanValidator {
    * @param customerConfig
    */
   public void validateConfig(CustomerConfig customerConfig) {
+    validateConfig(customerConfig, null);
+  }
+
+  /**
+   * Validates {@code customerConfig} as an edit of {@code saved}, the config as it is saved now, or
+   * as a new config when {@code saved} is null. Only the edit path passes it: whether a request is
+   * an edit is the caller's to say, since a create request can carry any config UUID.
+   */
+  public void validateConfig(CustomerConfig customerConfig, @Nullable CustomerConfig saved) {
     beanValidator.validate(customerConfig);
 
     String configName = customerConfig.getConfigName();
@@ -138,24 +149,72 @@ public class CustomerConfigValidator extends BaseBeanValidator {
       }
     }
 
-    CustomerConfigData data = customerConfig.getDataObject();
-    beanValidator.validate(data, "data");
+    validateConfigData(customerConfig);
+    validateConfigDataWithValidator(customerConfig, saved);
+  }
 
-    // Scoped to storage configs, and placed after the checks above: only the storage validators
+  /** Checks the field constraints of the config's data, with field names prefixed by "data.". */
+  public void validateConfigData(CustomerConfig customerConfig) {
+    beanValidator.validate(customerConfig.getDataObject(), "data");
+  }
+
+  /**
+   * Runs the validator registered for the config's data type, if any. For a storage config, it
+   * checks the locations and reaches out to the storage with the config's credentials, unless
+   * {@link GlobalConfKeys#skipStorageConfigValidation} is set.
+   */
+  public void validateConfigDataWithValidator(CustomerConfig customerConfig) {
+    validateConfigDataWithValidator(customerConfig, null);
+  }
+
+  /** As {@link #validateConfigDataWithValidator(CustomerConfig)}, for an edit of {@code saved}. */
+  public void validateConfigDataWithValidator(
+      CustomerConfig customerConfig, @Nullable CustomerConfig saved) {
+    // Scoped to storage configs, and run after the checks above: only the storage validators
     // depend on anything outside YBA, so they are the only ones an unreachable-storage escape
     // hatch has any business disarming.
     if (customerConfig.getType() == ConfigType.STORAGE
         && runtimeConfGetter.getGlobalConf(GlobalConfKeys.skipStorageConfigValidation)) {
       log.warn(
           "Skipping validation of storage config {} as {} is set",
-          configName,
+          customerConfig.getConfigName(),
           GlobalConfKeys.skipStorageConfigValidation.getKey());
       return;
     }
 
+    CustomerConfigData data = customerConfig.getDataObject();
     ConfigDataValidator validator = validators.get(data.getClass());
     if (validator != null) {
-      validator.validate(data);
+      CustomerConfigData savedData = savedDataOrNull(saved);
+      validator.validate(
+          data, savedData != null && savedData.getClass() == data.getClass() ? savedData : null);
+    }
+  }
+
+  /**
+   * The saved data, as the baseline of an edit, or null. It is read with the shared mapper, which
+   * ignores unknown properties, because data saved by an older YBA may carry a field that was
+   * removed since. If it still does not parse, the edit is validated like a new config rather than
+   * failing on data the user did not send.
+   */
+  @Nullable
+  private static CustomerConfigData savedDataOrNull(@Nullable CustomerConfig saved) {
+    if (saved == null) {
+      return null;
+    }
+    Class<? extends CustomerConfigData> dataClass =
+        CustomerConfig.getDataClass(saved.getType(), saved.getName());
+    if (dataClass == null) {
+      return null;
+    }
+    try {
+      return Json.fromJson(saved.getData(), dataClass);
+    } catch (RuntimeException e) {
+      log.warn(
+          "Validating the edit of config {} as a new config: its saved data does not parse: {}",
+          saved.getConfigUUID(),
+          e.getMessage());
+      return null;
     }
   }
 

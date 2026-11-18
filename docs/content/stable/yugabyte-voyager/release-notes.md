@@ -22,12 +22,40 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 | Source | Migration type | Status | Effective date |
 | :----- | :------------- | :----- | :------------- |
 | Oracle | [Live migration](../migrate/live-migrate/), including<br>[fall-forward](../migrate/live-fall-forward/) and [fall-back](../migrate/live-fall-back/) | Not supported | - |
-| Oracle | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
-| MySQL | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
+| Oracle | [Offline migration](../migrate/migrate-steps/) | Not supported | October 13, 2026 |
+| MySQL | [Offline migration](../migrate/migrate-steps/) | Not supported | October 13, 2026 |
 
 Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated on July 13, 2026. PostgreSQL migrations are unaffected.
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
+
+## v2026.11.1 - November 17, 2026
+
+### Enhancements
+
+- Enhanced schema drift detection ([schema detect-drift](../reference/schema-migration/detect-drift/)):
+  - Reports additional information about changes to primary keys, unique constraints, check constraints, foreign keys, and indexes, in addition to tables and columns. `--object-type-list` and `--exclude-object-type-list` now accept `CONSTRAINT` and `INDEX`.
+  - For an added table, reports its full definition: keys, check constraints, indexes, and parent partition or inheritance link.
+  - In fall-forward migrations, the suggested actions now also tell you to apply the change on the source-replica and to restart import data to source-replica when needed.
+  - The HTML report now lists the object types that drift detection does not check, such as sequences, views, functions, types, and triggers.
+  - Config templates now include the `disable-schema-snapshot-capture` and `schema-snapshot-capture-interval` options, commented out.
+- Enhanced unsupported datatype detection in [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/):
+  - Unsupported datatypes used through a domain, an array, or a composite type are flagged.
+  - Datatype issues are reported by table rather than by column.
+  - Range and multirange columns (built-in and user-defined) are now reported as unsupported for live migration.
+  - Indexes and primary or unique keys on these types, and on domains over types that YugabyteDB can't index, are reported too.
+  - Composite types are no longer flagged as unsupported for live migration with fall-forward or fall-back unless one of their fields has an unsupported datatype.
+- SSL certificate, key, and CRL paths that contain spaces or the characters `+`, `%`, `&`, or `#` now work. A connection URI that contains raw spaces or a malformed `%` is now rejected, matching PostgreSQL behavior.
+
+### Bug fixes
+
+- Fixed an issue that silently corrupted data during live migration for columns typed as a domain over `tsvector` or `tsquery`.
+- Fixed an issue where `pg_dump` (in [export schema](../reference/schema-migration/export-schema/) and [export data](../reference/data-migration/export-data/)), assess-migration, and read-replica connections ignored the `--source-ssl-*` settings, so sources that require client certificates failed. These connections now enforce `verify-ca` and `verify-full`, so pass `--source-ssl-root-cert` explicitly.
+- Fixed an issue where some errors during [import data](../reference/data-migration/import-data/), such as constraint violations and data errors, were wrongly treated as retryable.
+- Fixed issues in schema detect-drift:
+  - Fixed a misleading error when the export directory held no schema snapshots, including when snapshot capture was turned off.
+  - Fixed an issue where no drift was reported when `--table-list` named a table outside `--source-db-schema`. It now fails with an unknown-table error.
+  - Fixed an issue where a rerun printed a separate overwrite notice for each report file.
 
 ## v2026.10.2 - October 27, 2026
 

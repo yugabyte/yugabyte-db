@@ -2427,7 +2427,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const AlterTableRequestPB* req = nullptr,
       std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr);
 
-  // The target and its existing indexes.
+  // The target and its indexes: the capture trigger writes tombstones into all of them. Indexes
+  // that have since been dropped are skipped.
   std::vector<scoped_refptr<TableInfo>> GetOnlineSchemaChangePinnedTables(
       const scoped_refptr<TableInfo>& target);
 
