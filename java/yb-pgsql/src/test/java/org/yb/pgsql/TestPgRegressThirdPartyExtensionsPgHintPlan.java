@@ -32,6 +32,15 @@ public class TestPgRegressThirdPartyExtensionsPgHintPlan extends BasePgRegressTe
     Map<String, String> flagMap = super.getTServerFlags();
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    // BasePgRegressTest sets compute_query_id to regress so that EXPLAIN VERBOSE
+    // in other tests does not print the query identifiers that pg_stat_statements,
+    // loaded by default in YB, makes the server compute.  regress differs from
+    // auto only in that EXPLAIN hides the identifier.  This schedule needs it
+    // shown: get_query_id() in sql/init.sql reads it from EXPLAIN VERBOSE to fill
+    // the hint table, which pg_hint_plan looks up by query identifier.  None of
+    // the expected output prints an identifier, so use upstream's default, under
+    // which that output was generated.
+    appendToYsqlPgConf(flagMap, "compute_query_id=auto");
     return flagMap;
   }
 
