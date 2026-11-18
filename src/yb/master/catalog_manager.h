@@ -3401,7 +3401,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       std::unordered_map<xrepl::StreamId, std::optional<HybridTime>>* stream_creation_time_map)
       EXCLUDES(mutex_);
 
-  // Returns true if no CDC stream needs the hidden tablet any more.
+  // Returns true if no CDC stream needs the hidden tablet any more. If entries_to_delete is set,
+  // appends the tablet's cdc_state rows to delete.
   Result<bool> IsHiddenTabletReleasedByCDCSDK(
       const TabletId& tablet_id, const HiddenReplicationTabletInfo& hidden_tablet,
       const std::unordered_set<xrepl::StreamId>& stream_ids,

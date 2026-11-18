@@ -6506,11 +6506,13 @@ Result<bool> CatalogManager::IsHiddenTabletReleasedByCDCSDK(
         }
       }
       if (found_all_children) {
-        LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
-                  << ". Reason: Consumer finished processing parent tablet after split.";
+        if (entries_to_delete) {
+          LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream_id
+                    << ". Reason: Consumer finished processing parent tablet after split.";
 
-        // Also delete the parent tablet from cdc_state for all completed streams.
-        entries_to_delete->emplace_back(tablet_id, stream_id);
+          // Also delete the parent tablet from cdc_state for all completed streams.
+          entries_to_delete->emplace_back(tablet_id, stream_id);
+        }
         count_tablet_streams_to_delete++;
         continue;
       }
@@ -6536,7 +6538,9 @@ Result<bool> CatalogManager::IsHiddenTabletReleasedByCDCSDK(
               << ", tablet expired or became not of interest: "
               << IsCDCSDKTabletExpiredOrNotOfInterest(
                      last_active_time, stream_creation_time_map.at(stream_id));
-      entries_to_delete->emplace_back(tablet_id, stream_id);
+      if (entries_to_delete) {
+        entries_to_delete->emplace_back(tablet_id, stream_id);
+      }
       count_tablet_streams_to_delete++;
     }
   }
@@ -6730,12 +6734,11 @@ std::unordered_set<TabletId> CatalogManager::GetHiddenTabletsReleasedByCDCSDK(
   }
 
   std::unordered_set<TabletId> released_tablets;
-  // Only the deletion task deletes cdc_state rows.
-  std::vector<cdc::CDCStateTableKey> unused_entries_to_delete;
   for (const auto& [tablet_id, hidden_tablet] : hidden_tablets) {
+    // Only the deletion task deletes cdc_state rows.
     auto released_result = IsHiddenTabletReleasedByCDCSDK(
         tablet_id, hidden_tablet, stream_ids, min_restart_time_across_slots,
-        stream_creation_time_map, &unused_entries_to_delete);
+        stream_creation_time_map, nullptr /* entries_to_delete */);
     if (!released_result.ok()) {
       LOG(WARNING) << "Failed to check whether CDC released hidden tablet " << tablet_id << ": "
                    << released_result.status();
