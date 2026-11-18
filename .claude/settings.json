@@ -38,7 +38,9 @@
       "Bash(git -* push)",
       "Bash(git -* push *)",
       "Bash(git subtree push *)",
-      "Bash(git lfs push *)"
+      "Bash(git subtree -* push *)",
+      "Bash(git lfs push *)",
+      "Bash(git lfs -* push *)"
     ]
   },
   "hooks": {
