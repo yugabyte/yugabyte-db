@@ -3672,6 +3672,12 @@ YbBeginScan(Relation table,
 	{
 		YbDmlAppendTargetsAggregate(aggrefs, pg_scan_plan, ybScan->target_desc,
 									index, xs_want_itup, ybScan->handle);
+
+		/*
+		 * TODO(#38305): once merge scans are refused aggregate pushdown, no
+		 * merge scan reaches this branch, so drop this call and make the
+		 * attnums of ybSetupMergeSortTargets required.
+		 */
 		ybSetupMergeSortTargets(ybScan, pg_scan_plan, NULL);
 	}
 	else
