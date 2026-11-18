@@ -1646,6 +1646,14 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
 
   auto tablet_map_checkout = tablet_map_.CheckOut();
   tablet_map_checkout->clear();
+  {
+    std::lock_guard pending_lock(pending_tablets_mutex_);
+    pending_tablets_.clear();
+  }
+  {
+    std::lock_guard tracked_lock(tables_being_removed_mutex_);
+    tables_being_removed_.clear();
+  }
 
   // Clear the namespace mappings.
   namespace_ids_map_.clear();
@@ -2034,6 +2042,7 @@ Status CatalogManager::PrepareSysCatalogTable(const LeaderEpoch& epoch) {
 
     auto tablet_map_checkout = tablet_map_.CheckOut();
     (*tablet_map_checkout)[tablet->tablet_id()] = tablet;
+    TrackNewTablet(tablet);
 
     RETURN_NOT_OK(sys_catalog_->Upsert(epoch, tablet));
     tablet->mutable_metadata()->CommitMutation();
@@ -3721,6 +3730,7 @@ Status CatalogManager::DoSplitTablet(
     LockGuard lock(mutex_);
     auto tablet_map_checkout = tablet_map_.CheckOut();
     for (const auto& new_tablet : new_tablets) {
+      TrackNewTablet(new_tablet);
       (*tablet_map_checkout)[new_tablet->id()] = std::move(new_tablet);
     }
   }
@@ -5566,6 +5576,7 @@ Result<TabletInfos> CatalogManager::CreateTabletsFromTable(const vector<Partitio
   auto tablet_map_checkout = tablet_map_.CheckOut();
   for (const TabletInfoPtr& tablet : tablets) {
     InsertOrDie(tablet_map_checkout.get_ptr(), tablet->tablet_id(), tablet);
+    TrackNewTablet(tablet);
   }
 
   return tablets;
@@ -8239,6 +8250,7 @@ Status CatalogManager::DeleteTableInMemory(
     l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
                                  Format("Started deleting at $0", LocalTimeAsString()));
   }
+  TrackTableBeingRemoved(table);
 
   auto now = master_->clock()->Now();
   DdlLogEntry ddl_log_entry(now, table->id(), l->pb, "Drop");
@@ -8376,15 +8388,12 @@ std::pair<TableInfo::WriteLock, TransactionId> CatalogManager::PrepareTableDelet
 }
 
 void CatalogManager::CleanUpDeletedTables(const LeaderEpoch& epoch) {
-  // TODO(bogdan): Cache tables being deleted to make this iterate only over those?
   // Garbage collecting.
-  // Going through all tables under the global lock, copying them to not hold lock for too long.
-  std::vector<TableInfoPtr> tables;
+  // Only tables that are DELETING, DELETED or HIDING have anything to do here.
+  std::vector<TableInfoPtr> tables = GetTablesBeingRemoved();
   TabletInfoPtr sys_catalog_tablet_info;
   {
     SharedLock lock(mutex_);
-    auto tables_range = tables_->GetAllTables();
-    tables.assign(tables_range.begin(), tables_range.end());
     sys_catalog_tablet_info = tablet_map_->find(kSysCatalogTabletId)->second;
   }
   std::sort(tables.begin(), tables.end(), IdLess());
@@ -9859,6 +9868,7 @@ void CatalogManager::NotifyPrepareDeleteTransactionTabletFinished(
   if (!hide_only) {
     auto lock = tablet->LockForWrite();
     lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, msg);
+    TrackDeletedTablet(tablet);
     WARN_NOT_OK(sys_catalog_->Upsert(epoch, tablet.get()),
                 "Failed to set tablet state to DELETED");
     lock.Commit();
@@ -11149,6 +11159,7 @@ Status CatalogManager::DeleteYsqlDBTables(
     // Mark the table state as DELETING tablets.
     l.mutable_data()->set_state(SysTablesEntryPB::DELETING,
         Format("Started deleting at $0", LocalTimeAsString()));
+    TrackTableBeingRemoved(table);
   }
   // Update all the table states in raft in bulk.
   Status s = sys_catalog_->Upsert(epoch, table_infos);
@@ -12522,6 +12533,7 @@ Status CatalogManager::DeleteOrHideTabletsAndSendRequests(
       VERIFY_RESULT(tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue));
       if (!tablet_data.transaction_status_tablet) {
         tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, reason);
+        TrackDeletedTablet(tablet);
       }
     }
   }
@@ -12677,49 +12689,162 @@ Result<std::shared_ptr<AsyncAddServerTask>> CatalogManager::ScheduleAddServerTas
 void CatalogManager::ExtractTabletsToProcess(
     TabletInfos *tablets_to_delete,
     TableToTabletInfos *tablets_to_process) {
-  SharedLock lock(mutex_);
-
-  // TODO: At the moment we loop through all the tablets
-  //       we can keep a set of tablets waiting for "assignment"
-  //       or just a counter to avoid to take the lock and loop through the tablets
-  //       if everything is "stable".
-
-  for (const auto& [_, tablet] : *tablet_map_) {
-    auto table = tablet->table();
-    if (!table) {
-      // Tablet is orphaned or in preparing state, continue.
-      continue;
+  TabletInfos pending;
+  {
+    std::lock_guard pending_lock(pending_tablets_mutex_);
+    pending.reserve(pending_tablets_.size());
+    for (const auto& [_, entry] : pending_tablets_) {
+      pending.push_back(entry.tablet);
     }
+  }
+  if (pending.empty()) {
+    return;
+  }
 
-    // acquire table lock before tablets.
-    auto table_lock = table->LockForRead();
-    auto tablet_lock = tablet->LockForRead();
+  // Listed tablets that left tablet_map_, and listed tablets that are running.
+  TabletInfos gone;
+  TabletInfos running;
+  {
+    SharedLock lock(mutex_);
 
-    // If the table is deleted or the tablet was replaced at table creation time.
-    if (tablet_lock->is_deleted() || table_lock->started_deleting()) {
-      // Process this table deletion only once (tombstones for table may remain longer).
-      if (tables_->FindTableOrNull(tablet->table()->id()) != nullptr) {
-        tablets_to_delete->push_back(tablet);
+    for (const auto& tablet : pending) {
+      auto it = tablet_map_->find(tablet->tablet_id());
+      if (it == tablet_map_->end() || it->second != tablet) {
+        gone.push_back(tablet);
+        continue;
       }
-      // Don't process deleted tables regardless.
-      continue;
-    }
 
-    // Running tablets.
-    if (tablet_lock->is_running()) {
-      // TODO: handle last update > not responding timeout?
-      continue;
-    }
+      auto table = tablet->table();
+      if (!table) {
+        // Tablet is orphaned or in preparing state, continue.
+        continue;
+      }
 
-    // Tablets not yet assigned or with a report just received.
-    (*tablets_to_process)[tablet->table()->id()].push_back(tablet);
+      // acquire table lock before tablets.
+      auto table_lock = table->LockForRead();
+      auto tablet_lock = tablet->LockForRead();
+
+      // If the table is deleted or the tablet was replaced at table creation time.
+      if (tablet_lock->is_deleted() || table_lock->started_deleting()) {
+        // Process this table deletion only once (tombstones for table may remain longer).
+        if (tables_->FindTableOrNull(tablet->table()->id()) != nullptr) {
+          tablets_to_delete->push_back(tablet);
+        }
+        // Don't process deleted tables regardless.
+        continue;
+      }
+
+      // Running tablets.
+      if (tablet_lock->is_running()) {
+        // TODO: handle last update > not responding timeout?
+        running.push_back(tablet);
+        continue;
+      }
+
+      // Tablets not yet assigned or with a report just received.
+      (*tablets_to_process)[tablet->table()->id()].push_back(tablet);
+    }
+  }
+
+  std::lock_guard pending_lock(pending_tablets_mutex_);
+  for (const auto& tablet : gone) {
+    auto it = pending_tablets_.find(tablet->tablet_id());
+    if (it != pending_tablets_.end() && it->second.tablet == tablet) {
+      pending_tablets_.erase(it);
+    }
+  }
+  for (const auto& tablet : running) {
+    auto it = pending_tablets_.find(tablet->tablet_id());
+    // A tablet whose delete has started stays, even if the DELETED state is not committed yet.
+    if (it != pending_tablets_.end() && it->second.tablet == tablet && !it->second.deleted) {
+      pending_tablets_.erase(it);
+    }
   }
 }
 
-bool CatalogManager::AreTablesDeletingOrHiding() {
-  SharedLock lock(mutex_);
+void CatalogManager::TrackNewTablet(const TabletInfoPtr& tablet) {
+  std::lock_guard pending_lock(pending_tablets_mutex_);
+  auto& entry = pending_tablets_[tablet->tablet_id()];
+  if (entry.tablet != tablet) {
+    entry = PendingTablet{.tablet = tablet};
+  }
+}
 
-  for (const auto& table : tables_->GetAllTables()) {
+void CatalogManager::TrackDeletedTablet(const TabletInfoPtr& tablet) {
+  std::lock_guard pending_lock(pending_tablets_mutex_);
+  pending_tablets_[tablet->tablet_id()] = PendingTablet{.tablet = tablet, .deleted = true};
+}
+
+size_t CatalogManager::TEST_NumPendingTablets() {
+  std::lock_guard pending_lock(pending_tablets_mutex_);
+  return pending_tablets_.size();
+}
+
+void CatalogManager::TrackTableBeingRemoved(const TableInfoPtr& table) {
+  std::lock_guard tracked_lock(tables_being_removed_mutex_);
+  auto& entry = tables_being_removed_[table->id()];
+  entry.table = table;
+  ++entry.version;
+  entry.seen = false;
+}
+
+std::vector<TableInfoPtr> CatalogManager::GetTablesBeingRemoved() {
+  std::vector<TableBeingRemoved> tracked;
+  {
+    std::lock_guard tracked_lock(tables_being_removed_mutex_);
+    tracked.reserve(tables_being_removed_.size());
+    for (const auto& [_, entry] : tables_being_removed_) {
+      tracked.push_back(entry);
+    }
+  }
+  std::vector<TableInfoPtr> result;
+  if (tracked.empty()) {
+    return result;
+  }
+
+  // An entry is dropped once its table left tables_, or left these states after being seen in
+  // one of them. Until then the state change may not be committed yet.
+  std::vector<const TableBeingRemoved*> dropped;
+  std::vector<const TableBeingRemoved*> seen;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& entry : tracked) {
+      if (tables_->FindTableOrNull(entry.table->id()) != entry.table) {
+        dropped.push_back(&entry);
+        continue;
+      }
+      auto table_lock = entry.table->LockForRead();
+      if (table_lock->started_deleting() || table_lock->is_hiding()) {
+        result.push_back(entry.table);
+        if (!entry.seen) {
+          seen.push_back(&entry);
+        }
+      } else if (entry.seen) {
+        dropped.push_back(&entry);
+      }
+    }
+  }
+
+  if (!dropped.empty() || !seen.empty()) {
+    std::lock_guard tracked_lock(tables_being_removed_mutex_);
+    for (const auto* entry : seen) {
+      auto it = tables_being_removed_.find(entry->table->id());
+      if (it != tables_being_removed_.end() && it->second.version == entry->version) {
+        it->second.seen = true;
+      }
+    }
+    for (const auto* entry : dropped) {
+      auto it = tables_being_removed_.find(entry->table->id());
+      if (it != tables_being_removed_.end() && it->second.version == entry->version) {
+        tables_being_removed_.erase(it);
+      }
+    }
+  }
+  return result;
+}
+
+bool CatalogManager::AreTablesDeletingOrHiding() {
+  for (const auto& table : GetTablesBeingRemoved()) {
     auto table_lock = table->LockForRead();
     // TODO(jason): possibly change this to started_deleting when we begin removing DELETED tables
     // from tables_ (see CleanUpDeletedTables).
@@ -13051,6 +13176,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     auto tablet_map_checkout = tablet_map_.CheckOut();
     for (const auto& replacement : new_tablets) {
       (*tablet_map_checkout)[replacement->tablet_id()] = replacement;
+      TrackNewTablet(replacement);
     }
   }
 

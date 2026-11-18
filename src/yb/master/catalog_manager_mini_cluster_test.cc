@@ -11,6 +11,9 @@
 // under the License.
 
 
+#include "yb/client/client.h"
+#include "yb/client/table_creator.h"
+
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/integration-tests/mini_cluster_utils.h"
@@ -34,6 +37,7 @@
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(quick_leader_election_on_create);
+DECLARE_bool(TEST_pause_catalog_manager_bg_loop_start);
 
 namespace yb::master {
 
@@ -99,6 +103,81 @@ TEST_F(CatalogManagerFirstElectionTest, LoadSysCatalogOncePerTerm) {
   // A second load would be queued behind the first one, which is done once the cluster is up.
   SleepFor(2s * kTimeMultiplier);
   ASSERT_EQ(load_log_.GetEventCount(), 1);
+}
+
+// The catalog manager background task reads a list of pending tablets. A tablet must leave the
+// list when it runs, or when it is deleted and removed from the tablet map.
+class PendingTabletListTest : public CatalogManagerWithMiniClusterTest {
+ public:
+  size_t num_masters() override {
+    return 3;
+  }
+
+  void TearDown() override {
+    // A paused background task does not shut down.
+    PauseBgTask(false);
+    CatalogManagerWithMiniClusterTest::TearDown();
+  }
+
+ protected:
+  // Only the background task removes tablets from the list, so a pause keeps them on it.
+  void PauseBgTask(bool pause) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_catalog_manager_bg_loop_start) = pause;
+  }
+
+  Result<size_t> NumPendingTablets() {
+    return VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
+        ->catalog_manager_impl().TEST_NumPendingTablets();
+  }
+
+  Status WaitForPendingTablets(size_t min_count) {
+    return WaitFor([this, min_count]() -> Result<bool> {
+      return VERIFY_RESULT(NumPendingTablets()) >= min_count;
+    }, 30s * kTimeMultiplier, "Tablets are on the pending tablet list");
+  }
+
+  Status WaitForNoPendingTablets() {
+    return WaitFor([this]() -> Result<bool> {
+      return VERIFY_RESULT(NumPendingTablets()) == 0;
+    }, 30s * kTimeMultiplier, "Pending tablet list is empty");
+  }
+};
+
+TEST_F(PendingTabletListTest, EmptyAfterCreateTable) {
+  ASSERT_OK(WaitForNoPendingTablets());
+
+  PauseBgTask(true);
+  const client::YBTableName new_table(
+      table_name().namespace_type(), table_name().namespace_name(), "pending_tablet_list_test");
+  ASSERT_OK(NewTableCreator()->table_name(new_table).schema(&schema_).wait(false).Create());
+  ASSERT_OK(WaitForPendingTablets(num_tablets()));
+
+  PauseBgTask(false);
+  ASSERT_OK(WaitForNoPendingTablets());
+}
+
+TEST_F(PendingTabletListTest, EmptyAfterDeleteTable) {
+  ASSERT_OK(WaitForNoPendingTablets());
+
+  PauseBgTask(true);
+  ASSERT_OK(client_->DeleteTable(table_name(), /* wait= */ false));
+  table_exists_ = false;
+  ASSERT_OK(WaitForPendingTablets(num_tablets()));
+
+  PauseBgTask(false);
+  ASSERT_OK(WaitForNoPendingTablets());
+}
+
+TEST_F(PendingTabletListTest, EmptyAfterMasterLeaderChange) {
+  ASSERT_OK(WaitForNoPendingTablets());
+
+  // The new leader puts every tablet it loads on the list.
+  PauseBgTask(true);
+  ASSERT_OK(mini_cluster()->StepDownMasterLeaderAndWaitForNewLeader());
+  ASSERT_OK(WaitForPendingTablets(num_tablets()));
+
+  PauseBgTask(false);
+  ASSERT_OK(WaitForNoPendingTablets());
 }
 
 }  // namespace yb::master

@@ -2158,6 +2158,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
       auto tablet_map_checkout = tablet_map_.CheckOut();
       for (auto& new_tablet : new_tablets) {
         InsertOrDie(tablet_map_checkout.get_ptr(), new_tablet->tablet_id(), new_tablet);
+        TrackNewTablet(new_tablet);
       }
       VLOG_WITH_FUNC(3) << "Prepared creation of " << new_tablets.size()
                         << " new tablets for table " << table->id();
@@ -2185,6 +2186,7 @@ Status CatalogManager::RepartitionTable(const TableInfoPtr& table,
       old_tablet->mutable_metadata()->StartMutation();
       old_tablet->mutable_metadata()->mutable_dirty()->set_state(
           SysTabletsEntryPB::DELETED, deletion_msg);
+      TrackDeletedTablet(old_tablet);
       if (table->colocated()) {
         // Remove the table_id from the old colocated tablet. This avoids reloading the deleted
         // tablet in memory in case of master failover.
@@ -3520,6 +3522,7 @@ void CatalogManager::CleanupHiddenTables(
       // directly to DELETED.
       write_lock.mutable_data()->set_state(
           SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
+      TrackTableBeingRemoved(table);
       LOG_WITH_PREFIX(INFO) << Format(
           "Cleaning up hidden table $0: $1", table->name(), AsString(table));
     }
