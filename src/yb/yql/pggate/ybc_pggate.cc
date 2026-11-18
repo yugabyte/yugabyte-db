@@ -113,7 +113,6 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
     "yb_enable_invalidation_messages is enabled.");
 
 DECLARE_bool(TEST_ash_debug_aux);
-DECLARE_bool(ysql_yb_enable_replication_slot_transactional_ddl);
 
 /* Constants for replication slot LSN types */
 const std::string YBC_LSN_TYPE_SEQUENCE = "SEQUENCE";
@@ -3105,7 +3104,9 @@ YbcStatus YBCPgGetCDCConsistentChanges(
 
     static constexpr size_t OMITTED_VALUE = std::numeric_limits<size_t>::max();
 
-    const bool use_attr_num = FLAGS_ysql_yb_enable_replication_slot_transactional_ddl;
+    // Read the GUC, not the gflag: a promoted AutoFlag keeps its default status, so the tserver
+    // doesn't pass it to postgres and the gflag here stays false.
+    const bool use_attr_num = yb_enable_replication_slot_transactional_ddl;
 
     // (attnum, column name) -> (index in old tuples, index in new tuples).
     // OMITTED_VALUE indicates omission.
