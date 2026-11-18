@@ -1786,8 +1786,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // ordinary user PG tables but exist solely to drive those features, so they should never be
   // streamed. When a new feature/extension introduces a table that CDCSDK must exclude, add a
   // check for it here and in yb_is_internal_table_to_be_excluded_from_cdc() in pg_publication.c,
-  // which keeps the table out of every logical replication slot's table list and rejects adding
-  // it to a publication.
+  // which keeps the table out of every logical replication slot's table list.
   bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
 
   // Returns true if the given CDCSDK stream is an internal LISTEN/NOTIFY notifications stream.

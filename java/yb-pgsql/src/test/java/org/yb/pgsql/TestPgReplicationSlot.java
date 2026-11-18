@@ -8171,43 +8171,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     conn.close();
   }
 
+  // Slots also leave these tables out when a publication lists them explicitly.
   @Test
-  public void xClusterDdlReplicationTablesCannotBeAddedToPublication() throws Exception {
+  public void slotSkipsXClusterDdlReplicationTablesListedInPublication() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
       stmt.execute("CREATE TABLE t1 (id int primary key)");
-      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1");
-    }
-
-    for (String table : Arrays.asList("ddl_queue", "replicated_ddls")) {
-      String error = "cannot add relation \"" + table + "\" to publication";
-      executeExpectingError(connection,
-          "CREATE PUBLICATION pub2 FOR TABLE yb_xcluster_ddl_replication." + table, error);
-      executeExpectingError(connection,
-          "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication." + table, error);
-    }
-
-    // As on the master, only these two tables are excluded: other tables in their schema are not.
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE TABLE yb_xcluster_ddl_replication.t2 (id int primary key)");
-      stmt.execute("ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication.t2");
-      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables ORDER BY 1, 2",
-          new Row("public", "t1"), new Row("yb_xcluster_ddl_replication", "t2"));
-    }
-  }
-
-  // A publication can list these tables if they were added before adding them was rejected.
-  // Moving a table into their place recreates such a publication.
-  @Test
-  public void slotSkipsXClusterDdlReplicationTablesAlreadyInPublication() throws Exception {
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE TABLE t1 (id int primary key)");
-      stmt.execute("CREATE TABLE ddl_queue (id int primary key)");
-      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, ddl_queue");
-      stmt.execute("CREATE SCHEMA yb_xcluster_ddl_replication");
-      stmt.execute("ALTER TABLE ddl_queue SET SCHEMA yb_xcluster_ddl_replication");
-      assertQuery(stmt, "SELECT schemaname, tablename FROM pg_publication_tables ORDER BY 1, 2",
-          new Row("public", "t1"), new Row("yb_xcluster_ddl_replication", "ddl_queue"));
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, yb_xcluster_ddl_replication.ddl_queue, "
+          + "yb_xcluster_ddl_replication.replicated_ddls");
     }
 
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
