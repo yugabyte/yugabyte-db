@@ -906,8 +906,8 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
       if (table_info->index_info && read_time_ &&
           PREDICT_TRUE(!FLAGS_TEST_disable_index_birth_time_check)) {
         // Reject reads arriving at index with a read time earlier than the index birth time.
-        // TODO(#33155): index birth_time isn't set for xCluster automatic-mode target (where
-        // backfill is replicated from the source).
+        // TODO(#33155): birth_time of a regular index isn't set on an xCluster automatic-mode
+        // target (where backfill is replicated from the source).
         const auto birth_time = table_info->index_info->birth_time();
         VLOG(1) << "Index read birth-time guard: index_table=" << table_info->table_id
                 << " birth_time=" << birth_time

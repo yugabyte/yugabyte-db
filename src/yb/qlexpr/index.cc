@@ -81,8 +81,8 @@ vector<ColumnId> ColumnIdsFromPB(const RepeatedField<uint32>& ids) {
 }
 
 HybridTime BirthTimeFromPB(const IndexInfoPB& pb, HybridTime added_ht) {
-  if (pb.birth_time()) {
-    return HybridTime(pb.birth_time());
+  if (auto birth_time = HybridTime::FromPB(pb.birth_time())) {
+    return birth_time;
   }
   return pb.has_vector_idx_options() ? added_ht : HybridTime::kInvalid;
 }
@@ -163,7 +163,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   pb->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill_);
   pb->set_num_rows_backfilled_in_index(num_rows_backfilled_in_index_);
   if (birth_time_) {
-    pb->set_birth_time(birth_time_.ToUint64());
+    pb->set_birth_time(birth_time_.ToPB());
   }
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (where_predicate_spec_) {

@@ -125,6 +125,8 @@ DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_cdr_metadata);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_use_packed_row_v2);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
@@ -2123,21 +2125,82 @@ TEST_P(PgVectorIndexTest, ReadBeforeIndexCreation) {
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, 500, 9000]' WHERE id = 2"));
   ASSERT_OK(CreateIndex(conn));
 
+  auto check_searches = [this, &conn] {
+    for (int64_t id : {1, 2}) {
+      const auto query = "SELECT * FROM test" + IndexQuerySuffix(Vector(id), 1);
+      ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+      ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
+    }
+  };
+
   // Read the table as of read_time_us, and the catalog as of now, so the index is visible.
   ASSERT_OK(conn.Execute("SET yb_read_time_skip_catalog = true"));
   ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", read_time_us));
   // The read time is before the delete.
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT id FROM test WHERE id = 1")), 1);
-  for (int64_t id : {1, 2}) {
-    const auto query = "SELECT * FROM test" + IndexQuerySuffix(Vector(id), 1);
+  ASSERT_NO_FATALS(check_searches());
+
+  // A follower read right after CREATE INDEX also reads before the index birth time.
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "SET yb_follower_read_staleness_ms = $0", ToMilliseconds(60s * kTimeMultiplier)));
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+  ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
+  ASSERT_NO_FATALS(check_searches());
+}
+
+// A transaction that picked its read time before creating a vector index can't search it, like a
+// regular index, whose read then needs a read restart. The index of a non-colocated table created
+// by the same transaction is searchable.
+TEST_P(PgVectorIndexTest, SearchInIndexCreatingTransaction) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 16));
+  // Outside the tablet of the vector indexes, where a sequential scan is a test failure.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE anchor (k INT PRIMARY KEY)$0",
+      IsColocated() ? " WITH (COLOCATION = false)" : ""));
+  ASSERT_OK(conn.Execute("INSERT INTO anchor VALUES (1)"));
+  const auto query_suffix = IndexQuerySuffix(Vector(1), 1);
+  int num_indexes = 0;
+  // Debug and release builds have different defaults.
+  for (bool ddl_transaction_block : {false, true}) {
+    SCOPED_TRACE(Format("ddl_transaction_block: $0", ddl_transaction_block));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) =
+        ddl_transaction_block;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ASSERT_OK(RestartCluster());
+
+    conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    // Picks the read time of the transaction.
+    ASSERT_OK(conn.FetchRow<int32_t>("SELECT k FROM anchor"));
+    ASSERT_OK(CreateIndex(conn, Format("vi$0", ++num_indexes)));
+    auto query = "SELECT * FROM test" + query_suffix;
     ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-    auto result = conn.FetchAllAsString(query);
-    LOG(INFO) << "Search for " << id << ": " << result;
-    if (result.ok()) {
-      ASSERT_EQ(*result, ExpectedRow(id));
+    ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
+    ASSERT_OK(conn.Execute("ROLLBACK"));
+
+    const auto table = Format("t$0", ++num_indexes);
+    ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(conn.FetchRow<int32_t>("SELECT k FROM anchor"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id BIGINT PRIMARY KEY, embedding vector(3))", table));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES (1, '$1'), (2, '$2')", table, AsString(Vector(1)),
+        AsString(Vector(2))));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX ON $0 USING ybhnsw (embedding $1)", table,
+        pgwrapper::VectorOpsName(distance_kind_)));
+    query = Format("SELECT * FROM $0$1", table, query_suffix);
+    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+    // Reads of a table created by the transaction use a later read time, unless the table is
+    // colocated.
+    if (IsColocated()) {
+      ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
     } else {
-      ASSERT_STR_CONTAINS(result.status().ToString(), "index birth time");
+      ASSERT_EQ(ASSERT_RESULT(conn.FetchAllAsString(query)), ExpectedRow(1));
     }
+    ASSERT_OK(conn.Execute("ROLLBACK"));
   }
 }
 
