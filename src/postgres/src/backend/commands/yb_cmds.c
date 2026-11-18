@@ -1602,7 +1602,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				 * non-retryable schema version mismatch inside a transaction
 				 * block.
 				 */
-				if (YBCIsObjectLockingEnabled() &&
+				if (YBCUsingObjectLocksGloballyForCurrentTxn() &&
 					(cmd->subtype == AT_ValidateConstraint ||
 					 cmd->subtype == AT_ValidateConstraintRecurse ||
 					 cmd->subtype == AT_SetStatistics))
@@ -2535,10 +2535,20 @@ YBCDestroyVirtualWalForCDC()
 
 void
 YBCGetCDCConsistentChanges(const char *stream_id,
-						   YbcPgChangeRecordBatch **record_batch,
-						   YbcTypeEntityProvider type_entity_provider)
+						   YbcPgChangeRecordBatch **record_batch)
 {
-	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch, type_entity_provider));
+	/*
+	 * Allocated before the call in CurrentMemoryContext, which is
+	 * cached_records_context in this case. This will be freed by
+	 * PreProcessBeforeFetchingNextBatch which resets cached_records_context.
+	 */
+	MemoryContextCallback *free_response = palloc(sizeof(MemoryContextCallback));
+
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+
+	free_response->func = YBCPgFreeCDCConsistentChangesResponse;
+	free_response->arg = (*record_batch)->response;
+	MemoryContextRegisterResetCallback(CurrentMemoryContext, free_response);
 }
 
 void

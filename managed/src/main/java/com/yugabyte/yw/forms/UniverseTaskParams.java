@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.common.DeltaEvaluator.DeltaRetainLatest;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.common.YbaApi;
@@ -298,14 +299,14 @@ public class UniverseTaskParams extends AbstractTaskParams {
 
   // This returns true if YBC is enabled irrespective of the installation status.
   // E.g a new universe which is yet to have YBC installed.
-  @ApiModelProperty @Getter @Setter private boolean enableYbc = false;
+  @DeltaRetainLatest @ApiModelProperty @Getter @Setter private boolean enableYbc = false;
 
-  @ApiModelProperty @Getter @Setter private String ybcSoftwareVersion = null;
+  @DeltaRetainLatest @ApiModelProperty @Getter @Setter private String ybcSoftwareVersion = null;
 
   @ApiModelProperty public boolean installYbc = false;
 
   // This returns true for existing universes only when YBC is installed.
-  @ApiModelProperty @Getter @Setter private boolean ybcInstalled = false;
+  @DeltaRetainLatest @ApiModelProperty @Getter @Setter private boolean ybcInstalled = false;
 
   // Expected version of the universe for operation execution. Set to -1 if an operation should
   // not verify expected version of the universe.

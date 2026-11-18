@@ -441,11 +441,16 @@ public class ResizeNode extends UpgradeTaskBase {
       return true;
     }
     String currentInstanceType = node.cloudInfo.instance_type;
-    Integer newCgroupSize = newIntent.getCGroupSize(node);
-    Integer oldCgroupSize = currentIntent.getCGroupSize(node);
-
     return !currentInstanceType.equals(newIntent.getInstanceTypeForNode(node))
-        || !Objects.equals(oldCgroupSize, newCgroupSize);
+        || isCgroupChanging(node, newIntent, currentIntent);
+  }
+
+  /** Whether the node's cgroup size must be (re)applied. */
+  protected boolean isCgroupChanging(
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
+    return !Objects.equals(currentIntent.getCGroupSize(node), newIntent.getCGroupSize(node));
   }
 
   protected boolean isModifyingDevice(
@@ -521,15 +526,13 @@ public class ResizeNode extends UpgradeTaskBase {
             String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
             String currentInstanceType = instanceTypeForChangeDecision(node);
             DeviceInfo currentDeviceInfo = currentIntent.evaluateDeviceInfoForNode(node);
-            Integer newCgroupSize = newIntent.getCGroupSize(node);
-            Integer oldCgroupSize = currentIntent.getCGroupSize(node);
             createResizeNodeTasks(
                 Collections.singletonList(node),
                 newInstanceType,
                 newDeviceInfo,
                 currentInstanceType,
                 currentDeviceInfo,
-                !Objects.equals(oldCgroupSize, newCgroupSize));
+                isCgroupChanging(node, newIntent, currentIntent));
           }
         });
   }

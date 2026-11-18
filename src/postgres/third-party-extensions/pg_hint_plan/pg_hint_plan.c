@@ -655,7 +655,7 @@ static int yb_bad_hint_mode = BAD_HINT_OFF;
 static bool yb_enable_internal_hint_test = false;
 static bool yb_internal_hint_test_fail = false;
 static bool yb_use_generated_hints_for_plan = false;
-static bool yb_use_query_id_for_hinting = false;
+static bool yb_use_query_id_for_hinting = true;
 static bool yb_enable_hint_table_cache = true;
 
 static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
@@ -919,10 +919,12 @@ _PG_init(void)
 							NULL);
 
 	DefineCustomBoolVariable("pg_hint_plan.yb_use_query_id_for_hinting",
-							"Use query id instead of query text for hinting.",
-							NULL,
+							"Match hint table rows by query id as well as by normalized query text.",
+							"A row whose norm_query_string is the query id, as shown by EXPLAIN (VERBOSE), "
+							"takes precedence over a row with the normalized query text for the same "
+							"application name.",
 							&yb_use_query_id_for_hinting,
-							false,
+							true,
 							PGC_USERSET,
 							0,
 							NULL,
@@ -2455,9 +2457,13 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 
 /*
  * Get hints from table by client-supplied query string and application name.
+ *
+ * YB: if yb_query_id is not NULL, rows keyed by the query id also match, and
+ * win over rows keyed by the query string for the same application name.
  */
 static const char *
-get_hints_from_table(const char *client_query, const char *client_application)
+get_hints_from_table(const char *client_query, const char *client_application,
+					 const char *yb_query_id)
 {
 	const char *search_query =
 		"SELECT hints "
@@ -2475,6 +2481,18 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	text   *app;
 	Oid		namespaceId;
 	bool	hints_table_found = false;
+
+	const char *yb_search_query =
+		"SELECT hints "
+		"  FROM hint_plan.hints "
+		" WHERE norm_query_string IN ($1, $3) "
+		"   AND ( application_name = $2 "
+		"    OR application_name = '' ) "
+		" ORDER BY application_name DESC, norm_query_string = $3 DESC";
+	static SPIPlanPtr yb_plan = NULL;
+	Oid			yb_argtypes[3] = {TEXTOID, TEXTOID, TEXTOID};
+	Datum		yb_values[3];
+	char		yb_nulls[3] = {' ', ' ', ' '};
 
 	/*
 	 * Make sure that hint_plan.hints is found before we attempt to look for
@@ -2502,21 +2520,31 @@ get_hints_from_table(const char *client_query, const char *client_application)
 
 	if (IsYugaByteEnabled() && yb_enable_hint_table_cache)
 	{
-		bool found;
-		elog(DEBUG5, "Looking up hints cache for query: %s, application: '%s'", client_query, client_application);
-		const char *cached_hints_app = yb_get_cached_hints(client_query, client_application, &found);
-		if (found)
+		/* Probe in the precedence order of yb_search_query. */
+		const char *apps[] = {client_application, ""};
+		const char *keys[] = {yb_query_id, client_query};
+
+		for (int i = 0; i < lengthof(apps); i++)
 		{
-			elog(DEBUG4, "Hint cache hit: query: %s, application: '%s', hints: %s", client_query, client_application, cached_hints_app);
-			return cached_hints_app;
+			for (int j = 0; j < lengthof(keys); j++)
+			{
+				bool		found;
+				const char *cached_hints;
+
+				if (keys[j] == NULL)
+					continue;
+
+				elog(DEBUG5, "Looking up hints cache for query: %s, application: '%s'", keys[j], apps[i]);
+				cached_hints = yb_get_cached_hints(keys[j], apps[i], &found);
+				if (found)
+				{
+					elog(DEBUG4, "Hint cache hit: query: %s, application: '%s', hints: %s", keys[j], apps[i], cached_hints);
+					return cached_hints;
+				}
+			}
 		}
-		const char *cached_hints_empty = yb_get_cached_hints(client_query, "", &found);
-		if (found)
-		{
-			elog(DEBUG4, "Hint cache hit: query: %s, application: '%s', hints: %s", client_query, "", cached_hints_empty);
-			return cached_hints_empty;
-		}
-		elog(DEBUG4, "Hint cache miss for query: %s, application: '%s'", client_query, client_application);
+		elog(DEBUG4, "Hint cache miss for query: %s, query id: %s, application: '%s'",
+			 client_query, yb_query_id ? yb_query_id : "<none>", client_application);
 		YbIncrementHintCacheMisses();
 		return NULL;
 	}
@@ -2552,12 +2580,29 @@ get_hints_from_table(const char *client_query, const char *client_application)
 			SPI_freeplan(p);
 		}
 
+		if (yb_query_id != NULL && yb_plan == NULL)
+		{
+			SPIPlanPtr	p;
+
+			p = SPI_prepare(yb_search_query, 3, yb_argtypes);
+			yb_plan = SPI_saveplan(p);
+			SPI_freeplan(p);
+		}
+
 		qry = cstring_to_text(client_query);
 		app = cstring_to_text(client_application);
 		values[0] = PointerGetDatum(qry);
 		values[1] = PointerGetDatum(app);
 
-		SPI_execute_plan(plan, values, nulls, true, 1);
+		if (yb_query_id != NULL)
+		{
+			yb_values[0] = PointerGetDatum(qry);
+			yb_values[1] = PointerGetDatum(app);
+			yb_values[2] = PointerGetDatum(cstring_to_text(yb_query_id));
+			SPI_execute_plan(yb_plan, yb_values, yb_nulls, true, 1);
+		}
+		else
+			SPI_execute_plan(plan, values, nulls, true, 1);
 
 		if (SPI_processed > 0)
 		{
@@ -3693,6 +3738,9 @@ get_current_hint_string(Query *query, const char *query_str,
 		int			query_len;
 		char	   *normalized_query;
 
+		uint64		yb_query_id = 0;
+		char	   *yb_query_id_str = NULL;
+
 		if (!IsQueryIdEnabled())
 		{
 			/*
@@ -3716,58 +3764,55 @@ get_current_hint_string(Query *query, const char *query_str,
 			hint_table_deactivated = false;
 		}
 
-		if (!yb_use_query_id_for_hinting || query->queryId == 0)
-		{
-			/*
-			 * If we are not using query ids for hinting, or the query id has
-			 * not been set, then compute the query id. This is the path
-			 * the original code always takes. If we are using query ids
-			 * for hinting, and the query id has already been computed, do not
-			 * recompute it in case changes have been nade to the query since
-			 * the original computation.
-			 */
-			if (!jstate)
-				jstate = JumbleQuery(query, query_str);
+		/*
+		 * YB: JumbleQuery() below overwrites query->queryId, and in the
+		 * planner hook the rewritten query can jumble to a different id than
+		 * the one EXPLAIN and pg_stat_statements report (GH26621).  Keep the
+		 * parse-time id, both for the lookup and for what is reported
+		 * downstream.  If none was set at parse time, use the jumbled one.
+		 */
+		if (IsYugaByteEnabled() && yb_use_query_id_for_hinting)
+			yb_query_id = query->queryId;
 
-			if (!jstate)
-				return;
-
-			/*
-			 * Normalize the query string by replacing constants with '?'
-			 */
-			/*
-			 * Search hint string which is stored keyed by query string
-			 * and application name.  The query string is normalized to allow
-			 * fuzzy matching.
-			 *
-			 * Adding 1 byte to query_len ensures that the returned string has
-			 * a terminating NULL.
-			 */
-			query_len = strlen(query_str) + 1;
-			normalized_query =
-				generate_normalized_query(jstate, query_str, 0, &query_len);
-		}
+		if (!jstate)
+			jstate = JumbleQuery(query, query_str);
 
 		if (IsYugaByteEnabled() && yb_use_query_id_for_hinting)
 		{
-			/*
-			 * Put the query id in a string as a signed 64-bit int since that is
-			 * what shows in EXPLAIN.
-			 */
-			StringInfoData buf;
-			initStringInfo(&buf);
-			appendStringInfo(&buf, INT64_FORMAT, query->queryId);
-			normalized_query = pstrdup(buf.data);
+			if (yb_query_id != 0)
+				query->queryId = yb_query_id;
+			else
+				yb_query_id = query->queryId;
 
-			if (IsYugaByteEnabled() && yb_enable_planner_trace)
-			{
-				ereport(DEBUG1,
-						(errmsg("\nhinting query: %s , id = %ld",
-								query_str != NULL ? query_str : "<null>", 
-								query->queryId)));
-			}
+			/* Format as a signed 64-bit int since that is what EXPLAIN shows. */
+			if (yb_query_id != 0)
+				yb_query_id_str = psprintf(INT64_FORMAT, (int64) yb_query_id);
+		}
 
-			pfree(buf.data);
+		if (!jstate)
+			return;
+
+		/*
+		 * Normalize the query string by replacing constants with '?'
+		 */
+		/*
+		 * Search hint string which is stored keyed by query string
+		 * and application name.  The query string is normalized to allow
+		 * fuzzy matching.
+		 *
+		 * Adding 1 byte to query_len ensures that the returned string has
+		 * a terminating NULL.
+		 */
+		query_len = strlen(query_str) + 1;
+		normalized_query =
+			generate_normalized_query(jstate, query_str, 0, &query_len);
+
+		if (IsYugaByteEnabled() && yb_enable_planner_trace &&
+			yb_query_id_str != NULL)
+		{
+			ereport(DEBUG1,
+					(errmsg("\nhinting query: %s , id = %s",
+							query_str, yb_query_id_str)));
 		}
 
 		/*
@@ -3776,15 +3821,17 @@ get_current_hint_string(Query *query, const char *query_str,
 		 */
 		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 		current_hint_str =
-			get_hints_from_table(normalized_query, application_name);
+			get_hints_from_table(normalized_query, application_name,
+								 yb_query_id_str);
 		MemoryContextSwitchTo(oldcontext);
 
 		if (IsYugaByteEnabled() && yb_enable_planner_trace &&
-			yb_use_query_id_for_hinting && current_hint_str != NULL)
+			yb_query_id_str != NULL && current_hint_str != NULL)
 		{
 			ereport(DEBUG1,
-					(errmsg("\nfound hints for query id %s in hint table : %s",
-							normalized_query, current_hint_str)));
+					(errmsg("\nfound hints for query id %s or its normalized "
+							"text in hint table : %s",
+							yb_query_id_str, current_hint_str)));
 		}
 
 		if (debug_level > 1)

@@ -194,4 +194,15 @@ void CombineExternalIntents(
   provider->SetValue(buffer.AsSlice());
 }
 
+bool IsNonRecordStrongWriteIntent(
+    Slice doc_path, const dockv::DecodedIntentValue& decoded_value, const SubtxnSet& aborted) {
+  if (dockv::IsTopLevelIntentKey(doc_path) && decoded_value.body.empty()) {
+    return true;
+  }
+  if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
+    return true;
+  }
+  return aborted.Test(decoded_value.subtransaction_id);
+}
+
 }  // namespace yb::docdb
