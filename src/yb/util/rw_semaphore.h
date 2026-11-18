@@ -31,178 +31,58 @@
 //
 #pragma once
 
-#include <boost/smart_ptr/detail/yield_k.hpp>
-#include "yb/util/logging.h"
+#include <absl/synchronization/mutex.h>
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/logging.h"
 
 namespace yb {
 
-// Read-Write semaphore. 32bit uint that contains the number of readers.
-// When someone wants to write, tries to set the 32bit, and waits until
-// the readers have finished. Readers are spinning while the write flag is set.
+// Reader/writer lock with lowercase methods, so it works with std::lock_guard, std::unique_lock,
+// std::shared_lock and yb::SharedLock.
 //
-// This rw-semaphore makes no attempt at fairness, though it does avoid write
-// starvation (no new readers may obtain the lock if a write is waiting).
+// Waiting threads block in absl::Mutex, which wakes one designated waiter at a time. Once a writer
+// is waiting, new readers block behind it, so a thread must not acquire the lock in shared mode
+// again while it already holds it.
 //
-// Given that this is currently based only on spinning (and not futex),
-// it should only be used in cases where the lock is held for very short
-// time intervals.
-//
-// If the semaphore is expected to always be released from the same thread
-// that acquired it, use rw_spinlock instead.
-//
-// In order to support easier debugging of leaked locks, this class can track
-// the stack trace of the last thread to lock it in write mode. To do so,
-// uncomment the following define:
-//   #define RW_SEMAPHORE_TRACK_HOLDER 1
-// ... and then in gdb, print the contents of the semaphore, and you should
-// see the collected stack trace.
-class rw_semaphore {
-#ifndef NDEBUG
-  static constexpr int64_t kInvalidThreadId = -1;
-#endif
+// Unlike the polling implementation this replaced, try_lock() fails while readers hold the lock,
+// and the lock must be released by the thread that acquired it.
+class CAPABILITY("mutex") rw_semaphore {
  public:
-  rw_semaphore() : state_(0) {}
-  ~rw_semaphore() {}
-
-  void lock_shared() {
-    int loop_count = 0;
-    Atomic32 cur_state = base::subtle::NoBarrier_Load(&state_);
-    while (true) {
-      Atomic32 expected = cur_state & kNumReadersMask;   // I expect no write lock
-      Atomic32 try_new_state = expected + 1;          // Add me as reader
-      cur_state = base::subtle::Acquire_CompareAndSwap(&state_, expected, try_new_state);
-      if (cur_state == expected)
-        break;
-      // Either was already locked by someone else, or CAS failed.
-      boost::detail::yield(loop_count++);
-    }
+  void lock_shared() NO_THREAD_SAFETY_ANALYSIS {
+    mutex_.ReaderLock();
   }
 
-  void unlock_shared() {
-    int loop_count = 0;
-    Atomic32 cur_state = base::subtle::NoBarrier_Load(&state_);
-    while (true) {
-      DCHECK_GT(cur_state & kNumReadersMask, 0)
-        << "unlock_shared() called when there are no shared locks held";
-      Atomic32 expected = cur_state;           // I expect a write lock and other readers
-      Atomic32 try_new_state = expected - 1;   // Drop me as reader
-      cur_state = base::subtle::Release_CompareAndSwap(&state_, expected, try_new_state);
-      if (cur_state == expected)
-        break;
-      // Either was already locked by someone else, or CAS failed.
-      boost::detail::yield(loop_count++);
-    }
+  void unlock_shared() NO_THREAD_SAFETY_ANALYSIS {
+    mutex_.ReaderUnlock();
   }
 
-  // Tries to acquire a write lock, if no one else has it.
-  // This function retries on CAS failure and waits for readers to complete.
-  bool try_lock() {
-    int loop_count = 0;
-    Atomic32 cur_state = base::subtle::NoBarrier_Load(&state_);
-    while (true) {
-      // someone else has already the write lock
-      if (cur_state & kWriteFlag)
-        return false;
-
-      Atomic32 expected = cur_state & kNumReadersMask;   // I expect some 0+ readers
-      Atomic32 try_new_state = kWriteFlag | expected;    // I want to lock the other writers
-      cur_state = base::subtle::Acquire_CompareAndSwap(&state_, expected, try_new_state);
-      if (cur_state == expected)
-        break;
-      // Either was already locked by someone else, or CAS failed.
-      boost::detail::yield(loop_count++);
-    }
-
-    WaitPendingReaders();
-    RecordLockHolderStack();
-    return true;
+  bool try_lock() NO_THREAD_SAFETY_ANALYSIS {
+    return mutex_.TryLock();
   }
 
-  void lock() {
-    int loop_count = 0;
-    Atomic32 cur_state = base::subtle::NoBarrier_Load(&state_);
-    while (true) {
-      Atomic32 expected = cur_state & kNumReadersMask;   // I expect some 0+ readers
-      Atomic32 try_new_state = kWriteFlag | expected;    // I want to lock the other writers
-      // Note: we use NoBarrier here because we'll do the Acquire barrier down below
-      // in WaitPendingReaders
-      cur_state = base::subtle::NoBarrier_CompareAndSwap(&state_, expected, try_new_state);
-      if (cur_state == expected)
-        break;
-      // Either was already locked by someone else, or CAS failed.
-      boost::detail::yield(loop_count++);
-    }
-
-    WaitPendingReaders();
-
-#ifndef NDEBUG
-    AssignWriterTid();
-#endif // NDEBUG
-    RecordLockHolderStack();
+  void lock() NO_THREAD_SAFETY_ANALYSIS {
+    mutex_.Lock();
   }
 
-  void unlock() {
-    // I expect to be the only writer
-    DCHECK_EQ(base::subtle::NoBarrier_Load(&state_), kWriteFlag);
-
-#ifndef NDEBUG
-    writer_tid_ = kInvalidThreadId; // Invalid tid.
-#endif // NDEBUG
-
-    ResetLockHolderStack();
-    // Reset: no writers & no readers.
-    Release_Store(&state_, 0);
+  void unlock() NO_THREAD_SAFETY_ANALYSIS {
+    mutex_.Unlock();
   }
 
-  // Return true if the lock is currently held for write by any thread.
-  // See simple_semaphore::is_locked() for details about where this is useful.
-  bool is_write_locked() const {
-    return base::subtle::NoBarrier_Load(&state_) & kWriteFlag;
+  // Checks that some thread holds the lock in the given mode. absl::Mutex does not record which
+  // thread holds it in shared mode.
+  void AssertHeld() const ASSERT_CAPABILITY(this) {
+    mutex_.AssertHeld();
   }
 
-  // Return true if the lock is currently held, either for read or write
-  // by any thread.
-  // See simple_semaphore::is_locked() for details about where this is useful.
-  bool is_locked() const {
-    return base::subtle::NoBarrier_Load(&state_);
+  void AssertReaderHeld() const ASSERT_SHARED_CAPABILITY(this) {
+    mutex_.AssertReaderHeld();
   }
 
  private:
-  static const uint32_t kNumReadersMask = 0x7fffffff;
-  static const uint32_t kWriteFlag = 1 << 31;
-
-#ifdef RW_SEMAPHORE_TRACK_HOLDER
-  StackTrace writer_stack_;
-  void RecordLockHolderStack() {
-    writer_stack_.Collect();
-  }
-  void ResetLockHolderStack() {
-    writer_stack_.Reset();
-  }
-#else
-  void RecordLockHolderStack() {
-  }
-  void ResetLockHolderStack() {
-  }
-#endif
-
-  void WaitPendingReaders() {
-    int loop_count = 0;
-    while ((base::subtle::Acquire_Load(&state_) & kNumReadersMask) > 0) {
-      boost::detail::yield(loop_count++);
-    }
-  }
-
- private:
-  volatile Atomic32 state_;
-#ifndef NDEBUG
-  void AssignWriterTid();
-
-  int64_t writer_tid_ = kInvalidThreadId;
-#endif // NDEBUG
+  mutable absl::Mutex mutex_;
 };
 
 } // namespace yb

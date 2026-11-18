@@ -98,80 +98,41 @@ struct padded_spinlock : public simple_spinlock {
 // annotations also assume that the same thread the takes the lock will unlock it.
 //
 // See rw_semaphore.h for documentation on the individual methods where unclear.
+// Despite the name, waiters block in absl::Mutex rather than spinning. See rw_semaphore.
 class CAPABILITY("mutex") rw_spinlock  {
  public:
-  rw_spinlock() {
-    ANNOTATE_RWLOCK_CREATE(this);
-  }
-  ~rw_spinlock() {
-    ANNOTATE_RWLOCK_DESTROY(this);
-  }
-
-  void lock_shared() {
+  void lock_shared() NO_THREAD_SAFETY_ANALYSIS {
     sem_.lock_shared();
-    ANNOTATE_RWLOCK_ACQUIRED(this, 0);
   }
 
-  void unlock_shared() {
-    ANNOTATE_RWLOCK_RELEASED(this, 0);
+  void unlock_shared() NO_THREAD_SAFETY_ANALYSIS {
     sem_.unlock_shared();
   }
 
-  bool try_lock() {
-    bool ret = sem_.try_lock();
-    if (ret) {
-      ANNOTATE_RWLOCK_ACQUIRED(this, 1);
-    }
-    return ret;
+  bool try_lock() NO_THREAD_SAFETY_ANALYSIS {
+    return sem_.try_lock();
   }
 
-  void lock() {
+  void lock() NO_THREAD_SAFETY_ANALYSIS {
     sem_.lock();
-    ANNOTATE_RWLOCK_ACQUIRED(this, 1);
   }
 
-  void unlock() {
-    ANNOTATE_RWLOCK_RELEASED(this, 1);
+  void unlock() NO_THREAD_SAFETY_ANALYSIS {
     sem_.unlock();
   }
 
-  bool is_write_locked() const {
-    return sem_.is_write_locked();
+  void AssertHeld() const ASSERT_CAPABILITY(this) {
+    sem_.AssertHeld();
   }
 
-  bool is_locked() const {
-    return sem_.is_locked();
+  void AssertReaderHeld() const ASSERT_SHARED_CAPABILITY(this) {
+    sem_.AssertReaderHeld();
   }
 
  private:
   rw_semaphore sem_;
 };
 
-// A reader-writer mutex implementation which is biased for use cases where
-// the write lock is taken infrequently, but the read lock is used often.
-//
-// Internally, this creates N underlying mutexes, one per CPU. When a thread
-// wants to lock in read (shared) mode, it locks only its own CPU's mutex for read. When it
-// wants to lock in write (exclusive) mode, it locks all CPU's mutexes execlusively.
-//
-// This means that in the read-mostly case, different readers will not cause any
-// cacheline contention.
-//
-// Usage:
-//   PerCpuRwMutex mylock;
-//
-//   // Lock shared:
-//   {
-//     PerCpuRwSharedLock lock(mylock);
-//     ...
-//   }
-//
-//   // Lock exclusive:
-//
-//   {
-//     boost::lock_guard<PerCpuRwMutex> lock(mylock);
-//     ...
-//   }
 class CAPABILITY("mutex") PerCpuRwMutex {
  public:
   PerCpuRwMutex() {
@@ -196,15 +157,6 @@ class CAPABILITY("mutex") PerCpuRwMutex {
       }
     }
     return true;
-  }
-
-  // Return true if this lock is held on any CPU.
-  // See simple_spinlock::is_locked() for details about where this is useful.
-  bool is_locked() const {
-    for (size_t i = 0; i < n_cpus_; i++) {
-      if (locks_[i].lock.is_locked()) return true;
-    }
-    return false;
   }
 
   void lock() ACQUIRE() {

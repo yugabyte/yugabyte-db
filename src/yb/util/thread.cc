@@ -52,6 +52,7 @@
 #include <vector>
 
 #include <boost/intrusive/list.hpp>
+#include <boost/smart_ptr/detail/yield_k.hpp>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"

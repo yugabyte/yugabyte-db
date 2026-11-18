@@ -228,7 +228,6 @@
 #include "yb/util/condition_variable.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/cow_object.h"
-#include "yb/util/cross_thread_mutex.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/date_time.h"
 #include "yb/util/debug/lock_debug.h"

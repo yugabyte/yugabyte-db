@@ -39,6 +39,8 @@
 #include <thread>
 #include <vector>
 
+#include <boost/smart_ptr/detail/yield_k.hpp>
+
 #include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
