@@ -17,6 +17,7 @@ import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import com.google.common.base.Strings;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 import com.yugabyte.PGConnection;
@@ -1363,13 +1364,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     // 8020-byte entries. Three such transactions leave the head at offset 8020 of a page from
     // any starting position, since an entry this big never shares a page with an earlier one
     // unless it starts within 140 bytes of the page start.
-    final String maxPayload = repeat('x', 7999);
+    final String maxPayload = Strings.repeat("x", 7999);
     // A 220-byte entry does not fit after the next marker at 8020, so it starts a new page and
     // leaves the head at offset 220.
-    final String alignPayload = repeat('a', 201);
+    final String alignPayload = Strings.repeat("a", 201);
     // A 4000-byte entry: the first write of BEGIN + n1 spans [220, 4252) and fits; the replay's
     // BEGIN lands at 4252, so n1 must cross to the next page behind a filler.
-    final String payload = repeat('n', 3981);
+    final String payload = Strings.repeat("n", 3981);
 
     try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
          Statement listenerStmt = listenerConn.createStatement();
@@ -1394,10 +1395,13 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         notifierStmt.execute("NOTIFY " + channel + ", '" + payload + "'");
 
         // The poller now dies after each write, before the CDC ack. Once two pollers after the
-        // original have run, the first of them has written a replay.
+        // original have run, the first of them has written a replay. Each restarted poller may
+        // wait out pg_client_session_expiration_ms (1 min) for the dead one's slot lock.
         Set<Integer> newPollerPids = new HashSet<>();
         PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
-        for (int attempt = 0; attempt < 600 && newPollerPids.size() < 2; attempt++) {
+        long deadline =
+            System.currentTimeMillis() + Timeouts.adjustTimeoutSecForBuildType(180_000);
+        while (newPollerPids.size() < 2 && System.currentTimeMillis() < deadline) {
           List<Row> rows = getRowList(listenerStmt,
               "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
           if (!rows.isEmpty() && rows.get(0).getInt(0) != pollerPid) {
@@ -1426,12 +1430,6 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
 
     verifyListenNotifyWorks();
-  }
-
-  private static String repeat(char c, int n) {
-    char[] chars = new char[n];
-    Arrays.fill(chars, c);
-    return new String(chars);
   }
 
   /**
