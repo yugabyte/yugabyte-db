@@ -1759,7 +1759,8 @@ void CheckFastPathWriteDeadlockIsDetected(
   ASSERT_OK(cluster.SetFlagOnTServers("vmodule", "wait_queue=4"));
   LogWaiter waiter_log(tservers, "WaitOn: waiter_txn_id=");
   auto writer_future = std::async(std::launch::async, [&writer_conn]() -> Status {
-    RETURN_NOT_OK(writer_conn.Execute("SET statement_timeout = '60s'"));
+    RETURN_NOT_OK(writer_conn.ExecuteFormat(
+        "SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
     return writer_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
   });
   ASSERT_OK(waiter_log.WaitFor(30s * kTimeMultiplier));
@@ -1767,7 +1768,7 @@ void CheckFastPathWriteDeadlockIsDetected(
     ASSERT_NO_FATALS(while_writer_waits());
   }
 
-  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '30s'"));
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
   auto alter_status = ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
   // A missed cycle leaves the ALTER waiting until its statement timeout.
   ASSERT_STR_NOT_CONTAINS(alter_status.ToString(), "statement timeout");
@@ -2384,6 +2385,18 @@ INSTANTIATE_TEST_SUITE_P(
                     std::get<0>(info.param) ? "TableLocksOffNode" : "TableLocksOnNode",
                     std::get<1>(info.param) ? "First" : "AfterDdlStarts");
     });
+
+// The fast path writer runs on a node with global object locks off, which still takes local ones.
+TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, FastPathWriteDeadlockIsDetected) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(CreateTestTable(ts1));
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
+  ASSERT_NO_FATALS(CheckFastPathWriteDeadlockIsDetected(
+      *cluster_, ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1)),
+      ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2))));
+}
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
@@ -4435,18 +4448,6 @@ TEST_P(PgObjectLocksGlobalLockPromotionTest, MasterAndTserverOlmDeadlock) {
         return conn_b.Execute("LOCK TABLE t1_1 IN ACCESS EXCLUSIVE MODE");
       },
       20s * kTimeMultiplier));
-}
-
-// The fast path writer runs on a node with global object locks off, which still takes local ones.
-TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, FastPathWriteDeadlockIsDetected) {
-  ASSERT_NO_FATALS(PromoteAll());
-  auto* ts1 = cluster_->tablet_server(0);
-  auto* ts2 = cluster_->tablet_server(1);
-  ASSERT_NO_FATALS(CreateTestTable(ts1));
-  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
-  ASSERT_NO_FATALS(CheckFastPathWriteDeadlockIsDetected(
-      *cluster_, ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1)),
-      ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2))));
 }
 
 }  // namespace yb::pgwrapper
