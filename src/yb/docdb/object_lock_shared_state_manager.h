@@ -53,20 +53,29 @@ class ObjectLockOwnerRegistry {
   class Impl;
 
  public:
+  using OwnerInfoFuture = std::future<std::pair<TransactionId, TabletId>>;
+
   class [[nodiscard]] RegistrationGuard {
    public:
-    RegistrationGuard(Impl& registry, TransactionId id) : registry_(&registry), id_(id) {}
+    RegistrationGuard(
+        Impl& registry, ObjectLockSharedState& shared, TransactionId id = TransactionId::Nil())
+        : registry_(&registry), shared_(shared), id_(id) {}
     RegistrationGuard(RegistrationGuard&& other)
-        : registry_(std::exchange(other.registry_, nullptr)), id_(other.id_) {}
+        : registry_(std::exchange(other.registry_, nullptr)), shared_(other.shared_),
+          id_(other.id_) {}
     ~RegistrationGuard();
 
-    [[nodiscard]] TransactionId txn_id() const { return id_; }
+    void ResolveOwnerInfo() const;
+
+    [[nodiscard]] TransactionId txn_id() const;
 
    private:
+    friend class Impl;
     DISALLOW_COPY_AND_ASSIGN(RegistrationGuard);
 
     Impl* registry_;
-    const TransactionId id_;
+    ObjectLockSharedState& shared_;
+    mutable TransactionId id_;
   };
 
   struct OwnerInfo {
@@ -85,12 +94,14 @@ class ObjectLockOwnerRegistry {
   RegistrationGuard Register(
       ObjectLockSharedState& shared, TransactionId id, const TabletId& tablet_id);
 
+  RegistrationGuard Register(ObjectLockSharedState& shared, OwnerInfoFuture future);
+
   void UpdateRegistrationStatusTablet(
       const RegistrationGuard& guard, const TabletId& tablet_id);
 
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const;
 
-  [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(ObjectLockSharedState& state) const;
+  [[nodiscard]] std::shared_ptr<OwnerInfo> ResolveAndGetOwnerInfo(ObjectLockSharedState& state);
 
  private:
   std::unique_ptr<Impl> impl_;
