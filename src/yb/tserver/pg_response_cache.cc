@@ -551,6 +551,18 @@ class PgResponseCache::FillToken {
   const KeyGroup group_;
 };
 
+namespace {
+
+// Release a claim only through here, so the test flag that holds one past completion cannot be
+// missed.
+void ReleaseClaim(const PgResponseCache::FillTokenPtr& token) {
+  if (!FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
+    token->Release();
+  }
+}
+
+}  // namespace
+
 class PgResponseCache::Impl : private GarbageCollector {
   friend class PgResponseCache::FillToken;
   [[nodiscard]] auto& GetKeyGroupBucket(KeyGroup group) REQUIRES(mutex_) {
@@ -611,11 +623,8 @@ class PgResponseCache::Impl : private GarbageCollector {
   // uncounted until one does.
   static void EndPrefetchClaimIfComplete(
       ConnectionPrefetchInfo prefetch, FillTokenPtr* token) {
-    if (FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
-      return;
-    }
     if (prefetch.completes_connection_prefetch && token && *token) {
-      (*token)->Release();
+      ReleaseClaim(*token);
     }
   }
 
@@ -866,8 +875,8 @@ class PgResponseCache::Impl : private GarbageCollector {
       // long costs other connections a version they can bridge from; ending it too early costs
       // them the wait this change exists to remove. The session ends it instead, on its next
       // request that is not part of a prefetch or when it goes away.
-      if (is_final_round && !FLAGS_TEST_pg_response_cache_keep_claim_past_completion) {
-        fill->Release();
+      if (is_final_round) {
+        ReleaseClaim(fill);
       }
     };
   }
@@ -1035,9 +1044,8 @@ PgResponseCache::~PgResponseCache() = default;
 
 void PgResponseCache::EndConnectionPrefetchClaim(
     const LWPgPerformResponsePB& response, const FillTokenPtr& token) {
-  if (token && !FLAGS_TEST_pg_response_cache_keep_claim_past_completion &&
-      EndsPrefetch(response)) {
-    token->Release();
+  if (token && EndsPrefetch(response)) {
+    ReleaseClaim(token);
   }
 }
 

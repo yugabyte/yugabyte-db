@@ -168,10 +168,10 @@ DEFINE_test_flag(bool, pause_session_lock_before_release, false,
     "Pause before releasing session object lock.");
 
 DEFINE_test_flag(bool, fail_cached_connection_prefetch, false,
-    "Fail the rounds of a connection start's prefetch that the cache asks to fill, with a "
-    "snapshot-too-old error, once the round has taken its claim on the database. PG then falls "
-    "through its cached prefetch starters to the one that reads without the cache, which "
-    "otherwise needs a real read to run out of snapshot three times over.");
+    "Fail the rounds of a connection start's prefetch that send caching info, with a "
+    "snapshot-too-old error. PG then falls through its cached prefetch starters to the one that "
+    "reads without the cache, which otherwise needs a real read to run out of snapshot three "
+    "times over.");
 
 DEFINE_test_flag(bool, pause_uncached_connection_prefetch, false,
     "Hold every round of a connection start's prefetch that carries no caching info, so a test "
@@ -3736,10 +3736,8 @@ class PgClientSession::Impl {
       data->completes_prefetch_token = prefetch_fill_token_;
     }
 
-    // After the cache has handed out the setter, so the round counted its database before it
-    // failed, which is what a real snapshot-too-old partway through a prefetch leaves behind.
-    // The setter is destroyed un-invoked on the way out, and its abandon guard completes the
-    // entry for whoever queued on it.
+    // After the cache call, so a failing round leaves behind what a real snapshot-too-old
+    // partway through a prefetch does.
     if (FLAGS_TEST_fail_cached_connection_prefetch &&
         prefetch.part_of_connection_prefetch && options.has_caching_info()) {
       return STATUS(
