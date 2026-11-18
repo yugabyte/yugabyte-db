@@ -49,7 +49,7 @@ type: docs
   </li>
 </ul>
 
-[YugabyteDB Java Driver for YCQL (3.10)](https://github.com/yugabyte/cassandra-java-driver) is based on [DataStax Java Driver 3.10](https://docs.datastax.com/en/developer/java-driver/3.10/) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
+[YugabyteDB Java Driver for YCQL (3.10)](https://github.com/yugabyte/cassandra-java-driver/tree/3.10.0-yb-x) is based on [DataStax Java Driver 3.10](https://docs.datastax.com/en/developer/java-driver/3.10/) for [YCQL](../../../../api/ycql/) with additional [smart driver](../../smart-drivers-ycql/) features.
 
 {{< note title="YugabyteDB Aeon" >}}
 
@@ -59,14 +59,14 @@ To use the driver's partition-aware load balancing feature in a YugabyteDB Aeon 
 
 ## Maven
 
-To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
+To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/3.10.0-yb-x), add the following Maven dependency to your application:
 
 ```xml
    <dependencies>
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>3.10.3-yb-2</version>
+      <version>3.10.3-yb-3</version>
     </dependency>
   </dependencies>
 ```
@@ -102,7 +102,7 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>3.8.0-yb-5</version>
+      <version>3.10.3-yb-3</version>
     </dependency>
   </dependencies>
 

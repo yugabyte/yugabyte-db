@@ -62,7 +62,7 @@ The following instructions show how you can build a Java application connected t
 
 ## Maven
 
-To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
+To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver/tree/4.19.0-yb-x), add the following Maven dependency to your application:
 
 ```xml
  <dependency>
