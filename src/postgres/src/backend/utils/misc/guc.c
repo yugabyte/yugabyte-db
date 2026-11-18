@@ -144,6 +144,10 @@ static bool call_oid_check_hook(const struct config_generic *conf, Oid *newval,
 								void **extra, GucSource source, int elevel);
 extern const char *yb_show_maxconnections(void);
 static void check_reserved_prefixes(const char *varName);
+static void yb_set_cbo_dependent_defaults(int new_value);
+
+/* YB: true while InitializeGUCOptions() initializes the GUCs one by one */
+static bool yb_initializing_guc_options = false;
 
 /*
  * Unit conversion tables.
@@ -1552,14 +1556,28 @@ InitializeGUCOptions(void)
 	 * Load all variables with their compiled-in defaults, and initialize
 	 * status fields as needed.
 	 */
+	yb_initializing_guc_options = true;
 	hash_seq_init(&status, guc_hashtab);
 	while ((hentry = (GUCHashEntry *) hash_seq_search(&status)) != NULL)
 	{
 		/* Check mapping between initial and default value */
 		Assert(check_GUC_init(hentry->gucvar));
 
+		/*
+		 * YB: an assign hook run earlier in this loop may already have set
+		 * this GUC and linked it into guc_nondef_list.
+		 * InitializeOneGUCOption() marks it PGC_S_DEFAULT without unlinking
+		 * it, and its next source change would link it a second time, cutting
+		 * every entry after it off the list (they then escape RESET ALL).
+		 */
+		RemoveGUCFromLists(hentry->gucvar);
+
 		InitializeOneGUCOption(hentry->gucvar);
 	}
+	yb_initializing_guc_options = false;
+
+	/* YB: deferred from assign_yb_enable_cbo() until every GUC exists */
+	yb_set_cbo_dependent_defaults(yb_enable_cbo);
 
 	reporting_enabled = false;
 
@@ -8034,6 +8052,19 @@ assign_yb_enable_cbo(int new_value, void *extra)
 			break;
 	}
 
+	/*
+	 * InitializeGUCOptions() applies these once every GUC is initialized:
+	 * setting a GUC before its own initialization links it into
+	 * guc_nondef_list behind InitializeOneGUCOption()'s back.
+	 */
+	if (!yb_initializing_guc_options)
+		yb_set_cbo_dependent_defaults(new_value);
+}
+
+/* Sets the dynamic defaults that yb_enable_cbo implies for other GUCs */
+static void
+yb_set_cbo_dependent_defaults(int new_value)
+{
 	/*
 	 * When enabling CBO, also set:
 	 *  - yb_enable_bitmapscan to on
