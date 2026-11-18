@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cstring>
 #include <mutex>
 
 #include "yb/gutil/endian.h"
@@ -24,6 +25,15 @@
 #include "yb/util/tostring.h"
 
 namespace yb::vector_index {
+
+namespace {
+
+// The order of VectorId, without the separate equality test its operator<=> runs on x86.
+bool VectorIdBytesLess(const VectorId& lhs, const VectorId& rhs) {
+  return std::memcmp(lhs.data(), rhs.data(), kUuidSize) < 0;
+}
+
+} // namespace
 
 std::string VectorLSMDeletion::ToString() const {
   return YB_STRUCT_TO_STRING(vector_id, hybrid_time);
@@ -40,15 +50,11 @@ VectorLSMDeletionMap::VectorLSMDeletionMap(MemTrackerPtr mem_tracker) {
   }
 }
 
-auto VectorLSMDeletionMap::ShardFor(const VectorId& vector_id) const -> const Shard& {
+auto& VectorLSMDeletionMap::ShardFor(this auto& self, const VectorId& vector_id) {
   // Multiplicative hashing spreads ids that are not random too.
   constexpr uint64_t kMultiplier = 0x9E3779B97F4A7C15ULL;
   constexpr int kShardBits = std::countr_zero(kNumShards);
-  return shards_[(VectorIdHash()(vector_id) * kMultiplier) >> (64 - kShardBits)];
-}
-
-auto VectorLSMDeletionMap::ShardFor(const VectorId& vector_id) -> Shard& {
-  return const_cast<Shard&>(std::as_const(*this).ShardFor(vector_id));
+  return self.shards_[(VectorIdHash()(vector_id) * kMultiplier) >> (64 - kShardBits)];
 }
 
 bool VectorLSMDeletionMap::Shard::Insert(const VectorLSMDeletion& deletion, int64_t& allocated) {
@@ -83,7 +89,7 @@ void VectorLSMDeletionMap::Insert(std::span<const VectorLSMDeletion> deletions) 
     return;
   }
   size_.fetch_add(num_added, std::memory_order_acq_rel);
-  UpdateAtomicMin(&min_hybrid_time_, min_hybrid_time.ToUint64());
+  UpdateAtomicMin(&min_hybrid_time_, min_hybrid_time);
   if (allocated) {
     const auto total = allocated_bytes_.fetch_add(allocated, std::memory_order_acq_rel) + allocated;
     consumption_.UpdateMonotonic(sizeof(*this) + total);
@@ -94,7 +100,7 @@ HybridTime VectorLSMDeletionMap::Find(const VectorId& vector_id) const {
   return ShardFor(vector_id).Find(vector_id);
 }
 
-VectorLSMDeletionList VectorLSMDeletionMap::List() const {
+VectorLSMDeletionList VectorLSMDeletionMap::SortedList() const {
   const auto size = this->size();
   VectorLSMDeletionList result;
   result.reserve(size);

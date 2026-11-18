@@ -15,7 +15,6 @@
 
 #include <array>
 #include <atomic>
-#include <cstring>
 #include <span>
 #include <string>
 #include <utility>
@@ -46,11 +45,6 @@ struct VectorLSMDeletion {
 
 using VectorLSMDeletionList = std::vector<VectorLSMDeletion>;
 
-// The order of VectorId, without the separate equality test its operator<=> runs on x86.
-inline bool VectorIdBytesLess(const VectorId& lhs, const VectorId& rhs) {
-  return std::memcmp(lhs.data(), rhs.data(), kUuidSize) < 0;
-}
-
 // Vector deletions kept in memory. The vector id picks one of kNumShards shards, each a flat hash
 // map behind its own lock, so concurrent lookups and inserts rarely contend.
 class VectorLSMDeletionMap {
@@ -69,8 +63,8 @@ class VectorLSMDeletionMap {
   // Returns the hybrid time vector_id was deleted at, invalid when it was not deleted.
   HybridTime Find(const VectorId& vector_id) const;
 
-  // Returns the deletions sorted by VectorIdBytesLess. Must not run concurrently with Insert.
-  VectorLSMDeletionList List() const;
+  // Returns the deletions sorted by vector id. Must not run concurrently with Insert.
+  VectorLSMDeletionList SortedList() const;
 
   size_t size() const {
     return size_.load(std::memory_order_acquire);
@@ -78,7 +72,7 @@ class VectorLSMDeletionMap {
 
   // Returns the earliest deletion time, invalid when empty.
   HybridTime MinHybridTime() const {
-    return HybridTime(min_hybrid_time_.load(std::memory_order_acquire));
+    return min_hybrid_time_.load(std::memory_order_acquire);
   }
 
  private:
@@ -106,12 +100,11 @@ class VectorLSMDeletionMap {
     Map deletions GUARDED_BY(mutex);
   };
 
-  const Shard& ShardFor(const VectorId& vector_id) const;
-  Shard& ShardFor(const VectorId& vector_id);
+  auto& ShardFor(this auto& self, const VectorId& vector_id);
 
   std::array<Shard, kNumShards> shards_;
   std::atomic<size_t> size_{0};
-  std::atomic<HybridTimeRepr> min_hybrid_time_{HybridTime::kInvalid.ToUint64()};
+  std::atomic<HybridTime> min_hybrid_time_{HybridTime::kInvalid};
   std::atomic<int64_t> allocated_bytes_{0};
   // The memory of the map and the shards. The map never shrinks.
   MonotonicThreadSafeScopedTrackedConsumption consumption_;

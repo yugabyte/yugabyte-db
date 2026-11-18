@@ -27,7 +27,7 @@ using ExpectedDeletions = std::map<VectorId, HybridTime>;
 
 class VectorLSMDeletionMapTest : public YBTest {
  protected:
-  // Checks map against expected: lookups, the order of List, size and MinHybridTime.
+  // Checks map against expected: lookups, the order of SortedList, size and MinHybridTime.
   void CheckMap(
       const VectorLSMDeletionMap& map, const ExpectedDeletions& expected) {
     auto min_hybrid_time = HybridTime::kInvalid;
@@ -42,13 +42,15 @@ class VectorLSMDeletionMapTest : public YBTest {
         .hybrid_time = hybrid_time,
       });
     }
-    ASSERT_EQ(AsString(map.List()), AsString(expected_list));
+    ASSERT_EQ(AsString(map.SortedList()), AsString(expected_list));
     ASSERT_EQ(map.size(), expected.size());
     ASSERT_EQ(map.MinHybridTime(), min_hybrid_time);
   }
 
   void TestInsertAndFind(size_t num_prefix_bytes);
 };
+
+namespace {
 
 VectorLSMDeletion RandomDeletion(size_t num_prefix_bytes) {
   auto vector_id = VectorId::GenerateRandom();
@@ -61,6 +63,8 @@ VectorLSMDeletion RandomDeletion(size_t num_prefix_bytes) {
 }
 
 constexpr size_t kNumDeletions = 10000;
+
+} // namespace
 
 void VectorLSMDeletionMapTest::TestInsertAndFind(size_t num_prefix_bytes) {
   constexpr size_t kBatchSize = 100;
