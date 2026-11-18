@@ -28,7 +28,8 @@ public class TestPgRegressContribPgstattuple extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest(new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/pgstattuple"),
-                     "yb_schedule");
+    runPgRegressTest(
+        new File(TestUtils.getBuildRootDir(), "postgres_build/contrib/pgstattuple"),
+        "yb_schedule");
   }
 }

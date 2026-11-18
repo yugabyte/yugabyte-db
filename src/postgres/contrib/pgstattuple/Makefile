@@ -15,9 +15,12 @@ PGFILEDESC = "pgstattuple - tuple-level statistics"
 
 REGRESS = pgstattuple
 
-# YB: Install only the library, not the control and SQL files, so that the
-# extension can no longer be created.  The library stays so that databases
-# that already have the extension, and backups of them, keep working.
+# YB: pgstattuple reads heap and index pages directly, and YugabyteDB
+# relations have none, so the extension is no longer offered.  Install only
+# the library, not the control and SQL files, so that it can no longer be
+# created.  The library stays so that databases that already have the
+# extension, and backups of them, which recreate its C functions, keep
+# working.
 EXTENSION =
 DATA =
 

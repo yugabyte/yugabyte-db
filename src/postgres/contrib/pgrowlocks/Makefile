@@ -9,9 +9,12 @@ EXTENSION = pgrowlocks
 DATA = pgrowlocks--1.2.sql pgrowlocks--1.1--1.2.sql pgrowlocks--1.0--1.1.sql
 PGFILEDESC = "pgrowlocks - display row locking information"
 
-# YB: Install only the library, not the control and SQL files, so that the
-# extension can no longer be created.  The library stays so that databases
-# that already have the extension, and backups of them, keep working.
+# YB: pgrowlocks reads heap pages and tuple headers directly, and YugabyteDB
+# relations have none, so the extension is no longer offered.  Install only
+# the library, not the control and SQL files, so that it can no longer be
+# created.  The library stays so that databases that already have the
+# extension, and backups of them, which recreate its C functions, keep
+# working.
 EXTENSION =
 DATA =
 
