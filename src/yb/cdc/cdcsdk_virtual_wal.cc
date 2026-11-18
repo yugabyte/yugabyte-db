@@ -2002,11 +2002,11 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
     return PubRefreshTrigger::kNone;
   } else if (table_id == pg_class_table_id_) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
-      LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
       // CheckForTableRewriteOrDrop() reports a drop as a DELETE, a rewrite as an INSERT / UPDATE.
-      return record->row_message().op() == RowMessage_Op_DELETE
-                 ? PubRefreshTrigger::kTableDropped
-                 : PubRefreshTrigger::kTableRewritten;
+      const bool is_drop = record->row_message().op() == RowMessage_Op_DELETE;
+      LOG_WITH_PREFIX(INFO) << "Table " << (is_drop ? "drop" : "rewrite")
+                            << " detected, will trigger a publication refresh";
+      return is_drop ? PubRefreshTrigger::kTableDropped : PubRefreshTrigger::kTableRewritten;
     }
 
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
