@@ -382,8 +382,8 @@ class YbHnswBuilder {
         // Aux data of a vector is its id followed by the attached payload (see SearchCache).
         size_t vector_aux_data_size =
             sizeof(vector_index::VectorId) + VERIFY_RESULT(inspector_.NodePayload(v.index)).size();
-        if (aux_data_size + vector_aux_data_size > header_.max_block_size) {
-          CHECK_GT(aux_data_size, 0);
+        // A vector larger than a block gets a block of its own.
+        if (aux_data_size != 0 && aux_data_size + vector_aux_data_size > header_.max_block_size) {
           aux_data_block_sizes.push_back(aux_data_size);
           aux_data_size = 0;
           ++aux_data_block;

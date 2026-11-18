@@ -43,6 +43,7 @@ using namespace yb::size_literals;
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_yb_hnsw_ignore_block_trailers);
 DECLARE_bool(yb_hnsw_write_block_checksums);
+DECLARE_uint64(yb_hnsw_max_block_size);
 
 METRIC_DEFINE_entity(table);
 
@@ -106,8 +107,12 @@ class YbHnswTest : public VectorIndexTestBase {
  protected:
   YbHnswTest() {}
 
-  static std::string PayloadForVector(const vector_index::VectorId& vector_id) {
-    return "value_" + vector_id.ToString();
+  std::string PayloadForVector(const vector_index::VectorId& vector_id) const {
+    auto result = "value_" + vector_id.ToString();
+    if (result.size() < min_payload_size_) {
+      result.resize(min_payload_size_, 'x');
+    }
+    return result;
   }
 
   void InsertRandomVector(Vector& holder) {
@@ -180,6 +185,7 @@ class YbHnswTest : public VectorIndexTestBase {
   std::optional<UsearchSpace> space_;
   std::optional<IndexImpl> index_;
   vector_index::VectorPayloadMap payloads_;
+  size_t min_payload_size_ = 0;
   std::optional<YbHnsw> yb_hnsw_;
   YbHnswSearchContext context_;
 };
@@ -218,6 +224,12 @@ TEST_F(YbHnswTest, Simple) {
 }
 
 TEST_F(YbHnswTest, Persistence) {
+  TestSimple(/* load= */ true);
+}
+
+// A payload larger than a block takes a block of its own.
+TEST_F(YbHnswTest, PayloadLargerThanBlock) {
+  min_payload_size_ = FLAGS_yb_hnsw_max_block_size + 1;
   TestSimple(/* load= */ true);
 }
 

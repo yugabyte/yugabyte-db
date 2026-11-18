@@ -197,7 +197,8 @@ TEST(DocVectorIdTest, MetaValueToStringTombstone) {
 
 TEST(DocVectorIdTest, VectorIndexPayload) {
   const Slice kYbctid("test_ybctid");
-  auto payload = DocVectorIndexPayload(kYbctid, /* tenant_prefix_size= */ 0);
+  auto payload = DocVectorIndexPayload(
+      kYbctid, /* tenant_prefix_size= */ 0, /* covered= */ Slice(), HybridTime::kInvalid);
   // Only the ybctid flag, which older releases read.
   ASSERT_EQ(payload.AsSlice()[0], 0x01);
   ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
@@ -215,7 +216,8 @@ TEST(DocVectorIdTest, VectorIndexPayload) {
 TEST(DocVectorIdTest, VectorIndexPayloadWithTenant) {
   const Slice kYbctid("test_ybctid");
   constexpr size_t kTenantPrefixSize = 4;
-  auto payload = DocVectorIndexPayload(kYbctid, kTenantPrefixSize);
+  auto payload = DocVectorIndexPayload(
+      kYbctid, kTenantPrefixSize, /* covered= */ Slice(), HybridTime::kInvalid);
   auto content = ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice()));
   ASSERT_EQ(content.ybctid, kYbctid);
   ASSERT_EQ(content.tenant, kYbctid.Prefix(kTenantPrefixSize));
@@ -241,6 +243,67 @@ TEST(DocVectorIdTest, VectorIndexPayloadWithTenant) {
   ASSERT_NOK(DecodeDocVectorIndexPayload(broken));
   ASSERT_NOK(DocVectorIndexPayloadYbctid(broken));
   ASSERT_NOK(DecodeDocVectorIndexPayload(Slice()));
+}
+
+// Payloads written by releases without covered columns.
+TEST(DocVectorIdTest, VectorIndexPayloadOldFormat) {
+  const Slice kYbctid("test_ybctid");
+  const Slice kPlain("\x01\x0btest_ybctid");
+  auto content = ASSERT_RESULT(DecodeDocVectorIndexPayload(kPlain));
+  ASSERT_EQ(content.ybctid, kYbctid);
+  ASSERT_TRUE(content.tenant.empty());
+  ASSERT_TRUE(content.covered.empty());
+  ASSERT_FALSE(content.write_time.is_valid());
+  ASSERT_EQ(DocVectorIndexPayload(kYbctid, 0, Slice(), HybridTime::kInvalid).AsSlice(), kPlain);
+
+  const Slice kWithTenant("\x03\x0btest_ybctid\x04");
+  content = ASSERT_RESULT(DecodeDocVectorIndexPayload(kWithTenant));
+  ASSERT_EQ(content.ybctid, kYbctid);
+  ASSERT_EQ(content.tenant, kYbctid.Prefix(4));
+  ASSERT_TRUE(content.covered.empty());
+  ASSERT_FALSE(content.write_time.is_valid());
+  ASSERT_EQ(
+      DocVectorIndexPayload(kYbctid, 4, Slice(), HybridTime::kInvalid).AsSlice(), kWithTenant);
+}
+
+TEST(DocVectorIdTest, VectorIndexPayloadWithCoveredColumns) {
+  const Slice kYbctid("test_ybctid");
+  const Slice kCovered("covered_columns");
+  const HybridTime kWriteTime(1234567890123ULL);
+  constexpr size_t kTenantPrefixSize = 4;
+
+  for (auto tenant_prefix_size : {size_t(0), kTenantPrefixSize}) {
+    auto payload = DocVectorIndexPayload(kYbctid, tenant_prefix_size, kCovered, kWriteTime);
+    auto content = ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice()));
+    ASSERT_EQ(content.ybctid, kYbctid);
+    ASSERT_EQ(content.tenant, kYbctid.Prefix(tenant_prefix_size));
+    ASSERT_EQ(content.covered, kCovered);
+    ASSERT_EQ(content.write_time, kWriteTime);
+    ASSERT_EQ(ASSERT_RESULT(DocVectorIndexPayloadYbctid(payload.AsSlice())), kYbctid);
+
+    // Missing write time.
+    ASSERT_NOK(DecodeDocVectorIndexPayload(payload.AsSlice().WithoutSuffix(1)));
+
+    // Covered columns longer than the rest of the payload.
+    auto no_write_time = DocVectorIndexPayload(
+        kYbctid, tenant_prefix_size, kCovered, HybridTime::kInvalid);
+    ASSERT_NOK(DecodeDocVectorIndexPayload(no_write_time.AsSlice().WithoutSuffix(1)));
+
+    // Data after the known fields.
+    auto extra = payload.AsSlice().ToBuffer() + "x";
+    ASSERT_NOK(DecodeDocVectorIndexPayload(extra));
+  }
+
+  // Each field is optional.
+  auto payload = DocVectorIndexPayload(kYbctid, 0, Slice(), kWriteTime);
+  auto content = ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice()));
+  ASSERT_TRUE(content.covered.empty());
+  ASSERT_EQ(content.write_time, kWriteTime);
+
+  payload = DocVectorIndexPayload(kYbctid, 0, kCovered, HybridTime::kInvalid);
+  content = ASSERT_RESULT(DecodeDocVectorIndexPayload(payload.AsSlice()));
+  ASSERT_EQ(content.covered, kCovered);
+  ASSERT_FALSE(content.write_time.is_valid());
 }
 
 } // namespace yb::dockv

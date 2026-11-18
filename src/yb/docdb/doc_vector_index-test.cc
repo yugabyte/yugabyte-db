@@ -69,7 +69,8 @@ class DocVectorIndexTest : public YBTest {
         [] { return DocVectorIndexThreadPools{}; }, Slice(), TableWritesReverseMapping::kFalse,
         HybridTime::kMin,
         /* split_generation= */ 0, qlexpr::IndexInfo(index_info_pb),
-        std::make_unique<StubVectorIndexContext>(), /* block_cache= */ nullptr,
+        /* covered_columns= */ nullptr, std::make_unique<StubVectorIndexContext>(),
+        /* block_cache= */ nullptr,
         /* mem_tracker= */ nullptr,
         METRIC_ENTITY_table.Instantiate(&metric_registry_, "test"));
   }

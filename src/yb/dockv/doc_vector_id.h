@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/common/column_id.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/value.messages.h"
 
 #include "yb/dockv/dockv_fwd.h"
@@ -133,19 +134,28 @@ Result<std::string> DocVectorMetaValueToString(Slice value);
 // Encodes vector reverse entry value in V1 format (table_key_prefix + ybctid + column_id).
 KeyBytes DocVectorMetaValue(Slice table_key_prefix, Slice ybctid, ColumnId column_id);
 
-// Encodes the payload attached to a vector in the vector index chunks. The first byte holds flags
-// for the fields that follow, in this order:
-//   0x01, always set: ybctid size (varint), ybctid.
-//   0x02: size of the ybctid prefix that identifies the tenant of the vector (varint).
-// The ybctid goes first, so it is extractable whatever fields follow. Older releases read only
-// payloads with the ybctid flag alone, which tenant_prefix_size 0 produces.
-ValueBuffer DocVectorIndexPayload(Slice ybctid, size_t tenant_prefix_size);
-
 struct DocVectorIndexPayloadContent {
   Slice ybctid;
   // Prefix of ybctid that identifies the tenant of the vector, empty when it has no tenant.
   Slice tenant;
+  // Covered column values packed as a row V2, see PgVectorIdxOptionsPB::covered_column_ids.
+  // Empty when the payload has no covered columns.
+  Slice covered;
+  // Time the vector was written at, invalid when the payload does not store it.
+  HybridTime write_time;
 };
+
+// Encodes the payload attached to a vector in the vector index chunks. The first byte holds flags
+// for the fields that follow, in this order:
+//   0x01, always set: ybctid size (varint), ybctid.
+//   0x02: size of the ybctid prefix that identifies the tenant of the vector (varint).
+//   0x04: size of the covered column values (varint), covered column values.
+//   0x08: write time of the vector (varint).
+// The ybctid goes first, so it is extractable whatever fields follow. Older releases read only
+// payloads with the ybctid flag alone, which tenant_prefix_size 0, empty covered and an invalid
+// write_time produce.
+ValueBuffer DocVectorIndexPayload(
+    Slice ybctid, size_t tenant_prefix_size, Slice covered, HybridTime write_time);
 
 // Decodes the payload attached to a vector, see DocVectorIndexPayload.
 Result<DocVectorIndexPayloadContent> DecodeDocVectorIndexPayload(Slice payload);

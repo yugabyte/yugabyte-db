@@ -14,10 +14,12 @@
 #pragma once
 
 #include <atomic>
+#include <optional>
 #include <span>
 
 #include <boost/logic/tribool.hpp>
 
+#include "yb/common/column_id.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
@@ -28,9 +30,12 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.fwd.h"
 #include "yb/dockv/intent.h"
+#include "yb/dockv/value_type.h"
 #include "yb/docdb/storage_set.h"
 
 #include "yb/rocksdb/write_batch.h"
+
+#include "yb/util/memory/arena.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
 
@@ -322,6 +327,30 @@ class VectorIndexesUpdater {
   bool IntentApplyShouldUpdateVectorIndex(
       const DocVectorIndex& vector_index, HybridTime write_ht) const;
 
+  // An index with covered columns takes a vector together with the covered values written to its
+  // row. The values of a row come from all its records: the packed row, columns that did not fit
+  // into it, and column updates. So they are collected per row, and FlushCoveredRow inserts the
+  // vector once the next row starts.
+  void StartCoveredRow(Slice doc_key);
+  void FlushCoveredRow();
+
+  // Whether the column of the table with key is indexed. Covered columns are never vector columns,
+  // see DocVectorIndexCoveredColumns::Make.
+  bool IsVectorColumn(Slice key, ColumnId column_id) const;
+
+  // Whether an index with covered columns takes the specified column of the row with key, either
+  // as its vector or as a covered column.
+  bool IsCoveredRowColumn(Slice key, ColumnId column_id) const;
+
+  // Records the value of a column of the current row, written at write_time_. A newer value
+  // overwrites an older one. value is the vector index entry for a vector column, and the packed
+  // value otherwise, nullopt for NULL.
+  void RecordCoveredRowColumn(
+      ColumnId column_id, std::optional<dockv::PackedRowVersion> version, Slice value);
+
+  template <class Decoder>
+  void RecordCoveredPackedRow(Decoder& decoder, Slice key);
+
   // Whether the table with the specified key prefix writes the vector reverse mapping. Fixed at
   // table creation, so it does not depend on the schema version the row is packed with.
   Result<bool> TableWritesVectorReverseMapping(Slice table_key_prefix);
@@ -335,14 +364,33 @@ class VectorIndexesUpdater {
   // Write time of the record being fed, see Feed.
   DocHybridTime write_time_;
 
+  // Holds the data of the entries until Complete inserts them. Set only with indexes, since an
+  // arena allocates its first block on construction and every YSQL apply creates an updater.
+  std::optional<Arena> arena_;
+
   struct IndexBatch {
-    // TODO(#30819 vector_index) Optimize memory management
     DocVectorIndexInsertEntries entries;
     // Got a row to apply to the index, possibly with a NULL vector, see Complete.
     bool should_apply = false;
   };
 
   std::vector<IndexBatch> batches_;
+
+  // Whether any index has covered columns, see StartCoveredRow.
+  bool has_covered_columns_ = false;
+  struct CoveredRowColumn {
+    ColumnId column_id;
+    DocHybridTime write_time;
+    // nullopt for NULL.
+    std::optional<dockv::PackedRowVersion> version;
+    ValueBuffer value;
+  };
+  // Doc key of the row the covered values are collected for, with the table key prefix.
+  KeyBuffer covered_row_key_;
+  std::vector<CoveredRowColumn> covered_row_columns_;
+  // Time of the latest row tombstone, values written before it are deleted.
+  DocHybridTime covered_row_deleted_at_ = DocHybridTime::kMin;
+
   // The table the cached values below belong to, they are all replaced when it changes.
   KeyBuffer table_key_prefix_;
   std::optional<bool> table_writes_vector_reverse_mapping_;

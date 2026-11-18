@@ -61,13 +61,23 @@ using EncodedDistance = uint64_t;
 // TablePropertiesPB::skip_vector_reverse_mapping.
 YB_STRONGLY_TYPED_BOOL(TableWritesReverseMapping);
 
+// The referenced data stays alive until DocVectorIndex::Insert returns.
 struct DocVectorIndexInsertEntry {
-  ValueBuffer value;
+  // The vector in the YSQL encoding, with its id.
+  Slice value;
 
   // ybctid of the row that contains the vector. Goes into the payload attached to the vector in
   // the chunk when the index stores payloads, so search can resolve rows without reading the
   // reverse mapping, see DocVectorIndex::StoresPayload.
-  KeyBuffer ybctid;
+  Slice ybctid;
+
+  // Covered column values, see DocVectorIndexCoveredColumns. Empty when the index has no covered
+  // columns, or when the write did not provide all of them.
+  Slice covered;
+
+  // Time the vector was written at, the backfill read time for a backfilled vector. Stored in the
+  // payload of an index with covered columns.
+  HybridTime write_time;
 };
 
 struct DocVectorIndexSearchResultEntry {
@@ -166,6 +176,7 @@ struct DocVectorIndexMetrics {
   EventStatsPtr merge_us;
   EventStatsPtr found_intents;
   EventStatsPtr result_size;
+  CounterPtr covered_checks;
   CounterPtr backfill_inserted_entries;
 };
 
@@ -197,6 +208,9 @@ class DocVectorIndex {
   // see PgVectorIdxOptionsPB::store_payload, and always true when the indexed table writes no
   // reverse mapping, which leaves the payload as the only way to resolve a row.
   virtual bool StoresPayload() const = 0;
+
+  // nullptr when the index has no covered columns.
+  virtual const DocVectorIndexCoveredColumns* covered_columns() const = 0;
 
   // Whether the indexed table writes the reverse mapping, see TableWritesReverseMapping.
   virtual bool HasReverseMapping() const = 0;
@@ -302,6 +316,9 @@ class DocVectorIndex {
   // Whether the row with the specified key belongs to the indexed table.
   bool IsIndexedTableKey(Slice key) const;
 
+  // Covered columns of the index when the row with the specified key belongs to the indexed table.
+  const DocVectorIndexCoveredColumns* CoveredColumnsFor(Slice key) const;
+
   // Writes reverse mapping for the vector id in `value`.
   // kInvalidColumnId means legacy raw-ybctid format; otherwise V1 value format.
   static void ApplyReverseEntry(
@@ -330,6 +347,11 @@ struct DocVectorIndexThreadPools {
 };
 using DocVectorIndexThreadPoolProvider = std::function<DocVectorIndexThreadPools()>;
 
+bool HasCoveredColumns(const DocVectorIndexes& indexes);
+
+// Whether any of the indexes has covered columns and takes the row with the specified key.
+bool HasCoveredColumns(const DocVectorIndexes& indexes, Slice key);
+
 // The counterpart of DocVectorIndex::ModifyFlushedFrontier with kForce for a vector index that is
 // not open: sets the OpId of every chunk of the index stored in storage_dir to op_id, and adds a
 // chunk without a file carrying it, see vector_index::VectorLSMMetadataModifyChunkFrontiers.
@@ -347,6 +369,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     HybridTime hybrid_time,
     uint64_t split_generation,
     const qlexpr::IndexInfo& index_info,
+    DocVectorIndexCoveredColumnsPtr covered_columns,
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,

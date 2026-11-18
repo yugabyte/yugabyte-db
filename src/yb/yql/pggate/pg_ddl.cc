@@ -268,6 +268,13 @@ Status PgCreateTableBase::SetVectorOptions(YbcPgVectorIdxOptions* options) {
 
   PgTable table(VERIFY_RESULT(pg_session_->LoadTable(PgObjectId::FromPB(req_.base_table_id()))));
   options_pb->set_column_id(VERIFY_RESULT_REF(table.ColumnForAttr(options->attnum)).id());
+  for (uint32_t i = 0; i != options->num_covered_attnums; ++i) {
+    const auto& column = VERIFY_RESULT_REF(table.ColumnForAttr(options->covered_attnums[i]));
+    // The ybctid stored with every vector holds the primary key columns.
+    if (!column.is_key()) {
+      options_pb->add_covered_column_ids(column.id());
+    }
+  }
 
   req_.set_is_unique_index(false);
 

@@ -59,6 +59,9 @@ class CountingVectorIndex : public DocVectorIndex {
   // the table.
   bool StoresPayload() const override { return false; }
 
+  // VectorIndexesUpdater checks every index for covered columns.
+  const DocVectorIndexCoveredColumns* covered_columns() const override { return nullptr; }
+
   // Unused on the external-apply vector-feed path.
   const TableId& table_id() const override { LOG(FATAL) << "Unexpected call"; }
   const PgVectorIdxOptionsPB& options() const override { LOG(FATAL) << "Unexpected call"; }

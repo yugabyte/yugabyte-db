@@ -77,6 +77,10 @@ METRIC_DEFINE_event_stats(table, vector_index_found_intents,
 METRIC_DEFINE_event_stats(table, vector_index_result_size,
     "Resulting entries of vector index search", yb::MetricUnit::kEntries,
     "Number of entries returned by vector index search.");
+METRIC_DEFINE_counter(table, vector_index_covered_checks,
+    "Vector index candidates checked by covered columns", yb::MetricUnit::kEntries,
+    "Number of vector index search candidates whose filter was checked against the covered "
+    "columns in the vector payload. Accepted candidates may still read their rows.");
 METRIC_DEFINE_counter(table, vector_index_backfill_inserted_entries,
     "Backfilled entries of vector index", yb::MetricUnit::kEntries,
     "Number of entries inserted into the vector index during backfill. Tracks the progress of "
@@ -245,7 +249,7 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
   RSTATUS_DCHECK(
       !store_payload || !entry.ybctid.empty(), InvalidArgument, "Vector ybctid is not specified");
 
-  auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value.AsSlice());
+  auto encoded = dockv::EncodedDocVectorValue::FromSlice(entry.value);
   auto vector = VERIFY_RESULT(VectorFromYSQL<Vector>(encoded.data));
   if (FLAGS_TEST_vector_index_corrupt_inserted_vectors && !vector.empty()) {
     vector.front() += 1;
@@ -255,13 +259,15 @@ Result<vector_index::VectorLSMInsertEntry<Vector>> ConvertEntry(
     // Master keeps the tenant components below the components of the table.
     auto tenant_prefix_size = VERIFY_RESULT(
         dockv::DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(
-            entry.ybctid.AsSlice(), tenant_components));
+            entry.ybctid, tenant_components));
     if (FLAGS_TEST_vector_index_corrupt_inserted_payloads) {
       // Sorts after every key of the row.
-      dockv::KeyBytes ybctid(entry.ybctid.AsSlice(), dockv::KeyEntryTypeAsChar::kMaxByte);
-      payload = dockv::DocVectorIndexPayload(ybctid.AsSlice(), tenant_prefix_size);
+      dockv::KeyBytes ybctid(entry.ybctid, dockv::KeyEntryTypeAsChar::kMaxByte);
+      payload = dockv::DocVectorIndexPayload(
+          ybctid.AsSlice(), tenant_prefix_size, entry.covered, entry.write_time);
     } else {
-      payload = dockv::DocVectorIndexPayload(entry.ybctid.AsSlice(), tenant_prefix_size);
+      payload = dockv::DocVectorIndexPayload(
+          entry.ybctid, tenant_prefix_size, entry.covered, entry.write_time);
     }
   }
   return vector_index::VectorLSMInsertEntry<Vector> {
@@ -393,6 +399,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   DocVectorIndexImpl(
       const TableId& table_id, const PgVectorIdxOptionsPB& options, HybridTime hybrid_time,
       Slice indexed_table_key_prefix, TableWritesReverseMapping table_writes_reverse_mapping,
+      DocVectorIndexCoveredColumnsPtr covered_columns,
       DocVectorIndexContextPtr vector_index_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
       const MetricEntityPtr& metric_entity)
@@ -401,6 +408,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
         options_(options),
         stores_payload_(options.store_payload() || !table_writes_reverse_mapping),
         table_writes_reverse_mapping_(table_writes_reverse_mapping),
+        covered_columns_(std::move(covered_columns)),
         hybrid_time_(hybrid_time),
         context_(std::move(vector_index_context)),
         block_cache_(block_cache),
@@ -416,6 +424,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   bool StoresPayload() const override {
     return stores_payload_;
+  }
+
+  const DocVectorIndexCoveredColumns* covered_columns() const override {
+    return covered_columns_.get();
   }
 
   bool HasReverseMapping() const override {
@@ -843,6 +855,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const PgVectorIdxOptionsPB options_;
   const bool stores_payload_;
   const bool table_writes_reverse_mapping_;
+  const DocVectorIndexCoveredColumnsPtr covered_columns_;
   const HybridTime hybrid_time_;
   const DocVectorIndexContextPtr context_;
   const hnsw::BlockCachePtr block_cache_;
@@ -899,6 +912,21 @@ storage::UserFrontierPtr DocVectorIndex::GetInMemoryFrontier(storage::UpdateUser
 
 bool DocVectorIndex::IsIndexedTableKey(Slice key) const {
   return key.starts_with(indexed_table_key_prefix());
+}
+
+const DocVectorIndexCoveredColumns* DocVectorIndex::CoveredColumnsFor(Slice key) const {
+  const auto* result = covered_columns();
+  return result && IsIndexedTableKey(key) ? result : nullptr;
+}
+
+bool HasCoveredColumns(const DocVectorIndexes& indexes) {
+  return std::ranges::any_of(
+      indexes, [](const auto& index) { return index->covered_columns() != nullptr; });
+}
+
+bool HasCoveredColumns(const DocVectorIndexes& indexes, Slice key) {
+  return std::ranges::any_of(
+      indexes, [key](const auto& index) { return index->CoveredColumnsFor(key) != nullptr; });
 }
 
 Result<bool> DocVectorIndex::BackfillDone() {
@@ -974,14 +1002,15 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     HybridTime hybrid_time,
     uint64_t split_generation,
     const qlexpr::IndexInfo& index_info,
+    DocVectorIndexCoveredColumnsPtr covered_columns,
     DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
     const MetricEntityPtr& metric_entity) {
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), index_info.vector_idx_options(), hybrid_time, indexed_table_key_prefix,
-      table_writes_reverse_mapping, std::move(vector_index_context), block_cache, mem_tracker,
-      metric_entity);
+      table_writes_reverse_mapping, std::move(covered_columns), std::move(vector_index_context),
+      block_cache, mem_tracker, metric_entity);
   RETURN_NOT_OK(result->Open(log_prefix, storage_dir, split_generation, thread_pool_provider));
   return result;
 }
@@ -989,13 +1018,14 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
 DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entity)
     : convert_us(METRIC_vector_index_convert_us.Instantiate(metric_entity)),
       filter_checked(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_accepted(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
-      filter_removed(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      filter_accepted(METRIC_vector_index_filter_accepted.Instantiate(metric_entity)),
+      filter_removed(METRIC_vector_index_filter_removed.Instantiate(metric_entity)),
       read_data_us(METRIC_vector_index_read_data_us.Instantiate(metric_entity)),
       read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
       merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),
       found_intents(METRIC_vector_index_found_intents.Instantiate(metric_entity)),
       result_size(METRIC_vector_index_result_size.Instantiate(metric_entity)),
+      covered_checks(METRIC_vector_index_covered_checks.Instantiate(metric_entity)),
       backfill_inserted_entries(
           METRIC_vector_index_backfill_inserted_entries.Instantiate(metric_entity)) {
 }

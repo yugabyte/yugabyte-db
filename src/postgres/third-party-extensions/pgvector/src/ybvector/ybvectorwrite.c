@@ -81,7 +81,7 @@ bindVectorIndexOptions(YbcPgStatement handle,
 				 errmsg("partial vector indexes are not supported")));
 
 	/* We only support indexes with one vector attribute for now. */
-	Assert(indexTupleDesc->natts == 1);
+	Assert(indexInfo->ii_NumIndexKeyAttrs == 1);
 
 	/* Assuming vector is the first att */;
 	int dims = TupleDescAttr(indexTupleDesc, 0)->atttypmod;
@@ -92,6 +92,21 @@ bindVectorIndexOptions(YbcPgStatement handle,
 
 	options.dimensions = dims;
 	options.attnum = indexInfo->ii_IndexAttrNumbers[0];
+
+	/* The INCLUDE columns follow the key columns. */
+	int			num_covered = indexInfo->ii_NumIndexAttrs -
+		indexInfo->ii_NumIndexKeyAttrs;
+	uint32_t   *covered_attnums = NULL;
+
+	if (num_covered > 0)
+	{
+		covered_attnums = palloc(sizeof(uint32_t) * num_covered);
+		for (int i = 0; i < num_covered; ++i)
+			covered_attnums[i] =
+				indexInfo->ii_IndexAttrNumbers[indexInfo->ii_NumIndexKeyAttrs + i];
+	}
+	options.covered_attnums = covered_attnums;
+	options.num_covered_attnums = num_covered;
 
 	YBCPgCreateIndexSetVectorOptions(handle, &options);
 }
