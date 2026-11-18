@@ -2313,8 +2313,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
     UUID providerUuid = UUID.randomUUID();
     createTelemetryProviderCr(TELEMETRY_PROVIDER_CR, "Ready", providerUuid);
     // metrics with no scrapeConfigTargets: the shared mapper would default this to
-    // EnumSet.allOf(ScrapeConfigTargetType.class), which includes the two VM-only targets that
-    // verifyParams rejects on a Kubernetes universe, so every reconcile would 400.
+    // EnumSet.allOf(ScrapeConfigTargetType.class), which includes the VM-only NODE_AGENT_EXPORT
+    // target that verifyParams rejects on a Kubernetes universe, so every reconcile would 400.
     io.yugabyte.operator.v1alpha1.YBUniverse ybUniverse =
         ybUniverseWithTelemetry(crTelemetryWithMetrics());
 
@@ -2322,8 +2322,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
     Set<ScrapeConfigTargetType> targets = desired.getMetricsExportConfig().getScrapeConfigTargets();
     assertEquals(OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS, targets);
-    assertFalse(
-        "NODE_EXPORT is VM-only and must never be defaulted in",
+    assertTrue(
+        "NODE_EXPORT scrapes the node_exporter sidecar and is in the default",
         targets.contains(ScrapeConfigTargetType.NODE_EXPORT));
     assertFalse(
         "NODE_AGENT_EXPORT is VM-only and must never be defaulted in",

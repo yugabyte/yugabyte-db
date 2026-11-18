@@ -1435,7 +1435,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     ysqlOnly.enableYCQL = false;
     String ysqlOnlyConfig =
         generator
-            .getOtelColConfigK8s(provider, universe, telemetryConfig, null, "%m [%p] ", ysqlOnly)
+            .getOtelColConfigK8s(
+                provider, universe, telemetryConfig, null, "%m [%p] ", ysqlOnly, null)
             .getConfig();
     assertThat(ysqlOnlyConfig, containsString("export_type: ysql_export"));
     assertThat(ysqlOnlyConfig, not(containsString("export_type: cql_export")));
@@ -1446,7 +1447,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     ycqlOnly.enableYCQL = true;
     String ycqlOnlyConfig =
         generator
-            .getOtelColConfigK8s(provider, universe, telemetryConfig, null, "%m [%p] ", ycqlOnly)
+            .getOtelColConfigK8s(
+                provider, universe, telemetryConfig, null, "%m [%p] ", ycqlOnly, null)
             .getConfig();
     assertThat(ycqlOnlyConfig, containsString("export_type: cql_export"));
     assertThat(ycqlOnlyConfig, not(containsString("export_type: ysql_export")));
@@ -1491,7 +1493,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                     UniverseDefinitionTaskParams.ClusterType.ASYNC,
                     false /* hasMasters */),
                 "%m [%p] ",
-                intent)
+                intent,
+                null /* nodeExporterSidecar */)
             .getConfig();
     assertThat(tserverOnlyConfig, not(containsString("export_type: master_export")));
     assertThat(tserverOnlyConfig, containsString("export_type: tserver_export"));
@@ -1509,7 +1512,8 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                     UniverseDefinitionTaskParams.ClusterType.PRIMARY,
                     true /* hasMasters */),
                 "%m [%p] ",
-                intent)
+                intent,
+                null /* nodeExporterSidecar */)
             .getConfig();
     assertThat(withMastersConfig, containsString("export_type: master_export"));
   }
@@ -1544,9 +1548,117 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                     UniverseDefinitionTaskParams.ClusterType.ASYNC,
                     false /* hasMasters */),
                 "%m [%p] ",
-                new UniverseDefinitionTaskParams.UserIntent())
+                new UniverseDefinitionTaskParams.UserIntent(),
+                null /* nodeExporterSidecar */)
             .getConfig();
     assertThat(result, containsString("export_type: master_export"));
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  public void getOtelColConfigK8sMetricsScrapesNodeExporterSidecar() {
+    String config =
+        k8sMetricsConfig(
+            EnumSet.of(ScrapeConfigTargetType.TSERVER_EXPORT, ScrapeConfigTargetType.NODE_EXPORT),
+            new OtelCollectorConfigGenerator.K8sNodeExporterSidecar(9300, false));
+
+    Map<String, Object> job = scrapeJob(config, "node");
+    assertEquals("http", job.get("scheme"));
+    assertEquals("/metrics", job.get("metrics_path"));
+    assertEquals(ImmutableMap.of("insecure_skip_verify", true), job.get("tls_config"));
+    Map<String, Object> staticConfig =
+        ((List<Map<String, Object>>) job.get("static_configs")).get(0);
+    assertEquals(ImmutableList.of("127.0.0.1:9300"), staticConfig.get("targets"));
+    assertEquals(
+        ImmutableMap.of("export_type", "node_export", "service", "node-exporter"),
+        staticConfig.get("labels"));
+    assertTrue(
+        ((List<Map<String, Object>>) job.get("metric_relabel_configs"))
+            .stream().anyMatch(r -> "saved_name".equals(r.get("target_label"))));
+    // The node job shares the receiver, and with it the pod identity, of the yugabyte job.
+    assertNotNull(scrapeJob(config, "yugabyte"));
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  public void getOtelColConfigK8sMetricsScrapesNodeExporterSidecarOverHttps() {
+    Map<String, Object> job =
+        scrapeJob(
+            k8sMetricsConfig(
+                EnumSet.of(ScrapeConfigTargetType.NODE_EXPORT, ScrapeConfigTargetType.OTEL_EXPORT),
+                new OtelCollectorConfigGenerator.K8sNodeExporterSidecar(9301, true)),
+            "node");
+    assertEquals("https", job.get("scheme"));
+    assertEquals(ImmutableMap.of("insecure_skip_verify", true), job.get("tls_config"));
+    assertEquals(
+        ImmutableList.of("127.0.0.1:9301"),
+        ((List<Map<String, Object>>) job.get("static_configs")).get(0).get("targets"));
+  }
+
+  // Without the sidecar, NODE_EXPORT adds nothing: the config is exactly the one rendered without
+  // it, so asking for it changes no pod.
+  @Test
+  public void getOtelColConfigK8sMetricsSkipsNodeExporterWithoutSidecar() {
+    String withNodeExport =
+        k8sMetricsConfig(
+            EnumSet.of(ScrapeConfigTargetType.TSERVER_EXPORT, ScrapeConfigTargetType.NODE_EXPORT),
+            null);
+    assertNull(scrapeJob(withNodeExport, "node"));
+    assertEquals(
+        k8sMetricsConfig(EnumSet.of(ScrapeConfigTargetType.TSERVER_EXPORT), null), withNodeExport);
+  }
+
+  // A receiver with no scrape jobs is invalid, so NODE_EXPORT alone keeps the node job even when
+  // the pods run no sidecar.
+  @SuppressWarnings("unchecked")
+  @Test
+  public void getOtelColConfigK8sMetricsKeepsNodeJobWhenOnlyTargetWithoutSidecar() {
+    Map<String, Object> job =
+        scrapeJob(k8sMetricsConfig(EnumSet.of(ScrapeConfigTargetType.NODE_EXPORT), null), "node");
+    assertEquals("http", job.get("scheme"));
+    assertEquals(
+        ImmutableList.of(
+            "127.0.0.1:" + universe.getUniverseDetails().communicationPorts.nodeExporterPort),
+        ((List<Map<String, Object>>) job.get("static_configs")).get(0).get("targets"));
+  }
+
+  private String k8sMetricsConfig(
+      Set<ScrapeConfigTargetType> targets,
+      OtelCollectorConfigGenerator.K8sNodeExporterSidecar nodeExporterSidecar) {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey");
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "DataDog", ImmutableMap.of(), config);
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(), ImmutableMap.of(), 15, 10, MetricCollectionLevel.NORMAL);
+    metricsExportConfig.setScrapeConfigTargets(EnumSet.copyOf(targets));
+    UniverseDefinitionTaskParams.UserIntent intent = new UniverseDefinitionTaskParams.UserIntent();
+    intent.enableYSQL = true;
+    return generator
+        .getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build(),
+            null,
+            "%m [%p] ",
+            intent,
+            nodeExporterSidecar)
+        .getConfig();
+  }
+
+  /** The scrape job with the given name in the shared prometheus receiver, or null. */
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> scrapeJob(String config, String jobName) {
+    Map<String, Object> receiver =
+        (Map<String, Object>)
+            ((Map<String, Object>) new Yaml().<Map<String, Object>>load(config).get("receivers"))
+                .get("prometheus/yugabyte");
+    return ((List<Map<String, Object>>)
+            ((Map<String, Object>) receiver.get("config")).get("scrape_configs"))
+        .stream().filter(j -> jobName.equals(j.get("job_name"))).findFirst().orElse(null);
   }
 
   @Test

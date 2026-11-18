@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YSQLAuditConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
+import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.server.UniverseServerLogsExporterConfig;
@@ -27,6 +29,8 @@ import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.DynatraceConfig;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -115,6 +119,51 @@ public class ExportTelemetryConfigParamsTest extends FakeDBApplication {
                 .build());
 
     params.verifyParams(universe, true);
+  }
+
+  // Accepted whether or not the pods run the node_exporter sidecar: this universe is below its
+  // version gate.
+  @Test
+  public void testKubernetesMetricsExportAcceptsNodeExport() {
+    UUID exporterUuid = mockProvider("datadog-sink", new DataDogConfig());
+    MetricsExportConfig metricsExportConfig = metricsConfig(exporterUuid);
+    metricsExportConfig.setScrapeConfigTargets(
+        EnumSet.of(ScrapeConfigTargetType.TSERVER_EXPORT, ScrapeConfigTargetType.NODE_EXPORT));
+
+    paramsFor(TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build())
+        .verifyParams(kubernetesUniverse(), true);
+  }
+
+  @Test
+  public void testKubernetesMetricsExportRejectsNodeAgentExport() {
+    UUID exporterUuid = mockProvider("datadog-sink", new DataDogConfig());
+    MetricsExportConfig metricsExportConfig = metricsConfig(exporterUuid);
+    metricsExportConfig.setScrapeConfigTargets(
+        EnumSet.of(ScrapeConfigTargetType.NODE_EXPORT, ScrapeConfigTargetType.NODE_AGENT_EXPORT));
+    ExportTelemetryConfigParams params =
+        paramsFor(TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build());
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class, () -> params.verifyParams(kubernetesUniverse(), true));
+    assertEquals(Status.BAD_REQUEST, exception.getHttpStatus());
+    assertTrue(
+        exception.getMessage(),
+        exception.getMessage().contains("Scrape config targets [NODE_AGENT_EXPORT] are not"));
+  }
+
+  /** A Kubernetes universe on a DB version with metrics export but without the sidecar. */
+  private Universe kubernetesUniverse() {
+    Universe kubernetesUniverse =
+        ModelFactory.createUniverse("k8s-universe", customer.getId(), Common.CloudType.kubernetes);
+    return Universe.saveDetails(
+        kubernetesUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2026.1.2.0-b1";
+          u.setUniverseDetails(details);
+          u.updateConfig(Map.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+        });
   }
 
   private ExportTelemetryConfigParams paramsFor(TelemetryConfig telemetryConfig) {

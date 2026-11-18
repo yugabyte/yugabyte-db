@@ -10754,8 +10754,10 @@ components:
           - 'OFF'
         scrape_config_targets:
           description: "Set of target types to include in scrape configuration. If\
-            \ not specified, all supported target types will be included.\nAllowed\
-            \ values are:\n  - MASTER_EXPORT: Master server metrics\n  - TSERVER_EXPORT:\
+            \ not specified, all supported target types will be included.\nOn Kubernetes\
+            \ universes, NODE_EXPORT scrapes the node_exporter sidecar of the pods\
+            \ that run it, and NODE_AGENT_EXPORT is not supported.\nAllowed values\
+            \ are:\n  - MASTER_EXPORT: Master server metrics\n  - TSERVER_EXPORT:\
             \ Tserver metrics\n  - YSQL_EXPORT: YSQL server metrics\n  - CQL_EXPORT:\
             \ YCQL server metrics\n  - NODE_EXPORT: Node exporter metrics\n  - NODE_AGENT_EXPORT:\
             \ Node agent metrics\n  - OTEL_EXPORT: OpenTelemetry collector internal\

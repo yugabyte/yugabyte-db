@@ -3086,8 +3086,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Metrics metrics = new Metrics();
     metrics.setExporters(List.of(crMetricsExporter()));
     // scrapeConfigTargets deliberately unset. The shared mapper would default it to
-    // EnumSet.allOf(ScrapeConfigTargetType.class), which adds the two VM-only targets that
-    // ExportTelemetryConfigParams.verifyParams rejects on a Kubernetes universe - i.e. every
+    // EnumSet.allOf(ScrapeConfigTargetType.class), which adds the VM-only NODE_AGENT_EXPORT target
+    // that ExportTelemetryConfigParams.verifyParams rejects on a Kubernetes universe - i.e. every
     // reconcile would 400.
     Telemetry telemetry = new Telemetry();
     telemetry.setMetrics(metrics);
@@ -3104,8 +3104,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Set<ScrapeConfigTargetType> targets =
         captor.getValue().getMetricsExportConfig().getScrapeConfigTargets();
     assertEquals(OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS, targets);
-    assertFalse(
-        "NODE_EXPORT is not reachable from inside the DB pods",
+    assertTrue(
+        "NODE_EXPORT scrapes the node_exporter sidecar and is in the default",
         targets.contains(ScrapeConfigTargetType.NODE_EXPORT));
     assertFalse(
         "NODE_AGENT_EXPORT is not reachable from inside the DB pods",

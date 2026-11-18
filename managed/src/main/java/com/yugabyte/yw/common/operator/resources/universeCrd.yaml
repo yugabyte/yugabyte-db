@@ -1057,11 +1057,12 @@ spec:
                         default: NORMAL
                       scrapeConfigTargets:
                         description: >
-                          Endpoints to scrape. Only pod-local targets exist on Kubernetes, so
-                          the VM-only NODE_EXPORT and NODE_AGENT_EXPORT targets are absent from
-                          this enum on purpose - the collector sidecar cannot reach them from
-                          inside the DB pods, and YBA rejects them for a Kubernetes universe.
-                          When omitted, the operator scrapes all five supported targets.
+                          Endpoints to scrape. Only pod-local targets exist on Kubernetes.
+                          NODE_EXPORT scrapes the node_exporter sidecar of the pods that run it
+                          and exports nothing from pods without it. The VM-only
+                          NODE_AGENT_EXPORT target is absent from this enum on purpose, because
+                          there is no node agent in the DB pods. When omitted, the operator
+                          scrapes all six supported targets.
                         type: array
                         items:
                           type: string
@@ -1070,6 +1071,7 @@ spec:
                             - TSERVER_EXPORT
                             - YSQL_EXPORT
                             - CQL_EXPORT
+                            - NODE_EXPORT
                             - OTEL_EXPORT
                       exporters:
                         description: >
