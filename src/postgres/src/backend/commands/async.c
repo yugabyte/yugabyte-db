@@ -725,7 +725,8 @@ static void ybInsertPendingNotifiesToTable(void);
 static void ybCreateNotifsReplicationSlot(void);
 static void ybStartNotifsPollerBgWorker(void);
 static void ybWaitForNotifsPollerInit(void);
-static void ybCleanupListenState(BackendId leaving);
+static void ybCleanupListenState(BackendId unregisteredBackend);
+static void ybStopNotifsPoller(void);
 static BackgroundWorkerHandle *ybShmemNotifsPollerBgwHandle(bool *found);
 static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
 
@@ -1757,13 +1758,12 @@ YbCleanupListenStateForProc(PGPROC *proc)
 }
 
 /*
- * Perform YB-specific LISTEN state clean up after backend "leaving" has
- * unregistered.
+ * Perform YB-specific LISTEN state clean up after a backend has unregistered.
  *
  * If there are no listening backends left on the node, terminate the
- * 'notifications poller' bg worker and replication slot. If "leaving" started
- * the poller, which has not yet reported, and others remain, terminate the
- * poller and fail the LISTENs waiting for it.
+ * 'notifications poller' bg worker and replication slot. If the unregistered
+ * backend started the poller, which has not yet reported, and others remain,
+ * terminate the poller and fail the LISTENs waiting for it.
  *
  * Caller must hold exclusive NotifyQueueLock.
  *
@@ -1772,67 +1772,77 @@ YbCleanupListenStateForProc(PGPROC *proc)
  * needs to be explicity called (postmaster cannot signal itself).
  */
 static void
-ybCleanupListenState(BackendId leaving)
+ybCleanupListenState(BackendId unregisteredBackend)
 {
-	bool		amPostmaster = MyProcPid == PostmasterPid;
 	bool		found;
-	YbNotifsPollerShmemData *yb_poller_data = ybShmemNotifsPollerData(&found);
-	bool		listenersRemain = QUEUE_FIRST_LISTENER != InvalidBackendId;
-
-	if (listenersRemain)
-	{
-		/*
-		 * The remaining listeners keep the poller, unless "leaving" started
-		 * it and it has not reported yet: then nobody will see its startup
-		 * through.
-		 */
-		bool		startupAbandoned =
-			yb_poller_data->starter == leaving &&
-			yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_NOT_STARTED;
-
-		if (!startupAbandoned)
-			return;
-
-		/* Fail the remaining listeners, waiting in ybWaitForNotifsPollerInit. */
-		yb_poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
-		strlcpy(yb_poller_data->error_message,
-				"The LISTEN that was starting it did not complete.",
-				sizeof(yb_poller_data->error_message));
-	}
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+	bool		noListenersRemain = QUEUE_FIRST_LISTENER == InvalidBackendId;
 
 	/*
-	 * Any poller still around is now stale. It is terminated here if its
-	 * handle is in shared memory; one left over from before a postmaster
-	 * restart exits when it next checks its id.
+	 * The unregistered backend started the poller, which has not reported
+	 * yet, so nobody will see its startup through.
 	 */
-	yb_poller_data->poller_id = 0;
+	bool		startupAbandoned =
+		poller_data->starter == unregisteredBackend &&
+		poller_data->init_status == YB_NOTIFS_POLLER_INIT_NOT_STARTED;
 
-	if (found && yb_poller_data->has_bgw_handle)
+	if (noListenersRemain)
+	{
+		ybStopNotifsPoller();
+
+		/*
+		 * The replication slot may also not exist if startup failed
+		 * partway through, so use yb_if_exists for the slot drop.
+		 */
+		if (MyProcPid != PostmasterPid)
+			ReplicationSlotDrop(ybNotifsReplicationSlotName(),
+								 /* nowait = */ true,
+								 /* yb_force = */ true,
+								 /* yb_if_exists = */ true);
+	}
+	else if (startupAbandoned)
+	{
+		/* Fail the remaining listeners, waiting in ybWaitForNotifsPollerInit. */
+		poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
+		strlcpy(poller_data->error_message,
+				"The LISTEN that was starting it did not complete.",
+				sizeof(poller_data->error_message));
+
+		/*
+		 * Stop the poller now, as it may be blocked acquiring the slot. The
+		 * slot itself is dropped when the last of these listeners leaves.
+		 */
+		ybStopNotifsPoller();
+	}
+}
+
+/*
+ * Make any poller still around stale, and terminate it if its handle is in
+ * shared memory; one left over from before a postmaster restart exits when it
+ * next checks its id.
+ *
+ * Caller must hold exclusive NotifyQueueLock.
+ */
+static void
+ybStopNotifsPoller(void)
+{
+	bool		found;
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+
+	poller_data->poller_id = 0;
+
+	if (found && poller_data->has_bgw_handle)
 	{
 		BackgroundWorkerHandle *shm_handle =
 			ybShmemNotifsPollerBgwHandle(&found);
 
 		Assert(found);
 		TerminateBackgroundWorker(shm_handle);
-		if (amPostmaster)
+		if (MyProcPid == PostmasterPid)
 			BackgroundWorkerStateChange(false);
 		memset(shm_handle, 0, YbBackgroundWorkerHandleSize());
-		yb_poller_data->has_bgw_handle = false;
+		poller_data->has_bgw_handle = false;
 	}
-
-	/* The last of the remaining listeners drops the slot. */
-	if (listenersRemain)
-		return;
-
-	/*
-	 * The replication slot may also not exist if startup failed
-	 * partway through, so use yb_if_exists for the slot drop.
-	 */
-	if (!amPostmaster)
-		ReplicationSlotDrop(ybNotifsReplicationSlotName(),
-							 /* nowait = */ true,
-							 /* yb_force = */ true,
-							 /* yb_if_exists = */ true);
 }
 
 /*
