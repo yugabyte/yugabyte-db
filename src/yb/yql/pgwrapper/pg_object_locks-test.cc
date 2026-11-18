@@ -940,8 +940,8 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
     // Start off with the flag disabled.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_global_object_locking_infra=false");
     // ysql_enable_concurrent_ddl defaults to kEnableDdlTransactionBlocks, which is only true in
-    // release builds. YBCIsLegacyModeForCatalogOps() is pinned to legacy without it, which would
-    // leave the promotion unobservable in the catalog op mode, so pin it on for every build type.
+    // release builds. The flag validators require it with enable_object_locking_for_table_locks,
+    // so pin it on for every build type.
     opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
   }
 

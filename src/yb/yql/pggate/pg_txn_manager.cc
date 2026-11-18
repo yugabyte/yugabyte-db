@@ -272,7 +272,7 @@ bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
 // refresh its catalog cache on a new lock: it reads the catalog at its own DDL transaction's read
 // time, so a refresh would record the new catalog version with entries from before it.
 bool PgTxnManager::UsingObjectLocksLocally() const {
-  // A transaction that starts with yb_read_time set takes none either (#34349, #29466).
+  // A transaction that reads the catalog as of yb_read_time takes none either (#34349, #29466).
   return backend_should_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&
          !IsDdlModeWithSeparateTransaction() && !YBCIsHistoricalCatalogReadForCurrTxn();
 }
