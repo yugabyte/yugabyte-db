@@ -364,6 +364,28 @@ from base b, rels r;
 
 select qid, query from queries order by qid;
 
+-- A semijoin on the non-unique key a can be planned as a join to the
+-- distinct keys of r, which replaces the inner scan that the methods are
+-- compared on: NL reads all of r once through a hash aggregate where it would
+-- probe r_a_idx for each outer row, and HJ and MJ put the same aggregate over
+-- their inner.  With hash aggregation off, HJ runs as a semijoin and MJ keeps
+-- the sorted scan of r that its inner join has, at most with a Unique above
+-- the sort.  For the many-outer NL, sorting is off as well, so the distinct
+-- keys can only come from a Unique over an ordered scan of r_a_idx, which the
+-- nested loop materializes.  The 1-outer NL probes r_a_idx without any hint
+-- (#38249).
+delete from query_method_hints;
+insert into query_method_hints
+select q.qid + r.qoff, h.label, h.hint
+from (values (122), (502)) q(qid),
+     (values (0), (1000)) r(qoff),
+     (values ('HJ', 'Set(enable_hashagg off)'),
+             ('MJ', 'Set(enable_hashagg off)'),
+             ('NL', 'Set(enable_hashagg off) Set(enable_sort off)')) h(label, hint)
+where not (q.qid = 122 and h.label = 'NL');
+
+select qid, label, hint from query_method_hints order by qid, label;
+
 ------------------------------------------------------------------------------
 -- Plan validation: every (query, method) pair must have realized the intended
 -- join method (method_ok) with s outer and r inner (leading_ok).  Expect no
