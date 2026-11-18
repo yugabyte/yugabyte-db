@@ -181,6 +181,12 @@ class DocVectorMetadataIteratorProvider {
   virtual ~DocVectorMetadataIteratorProvider() = default;
   virtual Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
       const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const = 0;
+
+  // Start time of the oldest transaction running in this tablet (see
+  // TransactionParticipant::MinRunningHybridTime()), or kMin if it is not known yet. Read before
+  // CreateVectorMetadataIterator(), so the iterator sees the records of the transactions which are
+  // not running anymore.
+  virtual HybridTime MinRunningHybridTime() const = 0;
 };
 
 struct CompactionHybridTimeConstraints {
