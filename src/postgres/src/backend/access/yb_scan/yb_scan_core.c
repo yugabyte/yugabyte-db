@@ -3336,6 +3336,9 @@ ybcBuildRequiredAttrs(YbOpaque yb_scan, YbScanPlan scan_plan,
  * merge sort happens between the index and table requests.  This is the case
  * for a plain index scan of a secondary index that is not embedded in its
  * table.
+ *
+ * TODO(#38296): share this rule with the other places that decide which
+ * relations a scan reads.
  */
 static bool
 ybHasSeparateIndexRequest(YbOpaque ybScan)
@@ -3372,7 +3375,7 @@ YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
  * If a merge scan has a separate index request, sets up its merge sort columns
  * as targets of that request, since the merge runs on that request's rows.
  * The merge compares every merge sort column, so the request must read each
- * one, even one that no target, local filter, or recheck uses.
+ * one.
  *
  * TODO(#38147): read the merge sort columns in the main request too, when the
  * merge runs on its rows.
