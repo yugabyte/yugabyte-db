@@ -213,8 +213,10 @@ Result<FloatVector> GroundTruth<Vector, DistanceResult>::EvaluateRecall(
     // In the denominator below, we average across all queries. But we also need to divide by the
     // size of the result set of the precise top-i query, which would be i in most cases, except
     // in the degenerate case of a really small input dataset (should never occur in practice).
+    // Without vertex ids, the number of base vectors is unknown.
+    const auto num_results = vertex_ids_.empty() ? i : std::min(vertex_ids_.size(), i);
     result[i - 1] = total_overlap[i - 1].load(std::memory_order_acquire) * 1.0 /
-        (queries_.size() * std::min(vertex_ids_.size(), i));
+        (queries_.size() * num_results);
   }
   return result;
 }

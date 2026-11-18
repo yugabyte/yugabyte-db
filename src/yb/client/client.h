@@ -1076,10 +1076,8 @@ class YBClient {
   // Get the disk size of a table (calculated as SST file size + WAL file size)
   Result<TableSizeInfo> GetTableDiskSize(const TableId& table_id);
 
-  // Provide the completion status of 'txn' to the YB-Master. propagated_hybrid_time is the caller's
-  // hybrid time; it should be >= the commit time of 'txn' when is_committed is true.
-  Status ReportYsqlDdlTxnStatus(
-      const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time);
+  // Provide the completion status of 'txn' to the YB-Master.
+  Status ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed);
 
   Status WaitForDdlVerificationToFinish(const TransactionMetadata& txn);
 
