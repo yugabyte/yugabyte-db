@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
+import com.yugabyte.PGConnection;
 import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -849,6 +850,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
    * Each transaction's notifications must still be delivered together and in send order (#38398).
    * Such commit times collide only across tservers' clocks, so the test makes the virtual WAL
    * treat commits within one window as simultaneous.
+   *
+   * A tablet streams transactions with equal commit times in DocDB transaction id order, so the
+   * test commits in that order too; the virtual WAL rejects rows that arrive out of it.
    */
   @Test
   public void testNotifyOrderOfTransactionsWithSameCommitTime() throws Exception {
@@ -865,22 +869,38 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         stmt.execute("LISTEN " + CHANNEL);
       }
 
+      // The notification rows are written at commit; the INSERT starts the DocDB transaction
+      // earlier so that its id can be read.
+      stmtA.execute("CREATE TABLE same_commit_time_t (v int)");
+      String txnIdSql = "SELECT yb_get_current_transaction()::text";
       stmtA.execute("BEGIN");
+      stmtA.execute("INSERT INTO same_commit_time_t VALUES (1)");
       stmtA.execute(notifySeriesSql("a_", n));
+      String txnA = getSingleRow(stmtA, txnIdSql).getString(0);
       stmtB.execute("BEGIN");
+      stmtB.execute("INSERT INTO same_commit_time_t VALUES (2)");
       stmtB.execute(notifySeriesSql("b_", n));
+      String txnB = getSingleRow(stmtB, txnIdSql).getString(0);
+      boolean aFirst = txnA.compareTo(txnB) < 0;
+
       // Commit both early in a window so that they don't straddle its end.
       Thread.sleep(windowMs - System.currentTimeMillis() % windowMs + windowMs / 10);
-      stmtA.execute("COMMIT");
-      stmtB.execute("COMMIT");
+      (aFirst ? stmtA : stmtB).execute("COMMIT");
+      (aFirst ? stmtB : stmtA).execute("COMMIT");
 
       List<String> payloads = new ArrayList<>();
-      for (String last : new String[] {"a_", "b_"}) {
-        String lastPayload = String.format("%s%05d", last, n - 1);
-        if (!payloads.contains(lastPayload)) {
-          for (PGNotification notif : waitForNotification(listenerConn, CHANNEL, lastPayload)) {
-            payloads.add(notif.getParameter());
+      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
+      try (Statement stmt = listenerConn.createStatement()) {
+        long deadline = System.currentTimeMillis() + 60_000;
+        while (payloads.size() < 2 * n && System.currentTimeMillis() < deadline) {
+          stmt.execute("SELECT 1");
+          PGNotification[] notifs = pgConn.getNotifications();
+          if (notifs != null) {
+            for (PGNotification notif : notifs) {
+              payloads.add(notif.getParameter());
+            }
           }
+          Thread.sleep(200);
         }
       }
 
@@ -890,12 +910,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         expectedA.add(String.format("a_%05d", i));
         expectedB.add(String.format("b_%05d", i));
       }
-      List<String> aThenB = new ArrayList<>(expectedA);
-      aThenB.addAll(expectedB);
-      List<String> bThenA = new ArrayList<>(expectedB);
-      bThenA.addAll(expectedA);
-      assertTrue("Notifications interleaved or out of order: " + payloads,
-          payloads.equals(aThenB) || payloads.equals(bThenA));
+      List<String> expected = new ArrayList<>(aFirst ? expectedA : expectedB);
+      expected.addAll(aFirst ? expectedB : expectedA);
+      assertEquals(expected, payloads);
     } finally {
       setVirtualWalCommitTimeRoundUp(0);
     }

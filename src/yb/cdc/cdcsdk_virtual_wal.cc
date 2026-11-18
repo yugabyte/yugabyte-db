@@ -106,10 +106,10 @@ DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
     "Delay in milliseconds to simulate a slow GetChanges RPC call.");
 
 DEFINE_test_flag(uint64, cdcsdk_vwal_round_up_commit_time_usec, 0,
-    "When positive, the virtual WAL rounds every received record's commit time, except a "
-    "SAFEPOINT's, up to a multiple of this many microseconds, so that transactions committing "
-    "within one such window are streamed as one transaction, as transactions committing at the "
-    "same hybrid time are.");
+    "When positive, the virtual WAL rounds the commit time of every transaction record (BEGIN, "
+    "COMMIT, DML) from a user tablet up to a multiple of this many microseconds, so that "
+    "transactions committing within one such window are streamed as one transaction, as "
+    "transactions committing at the same hybrid time are.");
 
 DEFINE_RUNTIME_bool(cdc_skip_unqualified_tables_for_polling, false,
     "When enabled, VWAL will skip adding expired / not-of-interest tables to the polling list.");
@@ -1238,8 +1238,12 @@ Status CDCSDKVirtualWAL::AddRecordsToTabletQueue(
       // tablet queue.
       if (record.row_message().has_commit_time()) {
         auto queued_record = std::make_shared<CDCSDKProtoRecordPB>(record);
+        const auto op = record.row_message().op();
         if (PREDICT_FALSE(FLAGS_TEST_cdcsdk_vwal_round_up_commit_time_usec > 0) &&
-            record.row_message().op() != RowMessage_Op_SAFEPOINT) {
+            tablet_id != master::kSysCatalogTabletId &&
+            (op == RowMessage_Op_BEGIN || op == RowMessage_Op_COMMIT ||
+             op == RowMessage_Op_INSERT || op == RowMessage_Op_UPDATE ||
+             op == RowMessage_Op_DELETE)) {
           // Rounding up, not down: a window's records are then shipped only after every
           // tablet's safe time passes the window's end, when no later commit can round into it.
           const uint64_t unit = HybridTime::FromMicros(
