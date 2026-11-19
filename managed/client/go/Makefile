@@ -1,3 +1,5 @@
+.PHONY: publish
+
 default: testv1 testv2
 
 GOIMPORTS_VERSION := v0.30.0
@@ -29,3 +31,8 @@ gogetv2:
 
 $(GOIMPORTS):
 	go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+
+# Mirror v1 and v2 into platform-go-client and open a draft PR.
+# Run sbt swaggerGen first. DRY_RUN=1 stops before push.
+publish:
+	./publish.sh $(if $(filter 1 true yes,$(DRY_RUN)),--dry-run)
