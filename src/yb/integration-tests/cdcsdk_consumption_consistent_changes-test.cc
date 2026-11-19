@@ -7523,6 +7523,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPrepareSlotForTransactionalDd
 // A paused pub-refresh slot is converted to an implicit slot, which then decodes DDL committed
 // while it was paused from the sys catalog. A pub-refresh slot that wasn't paused becomes unusable.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotToImplicit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
@@ -7611,6 +7612,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertPausedPubRefreshSlotTo
 // Releasing a paused slot lets it stream as a pub-refresh slot again. A paused slot whose catalog
 // barrier expired becomes unusable instead of being converted.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefreshSlot) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
 
@@ -7665,6 +7667,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestReleaseAndExpirePausedPubRefr
 // A converted slot whose consumer resumes after cdc_intent_retention_ms fails VWAL init, on the
 // user tablets idle since the pause and on the sys catalog tablet idle since prepare.
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsumerResumesLate) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
@@ -7715,6 +7718,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestConvertedSlotExpiresIfConsume
 // the slot was created with. The raised cdc_intent_retention_ms is what keeps the barriers alive.
 void CDCSDKConsumptionConsistentChangesTest::TestStoppedSlotRetainsWalIntentsAndHistory(
     bool pub_refresh) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_transactional_ddl) = false;
   ToggleDDLMode(/* use_legacy = */ false);
   const auto initial_retention = MonoDelta::FromSeconds(10) * kTimeMultiplier;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = initial_retention.ToMilliseconds();
