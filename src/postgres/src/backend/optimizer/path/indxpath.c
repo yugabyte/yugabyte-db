@@ -222,6 +222,8 @@ static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, Re
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
 								 Relids relids, List *or_clauses,
 								 IndexClauseSet *clauseset);
+static bool yb_indexcol_has_equality_clause(IndexOptInfo *index, int indexcol,
+											List *indexclauses);
 static List *yb_finalize_merge_scan_path(PlannerInfo *root, RelOptInfo *rel,
 										 IndexOptInfo *index,
 										 ScanDirection scandir,
@@ -5180,6 +5182,15 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 											   attr->atttypmod, attr->attcollation, 0);
 		}
 
+		/*
+		 * An equality index clause already pins this key to one value, so a
+		 * derived equality would add a second condition on the key without
+		 * narrowing the scan.
+		 */
+		if (yb_indexcol_has_equality_clause(index, i,
+											clauseset->indexclauses[i]))
+			continue;
+
 		if (or_clauses != NULL)
 		{
 			/* OR-arm: derive from clause-level Var = Const bindings */
@@ -5251,6 +5262,37 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 	table_close(base_rel, NoLock);
 	if (outer_relids)
 		bms_free(outer_relids);
+}
+
+/*
+ * yb_indexcol_has_equality_clause
+ *	  Whether indexclauses, the index clauses matched to key column indexcol
+ *	  of index, hold an equality on that column per its operator family.
+ */
+static bool
+yb_indexcol_has_equality_clause(IndexOptInfo *index, int indexcol,
+								List *indexclauses)
+{
+	ListCell   *lc;
+
+	foreach(lc, indexclauses)
+	{
+		IndexClause *iclause = lfirst_node(IndexClause, lc);
+		ListCell   *lc2;
+
+		foreach(lc2, iclause->indexquals)
+		{
+			Expr	   *clause = lfirst_node(RestrictInfo, lc2)->clause;
+
+			if (is_opclause(clause) &&
+				list_length(((OpExpr *) clause)->args) == 2 &&
+				get_op_opfamily_strategy(((OpExpr *) clause)->opno,
+										 index->opfamily[indexcol]) ==
+				BTEqualStrategyNumber)
+				return true;
+		}
+	}
+	return false;
 }
 
 /*

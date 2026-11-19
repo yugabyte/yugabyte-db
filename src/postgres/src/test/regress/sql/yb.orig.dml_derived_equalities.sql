@@ -56,6 +56,17 @@ PREPARE order_query AS SELECT * FROM orders WHERE user_id = $1 AND order_id = $2
 \set query ':P EXECUTE order_query(100, 2);'
 \i :run_query
 
+-- An equality the query already has on the bucket key is not derived again
+SELECT $$
+:P SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+$$ AS query \gset
+\i :run_query
+
+SELECT $$
+:P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+$$ AS query \gset
+\i :run_query
+
 DROP TABLE orders;
 
 -- Tests for joins

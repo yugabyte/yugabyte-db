@@ -106,6 +106,45 @@ EXECUTE order_query(100, 2);
         2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
 (1 row)
 
+-- An equality the query already has on the bucket key is not derived again
+SELECT $$
+:P SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Index Scan using orders_pkey on orders
+   Index Cond: ((bucket_id = 4) AND (user_id = 100) AND (order_id = 1))
+(2 rows)
+
+SELECT * FROM orders WHERE bucket_id = yb_hash_code('1001'::text) % 5 AND user_id = 100 AND order_id = 1;
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        1 |     100 | Mon Jan 01 00:00:00 2024 PST |         4
+(1 row)
+
+SELECT $$
+:P :hint SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+$$ AS query \gset
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (COSTS OFF) /*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using orders_created_idx on orders
+   Index Cond: (((yb_hash_code(created_at) % 3) = 0) AND (created_at = 'Tue Jan 02 00:00:00 2024 PST'::timestamp with time zone))
+(2 rows)
+
+/*+ IndexScan(orders orders_created_idx) */ SELECT * FROM orders WHERE yb_hash_code(created_at) % 3 = yb_hash_code('2024-01-02'::timestamptz) % 3 AND created_at = '2024-01-02'::timestamptz;
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
+(1 row)
+
 DROP TABLE orders;
 -- Tests for joins
 CREATE TABLE users (
