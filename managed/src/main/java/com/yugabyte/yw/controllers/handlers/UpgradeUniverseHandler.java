@@ -393,6 +393,22 @@ public class UpgradeUniverseHandler {
     userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
   }
 
+  // The merges restore stored values, which may be untrimmed, into every request cluster.
+  private void mergeSensitiveGFlagsForRequestClusters(
+      UpgradeWithGFlags requestParams, Universe universe) {
+    mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
+    mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+    if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()
+        || requestParams.clusters == null) {
+      return;
+    }
+    for (UniverseDefinitionTaskParams.Cluster cluster : requestParams.clusters) {
+      if (cluster.userIntent != null) {
+        trimGFlags(cluster.userIntent);
+      }
+    }
+  }
+
   public UUID upgradeGFlags(
       GFlagsUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent;
@@ -403,10 +419,7 @@ public class UpgradeUniverseHandler {
       userIntent = requestParams.getPrimaryCluster().userIntent;
       trimGFlags(userIntent);
 
-      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
-      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
-      // The merges restore stored values, which may be untrimmed.
-      trimGFlags(userIntent);
+      mergeSensitiveGFlagsForRequestClusters(requestParams, universe);
       // The merges replace the cluster maps, so copy them only now:
       // checkGFlagsProvidedInOldSchema rebuilds specificGFlags from these top-level maps.
       requestParams.masterGFlags = userIntent.masterGFlags;
@@ -440,8 +453,7 @@ public class UpgradeUniverseHandler {
                       primaryUniverseCluster.userIntent.ybSoftwareVersion));
         }
       }
-      mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
-      mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+      mergeSensitiveGFlagsForRequestClusters(requestParams, universe);
     }
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
@@ -558,6 +570,7 @@ public class UpgradeUniverseHandler {
                   requestParamsCluster.userIntent.specificGFlags,
                   gFlagsValidation,
                   primaryCluster.userIntent.ybSoftwareVersion);
+          GFlagsUtil.trimFlags(requestParamsCluster.userIntent.specificGFlags);
         }
         return true;
       }
@@ -730,22 +743,25 @@ public class UpgradeUniverseHandler {
       UniverseDefinitionTaskParams.Cluster primaryUniverseCluster =
           universeDetails != null ? universeDetails.getPrimaryCluster() : null;
       if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
+        // verifyParams trimmed and checked these maps, and the merges restore stored values, which
+        // may be untrimmed.
         requestParams.masterGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                primaryUniverseCluster.userIntent.masterGFlags,
-                requestParams.masterGFlags,
-                gFlagsValidation,
-                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+            GFlagsUtil.trimFlags(
+                GFlagsUtil.mergeSensitiveGFlags(
+                    primaryUniverseCluster.userIntent.masterGFlags,
+                    requestParams.masterGFlags,
+                    gFlagsValidation,
+                    primaryUniverseCluster.userIntent.ybSoftwareVersion));
         requestParams.tserverGFlags =
-            GFlagsUtil.mergeSensitiveGFlags(
-                primaryUniverseCluster.userIntent.tserverGFlags,
-                requestParams.tserverGFlags,
-                gFlagsValidation,
-                primaryUniverseCluster.userIntent.ybSoftwareVersion);
+            GFlagsUtil.trimFlags(
+                GFlagsUtil.mergeSensitiveGFlags(
+                    primaryUniverseCluster.userIntent.tserverGFlags,
+                    requestParams.tserverGFlags,
+                    gFlagsValidation,
+                    primaryUniverseCluster.userIntent.ybSoftwareVersion));
       }
     }
-    mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
-    mergeSensitiveSpecificGFlagsForRequestClusters(requestParams, universe);
+    mergeSensitiveGFlagsForRequestClusters(requestParams, universe);
 
     return submitUpgradeTask(
         Util.isKubernetesBasedUniverse(universe)

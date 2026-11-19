@@ -45,10 +45,12 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
@@ -61,6 +63,7 @@ import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -1106,6 +1109,184 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         ArgumentCaptor.forClass(UpgradeTaskParams.class);
     verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
     GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    assertEquals("2", submitted.tserverGFlags.get("t"));
+    assertEquals(hbaWithSecret.trim(), submitted.tserverGFlags.get("ysql_hba_conf_csv"));
+  }
+
+  @Test
+  public void testUpgradeGFlagsInOldSchemaRestoresRedactedYsqlHbaFromStoredSpecificGFlags()
+      throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String hbaWithSecret = " host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812 \n";
+    String redactedHba = RedactingService.redactAllLdapBindPasswdHbaFormattedValues(hbaWithSecret);
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.enableYSQLAuth = true;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("m", "1"),
+                      ImmutableMap.of("t", "1", "ysql_hba_conf_csv", hbaWithSecret));
+              userIntent.masterGFlags = new HashMap<>(ImmutableMap.of("m", "1"));
+              userIntent.tserverGFlags =
+                  new HashMap<>(ImmutableMap.of("t", "1", "ysql_hba_conf_csv", redactedHba));
+              universe.setUniverseDetails(details);
+            });
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    UniverseDefinitionTaskParams.UserIntent requestIntent = requestClusters.get(0).userIntent;
+    requestIntent.specificGFlags = null;
+    requestIntent.masterGFlags.put("m", "2");
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    Map<ServerType, Map<String, String>> submittedFlags =
+        submitted.getPrimaryCluster().userIntent.specificGFlags.getPerProcessFlags().value;
+    assertEquals("2", submittedFlags.get(ServerType.MASTER).get("m"));
+    assertEquals(
+        hbaWithSecret.trim(), submittedFlags.get(ServerType.TSERVER).get("ysql_hba_conf_csv"));
+  }
+
+  @Test
+  @Parameters({"false", "true"})
+  public void testUpgradeGFlagsRestoresRedactedRrYsqlHbaStoredWithSurroundingWhitespace(
+      boolean topLevelGFlags) throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String hbaWithSecret = " host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812 \n";
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.enableYSQLAuth = true;
+              userIntent.masterGFlags = new HashMap<>(ImmutableMap.of("m", "1"));
+              userIntent.tserverGFlags = new HashMap<>(ImmutableMap.of("t", "1"));
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(ImmutableMap.of("m", "1"), ImmutableMap.of("t", "1"));
+              universe.setUniverseDetails(details);
+            });
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of(),
+            ImmutableMap.of("ysql_hba_conf_csv", hbaWithSecret, "log_min_messages", "WARNING"));
+    rrUserIntent.specificGFlags.setInheritFromPrimary(false);
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    Map<String, String> rrTserver =
+        requestClusters.stream()
+            .filter(cl -> cl.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC)
+            .findFirst()
+            .orElseThrow(AssertionError::new)
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER);
+    rrTserver.put(
+        "ysql_hba_conf_csv",
+        RedactingService.redactAllLdapBindPasswdHbaFormattedValues(hbaWithSecret));
+    rrTserver.put("log_min_messages", "ERROR");
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = requestClusters;
+    if (topLevelGFlags) {
+      params.masterGFlags = ImmutableMap.of("m", "1");
+      params.tserverGFlags = ImmutableMap.of("t", "1");
+    }
+
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams submitted = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    Map<String, String> submittedRrTserver =
+        submitted
+            .getReadOnlyClusters()
+            .get(0)
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER);
+    assertEquals("ERROR", submittedRrTserver.get("log_min_messages"));
+    assertEquals(hbaWithSecret.trim(), submittedRrTserver.get("ysql_hba_conf_csv"));
+  }
+
+  @Test
+  public void testResizeNodeRestoresRedactedYsqlHbaStoredWithSurroundingWhitespace()
+      throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResizeNode);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    app.injector()
+        .instanceOf(SettableRuntimeConfigFactory.class)
+        .forCustomer(c)
+        .setValue(CustomerConfKeys.cloudEnabled.getKey(), "true");
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String hbaWithSecret = " host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812 \n";
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.enableYSQLAuth = true;
+              userIntent.specificGFlags = null;
+              userIntent.masterGFlags = new HashMap<>(ImmutableMap.of("m", "1"));
+              userIntent.tserverGFlags =
+                  new HashMap<>(ImmutableMap.of("t", "1", "ysql_hba_conf_csv", hbaWithSecret));
+              universe.setUniverseDetails(details);
+            });
+    ResizeNodeParams params = new ResizeNodeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.clusters = copyStoredClusters(u);
+    params.masterGFlags = new HashMap<>(ImmutableMap.of("m", "1"));
+    params.tserverGFlags =
+        new HashMap<>(
+            ImmutableMap.of(
+                "t",
+                "2",
+                "ysql_hba_conf_csv",
+                RedactingService.redactAllLdapBindPasswdHbaFormattedValues(hbaWithSecret)));
+
+    handler.resizeNode(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    ResizeNodeParams submitted = (ResizeNodeParams) paramsArgumentCaptor.getValue();
     assertEquals("2", submitted.tserverGFlags.get("t"));
     assertEquals(hbaWithSecret.trim(), submitted.tserverGFlags.get("ysql_hba_conf_csv"));
   }
