@@ -91,6 +91,7 @@ DEFINE_test_flag(string, xcluster_ddl_queue_handler_fail_ddl_matching, "",
     "If non-empty, the ddl_queue handler fails only the ddl commands whose query contains this "
     "substring.");
 
+DECLARE_bool(disable_global_object_locks);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_global_object_locking_infra);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
@@ -465,8 +466,8 @@ bool XClusterDDLQueueHandler::ShouldUseTransactionalDDL(
   return queries.size() > 1 &&
          FLAGS_xcluster_ddl_queue_enable_transactional_ddl &&
          FLAGS_ysql_yb_ddl_transaction_block_enabled &&
-         // ysql_yb_ddl_transaction_block_enabled depends on object locking
-         FLAGS_enable_object_locking_for_table_locks &&
+         // ysql_yb_ddl_transaction_block_enabled depends on global object locks
+         FLAGS_enable_object_locking_for_table_locks && !FLAGS_disable_global_object_locks &&
          FLAGS_ysql_yb_enable_global_object_locking_infra;
 }
 

@@ -68,6 +68,7 @@ TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
                      << "; query: { " << ::yb::pggate::GetDebugQueryString(pg_callbacks_) << " }; "
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(disable_global_object_locks);
 
 namespace {
 
@@ -260,17 +261,20 @@ bool PgTxnManager::UsingObjectLocksGloballyForCurrentTxn() const {
   // Computed rather than latched. It cannot change under an open transaction: the gflags are fixed
   // for the process, YBCIsObjectLockingLatchedForCurrTxn() is a snapshot PG takes once per
   // transaction, and the one per-statement input, the autonomous DDL check in
-  // UsingObjectLocksLocally(), never fires here, since a transaction that latched the flag on runs
-  // its DDLs inside itself.
+  // UsingObjectLocksLocally(), cannot change the result. With disable_global_object_locks true the
+  // result is false with or without it. Otherwise a transaction that latched the flag on runs its
+  // DDLs inside itself, so the check never fires.
   VLOG_WITH_FUNC(1) << "object locks: " << UsingObjectLocksLocally()
+                    << " global locks disabled: " << FLAGS_disable_global_object_locks
                     << " latched: " << YBCIsObjectLockingLatchedForCurrTxn();
-  return UsingObjectLocksLocally() && YBCIsObjectLockingLatchedForCurrTxn();
+  return UsingObjectLocksLocally() && !FLAGS_disable_global_object_locks &&
+         YBCIsObjectLockingLatchedForCurrTxn();
 }
 
 // An autonomous DDL, which a transaction without global object locks runs in a separate DDL
-// transaction, keeps its pre-promotion behavior: it takes no object locks. It also does not
-// refresh its catalog cache on a new lock: it reads the catalog at its own DDL transaction's read
-// time, so a refresh would record the new catalog version with entries from before it.
+// transaction, takes no object locks. It also does not refresh its catalog cache on a new lock: it
+// reads the catalog at its own DDL transaction's read time, so a refresh would record the new
+// catalog version with entries from before it.
 bool PgTxnManager::UsingObjectLocksLocally() const {
   // A transaction that reads the catalog as of yb_read_time takes none either (#34349, #29466).
   return backend_should_take_object_locks_ && FLAGS_enable_object_locking_for_table_locks &&
