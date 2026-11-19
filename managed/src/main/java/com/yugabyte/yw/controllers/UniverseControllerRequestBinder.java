@@ -119,10 +119,18 @@ public class UniverseControllerRequestBinder {
     return mergeBoundTaskParamsWithUniverse(taskParams, universe, paramType);
   }
 
-  /** Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. */
+  /**
+   * Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. The merge
+   * sets the universe's current version, so the request's expectedUniverseVersion is put back:
+   * otherwise a request built from a stale copy of the universe would pass the task's version check
+   * and overwrite the changes made since.
+   */
   public static <T extends UniverseDefinitionTaskParams> T mergeBoundTaskParamsWithUniverse(
       T taskParams, Universe universe, Class<T> paramType) {
     T merged = mergeWithUniverse(taskParams, universe, paramType);
+    if (taskParams.expectedUniverseVersion != null) {
+      merged.expectedUniverseVersion = taskParams.expectedUniverseVersion;
+    }
     copyGFlagsFromUniverseDetails(merged, universe);
     return merged;
   }
