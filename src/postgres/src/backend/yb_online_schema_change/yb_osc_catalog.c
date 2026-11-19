@@ -98,6 +98,11 @@ YbOscInsertJob(Oid srcOid, Oid dstOid, Oid transformOid)
 	values[Anum_pg_yb_online_schema_change_updated_at - 1] = TimestampTzGetDatum(now);
 	values[Anum_pg_yb_online_schema_change_status - 1] =
 		CStringGetTextDatum(YB_OSC_STATUS_ACTIVE);
+	values[Anum_pg_yb_online_schema_change_origin - 1] =
+		CStringGetTextDatum(YB_OSC_ORIGIN_MANUAL);
+	values[Anum_pg_yb_online_schema_change_cutover_mode - 1] =
+		CStringGetTextDatum(YB_OSC_CUTOVER_MODE_RENAME);
+	nulls[Anum_pg_yb_online_schema_change_alter_cmds - 1] = true;
 
 	HeapTuple	tuple = heap_form_tuple(RelationGetDescr(catalog), values, nulls);
 

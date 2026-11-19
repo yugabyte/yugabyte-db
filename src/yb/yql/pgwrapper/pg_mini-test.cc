@@ -1779,6 +1779,10 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeLifecycleByReturnedJobId)
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT job_id FROM pg_catalog.pg_yb_online_schema_change ORDER BY job_id DESC LIMIT 1")),
       job_id) << "yb_begin_mirror_table did not return the job id";
+  const auto how = ASSERT_RESULT((conn.FetchRow<std::string, std::string, bool>(Format(
+      "SELECT origin, cutover_mode, alter_cmds IS NULL FROM pg_catalog.yb_online_schema_change "
+      "WHERE job_id = $0", job_id))));
+  ASSERT_EQ(how, (decltype(how){"manual", "rename", true}));
   ASSERT_RESULT(conn.FetchFormat("SELECT yb_wait_mirror_table($0)", job_id));
   ASSERT_RESULT(conn.FetchFormat("SELECT yb_finish_mirror_table($0)", job_id));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format(

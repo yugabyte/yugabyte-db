@@ -9,6 +9,9 @@ BEGIN;
     created_at       timestamptz NOT NULL,
     updated_at       timestamptz NOT NULL,
     status           text        COLLATE "C" NOT NULL,
+    origin           text        COLLATE "C" NOT NULL,
+    cutover_mode     text        COLLATE "C" NOT NULL,
+    alter_cmds       text        COLLATE "C",
     CONSTRAINT pg_yb_online_schema_change_job_id_index PRIMARY KEY (job_id ASC)
       WITH (table_oid = 8129)
   ) WITH (
@@ -114,7 +117,10 @@ BEGIN
             END                                 AS progress_pct,
             p.error_message,
             m.created_at,
-            m.updated_at
+            m.updated_at,
+            m.origin,
+            m.cutover_mode,
+            m.alter_cmds
         FROM pg_catalog.pg_yb_online_schema_change m,
              -- The master reports an active job's copy. The function is strict, so a
              -- NULL id skips the call for a job that has ended.
@@ -144,6 +150,9 @@ BEGIN;
   COMMENT ON COLUMN yb_online_schema_change.error_message IS 'Why the copy failed, shown only to a role that may ALTER the source.';
   COMMENT ON COLUMN yb_online_schema_change.created_at IS 'When the job began.';
   COMMENT ON COLUMN yb_online_schema_change.updated_at IS 'When the job last changed status.';
+  COMMENT ON COLUMN yb_online_schema_change.origin IS 'Who started the job: manual (the SQL lifecycle functions) or alter_table (ALTER TABLE ... CONCURRENTLY).';
+  COMMENT ON COLUMN yb_online_schema_change.cutover_mode IS 'What finish does: rename (the target takes the source''s name) or swap (the source keeps its OID and takes the target''s storage).';
+  COMMENT ON COLUMN yb_online_schema_change.alter_cmds IS 'Text of the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source, else NULL.';
 
   COMMENT ON TABLE pg_catalog.pg_yb_online_schema_change IS
       'Online schema change jobs, one row per job. The yb_online_schema_change view adds names and the progress of the copy.';
@@ -154,4 +163,7 @@ BEGIN;
   COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.created_at IS 'When the job began.';
   COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.updated_at IS 'When the job last changed status.';
   COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.status IS 'active, finished or aborted.';
+  COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.origin IS 'Who started the job: manual (the SQL lifecycle functions) or alter_table (ALTER TABLE ... CONCURRENTLY).';
+  COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.cutover_mode IS 'What finish does: rename (the target takes the source''s name) or swap (the source keeps its OID and takes the target''s storage).';
+  COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.alter_cmds IS 'Text of the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source, else NULL.';
 COMMIT;
