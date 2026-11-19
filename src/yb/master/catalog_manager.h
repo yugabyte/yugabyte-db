@@ -2881,6 +2881,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // NOOP if the table does not belong to one.
   Status TryRemoveFromTablegroup(const TableId& table_id);
 
+  // Deletes or hides the tablets of a table dropped by DeleteTableInternal(). A secondary table,
+  // e.g. a vector index, is removed from the tablets it lives on instead.
+  Status DeleteOrHideTablets(const DeletingTableData& table, const LeaderEpoch& epoch);
+
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
   AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(const std::string& ts_uuid)
       EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
