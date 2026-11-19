@@ -160,8 +160,9 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   }
 
   // The response can hold the universe's stored gflags, such as after a reset of its
-  // configuration. Only values equal to the stored ones are redacted: the edit restores REDACTED
-  // values from the stored cluster, and other values are the client's own.
+  // configuration. An edit replaces masterGFlags, tserverGFlags or specificGFlags with the stored
+  // one as a whole when any of its values is REDACTED, so only those equal to the stored ones are
+  // redacted. The others hold the client's own values, which a redaction would drop.
   private void redactStoredGFlags(UniverseConfigureTaskParams taskParams) {
     Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
     if (universe == null || taskParams.clusters == null) {
@@ -174,24 +175,23 @@ public class UniverseUiOnlyController extends AuthenticatedController {
       }
       UserIntent stored = storedCluster.userIntent;
       UserIntent userIntent = cluster.userIntent;
-      userIntent.masterGFlags =
-          GFlagsUtil.redactSensitiveGFlagsMatchingStored(
-              stored.masterGFlags,
-              userIntent.masterGFlags,
-              gFlagsValidation,
-              stored.ybSoftwareVersion);
-      userIntent.tserverGFlags =
-          GFlagsUtil.redactSensitiveGFlagsMatchingStored(
-              stored.tserverGFlags,
-              userIntent.tserverGFlags,
-              gFlagsValidation,
-              stored.ybSoftwareVersion);
-      userIntent.specificGFlags =
-          GFlagsUtil.redactSensitiveSpecificGFlagsMatchingStored(
-              stored.specificGFlags,
-              userIntent.specificGFlags,
-              gFlagsValidation,
-              stored.ybSoftwareVersion);
+      if (userIntent.masterGFlags != null && userIntent.masterGFlags.equals(stored.masterGFlags)) {
+        userIntent.masterGFlags =
+            RedactingService.redactGFlags(
+                userIntent.masterGFlags, stored.ybSoftwareVersion, gFlagsValidation);
+      }
+      if (userIntent.tserverGFlags != null
+          && userIntent.tserverGFlags.equals(stored.tserverGFlags)) {
+        userIntent.tserverGFlags =
+            RedactingService.redactGFlags(
+                userIntent.tserverGFlags, stored.ybSoftwareVersion, gFlagsValidation);
+      }
+      if (userIntent.specificGFlags != null
+          && userIntent.specificGFlags.equals(stored.specificGFlags)) {
+        userIntent.specificGFlags =
+            GFlagsUtil.redactSensitiveSpecificGFlags(
+                userIntent.specificGFlags, gFlagsValidation, stored.ybSoftwareVersion);
+      }
     }
   }
 

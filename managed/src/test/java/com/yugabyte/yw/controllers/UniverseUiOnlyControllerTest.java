@@ -403,44 +403,52 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertEquals(
         LDAP_HBA.replace("dummy-hba-pass", SECRET_REPLACEMENT),
         tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+    assertEquals(
+        storedPrimaryIntent(u).specificGFlags,
+        bindConfigureResponse(body, u).getPrimaryCluster().userIntent.specificGFlags);
   }
 
   @Test
-  public void testConfigureEditKeepsTheRequestsChangedLdapGFlags() {
+  public void testConfigureEditReturnsChangedGFlagsAsSent() {
     enableGFlagsSensitiveDataApiRedaction();
     Universe u = setUpUniverseWithLdapGFlags();
     UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
-    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+    SpecificGFlags requested =
         SpecificGFlags.construct(
             Collections.emptyMap(),
             Map.of(
                 "ycql_ldap_bind_passwd", "dummy-new-pass", GFlagsUtil.YSQL_HBA_CONF_CSV, LDAP_HBA));
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = requested;
     Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
     assertOk(result);
     String body = contentAsString(result);
-    assertFalse(body, body.contains("dummy-hba-pass"));
-    JsonNode tserverGFlags =
-        Json.parse(body).at("/clusters/0/userIntent/specificGFlags/perProcessFlags/value/TSERVER");
-    assertEquals("dummy-new-pass", tserverGFlags.get("ycql_ldap_bind_passwd").asText());
     assertEquals(
-        LDAP_HBA.replace("dummy-hba-pass", SECRET_REPLACEMENT),
-        tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+        requested, bindConfigureResponse(body, u).getPrimaryCluster().userIntent.specificGFlags);
+    assertEquals(
+        requested,
+        Json.fromJson(
+            Json.parse(body).at("/clusters/0/userIntent/specificGFlags"), SpecificGFlags.class));
   }
 
   @Test
-  public void testConfigureCreateKeepsTheRequestsLdapGFlags() {
+  public void testConfigureReadReplicaCreateRedactsOnlyTheStoredPrimaryGFlags() {
     enableGFlagsSensitiveDataApiRedaction();
-    Universe u = setUpUniverse();
+    Universe u = setUpUniverseWithLdapGFlags();
     UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
     UserIntent readOnlyIntent = taskParams.getPrimaryCluster().userIntent.clone();
     readOnlyIntent.specificGFlags =
         SpecificGFlags.construct(
-            Collections.emptyMap(), Map.of("ycql_ldap_bind_passwd", "dummy-bind-pass"));
+            Collections.emptyMap(), Map.of("ycql_ldap_bind_passwd", "dummy-rr-pass"));
     taskParams.upsertCluster(readOnlyIntent, null, null, UUID.randomUUID());
     Result result = sendAsyncCreateConfigureRequest((ObjectNode) Json.toJson(taskParams));
     assertOk(result);
     String body = contentAsString(result);
-    assertTrue(body, body.contains("dummy-bind-pass"));
+    assertFalse(body, body.contains("dummy-bind-pass"));
+    assertFalse(body, body.contains("dummy-hba-pass"));
+    assertTrue(body, body.contains("dummy-rr-pass"));
+    assertEquals(
+        storedPrimaryIntent(u).specificGFlags,
+        bindConfigureResponse(body, u).getPrimaryCluster().userIntent.specificGFlags);
   }
 
   @Test
@@ -2433,6 +2441,21 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     when(mockRuntimeConfig.getBoolean(
             GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
         .thenReturn(true);
+  }
+
+  private UserIntent storedPrimaryIntent(Universe u) {
+    return Universe.getOrBadRequest(u.getUniverseUUID())
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent;
+  }
+
+  // Binds a configure response as the edit and read replica create APIs bind their requests.
+  private UniverseConfigureTaskParams bindConfigureResponse(String body, Universe u) {
+    return UniverseControllerRequestBinder.mergeBoundTaskParamsWithUniverse(
+        Json.fromJson(Json.parse(body), UniverseConfigureTaskParams.class),
+        Universe.getOrBadRequest(u.getUniverseUUID()),
+        UniverseConfigureTaskParams.class);
   }
 
   private Universe setUpUniverse(CloudType providerType) {
