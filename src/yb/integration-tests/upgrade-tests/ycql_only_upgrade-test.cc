@@ -40,7 +40,7 @@ const MonoDelta kRpcTimeout = 5s * kTimeMultiplier;
 // Test upgrade and rollback with a simple workload with updates and selects.
 class YcqlOnlyUpgradeTest : public UpgradeTestBase {
  public:
-  YcqlOnlyUpgradeTest() : UpgradeTestBase(kBuild_2_25_0_0) {}
+  YcqlOnlyUpgradeTest() : UpgradeTestBase(kBuild_2_31_0_1900) {}
 
   void SetUp() override {
     UpgradeTestBase::SetUp();
@@ -246,7 +246,8 @@ TEST_F(YcqlOnlyUpgradeTest, TestUpgrade) {
 // A version from before #28566 stores the elements of frozen sets and the keys of frozen maps in
 // the old UUID order. After the upgrade, the row must be found by its key written as literals, with
 // blobasuuid() and as bind variables, and updated and deleted in place.
-TEST_F(YcqlOnlyUpgradeTest, FrozenUuidCollectionKey) {
+// TODO(#36199): the pg19 source build has #28566 but not this fix; enable once it has both.
+TEST_F(YcqlOnlyUpgradeTest, YB_DISABLE_TEST(FrozenUuidCollectionKey)) {
   {
     auto driver = MakeCqlDriver();
     auto session = ASSERT_RESULT(driver->CreateSession());

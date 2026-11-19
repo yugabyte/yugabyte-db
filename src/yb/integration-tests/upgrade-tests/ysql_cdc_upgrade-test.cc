@@ -422,7 +422,7 @@ void CdcUpgradeTest::TestImplicitSlotDecodesTxnDdlAfterUpgrade() {
 
 class CdcUpgradeFrom2026_1Test : public CdcUpgradeTest {
  public:
-  CdcUpgradeFrom2026_1Test() : CdcUpgradeTest(kBuild_2026_1_2_0) {}
+  CdcUpgradeFrom2026_1Test() : CdcUpgradeTest(kBuild_2_31_0_1900) {}
 };
 
 TEST_F(CdcUpgradeFrom2026_1Test, ImplicitSlotDecodesTxnDdlAfterUpgrade) {
