@@ -2001,6 +2001,94 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
   ASSERT_OK(legacy_conn.Fetch("SELECT w FROM p"));
 }
 
+// Tests for #32224.
+//
+// Two overlapping DDLs must not both commit unless both take global object locks. Legacy DDLs take
+// no object locks; they serialize on the catalog version row, which each one increments in its DDL
+// transaction. DDLs with global object locks serialize on object locks instead, and run together
+// when they lock different objects. During the switch to global object locks, a legacy DDL and a
+// DDL with global object locks run side by side, and each sees neither mechanism of the other.
+//
+// The parameters say whether the first and the second DDL take global object locks. A DDL takes
+// them on ts2, whose object locking infra flag is promoted, and runs in legacy mode on ts1. The
+// first DDL alters a, and a ddl_command_end event trigger holds it open, after its catalog writes
+// and before it commits, while the second DDL alters b. "Overlap" means the second DDL commits
+// while the first is held, and the first commits as well.
+class PgObjectLocksTestOverlappingDdls
+    : public PgObjectLocksTestMixModeDuringPromotion,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
+    // Legacy DDLs conflict only when both increment the catalog version.
+    opts->extra_tserver_flags.emplace_back(Format(
+        "--ysql_pg_conf_csv=$0,yb_always_increment_catalog_version_on_ddl=true",
+        MaxQueryLayerRetriesConf(2)));
+  }
+
+  ExternalTabletServer* TsForDdl(bool global_object_locks) {
+    return cluster_->tablet_server(global_object_locks ? 1 : 0);
+  }
+};
+
+TEST_P(PgObjectLocksTestOverlappingDdls, OnlyDdlsWithGlobalObjectLocksOverlap) {
+  const auto [first_global, second_global] = GetParam();
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->tablet_server(1), "ysql_yb_enable_global_object_locking_infra", "true"));
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(0)));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE FUNCTION slow_ddl() RETURNS event_trigger LANGUAGE plpgsql AS $$$$ BEGIN "
+        "IF current_setting('test.slow', true) = 'on' THEN PERFORM pg_sleep($0); END IF; "
+        "END $$$$", 20 * kTimeMultiplier));
+    ASSERT_OK(conn.Execute(
+        "CREATE EVENT TRIGGER slow_ddl ON ddl_command_end EXECUTE FUNCTION slow_ddl()"));
+  }
+  WaitForCatalogVersionToPropagate();
+
+  const std::string first_ddl = "ALTER TABLE a ADD COLUMN v INT";
+  auto* first_ts = TsForDdl(first_global);
+  auto first_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*first_ts));
+  ASSERT_OK(first_conn.Execute("SET test.slow = 'on'"));
+  auto first_future = std::async(std::launch::async, [&first_conn, &first_ddl]() {
+    return first_conn.Execute(first_ddl);
+  });
+  auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*first_ts));
+  ASSERT_OK(LoggedWaitFor([&observer, &first_ddl]() -> Result<bool> {
+    auto sleeping = observer.FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_stat_activity WHERE query = '$0' AND wait_event = 'PgSleep'",
+        first_ddl));
+    if (!sleeping.ok()) {
+      LOG(INFO) << "pg_stat_activity: " << sleeping.status();
+      return false;
+    }
+    return *sleeping > 0;
+  }, 30s * kTimeMultiplier, "the first DDL to sleep in the event trigger"));
+
+  auto second_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*TsForDdl(second_global)));
+  const auto second_status = second_conn.Execute("ALTER TABLE b ADD COLUMN v INT");
+  const bool second_ended_while_first_held =
+      first_future.wait_for(0s) == std::future_status::timeout;
+  const auto first_status = first_future.get();
+  LOG(INFO) << "first DDL: " << first_status << ", second DDL: " << second_status
+            << ", second ended while first held: " << second_ended_while_first_held;
+
+  const bool overlapped =
+      first_status.ok() && second_status.ok() && second_ended_while_first_held;
+  ASSERT_EQ(overlapped, first_global && second_global);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DdlModes, PgObjectLocksTestOverlappingDdls,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+      return Format(
+          "$0Then$1", std::get<0>(info.param) ? "Global" : "Legacy",
+          std::get<1>(info.param) ? "Global" : "Legacy");
+    });
+
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
