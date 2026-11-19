@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.core.io.JsonStringEncoder;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
@@ -11,6 +12,7 @@ import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -433,6 +435,12 @@ public class RedactingService {
     telemetrySecretForms = null;
   }
 
+  /** For unit tests without the DB. */
+  @VisibleForTesting
+  static void setTelemetrySecretsForTesting(List<String> secrets) {
+    telemetrySecretForms = secrets == null ? null : secretForms(secrets);
+  }
+
   private static List<String> telemetrySecretForms() {
     List<String> forms = telemetrySecretForms;
     if (forms != null) {
@@ -469,13 +477,16 @@ public class RedactingService {
    */
   private static List<String> secretForms(Collection<String> secrets) {
     Set<String> forms = new HashSet<>();
-    for (String secret : secrets) {
-      if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
-        continue;
+    for (String value : secrets) {
+      // Telemetry credentials are rendered without line breaks.
+      for (String secret : new String[] {value, TelemetryProviderConfig.removeLineBreaks(value)}) {
+        if (secret == null || secret.length() < MIN_REDACTED_VALUE_LENGTH) {
+          continue;
+        }
+        forms.add(secret);
+        forms.add(Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
+        forms.add(new String(JsonStringEncoder.getInstance().quoteAsString(secret)));
       }
-      forms.add(secret);
-      forms.add(Base64.getEncoder().encodeToString(secret.getBytes(StandardCharsets.UTF_8)));
-      forms.add(new String(JsonStringEncoder.getInstance().quoteAsString(secret)));
     }
     return forms.stream()
         .sorted(Comparator.comparingInt(String::length).reversed())

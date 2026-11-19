@@ -2273,7 +2273,8 @@ YBCCreateReplicationSlot(const char *slot_name,
 		ereport(ERROR,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
 				 errmsg("all replication slots are in use"),
-				 errhint("Free one or increase max_replication_slots.")));
+				 errhint("Free one or increase gflag \"--max_replication_slots\" "
+						 "on master and tserver.")));
 	}
 
 	HandleYBStatus(status);
