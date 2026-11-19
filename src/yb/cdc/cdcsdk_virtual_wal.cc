@@ -847,6 +847,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     // the commit record for this pg_txn_id once we are sure that we have fully shipped all DMLs
     // with the same commit_time.
     if (record->row_message().op() == RowMessage_Op_COMMIT && !should_ship_commit) {
+      // With transactional DDL, a publication refresh inside a DDL transaction can add a table
+      // whose tablets return older transactions. Don't hold a COMMIT that can't get an LSN: it
+      // would be picked to ship on every iteration and block the queue. It's rejected below with
+      // the rest of its old transaction instead.
       if (is_txn_in_progress && !curr_active_txn_commit_record &&
           (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
            unique_id->GreaterThanDistributedLSN(last_seen_unique_record_id_))) {
