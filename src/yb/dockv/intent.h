@@ -68,6 +68,8 @@ struct DecodedIntentValue {
   TransactionId transaction_id = TransactionId::Nil();
   // Subtransaction id or defaults to kMinSubtransactionId.
   SubTransactionId subtransaction_id;
+  // YSQL command id of the writing statement, if the writer recorded one.
+  std::optional<uint32_t> command_id;
   // Decoded write id.
   IntraTxnWriteId write_id;
   // The rest of the data after write id.

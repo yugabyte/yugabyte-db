@@ -360,6 +360,10 @@ message PgsqlWriteRequestPB {
   // Set when the transaction runs with global object locking: its DDLs take global object locks.
   // The transaction itself may hold only local locks, as a DML-only transaction does.
   optional bool using_table_locks_globally = 34 [default = false];
+
+  // PG command id of the statement that issued this write; see read_command_id in
+  // PgsqlReadRequestPB.
+  optional uint32 command_id = 35;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -673,6 +677,12 @@ message PgsqlReadRequestPB {
 
   // See PgsqlWriteRequestPB::using_table_locks_globally.
   optional bool using_table_locks_globally = 50 [default = false];
+
+  // PG command id (snapshot curcid) of the reading statement. When set, an intent of the reading
+  // transaction that carries a command id is visible only if that id is lower, as for a PG tuple
+  // whose cmin is below the snapshot's curcid. Intents without a command id fall back to the
+  // in_txn_limit of the read time.
+  optional uint32 read_command_id = 51;
 }
 
 //--------------------------------------------------------------------------------------------------

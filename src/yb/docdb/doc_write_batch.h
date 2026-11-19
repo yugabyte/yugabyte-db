@@ -347,6 +347,14 @@ class DocWriteBatch {
     pk_is_known_ = pk_is_known;
   }
 
+  // Pairs added from now on were written by the YSQL command with this id.
+  void SetCommandId(std::optional<uint32_t> command_id) {
+    if (command_id_starts_.empty() ? command_id.has_value()
+                                   : command_id_starts_.back().second != command_id) {
+      command_id_starts_.emplace_back(put_batch_.size(), command_id);
+    }
+  }
+
   Status TEST_SetPrimitive(
       const dockv::DocPath& doc_path,
       const QLValuePB& value);
@@ -420,6 +428,8 @@ class DocWriteBatch {
   ValueBuffer delete_vector_ids_;
   bool has_vector_deletion_ = false;
   boost::tribool pk_is_known_ = boost::indeterminate;
+  // (index in put_batch_, command id) of each change of the command id, see SetCommandId.
+  std::vector<std::pair<size_t, std::optional<uint32_t>>> command_id_starts_;
 
   bool cdr_enabled_;
   dockv::ValueControlFields row_control_fields_;

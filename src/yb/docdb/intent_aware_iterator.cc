@@ -916,7 +916,8 @@ void IntentAwareIterator::ProcessIntent() {
   }
 
   // Ignore intent past read limit.
-  if (decoded.value_time > decoded.MaxAllowedValueTime(encoded_read_time_)) {
+  if (!decoded.visible_by_command_id &&
+      decoded.value_time > decoded.MaxAllowedValueTime(encoded_read_time_)) {
     VLOG_WITH_FUNC(4) << "Returning as decoded.value_time > "
                          "decoded.MaxAllowedValueTime(encoded_read_time_)";
     return;

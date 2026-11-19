@@ -2694,6 +2694,9 @@ Status Tablet::DoHandlePgsqlReadRequest(
         transaction_metadata,
         table_info->schema().table_properties().is_ysql_catalog_table(),
         &subtransaction_metadata));
+    if (pgsql_read_request.has_read_command_id()) {
+      txn_op_ctx.read_command_id = pgsql_read_request.read_command_id();
+    }
 
     docdb::DocVectorIndexPtr vector_index;
     TableId index_table_id;
