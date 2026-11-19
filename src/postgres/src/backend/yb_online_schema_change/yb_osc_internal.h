@@ -70,7 +70,18 @@ extern void YbOscForceSpeculativePl(void);
 
 extern void YbOscValidate(Relation srcRel, Relation dstRel,
 						  Oid transformFnOid);
-extern void YbOscEnsureSrcNoForeignKeys(Relation srcRel);
+
+
+/* ---- yb_osc_constraints.c ---- */
+
+/*
+ * These take OIDs rather than open Relations because the ALTER TABLE they
+ * issue fails on a table this session holds open (CheckTableNotInUse).
+ * Callers keep their locks but close the relations first.
+ */
+extern void YbOscPromoteForeignKeys(Oid srcOid, Oid dstOid);
+extern void YbOscCheckForeignKeysPromoted(Oid srcOid, Oid dstOid);
+extern void YbOscDropForeignKeys(Oid relOid);
 
 
 /* ---- yb_osc_catalog.c ---- */
