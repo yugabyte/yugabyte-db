@@ -66,7 +66,9 @@ public class CustomerConfigService {
   }
 
   public void edit(CustomerConfig customerConfig) {
-    configValidator.validateConfig(customerConfig);
+    configValidator.validateConfig(
+        customerConfig,
+        CustomerConfig.get(customerConfig.getCustomerUUID(), customerConfig.getConfigUUID()));
     customerConfig.update();
   }
 

@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -74,6 +75,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -464,9 +466,17 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     expectedOverrides.put("master", ImmutableMap.of("extraEnv", metricSuffixExtraEnv));
 
     expectedOverrides.put("defaultServiceScope", "AZ");
-    // The key defaults to on, and the version gate, like KubernetesUtil's others, treats an
-    // unparsable version such as "1.0.0" as supported.
-    expectedOverrides.put("nodeExporter", ImmutableMap.of("enabled", true, "port", 9300));
+    // Both keys default to on, and the version gates, like KubernetesUtil's others, treat an
+    // unparsable version such as "1.0.0" as supported, so TLS follows node-to-node encryption.
+    expectedOverrides.put(
+        "nodeExporter",
+        ImmutableMap.of(
+            "enabled",
+            true,
+            "port",
+            9300,
+            "tls",
+            ImmutableMap.of("enabled", defaultUserIntent.enableNodeToNodeEncrypt)));
     return expectedOverrides;
   }
 
@@ -514,7 +524,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
 
     assertEquals(
-        ImmutableMap.of("enabled", true, "port", 9300),
+        ImmutableMap.of("enabled", true, "port", 9300, "tls", ImmutableMap.of("enabled", false)),
         runHelmInstallAndReadOverrides(null).get("nodeExporter"));
   }
 
@@ -524,8 +534,40 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
 
     assertEquals(
-        ImmutableMap.of("enabled", false),
+        ImmutableMap.of("enabled", false, "tls", ImmutableMap.of("enabled", false)),
         runHelmInstallAndReadOverrides(null).get("nodeExporter"));
+  }
+
+  @Test
+  public void testNodeExporterTlsOnWithSidecarTlsKeyAndNodeToNode() throws IOException {
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    defaultUserIntent.enableNodeToNodeEncrypt = true;
+    details.upsertPrimaryCluster(defaultUserIntent, null, null);
+    details.rootCA = defaultCert.getUuid();
+    defaultUniverse.setUniverseDetails(details);
+    defaultUniverse.save();
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "true");
+    RuntimeConfigEntry.upsert(defaultUniverse, "yb.node_exporter.tls.enabled", "true");
+
+    assertEquals(ImmutableMap.of("enabled", true), nodeExporterTls(null));
+  }
+
+  @Test
+  public void testNodeExporterTlsUserOverridesCannotTurnItOn() throws IOException {
+    ybSoftwareVersion = KubernetesUtil.MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE;
+
+    assertEquals(
+        ImmutableMap.of("enabled", false),
+        nodeExporterTls(
+            ImmutableMap.of(
+                "nodeExporter", ImmutableMap.of("tls", ImmutableMap.of("enabled", true)))));
+  }
+
+  private Object nodeExporterTls(Map<String, Object> universeOverrides) throws IOException {
+    return ((Map<String, Object>)
+            runHelmInstallAndReadOverrides(universeOverrides).get("nodeExporter"))
+        .get("tls");
   }
 
   @Test
@@ -548,7 +590,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         runHelmInstallAndReadOverrides(
             ImmutableMap.of("nodeExporter", ImmutableMap.of("enabled", false, "port", 9400)));
 
-    assertEquals(ImmutableMap.of("enabled", true, "port", 9300), overrides.get("nodeExporter"));
+    assertEquals(
+        ImmutableMap.of("enabled", true, "port", 9300, "tls", ImmutableMap.of("enabled", false)),
+        overrides.get("nodeExporter"));
   }
 
   /** Runs a HELM_INSTALL with the given universe overrides and returns the rendered overrides. */
@@ -2392,6 +2436,77 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertTrue(
         "query receiver 'filelog/query_logs_ysql' must be present, yaml=" + overridesYaml,
         overridesYaml.contains("filelog/query_logs_ysql"));
+  }
+
+  @Test
+  public void testHelmInstallQueryLogPgConfWinsOverUserPgConf() throws IOException {
+    defaultUserIntent.tserverGFlags =
+        new HashMap<>(ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=ddl"));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(defaultUserIntent, "host", true));
+    com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig awsConfig =
+        new com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig();
+    awsConfig.setType(com.yugabyte.yw.models.helpers.telemetry.ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("ak");
+    awsConfig.setSecretKey("sk");
+    awsConfig.setLogGroup("lg");
+    awsConfig.setLogStream("ls");
+    awsConfig.setRegion("us-west-2");
+    com.yugabyte.yw.models.TelemetryProvider tp = new com.yugabyte.yw.models.TelemetryProvider();
+    tp.setUuid(UUID.randomUUID());
+    tp.setCustomerUUID(defaultCustomer.getUuid());
+    tp.setName("aws-tp");
+    tp.setConfig(awsConfig);
+    tp.setTags(ImmutableMap.of());
+    tp.save();
+
+    com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig ysqlQueryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig();
+    ysqlQueryLogConfig.setEnabled(true);
+    ysqlQueryLogConfig.setLogStatement(
+        com.yugabyte.yw.models.helpers.exporters.query.YSQLQueryLogConfig.YSQLLogStatement.MOD);
+    com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig queryLogConfig =
+        new com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig();
+    queryLogConfig.setYsqlQueryLogConfig(ysqlQueryLogConfig);
+    com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig queryExporter =
+        new com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig();
+    queryExporter.setExporterUuid(tp.getUuid());
+    queryLogConfig.setUniverseLogsExporterConfig(ImmutableList.of(queryExporter));
+
+    createExecutor(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL,
+            true,
+            com.yugabyte.yw.common.export.TelemetryConfig.builder()
+                .queryLogConfig(queryLogConfig)
+                .build())
+        .run();
+
+    ArgumentCaptor<String> overrideFile = ArgumentCaptor.forClass(String.class);
+    verify(kubernetesManager, times(1))
+        .helmInstall(
+            any(UUID.class),
+            any(String.class),
+            any(Map.class),
+            any(UUID.class),
+            any(String.class),
+            any(String.class),
+            overrideFile.capture());
+    String overridesYaml =
+        FileUtils.readFileToString(new File(overrideFile.getValue()), Charset.defaultCharset());
+    List<String> pgConfLines =
+        overridesYaml
+            .lines()
+            .filter(line -> line.contains(GFlagsUtil.YSQL_PG_CONF_CSV))
+            .collect(Collectors.toList());
+    assertTrue(
+        "tserver ysql_pg_conf_csv must take log_statement from the query log config, yaml="
+            + overridesYaml,
+        pgConfLines.stream().anyMatch(line -> line.contains("log_statement=MOD")));
+    assertTrue(
+        "user log_statement must be replaced, yaml=" + overridesYaml,
+        pgConfLines.stream().noneMatch(line -> line.contains("log_statement=ddl")));
   }
 
   @Test

@@ -1966,7 +1966,16 @@ YbAuthPassthroughSetupGUCAndReport(Oid dboid)
 	 * to do here since this is what sets the GUC values sent to the client.
 	 */
 	if (MyProcPort != NULL)
+	{
 		process_startup_options(MyProcPort, superuser_arg(GetSessionUserId()));
+
+		/*
+		 * A reserved name in "options" has failed this logical connection,
+		 * see process_postgres_switches().
+		 */
+		if (MyProcPort->yb_has_auth_passthrough_finished)
+			return;
+	}
 
 	if (YBIsDBLogicalClientVersionMode())
 	{

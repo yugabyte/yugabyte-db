@@ -1019,7 +1019,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1226,7 +1227,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1529,7 +1531,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },

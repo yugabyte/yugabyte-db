@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotEquals;
@@ -636,10 +637,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           add(PgOutputUpdateMessage.CreateForComparison(
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
-                // All columns for before image in FULL come out as null.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("ghij"),
+                new PgOutputMessageTupleColumnValue("t"))),
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("3"),
@@ -654,12 +654,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("4"),
               new PgOutputMessageTupleColumnValue("jklm"),
               new PgOutputMessageTupleColumnValue("t")))));
-          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          // The full old row is found within the transaction, so it is sent as 'O', not 'K'.
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("4"),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull()))));
+                new PgOutputMessageTupleColumnValue("jklm"),
+                new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/3B"), LogSequenceNumber.valueOf("0/3C")));
         }
@@ -809,10 +810,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           add(PgOutputUpdateMessage.CreateForComparison(
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
-                // All columns for before image in FULL come out as null.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+                // Before image in FULL is the row written by the INSERT earlier in the same
+                // transaction (cdc_enable_intra_transactional_before_image), same as in PG.
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("ghij"),
+                new PgOutputMessageTupleColumnValue("t"))),
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("3"),
@@ -827,12 +829,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("4"),
               new PgOutputMessageTupleColumnValue("jklm"),
               new PgOutputMessageTupleColumnValue("t")))));
-          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          // The full old row is found within the transaction, so it is sent as 'O', not 'K'.
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("4"),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull()))));
+                new PgOutputMessageTupleColumnValue("jklm"),
+                new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/29"), LogSequenceNumber.valueOf("0/2A")));
         }
@@ -1090,6 +1093,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation(boolean usePubRefresh)
       throws Exception {
     String slotName = "test_dynamic_table_addition_slot_before_stream_creation";
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && isTransactionalDdlEnabled());
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1254,6 +1259,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   void testNonPKTablesNeverPolledForStreamCreatedWhenFlagUnset(boolean usePubRefresh)
       throws Exception {
     String slotName = "test_non_pk_tables_never_polled_for_stream_created_when_flag_unset";
+    final boolean txnDdl = isTransactionalDdlEnabled();
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && txnDdl);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1326,7 +1334,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
+        // With transactional DDL, DDL records also get LSN values.
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/16" : "0/8"), txnDdl ? 5 : 3));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("mnop")))));
@@ -1337,7 +1347,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
                 new PgOutputMessageTupleColumnValue("wxyz")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/16" : "0/8"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/17" : "0/9")));
       }
     };
 

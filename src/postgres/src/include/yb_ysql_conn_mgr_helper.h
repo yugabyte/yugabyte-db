@@ -103,9 +103,22 @@ extern bool yb_conn_mgr_sighup_had_backend_guc_change;
  extern bool yb_conn_mgr_is_auth_passthrough_backend;
 
 /*
+ * Address and port of the logical client currently attached to this backend,
+ * forwarded by Ysql Connection Manager. "" and -1 when not set.
+ */
+extern char *yb_ycm_internal_client_addr;
+extern int	yb_ycm_internal_client_port;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();
+
+/*
+ * Check whether Ysql Connection Manager has forwarded the logical client's
+ * address, i.e. whether yb_ycm_internal_client_addr/port replace MyProcPort.
+ */
+extern bool YbHasConnMgrLogicalClientAddr(void);
 
 /*
  * Add/update the changed session parameters in the shared memory.
@@ -151,6 +164,8 @@ extern bool yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 
 extern void YbSendFatalForLogicalConnectionPacket();
 
+extern void YbSendConnMgrObjectDropped(char kind, Oid oid);
+
 extern bool YbGetNumYsqlConnMgrConnections(const Oid db_oid,
 										   const Oid user_oid,
 										   uint32_t *num_logical_conn,
@@ -172,3 +187,5 @@ extern int YbAuthFailedErrorLevel(const bool auth_passthrough);
  *    progress)
  */
 extern bool YbIsAuthPassthroughInProgress(struct Port *port);
+
+extern bool YbIsConnMgrReservedStartupParameter(const char *name);

@@ -28,6 +28,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 static void LockTableRecurse(Oid reloid, LOCKMODE lockmode, bool nowait);
 static AclResult LockTableAclCheck(Oid relid, LOCKMODE lockmode, Oid userid);
 static void RangeVarCallbackForLockTable(const RangeVar *rv, Oid relid,
@@ -42,6 +45,19 @@ void
 LockTableCommand(LockStmt *lockstmt)
 {
 	ListCell   *p;
+
+	/*
+	 * YB: a transaction running as of yb_read_time takes no object locks (see
+	 * YbSetObjectLockingForCurrTxn). ACCESS SHARE only protects its own reads,
+	 * which don't need it, so it is a no-op; a stronger mode would be expected
+	 * to fence other sessions, so refuse it.
+	 */
+	if (IsYugaByteEnabled() && YbIsHistoricalCatalogRead() &&
+		lockstmt->mode > AccessShareLock)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("LOCK TABLE in a mode stronger than ACCESS SHARE is not "
+						"allowed while yb_read_time is set")));
 
 	/*
 	 * Iterate over the list and process the named relations one at a time

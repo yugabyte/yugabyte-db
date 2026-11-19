@@ -7,16 +7,13 @@ import "strings"
 // hbaSecret is a pg_hba attribute that holds a secret.
 type hbaSecret struct {
 	name string
-	// nextPrefix is the attribute-name prefix whose <name>= ends an unquoted value.
-	nextPrefix string
 	// list values are comma lists (radiussecrets="s1,s2"), so a comma never ends one.
 	list bool
 }
 
 // hbaSecrets are redacted inside ysql_hba_conf_csv, which keeps the rest of the ACL. ldapbindpasswd
-// follows the Java's rules; Java has no radiussecrets.
+// is not one: hba_conf.go redacts it as YBA does. YBA doesn't redact radiussecrets.
 var hbaSecrets = []hbaSecret{
-	{name: "ldapbindpasswd", nextPrefix: "ldap"},
 	{name: "radiussecrets", list: true},
 }
 
@@ -36,13 +33,13 @@ func findHbaSecret(name string) (hbaSecret, bool) {
 //
 // Three escape depths exist because the value reaches us through a variable number of
 // serialisations: the gflag itself is CSV-quoted, embedding it in JSON escapes the quotes once,
-// and logging that JSON as a shell string escapes them again. For a password pw:
+// and logging that JSON as a shell string escapes them again. For a secret pw:
 //
-//	quoteUnquoted               ldapbindpasswd=pw
-//	quoteSingleCSV              ldapbindpasswd="pw"
-//	quoteDoubledCSV             ldapbindpasswd=""pw""
-//	quoteEscapedDoubledCSV      ldapbindpasswd=\"\"pw\"\"
-//	quoteDeepEscapedDoubledCSV  ldapbindpasswd=\\"\\"pw\\"\\"
+//	quoteUnquoted               radiussecrets=pw
+//	quoteSingleCSV              radiussecrets="pw"
+//	quoteDoubledCSV             radiussecrets=""pw""
+//	quoteEscapedDoubledCSV      radiussecrets=\"\"pw\"\"
+//	quoteDeepEscapedDoubledCSV  radiussecrets=\\"\\"pw\\"\\"
 type quoteStyle int
 
 const (
@@ -263,15 +260,12 @@ func tryParseHbaValue(s string, eqIndex int, secret hbaSecret) *parsedValue {
 		}
 		return nil
 	}
-	// Only a literal '"' is excluded here, matching the negative lookahead in the former Java
-	// LdapBindPasswdHbaFormat.UNQUOTED_VALUE. A backslash must NOT be excluded: every well-formed
+	// Only a literal '"' is excluded here. A backslash must NOT be excluded: every well-formed
 	// backslash form is already claimed by the escaped-doubled branches above, so a value still
-	// starting with one is a shape neither side has a quote style for -- such as the single-escaped
-	// ldapbindpasswd=\"pw\" -- and Java redacts it here as unquoted. Excluding backslash left that
-	// form untouched on the node while YBA redacted it, and because the node then reported
-	// REDACTION_STATUS=NODE, YBA skipped its own pass and the password shipped.
+	// starting with one, such as the single-escaped radiussecrets=\"pw\", has no quote style and
+	// is redacted here as unquoted rather than left in place.
 	if eqIndex < len(s) && s[eqIndex] != '"' {
-		end, val := scanUnquotedHbaValue(s, eqIndex, secret.nextPrefix)
+		end, val := scanUnquotedHbaValue(s, eqIndex)
 		if end > eqIndex {
 			return &parsedValue{end, val, quoteUnquoted}
 		}
@@ -281,29 +275,16 @@ func tryParseHbaValue(s string, eqIndex int, secret hbaSecret) *parsedValue {
 
 // scanUnquotedHbaValue returns the end offset and text of an unquoted hba secret value.
 //
-// An unquoted value ends before the next whitespace-separated attribute whose name starts with
-// nextPrefix (ldap*= for ldapbindpasswd, any <name>= for radiussecrets), or at end of line. Because
-// the password itself may contain spaces, the scanner cannot simply stop at whitespace; it must
-// look ahead past the whitespace and check whether such an attribute name followed by '=' actually
+// An unquoted value ends before the next whitespace-separated <name>= attribute, or at end of line.
+// Because the value itself may contain spaces, the scanner cannot simply stop at whitespace; it
+// must look ahead past the whitespace and check whether an attribute name followed by '=' actually
 // begins there.
 //
-// The Java used a lookahead regex for this (LdapBindPasswdHbaFormat.UNQUOTED_VALUE). Go's regexp
-// is RE2 and supports no lookaround, hence a hand-written scanner. github.com/dlclark/regexp2
-// could run the Java pattern verbatim, but it was measured against this scanner and must not be
-// swapped in: the pattern is strictly less safe here.
-//
-//	input                        scanner                regexp2 with the Java pattern
-//	ldapbindpasswd=p\nnext=1     redacts "p"            NO MATCH -> password left in the file
-//	ldapbindpasswd=               value ""               no match
-//	ldapbindpasswd=a,OU=x         redacts "a,OU=x"       redacts only "a", leaks ",OU=x"
-//
-// The newline case is an under-redaction: `.` does not cross \n. The DN case is the k-j>=3 rule,
-// which lives in Java's findUnquotedValueEnd but NOT in UNQUOTED_VALUE, so this scanner is more
-// conservative than the Java regex by design.
-//
-// Those rows are also live Go/Java divergences: the same server.conf redacted on the node (here)
-// and on the YBA host (Java) differs on those three inputs.
-func scanUnquotedHbaValue(s string, start int, nextPrefix string) (int, string) {
+// Go's regexp is RE2 and supports no lookaround, hence a hand-written scanner. The lookahead regex
+// of the former Java LdapBindPasswdHbaFormat, run with github.com/dlclark/regexp2, was measured
+// against it and is less safe: `.` does not cross \n, so p\nnext=1 left the value in the file, and
+// a,OU=x was cut to "a" without the k-j>=3 rule below.
+func scanUnquotedHbaValue(s string, start int) (int, string) {
 	i := start
 	n := len(s)
 	for i < n {
@@ -315,11 +296,11 @@ func scanUnquotedHbaValue(s string, start int, nextPrefix string) (int, string) 
 			for j < n && isWhitespace(s[j]) {
 				j++
 			}
-			if attributeAt(s, j, nextPrefix) {
+			if attributeAt(s, j) {
 				return i, s[start:i]
 			}
 		}
-		if i > start && attributeAt(s, i, nextPrefix) {
+		if i > start && attributeAt(s, i) {
 			k := i
 			for k > start && isWhitespace(s[k-1]) {
 				k--
@@ -357,15 +338,12 @@ func scanUnquotedHbaValue(s string, start int, nextPrefix string) (int, string) 
 	return start, ""
 }
 
-// attributeAt reports whether a <name>= whose name starts with prefix begins at j.
-func attributeAt(s string, j int, prefix string) bool {
-	if !strings.HasPrefix(s[j:], prefix) {
+// attributeAt reports whether a <name>= begins at j.
+func attributeAt(s string, j int) bool {
+	if j >= len(s) || !isFlagNameStart(s[j]) {
 		return false
 	}
-	k := j + len(prefix)
-	if prefix == "" && (k >= len(s) || !isFlagNameStart(s[k])) {
-		return false
-	}
+	k := j + 1
 	for k < len(s) && isFlagNameChar(s[k]) {
 		k++
 	}

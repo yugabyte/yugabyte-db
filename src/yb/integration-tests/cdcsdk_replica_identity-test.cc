@@ -398,7 +398,7 @@ TEST_F(CDCSDKReplicaIdentityTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateRe
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2},   {1, 88}, {1, 888},
                                        {2, 3}, {1, 999}, {2, 99}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 2}, {}, {1, 888}, {2, 3}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 88}, {}, {1, 888}, {2, 3}};
 
   // A transaction's APPLY reaches the tablet WAL asynchronously after commit, so a single
   // GetChanges can observe only a prefix of the DML records. Poll until all 6 are streamed.
@@ -472,8 +472,8 @@ TEST_F(
 
   ExpectedRecord expected_records[] = {{0, 0},  {1, 2},   {1, 3}, {1, 4},   {2, 3},
                                        {2, 88}, {2, 888}, {3, 4}, {2, 999}, {3, 99}};
-  ExpectedRecord expected_before_image_records[] = {{},     {0, 0}, {1, 2}, {1, 3},   {0, 0},
-                                                    {2, 3}, {2, 3}, {0, 0}, {2, 888}, {3, 4}};
+  ExpectedRecord expected_before_image_records[] = {{},     {0, 0},  {1, 2}, {1, 3},   {0, 0},
+                                                    {2, 3}, {2, 88}, {0, 0}, {2, 888}, {3, 4}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
@@ -1240,7 +1240,7 @@ TEST_F(
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2},   {1, 88}, {1, 888},
                                        {2, 3}, {1, 999}, {2, 99}};
-  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 2}, {}, {1, 888}, {2, 3}};
+  ExpectedRecord expected_before_image_records[] = {{}, {}, {1, 2}, {1, 88}, {}, {1, 888}, {2, 3}};
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
