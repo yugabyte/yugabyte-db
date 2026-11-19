@@ -2833,6 +2833,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return this.xClusterInfo;
   }
 
+  // The calculated config lists key off universeUuid, which getXClusterInfo stamps.
+  @JsonIgnore
+  public XClusterInfo readXClusterInfo() {
+    return getXClusterInfo();
+  }
+
   @JsonIgnoreProperties(
       value = {"sourceXClusterConfigs", "targetXClusterConfigs"},
       allowGetters = true)

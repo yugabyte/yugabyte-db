@@ -4,8 +4,8 @@ package com.yugabyte.yw.api.v2.mappers;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -16,28 +16,27 @@ import static org.mockito.Mockito.when;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.models.UniverseInfo;
 import api.v2.models.XClusterInfo;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.List;
-import java.util.UUID;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.mockito.MockedStatic;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.springframework.test.util.ReflectionTestUtils;
 import play.mvc.Http.Request;
 
-@RunWith(MockitoJUnitRunner.class)
-public class UniverseDefinitionTaskParamsMapperTest {
+public class UniverseDefinitionTaskParamsMapperTest extends FakeDBApplication {
   private static final String SOURCE_ROOT_CERT_DIR = "/mnt/certs";
 
   @Test
   public void testTaskParamCopySkipsCalculatedXClusterConfigs() {
-    UUID sourceConfig = UUID.randomUUID();
-    UUID targetConfig = UUID.randomUUID();
     UniverseDefinitionTaskParams source = spy(new UniverseDefinitionTaskParams());
-    UniverseDefinitionTaskParams.XClusterInfo xClusterInfo =
-        spiedXClusterInfo(sourceConfig, targetConfig);
+    UniverseDefinitionTaskParams.XClusterInfo xClusterInfo = xClusterInfo();
     source.xClusterInfo = xClusterInfo;
 
     Request request = mock(Request.class);
@@ -60,10 +59,7 @@ public class UniverseDefinitionTaskParamsMapperTest {
 
   @Test
   public void testV2XClusterInfoSkipsCalculatedConfigs() {
-    UUID sourceConfig = UUID.randomUUID();
-    UUID targetConfig = UUID.randomUUID();
-    UniverseDefinitionTaskParams.XClusterInfo xClusterInfo =
-        spiedXClusterInfo(sourceConfig, targetConfig);
+    UniverseDefinitionTaskParams.XClusterInfo xClusterInfo = xClusterInfo();
 
     XClusterInfo mapped =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2XClusterInfo(xClusterInfo);
@@ -77,25 +73,40 @@ public class UniverseDefinitionTaskParamsMapperTest {
 
   @Test
   public void testUniverseInfoIncludesCalculatedXClusterConfigs() {
-    UUID sourceConfig = UUID.randomUUID();
-    UUID targetConfig = UUID.randomUUID();
-    UniverseDefinitionTaskParams source = new UniverseDefinitionTaskParams();
-    source.xClusterInfo = spiedXClusterInfo(sourceConfig, targetConfig);
+    Customer customer = ModelFactory.testCustomer();
+    Universe source = ModelFactory.createUniverse("source-universe", customer.getId());
+    Universe target = ModelFactory.createUniverse("target-universe", customer.getId());
+    XClusterConfig config =
+        XClusterConfig.create("repl", source.getUniverseUUID(), target.getUniverseUUID());
 
-    UniverseInfo info = UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseInfo(source);
+    UniverseDefinitionTaskParams details = source.getUniverseDetails();
+    details.xClusterInfo.sourceRootCertDirPath = SOURCE_ROOT_CERT_DIR;
+    source.setUniverseDetails(details);
+    source.save();
+
+    UniverseDefinitionTaskParams reloaded =
+        Universe.getOrBadRequest(source.getUniverseUUID()).getUniverseDetails();
+    assertNull(ReflectionTestUtils.getField(reloaded.xClusterInfo, "universeUuid"));
+
+    UniverseInfo info = UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseInfo(reloaded);
 
     assertEquals(SOURCE_ROOT_CERT_DIR, info.getxClusterInfo().getSourceRootCertDirPath());
-    assertEquals(List.of(sourceConfig), info.getxClusterInfo().getSourceXClusterConfigs());
-    assertEquals(List.of(targetConfig), info.getxClusterInfo().getTargetXClusterConfigs());
+    assertEquals(List.of(config.getUuid()), info.getxClusterInfo().getSourceXClusterConfigs());
+    assertTrue(info.getxClusterInfo().getTargetXClusterConfigs().isEmpty());
+
+    UniverseDefinitionTaskParams targetDetails =
+        Universe.getOrBadRequest(target.getUniverseUUID()).getUniverseDetails();
+    UniverseInfo targetInfo =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseInfo(targetDetails);
+    assertEquals(
+        List.of(config.getUuid()), targetInfo.getxClusterInfo().getTargetXClusterConfigs());
+    assertTrue(targetInfo.getxClusterInfo().getSourceXClusterConfigs().isEmpty());
   }
 
-  private static UniverseDefinitionTaskParams.XClusterInfo spiedXClusterInfo(
-      UUID sourceConfig, UUID targetConfig) {
+  private static UniverseDefinitionTaskParams.XClusterInfo xClusterInfo() {
     UniverseDefinitionTaskParams.XClusterInfo xClusterInfo =
         spy(new UniverseDefinitionTaskParams.XClusterInfo());
     xClusterInfo.sourceRootCertDirPath = SOURCE_ROOT_CERT_DIR;
-    doReturn(List.of(sourceConfig)).when(xClusterInfo).getSourceXClusterConfigs();
-    doReturn(List.of(targetConfig)).when(xClusterInfo).getTargetXClusterConfigs();
     return xClusterInfo;
   }
 }

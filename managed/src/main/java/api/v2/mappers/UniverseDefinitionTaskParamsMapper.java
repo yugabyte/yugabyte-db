@@ -2,7 +2,6 @@
 package api.v2.mappers;
 
 import api.v2.models.CloudSpecificInfo;
-import api.v2.models.XClusterInfo;
 import api.v2.models.ClusterGFlags;
 import api.v2.models.EncryptionAtRestInfo;
 import api.v2.models.EncryptionAtRestSpec;
@@ -14,6 +13,7 @@ import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseSettings;
 import api.v2.models.UniverseSpec;
+import api.v2.models.XClusterInfo;
 import api.v2.models.YCQLSpec;
 import api.v2.models.YSQLSpec;
 import api.v2.models.YbSoftwareDetails;
