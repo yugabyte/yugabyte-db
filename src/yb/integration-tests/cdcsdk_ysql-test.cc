@@ -15296,8 +15296,8 @@ TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStream) {
 }
 
 // The first sys catalog load after the AutoFlag is promoted backfills legacy gRPC streams. When
-// that load is the one a PITR restore triggers, the master leader rejects RPCs until the load
-// finishes, so the backfill must not depend on the master leader answering one.
+// that load is the one a PITR restore triggers, the master leader rejects RPCs until it clears
+// restoring_sys_catalog_, so the backfill must run after that.
 TEST_F(CDCSDKYsqlTest, TestBackfillOfLegacyGrpcStreamDuringPitrRestore) {
   ASSERT_OK(SetUpWithParams(1, 1, false));
   ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName, 1 /* num_tablets */));
