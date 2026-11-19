@@ -446,7 +446,6 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
   @Test
   public void editRestoresKubernetesOverridesWhoseRedactionFails() {
     enableGFlagsSensitiveDataApiRedaction();
-    // Redacted nowhere else, so the redactor's cache can't skip the failing rewrite.
     String stored = K8S_AZ_OVERRIDES.get("az-1") + "tserver:\n  podLabels:\n    edit: fails\n";
     Universe universe = createUniverseWithK8sOverrides(stored, Map.of("az-1", stored));
     try (MockedStatic<HbaConfRedactor> hba =
