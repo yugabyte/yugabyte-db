@@ -238,6 +238,7 @@ public class UniverseCRUDHandler {
         || universe == null) {
       result.updateOptions =
           Collections.singleton(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+      return result;
     }
     Cluster currentCluster = universe.getCluster(cluster.uuid);
     Set<NodeDetails> nodesInCluster = taskParams.getNodesInCluster(cluster.uuid);
@@ -358,7 +359,9 @@ public class UniverseCRUDHandler {
         result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
       }
     } else {
-      result.resizeRestrictions.add(smartResizeRestriction);
+      if (smartResizeRestriction != null) {
+        result.resizeRestrictions.add(smartResizeRestriction);
+      }
       if (!ResizeNodeParams.NOTHING_CHANGED.equals(smartResizeRestriction)) {
         if (!samePlacement) {
           result.resizeRestrictions.add("Placement has changed");
@@ -384,8 +387,11 @@ public class UniverseCRUDHandler {
   }
 
   /**
-   * Verify that the set of provider ids remains the same (in case of multicloud). The changes in
-   * provider settings are detected elsewhere.
+   * Verify that the set of provider ids remains the same (in case of multicloud).
+   * The changes in provider settings should be checked separately
+   * since different properties can lead to different updates ie:
+   * tags update -> simple update operation
+   * imagebundle update -> full move
    *
    * @param cluster
    * @param currentCluster
