@@ -30,8 +30,10 @@
 #include "catalog/pg_yb_online_schema_change.h"
 #include "miscadmin.h"
 #include "pg_yb_utils.h"
+#include "tcop/pquery.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/queryjumble.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
@@ -78,6 +80,29 @@ JobStatus(HeapTuple tuple, TupleDesc tupdesc)
 }
 
 /*
+ * Text of the client statement now running, the way pg_stat_activity.query
+ * reports it but cut to the one statement of a multi-statement string, or NULL
+ * if there is none.
+ */
+static char *
+CurrentStatementText(void)
+{
+	PlannedStmt *pstmt;
+	int			location;
+	int			len;
+	const char *text;
+
+	if (ActivePortal == NULL || ActivePortal->sourceText == NULL ||
+		ActivePortal->stmts == NIL)
+		return NULL;
+	pstmt = linitial_node(PlannedStmt, ActivePortal->stmts);
+	location = pstmt->stmt_location;
+	len = pstmt->stmt_len;
+	text = CleanQuerytext(ActivePortal->sourceText, &location, &len);
+	return pnstrdup(text, len);
+}
+
+/*
  * Insert a new "active" job and return its job_id.
  */
 int64
@@ -102,7 +127,12 @@ YbOscInsertJob(Oid srcOid, Oid dstOid, Oid transformOid)
 		CStringGetTextDatum(YB_OSC_ORIGIN_MANUAL);
 	values[Anum_pg_yb_online_schema_change_cutover_mode - 1] =
 		CStringGetTextDatum(YB_OSC_CUTOVER_MODE_RENAME);
-	nulls[Anum_pg_yb_online_schema_change_alter_cmds - 1] = true;
+	char	   *query = CurrentStatementText();
+
+	if (query)
+		values[Anum_pg_yb_online_schema_change_query - 1] = CStringGetTextDatum(query);
+	else
+		nulls[Anum_pg_yb_online_schema_change_query - 1] = true;
 
 	HeapTuple	tuple = heap_form_tuple(RelationGetDescr(catalog), values, nulls);
 

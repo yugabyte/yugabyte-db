@@ -25,7 +25,8 @@
  *	  "origin" says who started the job and "cutover_mode" what finish does.
  *	  The SQL lifecycle functions record "manual" and "rename": finish swaps
  *	  the tables' names.  ALTER TABLE ... CONCURRENTLY records "alter_table"
- *	  and "swap", with its statement text in "alter_cmds".
+ *	  and "swap".  "query" is the text of the statement that started the
+ *	  job, which a swap cutover re-runs on the source.
  *
  *-------------------------------------------------------------------------
  */
@@ -53,7 +54,7 @@ CATALOG(pg_yb_online_schema_change,8124,YbOnlineSchemaChangeRelationId) BKI_ROWT
 	text		status BKI_FORCE_NOT_NULL;	/* see NOTES above */
 	text		origin BKI_FORCE_NOT_NULL;	/* who started the job; see NOTES */
 	text		cutover_mode BKI_FORCE_NOT_NULL;	/* rename | swap; see NOTES */
-	text		alter_cmds BKI_FORCE_NULL BKI_DEFAULT(_null_);	/* ALTER TABLE ... CONCURRENTLY text */
+	text		query BKI_FORCE_NULL BKI_DEFAULT(_null_);	/* statement that started the job */
 #endif
 } FormData_pg_yb_online_schema_change;
 
