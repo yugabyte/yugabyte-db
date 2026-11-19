@@ -249,8 +249,6 @@ static TupleTableSlot *YbExecInsertAct(ModifyTableContext *context,
 static void YbFreeInsertOnConflictBatchState(YbInsertOnConflictBatchState *state);
 static void YbDropInsertOnConflictReadSlots(YbInsertOnConflictBatchState *state);
 
-static Bitmapset *YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
-												ResultRelInfo *resultRelInfo);
 static bool ybCanSkipFetchingTargetTuple(ModifyTable *modifyTable,
 										 Relation targetRel);
 
@@ -2512,9 +2510,11 @@ lreplace:
 		 * selectively skipping index updates and constraint checks.
 		 * This guardrail may be removed in the future. This also helps avoid
 		 * having a dependency on row locking.
+		 *
+		 * For a partition routed at run time, ExecGetUpdatedCols maps the
+		 * root's columns to the partition's attribute numbers.
 		 */
-		*yb_cols_marked_for_update = YbFetchColumnsMarkedForUpdate(context,
-																   resultRelInfo);
+		*yb_cols_marked_for_update = ExecGetUpdatedCols(resultRelInfo, estate);
 
 		if (resultRelInfo->ri_NumGeneratedNeeded > 0)
 		{
@@ -5958,52 +5958,6 @@ yb_check_constr_cleanup:;
 
 	list_free(descriptors);
 	return retval;
-}
-
-/*
- * Function to return a bitmapset of columns that are marked for update by the
- * planner.
- */
-Bitmapset *
-YbFetchColumnsMarkedForUpdate(ModifyTableContext *context,
-							  ResultRelInfo *partitionRelInfo)
-{
-	ModifyTableState *mtstate = context->mtstate;
-	EState	   *estate = context->estate;
-	RangeTblEntry *rte = rt_fetch(partitionRelInfo->ri_RangeTableIndex,
-								  estate->es_range_table);
-	ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
-	Bitmapset  *cols_marked_for_update = bms_copy(rte->updatedCols);
-	Bitmapset  *partition_cols = NULL;
-
-	if (!(plan->onConflictAction == ONCONFLICT_UPDATE &&
-		  mtstate->mt_partition_tuple_routing &&
-		  partitionRelInfo->ri_RootToPartitionMap))
-
-		return cols_marked_for_update;
-
-	/*
-	 * The given query is an ON CONFLICT .. DO UPDATE query on a partitioned
-	 * table. In such cases, the plan state may not hold details of the correct
-	 * partition whose tuple is to be updated, as the tuple may not have been
-	 * routed at planning time. Moreover, the partition has defined its columns
-	 * in an order that is different to that of the root table. In such cases,
-	 * it is essential to re-map the attribute numbers in the updated columns
-	 * bitmapset to that of the partition's.
-	 * For example:
-	 * A parent table 'base' has columns in the order [a, b, c] while one of its
-	 * partitions 'p1' has columns in the order [b, c, a].
-	 * Suppose columns 'a' and 'b' are marked for update.
-	 * The planner will produce the following bitmapset: {a -> 10, b -> 11}
-	 * based on 'base' while the correct mapping for 'p1' is as follows:
-	 * {b -> 10, a -> 12}.
-	 */
-	partition_cols = execute_attr_map_cols(partitionRelInfo->ri_RootToPartitionMap->attrMap,
-										   cols_marked_for_update,
-										   partitionRelInfo->ri_RelationDesc);
-
-	bms_free(cols_marked_for_update);
-	return partition_cols;
 }
 
 /*
