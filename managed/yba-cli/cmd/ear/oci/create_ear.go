@@ -159,8 +159,11 @@ func runCreateOCIEAR(cmd *cobra.Command) {
 		requestBody[util.OCITenancyIDField] = apiKeyValueFromFlagOrEnv(cmd, "tenancy-id")
 		requestBody[util.OCIUserIDField] = apiKeyValueFromFlagOrEnv(cmd, "user-id")
 		requestBody[util.OCIFingerprintField] = apiKeyValueFromFlagOrEnv(cmd, "fingerprint")
-		requestBody[util.OCIPrivateKeyContentField] = readPrivateKey(
-			apiKeyValueFromFlagOrEnv(cmd, "private-key-file-path"))
+		privateKey, err := readPrivateKey(apiKeyValueFromFlagOrEnv(cmd, "private-key-file-path"))
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		requestBody[util.OCIPrivateKeyContentField] = privateKey
 	}
 
 	rTask, response, err := authAPI.CreateKMSConfig(util.OCIEARType).
@@ -221,10 +224,10 @@ func apiKeyFlagsSetCount(cmd *cobra.Command) int {
 	return n
 }
 
-func readPrivateKey(path string) string {
+func readPrivateKey(path string) (string, error) {
 	content, err := util.ReadFileToString(path)
 	if err != nil {
-		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		return "", err
 	}
-	return strings.TrimSpace(*content)
+	return strings.TrimSpace(*content), nil
 }

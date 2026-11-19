@@ -11,6 +11,7 @@ import (
 	pb "node-agent/generated/service"
 	"node-agent/util"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -25,6 +26,9 @@ const (
 	// which the systemd unit, the health check's `ps -C` lookup and the `process` label on the
 	// per-process metrics all key off, so it must stay stable across collector version changes.
 	otelCollectorInstalledBinary = "otelcol-contrib"
+	// Holds the exporter credentials that config.yml references as ${env:NAME}.
+	otelCollectorSecretEnvFile = "secrets.env"
+	otelColFileContentEnv      = "YB_OTEL_FILE_CONTENT"
 )
 
 type InstallOtelCollector struct {
@@ -90,6 +94,11 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		return nil, err
 	}
 	ybUserHome := userInfo.User.HomeDir
+	// Checked first, so a bad credential leaves the running collector untouched.
+	if err = h.checkCredentials(); err != nil {
+		util.FileLogger().Error(ctx, err.Error())
+		return nil, err
+	}
 	// 2) Put & setup the otel collector.
 	err = h.execOtelCollectorSetupSteps(ctx, h.param.GetYbHomeDir())
 	if err != nil {
@@ -118,7 +127,8 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 		// Must mirror the conditions the setup steps use to write these credentials.
 		"otel_col_aws_creds_present": h.param.GetOtelColAwsAccessKey() != "" &&
 			h.param.GetOtelColAwsSecretKey() != "",
-		"otel_col_gcp_creds_present": h.param.GetOtelColGcpCredsFile() != "",
+		"otel_col_gcp_creds_present":  h.param.GetOtelColGcpCredsFile() != "",
+		"otel_col_secret_env_present": len(h.param.GetOtelColSecretEnv()) > 0,
 	}
 
 	// Copy otel-collector.service
@@ -191,8 +201,10 @@ func (h *InstallOtelCollector) validateOtelCollectorConfig(
 		filepath.Join(ybHome, "otel-collector", otelCollectorInstalledBinary),
 		h.param.GetOtelColConfigFile(),
 	)
-	if _, err := module.RunShellCmd(
-		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.logOut); err != nil {
+	// The new config may reference credentials that are not in the env file yet.
+	if _, err := module.RunShellCmdWithEnv(
+		ctx, h.username, "ValidateOtelCollectorConfig", cmd, h.secretEnvList(), h.logOut,
+	); err != nil {
 		return fmt.Errorf("otel-collector config was rejected: %w", err)
 	}
 	return nil
@@ -301,6 +313,7 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	otelColLogCleanupEnv := filepath.Join(ybHome, "otel-collector", "log_cleanup_env")
 	awsCredsFile := filepath.Join(ybHome, ".aws", "credentials")
 	gcpCredsFile := filepath.Join(ybHome, "otel-collector", "gcp_creds")
+	secretEnvFile := filepath.Join(ybHome, "otel-collector", otelCollectorSecretEnvFile)
 
 	steps := []struct {
 		Desc string
@@ -308,31 +321,23 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 	}{
 		{
 			"remove-otel-collector-config-file-if-exists",
-			fmt.Sprintf(
-				"rm -rf %s",
-				otelCollectorConfigFile,
-			),
+			fmt.Sprintf("rm -rf %s", shellSingleQuote(otelCollectorConfigFile)),
 		},
 		{
 			"create-aws-creds-dir",
-			fmt.Sprintf("mkdir -p %s/.aws", ybHome),
+			fmt.Sprintf("mkdir -p %s", shellSingleQuote(filepath.Join(ybHome, ".aws"))),
 		},
 		{
 			"remove-otel-collector-aws-block-if-exists",
-			fmt.Sprintf(`if [ -f %s ]; then \
-		awk '/# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=1} \
-		/# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS/ {inblock=0; next} \
-		!inblock' %s > %s.tmp && mv %s.tmp %s; fi`,
-				awsCredsFile,
-				awsCredsFile,
-				awsCredsFile,
-				awsCredsFile,
-				awsCredsFile,
-			),
+			removeManagedBlockCmd(awsCredsFile, otelAwsBlockBegin, otelAwsBlockEnd),
 		},
 		{
 			"remove-gcp-credentials",
-			fmt.Sprintf("rm -rf %s", gcpCredsFile),
+			fmt.Sprintf("rm -rf %s", shellSingleQuote(gcpCredsFile)),
+		},
+		{
+			"remove-otel-collector-secret-env",
+			fmt.Sprintf("rm -f %s", shellSingleQuote(secretEnvFile)),
 		},
 	}
 	// log_cleanup_env carries the audit-log retention settings that the
@@ -344,26 +349,6 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 		h.param.GetYcqlAuditLogRetentionDays(),
 		h.param.GetYsqlAuditLineStartRegex())...)
 
-	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
-		steps = append(steps, struct {
-			Desc string
-			Cmd  string
-		}{
-			"append-otel-collector-creds",
-			fmt.Sprintf(
-				`echo '# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS
-			[otel-collector]
-			aws_access_key_id = %s
-			aws_secret_access_key = %s
-			# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS' >> %s && chmod 440 %s`,
-				h.param.GetOtelColAwsAccessKey(),
-				h.param.GetOtelColAwsSecretKey(),
-				awsCredsFile,
-				awsCredsFile,
-			),
-		})
-	}
-
 	if h.param.GetOtelColConfigFile() != "" {
 		steps = append(steps, struct {
 			Desc string
@@ -372,8 +357,8 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 			"place-new-otel-collector-config-file",
 			fmt.Sprintf(
 				"mv %s %s",
-				h.param.GetOtelColConfigFile(),
-				otelCollectorConfigFile,
+				shellSingleQuote(h.param.GetOtelColConfigFile()),
+				shellSingleQuote(otelCollectorConfigFile),
 			),
 		})
 	}
@@ -384,14 +369,104 @@ func (h *InstallOtelCollector) configureOtelCollector(ctx context.Context, ybHom
 			Cmd  string
 		}{
 			"place-new-gcp-creds-file",
-			fmt.Sprintf("mv %s %s", h.param.GetOtelColGcpCredsFile(), gcpCredsFile),
+			fmt.Sprintf(
+				"mv %s %s",
+				shellSingleQuote(h.param.GetOtelColGcpCredsFile()),
+				shellSingleQuote(gcpCredsFile),
+			),
 		})
 	}
 
 	if err := module.RunShellSteps(ctx, h.username, steps, h.logOut); err != nil {
 		return err
 	}
+	if h.param.GetOtelColAwsAccessKey() != "" && h.param.GetOtelColAwsSecretKey() != "" {
+		if err := h.appendAwsCredsBlock(ctx, awsCredsFile); err != nil {
+			return err
+		}
+	}
+	if len(h.param.GetOtelColSecretEnv()) > 0 {
+		return h.writeSecretEnvFile(ctx, secretEnvFile)
+	}
 	return nil
+}
+
+func (h *InstallOtelCollector) sortedSecretEnvKeys() []string {
+	keys := make([]string, 0, len(h.param.GetOtelColSecretEnv()))
+	for key := range h.param.GetOtelColSecretEnv() {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (h *InstallOtelCollector) secretEnvList() []string {
+	env := []string{}
+	for _, key := range h.sortedSecretEnvKeys() {
+		env = append(env, key+"="+h.param.GetOtelColSecretEnv()[key])
+	}
+	return env
+}
+
+// writeSecretEnvFile writes the credentials readable only by the collector user.
+func (h *InstallOtelCollector) writeSecretEnvFile(ctx context.Context, path string) error {
+	var content strings.Builder
+	for _, key := range h.sortedSecretEnvKeys() {
+		value := h.param.GetOtelColSecretEnv()[key]
+		content.WriteString(key + "=" + systemdEnvQuote(value) + "\n")
+	}
+	cmd := fmt.Sprintf("umask 077 && printf '%%s' \"$%s\" > %s && chmod 600 %s",
+		otelColFileContentEnv, shellSingleQuote(path), shellSingleQuote(path))
+	return h.writeAsUser(ctx, "write-otel-collector-secret-env", cmd, content.String())
+}
+
+// checkCredentials rejects line breaks, which would split lines in the credential files.
+func (h *InstallOtelCollector) checkCredentials() error {
+	values := map[string]string{
+		"AWS access key": h.param.GetOtelColAwsAccessKey(),
+		"AWS secret key": h.param.GetOtelColAwsSecretKey(),
+	}
+	for key, value := range h.param.GetOtelColSecretEnv() {
+		values[key] = value
+	}
+	for name, value := range values {
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("credential %s contains a line break", name)
+		}
+	}
+	return nil
+}
+
+func (h *InstallOtelCollector) appendAwsCredsBlock(ctx context.Context, path string) error {
+	block := otelAwsBlockBegin + "\n" +
+		"[otel-collector]\n" +
+		"aws_access_key_id = " + h.param.GetOtelColAwsAccessKey() + "\n" +
+		"aws_secret_access_key = " + h.param.GetOtelColAwsSecretKey() + "\n" +
+		otelAwsBlockEnd + "\n"
+	cmd := fmt.Sprintf("umask 077 && printf '%%s' \"$%s\" >> %s && chmod 440 %s",
+		otelColFileContentEnv, shellSingleQuote(path), shellSingleQuote(path))
+	return h.writeAsUser(ctx, "append-otel-collector-creds", cmd, block)
+}
+
+// writeAsUser writes as the task user, so a root node-agent cannot follow a planted symlink.
+func (h *InstallOtelCollector) writeAsUser(ctx context.Context, desc, cmd, content string) error {
+	env := []string{otelColFileContentEnv + "=" + content}
+	_, err := module.RunShellCmdWithEnv(ctx, h.username, desc, cmd, env, h.logOut)
+	return err
+}
+
+// systemdEnvQuote double-quotes a value for a systemd EnvironmentFile.
+func systemdEnvQuote(value string) string {
+	var quoted strings.Builder
+	quoted.WriteByte('"')
+	for _, r := range value {
+		if strings.ContainsRune("\\\"`$", r) {
+			quoted.WriteByte('\\')
+		}
+		quoted.WriteRune(r)
+	}
+	quoted.WriteByte('"')
+	return quoted.String()
 }
 
 // refreshLogPurgeScript renders the bundled zip_purge_yb_logs.sh.j2 template
@@ -431,13 +506,14 @@ func logCleanupEnvSteps(
 	Desc string
 	Cmd  string
 } {
+	quotedEnvPath := shellSingleQuote(envPath)
 	return []struct {
 		Desc string
 		Cmd  string
 	}{
 		{
 			"clean-up-otel-log-cleanup-env",
-			fmt.Sprintf("rm -rf %s", envPath),
+			fmt.Sprintf("rm -rf %s", quotedEnvPath),
 		},
 		{
 			"write-otel-log-cleanup-env",
@@ -446,13 +522,13 @@ func logCleanupEnvSteps(
 					`&& echo "ycql_audit_log_level=%s" >> %s `+
 					`&& echo "ysql_audit_log_retention_days=%d" >> %s `+
 					`&& echo "ycql_audit_log_retention_days=%d" >> %s`,
-				envPath,
+				quotedEnvPath,
 				ycqlAuditLogLevel,
-				envPath,
+				quotedEnvPath,
 				ysqlAuditLogRetentionDays,
-				envPath,
+				quotedEnvPath,
 				ycqlAuditLogRetentionDays,
-				envPath,
+				quotedEnvPath,
 			),
 		},
 		{
@@ -464,14 +540,29 @@ func logCleanupEnvSteps(
 				"printf '%%s\\n' %s >> %s",
 				shellSingleQuote("ysql_audit_line_start_regex="+
 					shellSingleQuote(ysqlAuditLineStartRegex)),
-				envPath,
+				quotedEnvPath,
 			),
 		},
 		{
 			"set-permission-otel-log-cleanup-env",
-			fmt.Sprintf(`chmod 0440 %s`, envPath),
+			fmt.Sprintf(`chmod 0440 %s`, quotedEnvPath),
 		},
 	}
+}
+
+const (
+	otelAwsBlockBegin = "# BEGIN YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS"
+	otelAwsBlockEnd   = "# END YB MANAGED BLOCK - OTEL COLLECTOR CREDENTIALS"
+)
+
+// removeManagedBlockCmd creates the tmp file new under umask 077, as mv keeps its mode.
+func removeManagedBlockCmd(path, begin, end string) string {
+	tmp := shellSingleQuote(path + ".tmp")
+	return fmt.Sprintf(
+		`umask 077 && if [ -f %s ]; then rm -f %s && `+
+			`awk '/%s/ {inblock=1} /%s/ {inblock=0; next} !inblock' %s > %s && mv %s %s; fi`,
+		shellSingleQuote(path), tmp, begin, end, shellSingleQuote(path), tmp, tmp,
+		shellSingleQuote(path))
 }
 
 // shellSingleQuote wraps s in single quotes, escaping embedded single quotes,

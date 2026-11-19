@@ -129,6 +129,16 @@ DEFINE_test_flag(bool, skip_returning_old_transactions, false,
                  "When set, the coordinator returns an empty response to all GetOldTransactions "
                  "requests.");
 
+DEFINE_test_flag(uint64, commit_time_override_ht, 0,
+                 "When set, transactions listed in TEST_commit_time_override_txn_ids commit at "
+                 "this hybrid time instead of the hybrid time of their commit record. Lets a test "
+                 "make different transactions commit at the same time. The caller must pick a "
+                 "time after the transactions wrote all their intents and before they commit.");
+
+DEFINE_test_flag(string, commit_time_override_txn_ids, "",
+                 "Comma separated ids of the transactions that TEST_commit_time_override_ht "
+                 "applies to.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_int32(rpc_workers_limit);
@@ -948,6 +958,18 @@ class TransactionState {
     return Status::OK();
   }
 
+  void MaybeOverrideCommitTimeForTest() {
+    if (PREDICT_TRUE(FLAGS_TEST_commit_time_override_ht == 0)) {
+      return;
+    }
+    const auto txn_ids = Format(",$0,", FLAGS_TEST_commit_time_override_txn_ids);
+    if (txn_ids.find(Format(",$0,", id_)) == std::string::npos) {
+      return;
+    }
+    commit_time_ = HybridTime(FLAGS_TEST_commit_time_override_ht);
+    LOG_WITH_PREFIX(INFO) << "Overriding commit time to " << commit_time_ << " for test";
+  }
+
   Status CommittedReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (status_ != TransactionStatus::PENDING) {
       auto status = STATUS_FORMAT(
@@ -962,6 +984,7 @@ class TransactionState {
 
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
+    MaybeOverrideCommitTimeForTest();
     first_entry_raft_index_ = data.op_id.index;
     RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
 

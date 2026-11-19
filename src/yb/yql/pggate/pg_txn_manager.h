@@ -69,7 +69,7 @@ struct TxnReadPoint {
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
-      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool enable_table_locking,
+      PgClient* pg_client, YbcPgCallbacks pg_callbacks, bool backend_should_take_object_locks,
       std::atomic<uint64_t>& next_read_time_serial_no);
 
   ~PgTxnManager();
@@ -198,7 +198,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
         [this, original_value] { is_read_time_history_cutoff_disabled_ = original_value; });
   }
 
-  bool IsTableLockingEnabledForCurrentTxn() const;
+  bool UsingObjectLocksGloballyForCurrentTxn() const;
+  bool UsingObjectLocksLocally() const;
 
   void SetClampUncertaintyWindow(bool clamp) { clamp_uncertainty_window_ = clamp; }
 
@@ -245,6 +246,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   YB_STRONGLY_TYPED_BOOL(SavePriority);
 
   void ResetTxnAndSession();
+
+  // Whether the lock is known to be held by the current transaction in a live subtransaction.
+  [[nodiscard]] bool IsObjectLockHeld(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+  void RecordObjectLockHeld(
+      const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
+  void ClearHeldObjectLocks();
   void StartNewSession();
   using RetryRequestPB = tserver::PgRestartTransactionForRetryRequestPB;
   Result<tserver::PgRestartTransactionForRetryResponsePB> RestartTransactionForRetry(
@@ -349,9 +357,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   //                 This flag does not include writes made for object locking.
   bool has_writes_ = false;
 
-  const bool enable_table_locking_;
+  const bool backend_should_take_object_locks_;
 
   std::unordered_map<YbcReadPointHandle, uint64_t> crosstxn_explicit_snapshot_read_time_;
+
+  // Object locks known to be held by the current transaction, see HeldObjectLocks in the .cc file.
+  class HeldObjectLocks;
+  const std::unique_ptr<HeldObjectLocks> held_object_locks_;
   bool is_read_time_history_cutoff_disabled_{false};
   bool clamp_uncertainty_window_{false};
 

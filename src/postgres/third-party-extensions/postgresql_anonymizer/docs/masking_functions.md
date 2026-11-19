@@ -5,6 +5,7 @@ The extension provides functions to implement 8 main anonymization strategies:
 
 * [Destruction]
 * [Adding Noise]
+* [Local Differential Privacy (LDP)]
 * [Randomization]
 * [Faking]
 * [Advanced Faking]
@@ -14,13 +15,15 @@ The extension provides functions to implement 8 main anonymization strategies:
 * [Conditional masking]
 * [Generalization]
 * [Using pg_catalog functions]
+* [Image bluring]
 * [Write your own Masks !]
 
 [Destruction]: #destruction
 [Adding Noise]: #adding-noise
+[Local Differential Privacy (LDP)]: #local-differential-privacy-ldp
 [Randomization]: #randomization
 [Faking]: #faking
-[Advanced Faking]: #advanced_faking
+[Advanced Faking]: #advanced-faking
 [Pseudonymization]: #pseudonymization
 [Generic Hashing]: #generic-hashing
 [Partial scrambling]: #partial-scrambling
@@ -28,6 +31,7 @@ The extension provides functions to implement 8 main anonymization strategies:
 [Generalization]: #generalization
 [Shuffling]: static_masking.md#shuffling
 [Using pg_catalog functions]: #using-pg_catalog-functions
+[Image bluring]: #image-bluring
 [Write your own Masks !]: #write-your-own-masks
 
 Depending on your data, you may need to use different strategies on different
@@ -73,6 +77,20 @@ dataset will remain meaningful.
   timestamp, or a time. If interval = '2 days', the return value will be the
   original value randomly shifted by +/- 2 days
 
+* `anon.noisy_gps_coordinates(origin, radius, is_metric)` returns GPS
+  coordinates located in a radius (default `10.0`) around a point. The radius can
+  be expressed in kimometers (default) or miles.
+
+    ```sql
+    CREATE TABLE customer( .... , gps_location geometry(Point, 4326));
+
+    SECURITY LABEL FOR anon ON COLUMN customer.gps_location
+    IS 'MASKED WITH FUNCTION ST_SetSRID(
+        noisy_gps_coordinates(gps_location::point, 10.0, true)::geometry,
+        4326
+    )';
+    ```
+
 **WARNING** : The `noise()` masking functions are vulnerable to a form of
 repeat attack, especially with [Dynamic Masking]. A masked user can guess
 an original value by requesting its masked value multiple times and then simply
@@ -87,6 +105,59 @@ They should be avoided when using [Dynamic Masking].
 
 
 
+Local Differential Privacy (LDP)
+------------------------------------------------------------------------------
+
+**Local Differential Privacy** is a stronger approach to adding noise. Unlike
+the `noise()` functions above, LDP provides a formal mathematical guarantee:
+given the output, an observer cannot determine the original value with high
+confidence, no matter what auxiliary information they have. The strength of
+this guarantee is controlled by a parameter called **epsilon** -- a smaller
+epsilon means stronger privacy but less accuracy.
+
+This is particularly useful for **survey data** and **categorical values**
+(e.g. ratings, age brackets, answer choices) where you want to collect
+aggregate statistics while protecting individual responses.
+
+### GRRM (Generalized Randomized Response Mechanism)
+
+The GRRM method works on categorical values represented as integers from 1 to
+`max_v`. Each value is either kept truthfully or replaced with a uniformly
+random alternative:
+
+```sql
+-- Perturb a rating (1-5) with epsilon = 1.0
+SELECT anon.ldp_grrm(3, 1.0, 5);
+```
+
+You can also specify the privacy level using a "kept percentage" (PTTT) instead
+of epsilon. A kept percentage of 0.65 means roughly 65% of the differential
+probability is allocated to the true value:
+
+```sql
+SELECT anon.ldp_grrm_pttt(3, 0.65, 5);
+```
+
+To use this as a masking rule:
+
+```sql
+SECURITY LABEL FOR anon
+  ON COLUMN survey.satisfaction_rating
+  IS 'MASKED WITH FUNCTION anon.ldp_grrm(satisfaction_rating, 1.0, 5)';
+```
+
+### Inspecting the privacy parameters
+
+You can check the probabilities implied by your choice of epsilon:
+
+```sql
+-- Probability of keeping the true value
+SELECT anon.ldp_truth_probability(1.0, 5);
+
+-- Probability of each specific lie value
+SELECT anon.ldp_lie_probability(1.0, 5);
+```
+
 
 Randomization
 ------------------------------------------------------------------------------
@@ -96,12 +167,13 @@ data :
 
 ### Basic Random values
 
-
 * `anon.random_date()` returns a date
 * `anon.random_string(n)` returns a TEXT value containing `n` letters
 * `anon.random_zip()` returns a 5-digit code
 * `anon.random_phone(p)` returns a 8-digit phone with `p` as a prefix
 * `anon.random_hash(seed)` returns a hash of a random string for a given seed
+* `anon.random_gps_coordinates()` returns random GPS coordinates
+* `anon.random_point_in_box(Box)` returns a random point in Box
 
 ### Random between
 
@@ -156,7 +228,7 @@ IS 'MASKED WITH FUNCTION anon.random_in_enum(creditcard)'
 
 ### Random in Range
 
-[RANGE types] are a powerfull way to describe an interval of values, where can
+[RANGE types] are a powerful way to describe an interval of values, where can
 define inclusive or excluvive bounds:
 
 <https://www.postgresql.org/docs/current/rangetypes.html#RANGETYPES-EXAMPLES>
@@ -165,19 +237,39 @@ There a function for each subtype of range:
 
 * `anon.random_in_int4range('[5,6)')` returns an INT of value 5
 * `anon.random_in_int8range('(6,7]')` returns a BIGINT of value 7
-* `anon.random_in_numrange('[0.1,0.9]') returns a NUMERIC between 0.1 and 0.9
+* `anon.random_in_numrange('[0.1,0.9]')` returns a NUMERIC between 0.1 and 0.9
 * `anon.random_in_daterange('[2001-01-01, 2001-12-31)')` returns a date in 2001
 * `anon.random_in_tsrange('[2022-10-01,2022-10-31]')` returns a
   TIMESTAMP in october 2022
 * `anon.random_in_tstzrange('[2022-10-01,2022-10-31]')` returns a
   TIMESTAMP WITH TIMEZONE in october 2022
 
-**NOTE:**  It is not possible to get a random value from a RANGE with an
+**NOTE:** It is not possible to get a random value from a RANGE with an
 infinite bound. For example `anon.random_in_int4range('[2022,)')` returns NULL.
 
 
 [RANGE types]: https://www.postgresql.org/docs/current/rangetypes.html
 
+### Random Sequence ID
+
+When masking a SERIAL columns it can be useful to general a `UNIQUE` value
+based on a sequence.
+
+* `anon.random_id()` returns a BIGINT
+* `anon.random_id_int()` returns a INT
+* `anon.random_id_small_int()` returns a SMALLINT
+
+Each call to these functions will return a incremented value much like the
+[nextval()] function.
+
+[nextval()]: https://www.postgresql.org/docs/current/functions-sequence.html
+
+At any time, you can reset the current sequence value with a new value.
+For instance:
+
+``` sql
+SELECT pg_catalog.setval('anon.random_id_seq', 42);
+```
 
 
 Faking
@@ -223,7 +315,7 @@ For TEXT and VARCHAR columns, you can use the classic [Lorem Ipsum] generator:
 * `anon.lorem_ipsum( paragraphs := 4 )` returns 4 paragraphs
 * `anon.lorem_ipsum( words := 20 )` returns 20 words
 * `anon.lorem_ipsum( characters := 7 )` returns 7 characters
-* `anon.lorem_ipsum( characters := LENGTH(table.column) )` returns the same
+* `anon.lorem_ipsum( characters := anon.length(table.column) )` returns the same
    amount of characters as the original string
 
 [Lorem Ipsum]: https://lipsum.com
@@ -231,27 +323,149 @@ For TEXT and VARCHAR columns, you can use the classic [Lorem Ipsum] generator:
 Advanced Faking
 ------------------------------------------------------------------------------
 
-Generating fake data is a complex topic. The functions provided here are
-limited to basic use case. For more advanced faking methods, in particular
-if you are looking for **localized fake data**, take a look at
-[PostgreSQL Faker], an extension based upon the well-known [Faker python library].
+Generating fake data is a complex topic. The `fake_` functions provided above
+are limited to basic use case. For more advanced faking methods, in particular
+if you are looking for **localized fake data**, PostgreSQL Anonymizer
+provides an advanced faking engine with localisation support.
 
-[PostgreSQL Faker]: https://gitlab.com/dalibo/postgresql_faker
-[Faker python library]: https://faker.readthedocs.io
+This engine ([fake-rs]) is available via more than 70 functions with the
+`dummy_` prefix:
 
-This extension provides an advanced faking engine with localisation support.
+*tips:*
+
+*The fake_\* and dummy_\* functions achieve the same goal.*
+
+*The fake_\* functions are the first implementation in pl/pgsql. They were
+introduced in Version 1. It's a rather naïve and limited approach.*
+
+*The dummy_\* functions are a new implementation based on a Rust library.
+It provides a more advanced fake generator and adds localization.
+It was introduced in Version 2.*
+
+*New users should always prefer the dummy_\* functions. The fake_\* functions
+are kept for backward compatibility.*
+
+<!--
+SELECT format(
+  '* %I.%I(%s)', ns.nspname, p.proname, oidvectortypes(p.proargtypes)
+)
+FROM pg_proc p
+INNER JOIN pg_namespace ns ON (p.pronamespace = ns.oid)
+WHERE ns.nspname = 'anon'
+  AND p.proname LIKE 'dummy_%'
+  AND p.proname NOT LIKE '%_locale'
+ORDER BY 1;
+-->
+
+* anon.dummy_bic()
+* anon.dummy_bs()
+* anon.dummy_bs_adj()
+* anon.dummy_bs_noun()
+* anon.dummy_bs_verb()
+* anon.dummy_building_number()
+* anon.dummy_buzzword()
+* anon.dummy_buzzword_middle()
+* anon.dummy_buzzword_tail()
+* anon.dummy_catchphrase()
+* anon.dummy_cell_number()
+* anon.dummy_city_name()
+* anon.dummy_city_prefix()
+* anon.dummy_city_suffix()
+* anon.dummy_color()
+* anon.dummy_company_name()
+* anon.dummy_company_suffix()
+* anon.dummy_country_code()
+* anon.dummy_country_name()
+* anon.dummy_credit_card_number()
+* anon.dummy_currency_code()
+* anon.dummy_currency_name()
+* anon.dummy_currency_symbol()
+* anon.dummy_dir_path()
+* anon.dummy_domain_suffix()
+* anon.dummy_file_extension()
+* anon.dummy_file_name()
+* anon.dummy_file_path()
+* anon.dummy_first_name()
+* anon.dummy_free_email()
+* anon.dummy_free_email_provider()
+* anon.dummy_health_insurance_code()
+* anon.dummy_hex_color()
+* anon.dummy_hsl_color()
+* anon.dummy_hsla_color()
+* anon.dummy_industry()
+* anon.dummy_ip()
+* anon.dummy_ipv4()
+* anon.dummy_ipv6()
+* anon.dummy_isbn()
+* anon.dummy_isbn13()
+* anon.dummy_isin()
+* anon.dummy_last_name()
+* anon.dummy_latitude()
+* anon.dummy_licence_plate()
+* anon.dummy_longitude()
+* anon.dummy_mac_address()
+* anon.dummy_name()
+* anon.dummy_name_with_title()
+* anon.dummy_phone_number()
+* anon.dummy_post_code()
+* anon.dummy_profession()
+* anon.dummy_rfc_status_code()
+* anon.dummy_rgb_color()
+* anon.dummy_rgba_color()
+* anon.dummy_safe_email()
+* anon.dummy_secondary_address()
+* anon.dummy_secondary_address_type()
+* anon.dummy_state_abbr()
+* anon.dummy_state_name()
+* anon.dummy_street_name()
+* anon.dummy_street_suffix()
+* anon.dummy_suffix()
+* anon.dummy_timezone()
+* anon.dummy_title()
+* anon.dummy_user_agent()
+* anon.dummy_username()
+* anon.dummy_uuidv1()
+* anon.dummy_uuidv3()
+* anon.dummy_uuidv4()
+* anon.dummy_uuidv5()
+* anon.dummy_valid_statux_code()
+* anon.dummy_word()
+* anon.dummy_words(int4range)
+* anon.dummy_zip_code()
+
+For each of this function, you can add the `_locale(...)` suffix and specify
+in which local context you want.
 
 For example:
 
 ```sql
-CREATE SCHEMA faker;
-CREATE EXTENSION faker SCHEMA faker;
-SELECT faker.faker('de_DE');
-SELECT faker.first_name_female();
- first_name_female
--------------------
- Mirja
+
+SELECT anon.dummy_last_name();
+ dummy_last_name
+------------------------
+ Tillman
+
+SELECT anon.dummy_last_name_locale('fr_FR');
+ dummy_last_name_locale
+------------------------
+ Granier
+
+SELECT anon.dummy_last_name_locale('pt_BR');
+ dummy_last_name_locale
+------------------------
+ Barreto
 ```
+
+Currently 7 locales are available: ar_SA, en_US(default), fr_FR, ja_JP,
+pt_BR, zh_CN, zh_TW.
+
+Not that some `dummy_` functions are not implemented for certain locales.
+If you wish to contribute or ask for missing fake data, please contact directly
+the [fake-rs] project, which is the library that this extension is using under the
+hood !
+
+[fake-rs]: https://github.com/cksac/fake-rs
+
 
 Pseudonymization
 ------------------------------------------------------------------------------
@@ -296,14 +510,29 @@ SECURITY LABEL FOR anon
   IS 'MASKED WITH FUNCTION anon.pseudo_email(users.login) ';
 ```
 
-**NOTE** : You may want to produce unique values using a pseudonymization
+**NOTE**: You may want to produce unique values using a pseudonymization
 function. For instance, if you want to mask an `email` column that is declared
 as `UNIQUE`. In this case, you will need to initialize the extension with a fake
 dataset that is **way bigger** than the numbers of rows of the table. Otherwise you
 may see some "collisions" happening, i.e. two different original values producing
 the same pseudo value.
 
-**WARNING** : Pseudonymization is often confused with anonymization but in fact
+
+It is also possible to pseudonymize a primary key using:
+
+* `anon.pseudo_shift(id)` returns a shifted version of the id
+* `anon.pseudo_xor(id)` returns an exclusive OR value of the id
+
+Both `anon.pseudo_shift(BIGINT)` and `anon.pseudo_xor(BIGINT)` functions use
+a secret value (`anon.shift`) to pseudonymize the primary key. That secret value
+can be initialized randomly with `anon.set_shift()` or defined with
+`anon.set_shift(INT)`.
+
+This is very useful to replace `anon.random_id()` when using [Backup Masking].
+
+[Backup Masking]: https://postgresql-anonymizer.readthedocs.io/en/stable/anonymous_dumps/
+
+**⚠️ WARNING**: Pseudonymization is often confused with anonymization but in fact
 they serve 2 different purposes : `pseudonymization` is a way to **protect** the
 personal information but the pseudonymized data is still "linked" to the real data.
 The GDPR makes it very clear that personal data which has undergone
@@ -311,13 +540,15 @@ pseudonymization is still related to a person. (see [GDPR Recital 26])
 
 [GDPR Recital 26]: https://www.privacy-regulation.eu/en/recital-26-GDPR.htm
 
+
 Generic hashing
 -------------------------------------------------------------------------------
 
-In theory, hashing is not a valid anonymization technique, however in practice
-it is sometimes necessary to generate a determinist hash of the original data.
+Hashing is another pseudonymization technique (see **WARNING** above). In
+practice it is sometimes useful to generate a determinist hash of the original
+data.
 
-For instance, when a pair of  primary key / foreign key is a "natural key",
+For instance, when a pair of primary key / foreign key is a "natural key",
 it may contain actual information ( like a customer number containing a birth
 date or something similar).
 
@@ -327,17 +558,17 @@ relatively unusual source data. Therefore, the
 * `anon.digest(value,salt,algorithm)` lets you choose a salt, and a hash algorithm
   from a pre-defined list
 
-* `anon.hash(value)`  will return a text hash of the value using a secret salt
+* `anon.hash(value)` will return a text hash of the value using a secret salt
   (defined by the `anon.salt` parameter) and hash algorithm (defined by the
   `anon.algorithm` parameter). The default value of `anon.algorithm` is
-  `sha256` and possible values are: md5, sha1, sha224, sha256, sha384 or
-  sha512. The default value of `anon.salt` is an empty string. You can
-  modify these values with:
+  `sha256` and possible values are: md5, sha224, sha256, sha384 or sha512.
+  The default value of `anon.salt` is an empty string. You can modify these
+  values with:
 
-  ```sql
-  ALTER DATABASE foo SET anon.salt TO 'xsfnjefnjsnfjsnf';
-  ALTER DATABASE foo SET anon.algorithm TO 'sha384';
-  ```
+    ```sql
+    ALTER DATABASE foo SET anon.salt TO 'xsfnjefnjsnfjsnf';
+    ALTER DATABASE foo SET anon.algorithm TO 'sha384';
+    ```
 
 Keep in mind that hashing is a form a [Pseudonymization]. This means that the
 data can be "de-anonymized" using the hashed value and the masking function. If an
@@ -376,6 +607,14 @@ Of course, cutting the hash value to 12 characters will increase the risk
 of "collision" (2 different values having the same fake hash). In such
 case, it's up to you to evaluate this risk.
 
+**⚠️ WARNING**: The hashing functions will fail when the input contains
+an unescaped character (especially a single backslash). In most situation,
+this is the sign of a bug in the application, generally when data input is not
+sanitized properly. Users who really want to mask unescaped characters with
+this function should disable the `standard_conforming_strings` parameter.
+See [Issue 539] for more details.
+
+[Issue 539]: https://gitlab.com/dalibo/postgresql_anonymizer/-/issues/539
 
 
 Partial Scrambling
@@ -397,11 +636,22 @@ or for a limited number of lines in the table.
 
 For instance, if you want to "preserve NULL values", i.e. masking only the lines
 that contains a value, you can use the `anon.ternary` function, which works
-like a `CASE WHEN x THEN y ELSE z` statement :
+like a `CASE WHEN x THEN y ELSE z` statement:
 
 ```sql
 SECURITY LABEL FOR anon ON COLUMN player.score
   IS 'MASKED WITH FUNCTION anon.ternary(score IS NULL,
+                                        NULL,
+                                        anon.random_int_between(0,100));
+```
+
+You can also use the `anon.ternary` function to keep a ratio of NULL values in
+the otherwise anonymized data like in the following example where each line as
+as 10% chance to be a NULL value:
+
+```sql
+SECURITY LABEL FOR anon ON COLUMN player.score
+  IS 'MASKED WITH FUNCTION anon.ternary(pg_catalog.random() <= .1,
                                         NULL,
                                         anon.random_int_between(0,100));
 ```
@@ -508,43 +758,71 @@ Using `pg_catalog` functions
 ------------------------------------------------------------------------------
 
 Since version 1.3, the `pg_catalog` schema is not trusted by default. This is
-a security measure designed to prevent users from using sophisticated functions in
-masking rules (such as `pg_catalog.query_to_xml`, `pg_catalog.ts_stat` or the
-[system administration functions] ) that should not be used as masking functions.
+a security measure designed to prevent users from using sophisticated functions
+inside masking rules (such as `pg_catalog.query_to_xml`, `pg_catalog.ts_stat`
+or the [system administration functions] ) that should not be used as masking
+functions.
 
 [system administration functions]: https://www.postgresql.org/docs/current/functions-admin.html.
 
-However, the extension provides bindings to some useful and safe functions
-from the `pg_catalog` schema for your convenience:
+However, the extension allows using some useful and safe functions from the
+`pg_catalog` schema for your convenience. These are small subset of functions
+that are declared as `TRUSTED` for anonymization.
 
-<!--
-  Update the list below with:
-  sed -n '50,150p' anon.sql | grep '^CREATE.*' | sed -e  's/^.*FUNCTION/-/'
--->
+The list of TRUSTED pg_catalog functions is available via the
+`anon.pg_trusted_functions` views :
 
-- anon.concat(TEXT,TEXT)
-- anon.date_add(TIMESTAMP WITH TIME ZONE,INTERVAL)
-- anon.date_part(TEXT,TIMESTAMP)
-- anon.date_part(TEXT,INTERVAL)
-- anon.date_subtract(TIMESTAMP WITH TIME ZONE, INTERVAL )
-- anon.date_trunc(TEXT,TIMESTAMP)
-- anon.date_trunc(TEXT,TIMESTAMP WITH TIME ZONE,TEXT)
-- anon.date_trunc(TEXT,INTERVAL)
-- anon.left(TEXT)
-- anon.lower(TEXT)
-- anon.make_date(INT,INT,INT )
-- make_time(INT,INT,DOUBLE PRECISION)
-- anon.md5(TEXT,INTEGER)
-- anon.right(TEXT,INTEGER)
-- anon.substr(TEXT,INTEGER)
-- anon.substr(TEXT,INTEGER,INTEGER)
-- anon.upper(TEXT)
 
-If you need more bindings, you can either
+``` sql
+SELECT * FROM anon.pg_trusted_functions;
+```
 
-- Write your own mapping function in a trusted schema (see below)
-- Set the `pg_catalog` schema as `TRUSTED` (not recommended)
-- open an issue
+If you need to use a pg_catalog function which is not in this list, you can
+ask a superuser to trust it with:
+
+``` sql
+SECURITY LABEL FOR anon ON FUNCTION pg_catalog.foo IS 'TRUSTED';
+```
+
+> Note: Even when [multiple masking policies] are defined, the functions must be
+> declared as `TRUSTED` in the "anon" policy and they will be trusted for all
+> policies.
+
+[multiple masking policies]: declare_masking_rules.md#multiple_masking_policies
+
+Image bluring
+------------------------------------------------------------------------------
+
+Images can show some sensitive data, for example
+
+- A photo concerning personal data.
+- A barcode representing personal data.
+
+it is possible to blur this image using
+
+* `anon.image_blur(data,sigma)` returns a bytea
+* data type `bytea`: the image data
+* sigma type `numeric`: This parameter controls the amount of blurring.
+  A higher sigma value results in a more blurred image,
+  while a lower sigma value results in a less blurred image.
+
+usage :
+
+```sql
+CREATE TABLE images (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    image_data BYTEA NOT NULL
+);
+create extension anon;
+SELECT anon.init();
+
+SECURITY LABEL FOR anon ON COLUMN images.image_data
+IS 'MASKED WITH FUNCTION anon.image_blur(image_data,1.0)';
+
+SELECT anon.anonymize_database();
+
+```
 
 
 Write your own Masks !
@@ -601,9 +879,6 @@ through the keys and replace the sensitive values as needed.
 ```sql
 CREATE SCHEMA custom_masks;
 
--- This step requires superuser privilege
-SECURITY LABEL FOR anon ON SCHEMA custom_masks IS 'TRUSTED';
-
 CREATE FUNCTION custom_masks.remove_last_name(j JSONB)
 RETURNS JSONB
 VOLATILE
@@ -618,6 +893,10 @@ SELECT
   )::JSONB
 FROM jsonb_array_elements( j->'employees') e
 $func$;
+
+-- This step requires superuser privilege
+SECURITY LABEL FOR anon ON FUNCTION custom_masks.remove_last_name IS 'TRUSTED';
+
 ```
 
 Then check that the function is working correctly:
@@ -665,4 +944,3 @@ sophisticated JSON structure with SQL is possible, but it can be tricky at
 first! There are multiple ways of walking through the keys and updating
 values. You will probably have to try different approaches, depending on
 your real JSON data and the performance you want to reach.
-
