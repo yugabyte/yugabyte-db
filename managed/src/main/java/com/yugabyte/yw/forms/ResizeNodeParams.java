@@ -4,7 +4,6 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -31,7 +30,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -311,14 +309,6 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           return "Disk resizing is not supported for onprem providers";
         }
         if (provider.getCloudCode() == Common.CloudType.azu
-            && isAzureDiskWithoutLiveExpandLimit(curDeviceInfo.storageType)) {
-          String controllerError =
-              getAzureDiskControllerError(provider, node, curDeviceInfo.storageType);
-          if (controllerError != null) {
-            return controllerError;
-          }
-        }
-        if (provider.getCloudCode() == Common.CloudType.azu
             && !isAzureDiskWithoutLiveExpandLimit(curDeviceInfo.storageType)
             && curDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
             && newDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
@@ -360,53 +350,15 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
   }
 
   /**
-   * Azure expands Premium SSD v2 and Ultra disks while they are attached to a running VM that uses
-   * an NVMe disk controller (see {@link #getAzureDiskControllerError}), and the rule that a disk of
-   * up to 4 TiB cannot grow past 4 TiB without deallocating the VM does not apply to them. Only the
-   * size can be changed this way: IOPS and throughput changes on Azure are rejected by {@code
-   * checkDiskChanged}.
+   * Azure expands Premium SSD v2 and Ultra disks while they are attached to a running VM, with
+   * either an NVMe or a SCSI disk controller, and the rule that a disk of up to 4 TiB cannot grow
+   * past 4 TiB without deallocating the VM does not apply to them. Only the size can be changed
+   * this way: IOPS and throughput changes on Azure are rejected by {@code checkDiskChanged}.
    */
   private static boolean isAzureDiskWithoutLiveExpandLimit(
       PublicCloudConstants.StorageType storageType) {
     return storageType == PublicCloudConstants.StorageType.UltraSSD_LRS
         || storageType == PublicCloudConstants.StorageType.PremiumV2_LRS;
-  }
-
-  /**
-   * Premium SSD v2 and Ultra disks can be expanded without downtime only on a VM with an NVMe disk
-   * controller, so smart resize is rejected for a node whose VM uses SCSI. Asks Azure for the
-   * node's controller. A node whose controller cannot be determined is rejected as well: letting it
-   * through would fail the resize in the middle of the task.
-   *
-   * @return null if the node's VM uses NVMe, otherwise the error message
-   */
-  private static String getAzureDiskControllerError(
-      Provider provider, NodeDetails node, PublicCloudConstants.StorageType storageType) {
-    Optional<Boolean> usesNvme;
-    try {
-      CloudAPI cloudAPI =
-          StaticInjectorHolder.injector()
-              .instanceOf(CloudAPI.Factory.class)
-              .get(provider.getCloudCode().name());
-      usesNvme =
-          cloudAPI == null ? Optional.empty() : cloudAPI.usesNvmeDiskController(provider, node);
-    } catch (Exception e) {
-      log.warn("Failed to get disk controller type of node {}", node.nodeName, e);
-      usesNvme = Optional.empty();
-    }
-    if (!usesNvme.isPresent()) {
-      return String.format(
-          "%s supports resizing without downtime only with NVMe disk controller, and disk"
-              + " controller type of node %s could not be determined",
-          storageType, node.nodeName);
-    }
-    if (!usesNvme.get()) {
-      return String.format(
-          "%s doesn't support resizing without downtime on node %s, which uses SCSI disk"
-              + " controller",
-          storageType, node.nodeName);
-    }
-    return null;
   }
 
   /**

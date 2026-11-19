@@ -13,7 +13,6 @@ import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.resourcemanager.compute.fluent.models.DiskInner;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
 import com.azure.resourcemanager.compute.models.DataDisk;
-import com.azure.resourcemanager.compute.models.DiskControllerTypes;
 import com.azure.resourcemanager.compute.models.NetworkInterfaceReference;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
 import com.azure.resourcemanager.network.fluent.models.FrontendIpConfigurationInner;
@@ -802,27 +801,6 @@ public class AZUCloudImpl implements CloudAPI {
             ? null
             : vm.hardwareProfile().vmSize().toString();
     return Optional.of(CloudAPI.NodeDiskSpec.mergeDataDisks(instanceType, perDisk));
-  }
-
-  /**
-   * Azure reports the controller in the VM storage profile. It is absent on VMs created before the
-   * property existed and those attach their disks through SCSI, so anything but NVMe is SCSI.
-   */
-  @Override
-  public Optional<Boolean> usesNvmeDiskController(Provider provider, NodeDetails node) {
-    if (node == null
-        || node.cloudInfo == null
-        || StringUtils.isBlank(node.cloudInfo.region)
-        || StringUtils.isBlank(node.nodeName)) {
-      throw new PlatformServiceException(BAD_REQUEST, "Azure node is missing region or name");
-    }
-    VirtualMachineInner vm =
-        getApiClient(provider, node.cloudInfo.region).getVirtulMachineDetailsByName(node.nodeName);
-    if (vm.storageProfile() == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Azure VM " + node.nodeName + " has no storage profile");
-    }
-    return Optional.of(DiskControllerTypes.NVME.equals(vm.storageProfile().diskControllerType()));
   }
 
   private static String diskNameFromId(String diskId) {

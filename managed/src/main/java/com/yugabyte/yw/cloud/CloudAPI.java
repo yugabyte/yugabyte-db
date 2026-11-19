@@ -167,16 +167,6 @@ public interface CloudAPI {
     return Optional.empty();
   }
 
-  /**
-   * Whether the node's VM attaches its disks through an NVMe controller, as opposed to SCSI.
-   *
-   * <p>Default is empty, meaning the cloud cannot tell. Callers that gate an operation on the
-   * controller type must treat empty as unverified, not as NVMe.
-   */
-  default Optional<Boolean> usesNvmeDiskController(Provider provider, NodeDetails node) {
-    return Optional.empty();
-  }
-
   /** Aggregated instance + data-disk snapshot for one node. */
   @Getter
   class NodeDiskSpec {
