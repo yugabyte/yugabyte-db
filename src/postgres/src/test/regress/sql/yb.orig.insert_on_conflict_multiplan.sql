@@ -65,9 +65,9 @@ ABORT;
 -- of the batch read from the table, so it is believed that 2 exists in the
 -- table, even though by the time we actually flush this 2 (which is during
 -- ExecPostprocessPlan), the existing 2 was ON CONFLICT DO UPDATEd by the main
--- statement.  The misinformation causes this 2 to take the ON CONFLICT DO
--- UPDATE path, so the output shows both 2s as taking the ON CONFLICT DO UPDATE
--- path.
+-- statement, which moved it to another key.  Like the arbiter check of a heap
+-- table, the batch treats a row that the statement deleted or moved as absent,
+-- so this 2 is inserted.
 -- batch size >=4: the odd value is reached, which causes the parttrigtrig_odd
 -- table to get loaded with knowledge that a trigger named parttrigtrig_odd
 -- exists.  But by the time we get around to executing the insertion of this
@@ -110,9 +110,10 @@ DROP TRIGGER parttrigtrig_odd ON parttrigtab_odd;
 -- batch size 3: one extra value, 2, is consumed.  This causes the 2 to be part
 -- of the batch read from the table, so it is believed that 2 exists in the
 -- table, even though by the time we actually flush this 2 (which is during g=6
--- input), the existing 2 was ON CONFLICT DO UPDATEd by the main statement.
--- The misinformation causes this 2 to take the ON CONFLICT DO UPDATE path, so
--- the output shows both 2s as taking the ON CONFLICT DO UPDATE path.
+-- input), the existing 2 was ON CONFLICT DO UPDATEd by the main statement,
+-- which moved it to another key.  Like the arbiter check of a heap table, the
+-- batch treats a row that the statement deleted or moved as absent, so this 2
+-- is inserted.
 -- batch size >=4: g=6 value is reached, which causes the WITH statement's 2 to
 -- take the ON CONFLICT DO UPDATE path and the main statement's 2 to get
 -- inserted normally.
