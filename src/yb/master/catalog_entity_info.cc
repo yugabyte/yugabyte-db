@@ -989,12 +989,16 @@ bool TableInfo::HasPartitions(const std::vector<PartitionKey> other) const {
   return true;
 }
 
-Result<TabletInfos> TableInfo::GetTabletsIncludeInactive() const {
+Result<TabletInfos> TableInfo::GetTabletsIncludeInactive(SkipFreedTablets skip_freed) const {
   TabletInfos result;
   SharedLock<decltype(lock_)> l(lock_);
   result.reserve(tablets_.size());
   for (const auto& [_, tablet_weak_ptr] : tablets_) {
-    result.push_back(VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr)));
+    auto tablet =
+        skip_freed ? tablet_weak_ptr.lock() : VERIFY_RESULT(PromoteTabletPointer(tablet_weak_ptr));
+    if (tablet) {
+      result.push_back(std::move(tablet));
+    }
   }
   return result;
 }
