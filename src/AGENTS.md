@@ -2,14 +2,14 @@
 Never operate on master branch directly. Always create a new local branch and work on that.
 Pushing the branch to yugabyte/yugabyte-db repository is not allowed. If you are on a personal fork, you can push to that.
 Changes are reviewed, tested, and merged as GitHub PRs: publish with the `create-pr` skill and backport with `/backport-commit`. Merging is done by the human.
-Phorge (`arc diff` / `arc land`) is being retired: it stops accepting new diffs on 2026-11-23 and stops landing them on 2026-12-21. Use it only when the user explicitly asks for a Phorge diff.
+Phorge (`arc diff` / `arc land`) is being retired: it stops accepting new diffs on 2026-11-23 and stops landing them on 2026-12-21. Use it only when the user explicitly asks for a Phorge diff. `arc land` is always done by the human.
 
 Avoid using non-ASCII characters in files and commit messages.
 There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
 
 ## Confidentiality — never leak customer data, YugabyteDB secrets, or PII
 
-The `yugabyte/yugabyte-db` repo is public. Anything you write to a public destination — repo, issues, PRs, comments, commit messages, Phorge diffs, mailing lists, public Slack, gists — is permanent and unretractable. This rule overrides convenience: if it means writing a slower synthetic reproducer instead of pasting the customer's repro, write the synthetic reproducer.
+The `yugabyte/yugabyte-db` repo is public, and **Phorge is treated as public too** (diff titles, summaries, test plans, and attached code land on the public repo verbatim when upstreamed). Anything you write to a public destination — repo, issues, PRs, comments, commit messages, Phorge diffs, mailing lists, public Slack, gists — is permanent and unretractable. This rule overrides convenience: if it means writing a slower synthetic reproducer instead of pasting the customer's repro, write the synthetic reproducer.
 
 Internal destinations are different: direct chat with the user, internal JIRA, internal Slack, and support cases are fine places to discuss customer specifics. The rules below are about what crosses into a public artifact.
 
@@ -38,7 +38,7 @@ When the source material is a customer report:
 
 ### Scrub checklist before any public publish
 
-Before running `create-pr.sh`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
+Before running `create-pr.sh`, `arc diff`, `gh pr comment`, `gh issue create`, or any push of a branch that has an open PR, scan the new content (diffs, message files, comments) for:
 
 - [ ] No customer company names, account IDs, universe/cluster names or UUIDs, support case numbers, environment names, region/zone names.
 - [ ] No real email addresses, names, phone numbers, postal addresses, or IPs (public or private).

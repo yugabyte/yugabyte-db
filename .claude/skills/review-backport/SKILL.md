@@ -14,14 +14,14 @@ Review a YugabyteDB backport by comparing it to the original commit and identify
 
 For the review *policy* (what counts as a backport, what to flag vs. ignore, byte-identical-hunk handling, and the `## Merge conflicts` convention), see the **Backport PRs** section of `@../../../REVIEW.md`. This skill covers the *mechanics* of fetching and comparing the diffs and tracing unexplained code back to its origin on master.
 
-Only fetching the backport itself depends on where it lives. The original is a commit on master, so compare against `git show <sha>` and trace history with `git`, whether the original landed as a PR or via Phorge.
+The original is a commit on master, so compare against `git show <sha>` and trace history with `git`, whether the original landed as a PR or via Phorge. Which tools you need depends on where the backport lives and on what the additional references in its description point at.
 
 ## Prerequisites
 
 Run `git fetch <upstream>` first, where `<upstream>` is the remote pointing at `yugabyte/yugabyte-db` (`git remote -v`), so the original commit and the target release branch are available locally.
 
-- **GitHub PR:** `gh` installed and authenticated (`gh auth status`).
-- **Phorge diff:** the Phorge MCP server. If it is not available, instruct the user to set it up:
+- **GitHub PR backport, or any `#<PR>` reference:** `gh` installed and authenticated (`gh auth status`).
+- **Phorge backport, or a referenced Phorge revision that never landed:** the Phorge MCP server. If it is not available, instruct the user to set it up:
   1. **Generate a Conduit API token.** In Phorge, click on your profile in the top right → Settings → Conduit API Tokens → Generate Token.
   2. **Add the Phorge MCP server** to the agent's MCP config (e.g. `~/.cursor/mcp.json`, or `claude mcp add` for Claude Code), replacing the API token with the one you just generated:
 
@@ -91,7 +91,7 @@ Either way, check that the version in the title matches the target branch (e.g. 
    - "Also includes changes from #34567."
    - Any other `D<number>`, `#<PR>`, or commit SHA that is not the original.
 
-   Collect them all.
+   Collect them all, then drop every reference that also appears in the original commit's body (`git log -1 --format=%b <original_sha>`): `/backport-commit` copies that body into the backport verbatim, so its issue number and regression references are not changes the backport author added.
 
 3. **Documented conflict resolutions**: the `## Merge conflicts` section of a PR body, or the `Merge conflicts:` block in a Phorge summary.
 
