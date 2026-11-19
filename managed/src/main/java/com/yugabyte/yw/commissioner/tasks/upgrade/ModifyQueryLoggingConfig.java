@@ -48,6 +48,12 @@ public class ModifyQueryLoggingConfig extends UpgradeTaskBase {
     return NodeState.Reprovisioning;
   }
 
+  // Query logging restarts only tservers.
+  @Override
+  protected boolean needsUniverseKeyCheck() {
+    return false;
+  }
+
   @Override
   protected MastersAndTservers calculateNodesToBeRestarted() {
     return fetchNodes(taskParams().upgradeOption);

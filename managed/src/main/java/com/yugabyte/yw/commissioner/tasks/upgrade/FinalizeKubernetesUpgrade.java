@@ -28,6 +28,12 @@ public class FinalizeKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     this.softwareUpgradeHelper = softwareUpgradeHelper;
   }
 
+  // Finalize only promotes AutoFlags and upgrades the catalog. It restarts no pod.
+  @Override
+  protected boolean needsUniverseKeyCheck() {
+    return false;
+  }
+
   @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.FinalizingUpgrade;
