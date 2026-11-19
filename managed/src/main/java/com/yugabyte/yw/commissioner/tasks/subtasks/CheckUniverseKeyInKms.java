@@ -57,6 +57,7 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
     }
     byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
     String cause = "KMS returned no key, see the YBA log";
+    Exception kmsError = null;
     byte[] keyVal = null;
     try {
       keyVal =
@@ -69,6 +70,7 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
                   activeKey.getEncryptionContext());
     } catch (Exception e) {
       log.error("Failed to get universe key from KMS for universe {}", universeUUID, e);
+      kmsError = e;
       Throwable rootCause = Throwables.getRootCause(e);
       cause =
           rootCause.getMessage() != null
@@ -80,7 +82,8 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
           String.format(
               "YBA cannot get the active universe key from KMS config '%s': %s. Restore KMS"
                   + " access before running this task, or restarted masters will not get the key.",
-              kmsConfig.getName(), cause));
+              kmsConfig.getName(), cause),
+          kmsError);
     }
     log.info(
         "Got the active universe key from KMS config '{}' for universe {}",

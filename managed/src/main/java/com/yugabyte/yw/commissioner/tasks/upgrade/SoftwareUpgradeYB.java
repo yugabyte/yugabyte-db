@@ -95,7 +95,7 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
   protected void createPrecheckTasks(Universe universe) {
     if (isResumeTask()) {
       // A canary resume can still restart masters, so keep the KMS key check.
-      if (restartsMasters(taskParams().upgradeOption, getNodesToBeRestarted())) {
+      if (needsUniverseKeyCheck()) {
         createCheckUniverseKeyInKmsTask(universe);
       }
       return;
