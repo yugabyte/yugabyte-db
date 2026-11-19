@@ -239,7 +239,8 @@ TEST_F_EX(
 }
 
 // With client certificates off locally, a certificate placed for the remote universe after the
-// context was created is presented once the context is reloaded.
+// context was created is presented once the context is reloaded, and no longer once it is
+// removed and the context reloaded again.
 TEST_F_EX(
     SecureConnectionTest, RemoteUniverseClientCertificatePlacedLater,
     SecureConnectionRemoteUniverseClientTest) {
@@ -254,14 +255,17 @@ TEST_F_EX(
       env, JoinPathSegments(FLAGS_certs_dir, "ca.crt"),
       JoinPathSegments(remote_certs_dir, "ca.crt")));
 
-  auto messenger_builder = CreateMiniClusterMessengerBuilder();
+  auto setup_builder = CreateMiniClusterMessengerBuilder();
   auto secure_context = ASSERT_RESULT(
-      rpc::SetupRemoteUniverseSecureContext(remote_certs_dir, &messenger_builder));
-  auto messenger = ASSERT_RESULT(messenger_builder.Build());
-  auto se = ScopeExit([&messenger] { messenger->Shutdown(); });
-  rpc::ProxyCache proxy_cache(messenger.get());
-  server::GenericServiceProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
-  auto ping = [&proxy] {
+      rpc::SetupRemoteUniverseSecureContext(remote_certs_dir, &setup_builder));
+  // A reload applies only to connections opened afterwards, so each ping uses a new messenger.
+  auto ping = [this, &secure_context]() -> Status {
+    auto builder = CreateMiniClusterMessengerBuilder();
+    rpc::ApplySecureContext(secure_context.get(), &builder);
+    auto messenger = VERIFY_RESULT(builder.Build());
+    auto se = ScopeExit([&messenger] { messenger->Shutdown(); });
+    rpc::ProxyCache proxy_cache(messenger.get());
+    server::GenericServiceProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
     server::PingRequestPB req;
     server::PingResponsePB resp;
     rpc::RpcController controller;
@@ -271,14 +275,21 @@ TEST_F_EX(
   ASSERT_NOK(ping());
 
   // Each server's certificate, so the one named after the local node is among them.
+  std::vector<std::string> placed;
   for (const auto& file : ASSERT_RESULT(env->GetChildren(FLAGS_certs_dir, ExcludeDots::kTrue))) {
     if (file.starts_with("node.")) {
-      ASSERT_OK(env_util::CopyFile(
-          env, JoinPathSegments(FLAGS_certs_dir, file), JoinPathSegments(remote_certs_dir, file)));
+      placed.push_back(JoinPathSegments(remote_certs_dir, file));
+      ASSERT_OK(env_util::CopyFile(env, JoinPathSegments(FLAGS_certs_dir, file), placed.back()));
     }
   }
   ASSERT_OK(rpc::ReloadRemoteUniverseSecureContext(secure_context.get(), remote_certs_dir));
   ASSERT_OK(ping());
+
+  for (const auto& file : placed) {
+    ASSERT_OK(env->DeleteFile(file));
+  }
+  ASSERT_OK(rpc::ReloadRemoteUniverseSecureContext(secure_context.get(), remote_certs_dir));
+  ASSERT_NOK(ping());
 }
 
 class SecureConnectionVerifyNameOnlyTest : public SecureConnectionTest {

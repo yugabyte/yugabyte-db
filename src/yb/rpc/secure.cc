@@ -305,13 +305,12 @@ Result<std::unique_ptr<SecureContext>> SetupRemoteUniverseSecureContext(
     return nullptr;
   }
 
-  auto certs = VERIFY_RESULT(GetRemoteUniverseCertificates(remote_certs_dir));
-  auto use_client_certs = !certs.node_name.empty();
+  // Only ever dials out, so requiring peer certificates doesn't apply. The reload picks the
+  // certificates and whether to present one, so setup and reload can't disagree.
   auto context = std::make_unique<SecureContext>(
-      RequireClientCertificate(use_client_certs), UseClientCertificate(use_client_certs),
+      RequireClientCertificate::kFalse, UseClientCertificate::kFalse,
       FLAGS_node_to_node_encryption_required_uid);
-  RETURN_NOT_OK(
-      LoadKeysAndCertificates(context.get(), certs.ca_dir, certs.cert_dir, certs.node_name));
+  RETURN_NOT_OK(ReloadRemoteUniverseSecureContext(context.get(), remote_certs_dir));
   ApplySecureContext(context.get(), builder);
   return context;
 }
