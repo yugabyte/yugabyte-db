@@ -34,10 +34,20 @@ message LightweightMethodOptions {
 
 extend google.protobuf.FieldOptions {
   LightweightFieldOptions lightweight_field = 50000;
+  TraceFieldOptions trace = 50001;
 }
 
 message LightweightFieldOptions {
   bool pointer = 1;
+}
+
+// Marks a field to be emitted as an attribute on the outbound RPC's trace span.
+// Descriptor metadata only -- never serialized onto the wire.
+message TraceFieldOptions {
+  // include this field as a span attribute
+  bool enabled = 1;
+  // field is `bytes` but holds text (e.g. hex id) -- emit as-is, don't hex-encode
+  bool bytes_as_string = 2;
 }
 
 extend google.protobuf.MessageOptions {

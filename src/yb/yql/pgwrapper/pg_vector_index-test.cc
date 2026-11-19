@@ -36,6 +36,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
+#include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_entity_info.h"
@@ -98,6 +99,7 @@ DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_load_transactions_sync);
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_vector_index_stamp_after_restore_reopen);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_vectors);
@@ -126,8 +128,10 @@ DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(TEST_sleep_before_restore_checkpoint_resumes_ops_ms);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
@@ -144,6 +148,7 @@ DECLARE_uint32(vector_index_num_compactions_limit);
 DECLARE_uint64(vector_index_compaction_chunk_max_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_memstore_size_mb);
 DECLARE_uint64(vector_index_initial_chunk_size);
+DECLARE_uint64(vector_index_max_extra_tied_results);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
@@ -2147,6 +2152,67 @@ TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
 
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+}
+
+// A restored vector index that needs a compaction right away must not start it before the
+// restore resumes read/write operations. The compaction would fail with TryAgain, the index would
+// keep that failure, and the restore apply or the next write would crash the tserver. See DB-23803.
+TEST_P(PgVectorIndexTest, CompactionAfterSnapshotRestore) {
+  constexpr size_t kBatch = 8;
+
+  num_pre_split_tablets_ = 1;
+  // Accumulate enough chunks for a compaction, but let it start only from the restore.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  size_t num_rows = 0;
+  for (int i = 0; i != GetFileNumCompactionTrigger(); ++i) {
+    ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kBatch));
+    num_rows += kBatch;
+    // A lagging follower would put several batches into one chunk and have nothing to compact.
+    ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
+  }
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto hybrid_time = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
+
+  std::atomic<size_t> num_compacted{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::DoCompact:ChunksUpdated", [&num_compacted](void*) {
+    ++num_compacted;
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+  // Hold the pause long enough for a compaction enabled under it to reach its first read.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms) =
+      1000 * kTimeMultiplier;
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms) = 0;
+
+  // One compaction per tablet replica.
+  const auto num_indexes = ListVectorIndexes(cluster_.get()).size();
+  ASSERT_OK(LoggedWaitFor(
+      [&num_compacted, num_indexes] { return num_compacted >= num_indexes; },
+      30s * kTimeMultiplier, "Restored indexes compacted"));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
+  ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kBatch));
+  ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
 }
 
 void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
@@ -6682,6 +6748,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
         "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1", VectorOp(), limit))));
   }
 
+  static constexpr int64_t kUnappliedInsertRowId = 100;
+
   static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
     RETURN_NOT_OK(conn.Execute("BEGIN"));
     RETURN_NOT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = $1", vector, id));
@@ -6689,6 +6757,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
   }
 
   void TestUnappliedVectorUpdates();
+  void TestReverseMappingPostSplitCompactionUnappliedInsert(
+      const std::string& statement, int num_row_entries);
 };
 
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
@@ -6866,6 +6936,134 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 
   // Make sure the test hit the test path that clears result entries.
   ASSERT_FALSE(ANNOTATE_UNPROTECTED_READ(docdb::TEST_vector_index_clear_result_entries_once));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
+// The prefetch size is the scan's limit, so WITH TIES needs more than one page. A page returns the
+// whole tie at its end, so the next page, which skips rows by count, does not cut it. Ties past
+// vector_index_max_extra_tied_results are cut, then the rows of the tie after the cut are left out,
+// but no row is returned twice.
+TEST_F(PgVectorIndexUtilTest, PagedSearchWithTies) {
+  constexpr int kNumGroups = 10;
+  constexpr int kGroupSize = 8;
+  constexpr size_t kMaxExtraTiedResults = 2;
+
+  num_pre_split_tablets_ = 1;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn));
+
+  // All rows of group g share the vector [10 * g, 0, 0].
+  std::vector<std::vector<int64_t>> groups(kNumGroups);
+  int64_t id = 0;
+  for (int g = 0; g != kNumGroups; ++g) {
+    for (int i = 0; i != kGroupSize; ++i) {
+      groups[g].push_back(++id);
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 0]')", id, 10 * g));
+    }
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto rounds = [this] {
+    uint64_t result = 0;
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      result += cluster_->mini_tablet_server(i)->metric_entity()
+          .FindOrCreateMetric<EventStats>(&METRIC_vector_index_partitions_queried)->underlying()
+          ->TotalCount();
+    }
+    return result;
+  };
+
+  auto check = [&](const std::string& stage) -> Status {
+    const auto max_extra_tied_results = FLAGS_vector_index_max_extra_tied_results;
+    for (int g = 0; g != kNumGroups; ++g) {
+      auto rounds_before = rounds();
+      auto rows = VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
+          "SELECT id FROM test ORDER BY embedding $0 '[$1, 0, 0]' FETCH FIRST 1 ROWS WITH TIES",
+          VectorOp(), 10 * g)));
+      auto context = Format("$0, group $1: $2", stage, g, AsString(rows));
+      // The search must have paged for the test to cover the issue.
+      SCHECK_GT(rounds() - rounds_before, 1U, IllegalState, context);
+      std::ranges::sort(rows);
+      SCHECK(std::ranges::adjacent_find(rows) == rows.end(), IllegalState,
+             "Duplicate rows, " + context);
+      SCHECK(std::ranges::includes(groups[g], rows), IllegalState,
+             "Rows of another group, " + context);
+      const size_t expected_size = std::min<size_t>(kGroupSize, 1 + max_extra_tied_results);
+      SCHECK_EQ(rows.size(), expected_size, IllegalState, context);
+    }
+    return Status::OK();
+  };
+
+  // Before the flush the mutable hnswlib chunk serves the search, after the compaction YbHnsw does.
+  ASSERT_OK(check("Before flush"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = kMaxExtraTiedResults;
+  ASSERT_OK(check("Before flush, ties cut"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = 1024;
+  ASSERT_OK(cluster_->CompactTablets());
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+  ASSERT_OK(check("After compaction"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = kMaxExtraTiedResults;
+  ASSERT_OK(check("After compaction, ties cut"));
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/37003.
+// The join rejects the rows at the query point. With vector_index_max_extra_tied_results = 0 the
+// pages cut the tie there, so each page drops the tied rows the re-run search returns again. A
+// tablet that is still dropping ties must not let another tablet's farther row out before its own
+// nearer one.
+TEST_F(PgVectorIndexUtilTest, PagedSearchWithTiesAcrossTablets) {
+  constexpr int kNumClusters = 20;
+  constexpr int kNumTies = 20;
+  constexpr int kNumFar = 10;
+
+  num_pre_split_tablets_ = 2;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(conn.Execute("CREATE TABLE keep (id BIGINT PRIMARY KEY)"));
+
+  // Cluster c has kNumTies rows at its center [100 * c, 0, 0], the nearest row to the center after
+  // them at distance 10, and kNumFar rows at distance 20.
+  std::vector<int64_t> nearest(kNumClusters);
+  int64_t id = 0;
+  for (int c = 0; c != kNumClusters; ++c) {
+    for (int i = 0; i != kNumTies; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 0]')", ++id, 100 * c));
+    }
+    nearest[c] = ++id;
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 10, 0]')", id, 100 * c));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO keep VALUES ($0)", id));
+    for (int i = 0; i != kNumFar; ++i) {
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES ($0, '[$1, 0, 20]')", ++id, 100 * c));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO keep VALUES ($0)", id));
+    }
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  // A batched nested loop or a hash join would sort the joined rows by distance again.
+  ASSERT_OK(conn.Execute("SET yb_bnl_batch_size = 1"));
+  ASSERT_OK(conn.Execute("SET enable_hashjoin = off"));
+  ASSERT_OK(conn.Execute("SET enable_mergejoin = off"));
+
+  auto rounds = [this] {
+    return cluster_->mini_tablet_server(0)->metric_entity()
+        .FindOrCreateMetric<EventStats>(&METRIC_vector_index_partitions_queried)->underlying()
+        ->TotalCount();
+  };
+
+  for (auto max_extra_tied_results : {uint64_t{1024}, uint64_t{0}}) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_extra_tied_results) = max_extra_tied_results;
+    for (int c = 0; c != kNumClusters; ++c) {
+      auto query = Format(
+          "SELECT test.id FROM test INNER JOIN keep ON test.id = keep.id "
+          "ORDER BY test.embedding $0 '[$1, 0, 0]' LIMIT 1",
+          VectorOp(), 100 * c);
+      auto rounds_before = rounds();
+      auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
+      auto context = Format("Cluster $0, max extra tied results $1", c, max_extra_tied_results);
+      ASSERT_GT(rounds() - rounds_before, 1U) << context;
+      ASSERT_EQ(rows, std::vector<int64_t>{nearest[c]}) << context;
+    }
+  }
 }
 
 // Rows 1..20 hold [i, 2i, 3i]: row 20 is the nearest of them to kQueryA and row 1 to kQueryB. Each
@@ -7111,6 +7309,86 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
           ybctid_2_vector_1 -> DEL
       )#",
       with_row2_dump);
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/38070. The statement removes the vector of
+// a row, while the insert of the row is committed but not applied. num_row_entries is the number of
+// reverse mapping entries of the row which the statement writes.
+void PgVectorIndexUtilTest::TestReverseMappingPostSplitCompactionUnappliedInsert(
+    const std::string& statement, int num_row_entries) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  // The held apply reaches the children when its resend to the parent fails with a split error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // The statement has to be applied before the held apply is resent.
+  constexpr int64_t kResendIntervalSec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) =
+      kResendIntervalSec * kTimeMultiplier * MonoTime::kMicrosecondsPerSecond;
+
+  constexpr size_t kNumRows = 10;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+
+  // The insert is committed, but not applied. Its vector is the nearest to the origin.
+  google::SetVLOGLevel("transaction_participant", 2);
+  StringWaiterLogSink rejected_apply_log("TEST: Rejected apply");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[0.5, 0.5, 0.5]')", kUnappliedInsertRowId));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(rejected_apply_log.WaitFor(10s * kTimeMultiplier));
+
+  // The statement reads the row from the intents. Its apply writes the reverse mapping tombstone.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(conn.Execute(statement));
+  std::string dump;
+  ASSERT_OK(WaitFor([this, &dump]() -> Result<bool> {
+    dump = VERIFY_RESULT(DumpSingleTabletReverseMapping());
+    return dump.find("-> DEL") != std::string::npos;
+  }, 10s * kTimeMultiplier, "Reverse mapping tombstone"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  const auto row_entry = Format(" -> ybctid_$0\n", kUnappliedInsertRowId);
+  dump += '\n';
+  ASSERT_EQ(CountSubstring(dump, row_entry), num_row_entries) << "The insert is applied: " << dump;
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitForAllIntentsApplied(
+      cluster_.get(), MonoDelta::FromSeconds(kResendIntervalSec + 30) * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+
+  // The row has a far vector now (a deleted row is inserted back), so the vector of its old version
+  // would come first.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[100, 100, 100]') ON CONFLICT DO NOTHING",
+      kUnappliedInsertRowId));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 5)), "[1, 2, 3, 4, 5]");
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionDeleteOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format("DELETE FROM test WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 0);
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionUpdateOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format(
+          "UPDATE test SET embedding = '[100, 100, 100]' WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 1);
 }
 
 TEST_F(PgVectorIndexUtilTest, SstDump) {

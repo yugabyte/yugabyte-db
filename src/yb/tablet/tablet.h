@@ -147,6 +147,14 @@ struct TabletScopedRWOperationPauses {
   std::array<ScopedRWOperationPause*, 2> AsArray() {
     return {&blocking_rocksdb_shutdown_start, &not_blocking_rocksdb_shutdown_start};
   }
+
+  // Releases the pauses in the reverse order of StartShutdownStorages, the same order the
+  // destructor uses: not blocking operation first, then blocking operation. Callers rely on this
+  // order, so changing it requires renaming the method or adding an explicit order parameter.
+  void Reset() {
+    not_blocking_rocksdb_shutdown_start.Reset();
+    blocking_rocksdb_shutdown_start.Reset();
+  }
 };
 
 class Tablet : public AbstractTablet,
@@ -532,6 +540,10 @@ class Tablet : public AbstractTablet,
 
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id, const OpId& op_id);
+
+  // Writes the vector reverse mapping entries a colocated table owns for the rows that reached the
+  // tablet before the table did, with op_id as their frontier, see TabletVectorIndexes.
+  Status WriteMissingVectorReverseMappings(const TableInfo& table_info, const OpId& op_id);
 
   // Truncate this tablet by resetting the content of RocksDB.
   Status Truncate(TruncateOperation* operation);
@@ -1174,6 +1186,12 @@ class Tablet : public AbstractTablet,
     REQUIRES(operation_filters_mutex_);
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id, HybridTime ht);
+
+  // Whether a colocated table about to be added owns a vector reverse mapping with a vector column,
+  // and the tablet already has entries under its colocation id.
+  bool NeedsVectorReverseMappingRepair(
+      const Schema& schema,
+      const google::protobuf::RepeatedPtrField<dockv::SchemaPackingPB>& old_schema_packings);
 
   // Split/LB policy: true when this tablet still has parent data that should block a further
   // split (or, today, a load-balancer move). RocksDB leftover always counts; vector-index leftover
