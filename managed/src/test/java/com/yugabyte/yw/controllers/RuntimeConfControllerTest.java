@@ -457,7 +457,13 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         (SettableRuntimeConfigFactory) runtimeConfigFactory;
     assertFalse(settableFactory.getCachedConfigs().isEmpty());
     setCloudEnabled();
-    assertTrue(settableFactory.getCachedConfigs().isEmpty());
+    // Setting runtime config using API also fetches a runtime config value needed by redaction.
+    // Thus, that value invokes caching at global level. So we should assert that the narrow scope
+    // runtime config caches (non-global) are cleared after the setKey is called.
+    boolean hasNonGlobalKeys =
+        settableFactory.getCachedConfigs().keySet().stream()
+            .anyMatch(uuid -> !uuid.equals(GLOBAL_SCOPE_UUID));
+    assertFalse("Stale scopes should be evicted after update", hasNonGlobalKeys);
     assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 
