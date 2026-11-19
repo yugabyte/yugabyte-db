@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Backport a merged commit to one or more release branches.
 
+With --stack FEATURE, backport several commits to one release branch as a
+GitHub PR stack instead: one feature-stack/FEATURE/<change> layer per commit,
+in the order given, each on the layer below and the bottom one on the release
+branch. Use it when the commits depend on each other.
+
 Python rewrite of backport-commit.sh. Same CLI surface (flags, positional
 arguments) and same exit-code contract:
 
@@ -132,18 +137,43 @@ def parse_args(argv):
     p.add_argument("-s", "--stable-limit", default=None,
                    help="Backport to all stable branches >= this branch.")
     p.add_argument("-x", "--accept-branch", action="append", default=[],
-                   help="Skip cherry-pick on the given branch (already resolved).")
+                   help="Skip cherry-pick on the given branch (already resolved). "
+                        "With --stack, name the resolved commit instead.")
     p.add_argument("--keep-workspace", action="store_true",
                    help="On success, don't delete local task branches or remove "
                         "the worktree (default cleans up after PRs are created).")
+    p.add_argument("--stack", metavar="FEATURE", default=None,
+                   help="Backport the given commits, in order, to one release "
+                        "branch as a PR stack of feature-stack/FEATURE/<change> "
+                        "layers in the main repo.")
     p.add_argument("commit", help="Commit SHA (>=7 hex chars).")
-    p.add_argument("branches", nargs="*", help="Destination branches.")
+    p.add_argument("branches", nargs="*",
+                   help="Destination branches. With --stack: more commits, "
+                        "then exactly one release branch.")
     args = p.parse_args(argv)
 
     if not re.fullmatch(r"[0-9a-fA-F]{7,64}", args.commit):
         p.error(f"malformed commit ID: {args.commit!r} (expected 7+ hex chars)")
     if args.stable_limit and args.branches:
         p.error("cannot mix -s / --stable-limit with positional branches")
+    args.stack_commits = []
+    args.stack_branch = None
+    if args.stack is not None:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", args.stack):
+            p.error(f"--stack name must be one path segment: {args.stack!r}")
+        if args.stable_limit:
+            p.error("cannot mix --stack with -s / --stable-limit")
+        # A release branch always has a dot (2026.2); a commit never does.
+        commits = [args.commit] + [t for t in args.branches if
+                                   re.fullmatch(r"[0-9a-fA-F]{7,64}", t)]
+        branches = [t for t in args.branches if t not in commits]
+        if len(branches) != 1:
+            p.error("--stack takes commits and exactly one release branch; "
+                    f"got branches {branches}")
+        if args.branches[-1] != branches[0]:
+            p.error("--stack: put the release branch after the commits")
+        args.stack_commits = commits
+        args.stack_branch = branches[0]
     return args
 
 
@@ -506,7 +536,8 @@ def ends_with_trailers(body_lines: list[str]) -> bool:
                     input_=message).stdout.strip())
 
 
-def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> None:
+def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str,
+             fix_hint: Optional[list[str]] = None) -> None:
     """Run the workspace's own lint.sh, with whatever flag it supports.
 
     Master's lint.sh is a thin wrapper around lint.py that takes `--rev <base>`.
@@ -545,6 +576,10 @@ def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> N
         info(f"Backport ERROR: Lint failed on {task}.")
         info(f"Workspace: {workspace}")
         info(f"Task branch: {task}")
+        if fix_hint:
+            for line in fix_hint:
+                info(line)
+            raise ResumableConflict()
         info("Fix the lint issues and AMEND them into the backport commit:")
         info("  git add <files>")
         info("  git commit --amend --no-edit")
@@ -669,6 +704,221 @@ def cleanup_after_success(workspace: Path, source_repo: Path,
              f"{(proc.stderr or proc.stdout).strip()}")
 
 
+# --- Stack mode -------------------------------------------------------------
+#
+# A stack backports dependent commits to one release branch: commit N+1 often
+# does not apply, or does not build, without commit N. Each commit becomes one
+# feature-stack/<feature>/<change> layer. Those branches live in the main repo,
+# because GitHub stacks only PRs whose head branches it owns, and the rulesets
+# exempt only that prefix. Pushing goes through git-push.sh, which lints the
+# whole stack and runs `gh stack push`; PRs open bottom-up and are linked with
+# `gh stack link`, as create-pr.sh does for a stack layer.
+
+def stack_layer_name(feature: str, commit: str, prnum: Optional[int]) -> str:
+    change = f"pr{prnum}" if prnum is not None else commit[:9]
+    return f"feature-stack/{feature}/{change}"
+
+
+def stack_layer_prepared(layer: str, full_commit: str, parent: str) -> bool:
+    """True if $layer already holds this commit's backport on top of $parent."""
+    if not git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{layer}"):
+        return False
+    if git("rev-parse", f"{layer}^", check=False) != parent:
+        return False
+    body = git("log", "-n1", "--format=%b", layer)
+    return f"Original commit: {full_commit}" in body
+
+
+def open_stack_pr(gh_repo: str, layer: str, base: str, title: str, body: str,
+                  draft: bool) -> int:
+    proc = run(
+        ["gh", "api", "-X", "POST", f"repos/{gh_repo}/pulls",
+         "--jq", ".number", "--input", "-"],
+        input_=json.dumps({"title": title, "body": body, "base": base,
+                           "head": layer, "draft": draft}),
+    )
+    return int(proc.stdout.strip())
+
+
+def open_stack_pr_number(gh_repo: str, layer: str) -> Optional[int]:
+    """The open PR whose head is the main-repo branch $layer, if any."""
+    prs = gh_cmd_json(["gh", "pr", "list", "-R", gh_repo, "--head", layer,
+                       "--state", "open",
+                       "--json", "number,headRepositoryOwner"], check=False)
+    if not isinstance(prs, list):
+        fail(f"could not look up existing PRs for {layer} on {gh_repo}. "
+             f"Check 'gh auth status' and the network, then re-run.")
+    owner = gh_repo.split("/", 1)[0].lower()
+    for pr in prs:
+        pr = pr or {}
+        if ((pr.get("headRepositoryOwner") or {}).get("login") or "").lower() == owner:
+            return pr.get("number")
+    return None
+
+
+def run_stack(args, *, gh_repo: str, workspace: Path, upstream_remote: str,
+              gh_user: str) -> int:
+    branch = args.stack_branch
+    feature = args.stack
+    if not git_ok("rev-parse", "--verify", "--quiet", f"{upstream_remote}/{branch}"):
+        fail(f"release branch {upstream_remote}/{branch} not found.")
+    if run(["gh", "stack", "--help"], check=False).returncode != 0:
+        fail("--stack needs the gh-stack extension: gh extension install github/gh-stack")
+    if Path(git("rev-parse", "--git-path", "CHERRY_PICK_HEAD")).resolve().is_file():
+        fail("a cherry-pick is in progress. Finish it with "
+             "'git cherry-pick --continue --no-edit' (or '--abort'), then re-run.")
+    # gh stack commands without --remote pick a remote from this setting.
+    run(["git", "config", "gh-stack.remote", upstream_remote])
+
+    explicit_rev = normalize_reviewers(args.reviewers)
+    accepted = {git("rev-parse", c, check=False) for c in args.accept_branch}
+    rerun_args = ["--stack", feature]
+    if args.preview:
+        rerun_args.append("-n")
+    if args.local:
+        rerun_args.append("-l")
+    if explicit_rev is not None:
+        rerun_args.extend(["-r", explicit_rev])
+    rerun_args.extend(args.stack_commits + [branch])
+
+    # 1. Build the layers locally, bottom-up.
+    layers = []  # (layer, full_commit, prnum, reviewers)
+    parent = git("rev-parse", f"{upstream_remote}/{branch}")
+    for commit in args.stack_commits:
+        full_commit = ensure_commit_local(commit, upstream_remote)
+        prnum, pr_url = lookup_originating_pr(gh_repo, full_commit)
+        reviewers = explicit_rev
+        if reviewers is None:
+            reviewers = (detect_auto_reviewers(gh_repo, prnum, gh_user)
+                         if prnum is not None else "")
+        layer = stack_layer_name(feature, full_commit, prnum)
+        print()
+        print(f"================== Stack layer {layer}")
+
+        if stack_layer_prepared(layer, full_commit, parent):
+            info(f"{layer} already holds {full_commit[:9]}; reusing it")
+        elif full_commit in accepted:
+            if git("rev-parse", f"{layer}^", check=False) != parent:
+                fail(f"-x {commit}: {layer} must be one commit on top of {parent[:9]}.")
+            info("Skipping code change due to -x option")
+            run(["git", "checkout", layer])
+            amend_message(full_commit, branch, pr_url)
+        else:
+            if git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{layer}"):
+                # It may hold a conflict resolution (rerun with -x) or a PR's
+                # commits (restack with the stack-prs skill); never reset it.
+                fail(f"{layer} exists but is not this backport on top of "
+                     f"{parent[:9]}. If it holds your conflict resolution, re-run "
+                     f"with -x {full_commit[:9]}; if it is stale, delete it.")
+            run(["git", "checkout", "-b", layer, parent])
+            port_cmd = ["git", "cherry-pick", "--allow-empty", full_commit]
+            if len(git("rev-list", "--parents", "-n1", full_commit).split()) > 2:
+                port_cmd[2:2] = ["-m", "1"]
+            rerun_hint = ("==== .agents/scripts/backport-commit.sh -x "
+                          f"{full_commit[:9]} " + shlex.join(rerun_args))
+            try:
+                applied = apply_cherry_pick(port_cmd, layer, workspace, branch, rerun_hint)
+            except ResumableConflict:
+                info("Use 'git cherry-pick --continue --no-edit'; the rerun rewrites the message.")
+                return 2
+            if not applied:
+                fail(f"{full_commit[:9]} is already on {branch} below this layer; "
+                     f"drop it from the list and re-run.")
+            amend_message(full_commit, branch, pr_url)
+        parent = git("rev-parse", layer)
+        layers.append((layer, full_commit, prnum, reviewers))
+
+    top = layers[-1][0]
+    run(["git", "checkout", top])
+    try:
+        run_lint(workspace, upstream_remote, branch, top, fix_hint=[
+            f"Lint failed on the stack {branch} <- ... <- {top}.",
+            f"Workspace: {workspace}",
+            "Check out the layer that owns each finding, fix it, and amend:",
+            "  git add <files> && git commit --amend --no-edit",
+            "Then restack the layers above it and re-run:",
+            f"  gh stack rebase --upstack --remote {upstream_remote}",
+            "  " + rerun_hint_base(rerun_args),
+        ])
+    except ResumableConflict:
+        return 2
+
+    if args.preview:
+        info("Preview Mode (no push, no PR)")
+        info(f"Workspace: {workspace}")
+        for i, (layer, _, _, reviewers) in enumerate(layers):
+            base = branch if i == 0 else layers[i - 1][0]
+            print(f"  {layer}  (base {base}, reviewers: {reviewers or 'none'})")
+            print(f"    {git('log', '-n1', '--format=%s', layer)}")
+        return 0
+
+    # 2. Track the layers as a local gh stack and push them.
+    view = run(["gh", "stack", "view", "--json"], check=False)
+    tracked = []
+    if view.returncode == 0:
+        data = json.loads(view.stdout)
+        if data.get("trunk") == branch:
+            tracked = [b["name"] for b in data.get("branches", [])]
+    names = [layer for layer, _, _, _ in layers]
+    if tracked != names[:len(tracked)] or not tracked:
+        if tracked:
+            fail(f"the local gh stack holds {tracked}, which does not match "
+                 f"{names}. Fix it with the stack-prs skill, then re-run.")
+        run(["gh", "stack", "init", "--base", branch] + names)
+    elif len(tracked) < len(names):
+        run(["git", "checkout", tracked[-1]])
+        for name in names[len(tracked):]:
+            run(["gh", "stack", "add", name])
+        run(["git", "checkout", top])
+    push = SCRIPT_REPO_ROOT / ".agents" / "scripts" / "git-push.sh"
+    info(f"Pushing the stack with {push}")
+    proc = run([str(push), "-b", branch], check=False)
+    print(proc.stdout or "", end="")
+    print(proc.stderr or "", end="", file=sys.stderr)
+    if proc.returncode != 0:
+        fail(f"git-push.sh failed (rc={proc.returncode}); nothing was opened.")
+
+    # 3. Open the PRs bottom-up. A layer with PRs below it opens as a draft
+    # and is marked ready only after it is linked, so the CI that readiness
+    # triggers already sees a stack member.
+    numbers: list[int] = []
+    for i, (layer, full_commit, prnum, reviewers) in enumerate(layers):
+        existing = open_stack_pr_number(gh_repo, layer)
+        if existing is not None:
+            info(f"Existing PR #{existing} for {layer} -- skipping")
+            numbers.append(existing)
+            continue
+        base = branch if i == 0 else layers[i - 1][0]
+        title = git("log", "-n1", "--format=%s", layer)
+        body = git("log", "-n1", "--format=%b", layer)
+        number = open_stack_pr(gh_repo, layer, base, title, body, draft=bool(numbers))
+        print(f"https://github.com/{gh_repo}/pull/{number}")
+        if reviewers:
+            request_reviewers(gh_repo, number, reviewers)
+        if numbers:
+            info(f"gh stack link --base {branch} {' '.join(map(str, numbers))} {number}")
+            proc = run(["gh", "stack", "link", "--remote", upstream_remote,
+                        "--base", branch] + [str(n) for n in numbers + [number]],
+                       check=False)
+            if proc.returncode != 0:
+                print(proc.stderr or proc.stdout, file=sys.stderr)
+                fail(f"PR #{number} was opened as a draft, but linking it into the "
+                     f"stack failed. Link it with 'gh stack link --remote "
+                     f"{upstream_remote} --base {branch} "
+                     f"{' '.join(map(str, numbers + [number]))}', then "
+                     f"'gh pr ready {number} -R {gh_repo}'.", code=1)
+            run(["gh", "pr", "ready", str(number), "-R", gh_repo])
+        numbers.append(number)
+
+    # The layers stay: later updates and syncs run from this workspace.
+    info(f"Stack is ready. Work it from {workspace} with the stack-prs skill.")
+    return 0
+
+
+def rerun_hint_base(rerun_args: list[str]) -> str:
+    return ".agents/scripts/backport-commit.sh " + shlex.join(rerun_args)
+
+
 # --- Main -------------------------------------------------------------------
 
 def detect_stable_branches(upstream_remote: str, stable_limit: Optional[str]) -> list[str]:
@@ -747,9 +997,15 @@ def main(argv: list[str]) -> int:
     info(f"Fetching latest code from {upstream_remote}")
     run(["git", "fetch", upstream_remote])
 
-    # Build push URL (needs upstream remote).
     gh_user_proc = run(["gh", "api", "user", "--jq", ".login"], check=False)
     gh_user = gh_user_proc.stdout.strip() if gh_user_proc.returncode == 0 else ""
+    if args.stack is not None:
+        # Stack layers live in the main repo, so no fork is involved.
+        check_clean_tree()
+        return run_stack(args, gh_repo=gh_repo, workspace=workspace,
+                         upstream_remote=upstream_remote, gh_user=gh_user)
+
+    # Build push URL (needs upstream remote).
     gh_fork, fork_owner, push_url = resolve_fork(gh_repo, gh_user, upstream_remote)
 
     check_clean_tree()

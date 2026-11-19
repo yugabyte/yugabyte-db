@@ -1,6 +1,6 @@
 ---
 description: Backport a commit to one or more YugabyteDB release branches as GitHub PRs
-argument-hint: <commit-sha> [<branch> ...]
+argument-hint: <commit-sha> [<branch> ...]  |  --stack <feature> <commit-sha>... <branch>
 allowed-tools: Bash(.agents/scripts/backport-commit.sh *)
 model: sonnet
 ---
@@ -10,6 +10,14 @@ Backport a merged commit to one or more YugabyteDB release branches using the bu
 **This command produces GitHub PRs.** A backport should go through the same review system the original went through, so if the original landed via Phorge — the argument is a `Dxxxxx` revision ID, or `git log -n1 --format=%b <commit>` shows a `Differential Revision:` line — stop and use `/backport-diff` instead. If neither pattern matches cleanly, ask the user rather than guessing.
 
 **Always pass the full branch list in a single invocation.** After each successful branch, the script chains the next branch's cherry-pick from the previous branch's task branch — so a conflict you resolve on `b2` carries forward, and `b3+` typically apply cleanly without re-resolving the same conflict.
+
+**Dependent commits to one branch go in one stack.** When later commits need earlier ones to apply or build, pass them all with `--stack <feature>`, oldest first, then the one release branch:
+
+```
+.agents/scripts/backport-commit.sh --stack <feature> <commit1> <commit2> ... <branch>
+```
+
+Each commit becomes a `feature-stack/<feature>/pr<N>` layer in `yugabyte/yugabyte-db` (no fork), on the layer below; the bottom layer is on `<branch>`. Titles, bodies and reviewers are the same as a single backport. The script lints the whole stack, pushes it with `git-push.sh`, and opens the PRs bottom-up, linked with `gh stack link`. On a conflict (exit 2), resolve it on the named layer, `git cherry-pick --continue --no-edit`, and rerun with `-x <commit>` and the same arguments; layers already built are reused. The layers and the workspace stay afterwards: update, sync and land the stack with the `stack-prs` skill.
 
 ## Inputs
 
