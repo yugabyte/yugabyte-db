@@ -6,10 +6,10 @@ type YBAHostValue = (typeof YBAHost)[keyof typeof YBAHost];
 
 // Only while federated IAM is offered, a new config shows one IAM option per page by YBA's host: on
 // AWS, S3 IAM Role and GCS Federated IAM; on GCP, S3 Federated IAM and GCS GCP IAM. On AWS this
-// hides, on purpose, S3 Federated IAM, the GCP DB nodes' keyless path to S3; editing a saved config,
-// where every option shows, or the API still sets it. GCS Federated IAM, which needs AWS instance
-// metadata, is also hidden on Azure; a self-hosted or unknown host hides nothing. An option that is
-// on still shows.
+// hides, on purpose, S3 Federated IAM, the GCP DB nodes' keyless path to S3; editing a saved
+// config, where every option shows, or the API still sets it. GCS Federated IAM, which needs AWS
+// instance metadata, is also hidden on Azure; a self-hosted or unknown host hides nothing. An
+// option that is on still shows.
 
 export const getS3IamOptions = (
   ybaHost: YBAHostValue,
