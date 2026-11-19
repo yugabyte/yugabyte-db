@@ -28,6 +28,11 @@ When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test gu
 
 When working on YBA (`managed/`), refer to `managed/AGENTS.md`
 
+Anything written to a public artifact from any part of this repo, `managed/` included, follows
+[`src/AGENTS.md` § Confidentiality](src/AGENTS.md#confidentiality--never-leak-customer-data-yugabytedb-secrets-or-pii).
+Security fixes and customer-driven changes also follow its
+[disclosure tiers](src/AGENTS.md#security-and-customer-sensitive-changes).
+
 ### Meko datapacks (`MEKO.md`)
 
 A `MEKO.md` lists the Meko datapacks that hold context for the folder it sits in, with each one's

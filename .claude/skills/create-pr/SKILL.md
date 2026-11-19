@@ -31,6 +31,8 @@ Push the current branch to the user's **fork** of `yugabyte/yugabyte-db` and cre
 
 **If you're unsure whether a string is sensitive, don't write it down — ask the user.** A clarifying question costs nothing; a leaked customer name in a public PR cannot be retracted.
 
+**A security fix or a customer-driven change has a disclosure tier** (`public-cve`, `embargoed` or `customer`) that sets how much the title, description and commit messages may say. The tiers are in `src/AGENTS.md` § Security and customer-sensitive changes. For these changes the usual "say why" does not apply to the PR: the why goes in the JIRA ticket.
+
 This rule applies at every step below — when you draft the commit message in Step 1, when you draft the issue body in Step 3, when you write the title in Step 4, and when you compose the description / test plan / upgrade notes in Step 5. See `src/AGENTS.md` § Confidentiality for the canonical list.
 
 ## Prerequisites
@@ -97,6 +99,8 @@ Infer as much as you can from context first, then **batch-confirm with the user 
 
 3. **Title** — a short description of the change. If the branch has a single commit, use its subject (minus the `[<issue>,...] <Component>:` prefix if present). Confirm with the user.
 
+4. **Disclosure tier** — only when the change fixes a security issue or exists because of one customer (the ticket is a Vulnerability, or the user said so). Ask which tier applies if it isn't clear, write the title and description to that tier, and pass it to the script with `-s` in Step 5. Never state which releases, branches, images or components still lack the fix.
+
 ### Step 4: Build the title
 
 Construct the title in the format:
@@ -149,6 +153,7 @@ Say **why**, always — a reviewer who has to reverse-engineer the motivation is
   -d /tmp/claude/pr-desc-<issue>.md \
   -T /tmp/claude/pr-testplan-<issue>.md \
   [-U /tmp/claude/pr-upgrade-<issue>.md] \
+  [-s <tier>] \
   [-D] \
   -r <reviewers>
 ```
@@ -158,6 +163,7 @@ The script runs `lint.sh --rev <upstream>/master` and refuses to push if it isn'
 Inputs:
 - **`-i`**: bare GH number (`31151`), `#`-prefixed (`#31151`), or a JIRA key (`PLAT-20518`). Pass a **comma-separated list** to track multiple issues in one PR (e.g. `31151, #31152`); the script normalizes whitespace, prepends `#` to bare digits, and joins with `,` so the title renders as `[#31151,#31152] <Component>: <Title>`. The list must be all GH or all JIRA — see Step 4.
 - **`-t`**: title body **without** the `[<issue>,...] ` prefix but **with** the `Component: ` prefix (e.g. `DocDB: Fix flake`).
+- **`-s`**: the disclosure tier from Step 3.4. The script runs `check-public-text.sh` over the title, the body files, the commit messages and the branch name, and exits `7` before pushing if it finds wording the tier does not allow. Move that text to the JIRA ticket and re-run.
 - **`-d` (required)**: path to a markdown file with the PR description (the "what / why" prose derived from branch commits). The script makes this the `## Summary` section.
 - **`-U` (optional, sometimes required)**: path to a markdown file with upgrade/rollback notes. The script makes this the `## Upgrade/Rollback safety` section, inserted **between Summary and Test plan**. **Pass this whenever the branch makes an upgrade-relevant decision.** The script enforces it **mechanically when any `.proto` file changes** (`exit 1` if `-U` is missing and a `*.proto` diff exists) — wire-format changes have to spell out forward and backward behavior on a mixed-version cluster and what rollback looks like. **Also include for** (script can't detect, but the src/AGENTS.md rule expects it): gflag default flips that change observable behavior, catalog schema bumps, on-disk-format changes, RPC-versioning tweaks, migration scripts. When unsure, pass `-U` with a brief note rather than skipping.
 - **`-T` (required)**: path to a markdown file with the test plan (typically a checkbox list). **Always supply this** — the script errors out if `-T` is missing or the file is empty. If the change is trivial enough that you think no test plan applies, write an explicit one-line checkbox saying so (e.g., `No runtime behavior change; visually inspected diff`) and confirm with the user before proceeding.
