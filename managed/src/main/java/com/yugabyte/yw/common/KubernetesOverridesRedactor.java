@@ -37,9 +37,11 @@ import play.libs.Json;
  * located by parsing the YAML, so the rest of the user's text is kept: the UI shows it as typed,
  * and overrides sent back unchanged equal redact(stored) exactly. A secret is the value of one of
  * the fixed LDAP secret names, such as ycql_ldap_bind_passwd, or an ldapbindpasswd field of
- * ysql_hba_conf_csv; gflags that only a DB version marks sensitive are not covered. A comment that
- * mentions a secret is replaced by "# REDACTED", and so are the comments below it up to the next
- * YAML content, since a value can continue on the next line. Comments are never restored.
+ * ysql_hba_conf_csv; gflags that only a DB version marks sensitive are not covered. Names match
+ * with dashes for underscores too, as gflags reads them, so ycql-ldap-bind-passwd is a secret name.
+ * A comment that mentions a secret is replaced by "# REDACTED", and so are the comments below it up
+ * to the next YAML content, since a value can continue on the next line. Comments are never
+ * restored.
  *
  * <p>Overrides are hidden whole as REDACTED instead when they can't be parsed and could hold a
  * secret: they name one, or hold a backslash or a !, with which a key can spell one (escapes in a
@@ -134,6 +136,15 @@ public final class KubernetesOverridesRedactor {
     return RedactingService.sensitiveNames(null, null);
   }
 
+  /** gflags reads a dash in a flag name as an underscore. */
+  private static String flagName(String name) {
+    return name.replace('-', '_');
+  }
+
+  private static boolean mentionsSecret(String text, Set<String> secretKeys) {
+    return RedactingService.mentionsSecret(flagName(text), secretKeys);
+  }
+
   public static String redact(String overrides) {
     if (overrides == null) {
       return null;
@@ -142,7 +153,7 @@ public final class KubernetesOverridesRedactor {
     // tag starts with !) in base64, so text with a backslash or a ! is parsed.
     if (overrides.indexOf('\\') < 0
         && overrides.indexOf('!') < 0
-        && !RedactingService.mentionsSecret(overrides, secretKeys())) {
+        && !mentionsSecret(overrides, secretKeys())) {
       return overrides;
     }
     try {
@@ -182,8 +193,7 @@ public final class KubernetesOverridesRedactor {
       int[] comment = comments.get(i);
       boolean below = i > 0 && overrides.substring(comments.get(i - 1)[1], comment[0]).isBlank();
       hiding =
-          RedactingService.mentionsSecret(
-                  overrides.substring(comment[0], comment[1]), found.secretKeys)
+          mentionsSecret(overrides.substring(comment[0], comment[1]), found.secretKeys)
               || (hiding && below);
       if (hiding && !insideAny(scalars, comment[0])) {
         replacements.add(new Replacement(comment[0], comment[1], "# " + REDACTED));
@@ -358,8 +368,7 @@ public final class KubernetesOverridesRedactor {
       throw new HiddenException("use a binary tag, which can spell a secret");
     }
     if (finder.unsupported != null
-        && (!finder.secrets.isEmpty()
-            || RedactingService.mentionsSecret(overrides, finder.secretKeys))) {
+        && (!finder.secrets.isEmpty() || mentionsSecret(overrides, finder.secretKeys))) {
       throw new HiddenException(finder.unsupported);
     }
     return finder;
@@ -429,7 +438,7 @@ public final class KubernetesOverridesRedactor {
       }
       if (node instanceof ScalarNode) {
         ScalarNode scalar = (ScalarNode) node;
-        if (RedactingService.mentionsSecret(scalar.getValue(), secretKeys)) {
+        if (mentionsSecret(scalar.getValue(), secretKeys)) {
           throw new HiddenException("hold a string that mentions a secret");
         }
         addSpan(scalar);
@@ -449,8 +458,8 @@ public final class KubernetesOverridesRedactor {
           String key = ((ScalarNode) keyNode).getValue();
           List<String> childPath = new ArrayList<>(path);
           childPath.add(key);
-          boolean hba = GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key);
-          if (secretKeys.contains(key)) {
+          boolean hba = GFlagsUtil.YSQL_HBA_CONF_CSV.equals(flagName(key));
+          if (secretKeys.contains(flagName(key))) {
             if (!(value instanceof ScalarNode)) {
               throw new HiddenException("hold a value of " + key + " that is not a scalar");
             }
@@ -459,7 +468,7 @@ public final class KubernetesOverridesRedactor {
           } else if (hba && value instanceof ScalarNode) {
             visit(value);
             addSecret((ScalarNode) value, childPath, Kind.HBA, childInFlow, inList);
-          } else if (RedactingService.mentionsSecret(key, secretKeys)) {
+          } else if (mentionsSecret(key, secretKeys)) {
             throw new HiddenException("have a key that mentions a secret");
           } else {
             if (hba) {

@@ -111,13 +111,14 @@ public class KubernetesOverridesRedactionRandomizedTest {
       return node;
     }
     String value = (String) node;
-    if (key != null && NAMES.contains(key)) {
+    String flagName = key == null ? null : key.replace('-', '_');
+    if (flagName != null && NAMES.contains(flagName)) {
       return value.isEmpty() ? value : RedactingService.SECRET_REPLACEMENT;
     }
-    if (GFlagsUtil.YSQL_HBA_CONF_CSV.equals(key)) {
+    if (GFlagsUtil.YSQL_HBA_CONF_CSV.equals(flagName)) {
       return HbaConfRedactor.redact(value);
     }
-    if (RedactingService.mentionsSecret(value, NAMES)) {
+    if (RedactingService.mentionsSecret(value.replace('-', '_'), NAMES)) {
       hiddenWhole = true;
     }
     return value;
@@ -139,11 +140,19 @@ public class KubernetesOverridesRedactionRandomizedTest {
     }
   }
 
-  /** A secret gflag name as a key, sometimes double-quoted with its first letter escaped. */
+  /**
+   * A secret gflag name as a key, sometimes double-quoted with its first letter escaped, or with
+   * dashes for underscores.
+   */
   private String secretKey(String name) {
-    return random.nextInt(5) == 0
-        ? String.format("\"\\x%02x%s\"", (int) name.charAt(0), name.substring(1))
-        : name;
+    switch (random.nextInt(5)) {
+      case 0:
+        return String.format("\"\\x%02x%s\"", (int) name.charAt(0), name.substring(1));
+      case 1:
+        return name.replace('_', '-');
+      default:
+        return name;
+    }
   }
 
   private String headerComment() {
