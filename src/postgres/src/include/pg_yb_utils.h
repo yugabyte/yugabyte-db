@@ -81,6 +81,15 @@
 #define YB_RELCACHE_MSGS (1)
 
 /*
+ * Object sub id of the lock on a pg_database object that keeps legacy DDLs
+ * apart from DDLs with global object locks (#32224). Upstream locks database
+ * objects only with sub id 0, which every backend takes at connection start;
+ * the top of the range keeps this lock apart from those and from any sub id
+ * upstream may add.
+ */
+#define YB_DATABASE_DDL_MODE_LOCK_OBJSUBID PG_UINT16_MAX
+
+/*
  * Postgres code uses process-level storage (e.g. static variables) to store
  * long-lived data in a backend process. During expression pushdown, we may be
  * reading & writing to the same variable from multiple threads in the same

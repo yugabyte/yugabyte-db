@@ -1507,6 +1507,18 @@ class PgObjectLocksTestLegacyTxnVsNewDdl : public PgObjectLocksTestMixModeDuring
     }, 15s * kTimeMultiplier, Format("a $0 on $1 to wait", mode, table)));
   }
 
+  // Runs `ddl` on ts2 and expects it to time out: a legacy DDL earlier in the open transaction on
+  // ts1 holds the database lock that keeps legacy DDLs apart from DDLs with global object locks
+  // until the transaction ends (#32224). Neither pg_locks nor ASH shows that wait, so the timeout
+  // is the signal.
+  void ExpectDdlWaitsForLegacyTxn(const std::string& ddl) {
+    auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*cluster_->tablet_server(1)));
+    ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
+    auto status = ddl_conn.Execute(ddl);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "canceling statement due to statement timeout");
+  }
+
   // Waits until ASH on ts2 samples a backend there waiting in WaitForLockers, which a CREATE INDEX
   // with global object locks calls before the backfill. That wait does not show in pg_locks.
   void WaitForWaitForLockers() {
@@ -1739,11 +1751,10 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollb
 
 // A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
 // later takes the same lock in the same transaction finds it there and does not send it, so a new
-// mode DDL does not wait for the DML. This gap is accepted. It can hit a lock weaker than a
-// writer's RowExclusive that a DDL of the transaction took first: AccessShare (CREATE VIEW, as
-// here), or RowShare on the referenced table (the row checks of ADD FOREIGN KEY). The reader keeps
-// reading its snapshot and commits.
-TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlDoesNotWaitForLockFirstTakenInDdlMode) {
+// mode DDL does not wait for the DML. That gap no longer shows: the CREATE VIEW also took the
+// database lock that keeps legacy DDLs apart from DDLs with global object locks (#32224), and the
+// transaction holds it until it ends, so the new mode DDL waits for the whole transaction.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlWaitsForLegacyTxnThatRanDdl) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
@@ -1760,12 +1771,12 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, NewDdlDoesNotWaitForLockFirstTakenInD
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
 
   ASSERT_NO_FATALS(PromoteForDdl());
-  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-  // If the reader's lock were sent, the ALTER would wait for it and hit this timeout.
-  ASSERT_OK(ddl_conn.Execute("SET statement_timeout = '5s'"));
-  ASSERT_OK(ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT"));
+  constexpr auto kAlter = "ALTER TABLE test ADD COLUMN v1 INT";
+  ASSERT_NO_FATALS(ExpectDdlWaitsForLegacyTxn(kAlter));
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
   ASSERT_OK(legacy_conn.Execute("COMMIT"));
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute(kAlter));
 }
 
 // A legacy CREATE INDEX takes transaction and session locks that a legacy transaction does not
@@ -1850,7 +1861,9 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, TableRewriteWaitsForLegacyReader) {
 // transaction of the same session, which takes no object locks. Its end must leave the locks of
 // the session's transaction alone. Releasing locks for it would unregister the session's lock owner
 // and drop the local locks that the transaction took through shared memory, so a table rewrite with
-// global object locks would not wait for the reader.
+// global object locks would not wait for the reader. The rewrite now waits first for the database
+// lock that the CREATE TABLE took in the transaction (#32224), which the transaction also holds
+// until it ends.
 TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AutonomousDdlKeepsLegacyTxnLocks) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
@@ -1866,16 +1879,12 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, AutonomousDdlKeepsLegacyTxnLocks) {
   ASSERT_OK(legacy_conn.Execute("CREATE TABLE other(k INT PRIMARY KEY)"));
 
   ASSERT_NO_FATALS(PromoteForDdl());
-  auto alter_future = std::async(std::launch::async, [&]() -> Status {
-    auto ddl_conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts2));
-    RETURN_NOT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
-    return ddl_conn.Execute("ALTER TABLE test ALTER COLUMN v TYPE BIGINT");
-  });
-  ASSERT_NO_FATALS(WaitForWaitingLock("test", "AccessExclusiveLock"));
+  constexpr auto kAlter = "ALTER TABLE test ALTER COLUMN v TYPE BIGINT";
+  ASSERT_NO_FATALS(ExpectDdlWaitsForLegacyTxn(kAlter));
   ASSERT_EQ(ASSERT_RESULT(legacy_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
-  ASSERT_EQ(alter_future.wait_for(0s), std::future_status::timeout);
   ASSERT_OK(legacy_conn.Execute("COMMIT"));
-  ASSERT_OK(alter_future.get());
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.Execute(kAlter));
 }
 
 // An autonomous DDL takes no object locks, so nothing makes it wait for a reader without global

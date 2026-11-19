@@ -127,6 +127,7 @@
 #include "rusagestub.h"
 #endif
 #include "storage/ipc.h"
+#include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
@@ -2927,6 +2928,40 @@ YbTrackAlteredTableId(Oid relid)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+/*
+ * A legacy DDL and a DDL with global object locks must not run at the same
+ * time (#32224). Legacy DDLs keep each other apart through the catalog version
+ * row, and DDLs with global object locks through object locks, but neither
+ * mechanism sees a DDL of the other mode. So each DDL locks this object on its
+ * database: a legacy DDL in ROW EXCLUSIVE, which only reaches the local lock
+ * manager, and a DDL with global object locks in SHARE. The two modes conflict,
+ * and each mode conflicts with neither itself.
+ *
+ * A legacy DDL takes it in the transaction that runs the statement, before it
+ * starts its separate DDL transaction: that transaction takes no object locks,
+ * and it picks its read time when it starts, so it starts only once the lock is
+ * granted and reads the catalog after any DDL it waited for.
+ */
+static void
+YbLockDatabaseForLegacyDdl(void)
+{
+	if (YBCIsObjectLockingLatchedForCurrTxn())
+		return;
+
+	LockSharedObject(DatabaseRelationId, MyDatabaseId,
+					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID, RowExclusiveLock);
+}
+
+static void
+YbLockDatabaseForGlobalDdl(void)
+{
+	if (!YBCUsingObjectLocksGloballyForCurrentTxn())
+		return;
+
+	LockSharedObject(DatabaseRelationId, MyDatabaseId,
+					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID, ShareLock);
+}
+
 void
 YBIncrementDdlNestingLevel(YbDdlMode mode)
 {
@@ -2950,6 +2985,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 
 		MemoryContextSwitchTo(ddl_transaction_state.mem_context);
 		ddl_transaction_state.use_regular_txn_block = false;
+		YbLockDatabaseForLegacyDdl();
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 
 		if (yb_force_catalog_update_on_next_ddl)
@@ -3020,6 +3056,7 @@ YBAddDdlTxnState(YbDdlMode mode)
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
 	ddl_transaction_state.use_regular_txn_block = true;
 	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
+	YbLockDatabaseForGlobalDdl();
 	YbMaybeLockMasterCatalogVersion();
 	elog(DEBUG3, "YBAddDdlTxnState: new DDL in txn block, mode = %d", mode);
 }
