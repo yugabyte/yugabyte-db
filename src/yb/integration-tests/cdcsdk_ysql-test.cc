@@ -15678,7 +15678,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentsNotRetainedAfterDropin
 // before the tablet applied it. Such rows are packed with the previous schema version, which a cold
 // schema packing cache (such as tserver restart) can resolve only from the tablet metadata. A
 // sys_catalog lookup at the rows' hybrid times returns the new version.
-TEST_F(CDCSDKYsqlTest, TestSchemaPackingNotFoundForConcurrentDDLAndDML) {
+void CDCSDKYsqlTest::TestSchemaPackingNotFoundForConcurrentDDLAndDML(bool multiple_responses) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */));
@@ -15724,11 +15724,50 @@ TEST_F(CDCSDKYsqlTest, TestSchemaPackingNotFoundForConcurrentDDLAndDML) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_alter_table_rpcs_ms) = 0;
   thread_holder.JoinAll();
 
-  auto change_resp = ASSERT_RESULT(GetChangesFromCDCWithoutRetry(stream_id, tablets, nullptr));
-  // 20 inserts, each single-shard write wrapped in its own BEGIN/COMMIT pair and the multi-shard
-  // transaction in one, plus 3 DDL records: the initial schema image (v1) and the index build's
-  // backfill (v2) and ready (v3) phase alters.
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 45);
+  if (!multiple_responses) {
+    auto change_resp =
+        ASSERT_RESULT(GetChangesFromCDCWithoutRetry(stream_id, tablets, nullptr));
+    // 20 inserts, each single-shard write wrapped in its own BEGIN/COMMIT pair and the multi-shard
+    // transaction in one, plus 3 DDL records: the initial schema image (v1) and the index build's
+    // backfill (v2) and ready (v3) phase alters.
+    ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 45);
+    return;
+  }
+
+  // Each response stops after about one WAL op, so the rows span many responses. A response can
+  // re-send the DDL record of a version an earlier response already sent, but must not hold the
+  // same version's DDL record twice.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 1;
+  int inserts = 0;
+  int responses_with_inserts = 0;
+  GetChangesResponsePB change_resp;
+  for (int i = 0; i < 100 && inserts < 20; ++i) {
+    change_resp = ASSERT_RESULT(GetChangesFromCDCWithoutRetry(
+        stream_id, tablets, i == 0 ? nullptr : &change_resp.cdc_sdk_checkpoint()));
+    std::unordered_set<SchemaVersion> ddl_versions;
+    int response_inserts = 0;
+    for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+      const auto& row_message = record.row_message();
+      if (row_message.op() == RowMessage_Op_DDL) {
+        ASSERT_TRUE(ddl_versions.insert(row_message.schema_version()).second)
+            << "Duplicate DDL record in response: " << change_resp.ShortDebugString();
+      } else if (row_message.op() == RowMessage_Op_INSERT) {
+        ++response_inserts;
+      }
+    }
+    inserts += response_inserts;
+    responses_with_inserts += response_inserts > 0;
+  }
+  ASSERT_EQ(inserts, 20);
+  ASSERT_GT(responses_with_inserts, 1);
+}
+
+TEST_F(CDCSDKYsqlTest, TestSchemaPackingNotFoundForConcurrentDDLAndDML) {
+  TestSchemaPackingNotFoundForConcurrentDDLAndDML(false /* multiple_responses */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestSchemaPackingNotFoundForConcurrentDDLAndDMLMultipleResponses) {
+  TestSchemaPackingNotFoundForConcurrentDDLAndDML(true /* multiple_responses */);
 }
 
 // Verifies that an old schema version's packing survives full compactions while the CDCSDK
