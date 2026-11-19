@@ -2155,6 +2155,7 @@ class TransactionParticipant::Impl
   }
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
+    TEST_SYNC_POINT_CALLBACK("TransactionParticipant::HandleApplying", operation.get());
     if (RandomActWithProbability(GetAtomicFlag(
         &FLAGS_TEST_transaction_ignore_applying_probability))) {
       VLOG_WITH_PREFIX(2)
