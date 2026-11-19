@@ -354,12 +354,27 @@ public class UpgradeUniverseHandler {
       if (universeCluster == null || universeCluster.userIntent == null) {
         continue;
       }
+      UserIntent stored = universeCluster.userIntent;
+      if (stored.specificGFlags != null && stored.specificGFlags.isInheritFromPrimary()) {
+        // The read replica runs with the primary's gflags, and the UI sends the primary's
+        // (redacted) gflags as the read replica's own when it stops inheriting.
+        stored = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+      }
+      SpecificGFlags storedGFlags = stored.specificGFlags;
+      if (storedGFlags == null) {
+        // Defensive: create and the V315 migration always set specificGFlags. Without this, a
+        // cluster stored without them would get a 400 for a value its deprecated maps hold.
+        storedGFlags =
+            SpecificGFlags.construct(
+                MapUtils.emptyIfNull(stored.masterGFlags),
+                MapUtils.emptyIfNull(stored.tserverGFlags));
+      }
       clusterParam.userIntent.specificGFlags =
           GFlagsUtil.mergeSensitiveSpecificGFlags(
-              universeCluster.userIntent.specificGFlags,
+              storedGFlags,
               clusterParam.userIntent.specificGFlags,
               gFlagsValidation,
-              universeCluster.userIntent.ybSoftwareVersion);
+              stored.ybSoftwareVersion);
     }
   }
 

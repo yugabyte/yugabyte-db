@@ -446,7 +446,7 @@ YbSetVirtualWalCatalogSnapshot(uint64_t read_time_ht, uint64_t in_txn_limit_ht,
 													   docdb_txn_id,
 													   aborted_subtxn_set,
 													   aborted_subtxn_set_size);
-		CatalogCacheFlushCatalog(PublicationRelationId);
+		YbCatalogCacheFlushCatalogWithoutCallbacks(PublicationRelationId);
 	}
 	else
 	{
@@ -508,7 +508,7 @@ InitVirtualWal(List *publication_names,
 	 * rather than from a catcache entry that may have been warmed earlier at a
 	 * different (latest) read time.
 	 */
-	CatalogCacheFlushCatalog(PublicationRelationId);
+	YbCatalogCacheFlushCatalogWithoutCallbacks(PublicationRelationId);
 
 	/*
 	 * We may encounter a failure prompting a retry in 2 cases:

@@ -13,6 +13,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.RedactingService.SECRET_REPLACEMENT;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -40,6 +42,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -224,10 +227,78 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     assertBadRequest(result, "FIPS enabled universe");
   }
 
+  @Test
+  public void createReadonlyClusterAllowsRedactedInOtherGFlags() {
+    enableGFlagsSensitiveDataApiRedaction();
+    testCreateReadonlyCluster(
+        null,
+        intent ->
+            intent.specificGFlags =
+                SpecificGFlags.construct(
+                    Collections.emptyMap(),
+                    Map.of("ysql_pg_conf_csv", "application_name=" + SECRET_REPLACEMENT)),
+        true);
+  }
+
+  @Test
+  @Parameters({
+    "ycql_ldap_bind_passwd, " + SECRET_REPLACEMENT,
+    GFlagsUtil.YSQL_HBA_CONF_CSV
+        + ", host all all 0.0.0.0/0 ldap ldapbindpasswd="
+        + SECRET_REPLACEMENT,
+  })
+  public void createReadonlyClusterRejectsRedactedSensitiveGFlags(String gflag, String value) {
+    enableGFlagsSensitiveDataApiRedaction();
+    ObjectNode bodyJson =
+        createReadonlyClusterBody(
+            null,
+            intent ->
+                intent.specificGFlags =
+                    SpecificGFlags.construct(Collections.emptyMap(), Map.of(gflag, value)));
+    Result result = assertPlatformException(() -> sendAsyncCreateConfigureRequest(bodyJson));
+    assertBadRequest(result, "a new cluster has no stored value to restore it from");
+  }
+
+  @Test
+  public void createReadonlyClusterInheritingIgnoresItsOwnRedactedGFlags() {
+    enableGFlagsSensitiveDataApiRedaction();
+    // createCluster replaces an inheriting read replica's gflags with the primary's.
+    testCreateReadonlyCluster(
+        primary ->
+            primary.specificGFlags =
+                SpecificGFlags.construct(
+                    Collections.emptyMap(), Map.of("ycql_ldap_bind_passwd", "dummy-bind-pass")),
+        intent -> {
+          intent.specificGFlags =
+              SpecificGFlags.construct(
+                  Collections.emptyMap(), Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT));
+          intent.specificGFlags.setInheritFromPrimary(true);
+        },
+        true);
+  }
+
+  private void enableGFlagsSensitiveDataApiRedaction() {
+    when(mockRuntimeConfig.getBoolean(
+            GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey()))
+        .thenReturn(true);
+  }
+
   private void testCreateReadonlyCluster(
       Consumer<UniverseDefinitionTaskParams.UserIntent> primaryMutator,
       Consumer<UniverseDefinitionTaskParams.UserIntent> readonlyMutator,
       boolean success) {
+    ObjectNode bodyJson = createReadonlyClusterBody(primaryMutator, readonlyMutator);
+    if (success) {
+      Result result = sendAsyncCreateConfigureRequest(bodyJson);
+      assertOk(result);
+    } else {
+      assertPlatformException(() -> sendAsyncCreateConfigureRequest(bodyJson));
+    }
+  }
+
+  private ObjectNode createReadonlyClusterBody(
+      Consumer<UniverseDefinitionTaskParams.UserIntent> primaryMutator,
+      Consumer<UniverseDefinitionTaskParams.UserIntent> readonlyMutator) {
     Universe universe = ModelFactory.createUniverse(customer.getId());
     Provider p = ModelFactory.awsProvider(customer);
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
@@ -264,11 +335,6 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
     bodyJson.set("clusters", clustersJsonArray);
     bodyJson.set("deviceInfo", Json.toJson(deviceInfo));
     bodyJson.put("universeUUID", universe.getUniverseUUID().toString());
-    if (success) {
-      Result result = sendAsyncCreateConfigureRequest(bodyJson);
-      assertOk(result);
-    } else {
-      assertPlatformException(() -> sendAsyncCreateConfigureRequest(bodyJson));
-    }
+    return bodyJson;
   }
 }

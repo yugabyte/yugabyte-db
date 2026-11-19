@@ -182,7 +182,9 @@ yb_is_conn_mgr_reserved_startup_parameter(const char *name)
 	return strncasecmp(name, YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX,
 			   sizeof(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX) - 1) == 0 ||
 		   strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
-		   strcasecmp(name, "yb_use_tserver_key_auth") == 0;
+		   strcasecmp(name, "yb_use_tserver_key_auth") == 0 ||
+		   /* Reported by pg_stat_activity. */
+		   strcasecmp(name, "yb_conn_mgr_client_hostname") == 0;
 }
 
 static inline int
@@ -1139,6 +1141,11 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		skip_forward_to_client = true;
 		if (!is_deploy)
 			yb_backend_handle_query_ack(server, "yb query ack");
+		break;
+	case YB_KIWI_BE_OBJECT_DROPPED:
+		skip_forward_to_client = true;
+		if (yb_handle_object_dropped_pkt(server, data, size) == -1)
+			return relay->error_read;
 		break;
 #ifndef YB_SUPPORT_FOUND
 	case KIWI_BE_PARSE_COMPLETE:

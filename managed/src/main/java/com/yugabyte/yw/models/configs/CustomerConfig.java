@@ -77,8 +77,8 @@ public class CustomerConfig extends Model {
   public static final String PASSWORD_POLICY = "password policy";
   public static final String CALLHOME_PREFERENCES = "callhome level";
 
-  // Maps array field name → the identity key within each element used to match originals on update.
-  public static final Map<String, String> ARRAY_IDENTITY_FIELDS =
+  // Maps array field name → the keys within each element used to match originals on update.
+  public static final Map<String, List<String>> ARRAY_IDENTITY_FIELDS =
       CustomerConfigConsts.STORAGE_CONFIG_ARRAY_MERGE_FIELDS;
 
   public enum ConfigType {
