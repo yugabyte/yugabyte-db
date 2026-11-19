@@ -3710,17 +3710,6 @@ Status Tablet::MarkBackfillDone(
   return metadata_->Flush();
 }
 
-Status Tablet::MarkNonConcurrentIndexDone(
-    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
-  LOG_WITH_PREFIX(INFO) << "Setting non-concurrent index as done";
-  auto status = metadata_->OnNonConcurrentIndexDone(op_id, table_id, birth_time);
-  if (!status.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Triggering non-concurrent index done failed: " << status;
-    return status;
-  }
-  return metadata_->Flush();
-}
-
 Status Tablet::AlterSchema(ChangeMetadataOperation* operation) {
   const auto* request = operation->request();
   auto current_table_info = VERIFY_RESULT(metadata_->GetTableInfo(
@@ -5004,7 +4993,13 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   for (auto* op_pause : op_pauses.AsArray()) {
     LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
-  return DoEnableCompactions();
+
+  // Compactions are enabled only after the pause is released, see
+  // TabletSnapshots::RestoreCheckpoint. During bootstrap EnableCompactions does nothing, and
+  // CompleteStartup enables them.
+  op_pauses.Reset();
+  s = EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  return s.IsShutdownInProgress() ? Status::OK() : s;
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
@@ -7402,8 +7397,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }

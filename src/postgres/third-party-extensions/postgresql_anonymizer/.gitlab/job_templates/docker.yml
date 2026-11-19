@@ -1,0 +1,70 @@
+---
+
+
+##
+## B U I L D
+##
+
+blackbox:
+  stage: build
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  script:
+    - docker build -t blackbox . --file docker/Dockerfile
+    - mkdir results
+    - cat tests/sql/blackbox.sql |
+        docker run --rm -i blackbox /anon.sh  > results/blackbox.out
+    # we remove comments because pg_dump outputs the PG version and we don't want
+    # this test to break every time a new minor version is released
+    - sed -i 's/^--.*$//' results/blackbox.out
+    - diff tests/expected/blackbox.out results/blackbox.out
+  when: manual  # TODO: restore this when the Rust extension is ready
+
+
+##
+## D E P L O Y
+##
+
+docker_latest:
+  stage: deploy
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY/dalibo/postgresql_anonymizer:latest .
+                   --file docker/Dockerfile
+    - docker push $CI_REGISTRY/dalibo/postgresql_anonymizer:latest
+  only:
+    - master@dalibo/postgresql_anonymizer
+
+docker_stable:
+  stage: deploy
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY/dalibo/postgresql_anonymizer:stable .
+        --file docker/Dockerfile
+    - docker push $CI_REGISTRY/dalibo/postgresql_anonymizer:stable
+  only:
+    - stable@dalibo/postgresql_anonymizer
+
+##
+## R E L E A S E
+##
+
+release_docker:
+  stage: release
+  image: docker:24.0
+  rules:
+    - if: $CI_COMMIT_TAG                 # Run this job when a tag is created
+  services:
+    - docker:24.0-dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY/dalibo/postgresql_anonymizer:$CI_COMMIT_TAG .
+                   --file docker/Dockerfile
+    - docker push $CI_REGISTRY/dalibo/postgresql_anonymizer:$CI_COMMIT_TAG
