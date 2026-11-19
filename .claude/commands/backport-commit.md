@@ -143,6 +143,7 @@ Output a single summary listing, per branch:
 ## Notes
 
 - The script auto-detects reviewers from the originating PR (union of pending review requests and actual reviewers, minus bots and self) — do not pass `-r` unless the user asks for a different list.
+- For a Phorge-landed original, the script maps the `Reviewers:` / `Reviewed By:` names in the commit body to GitHub logins through the internal roster (`yugabyte/eng-team`, `scripts/lib/yb-eng.json`). If it warns that it could not read the roster, or that it skipped people who are missing from it, tell the user which names were not requested and ask whether to pass `-r`.
 - The script auto-links the originating PR in the backport body via the `/repos/<repo>/commits/<sha>/pulls` API; do not duplicate that link manually.
 - `master` is silently skipped by the script if passed as a branch — that's expected.
 - If a backport PR from the fork's `backport-<id>-<branch>` branch already exists, the script logs and skips it. Treat that as a no-op success for that branch.
