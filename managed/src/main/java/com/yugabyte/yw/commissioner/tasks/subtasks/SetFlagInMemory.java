@@ -25,11 +25,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.CancellationException;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.yb.client.YBClientApi;
 
 @Slf4j
@@ -61,6 +63,9 @@ public class SetFlagInMemory extends ServerSubTaskBase {
     // execution.
     @Nullable public Supplier<String> masterAddrsOverride;
 
+    // Log a failure instead of failing the task.
+    public boolean ignoreErrors = false;
+
     @JsonIgnore
     public String getMasterAddrsOverride() {
       String masterAddresses = masterAddrsOverride == null ? null : masterAddrsOverride.get();
@@ -79,6 +84,22 @@ public class SetFlagInMemory extends ServerSubTaskBase {
   @Override
   public void run() {
     checkParams();
+    try {
+      setFlags();
+    } catch (RuntimeException e) {
+      // Not the SubTaskGroup's ignoreErrors: it runs the later groups but still fails the task.
+      // setFlags wraps every client error, so an abort shows up as a cause. hasCause checks only
+      // the outer exception.
+      if (!taskParams().ignoreErrors
+          || ExceptionUtils.indexOfType(e, CancellationException.class) >= 0
+          || ExceptionUtils.indexOfType(e, InterruptedException.class) >= 0) {
+        throw e;
+      }
+      log.warn("Ignoring error from {}: {}", getName(), e.getMessage());
+    }
+  }
+
+  private void setFlags() {
     // Check if secondary IP is present, and if so, use that for the gflag value.
     boolean isTserverTask = taskParams().serverType == ServerType.TSERVER;
     HostAndPort hp = getHostPort();
