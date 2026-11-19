@@ -4711,6 +4711,44 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 									 errmsg("-c %s requires a value",
 											optarg)));
 					}
+
+					/*
+					 * YB: In connection manager auth, "options" always comes
+					 * from the logical client, so it must not set a parameter
+					 * reserved for the connection manager.  In auth
+					 * passthrough this runs on the shared control backend, so
+					 * fail only the logical connection, as a failed auth
+					 * does, and skip the parameter.
+					 * YbAuthPassthroughSetupGUCAndReport() then skips the
+					 * rest of the setup.
+					 */
+					if (YbIsPerformingConnMgrAuth() &&
+						YbIsConnMgrReservedStartupParameter(name))
+					{
+						bool		yb_auth_passthrough =
+							YbIsAuthPassthroughInProgress(MyProcPort);
+
+						/* In auth passthrough, report only the first one. */
+						if (!yb_auth_passthrough ||
+							!MyProcPort->yb_has_auth_passthrough_finished)
+						{
+							if (yb_auth_passthrough)
+							{
+								YbSendFatalForLogicalConnectionPacket();
+								MyProcPort->yb_has_auth_passthrough_finished = true;
+							}
+							ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
+									(errcode(ERRCODE_PROTOCOL_VIOLATION),
+									 errmsg("startup parameter \"%s\" is "
+											"reserved for the connection "
+											"manager", name)));
+						}
+						free(name);
+						if (value)
+							free(value);
+						break;
+					}
+
 					SetConfigOption(name, value, ctx, gucsource);
 					free(name);
 					if (value)
@@ -8163,7 +8201,13 @@ PostgresMain(const char *dbname, const char *username)
 						enable_timeout_after(STATEMENT_TIMEOUT,
 											 AuthenticationTimeout * 1000);
 
-						ClientAuthentication(MyProcPort);
+						/*
+						 * YB: The startup packet may already have failed this
+						 * logical connection (a reserved top-level parameter
+						 * or a missing end marker).
+						 */
+						if (!MyProcPort->yb_has_auth_passthrough_finished)
+							ClientAuthentication(MyProcPort);
 
 						/*
 						 * Done with authentication.  Disable the timeout, and
