@@ -1133,6 +1133,13 @@ public class RedactingServiceTest {
   }
 
   @Test
+  public void testRedactValuesCoversStrippedCredential() {
+    assertEquals(
+        "token: REDACTED",
+        RedactingService.redactValues("token: apikey123", List.of("apikey123\n")));
+  }
+
+  @Test
   public void testRedactValuesIgnoresShortValues() {
     String input = "key: abc, other: abc";
     assertEquals(input, RedactingService.redactValues(input, List.of("abc")));

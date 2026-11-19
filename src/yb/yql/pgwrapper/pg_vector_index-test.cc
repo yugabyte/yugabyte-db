@@ -36,8 +36,10 @@
 
 #include "yb/docdb/docdb_util.h"
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
+#include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -116,6 +118,7 @@ DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_enable_pk_routing);
 DECLARE_bool(vector_index_include_into_post_split_compaction);
 DECLARE_bool(vector_index_delete_list_after_rows);
+DECLARE_bool(vector_index_delete_list_with_subtransaction);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
@@ -128,6 +131,7 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_disable_wal_retention_time);
 DECLARE_bool(TEST_fail_vector_index_backfill);
 DECLARE_bool(TEST_skip_process_apply);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_skip_vector_index_stamp_after_restore_reopen);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_payloads);
@@ -151,9 +155,11 @@ DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_delay_init_tablet_peer_ms);
 DECLARE_int32(TEST_pause_and_skip_apply_intents_task_loop_ms);
 DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
+DECLARE_int32(TEST_sleep_before_restore_checkpoint_resumes_ops_ms);
 DECLARE_int32(ysql_client_read_write_timeout_ms);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_uint64(vector_index_backfill_single_chunk_size_bytes);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int64(db_block_size_bytes);
@@ -2426,6 +2432,67 @@ TEST_P(PgVectorIndexTest, SnapshotScheduleRestoreBeforeDropColumn) {
 
   ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
   ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+}
+
+// A restored vector index that needs a compaction right away must not start it before the
+// restore resumes read/write operations. The compaction would fail with TryAgain, the index would
+// keep that failure, and the restore apply or the next write would crash the tserver. See DB-23803.
+TEST_P(PgVectorIndexTest, CompactionAfterSnapshotRestore) {
+  constexpr size_t kBatch = 8;
+
+  num_pre_split_tablets_ = 1;
+  // Accumulate enough chunks for a compaction, but let it start only from the restore.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
+
+  client::SnapshotTestUtil snapshot_util;
+  snapshot_util.SetProxy(&client_->proxy_cache());
+  snapshot_util.SetCluster(cluster_.get());
+
+  auto conn = ASSERT_RESULT(MakeIndex());
+  size_t num_rows = 0;
+  for (int i = 0; i != GetFileNumCompactionTrigger(); ++i) {
+    ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kBatch));
+    num_rows += kBatch;
+    // A lagging follower would put several batches into one chunk and have nothing to compact.
+    ASSERT_OK(WaitAllReplicasAppliedLeaderCommitted(cluster_.get(), 30s * kTimeMultiplier));
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kVectorIndexes));
+  }
+
+  auto schedule_id = ASSERT_RESULT(snapshot_util.CreateSchedule(
+      nullptr, YQL_DATABASE_PGSQL, DbName(),
+      client::WaitSnapshot::kTrue, 1s * kTimeMultiplier, 60s * kTimeMultiplier));
+  auto hybrid_time = cluster_->mini_master(0)->Now();
+  ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, hybrid_time));
+
+  std::atomic<size_t> num_compacted{0};
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack("VectorLSM::DoCompact:ChunksUpdated", [&num_compacted](void*) {
+    ++num_compacted;
+  });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+  // Hold the pause long enough for a compaction enabled under it to reach its first read.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms) =
+      1000 * kTimeMultiplier;
+  auto snapshot_id = ASSERT_RESULT(snapshot_util.PickSuitableSnapshot(schedule_id, hybrid_time));
+  ASSERT_OK(snapshot_util.RestoreSnapshot(snapshot_id, hybrid_time));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms) = 0;
+
+  // One compaction per tablet replica.
+  const auto num_indexes = ListVectorIndexes(cluster_.get()).size();
+  ASSERT_OK(LoggedWaitFor(
+      [&num_compacted, num_indexes] { return num_compacted >= num_indexes; },
+      30s * kTimeMultiplier, "Restored indexes compacted"));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
+  ASSERT_OK(InsertRows(conn, num_rows + 1, num_rows + kBatch));
+  ASSERT_NO_FATALS(VerifyRead(conn, kBatch, AddFilter::kFalse));
 }
 
 void PgVectorIndexTest::TestSnapshotRestoreNonTransactionalWrites(
@@ -7176,12 +7243,41 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
     }, 10s * kTimeMultiplier, "Transactions loaded");
   }
 
+  // Sets the AutoFlags of the delete list record to their values after (true) or before (false) the
+  // upgrade.
+  static void SetDeleteListEncoding(bool new_encoding) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = new_encoding;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = new_encoding;
+  }
+
+  // The sorted value types of the delete list records in the intents DB of the test tablet.
+  Result<std::string> DeleteListRecordTypes() {
+    auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), "test", ListPeersFilter::kLeaders));
+    SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet");
+    auto tablet = VERIFY_RESULT(peers.front()->shared_tablet());
+    std::unique_ptr<rocksdb::Iterator> iter(
+        tablet->intents_db()->NewIterator(rocksdb::ReadOptions()));
+    std::string result;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      if (iter->key().starts_with(dockv::KeyEntryTypeAsChar::kTransactionId) &&
+          dockv::IsVectorIndexRecord(iter->value())) {
+        result.push_back(iter->value()[0]);
+      }
+    }
+    RETURN_NOT_OK(iter->status());
+    std::ranges::sort(result);
+    return result;
+  }
+
   // Ids of the rows nearest to the origin.
   Result<std::string> NearestIds(PGConn& conn, size_t limit) {
     return AsString(VERIFY_RESULT(conn.FetchRows<int64_t>(Format(
         "SELECT id FROM test ORDER BY embedding $0 '[0, 0, 0]' LIMIT $1",
         pgwrapper::DistanceOpName(distance_kind_), limit))));
   }
+
+  static constexpr int64_t kUnappliedInsertRowId = 100;
 
   static Status UpdateInTransaction(PGConn& conn, int64_t id, const std::string& vector) {
     RETURN_NOT_OK(conn.Execute("BEGIN"));
@@ -7191,6 +7287,8 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
 
   void TestFastPathVectorDeletion(const std::string& statement);
   void TestUnappliedVectorUpdates();
+  void TestReverseMappingPostSplitCompactionUnappliedInsert(
+      const std::string& statement, int num_row_entries);
   void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
 
@@ -7594,7 +7692,7 @@ TEST_F(PgVectorIndexUtilTest, SameTxnDeletedVector) {
 }
 
 // A tablet that restarts with an uncommitted transaction in its intents DB scans the reverse index
-// of that transaction backwards for its last strong intent. The delete-list record of a DELETE sits
+// of that transaction backwards for its last strong intent. The delete list record of a DELETE sits
 // between the strong and the weak intents of its batch. An UPDATE also takes a row lock, a strong
 // intent written after the delete list.
 TEST_F(PgVectorIndexUtilTest, LoadTransactionWithDeleteList) {
@@ -7608,8 +7706,8 @@ TEST_F(PgVectorIndexUtilTest, LoadTransactionWithDeleteList) {
   ASSERT_FALSE(decode_failure_log.IsEventOccurred());
 }
 
-// A transaction that spans the promotion of vector_index_delete_list_after_rows has delete lists
-// with both key encodings.
+// A transaction that spans the promotion of the delete list AutoFlags has delete list records of
+// both encodings.
 TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   constexpr int64_t kNumRows = 20;
   constexpr auto kQueryC = "[0, 0, -500]";
@@ -7618,10 +7716,10 @@ TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   // A committed row updated twice in one transaction: the old key tombstones the committed vector,
   // the new key tombstones the vector of the first update.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (2000, '$0')", kQueryC));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  SetDeleteListEncoding(/* new_encoding= */ false);
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2000", kQueryB));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  SetDeleteListEncoding(/* new_encoding= */ true);
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, -100, 100]' WHERE id = 2000"));
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
@@ -7633,16 +7731,63 @@ TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   }
 
   // A pending transaction with both encodings, loaded by a restarted tablet.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  SetDeleteListEncoding(/* new_encoding= */ false);
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  SetDeleteListEncoding(/* new_encoding= */ true);
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(cluster_->FlushTablets());
 
   StringWaiterLogSink decode_failure_log("Failed to decode intent while loading transaction");
   ASSERT_OK(RestartAndWaitTransactionsLoaded());
   ASSERT_FALSE(decode_failure_log.IsEventOccurred());
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/36288.
+TEST_F(PgVectorIndexUtilTest, RolledBackSubtransactionKeepsVectors) {
+  constexpr int64_t kNumRows = 20;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  // Written without the subtransaction id, so a delete list without one is applied too.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = false;
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 19"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT a"));
+  ASSERT_EQ(ASSERT_RESULT(DeleteListRecordTypes()), "W");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = true;
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 20"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  ASSERT_OK(conn.Execute("SAVEPOINT c"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[0, 0, 500]' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT c"));
+  ASSERT_OK(conn.Execute("SAVEPOINT d"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT d"));
+  // A row of the transaction, deleted in a savepoint released inside the rolled back one.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kQueryA));
+  ASSERT_OK(conn.Execute("SAVEPOINT e"));
+  ASSERT_OK(conn.Execute("SAVEPOINT f"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1000"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT f"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT e"));
+  // A PL/pgSQL block rolls back its statements when it handles an exception.
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN DELETE FROM test WHERE id = 3; RAISE EXCEPTION 'rollback'; "
+      "EXCEPTION WHEN OTHERS THEN NULL; END $$"));
+  ASSERT_EQ(ASSERT_RESULT(DeleteListRecordTypes()), "WYYYYY");
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  using Ids = std::vector<int64_t>;
+  for (const auto& [query, expected] :
+           {std::pair(kQueryA, Ids{1000, 20, 18}), std::pair(kQueryB, Ids{1, 3, 4})}) {
+    auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(
+        "SELECT id FROM test" + IndexQuerySuffix(query, expected.size())));
+    EXPECT_EQ(ids, expected) << "Query: " << query;
+  }
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/30262.
@@ -7768,6 +7913,86 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
           ybctid_2_vector_1 -> DEL
       )#",
       with_row2_dump);
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/38070. The statement removes the vector of
+// a row, while the insert of the row is committed but not applied. num_row_entries is the number of
+// reverse mapping entries of the row which the statement writes.
+void PgVectorIndexUtilTest::TestReverseMappingPostSplitCompactionUnappliedInsert(
+    const std::string& statement, int num_row_entries) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  // The held apply reaches the children when its resend to the parent fails with a split error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // The statement has to be applied before the held apply is resent.
+  constexpr int64_t kResendIntervalSec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) =
+      kResendIntervalSec * kTimeMultiplier * MonoTime::kMicrosecondsPerSecond;
+
+  constexpr size_t kNumRows = 10;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+
+  // The insert is committed, but not applied. Its vector is the nearest to the origin.
+  google::SetVLOGLevel("transaction_participant", 2);
+  StringWaiterLogSink rejected_apply_log("TEST: Rejected apply");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[0.5, 0.5, 0.5]')", kUnappliedInsertRowId));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(rejected_apply_log.WaitFor(10s * kTimeMultiplier));
+
+  // The statement reads the row from the intents. Its apply writes the reverse mapping tombstone.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(conn.Execute(statement));
+  std::string dump;
+  ASSERT_OK(WaitFor([this, &dump]() -> Result<bool> {
+    dump = VERIFY_RESULT(DumpSingleTabletReverseMapping());
+    return dump.find("-> DEL") != std::string::npos;
+  }, 10s * kTimeMultiplier, "Reverse mapping tombstone"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  const auto row_entry = Format(" -> ybctid_$0\n", kUnappliedInsertRowId);
+  dump += '\n';
+  ASSERT_EQ(CountSubstring(dump, row_entry), num_row_entries) << "The insert is applied: " << dump;
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitForAllIntentsApplied(
+      cluster_.get(), MonoDelta::FromSeconds(kResendIntervalSec + 30) * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+
+  // The row has a far vector now (a deleted row is inserted back), so the vector of its old version
+  // would come first.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[100, 100, 100]') ON CONFLICT DO NOTHING",
+      kUnappliedInsertRowId));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 5)), "[1, 2, 3, 4, 5]");
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionDeleteOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format("DELETE FROM test WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 0);
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionUpdateOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format(
+          "UPDATE test SET embedding = '[100, 100, 100]' WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 1);
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/35923.

@@ -86,6 +86,17 @@ YbIsClientYsqlConnMgr()
 	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
+/*
+ * The connection manager sets the addr and port together, so the addr alone
+ * decides, the same way pg_stat_activity does.
+ */
+bool
+YbHasConnMgrLogicalClientAddr(void)
+{
+	return YbIsClientYsqlConnMgr() && yb_ycm_internal_client_addr &&
+		   yb_ycm_internal_client_addr[0] != '\0';
+}
+
 bool		yb_conn_mgr_is_auth_passthrough_backend = false;
 
 bool
@@ -1146,4 +1157,20 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
+}
+
+/*
+ * Whether a startup parameter name is reserved for the connection manager:
+ * anything with the yb_ycm_internal_ prefix, the legacy names that guc.c
+ * still maps onto reserved parameters, and yb_conn_mgr_client_hostname, which
+ * pg_stat_activity reports as the logical client's hostname.
+ */
+bool
+YbIsConnMgrReservedStartupParameter(const char *name)
+{
+	return pg_strncasecmp(name, YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX,
+						  strlen(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX)) == 0 ||
+		pg_strcasecmp(name, "yb_conn_mgr_client_hostname") == 0 ||
+		pg_strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
+		pg_strcasecmp(name, "yb_use_tserver_key_auth") == 0;
 }
