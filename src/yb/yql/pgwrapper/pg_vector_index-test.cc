@@ -2174,11 +2174,14 @@ TEST_P(PgVectorIndexTest, SearchInIndexCreatingTransaction) {
     ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
     // Picks the read time of the transaction.
     ASSERT_OK(conn.FetchRow<int32_t>("SELECT k FROM anchor"));
-    ASSERT_OK(CreateIndex(conn, Format("vi$0", ++num_indexes)));
+    const auto index = Format("vi$0", ++num_indexes);
+    ASSERT_OK(CreateIndex(conn, index));
     auto query = "SELECT * FROM test" + query_suffix;
     ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
     ASSERT_NOK_STR_CONTAINS(conn.FetchAllAsString(query), "index birth time");
     ASSERT_OK(conn.Execute("ROLLBACK"));
+    // Without DDL transaction blocks, the index outlives the rollback.
+    ASSERT_OK(conn.ExecuteFormat("DROP INDEX IF EXISTS $0", index));
 
     const auto table = Format("t$0", ++num_indexes);
     ASSERT_OK(conn.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
