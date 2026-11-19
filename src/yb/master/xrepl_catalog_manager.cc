@@ -770,6 +770,18 @@ bool IsPublicationsBoundStreamCreationRequest(
          !IsNotificationSlotCreationRequest(req, namespace_name);
 }
 
+// Whether the stream detects publication changes, table rewrites and DDL by polling the PG catalog
+// tables, which live in the sys catalog tablet on the master leader. Notifications slots stream
+// only pg_yb_notifications through a fixed publication, so they use pub refresh instead: polling
+// the catalog would make every poll round of every node's poller depend on the master leader.
+bool DetectsPublicationChangesImplicitly(
+    const CreateCDCStreamRequestPB& req, const std::string& namespace_name) {
+  return FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+         FLAGS_cdc_enable_dynamic_schema_changes &&
+         IsLogicalReplicationStreamCreationRequest(req, namespace_name) &&
+         !IsNotificationSlotCreationRequest(req, namespace_name);
+}
+
 }  // namespace
 
 Status CatalogManager::DropXClusterStreamsOfTables(const std::unordered_set<TableId>& table_ids) {
@@ -1184,6 +1196,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   }
 
   bool is_logical_replication_stream_req;
+  bool detect_publication_changes_implicitly;
   bool allow_tables_without_primary_key;
 
   const bool has_bound_table_ids =
@@ -1216,6 +1229,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     }
 
     is_logical_replication_stream_req = IsLogicalReplicationStreamCreationRequest(req, ns->name());
+    detect_publication_changes_implicitly = DetectsPublicationChangesImplicitly(req, ns->name());
 
     has_bound_publication = req.has_cdcsdk_stream_create_options() &&
                             req.cdcsdk_stream_create_options().has_bound_publication_name();
@@ -1305,9 +1319,8 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   // We add the pg_class, pg_attribute (when detecting DDL from catalog DML), pg_publication_rel,
   // pg_replication_origin and pg_publication catalog tables to the stream metadata as we will
   // poll them to figure out changes to the publications, replication origins and table schemas.
-  // This will not be done for gRPC streams.
-  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-      FLAGS_cdc_enable_dynamic_schema_changes && is_logical_replication_stream_req) {
+  // This will not be done for gRPC streams or notifications slots.
+  if (detect_publication_changes_implicitly) {
     auto catalog_table_ids =
         VERIFY_RESULT(GetCatalogTableIdsPolledByLogicalReplication(namespace_id));
     table_ids.insert(table_ids.end(), catalog_table_ids.begin(), catalog_table_ids.end());
@@ -1372,6 +1385,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   });
 
   bool is_logical_replication_stream_req;
+  bool detect_publication_changes_implicitly;
   bool is_publications_bound_stream_req;
   ReplicationSlotName slot_name;
   {
@@ -1382,6 +1396,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
     namespace_name = VERIFY_RESULT(FindNamespaceByIdUnlocked(*namespace_id))->name();
     is_logical_replication_stream_req =
         IsLogicalReplicationStreamCreationRequest(req, namespace_name);
+    detect_publication_changes_implicitly =
+        DetectsPublicationChangesImplicitly(req, namespace_name);
     is_publications_bound_stream_req =
         IsPublicationsBoundStreamCreationRequest(req, namespace_name);
 
@@ -1546,9 +1562,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (is_logical_replication_stream_req) {
     metadata->set_allow_tables_without_primary_key(
         FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key);
-    metadata->set_detect_publication_changes_implicitly(
-        FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-        FLAGS_cdc_enable_dynamic_schema_changes);
+    metadata->set_detect_publication_changes_implicitly(detect_publication_changes_implicitly);
   }
 
   // CDC streams which are bound to fixed set of tables will have dynamic table addition disabled.
