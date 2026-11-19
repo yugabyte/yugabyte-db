@@ -227,6 +227,12 @@ Result<DecodedIntentValue> DecodeIntentValue(
     decoded_value.subtransaction_id = kMinSubTransactionId;
   }
 
+  if (intent_value.TryConsumeByte(ValueEntryTypeAsChar::kCommandId)) {
+    INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(uint32_t), "command id expected");
+    decoded_value.command_id = BigEndian::Load32(intent_value.data());
+    intent_value.remove_prefix(sizeof(uint32_t));
+  }
+
   if (intent_value.TryConsumeByte(ValueEntryTypeAsChar::kWriteId)) {
     INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
     decoded_value.write_id = BigEndian::Load32(intent_value.data());

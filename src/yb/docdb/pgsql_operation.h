@@ -53,6 +53,8 @@ class PgsqlWriteOperation :
   bool RequireReadSnapshot() const override;
 
   const PgsqlWriteRequestMsg& request() const { return request_; }
+
+  std::optional<uint32_t> CommandId() const override;
   PgsqlResponseMsg* response() const { return response_; }
 
   Result<bool> HasDuplicateUniqueIndexValue(const DocOperationApplyData& data);

@@ -741,6 +741,8 @@ std::string PrimitiveValue::ValueToString() const {
       return Format("TransactionId($0)", uuid_val_.ToString());
     case ValueEntryType::kSubTransactionId:
       return Format("SubTransactionId($0)", uint32_val_);
+    case ValueEntryType::kCommandId:
+      return Format("CommandId($0)", uint32_val_);
     case ValueEntryType::kWriteId:
       return Format("WriteId($0)", int32_val_);
     case ValueEntryType::kMaxByte:
@@ -1788,6 +1790,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
 
     case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kUInt32: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kCommandId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kSubTransactionId:
       if (slice.size() != sizeof(uint32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -1967,6 +1970,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
     case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kUInt32: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kCommandId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kSubTransactionId: {
       if (slice.size() != sizeof(uint32_t)) {
         return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
@@ -2271,6 +2275,7 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kCommandId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kUInt32: return uint32_val_ == other.uint32_val_;
 
     case ValueEntryType::kUInt64: return uint64_val_ == other.uint64_val_;
@@ -2329,6 +2334,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(int32_val_, other.int32_val_);
     case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kSubTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kCommandId: FALLTHROUGH_INTENDED;
     case ValueEntryType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
     case ValueEntryType::kUInt64:

@@ -403,7 +403,11 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler& handler) {
               is_row_lock, is_top_level_key, pk_is_known);
         },
         partial_range_key_intents_,
-        skip_prefix_locks_));
+        skip_prefix_locks_,
+        [this](const LWKeyValuePairPB& pair) {
+          command_id_ = pair.has_command_id() ? std::optional(pair.command_id()) : std::nullopt;
+        }));
+    command_id_ = std::nullopt;
   }
 
   if (put_batch_.has_delete_vector_ids()) {
@@ -526,6 +530,9 @@ Status TransactionalWriter::operator()(
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
 
   auto subtransaction_id = EncodeSubTransactionId(subtransaction_id_);
+  // Only the strong intent on the written key records the command id; reads match it against
+  // that intent alone.
+  auto command_id = EncodeCommandId(ancestor_doc_key ? std::nullopt : command_id_);
 
   if (is_top_level_key && intent_value.empty() &&
       intent_types.Test(dockv::IntentType::kStrongWrite)) {
@@ -537,10 +544,11 @@ Status TransactionalWriter::operator()(
     RSTATUS_DCHECK_EQ(skip_prefix_locks_, dockv::SkipPrefixLocks::kTrue, InvalidArgument, msg);
   }
 
-  std::array<Slice, 6> value = {{
+  std::array<Slice, 7> value = {{
       Slice(&transaction_value_type, 1),
       transaction_id_.AsSlice(),
       subtransaction_id.AsSlice(),
+      command_id.AsSlice(),
       Slice(&write_id_value_type, 1),
       Slice::FromPod(&big_endian_write_id),
       intent_value,

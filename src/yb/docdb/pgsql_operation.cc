@@ -1366,6 +1366,10 @@ class PgsqlWriteOperation::RowPackContext {
 
 //--------------------------------------------------------------------------------------------------
 
+std::optional<uint32_t> PgsqlWriteOperation::CommandId() const {
+  return request_.has_command_id() ? std::optional(request_.command_id()) : std::nullopt;
+}
+
 PgsqlWriteOperation::PgsqlWriteOperation(
     std::reference_wrapper<const PgsqlWriteRequestMsg> request, DocReadContextPtr doc_read_context,
     const TransactionOperationContext& txn_op_context, rpc::Sidecars* sidecars)

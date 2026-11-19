@@ -939,10 +939,20 @@ void DocWriteBatch::MoveLocksToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb, bool 
 
 // TODO(lw_uc) allocate entries on the same arena, then just reference them.
 void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
-  for (auto& entry : put_batch_) {
+  auto next_command_id = command_id_starts_.begin();
+  std::optional<uint32_t> command_id;
+  for (size_t i = 0; i != put_batch_.size(); ++i) {
+    const auto& entry = put_batch_[i];
+    for (; next_command_id != command_id_starts_.end() && next_command_id->first == i;
+         ++next_command_id) {
+      command_id = next_command_id->second;
+    }
     auto* kv_pair = kv_pb->add_write_pairs();
     kv_pair->dup_key(entry.key);
     kv_pair->dup_value(entry.value);
+    if (command_id) {
+      kv_pair->set_command_id(*command_id);
+    }
     // Set pk_is_known it if has valid value. For pgsql write operation, pk_is_known is set in
     // PgsqlWriteOperation. For explicit row lock, pk_is_known is set during handling read query.
     if (!boost::indeterminate(entry.pk_is_known)) {
