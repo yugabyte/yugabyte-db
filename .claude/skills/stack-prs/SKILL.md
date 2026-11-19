@@ -89,6 +89,12 @@ The bottom layer's PR opens ready (or as a draft with `-D`) and stays unlinked u
 layer's PR opens, since `gh stack link` needs at least two PRs.
 
 
+## Backporting
+
+Backport a merged stack with `/backport-commit` and `--stack <pr>`.  It opens a stacked PR on each
+release branch, with that branch as the trunk, so everything below applies to it.
+
+
 ## Updating a layer
 
 Commit on the layer that owns the change, never on a higher one, then replay the layers above it

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backport a merged commit to one or more release branches.
+"""Backport a merged commit, or a merged PR stack, to one or more release branches.
 
 Python rewrite of backport-commit.sh. Same CLI surface (flags, positional
 arguments) and same exit-code contract:
@@ -8,6 +8,13 @@ arguments) and same exit-code contract:
     1  pre-flight failure (bad args, dirty workspace, missing remote, ...)
     2  cherry-pick conflict OR lint failure on a task branch -- the user
        resolves / fixes lint, amends, and re-runs with `-x <branch>`
+       (stack mode: re-runs the same command; no -x needed)
+    6  stack mode: the PRs were opened, but `gh stack link` failed
+
+Stack mode: given several commits (or `--stack <PR>`, which reads the merged
+layers of a GitHub PR stack), each release branch gets a stacked PR, one
+layer per commit, on `feature-stack/backport-<branch>-<feature>/<change>`
+branches in the upstream repo -- GitHub cannot stack PRs from fork branches.
 
 Invoked via the bash shim `.agents/scripts/backport-commit.sh`.
 
@@ -117,10 +124,17 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SCRIPT_REPO_ROOT = SCRIPT_DIR.parent.parent  # /<worktree>
 
 
+COMMIT_RE = re.compile(r"[0-9a-fA-F]{7,64}")
+
+
 def parse_args(argv):
     p = argparse.ArgumentParser(
         prog="backport-commit",
-        description="Backport a merged commit to one or more release branches.",
+        usage="%(prog)s [options] <commit> [<commit> ...] [<branch> ...]\n"
+              "       %(prog)s [options] --stack <pr> [<branch> ...]",
+        description="Backport a merged commit to one or more release branches. "
+                    "Given several commits, or --stack, open a stacked PR on each "
+                    "release branch with one layer per commit.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("-n", "--preview", action="store_true",
@@ -136,12 +150,30 @@ def parse_args(argv):
     p.add_argument("--keep-workspace", action="store_true",
                    help="On success, don't delete local task branches or remove "
                         "the worktree (default cleans up after PRs are created).")
-    p.add_argument("commit", help="Commit SHA (>=7 hex chars).")
-    p.add_argument("branches", nargs="*", help="Destination branches.")
+    p.add_argument("--stack", metavar="PR",
+                   help="Backport the merged layers of the GitHub PR stack that "
+                        "this PR (or stack number) belongs to, bottom first, as "
+                        "a stacked PR on each branch.")
+    p.add_argument("targets", nargs="*", metavar="commit-or-branch",
+                   help="Commit SHAs (>=7 hex chars) in stack order, bottom "
+                        "first, then destination branches.")
     args = p.parse_args(argv)
 
-    if not re.fullmatch(r"[0-9a-fA-F]{7,64}", args.commit):
-        p.error(f"malformed commit ID: {args.commit!r} (expected 7+ hex chars)")
+    # Release branch names (2025.2, 2.20) contain a dot, so they never pass
+    # for a SHA.
+    n = 0
+    while n < len(args.targets) and COMMIT_RE.fullmatch(args.targets[n]):
+        n += 1
+    args.commits, args.branches = args.targets[:n], args.targets[n:]
+    bad = [b for b in args.branches if COMMIT_RE.fullmatch(b)]
+    if bad:
+        p.error(f"commits must come before branches: {' '.join(bad)}")
+    if args.stack and args.commits:
+        p.error("pass either commits or --stack, not both")
+    if not args.stack and not args.commits:
+        p.error("no commit given (expected 7+ hex chars, or --stack <pr>)")
+    if args.stack and not re.fullmatch(r"\d+", args.stack.lstrip("#")):
+        p.error(f"--stack takes a PR or stack number, got {args.stack!r}")
     if args.stable_limit and args.branches:
         p.error("cannot mix -s / --stable-limit with positional branches")
     return args
@@ -236,15 +268,23 @@ def ensure_commit_local(commit: str, upstream_remote: str) -> str:
     return git("rev-parse", commit)
 
 
-def lookup_originating_pr(gh_repo: str, commit: str) -> tuple[Optional[int], Optional[str]]:
-    """Return (pr_number, pr_url) for the merge PR of $commit, or (None, None)."""
+def originating_pr(gh_repo: str, commit: str) -> Optional[dict]:
+    """Return the merge PR of $commit as the REST API's PR object, or None."""
     info(f"Looking up originating PR for {commit[:9]}")
     data = gh_json([f"repos/{gh_repo}/commits/{commit}/pulls"], check=False)
     if not data:
         print("No originating PR found; backport body will reference the commit hash only.")
-        return None, None
+        return None
     pr = data[0]
     print(f"Found originating PR: #{pr['number']} -> {pr['html_url']}")
+    return pr
+
+
+def lookup_originating_pr(gh_repo: str, commit: str) -> tuple[Optional[int], Optional[str]]:
+    """Return (pr_number, pr_url) for the merge PR of $commit, or (None, None)."""
+    pr = originating_pr(gh_repo, commit)
+    if not pr:
+        return None, None
     return pr["number"], pr["html_url"]
 
 
@@ -506,8 +546,12 @@ def ends_with_trailers(body_lines: list[str]) -> bool:
                     input_=message).stdout.strip())
 
 
-def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> None:
+def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str,
+             base_rev: Optional[str] = None, stack_mode: bool = False) -> None:
     """Run the workspace's own lint.sh, with whatever flag it supports.
+
+    Lints against $base_rev, default $upstream_remote/$branch; a stack layer
+    passes the layer below it.
 
     Master's lint.sh is a thin wrapper around lint.py that takes `--rev <base>`.
     Release branches (2026.1, 2025.x, 2024.x) ship a different lint.sh -- a
@@ -522,11 +566,12 @@ def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> N
         warn(f"{bp_lint} not found or not executable; skipping lint check.")
         return
 
-    info(f"Running linter on {task} (vs {upstream_remote}/{branch})")
+    base_rev = base_rev or f"{upstream_remote}/{branch}"
+    info(f"Running linter on {task} (vs {base_rev})")
     # LC_ALL=C keeps the "unknown flag: --rev" probe locale-independent
     # so the fallback path triggers on any system, not just English ones.
     lint_env = {**os.environ, "LC_ALL": "C"}
-    proc = run([str(bp_lint), "--rev", f"{upstream_remote}/{branch}"],
+    proc = run([str(bp_lint), "--rev", base_rev],
                env=lint_env, check=False)
     combined = (proc.stdout or "") + (proc.stderr or "")
     if proc.returncode != 0 and "unknown flag: --rev" in combined:
@@ -548,7 +593,10 @@ def run_lint(workspace: Path, upstream_remote: str, branch: str, task: str) -> N
         info("Fix the lint issues and AMEND them into the backport commit:")
         info("  git add <files>")
         info("  git commit --amend --no-edit")
-        info(f"Then re-run with -x {branch} to publish.")
+        if stack_mode:
+            info("Then re-run the same command; it resumes from this layer.")
+        else:
+            info(f"Then re-run with -x {branch} to publish.")
         info("")
         info("(The task branch is unpublished, so amending is safe -- and")
         info("required: each task branch must be a single commit so the")
@@ -623,6 +671,323 @@ def request_reviewers(gh_repo: str, pr_num: int, reviewers: str) -> None:
     )
     if proc.returncode != 0:
         warn(f"failed to add reviewers to PR #{pr_num} (continuing): {reviewers}")
+
+
+# --- Stack mode -------------------------------------------------------------
+
+STACK_BRANCH_RE = re.compile(r"feature-stack/([^/]+)/([^/]+)")
+
+
+class Layer:
+    """One commit of a stack backport, with what its originating PR says."""
+    def __init__(self, commit: str, pr: Optional[dict], reviewers: str):
+        self.commit = commit
+        self.pr_url = pr["html_url"] if pr else None
+        self.reviewers = reviewers
+        m = STACK_BRANCH_RE.fullmatch(((pr or {}).get("head") or {}).get("ref") or "")
+        self.feature = m.group(1) if m else None
+        self.change = m.group(2) if m else None
+
+
+def resolve_stack_commits(gh_repo: str, ref: str) -> list[str]:
+    """Return the merge commits of the merged layers of a GitHub PR stack.
+
+    $ref is a stack number or the number of a PR in the stack; the two
+    never collide. Layers come bottom first. Unmerged layers, always the top
+    of the stack, are left out with a warning.
+    """
+    ref = ref.lstrip("#")
+    stack = gh_json([f"repos/{gh_repo}/stacks/{ref}"], check=False)
+    if not (stack or {}).get("pull_requests"):
+        pr = gh_json([f"repos/{gh_repo}/pulls/{ref}"], check=False) or {}
+        number = (pr.get("stack") or {}).get("number")
+        if not number:
+            fail(f"#{ref} is neither a PR stack nor a PR in one on {gh_repo}.")
+        stack = gh_json([f"repos/{gh_repo}/stacks/{number}"], check=False) or {}
+    info(f"Reading PR stack {stack.get('html_url') or stack.get('number')}")
+
+    commits: list[str] = []
+    unmerged: list[str] = []
+    for pr in stack.get("pull_requests") or []:
+        if not pr.get("merged_at"):
+            unmerged.append(f"#{pr['number']}")
+            continue
+        if unmerged:
+            fail(f"#{pr['number']} is merged, but {', '.join(unmerged)} below "
+                 f"it is not; backport the commits explicitly instead.")
+        # The stack listing carries no merge commit; the PR does.
+        sha = (gh_json([f"repos/{gh_repo}/pulls/{pr['number']}"]) or {}).get(
+            "merge_commit_sha")
+        if not sha:
+            fail(f"could not read the merge commit of #{pr['number']}.")
+        print(f"  #{pr['number']} -> {sha[:9]} {pr.get('title', '')}")
+        commits.append(sha)
+    if unmerged:
+        warn(f"leaving out unmerged layers: {', '.join(unmerged)}")
+    if not commits:
+        fail(f"no layer of the stack is merged yet; nothing to backport.")
+    return commits
+
+
+def stack_task_names(layers: list[Layer], branch: str) -> list[str]:
+    """Return the feature-stack/<feature>/<change> branch of each layer on $branch.
+
+    Reuses the original stack's names when every commit came from one; the
+    feature gets a `backport-<branch>-` prefix so each release branch has its
+    own stack.
+    """
+    features = {layer.feature for layer in layers}
+    if len(features) == 1 and None not in features:
+        feature = f"backport-{branch}-{features.pop()}"
+    else:
+        feature = f"backport-{branch}-{layers[0].commit[:9]}"
+    names: list[str] = []
+    seen: set[str] = set()
+    for layer in layers:
+        change = layer.change or layer.commit[:9]
+        if change in seen:
+            change = f"{change}-{layer.commit[:9]}"
+        seen.add(change)
+        names.append(f"feature-stack/{feature}/{change}")
+    return names
+
+
+def cherry_pick_cmd(source: str) -> list[str]:
+    """`git cherry-pick` of $source, with -m 1 if it is a merge commit."""
+    if len(git("rev-list", "--parents", "-n1", source).split()) > 2:
+        return ["git", "cherry-pick", "-m", "1", "--allow-empty", source]
+    return ["git", "cherry-pick", "--allow-empty", source]
+
+
+def prepare_stack(*, gh_repo: str, upstream_remote: str, workspace: Path,
+                  branch: str, layers: list[Layer], tasks: list[str],
+                  chain_src: list[Optional[str]],
+                  rerun_hint: str) -> list[tuple[Layer, str, Optional[str]]]:
+    """Build one task branch per layer on $branch, each on the one below.
+
+    Returns (layer, task, existing PR URL or None) for each layer kept; a
+    layer whose change $branch already has is dropped. Resumable: a layer
+    whose task branch already holds its one commit (a conflict the user
+    resolved) is kept as is, and a layer with a PR is fetched from
+    upstream. Updates $chain_src[i] to the commit the next branch should
+    cherry-pick for layer i. Raises ResumableConflict on a conflict or a
+    lint failure.
+    """
+    parent = f"{upstream_remote}/{branch}"
+    kept: list[tuple[Layer, str, Optional[str]]] = []
+    for i, (layer, task) in enumerate(zip(layers, tasks)):
+        print(f"---- layer {i + 1}/{len(layers)}: {task}")
+        if git_ok("merge-base", "--is-ancestor", layer.commit, f"{upstream_remote}/{branch}"):
+            info(f"{branch} already contains {layer.commit[:9]}; dropping this layer.")
+            chain_src[i] = None
+            continue
+        existing = existing_pr_url(gh_repo, gh_repo, task)
+        if existing:
+            info(f"Existing backport PR found: {existing} -- keeping it")
+            if git("symbolic-ref", "--short", "HEAD", check=False) != task:
+                run(["git", "fetch", upstream_remote, f"+{task}:{task}"])
+            kept.append((layer, task, existing))
+            parent = task
+            chain_src[i] = task
+            continue
+
+        if git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{task}"):
+            if not git_ok("merge-base", "--is-ancestor", parent, task):
+                fail(f"{task} is not based on {parent}. Delete it "
+                     f"('git branch -D {task}') and re-run.")
+            ahead = int(git("rev-list", "--count", f"{parent}..{task}"))
+            if ahead > 1:
+                fail(f"{task} has {ahead} commits on top of {parent}; a layer "
+                     f"must be one commit. Squash them and re-run.")
+            info(f"Checking out task branch: {task}")
+            run(["git", "checkout", task])
+        else:
+            info(f"Creating task branch: {task} (on {parent})")
+            run(["git", "checkout", "-b", task, parent])
+            ahead = 0
+
+        if ahead == 0:
+            port_cmd = cherry_pick_cmd(chain_src[i] or layer.commit)
+            if not apply_cherry_pick(port_cmd, task, workspace, branch, rerun_hint):
+                run(["git", "checkout", "--detach"])
+                run(["git", "branch", "-D", task])
+                chain_src[i] = None
+                continue
+        else:
+            info(f"{task} already holds its commit; using it as is")
+
+        # Amend only once: a layer above may already be built on this commit.
+        if not git("log", "-n1", "--format=%s", "HEAD").startswith(f"[BACKPORT {branch}]"):
+            amend_message(layer.commit, branch, layer.pr_url)
+        run_lint(workspace, upstream_remote, branch, task,
+                 base_rev=parent, stack_mode=True)
+        kept.append((layer, task, None))
+        parent = task
+        chain_src[i] = task
+    return kept
+
+
+def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
+                  kept: list[tuple[Layer, str, Optional[str]]],
+                  reviewers_override: Optional[str], preview: bool) -> int:
+    """Push the new layers to upstream, open their PRs bottom up, and link them.
+
+    Mirrors create-pr.sh: a layer with a PR below it opens as a draft and is
+    marked ready once linked, so the CI that readiness starts already sees a
+    stack member. Returns 0, or 6 if `gh stack link` failed.
+    """
+    new = [(i, layer, task) for i, (layer, task, pr) in enumerate(kept) if not pr]
+    if preview:
+        info("Preview Mode (no push, no PR)")
+        print("Would have run:")
+        if new:
+            print(f"  git push {upstream_remote} "
+                  + " ".join(f"{t}:refs/heads/{t}" for _, _, t in new))
+        for i, layer, task in new:
+            base = branch if i == 0 else kept[i - 1][1]
+            subject = git("log", "-n1", "--format=%s", task)
+            draft = " --draft" if i > 0 else ""
+            print(f"  gh pr create -R {gh_repo} -B {base} -H {task}{draft} "
+                  f"-t {shlex.quote(subject)} -F -  (body: the commit body)")
+            reviewers = (reviewers_override if reviewers_override is not None
+                         else layer.reviewers)
+            if reviewers:
+                print(f"    and request reviewers: {reviewers}")
+        if len(kept) > 1:
+            print(f"  gh stack link --remote {upstream_remote} --base {branch} "
+                  f"<the {len(kept)} PRs, bottom first>")
+        return 0
+
+    if new:
+        info(f"Pushing {len(new)} layer(s) to {upstream_remote}")
+        run(["git", "push", upstream_remote,
+             *[f"{t}:refs/heads/{t}" for _, _, t in new]])
+
+    pr_nums: list[int] = []
+    opened_drafts: list[int] = []
+    for i, (layer, task, pr) in enumerate(kept):
+        if pr:
+            pr_nums.append(int(pr.rsplit("/", 1)[1]))
+            continue
+        base = branch if i == 0 else kept[i - 1][1]
+        subject = git("log", "-n1", "--format=%s", task)
+        body = git("log", "-n1", "--format=%b", task)
+        info(f"Opening PR for {task} (base {base})")
+        cmd = ["gh", "pr", "create", "-R", gh_repo, "-B", base, "-H", task,
+               "-t", subject, "-F", "-"]
+        if i > 0:
+            cmd.append("--draft")
+        url = run(cmd, input_=body).stdout.strip()
+        print(url)
+        num = int(url.rsplit("/", 1)[1])
+        pr_nums.append(num)
+        if i > 0:
+            opened_drafts.append(num)
+        reviewers = (reviewers_override if reviewers_override is not None
+                     else layer.reviewers)
+        request_reviewers(gh_repo, num, reviewers)
+
+    if len(pr_nums) < 2:
+        return 0
+    nums = [str(n) for n in pr_nums]
+    info(f"gh stack link --base {branch} {' '.join(nums)}")
+    proc = run(["gh", "stack", "link", "--remote", upstream_remote,
+                "--base", branch, *nums], check=False)
+    if proc.returncode != 0:
+        print((proc.stderr or proc.stdout).rstrip(), file=sys.stderr)
+        info(f"Backport ERROR: the PRs are open, but linking them into a stack failed.")
+        info(f"Fix the cause above, then run:")
+        info(f"  gh stack link --remote {upstream_remote} --base {branch} {' '.join(nums)}")
+        if opened_drafts:
+            info(f"  gh pr ready -R {gh_repo} <pr>   for each of: "
+                 f"{' '.join(map(str, opened_drafts))}")
+        return 6
+    for num in opened_drafts:
+        run(["gh", "pr", "ready", str(num), "-R", gh_repo])
+    return 0
+
+
+def main_stack(args, *, gh_repo: str, gh_user: str, upstream_remote: str,
+               workspace: Path, worktree_created: bool,
+               branches: list[str], interactive_prompt: bool) -> int:
+    """Backport several commits as a stacked PR on each release branch."""
+    if not args.preview and run(["gh", "stack", "--help"], check=False).returncode != 0:
+        fail("stack backports need the gh-stack extension: "
+             "gh extension install github/gh-stack")
+    if args.accept_branch:
+        info("Ignoring -x: stack mode resumes from the task branches it finds.")
+
+    commits = (resolve_stack_commits(gh_repo, args.stack) if args.stack
+               else args.commits)
+    commits = [ensure_commit_local(c, upstream_remote) for c in commits]
+    if len(set(commits)) != len(commits):
+        fail("the same commit is listed twice.")
+
+    explicit_rev = normalize_reviewers(args.reviewers)
+    layers: list[Layer] = []
+    for commit in commits:
+        pr = originating_pr(gh_repo, commit)
+        reviewers = ""
+        if pr and explicit_rev is None:
+            reviewers = detect_auto_reviewers(gh_repo, pr["number"], gh_user)
+            if reviewers:
+                print(f"Auto-detected reviewers from PR #{pr['number']}: {reviewers}")
+        layers.append(Layer(commit, pr, reviewers))
+
+    rerun_args: list[str] = []
+    if args.preview:    rerun_args.append("-n")
+    if args.local:      rerun_args.append("-l")
+    if explicit_rev is not None:
+        rerun_args.extend(["-r", explicit_rev])
+    rerun_args.extend(commits)
+    rerun_args.extend(branches)
+    rerun_hint = (".agents/scripts/backport-commit.sh "
+                  + " ".join(shlex.quote(a) for a in rerun_args))
+
+    # chain_src[i]: what the next branch cherry-picks for layer i -- the
+    # previous branch's resolved layer, so its conflict resolutions carry
+    # forward, or None for the original commit.
+    chain_src: list[Optional[str]] = [None] * len(layers)
+    task_branches: list[str] = []
+    for branch in branches:
+        if branch == "master":
+            continue
+        print()
+        print(f"================== Release Branch {branch}")
+        if interactive_prompt and sys.stdin.isatty():
+            ans = input(f"Backport the {len(layers)}-commit stack to branch "
+                        f"{branch} [Y/n]? ").strip()
+            if ans.lower().startswith("n"):
+                continue
+        elif interactive_prompt:
+            fail("auto-discovery in non-interactive mode; pass branches explicitly.")
+
+        tasks = stack_task_names(layers, branch)
+        try:
+            kept = prepare_stack(
+                gh_repo=gh_repo, upstream_remote=upstream_remote,
+                workspace=workspace, branch=branch, layers=layers, tasks=tasks,
+                chain_src=chain_src, rerun_hint=rerun_hint)
+        except ResumableConflict:
+            return 2
+        if not kept:
+            info(f"{branch} already has every commit of the stack; skipping.")
+            continue
+        rc = publish_stack(gh_repo=gh_repo, upstream_remote=upstream_remote,
+                           branch=branch, kept=kept,
+                           reviewers_override=explicit_rev, preview=args.preview)
+        if rc:
+            return rc
+        task_branches.extend(task for _, task, _ in kept)
+
+    if not args.preview and not args.keep_workspace:
+        cleanup_after_success(
+            workspace=workspace,
+            source_repo=SCRIPT_REPO_ROOT,
+            task_branches=task_branches,
+            try_remove_worktree=worktree_created and not args.local,
+        )
+    return 0
 
 
 # --- Post-run cleanup -------------------------------------------------------
@@ -721,6 +1086,35 @@ def detect_stable_branches(upstream_remote: str, stable_limit: Optional[str]) ->
     return ordered
 
 
+def choose_branches(args, upstream_remote: str) -> tuple[list[str], bool]:
+    """Return (destination branches, whether to confirm each interactively)."""
+    interactive_prompt = False
+    branches = list(args.branches)
+    if not branches:
+        branches = detect_stable_branches(upstream_remote, args.stable_limit)
+        if not args.stable_limit:
+            interactive_prompt = True
+    if not branches:
+        fail("no destination branches given and auto-discovery returned none.")
+    return branches, interactive_prompt
+
+
+def skip_leftover_cherry_pick() -> None:
+    """Clean up an empty cherry-pick left over from a prior run."""
+    cherry_head = Path(git("rev-parse", "--git-path", "CHERRY_PICK_HEAD")).resolve()
+    if cherry_head.is_file():
+        # If there are pending tracked changes, refuse -- might be the user's
+        # in-progress conflict resolution.
+        cached = git("diff", "--cached", "--name-only")
+        unstaged = git("diff", "--name-only")
+        if cached or unstaged:
+            fail("cherry-pick in progress with uncommitted changes. "
+                 "'git cherry-pick --continue' to commit, or '--abort' to discard.",
+                 code=1)
+        info("No pending changes; skipping empty cherry-pick.")
+        run(["git", "cherry-pick", "--skip"], check=False)
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     gh_repo = os.environ.get("YB_GH_REPO", "yugabyte/yugabyte-db")
@@ -747,9 +1141,21 @@ def main(argv: list[str]) -> int:
     info(f"Fetching latest code from {upstream_remote}")
     run(["git", "fetch", upstream_remote])
 
-    # Build push URL (needs upstream remote).
     gh_user_proc = run(["gh", "api", "user", "--jq", ".login"], check=False)
     gh_user = gh_user_proc.stdout.strip() if gh_user_proc.returncode == 0 else ""
+
+    if args.stack or len(args.commits) > 1:
+        # Stack branches live upstream, so no fork is involved.
+        check_clean_tree()
+        branches, interactive_prompt = choose_branches(args, upstream_remote)
+        skip_leftover_cherry_pick()
+        return main_stack(args, gh_repo=gh_repo, gh_user=gh_user,
+                          upstream_remote=upstream_remote, workspace=workspace,
+                          worktree_created=worktree_created, branches=branches,
+                          interactive_prompt=interactive_prompt)
+    args.commit = args.commits[0]
+
+    # Build push URL (needs upstream remote).
     gh_fork, fork_owner, push_url = resolve_fork(gh_repo, gh_user, upstream_remote)
 
     check_clean_tree()
@@ -775,29 +1181,8 @@ def main(argv: list[str]) -> int:
     if parent_count > 1:
         base_port_cmd = ["git", "cherry-pick", "-m", "1", "--allow-empty", full_commit]
 
-    # Decide branch list.
-    interactive_prompt = False
-    branches = list(args.branches)
-    if not branches:
-        branches = detect_stable_branches(upstream_remote, args.stable_limit)
-        if not args.stable_limit:
-            interactive_prompt = True
-    if not branches:
-        fail("no destination branches given and auto-discovery returned none.")
-
-    # Clean up any leftover cherry-pick state from a prior run.
-    cherry_head = Path(git("rev-parse", "--git-path", "CHERRY_PICK_HEAD")).resolve()
-    if cherry_head.is_file():
-        # If there are pending tracked changes, refuse -- might be the user's
-        # in-progress conflict resolution.
-        cached = git("diff", "--cached", "--name-only")
-        unstaged = git("diff", "--name-only")
-        if cached or unstaged:
-            fail("cherry-pick in progress with uncommitted changes. "
-                 "'git cherry-pick --continue' to commit, or '--abort' to discard.",
-                 code=1)
-        info("No pending changes; skipping empty cherry-pick.")
-        run(["git", "cherry-pick", "--skip"], check=False)
+    branches, interactive_prompt = choose_branches(args, upstream_remote)
+    skip_leftover_cherry_pick()
 
     # Per-branch loop. The chain logic: after each successful branch the next
     # one cherry-picks from the previous task branch's tip (so any conflict

@@ -1,6 +1,6 @@
 ---
-description: Backport a commit to one or more YugabyteDB release branches as GitHub PRs
-argument-hint: <commit-sha> [<branch> ...]
+description: Backport a commit, or a merged PR stack, to one or more YugabyteDB release branches as GitHub PRs
+argument-hint: <commit-sha> [<commit-sha> ...] [<branch> ...] | --stack <pr> [<branch> ...]
 allowed-tools: Bash(.agents/scripts/backport-commit.sh *)
 model: sonnet
 ---
@@ -14,10 +14,11 @@ Backport a merged commit to one or more YugabyteDB release branches using the bu
 ## Inputs
 
 Parse `$ARGUMENTS` (whitespace-separated):
-- `<commit>` = first token (>=7 hex chars, must be merged to `master` and reachable from `origin`).
+- `<commits>` = the leading tokens of >=7 hex chars, each merged to `master` and reachable from `origin`. Several commits make a stack backport; see [Stacks](#stacks).
+- `--stack <pr>` = instead of commits: a PR (or stack number) of a merged GitHub PR stack. The user may also just name a stacked PR and ask to backport "the stack".
 - `<branches>` = remaining tokens. **Optional.**
 
-If `<commit>` is missing, stop and ask the user.
+If neither a commit nor a stack is given, stop and ask the user.
 
 If no `<branches>` are provided, ask the user which release branches to target before invoking the script. Do **not** rely on the script's interactive prompt mode — Claude Code's Bash tool cannot answer interactive `read -p` prompts and the run will hang. For the candidate list, see the supported release series at <https://docs.yugabyte.com/stable/releases/ybdb-releases/> — the release branch name is the series without the leading `v` (`v2025.2` → `2025.2`). Backport to the branches that actually carry the affected code.
 
@@ -138,6 +139,26 @@ Output a single summary listing, per branch:
 - The PR URL.
 - Whether merge conflicts were resolved on that branch (and trivial vs. non-trivial), or whether it chained cleanly from a resolved predecessor.
 - Any branch that was skipped or aborted, and why.
+
+## Stacks
+
+To backport several dependent commits, pass them all, bottom first, or pass `--stack <pr>` for a merged GitHub PR stack:
+
+```
+.agents/scripts/backport-commit.sh --stack <pr> <branch1> <branch2> ...
+.agents/scripts/backport-commit.sh <commit1> <commit2> <commit3> <branch1> <branch2> ...
+```
+
+`--stack` takes the stack's merged layers in order and leaves out unmerged ones with a warning. On each release branch the script opens a **stacked PR**: one layer per commit, on `feature-stack/backport-<branch>-<feature>/<change>` branches pushed to `yugabyte/yugabyte-db` (stacks cannot use fork branches), linked with `gh stack link`. It reuses the original stack's `<feature>/<change>` names when they exist, else the short SHAs. It needs the `gh stack` extension (see the stack-prs skill), and it drops any layer whose commit the branch already contains.
+
+The steps above apply per layer, with these differences:
+
+- **Resuming.** On a conflict or lint failure, the script stops on that layer's task branch. Resolve and `git cherry-pick --continue --no-edit` as in Step 2 (or amend the lint fix), then re-run **the same command, without `-x`**. The script reuses every layer branch that already holds its one commit and every layer that already has a PR, and continues from there. Never rewrite a layer below the one being resolved: the layers above are built on its SHA.
+- **Chaining.** Each layer on the next branch is cherry-picked from the same layer on the previous branch, so a resolution carries forward.
+- **Annotating.** Step 4 applies per layer PR: annotate each PR whose layer you resolved, or that chained from a resolved layer.
+- **Reporting.** In Step 5, list every layer PR per branch, bottom first.
+
+After the PRs are open, the stack is an ordinary stack: update, sync, and land it with the stack-prs skill (`gh stack merge`, not `gh pr merge`).
 
 ## Notes
 
