@@ -118,6 +118,7 @@ RUN set -x; \
          alternatives --set python3 /usr/bin/python3.11; \
          alternatives --set python /usr/bin/python3.11; \
     fi \
+    && python3 -m pip install --upgrade pip \
     && python3 -m pip install --upgrade lxml \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
