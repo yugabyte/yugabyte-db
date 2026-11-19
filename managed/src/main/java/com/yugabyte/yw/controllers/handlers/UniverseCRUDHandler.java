@@ -359,15 +359,18 @@ public class UniverseCRUDHandler {
         result.updateOptions.add(UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE);
       }
     } else {
-      if (smartResizeRestriction != null) {
-        result.resizeRestrictions.add(smartResizeRestriction);
-      }
       if (!ResizeNodeParams.NOTHING_CHANGED.equals(smartResizeRestriction)) {
+        if (smartResizeRestriction != null) {
+          result.resizeRestrictions.add(smartResizeRestriction);
+        }
         if (!samePlacement) {
           result.resizeRestrictions.add("Placement has changed");
         }
         result.resizeRestrictions.addAll(nodeSettingsChanges);
         result.resizeRestrictions.addAll(nonNodeChanges);
+      } else {
+        // If there are no resize changes - we don't need additional reasoning.
+        result.resizeRestrictions.add(smartResizeRestriction);
       }
     }
     return result;
@@ -398,15 +401,8 @@ public class UniverseCRUDHandler {
    * @return
    */
   private static boolean haveSameProviderIds(Cluster cluster, Cluster currentCluster) {
-    Set<UUID> currentIds = new HashSet<>();
-    if (currentCluster.userIntent.providerSpecifications != null) {
-      currentIds = currentCluster.userIntent.getAllProviderUUIDs();
-    }
-    Set<UUID> newIds = new HashSet<>();
-    if (cluster.userIntent.providerSpecifications != null) {
-      newIds = cluster.userIntent.getAllProviderUUIDs();
-    }
-    return Objects.equals(currentIds, newIds);
+    return Objects.equals(currentCluster.userIntent.getAllProviderUUIDs(),
+        cluster.userIntent.getAllProviderUUIDs());
   }
 
   private static boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {
