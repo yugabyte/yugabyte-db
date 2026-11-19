@@ -11002,17 +11002,19 @@ YBHasSkippedIntentsWrite()
 	return skip_intents_txn_state.has_skipped_write;
 }
 
-/* Whether the current statement is a top-level one that is its whole transaction. */
+/*
+ * Whether the relation is new in this transaction:
+ * 1. rd_createSubid: The logical table was created in this txn.
+ * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
+ * in this txn (typical for ALTER TABLE / REINDEX).
+ */
 static bool
-YbIsSkipIntentsTopLevel()
+YbIsRelationNewInTxn(Relation rel)
 {
-	return !IsTransactionBlock() &&
-		GetCurrentTransactionNestLevel() == 1 &&
-		YbGetTriggerDepth() == 0 &&
-		!skip_intents_txn_state.has_seen_non_top_level;
+	return rel->rd_createSubid != InvalidSubTransactionId ||
+		rel->rd_newRelfilenodeSubid != InvalidSubTransactionId;
 }
 
-/* Whether the table of an index was created, or had its storage swapped, in this transaction. */
 static bool
 YbIsIndexedTableNewInTxn(Relation index)
 {
@@ -11021,8 +11023,7 @@ YbIsIndexedTableNewInTxn(Relation index)
 
 	if (!RelationIsValid(table))
 		return false;
-	result = table->rd_createSubid != InvalidSubTransactionId ||
-		table->rd_newRelfilenodeSubid != InvalidSubTransactionId;
+	result = YbIsRelationNewInTxn(table);
 	RelationClose(table);
 	return result;
 }
@@ -11039,13 +11040,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
-	/*
-	 * 1. rd_createSubid: The logical table was created in this txn.
-	 * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
-	 * in this txn (typical for ALTER TABLE / REINDEX).
-	 */
-	if (rel->rd_createSubid == InvalidSubTransactionId &&
-		rel->rd_newRelfilenodeSubid == InvalidSubTransactionId)
+	if (!YbIsRelationNewInTxn(rel))
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
@@ -11081,13 +11076,11 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	 * A read through an index takes its decision from the table (see YbNewSelect), so an index
 	 * must not be written past the intents db unless its table is read at in_txn_limit too.
 	 * Otherwise the rows of an index built on a table that existed before the transaction
-	 * would be above the read time of the transaction's later statements. A top-level
-	 * statement has no later statements.
+	 * would be above the read time of the transaction's later statements.
 	 *
 	 * TODO(#38494): decide every read of an index from the index relation too, and drop this.
 	 */
-	if (rel->rd_rel->relkind == RELKIND_INDEX && !YbIsSkipIntentsTopLevel() &&
-		!YbIsIndexedTableNewInTxn(rel))
+	if (rel->rd_rel->relkind == RELKIND_INDEX && !YbIsIndexedTableNewInTxn(rel))
 	{
 		elog(DEBUG2, "Skip intents not applicable: the table of index %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
@@ -11113,7 +11106,10 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	 */
 	bool is_serializable = XactIsoLevel == XACT_SERIALIZABLE;
 	bool top_level_only = !skip_intents_txn_state.in_txn_blocks || is_serializable;
-	bool is_top_level = YbIsSkipIntentsTopLevel();
+	bool is_top_level = !IsTransactionBlock() &&
+						GetCurrentTransactionNestLevel() == 1 &&
+						YbGetTriggerDepth() == 0 &&
+						!skip_intents_txn_state.has_seen_non_top_level;
 	if (top_level_only)
 	{
 		if (!is_top_level)

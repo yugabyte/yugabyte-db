@@ -756,7 +756,9 @@ TEST_P(SkipIntentsMatViewTest, TestRefreshMetrics) {
   auto interim_writes = ASSERT_RESULT(GetSkipIntentsCount());
 
   ASSERT_GT(initial_writes, 0);
-  ASSERT_GT(interim_writes, initial_writes);
+  // The index is on a relation that existed before its transaction, so it is not built on the
+  // fastpath.
+  ASSERT_EQ(interim_writes, initial_writes);
 
   // 5. Refresh the View
   std::string cmd = "REFRESH MATERIALIZED VIEW ";
@@ -1913,17 +1915,14 @@ TEST_F(SkipIntentsMetricTest, TestRetryReasonPrefersStatementOverSkippedIntents)
   auto grant_conn = ASSERT_RESULT(Connect());
   auto index_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(grant_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(index_conn.Execute("SET default_transaction_isolation TO 'repeatable read'"));
+  ASSERT_OK(index_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(grant_conn.Execute("GRANT DELETE ON TABLE retry_reason_tb TO retry_reason_role"));
 
-  // The index is a relation this transaction created and the statement is a top-level one, so its
-  // backfill takes the fastpath and sets the skipped-intents state before the catalog update
-  // conflicts. Inside a transaction block the build of an index on a table that existed before
-  // the transaction would not take the fastpath.
-  const auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
+  // TODO(#38494): the build of an index on a table that existed before the transaction no longer
+  // takes the fastpath, so the skipped-intents state is not set here and its lower precedence is
+  // not exercised. No other statement was found that skips intents before it conflicts.
   auto result = index_conn.Execute(
       "CREATE INDEX NONCONCURRENTLY retry_reason_idx ON retry_reason_tb(v)");
-  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before);
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.ToString(), "could not serialize access due to concurrent update");
   ASSERT_STR_CONTAINS(result.ToString(), "retry of CREATE INDEX has not been validated");
@@ -2585,12 +2584,11 @@ TEST_P(SkipIntentsNewIndexOnExistingTableTest, UniqueConstraintForeignKey) {
   ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
-// A top-level statement is its whole transaction, so nothing reads the index after it.
-TEST_P(SkipIntentsNewIndexOnExistingTableTest, TopLevelBuildKeepsFastpath) {
+// A top-level statement is not always the last one of its transaction: an event trigger, or the
+// next statement of a pipeline, can read the index after it.
+TEST_P(SkipIntentsNewIndexOnExistingTableTest, TopLevelBuild) {
   auto conn = ASSERT_RESULT(ConnectAtIsolation());
-  const auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
-  ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY t_c ON t (c)"));
-  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before);
+  ASSERT_OK(BuildWithoutFastpath(conn, "CREATE INDEX NONCONCURRENTLY t_c ON t (c)"));
   ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
   ASSERT_EQ(
       ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t WHERE c = 5")), kRowsPerValue);
