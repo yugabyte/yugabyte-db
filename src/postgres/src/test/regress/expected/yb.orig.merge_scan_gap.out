@@ -925,6 +925,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 (output identical to previous)
 /*+IndexScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt FROM gap_unread_tbl WHERE bkt IN (1, 2) AND ord1 = x AND x = gap ORDER BY ord1, ord2;
 (output identical to previous)
+\unset Q1
+\unset Q2
 \unset Q3
 DROP TABLE gap_unread_tbl;
 RESET TimeZone;
@@ -1344,6 +1346,8 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+IndexSca
 (output identical to previous)
 /*+IndexScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 64)*/ SELECT ord1, ord2, bkt FROM gap_unread_tbl WHERE bkt IN (1, 2) AND ord1 = x AND x = gap ORDER BY ord1, ord2;
 (output identical to previous)
+\unset Q1
+\unset Q2
 \unset Q3
 DROP TABLE gap_unread_tbl;
 RESET TimeZone;

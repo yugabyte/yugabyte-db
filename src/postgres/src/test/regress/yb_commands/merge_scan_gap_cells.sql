@@ -78,6 +78,8 @@ ANALYZE gap_unread_tbl;
 \set Q2 '/*+IndexOnlyScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \set Q3 '/*+IndexScan(gap_unread_tbl gap_unread_tbl_idx) Set(yb_max_merge_scan_streams 64)*/'
 \i :run_query
+\unset Q1
+\unset Q2
 \unset Q3
 DROP TABLE gap_unread_tbl;
 RESET TimeZone;
