@@ -153,6 +153,7 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 		case YB_PG_ROW_MESSAGE_ACTION_COMMIT:
 			{
 				YBDecodeCommit(ctx, record);
+				YBCDropAbortedSubtxnSets(record->yb_virtual_wal_record->commit_time_ht);
 
 				/*
 				 * Abort the transaction that we started upon receiving the
