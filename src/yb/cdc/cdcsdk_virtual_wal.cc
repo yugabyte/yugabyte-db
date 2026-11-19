@@ -940,6 +940,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
                           << ", Last_shipped_record's tablet_id: " << last_shipped_record_tablet_id;
     }
 
+    // Done before last_seen_unique_record_id_ moves to this record, and for the BEGIN records that
+    // are not shipped because their transaction is merged with another one at the same commit time.
+    MoveAbortedSubtxnsToResponse(row_message, resp);
+
     if (lsn_result.ok() && txn_id_result.ok()) {
       row_message->set_pg_lsn(*lsn_result);
       row_message->set_pg_transaction_id(*txn_id_result);
@@ -1493,6 +1497,21 @@ Result<uint32_t> CDCSDKVirtualWAL::GetRecordTxnID(
   }
 
   return STATUS_FORMAT(InternalError, "Record's commit_time is lesser than last seen record.");
+}
+
+void CDCSDKVirtualWAL::MoveAbortedSubtxnsToResponse(
+    RowMessage* row_message, GetConsistentChangesResponsePB* resp) {
+  // A BEGIN at an earlier commit time is a duplicate of one already handled.
+  if (!FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl ||
+      row_message->op() != RowMessage_Op_BEGIN || !row_message->has_aborted_subtxns() ||
+      row_message->commit_time() < last_seen_unique_record_id_->GetCommitTime()) {
+    return;
+  }
+
+  auto& entry = (*resp->mutable_aborted_subtxns())[row_message->transaction_id()];
+  entry.set_commit_time(row_message->commit_time());
+  *entry.mutable_aborted_subtxns() = std::move(*row_message->mutable_aborted_subtxns());
+  row_message->clear_aborted_subtxns();
 }
 
 Status CDCSDKVirtualWAL::AddEntryForBeginRecord(const RecordInfo& record_info) {
