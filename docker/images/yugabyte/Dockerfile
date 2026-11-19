@@ -126,7 +126,7 @@ RUN set -x; \
     && if [[ "$BASE_IMAGE" == *"$RF_HARDENED_BASE_PATTERN"* ]]; then \
          yum remove --disableplugin=subscription-manager -y python3-pip; \
        else \
-         yum remove --disableplugin=subscription-manager -y python3.11-pip; \
+         rpm -e python3.11-pip; \
        fi \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \
