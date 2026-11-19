@@ -683,6 +683,26 @@ class WaitStateTracker {
   std::unordered_set<yb::ash::WaitStateInfoPtr> entries_ GUARDED_BY(mutex_);
 };
 
+// Tracks a wait state with a WaitStateTracker for the lifetime of the object, so that the ASH
+// collector samples it.
+class ScopedWaitStateTracking {
+ public:
+  ScopedWaitStateTracking(WaitStateTracker& tracker, WaitStateInfoPtr wait_state)
+      : tracker_(tracker), wait_state_(std::move(wait_state)) {
+    tracker_.Track(wait_state_);
+  }
+
+  ~ScopedWaitStateTracking() {
+    tracker_.Untrack(wait_state_);
+  }
+
+ private:
+  WaitStateTracker& tracker_;
+  const WaitStateInfoPtr wait_state_;
+
+  DISALLOW_COPY_AND_ASSIGN(ScopedWaitStateTracking);
+};
+
 struct WaitStateSnapshot {
   WaitStateSnapshot()
       : wait_state(WaitStateInfo::CurrentWaitState()),

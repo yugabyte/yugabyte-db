@@ -579,10 +579,11 @@ class ObjectLockManagerImpl {
 };
 
 void WaiterEntry::Resume(ObjectLockManagerImpl* lock_manager, Status resume_with_status) {
-  // Not a scoped status: DoLock moves the request on to its next state, either by invoking the
-  // callback or by re-entering the wait queue.
+  // DoLock normally moves the request on to its next state, by invoking the callback or by
+  // re-entering the wait queue. Revert to OnCpu_Passive if it returns without doing either.
   ADOPT_WAIT_STATE(wait_state);
-  SET_WAIT_STATUS(OnCpu_Active);
+  SET_WAIT_STATUS(OnCpu_Passive);
+  SCOPED_WAIT_STATUS(OnCpu_Active);
   {
     std::lock_guard txn_lock(transaction_entry->mutex);
     transaction_entry->was_a_blocker =

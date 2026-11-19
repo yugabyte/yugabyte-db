@@ -20,6 +20,7 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/flags.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 
 DEFINE_UNKNOWN_int64(reset_master_leader_timeout_ms, 15000,
@@ -57,12 +58,12 @@ void ClientMasterRpcBase::SendRpc() {
   // originating request, and the outbound call carries its ASH metadata.
   ADOPT_WAIT_STATE(wait_state_);
   ASH_ENABLE_CONCURRENT_UPDATES();
-  SetWaitingOnMasterWaitStatus();
+  SET_WAIT_STATUS_TO_CODE(wait_state_, WaitingOnMasterCode());
   CallRemoteMethod();
 }
 
-void ClientMasterRpcBase::SetWaitingOnMasterWaitStatus() {
-  SET_WAIT_STATUS(YBClient_WaitingOnMaster);
+ash::WaitStateCode ClientMasterRpcBase::WaitingOnMasterCode() const {
+  return ash::WaitStateCode::kYBClient_WaitingOnMaster;
 }
 
 void ClientMasterRpcBase::ResetMasterLeader(Retry retry) {
@@ -90,6 +91,13 @@ void ClientMasterRpcBase::Finished(const Status& status) {
   ADOPT_WAIT_STATE(wait_state_);
   SET_WAIT_STATUS(OnCpu_Passive);
   SCOPED_WAIT_STATUS(OnCpu_Active);
+  // Every path below either delivers the response, or returns with a retry pending. While a retry
+  // is pending, the request is still waiting on the master. Captures by value: once the retry is
+  // scheduled, it may complete and free this object before the scope exits.
+  CancelableScopeExit set_waiting_on_retry(
+      [wait_state = wait_state_, code = WaitingOnMasterCode()] {
+    SET_WAIT_STATUS_TO_CODE(wait_state, code);
+  });
   auto resp_status = ResponseStatus();
   if (status.ok() && !resp_status.ok()) {
     YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1) << "Failed, got resp error: " << resp_status;
@@ -108,6 +116,7 @@ void ClientMasterRpcBase::Finished(const Status& status) {
     // Returning here skips the code further down that replaces an OK new_status with resp_status.
     // Make the same replacement now, so ProcessResponse sees what ResponseStatus() reports
     // instead of an OK status; a new_status that already failed is reported unchanged.
+    set_waiting_on_retry.Cancel();
     ProcessResponse(new_status.ok() ? resp_status : new_status);
     return;
   }
@@ -198,6 +207,7 @@ void ClientMasterRpcBase::Finished(const Status& status) {
 
   auto retained_self = client_data_->rpcs_.Unregister(&retained_self_);
 
+  set_waiting_on_retry.Cancel();
   ProcessResponse(new_status);
 }
 

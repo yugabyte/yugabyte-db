@@ -1888,12 +1888,16 @@ class PgAshObjectLockTest : public PgAshSingleNode {
   static constexpr auto kRefreshWaiterTimeout = 500ms;
 
   // Runs blocked_stmt on a new connection while a transaction that ran blocker_stmt holds a
-  // conflicting object lock. Releases the lock once ASH has sampled each of the TServer
-  // wait_events and the YSQL wait on AcquireObjectLock, and returns the query id of blocked_stmt.
+  // conflicting object lock, and returns the query id of blocked_stmt.
+  // Holds the lock until ASH has sampled the YSQL wait on AcquireObjectLock, and each of the
+  // TServer wait_events after the waiter was refreshed. A refresh resumes the local waiter on
+  // another thread, and makes the tserver re-send a global lock request to the master. Verifies
+  // that the samples taken after the refresh still carry blocked_stmt's query id (#33303).
   Result<int64_t> RunBlockedStatement(
       const std::string& blocker_stmt, const std::string& blocked_stmt,
       const std::vector<std::string>& wait_events) {
     RETURN_NOT_OK(conn_->Execute("CREATE TABLE t (k INT)"));
+    const auto start_time = VERIFY_RESULT(conn_->FetchRow<std::string>("SELECT now()::text"));
     // Declared before blocker: on an early return, blocker's connection closes, releasing its lock,
     // before the thread holder joins the blocked thread.
     TestThreadHolder thread_holder;
@@ -1905,22 +1909,16 @@ class PgAshObjectLockTest : public PgAshSingleNode {
       auto conn = ASSERT_RESULT(Connect());
       ASSERT_OK(RunStatement(conn, blocked_stmt, InTxnBlock::kFalse));
     });
-    RETURN_NOT_OK(WaitFor([this, &wait_events]() -> Result<bool> {
+    RETURN_NOT_OK(WaitFor([this, &wait_events, &start_time]() -> Result<bool> {
       for (const auto& wait_event : wait_events) {
-        if (VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
-                "SELECT COUNT(*) FROM yb_active_session_history "
-                "WHERE wait_event_component = 'TServer' AND wait_event = '$0'",
-                wait_event))) == 0) {
+        if (VERIFY_RESULT(CountSamplesAfterRefresh(start_time, wait_event, "query_id != 0")) == 0) {
           return false;
         }
       }
       return VERIFY_RESULT(conn_->FetchRow<int64_t>(
           "SELECT COUNT(*) FROM yb_active_session_history WHERE wait_event_component = 'YSQL' "
           "AND wait_event = 'WaitingOnTServer' AND wait_event_aux = 'AcquireObjectLock'")) > 0;
-    }, 30s * kTimeMultiplier, "Wait for ASH to sample the object lock wait"));
-    // Not synchronization: keep the lock held across several waiter refreshes, so that the test
-    // covers the resumed waiter and the global lock request re-sent to the master.
-    SleepFor(3 * kRefreshWaiterTimeout);
+    }, 30s * kTimeMultiplier, "Wait for ASH to sample the object lock wait after a refresh"));
     RETURN_NOT_OK(blocker.CommitTransaction());
     thread_holder.JoinAll();
 
@@ -1931,7 +1929,27 @@ class PgAshObjectLockTest : public PgAshSingleNode {
                      "SELECT wait_event_component, wait_event, wait_event_aux, query_id, "
                      "COUNT(*) FROM yb_active_session_history GROUP BY 1, 2, 3, 4 ORDER BY 1, 2",
                      ", ", "\n"));
+    for (const auto& wait_event : wait_events) {
+      SCHECK_GT(
+          VERIFY_RESULT(CountSamplesAfterRefresh(
+              start_time, wait_event, Format("query_id = $0", query_id))), 0,
+          IllegalState, Format("No $0 samples with the query id after a refresh", wait_event));
+    }
     return query_id;
+  }
+
+  // Counts the TServer samples of wait_event that match query_id_filter, and were taken at least
+  // two waiter refreshes after the first sample of wait_event since start_time.
+  Result<int64_t> CountSamplesAfterRefresh(
+      const std::string& start_time, const std::string& wait_event,
+      const std::string& query_id_filter) {
+    return conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history "
+        "WHERE wait_event_component = 'TServer' AND wait_event = '$0' AND $1 AND sample_time >= ("
+        "  SELECT MIN(sample_time) FROM yb_active_session_history "
+        "  WHERE wait_event_component = 'TServer' AND wait_event = '$0' "
+        "  AND sample_time >= '$2'::timestamptz) + interval '$3 milliseconds'",
+        wait_event, query_id_filter, start_time, ToMilliseconds(2 * kRefreshWaiterTimeout)));
   }
 
   static Status RunStatement(PGConn& conn, const std::string& stmt, InTxnBlock in_txn_block) {

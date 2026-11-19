@@ -737,26 +737,6 @@ struct ObjectLockQueryTraits {
   }
 };
 
-// Registers a wait state with an ASH tracker for the lifetime of the object, so that the ASH
-// collector samples it.
-class ScopedWaitStateTracking {
- public:
-  ScopedWaitStateTracking(ash::WaitStateTracker& tracker, ash::WaitStateInfoPtr wait_state)
-      : tracker_(tracker), wait_state_(std::move(wait_state)) {
-    tracker_.Track(wait_state_);
-  }
-
-  ~ScopedWaitStateTracking() {
-    tracker_.Untrack(wait_state_);
-  }
-
- private:
-  ash::WaitStateTracker& tracker_;
-  const ash::WaitStateInfoPtr wait_state_;
-
-  DISALLOW_COPY_AND_ASSIGN(ScopedWaitStateTracking);
-};
-
 using ResponseSender = std::function<void()>;
 
 template <QueryTraitsType T>
@@ -1189,7 +1169,7 @@ class SharedExchangeQuery : public std::enable_shared_from_this<SharedExchangeQu
   // Started only when the request carried a valid trace context; ended by SendResponse.
   opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span> trace_span_;
   // Set by TrackWaitStateUntilResponse; reset by SendResponse.
-  std::optional<ScopedWaitStateTracking> ash_tracking_;
+  std::optional<ash::ScopedWaitStateTracking> ash_tracking_;
   rpc::Sidecars sidecars_;
   std::weak_ptr<PgClientSession> session_;
   SharedExchange& exchange_;
@@ -2883,7 +2863,7 @@ class PgClientSession::Impl {
     auto wait_state = yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>();
     ADOPT_WAIT_STATE(wait_state);
     SCOPED_WAIT_STATUS(OnCpu_Active);
-    std::optional<ScopedWaitStateTracking> track_guard;
+    std::optional<ash::ScopedWaitStateTracking> track_guard;
     if (wait_state) {
       InitSharedMemoryPgWaitState(*wait_state, query.ash_metadata(), T::kMethodName);
       if constexpr (T::kTrackWaitStateUntilResponse) {

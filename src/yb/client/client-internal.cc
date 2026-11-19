@@ -2524,8 +2524,8 @@ class AcquireObjectLocksGlobalRpc
 
   // The master acquires the lock on all tservers, which includes waiting for conflicting locks to
   // be released. ASH has no visibility into the master, so attribute the whole wait to a lock wait.
-  void SetWaitingOnMasterWaitStatus() override {
-    SET_WAIT_STATUS(ObjectLock_WaitOnMaster);
+  ash::WaitStateCode WaitingOnMasterCode() const override {
+    return ash::WaitStateCode::kObjectLock_WaitOnMaster;
   }
 
   void CallRemoteMethod() override {
