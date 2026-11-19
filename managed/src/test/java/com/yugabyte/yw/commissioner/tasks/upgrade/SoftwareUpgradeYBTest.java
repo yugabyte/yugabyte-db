@@ -20,7 +20,9 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -2601,5 +2603,32 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         .when(mockClient.deleteSnapshotSchedule(pitrConfig.getUuid()))
         .thenReturn(deleteResponse);
     return pitrConfig;
+  }
+
+  // Catalog rollback recovery restarts every master even when no master is left in
+  // nodesToBeRestarted, so the KMS key check must still run on that path.
+  @Test
+  public void testKmsCheckRunsForCatalogRollbackPathWithNoMastersLeft() {
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.ybSoftwareVersion = "2025.1.0.0-b1";
+    taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
+    SoftwareUpgradeYB task = spy(app.injector().instanceOf(SoftwareUpgradeYB.class));
+    task.initialize(taskParams);
+    doReturn(
+            new UpgradeTaskBase.MastersAndTservers(
+                Collections.emptyList(), defaultUniverse.getTServers()))
+        .when(task)
+        .calculateNodesToBeRestarted();
+
+    when(mockSoftwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            any(), anyString(), anyString()))
+        .thenReturn(true);
+    assertTrue(task.needsUniverseKeyCheck());
+
+    when(mockSoftwareUpgradeHelper.isSuperUserRequiredForCatalogUpgrade(
+            any(), anyString(), anyString()))
+        .thenReturn(false);
+    assertFalse(task.needsUniverseKeyCheck());
   }
 }

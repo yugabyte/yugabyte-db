@@ -134,6 +134,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
@@ -1201,7 +1202,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * in tasks that stop, start or restart masters, so they do not leave masters without the key.
    */
   protected void createCheckUniverseKeyInKmsTask(Universe universe) {
-    if (EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) == 0
+    // Not EncryptionAtRestUtil.getNumUniverseKeys: it turns a DB error into 0, which would skip
+    // the check.
+    if (KmsHistory.countUniverseKeysWithActiveMasterKey(universe.getUniverseUUID()) == 0
         || !confGetter.getConfForScope(universe, UniverseConfKeys.kmsUniverseKeyPrecheckEnabled)) {
       return;
     }
