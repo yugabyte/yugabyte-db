@@ -1,8 +1,8 @@
 ---
-title: Java Driver 4.19 for YCQL
+title: Java Driver 4.x for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
-description: Connect a Java application using YCQL 4.19 driver
+description: Connect a Java application using YCQL 4.x driver
 tags:
   other: ycql
 menu:
@@ -39,13 +39,13 @@ type: docs
   <li >
     <a href="../ycql-4.x/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.19)
+      YCQL (4.x)
     </a>
   </li>
   <li >
     <a href="../ycql-ssl/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.19) with SSL
+      YCQL (4.x) with SSL
     </a>
   </li>
 </ul>

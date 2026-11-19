@@ -156,7 +156,7 @@ block_indexing = true
 
 | Driver     | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
-| YugabyteDB Java Driver for YCQL | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | Full | [CRUD](/stable/develop/drivers-orms/scala/ycql/) |
+| YugabyteDB Java Driver for YCQL | [3.10.3-yb-3](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-3) | Full | [CRUD](/stable/develop/drivers-orms/scala/ycql/) |
 
   {{% /tab %}}
 

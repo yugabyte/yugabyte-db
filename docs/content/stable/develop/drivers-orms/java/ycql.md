@@ -38,13 +38,13 @@ type: docs
    <li >
     <a href="../ycql-4.x/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.19)
+      YCQL (4.x)
     </a>
   </li>
   <li >
     <a href="../ycql-ssl/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.19) with SSL
+      YCQL (4.x) with SSL
     </a>
   </li>
 </ul>
