@@ -64,6 +64,7 @@ DECLARE_bool(vector_index_include_into_post_split_compaction);
 DECLARE_bool(vector_index_delete_list_with_subtransaction);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_payloads);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_vectors);
@@ -75,6 +76,7 @@ DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_uint32(ddl_verification_timeout_multiplier);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_uint64(vector_index_backfill_single_chunk_size_bytes);
 DECLARE_int64(db_block_size_bytes);
@@ -1651,6 +1653,221 @@ TEST_F(PgVectorIndexUtilTest, DropDatabaseAfterIndexedTableCleanedUp) {
 
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDbName));
   ASSERT_TRUE(table_cleaned_up);
+}
+
+class PgVectorIndexIndexedTableCleanupTest : public PgVectorIndexUtilTest {
+ protected:
+  void SetUp() override {
+    // Required for RollbackToSavepoint. Turned on to match release builds, the same as table locks
+    // below. ToggleDDLMode() turns it off again in the legacy DDL mode.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
+    PgVectorIndexUtilTest::SetUp();
+  }
+
+  // Table locks are on by default only in release builds, turn them on for all builds to catch a
+  // DDL that never releases them. The new DDL mode is also required for DDLs in a transaction
+  // block.
+  bool UseLegacyDdlMode() const override {
+    return false;
+  }
+
+  // Runs `setup`, creates table t with indexes and runs `ddl`, which drops t together with its
+  // indexes. The drop is held until the background cleanup frees t's tablets, i.e. before it gets
+  // to the vector index. It is expected that the index after the vector index is still deleted and
+  // the DDL does not block other DDLs (#37744). `fail_vector_index` makes deleting the vector index
+  // fail as well.
+  void TestDdlAfterIndexedTableCleanedUp(
+      const std::vector<std::string>& setup, const std::string& ddl,
+      bool fail_vector_index = false) {
+    // Finished tasks hold their tablets, refer to DropDatabaseAfterIndexedTableCleanedUp.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_num_tasks) = 0;
+    // A DDL waits for this many admin operation timeouts if its verification fails.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ddl_verification_timeout_multiplier) = 1;
+    // The backfill of t_after and the rewrite of t in ALTER COLUMN TYPE scan t, which has a vector
+    // index.
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+    ASSERT_OK(RestartMaster());
+
+    auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+    for (const auto& statement : setup) {
+      ASSERT_OK(conn.Execute(statement));
+    }
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE t (id int PRIMARY KEY, a int, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+    // Indexes are deleted after t in creation order -- t_before, t_vector, t_after. The drop is
+    // held at t_before, so t_after is the one deleted after the vector index.
+    ASSERT_OK(conn.Execute("CREATE INDEX t_before ON t (a)"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX t_vector ON t USING ybhnsw (embedding $0)",
+        pgwrapper::VectorOpsName(distance_kind_)));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_after ON t ((a + 1))"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1, '[1, 2, 3]')"));
+
+    std::vector<TableId> table_ids;
+    for (const auto& name : {"t", "t_before", "t_vector", "t_after"}) {
+      table_ids.push_back(ASSERT_RESULT(GetTableIDFromTableName(name)));
+    }
+
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    // Hold the vector index as the background cleanup may erase it from the catalog manager before
+    // freeing t's tablets.
+    auto vector_index = catalog_manager.GetTableInfo(table_ids[2]);
+    ASSERT_NE(vector_index, nullptr);
+    auto indexed_table = catalog_manager.GetTableInfo(table_ids[0]);
+    ASSERT_NE(indexed_table, nullptr);
+    auto index_after = catalog_manager.GetTableInfo(table_ids[3]);
+    ASSERT_NE(index_after, nullptr);
+    std::atomic<size_t> num_started_tables{0};
+    std::atomic<bool> tablets_freed{false};
+    std::atomic<bool> drop_released{false};
+    // Set before drop_released, so it is safe to read once index_after_done is set.
+    MonoDelta held_for;
+    auto* sync_point = SyncPoint::GetInstance();
+    sync_point->SetCallBack(
+        "CatalogManager::DeleteOrHideTabletsAndSendRequests::Start", [&](void*) {
+          // t goes first, then t_before. Hold the drop at t_before until the background cleanup
+          // frees t's tablets -- the vector index refers to them.
+          if (num_started_tables.fetch_add(1) != 1) {
+            return;
+          }
+          const auto start = MonoTime::Now();
+          tablets_freed = WaitFor(
+              [&vector_index] { return !vector_index->GetTabletsIncludeInactive().ok(); },
+              30s * kTimeMultiplier, "Tablets of the indexed table freed").ok();
+          held_for = MonoTime::Now() - start;
+          drop_released = true;
+        });
+    std::atomic<bool> vector_index_after_free{false};
+    std::atomic<bool> vector_index_failed{false};
+    std::atomic<bool> vector_index_done{false};
+    std::atomic<bool> index_after_vector_index{false};
+    std::atomic<bool> index_after_done{false};
+    sync_point->SetCallBack("DeleteTableInternal::AfterDeleteOrHideTablets", [&](void* arg) {
+      auto [table, status] = *static_cast<std::pair<const master::TableInfo*, Status*>*>(arg);
+      if (table == index_after.get()) {
+        index_after_vector_index = vector_index_done.load();
+        index_after_done = true;
+        return;
+      }
+      if (table != vector_index.get()) {
+        return;
+      }
+      vector_index_after_free = drop_released.load();
+      // The freed tablets of t must be skipped, the failure below is injected on top of that.
+      if (!status->ok()) {
+        vector_index_failed = true;
+      }
+      if (fail_vector_index) {
+        // Not IllegalState, which CheckIfNoLongerLeaderAndSetupError reports as a leader change.
+        *status = STATUS(InternalError, "Injected failure");
+      }
+      vector_index_done = true;
+    });
+    std::atomic<bool> verification_failed{false};
+    sync_point->SetCallBack("YsqlDdlTxnCompleteCallback::TableVerificationDone", [&](void* arg) {
+      const auto& verification =
+          *static_cast<std::tuple<master::TableInfo*, const TransactionId*, Status*>*>(arg);
+      if (std::get<0>(verification) == indexed_table.get() && !std::get<2>(verification)->ok()) {
+        verification_failed = true;
+      }
+    });
+    sync_point->EnableProcessing();
+    auto sync_point_cleanup = ScopeExit([sync_point] {
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+
+    const auto start = MonoTime::Now();
+    ASSERT_OK(conn.Execute(ddl));
+    const auto ddl_time = MonoTime::Now() - start;
+    LOG(INFO) << ddl << " took " << ddl_time;
+    // Some DDLs, e.g. TRUNCATE, do not wait for the old table to be dropped. t_after is processed
+    // after the vector index on the same thread, so the flags below are set by then.
+    ASSERT_OK(WaitFor(
+        [&index_after_done] { return index_after_done.load(); }, 60s * kTimeMultiplier,
+        "Index after the vector index processed"));
+    ASSERT_TRUE(tablets_freed);
+    ASSERT_TRUE(vector_index_after_free);
+    ASSERT_FALSE(vector_index_failed);
+    ASSERT_TRUE(index_after_vector_index);
+    // A DDL waiting for its verification returns only after the timeout if the verification fails.
+    ASSERT_LT(ddl_time, held_for + 30s * kTimeMultiplier);
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          for (const auto& table_id : table_ids) {
+            auto table = catalog_manager.GetTableInfo(table_id);
+            if (table && !table->is_deleted()) {
+              return false;
+            }
+          }
+          return true;
+        },
+        30s * kTimeMultiplier, "Dropped tables deleted"));
+    if (fail_vector_index) {
+      // The failure must be returned to the DDL verification of t.
+      ASSERT_OK(WaitFor(
+          [&verification_failed] { return verification_failed.load(); }, 30s * kTimeMultiplier,
+          "Verification of t failed"));
+    }
+
+    // Other DDLs must not be blocked by the locks of the DDL above, fail fast if they are.
+    ASSERT_OK(conn.ExecuteFormat(
+        "SET statement_timeout = $0", ToMilliseconds(30s * kTimeMultiplier)));
+    // Some DDLs, e.g. ROLLBACK TO SAVEPOINT, keep the transaction block open -- end it, otherwise
+    // the probe runs in the same transaction and can't be blocked by its locks.
+    ASSERT_OK(conn.Execute("COMMIT"));
+    ASSERT_OK(conn.Execute("CREATE TABLE public.probe (k int)"));
+  }
+};
+
+// Runs the DDLs with table locks (the new DDL mode) and without them (legacy DDL mode) as the bug
+// looks different in each.
+class PgVectorIndexIndexedTableCleanupDdlModeTest
+    : public PgVectorIndexIndexedTableCleanupTest,
+      public testing::WithParamInterface<bool> {
+ protected:
+  bool UseLegacyDdlMode() const override {
+    return GetParam();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorIndexIndexedTableCleanupDdlModeTest, testing::Bool(),
+    [](const testing::TestParamInfo<bool>& info) {
+      return info.param ? "LegacyDdlMode" : "TableLocks";
+    });
+
+TEST_P(PgVectorIndexIndexedTableCleanupDdlModeTest, DropTable) {
+  TestDdlAfterIndexedTableCleanedUp({}, "DROP TABLE t");
+}
+
+TEST_P(PgVectorIndexIndexedTableCleanupDdlModeTest, Truncate) {
+  TestDdlAfterIndexedTableCleanedUp({}, "TRUNCATE t");
+}
+
+TEST_P(PgVectorIndexIndexedTableCleanupDdlModeTest, AlterColumnType) {
+  TestDdlAfterIndexedTableCleanedUp({}, "ALTER TABLE t ALTER COLUMN a TYPE bigint");
+}
+
+TEST_P(PgVectorIndexIndexedTableCleanupDdlModeTest, DropSchemaCascade) {
+  TestDdlAfterIndexedTableCleanedUp(
+      {"CREATE SCHEMA s", "SET search_path TO s, public"}, "DROP SCHEMA s CASCADE");
+}
+
+// Deleting the vector index fails, the tables after it must still be deleted.
+TEST_P(PgVectorIndexIndexedTableCleanupDdlModeTest, DropTableAfterFailure) {
+  TestDdlAfterIndexedTableCleanedUp({}, "DROP TABLE t", /* fail_vector_index= */ true);
+}
+
+// DDLs in a transaction block are available only in the new DDL mode.
+TEST_F(PgVectorIndexIndexedTableCleanupTest, RollbackCreateTable) {
+  TestDdlAfterIndexedTableCleanedUp({"BEGIN"}, "ROLLBACK");
+}
+
+TEST_F(PgVectorIndexIndexedTableCleanupTest, RollbackToSavepoint) {
+  TestDdlAfterIndexedTableCleanedUp({"BEGIN", "SAVEPOINT sp"}, "ROLLBACK TO SAVEPOINT sp");
 }
 
 TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {

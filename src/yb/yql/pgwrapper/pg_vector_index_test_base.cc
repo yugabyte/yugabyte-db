@@ -219,8 +219,9 @@ void PgVectorIndexTestBase::SetUp() {
   // Some tests (e.g. StatusResolutionDuringBootstrapBackfill) create a vector index while an
   // uncommitted transaction still holds intents on the indexed table. Object-locking-based DDL
   // serialization, which defaults on in release builds, would make CREATE INDEX wait for that
-  // transaction to finish, so disable it to keep behavior consistent across build types.
-  ToggleDDLMode(/* use_legacy = */ true);
+  // transaction to finish, so disable it by default to keep behavior consistent across build
+  // types.
+  ToggleDDLMode(UseLegacyDdlMode());
 
   PgMiniTestBase::SetUp();
 

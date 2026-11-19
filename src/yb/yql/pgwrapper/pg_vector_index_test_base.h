@@ -118,6 +118,10 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     return 5;
   }
 
+  virtual bool UseLegacyDdlMode() const {
+    return true;
+  }
+
   void SetUp() override;
 
   std::string DbName() {
