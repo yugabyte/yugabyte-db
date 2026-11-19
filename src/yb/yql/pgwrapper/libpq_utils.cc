@@ -898,6 +898,15 @@ int PGConn::BackendPID() const {
   return PQbackendPID(impl_.get());
 }
 
+std::vector<PGConn::Notification> PGConn::TakeNotifications() {
+  std::vector<Notification> result;
+  while (auto* notify = PQnotifies(impl_.get())) {
+    result.push_back(Notification{.channel = notify->relname, .payload = notify->extra});
+    PQfreemem(notify);
+  }
+  return result;
+}
+
 // Escape a string for use as a SQL string literal, i.e. a value that appears in a SQL statement
 // like `SELECT * FROM t WHERE name = '<escaped>'`.  Single quotes are doubled and, when the input
 // contains backslashes, E'...' (escape string) syntax is used so that backslash sequences are
