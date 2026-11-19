@@ -9,6 +9,7 @@ import { useManageCrossCloudFederation } from '../../../../../v2/api/universe/un
 import { useYBToast } from '@app/redesign/features-v2/universe/create-universe/helpers/ToastUtils';
 import { createErrorMessage, getPrimaryCluster } from '../../universe-form/utils/helpers';
 import { Universe } from '../../universe-form/utils/dto';
+import { fetchTaskUntilItCompletes } from '../../../../../actions/xClusterReplication';
 import { PROVIDER_ROUTE_PREFIX } from '../../../../../components/configRedesign/providerRedesign/constants';
 
 import AlertIcon from '../../../../assets/alert.svg';
@@ -127,8 +128,19 @@ export const CrossCloudFederationModal: FC<CrossCloudFederationModalProps> = ({
 
   const manageFederation = useManageCrossCloudFederation({
     mutation: {
-      onSuccess: () => {
-        toast.success(t(enabled ? 'enableSuccess' : 'disableSuccess'));
+      onSuccess: (response, variables) => {
+        // The POST only submits a task; report the outcome once it finishes.
+        const { enabled: wasEnabling } = variables.data;
+        if (response.task_uuid) {
+          const toastId = toast.inProgress(
+            t(wasEnabling ? 'enableInProgress' : 'disableInProgress')
+          );
+          fetchTaskUntilItCompletes(response.task_uuid, (error) =>
+            error
+              ? toast.error(t(wasEnabling ? 'enableFailed' : 'disableFailed'), toastId)
+              : toast.success(t(wasEnabling ? 'enableSuccess' : 'disableSuccess'), toastId)
+          );
+        }
         onClose();
       },
       onError: (error) => {

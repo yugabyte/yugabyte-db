@@ -239,16 +239,6 @@ DuckDBManager::Reset() {
  * Upstream reads it via DirectFunctionCall1Coll(), which raises an error when the callee returns
  * SQL NULL.  To read the value without erroring on that NULL, we invoke pg_sequence_last_value()
  * directly through a manually-initialized FunctionCallInfo and then check fcinfo->isnull ourselves.
- *
- * Effect on YB: since pg_sequence_last_value() always returns NULL, this returns 0, so the
- * extensions-table sequence gate (IsExtensionsSeqLessThan) in RefreshConnectionState never trips.
- * That disables the mid-session refresh -- an already-running backend won't pick up extensions-table
- * changes made by another session. It does NOT gate extension loading in general.
- * Initialize() runs LoadExtensions() unconditionally (and InstallExtensions() when
- * autoinstall_known_extensions is on -- the default), and query-time autoloading is independent of
- * this sequence.
- *
- * TODO(#31823): Enforce supporting only the bundled duckdb extensions (json/icu/httpfs) in YB.
  */
 static int64
 YbGetSeqLastValueImpl(Oid table_seq_oid) {
