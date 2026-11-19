@@ -1933,13 +1933,21 @@ extern CommandId YbSetWriteCommandId(CommandId command_id);
  */
 extern bool yb_is_federated_yb_foreign_table(Oid relid);
 
+struct ForeignServer;
+
+/* Returns true if the server has server_type = 'federatedYugabyteDB'. */
+extern bool YbIsFederatedYbForeignServer(struct ForeignServer *server);
+
 /*
- * If 'ft_relid' is a federatedYugabyteDB foreign table, resolve the local
- * relation named by its schema_name/table_name options and return its OID.
- * Returns InvalidOid if the table is not federated or the relation is not
- * found locally.
+ * If a foreign table on 'server' with options 'ft_options' is a
+ * federatedYugabyteDB foreign table, resolve the local relation named by its
+ * schema_name/table_name options and return its OID.  Returns InvalidOid if
+ * the table is not federated or the relation is not found locally.  It takes
+ * the options rather than the table, so that CREATE FOREIGN TABLE can call it
+ * before its catalog rows become visible.
  */
-extern Oid	YbGetFederatedForeignTableBackingRelid(Oid ft_relid);
+extern Oid	YbGetFederatedForeignTableBackingRelid(struct ForeignServer *server,
+												   List *ft_options);
 
 struct PlannerInfo;
 struct RelOptInfo;
