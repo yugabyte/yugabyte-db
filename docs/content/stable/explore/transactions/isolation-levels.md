@@ -377,7 +377,7 @@ Connect to the universe using two independent ysqlsh instances, referred to as s
   <tr>
     <td>
 
-Begin a transaction in session #1. On a universe running v2025.2 or later that was deployed with yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon, Read Committed is already the default isolation level, so this example uses `BEGIN TRANSACTION`. On an earlier version, or when the universe was deployed manually, set the YB-TServer flag `yb_enable_read_committed_isolation` to `true` first. With the flag left at `false`, this transaction uses Snapshot isolation, and the second `SELECT` does not see the row that session #2 commits.
+Begin a transaction in session #1. On a new universe (v2025.2 or later) that was deployed with yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon, Read Committed is already the default isolation level, so this example uses `BEGIN TRANSACTION`. On an earlier version, or when the universe was deployed manually, set the YB-TServer flag `yb_enable_read_committed_isolation` to `true` first. With the flag left at `false`, this transaction uses Snapshot isolation, and the second `SELECT` does not see the row that session #2 commits.
 
 ```sql
 BEGIN TRANSACTION;
