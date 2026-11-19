@@ -361,8 +361,6 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 							   stmt->filename, stmt->is_program,
 							   NULL, stmt->attlist, stmt->options);
 		*processed = CopyFrom(cstate);	/* copy from file to database */
-		/* YB: a batched COPY opens the table again for each batch */
-		rel = YbCopyFromGetRelation(cstate);
 		EndCopyFrom(cstate);
 	}
 	else

@@ -191,10 +191,6 @@ extern int	durable_rename_excl(const char *oldfile, const char *newfile, int log
 extern void SyncDataDirectory(void);
 extern int	data_sync_elevel(int elevel);
 
-/* YB declarations */
-extern bool YbDetachAllocatedFile(FILE *file, bool *is_pipe);
-extern void YbAttachAllocatedFile(FILE *file, bool is_pipe);
-
 /* Filename components */
 #define PG_TEMP_FILES_DIR "pgsql_tmp"
 #define PG_TEMP_FILE_PREFIX "pgsql_tmp"
