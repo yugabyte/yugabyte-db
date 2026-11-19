@@ -210,6 +210,10 @@ extern bool yb_enable_global_object_locking_infra;
 
 extern bool yb_enable_ddl_savepoint_infra;
 
+// Whether writes record their PG command id in intents and reads filter the transaction's own
+// intents by the snapshot's command id instead of by in_txn_limit.
+extern bool yb_enable_command_id_infra;
+
 extern bool yb_skip_ensure_read_time_in_parallel_execution;
 
 /*

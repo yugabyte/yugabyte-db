@@ -1011,6 +1011,20 @@ GetDebugQueryString()
 }
 
 /*
+ * The command id that a write records in its intents, the counterpart of the
+ * cmin/cmax a heap write stores.  Like heap_insert callers, take the current
+ * command id and mark it used, so that the next CommandCounterIncrement makes
+ * the write visible to later commands.  The current id is at least the
+ * es_output_cid of the writing statement, so the write stays invisible to that
+ * statement's own snapshot.
+ */
+static uint32_t
+YbGetWriteCommandId()
+{
+	return GetCurrentCommandId(true);
+}
+
+/*
  * Ensure we've defined the correct postgres Oid values. This function only
  * contains compile-time assertions. It would have been made 'static' but it is
  * not called anywhere and making it 'static' caused compiler warning which
@@ -1217,6 +1231,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.GetSessionReplicationOriginTimestamp = &YbGetSessionReplicationOriginTimestamp,
 			.HasProcessableAbortInterrupt = &YBHasProcessableAbortInterrupt,
 			.IsInParallelMode = &IsInParallelMode,
+			.GetWriteCommandId = &YbGetWriteCommandId,
 		};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;

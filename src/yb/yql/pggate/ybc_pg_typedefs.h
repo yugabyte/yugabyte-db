@@ -338,6 +338,9 @@ typedef struct YbcPgExecParameters {
   int work_mem = 4096; // Default work_mem in guc.c
   int yb_fetch_row_limit = 1024; // Default yb_fetch_row_limit in guc.c
   int yb_fetch_size_limit = 0; // Default yb_fetch_size_limit in guc.c
+  // The snapshot's curcid, which reads send as PgsqlReadRequestPB::read_command_id.
+  bool has_read_command_id = false;
+  uint32_t read_command_id = 0;
 #else
   uint64_t plan_limit;
   uint64_t vector_limit;
@@ -356,6 +359,8 @@ typedef struct YbcPgExecParameters {
   int work_mem;
   int yb_fetch_row_limit;
   int yb_fetch_size_limit;
+  bool has_read_command_id;
+  uint32_t read_command_id;
   int yb_index_check;
 #endif
 } YbcPgExecParameters;
@@ -413,6 +418,8 @@ typedef struct {
   bool (*HasProcessableAbortInterrupt)();
   /* xact.h */
   bool (*IsInParallelMode)();
+  /* The PG command id that the current write records, see PgsqlWriteRequestPB::command_id. */
+  uint32_t (*GetWriteCommandId)();
 } YbcPgCallbacks;
 
 typedef struct {

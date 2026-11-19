@@ -190,6 +190,12 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_ddl_transaction_block_enabled, kEnableDdlTra
     "block instead of their separate transactions. Ensure DDL atomicity is "
     "enabled via ysql_yb_enable_ddl_atomicity_infra and ysql_yb_ddl_rollback_enabled flags.");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_command_id_infra, kLocalPersisted, false, true,
+    "Whether YSQL writes record their PostgreSQL command id in the intents they write, and YSQL "
+    "reads decide the visibility of their transaction's own intents by it, as PostgreSQL does with "
+    "a tuple's cmin and the snapshot's curcid. Intents with a command id cannot be decoded by "
+    "tservers of older versions.");
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
     "Auto flag that controls whether DDL savepoint support can be safely enabled "
     "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "

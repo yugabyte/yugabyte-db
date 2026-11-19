@@ -288,7 +288,7 @@ create or replace function max_xacttest() returns smallint language sql as
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest; -- YB: TODO(#22947): fix output
+select * from xacttest;
 rollback;
 
 -- But a volatile function can see the partial results of the calling query
@@ -306,7 +306,7 @@ create or replace function max_xacttest() returns smallint language plpgsql as
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest; -- YB: TODO(#22947): fix output
+select * from xacttest;
 rollback;
 
 create or replace function max_xacttest() returns smallint language plpgsql as

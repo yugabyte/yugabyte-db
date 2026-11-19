@@ -80,18 +80,19 @@ COMMIT;
 -- -----------------------------------------------------------------------------
 -- TEST 3: Interleaved Modifying CTEs Visibility (YB vs PG deviation)
 -- -----------------------------------------------------------------------------
+SET yb_enable_new_relation_fastpath_write_in_txn_blocks = true;
 BEGIN;
 
 CREATE TABLE mcte_test (id INT PRIMARY KEY);
 
--- YugabyteDB deviates from PostgreSQL here due to how in_txn_limit is picked (GHI #10142).
--- In PostgreSQL, same-transaction visibility uses CommandId which is fixed before the
--- statement begins, so the read CTE will not see the INSERT from the write CTE.
--- Expected PG result: 0.
--- In YugabyteDB, the in_txn_limit is picked by the read operation. Because the read
--- is forced to execute after the write via LATERAL correlation, the picked in_txn_limit
--- includes the write that just occurred in the same statement.
--- Expected YB result: 1.
+-- YugabyteDB deviates from PostgreSQL here for rows that the skip-intents optimization
+-- writes (GHI #10142). In PostgreSQL, same-transaction visibility uses CommandId which is
+-- fixed before the statement begins, so the read CTE will not see the INSERT from the
+-- write CTE. Expected PG result: 0. YugabyteDB records the CommandId in the intents and
+-- matches PostgreSQL for them, but skip-intents writes have no intents, so a read sees
+-- them by the in_txn_limit, which the read operation picks. Because the read is forced
+-- to execute after the write via LATERAL correlation, the picked in_txn_limit includes
+-- the write that just occurred in the same statement. Expected YB result: 1.
 WITH
   w_write AS (
     INSERT INTO mcte_test VALUES (10) RETURNING id
@@ -109,6 +110,7 @@ SELECT r.c AS count_after_write
 FROM w_read r;
 
 COMMIT;
+RESET yb_enable_new_relation_fastpath_write_in_txn_blocks;
 
 -- -----------------------------------------------------------------------------
 -- TEST 4: Statement should not see own writes (Case 1) (GHI #32221)
@@ -256,6 +258,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql VOLATILE;
 
+SET yb_enable_new_relation_fastpath_write_in_txn_blocks = true;
 BEGIN;
 DROP TABLE IF EXISTS skip_intents_mixed;
 CREATE TABLE skip_intents_mixed(id INT PRIMARY KEY);
@@ -268,14 +271,15 @@ FOR EACH ROW EXECUTE PROCEDURE my_trigger_func_mixed();
 
 -- Row 1: id=1 does not fire the nested write.
 -- Row 2: the trigger performs a nested write to another newly created table.
--- The RETURNING subquery then reads the table being written. The output is the same
--- irrespective of whether the skip-intents optimization is used. The count is 1
--- rather than 0 because of a YSQL implementation quirk where writes performed before
--- the first read of a statement are visible to that statement (GHI #10142).
+-- The RETURNING subquery then reads the table being written. With the skip-intents
+-- optimization, the count is 1 rather than 0 because of a YSQL implementation quirk
+-- where skip-intents writes performed before the first read of a statement are visible
+-- to that statement (GHI #10142). Writes to the intents match PostgreSQL instead.
 INSERT INTO trigger_source_mixed VALUES (1), (2)
 RETURNING id, (SELECT count(*) FROM trigger_source_mixed) AS c;
 
 ROLLBACK;
+RESET yb_enable_new_relation_fastpath_write_in_txn_blocks;
 
 -- -----------------------------------------------------------------------------
 -- TEST 9: CTAS Nested Read Anomaly (GHI #32221)
@@ -341,9 +345,10 @@ DROP TABLE probe_log;
 -- TEST 11: Cursor and savepoint visibility of skip intent writes
 -- (GHI #32221, GHI #33543)
 -- -----------------------------------------------------------------------------
--- The output of every case below is the same irrespective of whether the skip-intents
--- optimization is used, because fastpath rows and intents obey the same in_txn_limit
--- based visibility rule.
+-- The cases below use the skip-intents optimization. Reads see the fastpath rows by the
+-- in_txn_limit, while they see intents by CommandId, as PostgreSQL does, so some cases
+-- would differ without it.
+SET yb_enable_new_relation_fastpath_write_in_txn_blocks = true;
 
 -- Case 1: the cursor is declared before the rows are written. A FETCH reads at the
 -- in_txn_limit picked by the portal's first read rather than at the snapshot taken by
@@ -469,5 +474,6 @@ SELECT id FROM savepoint_rollback ORDER BY id;
 COMMIT;
 SELECT id FROM savepoint_rollback ORDER BY id;
 
+RESET yb_enable_new_relation_fastpath_write_in_txn_blocks;
 DROP TABLE cursor_new_rel, cursor_stability, cursor_for_update, cursor_with_hold,
            cursor_rewrite, cursor_savepoint, savepoint_reads, savepoint_rollback;
