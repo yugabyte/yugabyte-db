@@ -27,7 +27,6 @@ extern "C" {
 
 typedef void (*YBCAshAcquireBufferLock)(bool);
 typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
-typedef const YBCPgTypeEntity* (*YBCTypeEntityProvider)(int, YBCPgOid);
 typedef void (*YBCGetTableKeyRangesCallback)(void*, const char*, size_t);
 
 typedef void * SliceVector;
@@ -937,8 +936,12 @@ YBCStatus YBCPgUpdatePublicationTableList(
 YBCStatus YBCPgDestroyVirtualWalForCDC();
 
 YBCStatus YBCPgGetCDCConsistentChanges(const char *stream_id,
-                                       YBCPgChangeRecordBatch **record_batch,
-                                       YBCTypeEntityProvider type_entity_provider);
+                                       YBCPgChangeRecordBatch **record_batch);
+
+void YBCPgFreeCDCConsistentChangesResponse(void *response);
+
+YBCStatus YBCQLValueToDatum(const YBCPgTypeEntity *type_entity, const void *ql_value,
+                            uint64_t *datum, bool *is_null);
 
 YBCStatus YBCPgUpdateAndPersistLSN(
     const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,

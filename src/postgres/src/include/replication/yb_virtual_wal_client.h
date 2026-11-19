@@ -28,9 +28,11 @@
 #include "c.h"
 #include "nodes/pg_list.h"
 #include "replication/yb_virtual_wal_client_typedefs.h"
+#include "utils/palloc.h"
 
 extern void YBCInitVirtualWal(List *yb_publication_names);
 extern void YBCDestroyVirtualWal();
+extern MemoryContext YBCGetDecodeRecordContext(void);
 extern void YBCGetTableHashRange(List **options);
 
 extern YBCPgVirtualWalRecord *YBCReadRecord(XLogReaderState *state,
