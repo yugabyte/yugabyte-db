@@ -497,6 +497,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return InitFrontiers(split_generation);
   }
 
+  void StartDestroy() override {
+    lsm_.StartDestroy();
+  }
+
   Status Destroy() override {
     return lsm_.Destroy();
   }

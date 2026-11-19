@@ -9918,7 +9918,9 @@ TEST_P(PgVectorIndexTest, RemoveIndexDuringBackfillInsert) {
 
 // Cancelling CREATE INDEX removes the index while its backfill is still inserting. Neither the
 // cancel nor the removal may wait for the rest of the backfill: the removal is applied by Raft, so
-// waiting there blocks the tablet and the heartbeats of its tservers (GH#38073).
+// waiting there blocks the tablet and the heartbeats of its tservers (GH#38073). The removal does
+// not wait for the destroy of the index storage either, which waits for the queued inserts to skip
+// their vectors.
 TEST_P(PgVectorIndexTest, CancelCreateIndexDuringBackfill) {
   constexpr size_t kNumRows = 2000;
   // With one insert thread and one vector per task, each replica needs kNumRows * kInsertDelay to
@@ -9936,12 +9938,18 @@ TEST_P(PgVectorIndexTest, CancelCreateIndexDuringBackfill) {
       "INSERT INTO test SELECT g, ('[' || g || ',' || g || ',' || g || ']')::vector "
       "FROM generate_series(1, $0) g", kNumRows));
 
+  CountDownLatch destroys_held{1};
   auto* sync_point = SyncPoint::GetInstance();
   sync_point->SetCallBack("VectorLSMInsertTask::DoInsert:Entry", [kInsertDelay](void*) {
     std::this_thread::sleep_for(kInsertDelay);
   });
+  sync_point->SetCallBack(
+      "VectorLSM::CompleteShutdown:RegistriesStopped", [&destroys_held](void*) {
+    destroys_held.Wait();
+  });
   sync_point->EnableProcessing();
-  auto sync_point_cleanup = ScopeExit([sync_point] {
+  auto sync_point_cleanup = ScopeExit([sync_point, &destroys_held] {
+    destroys_held.CountDown();
     sync_point->DisableProcessing();
     sync_point->ClearAllCallBacks();
   });
@@ -9955,7 +9963,13 @@ TEST_P(PgVectorIndexTest, CancelCreateIndexDuringBackfill) {
   });
   ASSERT_OK(WaitForVectorIndexBackfillsStarted(cluster_->num_tablet_servers()));
   const auto index_table_id = ListVectorIndexes(cluster_.get()).front()->table_id();
+  std::vector<std::string> storage_dirs;
+  for (const auto& vector_index : ListVectorIndexes(cluster_.get())) {
+    storage_dirs.push_back(vector_index->path());
+  }
   auto peers = ASSERT_RESULT(ListTabletPeersForTableName(cluster_.get(), "test"));
+  ASSERT_EQ(peers.size(), cluster_->num_tablet_servers());
+  ASSERT_EQ(storage_dirs.size(), peers.size());
 
   const auto start = MonoTime::Now();
   ASSERT_TRUE(ASSERT_RESULT(conn.FetchRow<bool>(
@@ -9973,6 +9987,18 @@ TEST_P(PgVectorIndexTest, CancelCreateIndexDuringBackfill) {
   const auto elapsed = MonoTime::Now() - start;
   LOG(INFO) << "Index removed in " << elapsed;
   ASSERT_LT(elapsed, MonoDelta(kRemoveTimeout));
+
+  destroys_held.CountDown();
+  auto* env = Env::Default();
+  ASSERT_OK(WaitFor([env, &storage_dirs] {
+    for (const auto& dir : storage_dirs) {
+      if (env->DirExists(dir)) {
+        return false;
+      }
+    }
+    return true;
+  }, kRemoveTimeout, "Index storages deleted"));
+  LOG(INFO) << "Index storages deleted in " << MonoTime::Now() - start;
 
   sync_point->ClearAllCallBacks();
   ASSERT_OK(CreateIndex(conn));

@@ -102,7 +102,7 @@ class TabletVectorIndexes :
       const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap)
       EXCLUDES(vector_indexes_mutex_);
 
-  // Removes specified index, also destroying its data on disk.
+  // Removes specified index. Its data on disk is destroyed in the background, see ScheduleDestroy.
   Status Remove(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
   // Instantiates vector indexes of the given indexed table that were skipped because the indexed
@@ -246,6 +246,10 @@ class TabletVectorIndexes :
 
   void DestroySkippedIndexStorage(const TableId& table_id) EXCLUDES(vector_indexes_mutex_);
 
+  // Destroy waits for the inserts of the index queued in the shared insert pool, e.g. a whole
+  // chunk of a backfill, so the Raft apply that removes the index does not run it.
+  void ScheduleDestroy(docdb::DocVectorIndexPtr index);
+
   const VectorIndexThreadPoolProvider thread_pool_provider_;
   const VectorIndexCompactionTokenProvider compaction_token_provider_;
   const hnsw::BlockCachePtr block_cache_;
@@ -261,6 +265,11 @@ class TabletVectorIndexes :
   docdb::DocVectorIndexesPtr vector_indexes_list_ GUARDED_BY(vector_indexes_mutex_);
 
   ShutdownController shutdown_controller_;
+
+  // Removed indexes not destroyed yet. Shared with the task that destroys them, which still uses it
+  // after Wait returns.
+  class PendingDestroys;
+  const std::shared_ptr<PendingDestroys> pending_destroys_;
 
   rpc::Scheduler* scheduler_ = nullptr;
   // Serializes ScheduledTaskTracker::Schedule, which aborts the pending task and overwrites its id

@@ -972,7 +972,8 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
     // implemented.
     VLOG_WITH_FUNC(1) << "Table id: " << req.table_id();
     // Stops waiting for the index after kMaxPollTime, so the caller checks for postgres interrupts
-    // between calls: a cancelled CREATE INDEX would otherwise wait for the whole backfill.
+    // between calls instead of noticing a cancelled CREATE INDEX only at the RPC deadline. Only the
+    // wait between checks is capped, since a lookup that times out fails the CREATE INDEX.
     constexpr auto kMaxPollTime = 1s;
     const auto poll_deadline = std::min(deadline, CoarseMonoClock::Now() + kMaxPollTime);
     auto& client = this->client();

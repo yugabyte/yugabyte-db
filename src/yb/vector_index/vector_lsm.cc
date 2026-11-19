@@ -629,7 +629,7 @@ class VectorLSMInsertRegistryBase
   }
 
   // Stops allocations as Shutdown does, and makes running and queued tasks skip the vectors they
-  // have not inserted yet, so Shutdown does not wait for them.
+  // have not inserted yet. Shutdown still waits for the pool to dequeue the queued ones.
   void Cancel() EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     state_.store(InsertRegistryState::kCancelled, std::memory_order_release);
@@ -1573,12 +1573,10 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-Status VectorLSM<Vector, DistanceResult>::Destroy() {
-  LOG_WITH_PREFIX(INFO) << __func__;
+void VectorLSM<Vector, DistanceResult>::StartDestroy() {
   StartShutdown();
-  // The caller is blocked until Destroy returns, so do not wait for a running backfill to insert
-  // the rest of its vectors, nor for chunks to be saved just to be deleted, see IsDestroyed. Only a
-  // save already in progress is waited for.
+  // Do not wait for a running backfill to insert the rest of its vectors, nor for chunks to be
+  // saved just to be deleted, see IsDestroyed. Only a save already in progress is waited for.
   // Not the failed state: flushes that listed the index before its removal still read it.
   if (insert_registry_) {
     insert_registry_->Cancel();
@@ -1590,6 +1588,14 @@ Status VectorLSM<Vector, DistanceResult>::Destroy() {
     std::lock_guard lock(mutex_);
     ReleaseFlushWaitersUnlocked(DestroyedStatus());
   }
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+Status VectorLSM<Vector, DistanceResult>::Destroy() {
+  LOG_WITH_PREFIX(INFO) << __func__;
+  StartDestroy();
+  // Cancelled tasks still wait for the shared insert pool to dequeue them, so this can take as long
+  // as the inserts queued before them, of every LSM of the tserver.
   CompleteShutdown();
   return env_->DeleteRecursively(options_.storage_dir);
 }
@@ -1694,7 +1700,7 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
         // later frontiers, so bootstrap would not replay the failed one. Crashing before the save
         // leaves it in the WAL. Skipping the save instead is not an option, an unsaved chunk would
         // block the updates queue and CompleteShutdown.
-        // Only Destroy cancels insertion, and a destroyed LSM saves no chunks.
+        // Only StartDestroy cancels insertion, and a destroyed LSM saves no chunks.
         if (!status.ok()) {
           LOG_IF_WITH_PREFIX(FATAL, !insert_registry_->IsCancelled())
               << "VectorLSM insertion failed: " << status;
@@ -2193,7 +2199,7 @@ void VectorLSM<Vector, DistanceResult>::SaveChunk(const ImmutableChunkPtr& chunk
   }
 
   if (IsDestroyed()) {
-    // Also covers a chunk that a flush queued after Destroy released the queued ones.
+    // Also covers a chunk that a flush queued after StartDestroy released the queued ones.
     std::lock_guard lock(mutex_);
     chunk->Flushed(DestroyedStatus());
     return;
