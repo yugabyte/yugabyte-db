@@ -515,8 +515,7 @@ EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF) /*+Set(yb_m
 /*+Set(yb_max_merge_scan_streams 64)*/ SELECT g1, ord1, g2, g3, ord2, ord3, bkt FROM gap_multi_tbl WHERE bkt IN (1, 2) AND ord1 = g1 AND ord2 = g2 AND ord2 = g3 ORDER BY ord1, ord2, ord3;
 (output identical to previous)
 RESET yb_enable_expression_pushdown;
-DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl,
-    gap_null_tbl, gap_multi_tbl;
+DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl, gap_multi_tbl;
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
 -- In this database, the expression gap filters run after the merge: with

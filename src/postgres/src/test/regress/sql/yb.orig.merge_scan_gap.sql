@@ -142,8 +142,7 @@ SET yb_enable_expression_pushdown = off;
 \i :run_query
 RESET yb_enable_expression_pushdown;
 
-DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl,
-    gap_null_tbl, gap_multi_tbl;
+DROP TABLE gap_coll_tbl, gap_idx_tbl, gap_desc_tbl, gap_null_tbl, gap_multi_tbl;
 
 -- Cells run in both databases (yb_commands/merge_scan_gap_cells.sql)
 --
