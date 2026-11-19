@@ -55,13 +55,12 @@ Apart from the exceptions above, a connector release supports every YugabyteDB r
 
 Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
-{{<tags/feature/ea idea="2809">}}Starting with connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2), the gRPC connector supports Kafka Connect 3.9 and Kafka Connect 4.x (4.0 and later). Earlier connector releases cannot run on a Kafka Connect 4.x worker because they bundled Kafka's own classes. For other Kafka Connect versions, you can rely on Kafka's backward-compatibility guarantees. These Kafka Connect version updates currently apply _only_ to the gRPC connector.
-
+{{<tags/feature/ea idea="2809">}}Starting with connector version [dz.1.9.5.yb.grpc.2026.1.2.0.2](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2026.1.2.0.2), the gRPC connector supports Kafka Connect 3.9 and Kafka Connect 4.x (4.0 and later). Earlier connector releases cannot run on a Kafka Connect 4.x worker because they bundled Kafka's own classes. For other Kafka Connect versions, you can rely on Kafka's backward-compatibility guarantees. These Kafka Connect version updates currently apply _only_ to the gRPC connector.
 {{< warning title="YugabyteDB v2026.1.2.0 and later" >}}
 
 Starting with YugabyteDB v2026.1.2.0, every gRPC CDC stream carries a replication slot name and the `yb_grpc` plugin name in its metadata. Streams created before the upgrade are backfilled automatically with an auto-generated slot name of the form `grpc_<stream_id>`. Connector versions `dz.1.9.5.yb.grpc.2026.1.1` and earlier do not recognize this metadata and fail to start against such clusters, including for pre-existing streams.
 
-If your universe is on YugabyteDB v2026.1.2.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.2](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2) or later.
+If your universe is on YugabyteDB v2026.1.2.0 or later, use connector version [dz.1.9.5.yb.grpc.2026.1.2](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2026.1.2) or later.
 
 {{< /warning >}}
 
@@ -1319,7 +1318,7 @@ The connector publishes metadata that can be used to distinguish transaction bou
 
 ### Known limitations
 
-* Transactional ordering is currently not supported with schema evolution. See issue [18476](https://github.com/yugabyte/yugabyte-db/issues/18476).
+* Transactional ordering is currently not supported with schema evolution. See {{<issue 18476>}}.
 
 ## Monitoring
 

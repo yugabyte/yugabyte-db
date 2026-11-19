@@ -27,7 +27,7 @@ Upgrade the connector:
 - _On YugabyteDB v2024.2_, if your connector is earlier than `dz.1.9.5.yb.grpc.2024.2.3`, which v2024.2 requires. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 - _When a release fixes a bug or security issue_ that affects your deployment.
 - _When a release adds a feature or improvement_ that you need.
-- _To run on Kafka Connect 4.x_, use connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2) or later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
+- _To run on Kafka Connect 4.x_, use connector version [dz.1.9.5.yb.grpc.2026.1.2.0.2](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2026.1.2.0.2) or later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 
 Otherwise, you don't need to upgrade the connector, including when you upgrade YugabyteDB within the same release series.
 

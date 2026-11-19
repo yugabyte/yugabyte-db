@@ -1,6 +1,6 @@
 ---
 title: Logical replication connector releases
-headerTitle: CDC Logical Replication connector
+headerTitle: CDC logical replication connector
 linkTitle: Logical replication
 description: Release notes and downloads for the YugabyteDB logical replication connector.
 headcontent: Release notes and downloads for the YugabyteDB logical replication connector
@@ -20,9 +20,11 @@ The YugabyteDB connector for logical replication is based on Debezium and is pub
 
 [Logical replication connector on GitHub](https://github.com/yugabyte/debezium/) {{<icon/github>}}.
 
+The connector is the Kafka Connect plugin `yugabytedb-source-connector-<version>-jar-with-dependencies.jar`, attached to each GitHub release. Releases `dz.2.5.2.yb.2024.2.4` and earlier name the file `debezium-connector-yugabytedb-<version>-jar-with-dependencies.jar`.
+
 For compatibility and configuration, see [YugabyteDB connector](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/).
 
-## dz.2.5.2.yb.2026.1.2.0.1 - September 30, 2026
+## dz.2.5.2.yb.2026.1.2.0.1 - September 30, 2026 {#dz.2.5.2.yb.2026.1.2.0.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1.2.0.1)
 
@@ -38,7 +40,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2026.1...dz.2.5.2.yb.2026.1.2.0.1](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2026.1...dz.2.5.2.yb.2026.1.2.0.1)
 
-## dz.2.5.2.yb.2026.1 - July 7, 2026
+## dz.2.5.2.yb.2026.1 - July 7, 2026 {#dz.2.5.2.yb.2026.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2026.1)
 
@@ -54,7 +56,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2025.2.3...dz.2.5.2.yb.2026.1](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2025.2.3...dz.2.5.2.yb.2026.1)
 
-## dz.2.5.2.yb.2025.2.3 - February 24, 2026
+## dz.2.5.2.yb.2025.2.3 - February 24, 2026 {#dz.2.5.2.yb.2025.2.3}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2.3)
 
@@ -64,7 +66,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2025.2.2...dz.2.5.2.yb.2025.2.3](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2025.2.2...dz.2.5.2.yb.2025.2.3)
 
-## dz.2.5.2.yb.2025.2.2 - February 12, 2026
+## dz.2.5.2.yb.2025.2.2 - February 12, 2026 {#dz.2.5.2.yb.2025.2.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2.2)
 
@@ -74,7 +76,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2025.2...dz.2.5.2.yb.2025.2.2](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2025.2...dz.2.5.2.yb.2025.2.2)
 
-## dz.2.5.2.yb.2025.2 - February 1, 2026
+## dz.2.5.2.yb.2025.2 - February 1, 2026 {#dz.2.5.2.yb.2025.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2)
 
@@ -88,17 +90,17 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2025.1.2...dz.2.5.2.yb.2025.2](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2025.1.2...dz.2.5.2.yb.2025.2)
 
-## dz.2.5.2.yb.2025.1.2 - November 12, 2025
+## dz.2.5.2.yb.2025.1.2 - November 12, 2025 {#dz.2.5.2.yb.2025.1.2}
 
-**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.1.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/yugabytedb-source-connector/dz.2.5.2.yb.2025.1.2/yugabytedb-source-connector-dz.2.5.2.yb.2025.1.2.jar)
+**Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.1.2)
 
 ### What's changed
 
-* FIx: Upgrade jackson version to 2.19.0 to fix CVE-2025-52999. ([#186](https://github.com/yugabyte/debezium/pull/186))
+* Fix: Upgrade Jackson version to 2.19.0 to fix CVE-2025-52999. ([#186](https://github.com/yugabyte/debezium/pull/186))
 
 **Full changelog**: [dz.2.5.2.yb.2025.1...dz.2.5.2.yb.2025.1.2](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2025.1...dz.2.5.2.yb.2025.1.2)
 
-## dz.2.5.2.yb.2025.1 - October 15, 2025
+## dz.2.5.2.yb.2025.1 - October 15, 2025 {#dz.2.5.2.yb.2025.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.1)
 
@@ -109,7 +111,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2024.2.5...dz.2.5.2.yb.2025.1](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.2.5...dz.2.5.2.yb.2025.1)
 
-## dz.2.5.2.yb.2024.2.5 - July 31, 2025
+## dz.2.5.2.yb.2024.2.5 - July 31, 2025 {#dz.2.5.2.yb.2024.2.5}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.5)
 
@@ -120,7 +122,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2024.2.4...dz.2.5.2.yb.2024.2.5](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.2.4...dz.2.5.2.yb.2024.2.5)
 
-## dz.2.5.2.yb.2024.2.4 - June 13, 2025
+## dz.2.5.2.yb.2024.2.4 - June 13, 2025 {#dz.2.5.2.yb.2024.2.4}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.4)
 
@@ -131,7 +133,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2024.2.3...dz.2.5.2.yb.2024.2.4](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.2.3...dz.2.5.2.yb.2024.2.4)
 
-## dz.2.5.2.yb.2024.2.3 - March 18, 2025
+## dz.2.5.2.yb.2024.2.3 - March 18, 2025 {#dz.2.5.2.yb.2024.2.3}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.3)
 
@@ -140,14 +142,14 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 * DBZ-PGYB: Changes to support LSN types with replication slot. {{<issue 24204>}} ([#162](https://github.com/yugabyte/debezium/pull/162))
 * Make load-balance property configurable. {{<issue 26004>}} ([#171](https://github.com/yugabyte/debezium/pull/171))
 * Custom metrics implementation for multi task model. {{<issue 26069>}} ([#165](https://github.com/yugabyte/debezium/pull/165))
-* Parellel streaming changes. {{<issue 26107>}} ([#172](https://github.com/yugabyte/debezium/pull/172))
+* Parallel streaming changes. {{<issue 26107>}} ([#172](https://github.com/yugabyte/debezium/pull/172))
 * CDC: Fix validation logic for configs related to parallel streaming. ([#173](https://github.com/yugabyte/debezium/pull/173))
 * DBZ-PGYB: Bug fix for inability to alter publication upon transitioning to streaming. ([#174](https://github.com/yugabyte/debezium/pull/174))
 * DBZ-PGYB: Specify only HYBRID_TIME when creating slot, skip otherwise. ([#175](https://github.com/yugabyte/debezium/pull/175))
 
 **Full changelog**: [dz.2.5.2.yb.2024.2.2...dz.2.5.2.yb.2024.2.3](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.2.2...dz.2.5.2.yb.2024.2.3)
 
-## dz.2.5.2.yb.2024.2.2 - February 4, 2025
+## dz.2.5.2.yb.2024.2.2 - February 4, 2025 {#dz.2.5.2.yb.2024.2.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2.2)
 
@@ -159,7 +161,7 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2024.2...dz.2.5.2.yb.2024.2.2](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.2...dz.2.5.2.yb.2024.2.2)
 
-## dz.2.5.2.yb.2024.2 - December 26, 2024
+## dz.2.5.2.yb.2024.2 - December 26, 2024 {#dz.2.5.2.yb.2024.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.2)
 
@@ -174,14 +176,14 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 **Full changelog**: [dz.2.5.2.yb.2024.1...dz.2.5.2.yb.2024.2](https://github.com/yugabyte/debezium/compare/dz.2.5.2.yb.2024.1...dz.2.5.2.yb.2024.2)
 
-## dz.2.5.2.yb.2024.1 - August 8, 2024
+## dz.2.5.2.yb.2024.1 - August 8, 2024 {#dz.2.5.2.yb.2024.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1)
 
 ### What's changed
 
 * Fix log statement. ([#138](https://github.com/yugabyte/debezium/pull/138))
-* Fix log statement wihile skipping empty transactions. ([#139](https://github.com/yugabyte/debezium/pull/139))
+* Fix log statement while skipping empty transactions. ([#139](https://github.com/yugabyte/debezium/pull/139))
 * DBZ-PGYB: Change default plugin to yboutput. {{<issue 23153>}} ([#140](https://github.com/yugabyte/debezium/pull/140))
 * DBZ-PGYB: Change versioning schema to follow YB standards. {{<issue 23081>}} ([#136](https://github.com/yugabyte/debezium/pull/136))
 * DBZ-PGYB: Renamed connector to new naming convention. {{<issue 23081>}} ([#142](https://github.com/yugabyte/debezium/pull/142))

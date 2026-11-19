@@ -24,7 +24,7 @@ The gRPC connector is the Kafka Connect plugin `debezium-connector-yugabytedb-<v
 
 For compatibility and configuration, see [YugabyteDB gRPC connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).
 
-## dz.1.9.5.yb.grpc.2026.1.2.0.3 - November 5, 2026
+## dz.1.9.5.yb.grpc.2026.1.2.0.3 - November 5, 2026 {#dz.1.9.5.yb.grpc.2026.1.2.0.3}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.3) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2026.1.2.0.3/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2026.1.2.0.3.jar)
 
@@ -39,11 +39,11 @@ This connector release supports all YugabyteDB 2026.1 and earlier releases, as w
 * DBZ: Stop advancing the snapshot explicit checkpoint past the acknowledged key. {{<issue 35465>}} ([#432](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/432))
 * DBZ: Stop one colocated table's acknowledgements from advancing another table's checkpoint. {{<issue 35827>}} {{<issue 35831>}} ([#433](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/433))
 * DBZ: Stop advancing the streaming explicit checkpoint past a partly acknowledged transaction. {{<issue 36626>}} ([#434](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/434))
-* DBZ: Reported CVEs: upgrade netty, jackson, guava and pgjdbc, move base image to Kafka 4.3.2. #DB-24003 ([#437](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/437))
+* DBZ: Fix reported CVEs by upgrading netty, jackson, guava, and pgjdbc, and move the base image to Kafka 4.3.2. #DB-24003 ([#437](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/437))
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1.2.0.2...vdz.1.9.5.yb.grpc.2026.1.2.0.3](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1.2.0.2...vdz.1.9.5.yb.grpc.2026.1.2.0.3)
 
-## dz.1.9.5.yb.grpc.2026.1.2.0.2 - September 22, 2026
+## dz.1.9.5.yb.grpc.2026.1.2.0.2 - September 22, 2026 {#dz.1.9.5.yb.grpc.2026.1.2.0.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2026.1.2.0.2/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2026.1.2.0.2.jar)
 
@@ -64,11 +64,9 @@ Kafka Connect 3.9 remains supported and needs no configuration change.
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1.2.0.1...vdz.1.9.5.yb.grpc.2026.1.2.0.2](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1.2.0.1...vdz.1.9.5.yb.grpc.2026.1.2.0.2)
 
-## dz.1.9.5.yb.grpc.2026.1.2.0.1 - September 7, 2026
+## dz.1.9.5.yb.grpc.2026.1.2.0.1 - September 7, 2026 {#dz.1.9.5.yb.grpc.2026.1.2.0.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2026.1.2.0.1/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2026.1.2.0.1.jar)
-
-**Full changelog**: [vdz.1.9.5.yb.grpc.2026.1.SNAPSHOT.7...vdz.1.9.5.yb.grpc.2026.1.2.0.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1.SNAPSHOT.7...vdz.1.9.5.yb.grpc.2026.1.2.0.1)
 
 ### Versioning change
 
@@ -76,12 +74,12 @@ Starting with this release, connector versions follow `dz.<debezium-version>.yb.
 
 ### What's changed
 
-* DBZ: Use max_index_in_sort_window while sending GetChnages rpcs. {{<issue 30831>}} ([#422](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/422))
+* DBZ: Use max_index_in_sort_window while sending GetChanges rpcs. {{<issue 30831>}} ([#422](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/422))
 * Add connector name tag to JMX metrics. ([#420](https://github.com/yugabyte/debezium-connector-yugabytedb/pull/420))
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1.2...vdz.1.9.5.yb.grpc.2026.1.2.0.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1.2...vdz.1.9.5.yb.grpc.2026.1.2.0.1)
 
-## dz.1.9.5.yb.grpc.2026.1.2 - August 21, 2026
+## dz.1.9.5.yb.grpc.2026.1.2 - August 21, 2026 {#dz.1.9.5.yb.grpc.2026.1.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2026.1.2/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2026.1.2.jar)
 
@@ -99,7 +97,7 @@ Previously, each Kafka record carried offsets for all tablets in the task, which
 
 The connector now emits per-tablet heartbeats, enabled via `heartbeat.interval.ms` (default off). Works in both streaming and snapshot.
 
-Some quick points to help with utilisation of this change:
+To use this change:
 
 * If you use filtering, enable heartbeats. Filtering worked before only because of the offset bug above, sibling tablets were advancing the filtered tablet's checkpoint. That's gone now, so a filtered tablet will hold its checkpoint and grow WAL forever without a heartbeat.
 * Size the interval against your tablet count, since heartbeats are emitted per tablet per interval.
@@ -112,7 +110,7 @@ Some quick points to help with utilisation of this change:
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1.1...vdz.1.9.5.yb.grpc.2026.1.2](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1.1...vdz.1.9.5.yb.grpc.2026.1.2)
 
-## dz.1.9.5.yb.grpc.2026.1.1 - July 28, 2026
+## dz.1.9.5.yb.grpc.2026.1.1 - July 28, 2026 {#dz.1.9.5.yb.grpc.2026.1.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2026.1.1/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2026.1.1.jar)
 
@@ -129,7 +127,7 @@ Some quick points to help with utilisation of this change:
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2026.1...vdz.1.9.5.yb.grpc.2026.1.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2026.1...vdz.1.9.5.yb.grpc.2026.1.1)
 
-## dz.1.9.5.yb.grpc.2026.1 - June 30, 2026
+## dz.1.9.5.yb.grpc.2026.1 - June 30, 2026 {#dz.1.9.5.yb.grpc.2026.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2026.1/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2026.1.jar)
 
@@ -149,7 +147,7 @@ Some quick points to help with utilisation of this change:
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2025.2...vdz.1.9.5.yb.grpc.2026.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2025.2...vdz.1.9.5.yb.grpc.2026.1)
 
-## dz.1.9.5.yb.grpc.2025.2 - February 12, 2026
+## dz.1.9.5.yb.grpc.2025.2 - February 12, 2026 {#dz.1.9.5.yb.grpc.2025.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2025.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2025.2/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2025.2.jar)
 
@@ -162,7 +160,7 @@ Some quick points to help with utilisation of this change:
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2025.1...vdz.1.9.5.yb.grpc.2025.2](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2025.1...vdz.1.9.5.yb.grpc.2025.2)
 
-## dz.1.9.5.yb.grpc.2025.1 - December 8, 2025
+## dz.1.9.5.yb.grpc.2025.1 - December 8, 2025 {#dz.1.9.5.yb.grpc.2025.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2025.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2025.1/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2025.1.jar)
 
@@ -176,7 +174,7 @@ Some quick points to help with utilisation of this change:
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2024.2.3...vdz.1.9.5.yb.grpc.2025.1](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2024.2.3...vdz.1.9.5.yb.grpc.2025.1)
 
-## dz.1.9.5.yb.grpc.2024.2.3 - June 13, 2025
+## dz.1.9.5.yb.grpc.2024.2.3 - June 13, 2025 {#dz.1.9.5.yb.grpc.2024.2.3}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.2.3) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2024.2.3/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.3.jar)
 
@@ -191,7 +189,7 @@ Some quick points to help with utilisation of this change:
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2024.2.2...vdz.1.9.5.yb.grpc.2024.2.3](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2024.2.2...vdz.1.9.5.yb.grpc.2024.2.3)
 
-## dz.1.9.5.yb.grpc.2024.2.2 - February 7, 2025
+## dz.1.9.5.yb.grpc.2024.2.2 - February 7, 2025 {#dz.1.9.5.yb.grpc.2024.2.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.2.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2024.2.2/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.2.jar)
 
@@ -203,7 +201,7 @@ Some quick points to help with utilisation of this change:
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2024.2...vdz.1.9.5.yb.grpc.2024.2.2](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2024.2...vdz.1.9.5.yb.grpc.2024.2.2)
 
-## dz.1.9.5.yb.grpc.2024.2 - November 27, 2024
+## dz.1.9.5.yb.grpc.2024.2 - November 27, 2024 {#dz.1.9.5.yb.grpc.2024.2}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.2) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2024.2/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.2.jar)
 
@@ -241,7 +239,7 @@ For cases where you absolutely need to use `IMPLICIT` streams, add the following
 
 **Full changelog**: [vdz.1.9.5.yb.grpc.2024.1...vdz.1.9.5.yb.grpc.2024.2](https://github.com/yugabyte/debezium-connector-yugabytedb/compare/vdz.1.9.5.yb.grpc.2024.1...vdz.1.9.5.yb.grpc.2024.2)
 
-## dz.1.9.5.yb.grpc.2024.1 - September 5, 2024
+## dz.1.9.5.yb.grpc.2024.1 - September 5, 2024 {#dz.1.9.5.yb.grpc.2024.1}
 
 **Download**: [GitHub](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2024.1) | [S3 Bucket](https://s3.amazonaws.com/repository.yugabyte.com/maven/release/io/debezium/debezium-connector-yugabytedb/dz.1.9.5.yb.grpc.2024.1/debezium-connector-yugabytedb-dz.1.9.5.yb.grpc.2024.1.jar)
 
@@ -249,7 +247,7 @@ For cases where you absolutely need to use `IMPLICIT` streams, add the following
 
 #### Name change
 
-YugabyteDB now has two replication models to offer i.e. logical replication and gRPC replication, see [Change data capture](/stable/additional-features/change-data-capture/) for more.
+YugabyteDB now has two replication models (logical replication and gRPC replication), see [Change data capture](/stable/additional-features/change-data-capture/) for more.
 
 To keep naming consistent with the model, the connector's name has been changed to `YugabyteDBgRPCConnector` with full class name now being `io.debezium.connector.yugabytedb.YugabyteDBgRPCConnector`. New deployments will need to be created using this new name.
 
