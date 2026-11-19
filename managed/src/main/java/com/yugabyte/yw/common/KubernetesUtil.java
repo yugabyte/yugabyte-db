@@ -46,7 +46,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1159,9 +1161,31 @@ public class KubernetesUtil {
     return getCommonLabels(overrides);
   }
 
+  /**
+   * Returns the labels for an object that several AZs share, such as a namespace, its pull secret
+   * or a PDB: each AZ's helm commonLabels, merged in AZ code order so that the first AZ's value
+   * wins a conflict. Every subtask that applies the object then gives it the same labels, whichever
+   * of the AZs it runs for and whichever finishes last.
+   */
+  public static Map<String, String> getHelmCommonLabels(
+      UserIntent primaryIntent, Map<String, String> universeConfig, Collection<UUID> azUUIDs) {
+    Map<String, String> labels = new HashMap<>();
+    azUUIDs.stream()
+        .distinct()
+        .map(AvailabilityZone::getOrBadRequest)
+        .sorted(
+            Comparator.comparing(AvailabilityZone::getCode)
+                .thenComparing(AvailabilityZone::getUuid))
+        .forEach(
+            az ->
+                getHelmCommonLabels(primaryIntent, universeConfig, az.getUuid())
+                    .forEach(labels::putIfAbsent));
+    return labels;
+  }
+
   /** The commonLabels of the given helm overrides, with their values as strings. */
   public static Map<String, String> getCommonLabels(@Nullable Map<String, Object> overrides) {
-    Map<String, String> labels = new HashMap<>();
+    Map<String, String> labels = new LinkedHashMap<>();
     if (overrides != null && overrides.get("commonLabels") instanceof Map<?, ?> commonLabels) {
       commonLabels.forEach(
           (k, v) -> labels.put(String.valueOf(k), v == null ? "" : String.valueOf(v)));

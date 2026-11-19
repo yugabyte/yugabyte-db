@@ -88,6 +88,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -868,16 +869,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     saveUniverseDetails(updater);
   }
 
-  // The commonLabels helm gives this AZ's resources. placementInfo holds just the one AZ; subtasks
-  // queued before it was set have none, and get no labels.
+  // The labels for the namespace and pull secret. placementInfo holds every AZ that deploys into
+  // the namespace; subtasks queued before it was set have none, and get no labels.
   private Map<String, String> getHelmCommonLabels() {
     if (taskParams().placementInfo == null) {
       return Collections.emptyMap();
     }
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-    UUID azUUID = taskParams().placementInfo.azStream().findFirst().get().uuid;
     return KubernetesUtil.getHelmCommonLabels(
-        universe.getUniverseDetails().getPrimaryCluster().userIntent, universe.getConfig(), azUUID);
+        universe.getUniverseDetails().getPrimaryCluster().userIntent,
+        universe.getConfig(),
+        taskParams().placementInfo.azStream().map(az -> az.uuid).collect(Collectors.toList()));
   }
 
   private String getPullSecret() {

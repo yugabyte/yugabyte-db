@@ -285,6 +285,7 @@ public class KubernetesProviderValidator extends ProviderFieldsValidator {
 
   // Admission policies that require labels see the namespace check's dry-run create too. There is
   // no universe yet, so the zone's overrides (else the region's) are the only source of labels.
+  // Only regions and zones have overrides (KubernetesRegionInfo); providers have none.
   private Map<String, String> getOverridesCommonLabels(Map<String, JsonNode> k8sInfo) {
     JsonNode overridesNode = k8sInfo.get("overrides");
     if (overridesNode == null) {

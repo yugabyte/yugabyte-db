@@ -41,9 +41,7 @@ import io.fabric8.kubernetes.api.model.apps.StatefulSetList;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -187,20 +185,6 @@ public class ShellKubernetesManager extends KubernetesManager {
       merged.putAll((Map<String, Object>) existing);
     }
     metadata.put("labels", merged);
-  }
-
-  private String writeTempYaml(List<?> docs, String nameSuffix) {
-    try {
-      Path tempFile =
-          fileHelperService.createTempFile(UUID.randomUUID() + "-" + nameSuffix, ".yml");
-      try (BufferedWriter bw = new BufferedWriter(new FileWriter(tempFile.toFile()))) {
-        new Yaml().dumpAll(docs.iterator(), bw);
-      }
-      return tempFile.toAbsolutePath().toString();
-    } catch (IOException e) {
-      log.error(e.getMessage());
-      throw new RuntimeException("Error writing " + nameSuffix + " YAML file.", e);
-    }
   }
 
   @Override
@@ -1592,22 +1576,33 @@ public class ShellKubernetesManager extends KubernetesManager {
     // to all pods within a single namespace across all AZs. Similar policies will be created
     // for different namespaces within the same cluster or namespaces with the same name
     // across different clusters.
+    Map<UUID, String> namespacePerAZ = new HashMap<>();
+    Map<String, List<UUID>> azsPerNamespace = new HashMap<>();
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
-      Map<String, String> config = entry.getValue();
       AvailabilityZone az = AvailabilityZone.getOrBadRequest(entry.getKey());
       String namespace =
           KubernetesUtil.getKubernetesNamespace(
               isMultiAZ,
               universe.getUniverseDetails().nodePrefix,
               az.getCode(),
-              config,
+              entry.getValue(),
               universe.getUniverseDetails().useNewHelmNamingStyle,
               isReadOnlyCluster,
               false /* addKubeClusterPrefix */);
-      // The labels helm gives this AZ's pods. AZs sharing a namespace share the PDB, which keeps
-      // the labels of the last AZ applied.
+      namespacePerAZ.put(entry.getKey(), namespace);
+      azsPerNamespace.computeIfAbsent(namespace, ns -> new ArrayList<>()).add(entry.getKey());
+    }
+    Map<String, Map<String, String>> labelsPerNamespace = new HashMap<>();
+    for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      Map<String, String> config = entry.getValue();
+      String namespace = namespacePerAZ.get(entry.getKey());
+      // AZs sharing a namespace share the PDB, which gets the helm commonLabels of all of them.
       Map<String, String> labels =
-          KubernetesUtil.getHelmCommonLabels(primaryIntent, universe.getConfig(), entry.getKey());
+          labelsPerNamespace.computeIfAbsent(
+              namespace,
+              ns ->
+                  KubernetesUtil.getHelmCommonLabels(
+                      primaryIntent, universe.getConfig(), azsPerNamespace.get(ns)));
       String pdbPolicyYaml = generatePDBPolicyYaml(universe, cluster, serverType, labels);
       List<String> commandList =
           ImmutableList.of("kubectl", "apply", "-f", pdbPolicyYaml, "--namespace", namespace);

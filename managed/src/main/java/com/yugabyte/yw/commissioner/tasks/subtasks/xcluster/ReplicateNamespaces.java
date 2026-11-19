@@ -17,7 +17,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import java.util.Comparator;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -90,24 +91,38 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
     log.info("Completed {}", getName());
   }
 
-  // The helm commonLabels of each of the universe's namespaces. A namespace shared by AZs gets the
-  // labels of the first AZ by node name.
+  // The labels of each of the universe's namespaces: the helm commonLabels of the AZs that deploy
+  // into it. They are best effort: if they can't be computed, the namespaces are created without
+  // them, as they were before, rather than the replication being skipped.
   private static Map<String, Map<String, String>> getHelmCommonLabelsPerNamespace(
       Universe universe) {
-    Map<String, Map<String, String>> labelsPerNamespace = new HashMap<>();
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
-    details.nodeDetailsSet.stream()
-        .filter(node -> node.azUuid != null && node.getK8sNamespace() != null)
-        .sorted(Comparator.comparing(node -> node.nodeName))
-        .forEach(
-            node ->
-                labelsPerNamespace.computeIfAbsent(
-                    node.getK8sNamespace(),
-                    ns ->
-                        KubernetesUtil.getHelmCommonLabels(
-                            primaryIntent, universe.getConfig(), node.azUuid)));
-    return labelsPerNamespace;
+    try {
+      UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+      UserIntent primaryIntent = details.getPrimaryCluster().userIntent;
+      Map<String, Set<UUID>> azsPerNamespace = new HashMap<>();
+      for (NodeDetails node : details.nodeDetailsSet) {
+        if (node.azUuid != null && node.getK8sNamespace() != null) {
+          azsPerNamespace
+              .computeIfAbsent(node.getK8sNamespace(), ns -> new HashSet<>())
+              .add(node.azUuid);
+        }
+      }
+      Map<String, Map<String, String>> labelsPerNamespace = new HashMap<>();
+      azsPerNamespace.forEach(
+          (namespace, azUUIDs) ->
+              labelsPerNamespace.put(
+                  namespace,
+                  KubernetesUtil.getHelmCommonLabels(
+                      primaryIntent, universe.getConfig(), azUUIDs)));
+      return labelsPerNamespace;
+    } catch (RuntimeException e) {
+      log.warn(
+          "Unable to compute the namespace labels of universe {}, creating the namespaces without"
+              + " them: {}",
+          universe.getUniverseUUID(),
+          e.getMessage());
+      return Collections.emptyMap();
+    }
   }
 
   /**

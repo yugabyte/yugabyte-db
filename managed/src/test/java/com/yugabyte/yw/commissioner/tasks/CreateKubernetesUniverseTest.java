@@ -769,6 +769,43 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testCreateKubernetesUniverseLabelsSharedNamespaceTheSameForEachAZ() {
+    setupUniverseMultiAZ(
+        false /* setMasters */,
+        true /* enabledYEDIS */,
+        false /* setNamespace */,
+        true /* newNamingStyle */);
+    setupCommon();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent intent =
+                  details.getPrimaryCluster().userIntent;
+              intent.universeOverrides = "commonLabels:\n  team: db\n";
+              intent.azOverrides =
+                  ImmutableMap.of(
+                      "PlacementAZ-1", "commonLabels:\n  tier: one\n",
+                      "PlacementAZ-2", "commonLabels:\n  tier: two\n  rack: r2\n",
+                      "PlacementAZ-3", "commonLabels:\n  rack: r3\n");
+              u.setUniverseDetails(details);
+            },
+            false);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.useNewHelmNamingStyle = true;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    // The AZs share the namespace, and each AZ's subtask gives it the labels of all of them, the
+    // first AZ by code winning a conflict.
+    verify(mockKubernetesManager, times(3))
+        .createNamespace(
+            any(), eq(ns1), eq(ImmutableMap.of("team", "db", "tier", "one", "rack", "r2")));
+  }
+
+  @Test
   public void testCreateKubernetesUniverseCreatesYbStorageDb() {
     setupUniverse(/* Create Masters */ false, /* YEDIS/REDIS enabled */ true, false);
     setupCommon();
