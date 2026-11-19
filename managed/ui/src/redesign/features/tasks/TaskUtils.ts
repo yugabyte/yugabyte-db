@@ -8,7 +8,7 @@
  */
 
 import { cloneElement } from 'react';
-import { find } from 'lodash';
+import { find, isEmpty } from 'lodash';
 import { useDispatch, useSelector } from 'react-redux';
 import type { TaskStatus } from '@app/redesign/helpers/api';
 import {
@@ -19,6 +19,12 @@ import {
 } from '../../../actions/tasks';
 import { TargetType, Task, TaskState, TaskType } from './dtos';
 import { AuditLogProps, DiffApiResp } from './components/diffComp/dtos';
+import {
+  getTaskDiffValue,
+  withDefaultClusterType,
+  withDedicatedNodesFromPayload,
+  withIdentityFromPayload
+} from './components/diffComp/taskDiffUtils';
 import {
   SoftwareUpgradeState,
   SoftwareUpgradeTaskType
@@ -99,9 +105,17 @@ export const mapAuditLogToTaskDiffApiResp = (
   auditLog: AuditLogProps | undefined
 ): DiffApiResp | undefined => {
   if (!auditLog) return undefined;
+  // Without a taskDiff there is nothing to show.
+  if (isEmpty(auditLog.taskDiff)) return undefined;
+  const taskDiff = withDedicatedNodesFromPayload(
+    withDefaultClusterType(withIdentityFromPayload(auditLog.taskDiff, auditLog.payload)),
+    auditLog.payload
+  );
   return {
-    afterData: auditLog.payload,
-    beforeData: auditLog.additionalDetails,
+    afterData: getTaskDiffValue(taskDiff, 'new'),
+    beforeData: getTaskDiffValue(taskDiff, 'old'),
+    // The full state before the task, for what the taskDiff leaves out.
+    fullBeforeData: auditLog.additionalDetails,
     parentUuid: auditLog.taskUUID,
     uuid: auditLog.auditID.toString()
   };

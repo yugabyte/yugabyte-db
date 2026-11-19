@@ -62,7 +62,16 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     }
   );
 
-  const taskDiffDetails = useMemo(() => mapAuditLogToTaskDiffApiResp(auditData), [auditData]);
+  const isSoftwareUpgrade =
+    currentTask?.target === TargetType.UNIVERSE && currentTask?.type === TaskType.SOFTWARE_UPGRADE;
+
+  // Software upgrade is rendered from task.details, so it has no taskDiff.
+  const taskDiffDetails = useMemo(
+    () =>
+      mapAuditLogToTaskDiffApiResp(auditData) ??
+      (isSoftwareUpgrade ? { beforeData: {}, afterData: {}, uuid: '', parentUuid: '' } : undefined),
+    [auditData, isSoftwareUpgrade]
+  );
 
   useEffect(() => {
     if (!currentTask || !visible || !taskDiffDetails) {
@@ -112,9 +121,8 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     );
   }
 
-  if (!taskDiffDetails) {
-    return null;
-  }
+  // Tasks that ran before the backend recorded taskDiff have nothing to show.
+  const noDiff = !taskDiffDetails;
 
   return (
     <YBModal
@@ -127,7 +135,7 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
       enableBackdropDismiss
       dialogContentProps={{ dividers: true, style: { padding: '20px' } }}
     >
-      {diffComponents}
+      {noDiff ? t('diffDetailsNotFound') : diffComponents}
     </YBModal>
   );
 };

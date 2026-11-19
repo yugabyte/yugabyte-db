@@ -7,8 +7,10 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { isEqual, keys, pick } from 'lodash';
+import { isEqual, keys, pick, union } from 'lodash';
 import { DiffOperation, GFlagDiff } from './dtos';
+import { UniverseDetails } from '../../../universe/universe-form/utils/dto';
+import { getPrimaryCluster } from '../../../universe/universe-form/utils/helpers';
 import { PlacementAZ } from '../../../universe/universe-form/utils/dto';
 
 /**
@@ -68,4 +70,34 @@ export const getFieldOpertions = (
     }
   });
   return fields;
+};
+
+// The gflags of the primary cluster that the task changed, from the before/after values rebuilt
+// from the taskDiff. A flag that did not change is absent on both sides.
+export const getGFlagDiffs = (beforeData: unknown, afterData: unknown, fullBeforeData?: unknown) => {
+  const flagsOf = (data: unknown, process: 'MASTER' | 'TSERVER') => {
+    const intent = getPrimaryCluster(data as UniverseDetails)?.userIntent;
+    return {
+      ...(process === 'MASTER' ? intent?.masterGFlags : intent?.tserverGFlags),
+      ...intent?.specificGFlags?.perProcessFlags?.value?.[process]
+    } as Record<string, string>;
+  };
+  const diffsOf = (process: 'MASTER' | 'TSERVER'): GFlagDiff[] => {
+    const fullBefore = flagsOf(fullBeforeData, process);
+    const after = flagsOf(afterData, process);
+    // Legacy flags that moved into specificGFlags are unchanged, so the delta has no old value.
+    const before = { ...flagsOf(beforeData, process) };
+    keys(after).forEach((name) => {
+      if (!(name in before) && name in fullBefore) before[name] = fullBefore[name];
+    });
+    return union(keys(before), keys(after))
+      .filter((name) => before[name] !== after[name])
+      .map((name) => ({
+        name,
+        old: before[name] ?? null,
+        new: after[name] ?? null,
+        default: ''
+      }));
+  };
+  return { master: diffsOf('MASTER'), tserver: diffsOf('TSERVER') };
 };
