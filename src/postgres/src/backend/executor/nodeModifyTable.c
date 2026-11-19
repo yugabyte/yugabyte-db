@@ -1645,10 +1645,8 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		if (!row_found)
 			return TM_Invisible;
 
-		if (context->mtstate->yb_modified_rows)
-			YbRememberModifiedRow(context->mtstate->yb_modified_rows,
-								  resultRelationDesc,
-								  YBCGetYBTupleIdFromSlot(context->planSlot));
+		YbRememberModifiedRow(context->mtstate, resultRelationDesc,
+							  YBCGetYBTupleIdFromSlot(context->planSlot));
 
 		return TM_Ok;
 	}
@@ -2593,10 +2591,8 @@ lreplace:
 		if (!row_found)
 			return TM_Invisible;
 
-		if (context->mtstate->yb_modified_rows)
-			YbRememberModifiedRow(context->mtstate->yb_modified_rows,
-								  resultRelationDesc,
-								  YBCGetYBTupleIdFromSlot(context->planSlot));
+		YbRememberModifiedRow(context->mtstate, resultRelationDesc,
+							  YBCGetYBTupleIdFromSlot(context->planSlot));
 
 		updateCxt->updated = true;
 		return TM_Ok;
@@ -4509,8 +4505,7 @@ ExecModifyTable(PlanState *pstate)
 				 * or deleted.  Like PostgreSQL on TM_SelfModified, ignore it,
 				 * before any BEFORE ROW trigger fires.
 				 */
-				if (node->yb_modified_rows &&
-					YbIsRowModified(node->yb_modified_rows, relation, datum))
+				if (YbIsRowModified(node, relation, datum))
 					continue;
 
 				if (AttributeNumberIsValid(resultRelInfo->ri_YbWholeRowAttNo))
@@ -4866,8 +4861,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		ybCanSkipFetchingTargetTuple(node,
 									 mtstate->rootResultRelInfo->ri_RelationDesc);
 
-	if (node->ybTargetRowMayRepeat && IsYugaByteEnabled() &&
-		!mtstate->yb_skip_fetch_target_tuple)
+	if (node->ybTargetRowMayRepeat && !mtstate->yb_skip_fetch_target_tuple)
 		mtstate->yb_modified_rows = YbCreateModifiedRows(estate->es_query_cxt);
 
 	/*

@@ -70,7 +70,6 @@
 #include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
-#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
@@ -1946,24 +1945,17 @@ YbIsPartialIndexPredicateSatisfied(IndexInfo *indexInfo, EState *estate)
 }
 
 /*
- * The rows a ModifyTable node has updated or deleted, by relation and ybctid.
- *
  * When a join returns a target row more than once, as UPDATE ... FROM and
- * DELETE ... USING can, PostgreSQL acts on the first match and finds the
- * tuple already modified by the current command (TM_SelfModified) on later
- * ones, which it skips.  YB rows carry no such marker, so the node remembers
- * the rows it modified.
+ * DELETE ... USING can, PostgreSQL acts on the first match: later ones find
+ * the tuple already modified by the current command (TM_SelfModified) and
+ * are skipped.  YB rows carry no such marker, so ModifyTable remembers the
+ * rows it modified.  The key includes the relation because an inheritance
+ * parent and child row with the same primary key have the same ybctid.
  */
-struct YbModifiedRows
-{
-	MemoryContext cxt;
-	HTAB	   *rows;
-};
-
 typedef struct YbModifiedRowKey
 {
 	Oid			relid;
-	bytea	   *ybctid;
+	Datum		ybctid;
 } YbModifiedRowKey;
 
 static uint32
@@ -1972,8 +1964,7 @@ YbModifiedRowHash(const void *key, Size keysize)
 	const YbModifiedRowKey *k = key;
 
 	return hash_combine(murmurhash32(k->relid),
-						hash_bytes((const unsigned char *) VARDATA_ANY(k->ybctid),
-								   VARSIZE_ANY_EXHDR(k->ybctid)));
+						datum_image_hash(k->ybctid, false, -1));
 }
 
 static int
@@ -1981,19 +1972,14 @@ YbModifiedRowMatch(const void *key1, const void *key2, Size keysize)
 {
 	const YbModifiedRowKey *k1 = key1;
 	const YbModifiedRowKey *k2 = key2;
-	Size		len = VARSIZE_ANY_EXHDR(k1->ybctid);
 
-	if (k1->relid != k2->relid || len != VARSIZE_ANY_EXHDR(k2->ybctid))
-		return 1;
-	return memcmp(VARDATA_ANY(k1->ybctid), VARDATA_ANY(k2->ybctid), len);
+	return !(k1->relid == k2->relid &&
+			 datum_image_eq(k1->ybctid, k2->ybctid, false, -1));
 }
 
-YbModifiedRows *
-YbCreateModifiedRows(MemoryContext parent)
+HTAB *
+YbCreateModifiedRows(MemoryContext cxt)
 {
-	MemoryContext cxt = AllocSetContextCreate(parent, "YbModifiedRows",
-											  ALLOCSET_DEFAULT_SIZES);
-	YbModifiedRows *result = MemoryContextAlloc(cxt, sizeof(YbModifiedRows));
 	HASHCTL		ctl;
 
 	ctl.keysize = sizeof(YbModifiedRowKey);
@@ -2001,37 +1987,36 @@ YbCreateModifiedRows(MemoryContext parent)
 	ctl.hash = YbModifiedRowHash;
 	ctl.match = YbModifiedRowMatch;
 	ctl.hcxt = cxt;
-
-	result->cxt = cxt;
-	result->rows = hash_create("YbModifiedRows", 256, &ctl,
-							   HASH_ELEM | HASH_FUNCTION | HASH_COMPARE |
-							   HASH_CONTEXT);
-	return result;
+	return hash_create("YbModifiedRows", 256, &ctl,
+					   HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
 }
 
 bool
-YbIsRowModified(YbModifiedRows *rows, Relation rel, Datum ybctid)
+YbIsRowModified(ModifyTableState *mtstate, Relation rel, Datum ybctid)
 {
-	YbModifiedRowKey key = {RelationGetRelid(rel), DatumGetByteaPP(ybctid)};
-	bool		found;
+	YbModifiedRowKey key = {RelationGetRelid(rel), ybctid};
 
-	(void) hash_search(rows->rows, &key, HASH_FIND, &found);
-	return found;
+	return (mtstate->yb_modified_rows &&
+			hash_search(mtstate->yb_modified_rows, &key, HASH_FIND, NULL));
 }
 
 void
-YbRememberModifiedRow(YbModifiedRows *rows, Relation rel, Datum ybctid)
+YbRememberModifiedRow(ModifyTableState *mtstate, Relation rel, Datum ybctid)
 {
-	YbModifiedRowKey key = {RelationGetRelid(rel), DatumGetByteaPP(ybctid)};
+	YbModifiedRowKey key = {RelationGetRelid(rel), ybctid};
 	YbModifiedRowKey *entry;
 	bool		found;
 
-	entry = hash_search(rows->rows, &key, HASH_ENTER, &found);
+	if (!mtstate->yb_modified_rows)
+		return;
+
+	entry = hash_search(mtstate->yb_modified_rows, &key, HASH_ENTER, &found);
 	if (!found)
 	{
-		MemoryContext oldcxt = MemoryContextSwitchTo(rows->cxt);
+		MemoryContext oldcxt =
+			MemoryContextSwitchTo(mtstate->ps.state->es_query_cxt);
 
-		entry->ybctid = DatumGetByteaPP(datumCopy(ybctid, false, -1));
+		entry->ybctid = datumCopy(ybctid, false, -1);
 		MemoryContextSwitchTo(oldcxt);
 	}
 }

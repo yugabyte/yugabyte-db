@@ -144,7 +144,6 @@ YbLsmBuildState
 YbMergeScanInfo
 YbMergeScanStreamColInfo
 YbModifiedRowKey
-YbModifiedRows
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry
