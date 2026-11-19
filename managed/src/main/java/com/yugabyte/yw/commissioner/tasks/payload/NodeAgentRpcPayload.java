@@ -596,6 +596,9 @@ public class NodeAgentRpcPayload {
     installOtelCollectorInputBuilder.setYbHomeDir(provider.getYbHome());
     installOtelCollectorInputBuilder.setRefreshScriptOnly(refreshScriptOnly);
     installOtelCollectorInputBuilder.setDisableCollector(disableCollector);
+    // The kill switch for the root-unit stop. It applies to every call, not only to the disable.
+    installOtelCollectorInputBuilder.setSkipRootCollectorStop(
+        !confGetter.getConfForScope(universe, UniverseConfKeys.otelCollectorStopRootUnit));
 
     // The purge script groups multi-line YSQL audit records using this pattern,
     // derived from the same log_line_prefix the collector uses. Set in both

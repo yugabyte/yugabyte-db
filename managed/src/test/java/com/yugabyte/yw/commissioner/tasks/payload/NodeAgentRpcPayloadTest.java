@@ -18,6 +18,8 @@ import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -179,6 +181,7 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
     assertEquals("", input.getOtelColPackagePath());
     assertEquals("", input.getOtelColConfigFile());
     assertTrue(input.getOtelColSecretEnvMap().isEmpty());
+    assertFalse(input.getSkipRootCollectorStop());
     verify(mockNodeAgentClient, never()).uploadFile(any(), any(), any(), any(), anyInt(), any());
   }
 
@@ -210,6 +213,29 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
     assertFalse(input.getOtelColPackagePath().isEmpty());
     verify(mockNodeAgentClient, times(1))
         .uploadFile(eq(nodeAgent), any(), anyString(), any(), anyInt(), any());
+  }
+
+  // The kill switch reaches node agent from every caller, not only from the disable.
+  @Test
+  public void testStopRootUnitOffSkipsRootStopForEveryCaller() {
+    RuntimeConfigEntry.upsert(
+        universe, UniverseConfKeys.otelCollectorStopRootUnit.getKey(), "false");
+    AnsibleConfigureServers.Params ansibleParams = new AnsibleConfigureServers.Params();
+    ansibleParams.nodeName = node.nodeName;
+    ansibleParams.setUniverseUUID(universe.getUniverseUUID());
+    ansibleParams.azUuid = node.azUuid;
+    ansibleParams.deviceInfo = userIntent.deviceInfo;
+    ansibleParams.otelCollectorEnabled = true;
+    // Disable, full install with an export, and the full install of add node or a gflags change.
+    for (NodeTaskParams taskParams :
+        List.of(
+            params(true, new TelemetryConfig()),
+            params(true, metricsExportTelemetryConfig()),
+            ansibleParams)) {
+      InstallOtelCollectorInput input =
+          payload.setupInstallOtelCollectorBits(universe, node, taskParams, nodeAgent);
+      assertTrue(input.getSkipRootCollectorStop());
+    }
   }
 
   @Test

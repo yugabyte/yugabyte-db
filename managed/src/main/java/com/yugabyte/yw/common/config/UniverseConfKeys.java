@@ -1677,6 +1677,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " install. If false, YBA runs the full collector install on every node to stop it.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> otelCollectorStopRootUnit =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_stop_root_unit",
+          ScopeType.UNIVERSE,
+          "Stop root-level OpenTelemetry Collector unit",
+          "If true, node agent stops and disables a root-level otel-collector unit that runs the"
+              + " YBA collector, on each collector install or disable. If false, node agent does"
+              + " not touch the root-level unit.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> masterLogsAdditionalDropPatterns =
       new ConfKeyInfo<>(
           "yb.universe.telemetry.master_logs_additional_drop_patterns",

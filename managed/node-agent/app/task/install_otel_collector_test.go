@@ -141,6 +141,26 @@ func TestHandleDisableWithRootStopFailure(t *testing.T) {
 	}
 }
 
+// With the kill switch on, the disable never touches the root unit and writes no root warning.
+func TestHandleDisableWithRootStopTurnedOff(t *testing.T) {
+	ybHome := t.TempDir()
+	handler := newDisableCollectorHandler(t, ybHome)
+	handler.param.SkipRootCollectorStop = true
+	handler.stopRootUnit = func(context.Context) rootOtelCollectorStop {
+		t.Fatalf("the root stop ran with skipRootCollectorStop set")
+		return rootOtelCollectorStopFailed
+	}
+	handler.refreshPurge = func(context.Context, string) error { return nil }
+	skipIfUserOtelCollectorUnit(t, handler)
+
+	if _, err := handler.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if out := handler.logOut.String(); strings.Contains(out, "root-level") {
+		t.Fatalf("want no root-level output, got %q", out)
+	}
+}
+
 // The install stops the root collector last, after the user stop and the configure pass, so a
 // failed step leaves it exporting. Only a failed user stop names it. A failed root stop warns.
 func TestStopOtelCollectorsForInstall(t *testing.T) {
@@ -153,6 +173,7 @@ func TestStopOtelCollectorsForInstall(t *testing.T) {
 		userErr   error
 		configErr error
 		rootStop  rootOtelCollectorStop
+		skipRoot  bool
 		wantCalls string
 		wantErr   error
 		wantRoot  bool
@@ -171,10 +192,13 @@ func TestStopOtelCollectorsForInstall(t *testing.T) {
 			wantCalls: "user,configure,root", want: "Check its sudoers rules"},
 		{name: "root state unknown", rootStop: rootOtelCollectorStateUnknown,
 			wantCalls: "user,configure,root", want: "could not be read"},
+		{name: "root stop turned off", rootStop: rootOtelCollectorStopFailed, skipRoot: true,
+			wantCalls: "user,configure"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := newDisableCollectorHandler(t, t.TempDir())
+			handler.param.SkipRootCollectorStop = tc.skipRoot
 			handler.rootInUse = func(context.Context) (bool, error) {
 				return tc.rootInUse, tc.rootErr
 			}

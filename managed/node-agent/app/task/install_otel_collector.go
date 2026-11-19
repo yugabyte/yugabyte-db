@@ -520,8 +520,9 @@ func otelCollectorUnitBinary(ybHome string) string {
 const otelCollectorRootCgroup = "/system.slice/" + OtelCollectorService
 
 // otelCollectorProcessCheckCmd prints the PIDs of collectors that run binary. It skips the root
-// unit's, which the root stop handles, and those that exited after pgrep (grep exits 2). pgrep
-// exits 1 when nothing matches; a higher exit is a pgrep error and must fail.
+// unit's, which the root stop handles if YBA did not turn it off, and those that exited after
+// pgrep (grep exits 2). pgrep exits 1 when nothing matches; a higher exit is a pgrep error and
+// must fail.
 func otelCollectorProcessCheckCmd(binary, procDir string) string {
 	pattern := shellSingleQuote("^" + regexp.QuoteMeta(binary) + "( |$)")
 	proc := shellSingleQuote(procDir) + `/"$p"`
@@ -567,7 +568,7 @@ const (
 )
 
 // otelCollectorStillRunningError reports a user collector that runs on with no manager to stop it.
-// The check skips the root unit's collector, which the root stop handles.
+// The check skips the root unit's collector, which the root stop handles if it is not turned off.
 func otelCollectorStillRunningError(binary string) error {
 	return fmt.Errorf(
 		"%s is still running and cannot be stopped: the user systemd manager does not respond",
@@ -640,8 +641,13 @@ func (h *InstallOtelCollector) stopOtelCollectorsForInstall(
 // stopRootOtelCollector stops a root-level collector unit. Earlier installs wrote the user unit
 // also on root-systemd nodes, so a node can have both, and node agent only runs the user unit.
 // A failure only warns. On the install path, a root collector that still runs can then make the
-// user collector start fail.
+// user collector start fail. YBA can turn the stop off with skipRootCollectorStop.
 func (h *InstallOtelCollector) stopRootOtelCollector(ctx context.Context) {
+	if h.param.GetSkipRootCollectorStop() {
+		util.FileLogger().Infof(ctx, "The root-level %s stop is turned off",
+			otelCollectorRootUnitName)
+		return
+	}
 	msg := ""
 	switch h.stopRootUnit(ctx) {
 	case rootOtelCollectorStopFailed:
