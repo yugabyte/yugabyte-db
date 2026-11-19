@@ -3405,7 +3405,8 @@ YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
  * Sets up targets for a merge scan.  The merge compares every merge sort
  * column, so the scan must read each one.  attnums is an in/out param for the
  * main request's set of targeted columns, or it is NULL if the caller sets up
- * the main request's targets itself.
+ * the main request's targets itself, which works only for a scan with a
+ * separate index request.
  */
 static void
 ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan,
@@ -3419,7 +3420,8 @@ ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan,
 		return;
 	separate_index_request = ybHasSeparateIndexRequest(ybScan);
 	if (!separate_index_request && !attnums)
-		return;
+		elog(ERROR, "merge scan of index \"%s\" cannot read its merge sort columns",
+			 RelationGetRelationName(ybScan->index));
 
 	sort_info = merge_scan_info->sort_cols;
 	for (int i = 0; i < sort_info->numCols; i++)
