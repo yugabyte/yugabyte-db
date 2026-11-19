@@ -497,10 +497,14 @@ in 62 to 71 ms. A client backend's preload time also differs from one
 connection to the next, so the same query got different costs in different
 sessions.
 
-The delays are properties of the cluster and of each database, so they belong
-in statistics gathered outside the planner, as `ANALYZE` gathers the
-statistics of a table: the launch time of a worker, the preload time of a new
-backend in each database, and the catalog priming time per relation. The
-planner would read the stored values, so a plan's cost would change only when
-the statistics are gathered again, and the settings of this model would
-remain the values charged when no statistics exist.
+The preload charge therefore needs one value for each database, the time a
+worker's preload takes there, supplied from outside the planner. How it is
+supplied is open. A setting can hold the value, as `parallel_setup_cost` can
+already be set for one database with `ALTER DATABASE ... SET`, or a step
+outside the planner can measure the value on launched workers and store it.
+
+The charges without preloading need no value from the cluster. At one worker a
+catalog read took 0.27 ms on the three-node cluster and 0.13 ms on the laptop,
+and the #36851 query's serial plan ran at 127 and 245 cost units per
+millisecond, so a read cost about 34 units on the one and about 32 on the
+other. A master leader in another zone or region was not measured.
