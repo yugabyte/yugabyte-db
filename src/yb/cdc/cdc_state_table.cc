@@ -663,8 +663,10 @@ Status CDCStateTable::InsertEntriesAsync(
 Status CDCStateTable::InsertEntries(
     const std::vector<CDCStateTableEntry>& entries) {
   VLOG_WITH_FUNC(1) << yb::ToString(entries);
-  return WriteEntries(
-      entries, QLWriteRequestPB::QL_STMT_INSERT, QL_OP_NOT_EXISTS, /*replace_full_map=*/true);
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  Synchronizer sync;
+  RETURN_NOT_OK(InsertEntriesAsync(entries, sync.AsStdStatusCallback()));
+  return sync.Wait();
 }
 
 Status CDCStateTable::UpdateEntries(

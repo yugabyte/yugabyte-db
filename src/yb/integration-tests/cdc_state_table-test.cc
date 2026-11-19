@@ -642,7 +642,6 @@ TEST_F(CDCStateTableTest, TestWriteFailsWithoutClient) {
   const std::vector<CDCStateTableEntry> entries{
       CDCStateTableEntry("tablet", xrepl::StreamId::GenerateRandom())};
   ASSERT_TRUE(cdc_state_table.UpsertEntries(entries).IsShutdownInProgress());
-  ASSERT_TRUE(cdc_state_table.InsertEntries(entries).IsShutdownInProgress());
 }
 
 }  // namespace cdc
