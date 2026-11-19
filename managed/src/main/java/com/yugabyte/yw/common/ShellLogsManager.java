@@ -90,7 +90,7 @@ public class ShellLogsManager {
 
   private File getParentDir() {
     return customLogsDir == null
-        ? new File(confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath))
+        ? new File(System.getProperty("java.io.tmpdir"))
         : new File(customLogsDir);
   }
 
@@ -195,21 +195,28 @@ public class ShellLogsManager {
     return getLogsRetentionHours() != null || getMaxCustomDirSizeBytes() != null;
   }
 
-  public Pair<File, File> createFilesForProcess(UUID processUUID) throws IOException {
-    Pair<File, File> result = Pair.of(createLogsFile(false), createLogsFile(true));
+  /**
+   * @param sensitiveOutput the output holds data such as users' query text, so the files are
+   *     created readable only by the owner.
+   */
+  public Pair<File, File> createFilesForProcess(UUID processUUID, boolean sensitiveOutput)
+      throws IOException {
+    Pair<File, File> result =
+        Pair.of(createLogsFile(false, sensitiveOutput), createLogsFile(true, sensitiveOutput));
     currentProcesses.put(processUUID, result);
     return result;
   }
 
   /**
-   * @param skipRetention delete the output files even when a retention policy would keep them, for
-   *     output that must not stay on disk, such as the output of commands that are not logged.
-   *     Setting yb.logs.cmdOutputDelete to false still keeps them.
+   * @param sensitiveOutput the output holds data such as users' query text, so the files are
+   *     deleted even when a retention policy would keep them. Setting yb.logs.cmdOutputDelete to
+   *     false still keeps them.
    */
-  public void onProcessStop(UUID processUUID, boolean skipRetention) {
+  public void onProcessStop(UUID processUUID, boolean sensitiveOutput) {
     Pair<File, File> pair = currentProcesses.remove(processUUID);
     if (pair != null) {
-      if (config.getBoolean(COMMAND_OUTPUT_LOGS_DELETE_KEY) && (skipRetention || !isRetainLogs())) {
+      if (config.getBoolean(COMMAND_OUTPUT_LOGS_DELETE_KEY)
+          && (sensitiveOutput || !isRetainLogs())) {
         if (pair.getLeft().exists()) {
           pair.getLeft().delete();
         }
@@ -220,7 +227,7 @@ public class ShellLogsManager {
     }
   }
 
-  protected File createLogsFile(boolean stderr) throws IOException {
+  protected File createLogsFile(boolean stderr, boolean ownerOnly) throws IOException {
     String prefix = stderr ? STDERR_PREFIX : STDOUT_PREFIX;
     File parentDir = null;
     if (customLogsDir != null) {
@@ -234,7 +241,10 @@ public class ShellLogsManager {
       parentDir.mkdirs();
     }
 
-    // Files.createTempFile, not File.createTempFile, so that only the owner can read the output.
-    return Files.createTempFile(parentDir.toPath(), prefix, "tmp").toFile();
+    if (ownerOnly) {
+      // Unlike File.createTempFile, Files.createTempFile makes the file readable only by its owner.
+      return Files.createTempFile(parentDir.toPath(), prefix, "tmp").toFile();
+    }
+    return File.createTempFile(prefix, "tmp", parentDir);
   }
 }

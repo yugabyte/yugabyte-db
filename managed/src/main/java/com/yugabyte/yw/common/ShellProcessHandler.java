@@ -164,7 +164,8 @@ public class ShellProcessHandler {
     Process process = null;
     UUID processUUID = context.getUuid() != null ? context.getUuid() : UUID.randomUUID();
     try {
-      Pair<File, File> logFiles = shellLogsManager.createFilesForProcess(processUUID);
+      Pair<File, File> logFiles =
+          shellLogsManager.createFilesForProcess(processUUID, context.isSensitiveOutput());
       tempOutputFile = logFiles.getLeft();
       tempErrorFile = logFiles.getRight();
       pb.redirectOutput(tempOutputFile);
@@ -180,13 +181,10 @@ public class ShellProcessHandler {
       if (appConfig.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
-      String outputDestination =
-          context.isLogCmdOutput()
-              ? String.format(
-                  "logging stdout=%s, stderr=%s",
-                  tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath())
-              : "output not logged";
-      logMsg = String.format("Starting proc (full cmd) - %s - %s", fullCommand, outputDestination);
+      logMsg =
+          String.format(
+              "Starting proc (full cmd) - %s - logging stdout=%s, stderr=%s",
+              fullCommand, tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath());
       if (context.isTraceLogging()) {
         log.trace(logMsg);
       } else {
@@ -201,12 +199,17 @@ public class ShellProcessHandler {
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      boolean logCmdOutput = context.isLogCmdOutput();
       boolean timedOut =
           waitForProcessExit(
-              process, description, tempOutputFile, tempErrorFile, endTimeMs, logCmdOutput);
+              process,
+              description,
+              tempOutputFile,
+              tempErrorFile,
+              endTimeMs,
+              !context.isSensitiveOutput());
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
+      boolean logCmdOutput = context.isLogCmdOutput();
       try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         if (logCmdOutput) {
@@ -276,7 +279,7 @@ public class ShellProcessHandler {
       } else {
         log.info(logMsg);
       }
-      shellLogsManager.onProcessStop(processUUID, !context.isLogCmdOutput());
+      shellLogsManager.onProcessStop(processUUID, context.isSensitiveOutput());
       if (context.getUuid() != null) {
         // TODO revisit this leak fix for backup for a cleaner approach.
         Util.removeProcess(context.getUuid());
@@ -417,8 +420,8 @@ public class ShellProcessHandler {
     return timedOut;
   }
 
-  // logAppLines is false for commands whose output is not logged: a line of that output, such as
-  // query text, can contain "[app]".
+  // logAppLines is false for sensitive output: a line of it, such as query text, can contain
+  // "[app]".
   private static void tailStream(BufferedReader br, long maxLines, boolean logAppLines)
       throws IOException {
 

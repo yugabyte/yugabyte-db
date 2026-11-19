@@ -827,6 +827,7 @@ public class NodeUniverseManager extends DevopsBase {
     }
     return ShellProcessContext.builder()
         .logCmdOutput(logCmdOutput && valsToRedact.isEmpty())
+        .sensitiveOutput(!logCmdOutput)
         .timeoutSecs(timeoutSec)
         .redactedVals(valsToRedact)
         .build();

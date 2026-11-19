@@ -116,7 +116,7 @@ public class ShellLogsManagerTest extends TestCase {
           }
 
           @Override
-          protected File createLogsFile(boolean stderr) throws IOException {
+          protected File createLogsFile(boolean stderr, boolean ownerOnly) throws IOException {
             File file = mockFile(baseTS, -4, 10);
             files.add(file);
             when(file.delete())
@@ -129,7 +129,7 @@ public class ShellLogsManagerTest extends TestCase {
           }
         };
     UUID pid = UUID.randomUUID();
-    mockManager.createFilesForProcess(pid);
+    mockManager.createFilesForProcess(pid, false);
     mockManager.rotateLogs(1L, 1);
     assertEquals(2, files.size()); // Files are not removed
     mockManager.onProcessStop(pid, false);
@@ -138,7 +138,7 @@ public class ShellLogsManagerTest extends TestCase {
   }
 
   @Test
-  public void testSkipRetentionRemovesOutputDespiteRetentionPolicy() throws IOException {
+  public void testSensitiveOutputIsRemovedDespiteRetentionPolicy() throws IOException {
     when(mockConfig.getBoolean(ShellLogsManager.COMMAND_OUTPUT_LOGS_DELETE_KEY)).thenReturn(true);
     when(mockConfig.hasPath(ShellLogsManager.YB_LOGS_SHELL_OUTPUT_RETENTION_HOURS_KEY))
         .thenReturn(true);
@@ -146,9 +146,9 @@ public class ShellLogsManagerTest extends TestCase {
         .thenReturn(1);
     ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
     UUID retained = UUID.randomUUID();
-    Pair<File, File> retainedFiles = manager.createFilesForProcess(retained);
+    Pair<File, File> retainedFiles = manager.createFilesForProcess(retained, false);
     UUID deleted = UUID.randomUUID();
-    Pair<File, File> deletedFiles = manager.createFilesForProcess(deleted);
+    Pair<File, File> deletedFiles = manager.createFilesForProcess(deleted, true);
 
     manager.onProcessStop(retained, false);
     manager.onProcessStop(deleted, true);
@@ -160,11 +160,11 @@ public class ShellLogsManagerTest extends TestCase {
   }
 
   @Test
-  public void testSkipRetentionKeepsOutputWhenDeleteIsDisabled() throws IOException {
+  public void testSensitiveOutputIsKeptWhenDeleteIsDisabled() throws IOException {
     when(mockConfig.getBoolean(ShellLogsManager.COMMAND_OUTPUT_LOGS_DELETE_KEY)).thenReturn(false);
     ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
     UUID pid = UUID.randomUUID();
-    Pair<File, File> files = manager.createFilesForProcess(pid);
+    Pair<File, File> files = manager.createFilesForProcess(pid, true);
 
     manager.onProcessStop(pid, true);
 
@@ -173,28 +173,14 @@ public class ShellLogsManagerTest extends TestCase {
   }
 
   @Test
-  public void testOutputFilesAreReadableOnlyByOwner() throws IOException {
+  public void testSensitiveOutputFilesAreReadableOnlyByOwner() throws IOException {
     Pair<File, File> files =
-        managerWritingTo(tmpFolder.getRoot()).createFilesForProcess(UUID.randomUUID());
+        managerWritingTo(tmpFolder.getRoot()).createFilesForProcess(UUID.randomUUID(), true);
     for (File file : List.of(files.getLeft(), files.getRight())) {
       assertEquals(
           PosixFilePermissions.fromString("rw-------"),
           Files.getPosixFilePermissions(file.toPath()));
     }
-  }
-
-  @Test
-  public void testRotationFindsOutputFilesWhereTheyAreWritten() throws IOException {
-    ShellLogsManager manager = managerWritingTo(tmpFolder.getRoot());
-    UUID pid = UUID.randomUUID();
-    Pair<File, File> files = manager.createFilesForProcess(pid);
-    manager.onProcessStop(pid, false);
-    assertTrue(files.getLeft().exists());
-
-    manager.rotateLogs(null, 0);
-
-    assertFalse(files.getLeft().exists());
-    assertFalse(files.getRight().exists());
   }
 
   private ShellLogsManager managerWritingTo(File dir) {

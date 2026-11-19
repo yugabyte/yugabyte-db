@@ -231,7 +231,7 @@ public class ShellProcessHandlerTest extends TestCase {
   }
 
   @Test
-  public void testUnloggedCommandLeavesNoOutputFiles() {
+  public void testSensitiveOutputLeavesNoOutputFiles() {
     File logsDir = new File(TMP_STORAGE_PATH, "shell_logs");
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.ybTmpDirectoryPath)))
         .thenReturn(logsDir.getAbsolutePath());
@@ -246,25 +246,24 @@ public class ShellProcessHandlerTest extends TestCase {
 
     shellProcessHandler.run(
         List.of("echo", "not logged"), ShellProcessContext.builder().logCmdOutput(false).build());
-    assertEquals(2, logsDir.list().length);
+    assertEquals(4, logsDir.list().length);
+
+    shellProcessHandler.run(
+        List.of("echo", "sensitive"), ShellProcessContext.builder().sensitiveOutput(true).build());
+    assertEquals(4, logsDir.list().length);
   }
 
   @Test
-  public void testAppLinesOfUnloggedOutputAreNotLogged() throws IOException {
+  public void testAppLinesOfSensitiveOutputAreNotLogged() throws IOException {
     // The output, not the command line, holds the marker, as with query text read by ysqlsh.
     List<String> command = List.of(createTestShellScript("echo '[app] sentinel_''output'"));
-    assertTrue(loggedRun(command, true).contains("[app] sentinel_output"));
-    assertFalse(loggedRun(command, false).contains("sentinel_output"));
+    ShellProcessContext unlogged = ShellProcessContext.builder().logCmdOutput(false).build();
+    ShellProcessContext sensitive = ShellProcessContext.builder().sensitiveOutput(true).build();
+    assertTrue(loggedRun(command, unlogged).contains("[app] sentinel_output"));
+    assertFalse(loggedRun(command, sensitive).contains("sentinel_output"));
   }
 
-  @Test
-  public void testUnloggedCommandDoesNotLogItsOutputFiles() {
-    List<String> command = List.of("echo", "output");
-    assertTrue(loggedRun(command, true).contains("logging stdout=/tmp/shell_process_out"));
-    assertFalse(loggedRun(command, false).contains("shell_process_"));
-  }
-
-  private String loggedRun(List<String> command, boolean logCmdOutput) {
+  private String loggedRun(List<String> command, ShellProcessContext context) {
     Logger logger = (Logger) LoggerFactory.getLogger(ShellProcessHandler.class);
     Level level = logger.getLevel();
     ListAppender<ILoggingEvent> appender = new ListAppender<>();
@@ -272,8 +271,7 @@ public class ShellProcessHandlerTest extends TestCase {
     logger.addAppender(appender);
     logger.setLevel(Level.DEBUG);
     try {
-      shellProcessHandler.run(
-          command, ShellProcessContext.builder().logCmdOutput(logCmdOutput).build());
+      shellProcessHandler.run(command, context);
     } finally {
       logger.detachAppender(appender);
       logger.setLevel(level);
