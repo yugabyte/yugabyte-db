@@ -443,6 +443,7 @@ CopyScanFields(const Scan *from, Scan *newnode)
 
 	/* YB */
 	COPY_STRING_FIELD(ybScannedObjectName);
+	COPY_NODE_FIELD(ybOptions);
 }
 
 /*
@@ -1240,7 +1241,6 @@ _copyAgg(const Agg *from)
 	COPY_BITMAPSET_FIELD(aggParams);
 	COPY_NODE_FIELD(groupingSets);
 	COPY_NODE_FIELD(chain);
-	COPY_SCALAR_FIELD(yb_pushdown_decision);
 
 	return newnode;
 }
@@ -5356,6 +5356,8 @@ _copyYbBatchedExpr(const YbBatchedExpr *from)
 	YbBatchedExpr *newnode = makeNode(YbBatchedExpr);
 
 	COPY_NODE_FIELD(orig_expr);
+	COPY_SCALAR_FIELD(share);
+	COPY_SCALAR_FIELD(rows_scale);
 
 	return newnode;
 }

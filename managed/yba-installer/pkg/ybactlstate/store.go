@@ -3,6 +3,7 @@ package ybactlstate
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -48,4 +49,22 @@ func StoreState(state *State) error {
 		return err
 	}
 	return nil
+}
+
+// StoredFipsEnabled reports whether the state file records a FIPS install. It reads the file as
+// is, without the migrations LoadState runs, so it is safe to call before anything else.
+func StoredFipsEnabled() bool {
+	sf, err := fs.Open(filepath.Join(common.YbactlInstallDir(), StateFileName))
+	if err != nil {
+		return false
+	}
+	if c, ok := sf.(io.Closer); ok {
+		defer c.Close()
+	}
+	var state struct {
+		Config struct {
+			FipsEnabled bool `json:"fips_enabled"`
+		} `json:"config"`
+	}
+	return json.NewDecoder(sf).Decode(&state) == nil && state.Config.FipsEnabled
 }

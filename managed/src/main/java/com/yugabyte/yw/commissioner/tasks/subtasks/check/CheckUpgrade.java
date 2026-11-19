@@ -5,8 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -25,7 +23,6 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -39,6 +36,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -113,27 +111,15 @@ public class CheckUpgrade extends ServerSubTaskBase {
   }
 
   private void updateAuditDetails(String oldVersion, String newVersion) {
-    Audit audit = auditService.getFromTaskUUID(getUserTaskUUID());
-    if (audit == null) {
-      log.info("Audit not found for task UUID: {}", getUserTaskUUID());
-      return;
-    }
-    JsonNode auditDetails = audit.getAdditionalDetails();
-    ObjectNode modifiedNode;
-    if (auditDetails != null) {
-      modifiedNode = auditDetails.deepCopy();
-    } else {
-      ObjectMapper mapper = new ObjectMapper();
-      modifiedNode = mapper.createObjectNode();
-    }
-    modifiedNode.put(
+    ObjectNode details = Json.newObject();
+    details.put(
         "finalizeRequired",
         String.valueOf(softwareUpgradeHelper.checkUpgradeRequireFinalize(oldVersion, newVersion)));
-    modifiedNode.put(
+    details.put(
         "ysqlMajorVersionUpgrade",
         String.valueOf(gFlagsValidation.ysqlMajorVersionUpgrade(oldVersion, newVersion)));
 
-    auditService.updateAdditionalDetails(getUserTaskUUID(), modifiedNode);
+    auditService.mergeAdditionalDetails(getUserTaskUUID(), details);
   }
 
   private void validateAutoflag(Universe universe, String newVersion) {

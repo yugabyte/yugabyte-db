@@ -225,9 +225,8 @@ DROP INDEX r5n_r1_r4_r3_r2_idx;
 
 -- =-var equivalence covering a gap between sort columns
 -- r2 = r3 makes r3 redundant for the ORDER BY without binding it, so r3 is not
--- a stream key, and the merge order relies on the r2 = r3 filter running in
--- storage (issue #33384).
-\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
+-- a stream key, and the merge also sorts on r3.
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 = r3 ORDER BY r2, r4, r5, n LIMIT 5;'
 \i :run_query
 
 -- OR clause
@@ -656,6 +655,32 @@ ANALYZE r5n;
 DROP INDEX r5n_expr_r2_r3_r4_idx;
 
 --
+-- Expression middle secondary index
+--
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, r3, (r4 + 0), r5, r4)
+SPLIT AT VALUES (
+    (1),
+    (2),
+    (2, 2),
+    (2, 2, 2),
+    (2, 2, 2, 2),
+    (3));
+ANALYZE r5n;
+
+-- DISTINCT
+-- TODO(#36013): merge scan errors.
+-- With larger response pages, merge scan is the cheaper plan for this query.
+SET yb_fetch_row_limit = 1024;
+SET enable_indexonlyscan = off;
+\set query ':P :Q SELECT DISTINCT r3, r4 + 0, r5, r4 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4 + 0, r5, r4 LIMIT 5;'
+\i :run_query
+RESET enable_indexonlyscan;
+SET yb_fetch_row_limit = 16;
+
+-- (Drop this index)
+DROP INDEX r5n_r2_r3_expr_r5_r4_idx;
+
+--
 -- Expression suffix secondary index
 --
 CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (-r3), (-r4))
@@ -732,11 +757,45 @@ ANALYZE r5n;
 \set query ':explain :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5;'
 \i :run_query
 
+-- Expression column tied to a plain column
+-- Third hint is to encourage merge scan by pinning the index and disabling
+-- sort.
+\set query ':P :Q SELECT r4, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) AND r4 = r3 + r4 ORDER BY r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_r2_expr_r21_expr1_r22_r5_idx) Set(yb_max_merge_scan_streams 64) Set(enable_sort off)*/'
+\i :run_query
+\unset Q3
+
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_r5_idx;
+
+--
+-- Cast expression secondary index
+--
+CREATE INDEX NONCONCURRENTLY ON r5n (r2 ASC, (r3::oid), r4)
+SPLIT AT VALUES (
+    (1),
+    (2),
+    (2, 2),
+    (2, 2, 2),
+    (3));
+ANALYZE r5n;
+
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
+-- Order by the cast expression
+\set query ':P :Q SELECT r3, r2, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3::oid, n LIMIT 5;'
+\i :run_query
+
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
+-- (Drop this index)
+DROP INDEX r5n_r2_r3_r4_idx;
 
 -- test yb_enable_advanced_index_cond_fold flag off
 SET yb_enable_advanced_index_cond_fold = off;

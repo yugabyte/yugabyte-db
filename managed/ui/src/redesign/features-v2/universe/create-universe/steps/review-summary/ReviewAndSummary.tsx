@@ -33,6 +33,8 @@ import { persistCreateUniverseFormMode } from '../../helpers/createUniverseFormM
 //icons
 import UniverseIcon from '../../../../../assets/clusters.svg';
 import Money from '../../../../../assets/money.svg';
+import { getPrimaryProvider } from '../../helpers/providerConfigurations';
+import { getEffectiveRegions } from '../../helpers/placementsByProvider';
 
 const { styled } = mui;
 
@@ -101,10 +103,17 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const { resilienceAndRegionsSettings, nodesAvailabilitySettings, generalSettings } = context;
+  const {
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings,
+    generalSettings,
+    placementsByProvider,
+    nodesByProvider
+  } = context;
+  const reviewRegions = getEffectiveRegions(resilienceAndRegionsSettings, placementsByProvider);
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
   const toast = useYBToast();
@@ -115,7 +124,8 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     resilienceAndRegionsSettings?.resilienceFormMode ?? ResilienceFormMode.GUIDED;
   const dedicatedCounts = getDedicatedTserverMasterCounts(
     resilienceAndRegionsSettings,
-    nodesAvailabilitySettings
+    nodesAvailabilitySettings,
+    nodesByProvider
   );
   const { data: pricingData, isLoading: isLoadingPricing } = useQuery(
     ['getUniversePricing', payload],
@@ -284,10 +294,10 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
         showBoundaries={false}
       >
         {
-          resilienceAndRegionsSettings?.regions?.map((region: Region) => {
+          reviewRegions.map((region: Region) => {
             return (
               <YBMapMarker
-                key={region.code}
+                key={`${region.providerUuid ?? ''}-${region.code}`}
                 position={[region.latitude, region.longitude]}
                 type={MarkerType.REGION_SELECTED}
                 tooltip={<>{region.name}</>}

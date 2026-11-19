@@ -35,11 +35,18 @@ public class TestPgRegressThirdPartyExtensionsPgaudit extends BasePgRegressTestP
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
     appendToYsqlPgConf(flags, TURN_OFF_COPY_FROM_BATCH_TRANSACTION);
+    flags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "-1");
     return flags;
   }
 
+  // STATEMENT_ID in the expected output is a per-backend counter, so each \connect must land on
+  // a backend that has not run audited statements. Pools are per (db, user), and every idle
+  // backend in that user's pool is either stale, because an ALTER ROLE ... SET bumped the LCV
+  // since the user's last session, or closed, because a client SET pgaudit.* made the previous
+  // session sticky. The TTL of -1 keeps the session that ran the ALTER on its own stale backend.
   @Test
   public void schedule() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest(new File(TestUtils.getBuildRootDir(),
                               "postgres_build/third-party-extensions/pgaudit"),
                      "yb_schedule");

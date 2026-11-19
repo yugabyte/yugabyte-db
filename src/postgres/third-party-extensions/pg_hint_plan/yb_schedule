@@ -10,3 +10,4 @@ test: hints_anywhere
 # test: plpgsql
 test: hint_table
 test: yb.orig.hint_table
+test: yb.orig.leading

@@ -7,7 +7,6 @@ import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.googleapis.json.GoogleJsonError;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.http.HttpBackOffUnsuccessfulResponseHandler;
@@ -15,6 +14,7 @@ import com.google.api.client.http.HttpHeaders;
 import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpTransport;
+import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.gax.core.FixedCredentialsProvider;
@@ -437,7 +437,9 @@ public class GCPProjectApiClient {
               new ByteArrayInputStream(mapper.writeValueAsBytes(gceCreds)));
     }
     requestInitializer = getHttpRequestInitializerWithBackoff();
-    httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+    // Not GoogleNetHttpTransport.newTrustedTransport(): its bundled google.p12 can't be read in
+    // FIPS mode. This uses the JVM default trust store.
+    httpTransport = new NetHttpTransport();
     // Create Compute Engine object.
     return new Compute.Builder(httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
         .setApplicationName("")
@@ -1356,7 +1358,7 @@ public class GCPProjectApiClient {
   }
 
   /**
-   * Instance machine type, data disks ({@code index != 0}, same as ybops), and the latest
+   * Instance machine type, persistent data disks ({@link #persistentDataDisks}), and the latest
    * zone-operation start for an update/resize of those disks. The disk resource has no last-resize
    * field. Missing ops time is left null so the caller can fail closed.
    */
@@ -1371,10 +1373,7 @@ public class GCPProjectApiClient {
           BAD_REQUEST, "GCP instance " + instanceName + " has no disks");
     }
     List<CloudAPI.NodeDiskSpec> perDisk = new ArrayList<>();
-    for (AttachedDisk attached : instance.getDisks()) {
-      if (attached.getIndex() == null || attached.getIndex() == 0) {
-        continue;
-      }
+    for (AttachedDisk attached : persistentDataDisks(instance)) {
       String diskName = CloudAPI.getResourceNameFromResourceUrl(attached.getSource());
       if (StringUtils.isBlank(diskName)) {
         throw new PlatformServiceException(
@@ -1391,6 +1390,17 @@ public class GCPProjectApiClient {
     }
     return CloudAPI.NodeDiskSpec.mergeDataDisks(
         CloudAPI.getResourceNameFromResourceUrl(instance.getMachineType()), perDisk);
+  }
+
+  /**
+   * Attached disks other than the boot disk ({@code index != 0}, same as ybops), skipping local
+   * SSDs ({@code SCRATCH}), which have no disk resource to describe.
+   */
+  static List<AttachedDisk> persistentDataDisks(Instance instance) {
+    return instance.getDisks().stream()
+        .filter(d -> d.getIndex() != null && d.getIndex() != 0)
+        .filter(d -> !"SCRATCH".equals(d.getType()))
+        .collect(Collectors.toList());
   }
 
   private Instant latestDiskModifyStart(String zone, Disk disk) throws IOException {

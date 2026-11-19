@@ -242,13 +242,13 @@ public class SwamperHelper {
       appendCollectionLevelLabels(level, labels);
     }
     // Prometheus uses the job's scheme only for targets without this label, so one "node" job
-    // serves HTTPS and HTTP universes. Labels starting with __ never reach stored series. The K8s
-    // sidecar serves plain HTTP.
+    // serves HTTPS and HTTP universes. A K8s sidecar target is always labelled, as YBA alone sets
+    // its scheme. Labels starting with __ never reach stored series.
     if (t == TargetType.NODE_EXPORT) {
-      if (Util.isKubernetesBasedUniverse(universe)) {
-        labels.put("__scheme__", "http");
-      } else if (universe.isNodeExporterHttps()) {
+      if (universe.isNodeExporterHttps()) {
         labels.put("__scheme__", "https");
+      } else if (Util.isKubernetesBasedUniverse(universe)) {
+        labels.put("__scheme__", "http");
       }
     }
 
@@ -289,19 +289,15 @@ public class SwamperHelper {
     if (swamperFile == null) {
       return;
     }
+    // K8s pods are scraped only while the node_exporter sidecar is enabled.
+    boolean scrapeKubernetesPods =
+        KubernetesUtil.isNodeExporterSidecarEnabled(universe, confGetter);
     universe
         .getNodes()
         .forEach(
             (node) -> {
-              // K8s pods are scraped only while the node_exporter sidecar is enabled.
               if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)
-                  && !(confGetter.getConfForScope(universe, UniverseConfKeys.k8sNodeExporterEnabled)
-                      && KubernetesUtil.isNodeExporterSidecarSupported(
-                          universe
-                              .getUniverseDetails()
-                              .getPrimaryCluster()
-                              .userIntent
-                              .ybSoftwareVersion))) {
+                  && !scrapeKubernetesPods) {
                 return;
               }
               nodeTargets.add(getIndividualConfig(universe, TargetType.NODE_EXPORT, node));

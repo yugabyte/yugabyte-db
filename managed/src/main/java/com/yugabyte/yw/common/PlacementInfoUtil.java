@@ -2629,6 +2629,7 @@ public class PlacementInfoUtil {
           masterLeader,
           zoneToNodes.get(zone),
           allocatedMastersRgAz.getOrDefault(zone, 0),
+          dedicatedNodes,
           node -> {
             NodeDetails nodeToAdd = node;
             if (dedicatedNodes) {
@@ -2717,13 +2718,22 @@ public class PlacementInfoUtil {
         }
       }
 
-      // One master could left because of the rounding error.
-      if (mastersLeft != 0) {
+      // Math.round can leave more than one master unplaced (RF 9 across 6 zones
+      // leaves two). Keep seeding, in zone priority order, while a zone has a free node.
+      while (mastersLeft > 0) {
+        boolean placed = false;
         for (RegionWithAz zone : zones) {
-          if (availableNodes.get(zone) > allocatedMastersRgAz.get(zone)) {
-            allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + 1);
+          if (mastersLeft == 0) {
             break;
           }
+          if (availableNodes.get(zone) > allocatedMastersRgAz.get(zone)) {
+            allocatedMastersRgAz.put(zone, allocatedMastersRgAz.get(zone) + 1);
+            mastersLeft--;
+            placed = true;
+          }
+        }
+        if (!placed) {
+          break;
         }
       }
     }
@@ -2738,6 +2748,7 @@ public class PlacementInfoUtil {
    * @param masterLeader
    * @param nodes
    * @param mastersCount
+   * @param dedicatedNodes when true, each added master is a new node cloned from one in this zone
    * @param addMasterCallback
    * @param removeMasterCallback
    */
@@ -2745,6 +2756,7 @@ public class PlacementInfoUtil {
       String masterLeader,
       List<NodeDetails> nodes,
       int mastersCount,
+      boolean dedicatedNodes,
       Consumer<NodeDetails> addMasterCallback,
       Consumer<NodeDetails> removeMasterCallback) {
     Predicate<NodeDetails> isMaster =
@@ -2766,6 +2778,16 @@ public class PlacementInfoUtil {
           && (!Objects.equals(masterLeader, node.cloudInfo.private_ip) || (mastersCount == 0))) {
         existingMastersCount--;
         removeMasterCallback.accept(node);
+      }
+    }
+    // Onprem dedicated masters are taken from the free-node pool, which can be larger than the
+    // number of tservers (or existing masters) in the zone. The loop above can only emit one new
+    // master per node it sees, so reuse one node as a placement template for the rest.
+    if (dedicatedNodes && existingMastersCount < mastersCount && !nodes.isEmpty()) {
+      NodeDetails templateNode = nodes.get(0);
+      while (existingMastersCount < mastersCount) {
+        existingMastersCount++;
+        addMasterCallback.accept(templateNode);
       }
     }
   }

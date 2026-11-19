@@ -313,6 +313,7 @@ DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_bool(skip_fields_moved_to_xcluster_guarded_info);
@@ -323,6 +324,11 @@ DECLARE_string(tmp_dir);
 DECLARE_string(ysql_hba_conf_csv);
 DECLARE_string(ysql_ident_conf_csv);
 DECLARE_string(ysql_pg_conf_csv);
+
+METRIC_DEFINE_gauge_int64(server, xcluster_guarded_info_lease_held,
+    "xCluster-Guarded Information Lease Held",
+    yb::MetricUnit::kUnits,
+    "1 if this TServer holds an unexpired xCluster-guarded information lease, 0 otherwise.");
 
 namespace yb::tserver {
 
@@ -485,6 +491,10 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       METRIC_active_table_metrics_table_count.Instantiate(metric_entity(), 0);
   active_table_metrics_list_version_ =
       METRIC_active_table_metrics_list_version.Instantiate(metric_entity(), 0);
+  METRIC_xcluster_guarded_info_lease_held.InstantiateFunctionGauge(
+      metric_entity(),
+      Bind(&TabletServer::GetXClusterGuardedInfoLeaseHeldForMetrics, Unretained(this)))
+    ->AutoDetachToLastValue(&xcluster_guarded_info_lease_metric_detacher_);
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   ysql_db_catalog_version_index_used_ =
@@ -888,6 +898,16 @@ Status TabletServer::GetRegistration(ServerRegistrationPB* reg, server::RpcOnly 
   } else {
     reg->set_pg_port(pgsql_proxy_bind_address().port());
   }
+  // Tiered storage is a preview feature: with it off the master must not learn or persist tiers,
+  // so a tserver registers none and the master treats its tiers as unknown, as for a tserver that
+  // predates the field. With it on, unlabeled data dirs are on kDefaultStorageTier, so this is
+  // never empty once the fs is open.
+  reg->clear_storage_tiers();
+  if (FLAGS_enable_tiered_storage) {
+    for (const auto& [tier, _] : fs_manager_->GetDataRootsByTier()) {
+      reg->add_storage_tiers(tier);
+    }
+  }
   return Status::OK();
 }
 
@@ -916,9 +936,10 @@ Status TabletServer::RegisterServices() {
       std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
       client_future(), []() { return FLAGS_update_min_cdc_indices_interval_secs; });
 
-  RETURN_NOT_OK(RegisterService(
-      FLAGS_ts_backup_svc_queue_length,
-      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
+  auto backup_service =
+      std::make_shared<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity());
+  backup_service_ = backup_service;
+  RETURN_NOT_OK(RegisterService(FLAGS_ts_backup_svc_queue_length, std::move(backup_service)));
 
   RETURN_NOT_OK(RegisterService(FLAGS_xcluster_svc_queue_length, cdc_service_));
 
@@ -1127,6 +1148,11 @@ void TabletServer::Shutdown() {
     remote_bootstrap_service->StartShutdown();
   }
 
+  // Release pending snapshot history guards before tablet storage teardown. Outstanding flush
+  // callbacks retain only their result/admission state, not the backup service or snapshot RPC.
+  if (auto backup_service = backup_service_.lock()) {
+    backup_service->Shutdown();
+  }
   tablet_manager_->StartShutdown();
   WARN_NOT_OK(relinquish_lease_future.get(), "Couldn't relinquish ysql lease");
 
@@ -1150,7 +1176,7 @@ Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
 
 Status TabletServer::RestartPG() const {
   std::lock_guard lock(pg_start_mutex_);
-  if (!IsPgStartAllowedByXClusterLeaseStatus()) {
+  if (!IsXClusterLeaseRequirementMet()) {
     LOG(DETAIL) << "Keeping Postgres paused until this TServer holds an xCluster-guarded "
                 << "information lease";
     pg_awaiting_xcluster_lease_ = true;
@@ -1168,7 +1194,7 @@ Status TabletServer::KillPg() const {
 
 void TabletServer::MaybeStartPg() const {
   std::lock_guard lock(pg_start_mutex_);
-  if (!pg_awaiting_xcluster_lease_ || !IsPgStartAllowedByXClusterLeaseStatus()) {
+  if (!pg_awaiting_xcluster_lease_ || !IsXClusterLeaseRequirementMet()) {
     return;
   }
   // The YSQL lease checker marks the lease dead before its KillPg clears
@@ -1184,8 +1210,12 @@ void TabletServer::MaybeStartPg() const {
   WARN_NOT_OK(RestartPgUnlocked(), "Failed to start PG postmaster");
 }
 
-bool TabletServer::IsPgStartAllowedByXClusterLeaseStatus() const {
+bool TabletServer::IsXClusterLeaseRequirementMet() const {
   return !IsPersistenceGateEnforced() || xcluster_context_->HasXClusterGuardedInfoLease();
+}
+
+int64_t TabletServer::GetXClusterGuardedInfoLeaseHeldForMetrics() const {
+  return xcluster_context_->HasUnexpiredXClusterGuardedInfoLease() ? 1 : 0;
 }
 
 Status TabletServer::RestartPgUnlocked() const {
@@ -2748,6 +2778,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
         resp.xcluster_config_version()));
   }
 
+  xcluster_producer_state_known_.store(true, std::memory_order_release);
   return Status::OK();
 }
 
@@ -3184,7 +3215,8 @@ TabletServer::AllocateObjectLockSharedState() const {
     if (result.ok()) {
       return std::move(*result);
     }
-    LOG(DFATAL) << "Failed to allocate new object lock shared state: " << result.status();
+    LOG_IF(DFATAL, !result.status().IsShutdownInProgress())
+        << "Failed to allocate new object lock shared state: " << result.status();
   }
   return std::nullopt;
 }

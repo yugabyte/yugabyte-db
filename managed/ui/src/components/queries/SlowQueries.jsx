@@ -413,7 +413,9 @@ const SlowQueriesComponent = () => {
                 )}
               </Box>
             ) : (
-              <>Enable query monitoring to see slow queries.</>
+              <div className="slow-queries__empty">
+                Enable query monitoring to see slow queries.
+              </div>
             )}
           </div>
         }

@@ -18,7 +18,9 @@ import static play.mvc.Http.Status.NOT_FOUND;
 import com.google.common.base.Throwables;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.oracle.bmc.model.BmcException;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.oci.OCIErrorFormatter;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.QueryTimeoutException;
@@ -62,6 +64,10 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
         exception.getMessage());
     Optional<PlatformServiceException> mapped = toPlatformServiceException(exception);
     if (mapped.isPresent()) {
+      if (OCIErrorFormatter.isOciError(exception)) {
+        // The response only carries the shortened OCI error.
+        LOG.error("OCI request failed for {} {}", request.method(), request.uri(), exception);
+      }
       return CompletableFuture.completedFuture(
           mapped.get().buildResult(request.method(), request.uri()));
     }
@@ -87,6 +93,16 @@ public final class YWErrorHandler extends DefaultHttpErrorHandler {
         // deleted before fetching the fields.
         return Optional.of(
             new PlatformServiceException(529, "Transient error. Please refresh and try again"));
+      }
+      if (cause instanceof BmcException) {
+        // An OCI 401 becomes 400 because YBA's 401 means the YBA login or RBAC check failed.
+        // An OCI 429 becomes 500 because OCI throttled YBA; the request itself was valid.
+        int ociStatus = ((BmcException) cause).getStatusCode();
+        boolean requestError = ociStatus >= 400 && ociStatus < 500 && ociStatus != 429;
+        return Optional.of(
+            new PlatformServiceException(
+                requestError ? BAD_REQUEST : INTERNAL_SERVER_ERROR,
+                OCIErrorFormatter.userMessage(exception)));
       }
     }
     return Optional.empty();

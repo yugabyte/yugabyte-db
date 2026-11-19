@@ -20,6 +20,7 @@
 #include <fstream>
 #include <random>
 #include <regex>
+#include <set>
 #include <string>
 #include <thread>
 #include <variant>
@@ -35,6 +36,9 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/version_info.h"
 #include "yb/common/ysql_operation_lease.h"
+
+#include "yb/gutil/strings/split.h"
+#include "yb/gutil/strings/strip.h"
 
 #include "yb/rpc/secure_stream.h"
 
@@ -259,6 +263,10 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_xcluster_invalid_index_ddl_check, true,
+    "On an xCluster automatic mode source, reject DDLs whose outcome depends on an invalid "
+    "index that the target does not have.");
+
 DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_phase, "",
     "Block the given index phase from proceeding. Valid names are indisready, build,"
     " indisvalid and finish. For testing purposes.");
@@ -321,8 +329,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_export_snapshot, kLocalPersisted,
     "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
     "and SET TRANSACTION SNAPSHOT");
 
-/* Deprecated flag */
+/* Deprecated flags */
 namespace deprecated_flag_do_not_use {
+  DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
   DECLARE_bool(ysql_enable_pg_export_snapshot);
 }
 
@@ -430,6 +439,28 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_sample_period, 1024 * 1024, // 1MB
     "Sets the interval at which TCMalloc should sample allocations. "
     "Sampling is disabled if this is set to 0.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_skip_subrelease_short_interval, 0,
+    "How far back, in milliseconds, the release after each YSQL statement looks for short-term "
+    "peaks in demand when deciding which free pages in partially used hugepages to keep instead "
+    "of returning them to the OS. 0 disables this lookback. Other TCMalloc releases in YSQL "
+    "processes keep TCMalloc's own lookback.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_tcmalloc_skip_subrelease_long_interval, 0,
+    "How far back, in milliseconds, the release after each YSQL statement looks for the "
+    "long-term demand trend when deciding which free pages in partially used hugepages to keep "
+    "instead of returning them to the OS. 0 disables this lookback. Other TCMalloc releases in "
+    "YSQL processes keep TCMalloc's own lookback.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_tcmalloc_release_after_statement, true,
+    "After each statement, return the free TCMalloc page heap memory of the YSQL backend to the "
+    "OS. Free pages in partially used hugepages are returned unless "
+    "ysql_yb_tcmalloc_skip_subrelease_short_interval or "
+    "ysql_yb_tcmalloc_skip_subrelease_long_interval keep them for recent demand.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_tcmalloc_drain_cpu_caches_after_statement, false,
+    "After each statement, return the objects cached in the TCMalloc per-CPU caches of the YSQL "
+    "backend to the central free lists.");
+
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_nop_alter_role_optimization, true,
     "Enable nop alter role statement optimization.");
 
@@ -466,6 +497,33 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
 
 DEPRECATE_FLAG(bool, ysql_yb_conn_mgr_selective_deallocate, "07_2026");
 
+DEFINE_RUNTIME_string(ysql_yb_conn_mgr_reversible_stickiness_exclusions, "",
+    "Comma-separated list of sticky sources that keep a Ysql Connection Manager connection "
+    "sticky until disconnect instead of unsticking it once released. Valid values are "
+    "combinations of replication_origin.");
+
+static const std::vector<std::string> kConnMgrReversibleStickinessSources = {
+    "replication_origin"};
+
+static yb::Result<std::set<std::string>> ParseConnMgrReversibleStickinessExclusions(
+    const std::string& value) {
+  std::set<std::string> sources;
+  std::vector<std::string> items = strings::Split(value, ",", strings::SkipWhitespace());
+  for (auto& item : items) {
+    StripWhiteSpace(&item);
+    boost::to_lower(item);
+    if (std::ranges::find(kConnMgrReversibleStickinessSources, item) ==
+        kConnMgrReversibleStickinessSources.end()) {
+      return STATUS_FORMAT(InvalidArgument, "Unrecognized sticky source: \"$0\"", item);
+    }
+    sources.insert(item);
+  }
+  return sources;
+}
+
+DEFINE_validator(ysql_yb_conn_mgr_reversible_stickiness_exclusions,
+    FLAG_OK_VALIDATOR(ParseConnMgrReversibleStickinessExclusions(_value)));
+
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
 DEFINE_NON_RUNTIME_uint32(documentdb_port, 27017,
@@ -488,8 +546,14 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_test_fatal_after_notifs_queue_write, false,
     "When true, the notifications poller exits with FATAL after writing NOTIFY entries to the "
     "async queue but before persisting the CDC virtual-WAL ack. For testing purposes.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_test_notifs_poller_init_delay_ms, 0,
+    "Time in milliseconds for which the notifications poller waits before it initializes. "
+    "For testing purposes.");
+DEFINE_validator(ysql_yb_test_notifs_poller_init_delay_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_uint32(max_replication_slots);
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_query_diagnostics_disable_database_connection_bgworker, false,
     "Disables the background worker that establishes a database connection for query diagnostics. "
@@ -508,7 +572,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_startup_free_memory_release_threshold, 0,
     "much free memory in KB, return that memory to the operating system. Connection startup "
     "frees most of the memory it allocates (fetched catalog data, relation cache build scratch), "
     "and without this the freed pages stay resident for the life of the connection. "
-    "Set to 0 (the default) to always release, or -1 to disable the release.");
+    "Set to 0 (the default) to always release, or -1 to disable the release. Has no effect while "
+    "ysql_yb_tcmalloc_release_after_statement is on, which releases when the backend first "
+    "becomes ready for queries.");
 
 const char* const AUTH_METHOD_MD5 = "md5";
 const char* const AUTH_METHOD_SCRAM = "scram-sha-256";
@@ -780,6 +846,15 @@ void AppendPgGFlags(vector<string>* lines) {
   if (deprecated_flag_do_not_use::FLAGS_ysql_enable_pg_export_snapshot) {
     lines->push_back("yb_enable_pg_export_snapshot=true");
   }
+
+  // Special handling for deprecated ysql_enable_colocated_tables_with_tablespaces flag. This line
+  // comes after the AutoFlag's own, so it also wins while the AutoFlag is not promoted yet.
+  if (deprecated_flag_do_not_use::FLAGS_ysql_enable_colocated_tables_with_tablespaces) {
+    lines->push_back("yb_enable_colocated_tables_with_tablespaces=true");
+  }
+
+  // The max_replication_slots GUC sizes the local slot array. Derive it from the gflag.
+  lines->push_back(Format("max_replication_slots=$0", FLAGS_max_replication_slots));
 }
 
 HostPort GetPgHostPort(const PgProcessConf& conf) {
@@ -903,6 +978,11 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf, const string& ysql
   // ignored. If there are duplicates in FLAGS_ysql_pg_conf_csv then we want the values specified
   // via the gFlag to take precedence.
   AppendPgGFlags(&lines);
+
+  for (const auto& source : VERIFY_RESULT(ParseConnMgrReversibleStickinessExclusions(
+           FLAGS_ysql_yb_conn_mgr_reversible_stickiness_exclusions))) {
+    lines.push_back(Format("yb_conn_mgr_$0_permanent_sticky=true", source));
+  }
 
   string conf_path = JoinPathSegments(conf.data_dir, kYsqlPgConfFileName);
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
@@ -1753,6 +1833,8 @@ Status PgSupervisor::RegisterPgFlagChangeNotifications() {
   RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_pg_conf_csv));
   RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_hba_conf_csv));
   RETURN_NOT_OK(RegisterReloadConfigCallback(&FLAGS_ysql_ident_conf_csv));
+  RETURN_NOT_OK(
+      RegisterReloadConfigCallback(&FLAGS_ysql_yb_conn_mgr_reversible_stickiness_exclusions));
 
   return Status::OK();
 }

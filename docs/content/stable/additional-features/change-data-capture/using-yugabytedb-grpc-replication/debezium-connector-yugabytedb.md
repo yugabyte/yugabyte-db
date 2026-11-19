@@ -1312,7 +1312,7 @@ The connector publishes metadata that can be used to distinguish transaction bou
 
 ### Prerequisites
 
-* Create the Stream ID should in the EXPLICIT checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../../admin/yb-admin#create-change-data-stream).
+* Create the Stream ID should in the EXPLICIT checkpointing mode. For more information, see [yb-admin create\_change\_data_stream](../../../../admin/yb-admin/#create-change-data-stream).
 * You should always run the connector with a single task, that is, `tasks.max` should always be set to 1.
 
 ### Known limitations

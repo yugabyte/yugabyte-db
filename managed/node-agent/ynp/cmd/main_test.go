@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"node-agent/util"
 	"node-agent/ynp/command"
 	"node-agent/ynp/config"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -687,5 +689,35 @@ func TestNodeExporterRootRun(t *testing.T) {
 	exporter := renderModuleScripts(t, "ConfigureNodeExporter", "--root")
 	if strings.Contains(exporter, "Executing module ConfigureNodeExporter") {
 		t.Error("a run with only root must not include ConfigureNodeExporter")
+	}
+}
+
+// node_exporter is a GOFIPS140 build. Outside FIPS its unit turns FIPS mode off, and ynp itself
+// runs in FIPS mode only for a FIPS config.
+func TestNodeExporterFipsMode(t *testing.T) {
+	var appliedFips []bool
+	applyFipsMode = func(fipsEnabled bool) { appliedFips = append(appliedFips, fipsEnabled) }
+	t.Cleanup(func() { applyFipsMode = util.ApplyFipsMode })
+
+	godebugOff := `Environment="GODEBUG=fips140=off"`
+	if script := renderModuleScripts(t, "ConfigureNodeExporter"); !strings.Contains(
+		script,
+		godebugOff,
+	) {
+		t.Errorf("non-FIPS node_exporter unit must contain %q", godebugOff)
+	}
+	// The last --extra_vars wins over the one renderModuleScripts passes.
+	fipsConfig := filepath.Join(t.TempDir(), "fips_config.json")
+	err := os.WriteFile(fipsConfig, []byte(strings.Replace(ynpCloudConfig, `"ynp" : {`,
+		`"ynp" : { "is_fips_enabled" : true,`, 1)), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := renderModuleScripts(t, "ConfigureNodeExporter", "--extra_vars", fipsConfig)
+	if strings.Contains(script, godebugOff) {
+		t.Errorf("FIPS node_exporter unit must not contain %q", godebugOff)
+	}
+	if want := []bool{false, true}; !reflect.DeepEqual(appliedFips, want) {
+		t.Errorf("applied FIPS modes %v, want %v", appliedFips, want)
 	}
 }

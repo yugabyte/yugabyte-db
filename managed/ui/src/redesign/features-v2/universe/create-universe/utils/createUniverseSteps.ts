@@ -61,9 +61,14 @@ export function getCreateUniverseSteps(
     {
       groupTitle: t('advanced'),
       subSteps: [
-        {
-          title: withOptional('proxySettings')
-        },
+        // Kubernetes does not use the proxy step.
+        ...(!isK8s
+          ? [
+              {
+                title: withOptional('proxySettings')
+              }
+            ]
+          : []),
         {
           title: withOptional('otherAdvancedSettings')
         }

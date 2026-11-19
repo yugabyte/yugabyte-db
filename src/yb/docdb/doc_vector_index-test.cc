@@ -17,6 +17,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/key_bounds.h"
 
 #include "yb/qlexpr/index.h"
 
@@ -35,6 +36,12 @@ class StubVectorIndexContext : public DocVectorIndexContext {
       const ReadHybridTime&, DocDBStatistics*) const override {
     return STATUS(NotSupported, "Not expected to be called");
   }
+
+  const KeyBounds& key_bounds() const override {
+    return KeyBounds::kNoBounds;
+  }
+
+  void WaitWalDurable(const OpId&) const override {}
 };
 
 } // namespace

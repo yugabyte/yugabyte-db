@@ -37,12 +37,14 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertsGarbageCollector;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.diagnostics.ThreadDumpPublisher;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.idempotency.IdempotencyService;
 import com.yugabyte.yw.common.logging.LegacyLogArchiveCleanup;
 import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
@@ -131,6 +133,7 @@ public class AppInit {
       ShellLogsManager shellLogsManager,
       Config config,
       SupportBundleCleanup supportBundleCleanup,
+      IdempotencyService idempotencyService,
       NodeAgentPoller nodeAgentPoller,
       YbcUpgrade ybcUpgrade,
       XClusterScheduler xClusterScheduler,
@@ -150,7 +153,8 @@ public class AppInit {
       SlowQueriesAggregator slowQueriesAggregator,
       PACollectorSync paCollectorSync,
       SettableRuntimeConfigFactory sConfigFactory,
-      LegacyLogArchiveCleanup legacyLogArchiveCleanup)
+      LegacyLogArchiveCleanup legacyLogArchiveCleanup,
+      CustomCAStoreManager customCAStoreManager)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
@@ -236,6 +240,8 @@ public class AppInit {
                     .getOrDefault("synced", "false")
                     .toString());
         fileDataService.syncFileData(storagePath, ywFileDataSynced);
+        // Needs the trust store and CA files that syncFileData restores.
+        customCAStoreManager.addMissingTrustStoreCertificates(storagePath);
 
         String devopsHome = config.getString("yb.devops.home");
         if (devopsHome == null || devopsHome.length() == 0) {
@@ -338,6 +344,9 @@ public class AppInit {
 
         // Cleanup old support bundles
         supportBundleCleanup.start();
+
+        // Cleanup expired API idempotency keys
+        idempotencyService.start();
 
         slowQueriesAggregator.start();
         platformMetricsProcessor.start();

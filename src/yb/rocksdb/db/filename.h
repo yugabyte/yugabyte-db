@@ -82,6 +82,11 @@ extern std::string Rocks2LevelTableFileName(const std::string& fullname);
 // TODO(yhchiang): could merge this function with ParseFileName()
 extern uint64_t TableFileNameToNumber(const std::string& name);
 
+// Index into db_paths of the directory an SST with path id `path_id` sits in: a path id past the
+// end of db_paths resolves to the last path. Every reader of a file's location goes through this
+// so they agree. Unrelated to SafePathId, which picks where a new file goes and falls back to 0.
+uint32_t EffectivePathId(const std::vector<DbPath>& db_paths, uint32_t path_id);
+
 // Return the name of the sstable with the specified number
 // in the db named by "dbname".  The result will be prefixed with
 // "dbname".

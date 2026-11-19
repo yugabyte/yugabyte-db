@@ -222,6 +222,38 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
+  public void testFailedDeletionCountsAttemptsAndGivesUp() {
+    CustomerConfig customerConfig = ModelFactory.createNfsStorageConfig(defaultCustomer, "TEST20");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.getConfigUUID();
+    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    ShellResponse shellResponse = new ShellResponse();
+    shellResponse.message = "{\"error\": true}";
+    shellResponse.code = 2;
+    when(mockStorageUtilFactory.getStorageUtil(anyString())).thenReturn(mockNfsUtil);
+    when(mockTableManagerYb.deleteBackup(any())).thenReturn(shellResponse);
+    when(mockConfGetter.getConfForScope(defaultCustomer, CustomerConfKeys.backupGcNumberOfRetries))
+        .thenReturn(2);
+
+    // Two attempts are allowed: the first failure is counted and queued again.
+    backupGC.scheduleRunner();
+    backup.refresh();
+    assertEquals(BackupState.QueuedForDeletion, backup.getState());
+    assertEquals(1, backup.getRetryCount());
+
+    // The second failure has used up the attempts.
+    backupGC.scheduleRunner();
+    backup.refresh();
+    assertEquals(BackupState.FailedToDelete, backup.getState());
+
+    // Deleting it again starts over with every attempt.
+    backup.transitionState(BackupState.QueuedForDeletion);
+    assertEquals(0, backup.getRetryCount());
+  }
+
+  @Test
   public void testDeleteCloudBackupFailure() throws Exception {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST8");
     BackupTableParams bp = new BackupTableParams();
@@ -287,6 +319,35 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
     backup.transitionState(BackupState.Completed);
     customerConfig.updateState(ConfigState.QueuedForDeletion);
+    backupGC.scheduleRunner();
+    assertThrows(
+        PlatformServiceException.class,
+        () ->
+            customerConfigService.getOrBadRequest(
+                defaultCustomer.getUuid(), customerConfig.getConfigUUID()));
+  }
+
+  @Test
+  public void testQueuedCustomerConfigKeptWhileBackupsAreBeingDeleted() {
+    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
+    BackupTableParams bp = new BackupTableParams();
+    bp.storageConfigUUID = customerConfig.getConfigUUID();
+    bp.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    Backup backup = Backup.create(defaultCustomer.getUuid(), bp);
+    backup.transitionState(BackupState.QueuedForDeletion);
+    backup.transitionState(BackupState.DeleteInProgress);
+    customerConfig.updateState(ConfigState.QueuedForDeletion);
+
+    // The backup still needs the config, so this run leaves both.
+    backupGC.scheduleRunner();
+    assertEquals(
+        ConfigState.QueuedForDeletion,
+        customerConfigService
+            .getOrBadRequest(defaultCustomer.getUuid(), customerConfig.getConfigUUID())
+            .getState());
+
+    // Once the backup is gone, the config goes with the next run.
+    backup.delete();
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,

@@ -9,6 +9,17 @@ alter database seeknext_test set yb_enable_cbo = on;
 \c seeknext_test
 set client_min_messages to 'warning';
 
+-- Colocation IDs are random, and the relation that holds the highest ID
+-- ends the tablet: a backward scan's bound seek lands past the last key and
+-- PreparePrev falls back to SeekToLast, one seek more and one prev fewer
+-- than between other relations, which moves 27010/28010 inside their
+-- tolerance.  tablet_last takes the highest ID so that no measured relation
+-- ends the tablet; tablet_first takes the lowest, where no count moved.
+create table tablet_first (k int primary key) with (colocation_id = 16384);
+create table tablet_last (k int primary key) with (colocation_id = 4294967295);
+insert into tablet_first values (1);
+insert into tablet_last values (1);
+
 drop function if exists explain_query_json cascade;
 create function explain_query_json(query_sql text, with_analyze bool)
 returns table (explain_line json)

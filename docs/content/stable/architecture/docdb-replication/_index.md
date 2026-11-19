@@ -12,7 +12,7 @@ menu:
 type: indexpage
 ---
 
-Table data is split into [tablets](../key-concepts#tablet) and managed by [DocDB](../docdb). By default, each tablet is synchronously replicated as per the [replication factor](../key-concepts#replication-factor-rf), using the [Raft](./raft) algorithm across various nodes to ensure data consistency, fault tolerance, and high availability. The replication layer is a critical component that determines how data is replicated, synchronized, and made consistent across the distributed system. In this section, you can explore the key concepts and techniques used in the replication layer of YugabyteDB.
+Table data is split into [tablets](../key-concepts/#tablet) and managed by [DocDB](../docdb). By default, each tablet is synchronously replicated as per the [replication factor](../key-concepts/#replication-factor-rf), using the [Raft](./raft) algorithm across various nodes to ensure data consistency, fault tolerance, and high availability. The replication layer is a critical component that determines how data is replicated, synchronized, and made consistent across the distributed system. In this section, you can explore the key concepts and techniques used in the replication layer of YugabyteDB.
 
 ## Raft consensus protocol
 
@@ -34,7 +34,7 @@ To understand how replication works, see [Synchronous replication](./replication
 
 Asynchronous replication, on the other hand, does not wait for writes to be replicated to all the nodes before acknowledging the client. Instead, writes are acknowledged immediately, and the replication process happens in the background. Asynchronous replication provides lower latency for write operations, as the client does not have to wait for the replication to complete. However, it comes with the trade-off of potentially lower consistency across universes, as there may be a delay before the replicas are fully synchronized.
 
-In YugabyteDB, you can use xCluster to set up asynchronous replication between 2 different distant [universes](../key-concepts#universe) either in a unidirectional or bi-directional manner.
+In YugabyteDB, you can use xCluster to set up asynchronous replication between 2 different distant [universes](../key-concepts/#universe) either in a unidirectional or bi-directional manner.
 
 {{<lead link="./async-replication">}}
 To understand how asynchronous replication between 2 universes works, see [xCluster](./async-replication).
@@ -42,7 +42,7 @@ To understand how asynchronous replication between 2 universes works, see [xClus
 
 ## Read replica
 
-Read replicas are effectively in-universe asynchronous replicas. It is a optional cluster that you can add on to an existing cluster which can help you improve read latency for users located far away from your [primary cluster](../key-concepts#primary-cluster).
+Read replicas are effectively in-universe asynchronous replicas. It is a optional cluster that you can add on to an existing cluster which can help you improve read latency for users located far away from your [primary cluster](../key-concepts/#primary-cluster).
 
 {{<lead link="./read-replicas">}}
 To understand how read replicas work, see [Read replicas](./read-replicas).

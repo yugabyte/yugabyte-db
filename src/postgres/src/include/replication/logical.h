@@ -139,10 +139,10 @@ typedef struct LogicalDecodingContext
 
 
 	/*
-	 * YB: True if the transaction block contains a DDL. We invalidate the
-	 * catalog caches before reorder-buffer replay only in that case, because
-	 * decode-time lookups after the DDL would otherwise be reused for earlier
-	 * DMLs. Invalidating on every commit is expensive.
+	 * YB: True if the transaction block contains a DDL or publication refresh.
+	 * We invalidate the catalog caches before reorder-buffer replay only in
+	 * that case, because decode-time lookups after the DDL would otherwise be
+	 * reused for earlier DMLs. Invalidating on every commit is expensive.
 	 *
 	 * Only used when TEST_ysql_yb_enable_replication_slot_transactional_ddl is
 	 * true.

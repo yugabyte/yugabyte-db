@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/client/client.h"
+
 #include "yb/common/common_flags.h"
 #include "yb/common/ddl_mode-test-util.h"
 #include "yb/tserver/ts_local_lock_manager.h"
@@ -20,6 +22,8 @@
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_state.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
+
+#include "yb/master/master_ddl.pb.h"
 
 #include "yb/rpc/thread_pool.h"
 
@@ -78,6 +82,7 @@ constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
 constexpr auto kObject3 = 3;
+constexpr auto kObject4 = 4;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
 constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
@@ -1223,6 +1228,14 @@ TEST_F_EX(TSLocalLockManager, TestLockBeforeSharedMemorySetup,
   ASSERT_OK(ReleaseLocksForOwner(kTxn3));
 }
 
+TEST_F(TSLocalLockManagerTest, AllocateSharedStateAfterLeaseManagerShutdown) {
+  auto& server = *mini_server_->server();
+  server.ShutdownYSQLLeaseManager();
+  auto result = server.object_lock_shared_state_manager()->AllocateShared();
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsShutdownInProgress()) << result.status();
+}
+
 TEST_F(TSLocalLockManagerTest, TestAcquireMetrics) {
   {
     auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
@@ -1380,6 +1393,17 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(LockRelationTServerFastpath(
       kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject3,
       ObjectLockFastpathLockType::kRowShare));
+  ASSERT_FALSE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
+
+  // kObject1 is already held in the lock manager, so this acquire is redundant. It should still
+  // consume the buffer for txn1.
+  ASSERT_OK(LockRelation(
+      kTxn1, kDatabase1, kObject1, TableLockType::ROW_SHARE, /*deadline=*/{}));
+  ASSERT_TRUE(LockRelationTServerFastpath(
+      kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject4,
+      ObjectLockFastpathLockType::kRowShare));
 
   // Locks were consumed for txn1, fastpath release blocked.
   ASSERT_FALSE(ReleaseLocksPgFastpath(kTxn1.txn_id));
@@ -1387,6 +1411,36 @@ TEST_F(TSLocalLockManagerTest, TestFastpathOverflow) {
   ASSERT_TRUE(ReleaseLocksPgFastpath(kTxn2.txn_id));
 
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+// A release naming specific objects leaves the subtxn's other locks held, so it must keep the
+// subtxn's tracked acquire deadline. Otherwise the later release-all of the subtxn finds no
+// deadline and schedules no lost-message retry.
+TEST_F(TSLocalLockManagerTest, NamedReleaseKeepsDeadlineForReleaseAll) {
+  // No master is needed: the retries are scheduled far enough out that shutdown aborts them before
+  // they use the client.
+  auto client = ASSERT_RESULT(client::YBClientBuilder()
+      .add_master_server_addr("127.0.0.1:1")
+      .set_skip_master_leader_resolution(true)
+      .Build());
+  auto lock_manager = mini_server_->server()->ts_local_lock_manager();
+  const auto& txn_id = kTxn1.txn_id;
+  const auto subtxn_id = kTxn1.subtxn_id;
+  const auto deadline = CoarseMonoClock::Now() + 1h;
+  lm_->TrackDeadlineForGlobalAcquire(txn_id, subtxn_id, deadline);
+
+  auto named_release = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>();
+  auto* lock = named_release->add_object_locks();
+  lock->set_database_oid(kDatabase1);
+  lock->set_relation_oid(kObject1);
+  lock->set_lock_type(TableLockType::NONE);
+  lm_->ScheduleReleaseForLostMessages(*client, lock_manager, txn_id, subtxn_id, named_release);
+  ASSERT_EQ(lm_->TEST_MaxDeadlineForTxn(txn_id, subtxn_id), deadline);
+
+  lm_->ScheduleReleaseForLostMessages(
+      *client, lock_manager, txn_id, subtxn_id,
+      std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>());
+  ASSERT_EQ(lm_->TEST_MaxDeadlineForTxn(txn_id, subtxn_id), std::nullopt);
 }
 
 } // namespace yb::tserver

@@ -5,6 +5,8 @@
  * cooperative multitasking engine.
  */
 
+#include <sys/poll.h>
+
 #include <machinarium.h>
 #include <machinarium_private.h>
 
@@ -598,5 +600,50 @@ MACHINE_API int yb_machine_io_is_socket_closed(machine_io_t *obj)
 		}
 	}
 	/* Data is available, socket is still open */
+	return 0;
+}
+
+MACHINE_API int machine_io_poll(machine_io_t *obj)
+{
+	/* no need to check IN/OUT - we call read/write before awaiting anyway */
+
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	if (!io->attached) {
+		mm_errno_set(ENOTCONN);
+		return -1;
+	}
+
+	mm_fd_t *fd = &io->handle;
+
+	struct pollfd pfd;
+	memset(&pfd, 0, sizeof(struct pollfd));
+	pfd.fd = fd->fd;
+	pfd.events = POLLERR | POLLHUP | POLLRDHUP;
+
+	int rc = poll(&pfd, 1, 0);
+	if (rc < 0) {
+		mm_errno_set(errno);
+		return rc;
+	}
+
+	if (rc == 0) {
+		/* no events, ok */
+		return 0;
+	}
+
+	assert(rc == 1);
+
+	int events = pfd.revents;
+	int err = events & POLLERR;
+	int close = events & POLLHUP || events & POLLRDHUP;
+
+	/*
+	 * YB: this machinarium has no on_err/on_close fd handlers, so mark the
+	 * io disconnected directly, as mm_io_read/mm_io_write do on error/eof.
+	 */
+	if (err || close) {
+		io->connected = 0;
+	}
+
 	return 0;
 }

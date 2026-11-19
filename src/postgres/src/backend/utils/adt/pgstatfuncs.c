@@ -1378,7 +1378,8 @@ yb_pg_stat_get_backend_catalog_version(PG_FUNCTION_ARGS)
 	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
 		PG_RETURN_NULL();
 
-	if (beentry->yb_st_catalog_version.has_version)
+	if (beentry->yb_st_catalog_version.has_version &&
+		!beentry->yb_st_catalog_version.catalog_pinned_to_historical_read_time)
 		PG_RETURN_DATUM(UInt64GetDatum(beentry->yb_st_catalog_version.version));
 	else
 		PG_RETURN_NULL();
@@ -1423,7 +1424,8 @@ yb_pg_stat_get_backend_local_catalog_version(PG_FUNCTION_ARGS)
 
 		/* datid and local_catalog_version are available to all callers */
 		if (beentry->st_databaseid == InvalidOid ||
-			beentry->yb_st_catalog_version.version == 0)
+			beentry->yb_st_catalog_version.version == 0 ||
+			beentry->yb_st_catalog_version.catalog_pinned_to_historical_read_time)
 			continue;
 
 		/* for each row */

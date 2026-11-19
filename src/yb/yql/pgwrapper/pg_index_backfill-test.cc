@@ -12,8 +12,11 @@
 
 #include <atomic>
 #include <cmath>
+#include <future>
 #include <map>
+#include <mutex>
 #include <optional>
+#include <regex>
 #include <set>
 #include <span>
 #include <string>
@@ -48,6 +51,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -125,6 +129,99 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
   }
 
  protected:
+  // Arbitrary time in the past (2023-11-14) to pin CREATE INDEX's origination time to.
+  static constexpr MicrosTime kPinnedOriginationTime = 1'700'000'000'000'000;
+  static constexpr MicrosTime kSecondPinnedOriginationTime = kPinnedOriginationTime + 1'000'000;
+
+  static Status PinOriginationTime(PGConn& conn, MicrosTime time) {
+    return conn.ExecuteFormat("SET yb_origination_time_override = $0", time);
+  }
+
+  using IndexOriginations = std::set<std::pair<TableId, MicrosTime>>;
+
+  // Collects the (index, origination time) pairs that daemons log as they run backfill chunks.
+  // Needs vmodule tablet=1 on those daemons.  Each daemon has at most one log listener, so this
+  // replaces any LogWaiter on them.
+  class BackfillOriginationCollector : public ExternalDaemon::StringListener {
+   public:
+    explicit BackfillOriginationCollector(std::vector<ExternalTabletServer*> daemons)
+        : daemons_(std::move(daemons)) {
+      for (auto* daemon : daemons_) {
+        daemon->SetLogListener(this);
+      }
+    }
+
+    ~BackfillOriginationCollector() {
+      for (auto* daemon : daemons_) {
+        daemon->RemoveLogListener(this);
+      }
+    }
+
+    IndexOriginations originations() const {
+      std::lock_guard lock(mutex_);
+      return originations_;
+    }
+
+   private:
+    void Handle(const GStringPiece& s) override {
+      static const std::regex kPattern(R"(Backfilling index (\S+) with origination time (\d+))");
+      std::cmatch match;
+      if (!std::regex_search(s.data(), s.data() + s.size(), match, kPattern)) {
+        return;
+      }
+      std::lock_guard lock(mutex_);
+      originations_.emplace(match[1].str(), std::stoull(match[2].str()));
+    }
+
+    const std::vector<ExternalTabletServer*> daemons_;
+    mutable std::mutex mutex_;
+    IndexOriginations originations_ GUARDED_BY(mutex_);
+  };
+
+  // Waits until every index in expected has been backfilled, then checks that the backfills
+  // carried exactly these (index name, origination time) pairs.
+  Status CheckBackfillOriginations(
+      const BackfillOriginationCollector& collector,
+      const std::map<std::string, MicrosTime>& expected) {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    std::map<TableId, std::string> name_by_id;
+    for (const auto& [name, _] : expected) {
+      name_by_id[VERIFY_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, name))] = name;
+    }
+    const auto get_originations_by_name = [&] {
+      std::set<std::pair<std::string, MicrosTime>> result;
+      for (const auto& [index_id, time] : collector.originations()) {
+        const auto it = name_by_id.find(index_id);
+        result.emplace(it == name_by_id.end() ? index_id : it->second, time);
+      }
+      return result;
+    };
+
+    // Master may backfill the indexes one at a time, so some may not have started yet.
+    RETURN_NOT_OK(WaitFor(
+        [&] {
+          std::set<std::string> backfilled;
+          for (const auto& [name, _] : get_originations_by_name()) {
+            backfilled.insert(name);
+          }
+          for (const auto& [name, _] : expected) {
+            if (!backfilled.contains(name)) {
+              return false;
+            }
+          }
+          return true;
+        },
+        MonoDelta::FromSeconds(kTimeMultiplier * 60), "every index backfilled"));
+
+    const auto actual = get_originations_by_name();
+    const std::set<std::pair<std::string, MicrosTime>> expected_set(
+        expected.begin(), expected.end());
+    SCHECK(
+        actual == expected_set, IllegalState,
+        Format("Backfill origination times: got $0, expected $1", actual, expected_set));
+    return Status::OK();
+  }
+
   Result<bool> IsAtTargetIndexStateFlags(
       const std::string& index_name,
       const IndexStateFlags& target_index_state_flags) {
@@ -2683,6 +2780,112 @@ TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), 1);
 }
 
+// Checks that backfill chunks carry the CREATE INDEX statement's origination time even when the
+// master leader fails over after moving the index to DO_BACKFILL but before creating the backfill
+// job.
+TEST_P(PgIndexBackfillMultiMaster, BackfillCarriesOriginationAfterMasterFailoverBeforeLaunch) {
+  // The fixture starts every master with TEST_block_do_backfill set, so the backfill will be held
+  // until the test unblocks it.
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (i int, PRIMARY KEY (i)) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10)", kTableName));
+
+  // Slow master's alters to the tablets.  Master creates the backfill job only after the tablets
+  // apply the DO_BACKFILL alter, so this lets us fail over the leader after it writes DO_BACKFILL
+  // but before it creates the job.  The delay only has to outlast the waits and failover below, and
+  // master sleeps it inside the BackfillIndex call, which counts against the fixture's 30 s client
+  // timeout, so it does not scale with kTimeMultiplier.
+  const auto kAlterDelay = MonoDelta::FromSeconds(10);
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_slowdown_alter_table_rpcs_ms", AsString(kAlterDelay.ToMilliseconds())));
+
+  TestThreadHolder thread_holder;
+  auto backfill_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"), "unblock masters");
+  });
+  auto reset_alter_delay = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"), "reset alter delay");
+  });
+  auto* old_leader = cluster_->GetLeaderMaster();
+  constexpr auto kAlterSleepMessage = "before sending async alter table request";
+  LogWaiter index_added_waiter(old_leader, kAlterSleepMessage);
+  thread_holder.AddThreadFunctor([this] {
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(PinOriginationTime(create_conn, kPinnedOriginationTime));
+    ASSERT_OK(
+        create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+  });
+
+  // Wait for the old leader to move the index to DO_BACKFILL by waiting for it to start its second
+  // alter.  The first alter adds the index and the second, sent after the index state is moved on
+  // master, updates the tablet's copy of the index state.  The table has one tablet, so each alter
+  // logs the sleep once.
+  ASSERT_OK(index_added_waiter.WaitFor(kAlterDelay * 3 * kTimeMultiplier));
+  // A daemon has one log listener, so each LogWaiter on old_leader replaces the one before it.
+  LogWaiter do_backfill_written_waiter(old_leader, kAlterSleepMessage);
+  ASSERT_OK(do_backfill_written_waiter.WaitFor(kAlterDelay * 3 * kTimeMultiplier));
+
+  // Fail over while the old leader is still asleep (due to TEST_block_do_backfill) before sending
+  // that alter, so it has not created the backfill job and the new leader must;
+  // old_leader_started_backfill_waiter shows the old leader never starts one.
+  constexpr auto kStartBackfillMessage = "StartBackfillingData starting backfill";
+  LogWaiter old_leader_started_backfill_waiter(old_leader, kStartBackfillMessage);
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"));
+  auto* new_leader = cluster_->GetLeaderMaster();
+
+  // Wait for backfill job to be created and saved.
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+  // Let only the new leader run the backfill, and check that it carries the pinned origination
+  // time.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(cluster_->SetFlag(new_leader, "TEST_block_do_backfill", "false"));
+  ASSERT_OK(CheckBackfillOriginations(collector, {{kIndexName, kPinnedOriginationTime}}));
+
+  thread_holder.JoinAll();
+  ASSERT_FALSE(old_leader_started_backfill_waiter.IsEventOccurred());
+}
+
+// Checks that backfill chunks carry the CREATE INDEX statement's origination time even when the
+// master leader fails over after creating the backfill job but before running it.
+TEST_P(PgIndexBackfillMultiMaster, BackfillCarriesOriginationAfterMasterFailover) {
+  // The fixture starts every master with TEST_block_do_backfill set, so the backfill is held
+  // until the test unblocks it.
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (i int, PRIMARY KEY (i)) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10)", kTableName));
+
+  TestThreadHolder thread_holder;
+  auto backfill_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"), "unblock masters");
+  });
+  thread_holder.AddThreadFunctor([this] {
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(PinOriginationTime(create_conn, kPinnedOriginationTime));
+    ASSERT_OK(
+        create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+  });
+
+  // The backfill job's read time is saved in the job, so waiting for it shows the job is saved.
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  auto* new_leader = cluster_->GetLeaderMaster();
+
+  // With the backfill held on every master, let only the new leader run it, and check that it
+  // carries the pinned origination time.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(cluster_->SetFlag(new_leader, "TEST_block_do_backfill", "false"));
+  ASSERT_OK(CheckBackfillOriginations(collector, {{kIndexName, kPinnedOriginationTime}}));
+  thread_holder.JoinAll();
+}
+
 // Override the index backfill test class to use colocated tables.
 class PgIndexBackfillColocated : public PgIndexBackfillTest {
  public:
@@ -4664,6 +4867,115 @@ TEST_P(
     }
   }
   ASSERT_TRUE(found_index_scan) << "Expected index scan using test_v1 in EXPLAIN output";
+}
+
+// Checks that when a CREATE INDEX picks up an index left behind by a killed CREATE INDEX, the
+// left-behind index is backfilled with the killed statement's origination time and the new index
+// with the new statement's.
+TEST_P(PgIndexBackfillCancellationTest,
+    YB_DISABLE_TEST_IN_TSAN(BackfillAfterLeftoverIndexCarriesOrigination)) {
+  auto* tserver = cluster_->tablet_server(0);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver));
+  auto conn_admin = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT, v1 INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT i,i,i from generate_series(1, 100) as i"));
+
+  // Leave an index behind: start a CREATE INDEX with its origination time pinned, hold it just
+  // before its backfill, then kill its backend.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  auto conn1_pid = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  ASSERT_OK(PinOriginationTime(conn1, kPinnedOriginationTime));
+  LogWaiter blocked_before_backfill_waiter(tserver, "blocking concurrent index backfill");
+  // Declared before the guard, so that the guard unblocks CREATE INDEX before the future's
+  // destructor waits for it.
+  std::future<Status> create_test_v_future;
+  auto phase_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "unblock CREATE INDEX");
+  });
+  create_test_v_future = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("CREATE INDEX test_v ON test(v)");
+  });
+  ASSERT_OK(blocked_before_backfill_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          conn_admin.FetchRowAsString(yb::Format("SELECT pg_terminate_backend($0)", conn1_pid))),
+      "1");
+  ASSERT_NOK(create_test_v_future.get());
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  if (EnableTableLocks()) {
+    // Wait for session expiry so that the locks are released.
+    SleepFor(kPgClientSessionExpiration * kTimeMultiplier * 2);
+  }
+
+  // Run a second CREATE INDEX, pinned to a different time.  Its BackfillIndex request moves both
+  // test_v and test_v1 to DO_BACKFILL.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(PinOriginationTime(conn2, kSecondPinnedOriginationTime));
+  ASSERT_OK(conn2.Execute("CREATE INDEX test_v1 ON test(v1)"));
+
+  ASSERT_OK(CheckBackfillOriginations(
+      collector, {{"test_v", kPinnedOriginationTime}, {"test_v1", kSecondPinnedOriginationTime}}));
+}
+
+// Checks that when one BackfillIndex request moves the indexes of two overlapping CREATE INDEX
+// statements on one table to DO_BACKFILL, each index is backfilled with its own statement's
+// origination time.
+TEST_P(PgIndexBackfillTest, OverlappingCreateIndexesCarryOwnOrigination) {
+  if (EnableTableLocks()) {
+    GTEST_SKIP() << "Object locking serializes CREATE INDEX statements on one table";
+  }
+  auto* tserver_a = cluster_->tablet_server(0);
+  auto* tserver_b = cluster_->tablet_server(1);
+  // On different TServers, so that the two statements' local Postgres locks on the table do not
+  // conflict.
+  auto conn_a = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver_a));
+  auto conn_b = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver_b));
+
+  ASSERT_OK(conn_a.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT, v1 INT)"));
+  ASSERT_OK(conn_a.Execute("INSERT INTO test SELECT i, i, i FROM generate_series(1, 100) AS i"));
+
+  // Start a CREATE INDEX on each connection, pinned to different times, and hold both just before
+  // their BackfillIndex requests, with their indexes ready.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  ASSERT_OK(PinOriginationTime(conn_a, kPinnedOriginationTime));
+  ASSERT_OK(PinOriginationTime(conn_b, kSecondPinnedOriginationTime));
+  // After each catalog version bump B's CREATE INDEX makes, it would otherwise wait for every
+  // backend, including A's, to reach that version, and A's backend cannot while A's CREATE INDEX
+  // is held.
+  ASSERT_OK(conn_b.Execute("SET yb_disable_wait_for_backends_catalog_version = true"));
+  LogWaiter a_blocked_waiter(tserver_a, "blocking concurrent index backfill");
+  LogWaiter b_blocked_waiter(tserver_b, "blocking concurrent index backfill");
+  // Declared before the guard, so that the guard unblocks CREATE INDEX before the futures'
+  // destructors wait for it.
+  std::future<Status> create_a_future, create_b_future;
+  auto phase_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "unblock CREATE INDEX");
+  });
+  create_a_future = std::async(std::launch::async, [&]() -> Status {
+    return conn_a.Execute("CREATE INDEX test_v ON test(v)");
+  });
+  ASSERT_OK(a_blocked_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+  create_b_future = std::async(std::launch::async, [&]() -> Status {
+    return conn_b.Execute("CREATE INDEX test_v1 ON test(v1)");
+  });
+  ASSERT_OK(b_blocked_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  // Release both statements' BackfillIndex requests, and check that each index is backfilled with
+  // its own statement's origination time.  The first request to reach master moves both indexes to
+  // DO_BACKFILL.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(CheckBackfillOriginations(
+      collector, {{"test_v", kPinnedOriginationTime}, {"test_v1", kSecondPinnedOriginationTime}}));
 }
 
 // Negative-regression test: demonstrates the pre-fix bug.

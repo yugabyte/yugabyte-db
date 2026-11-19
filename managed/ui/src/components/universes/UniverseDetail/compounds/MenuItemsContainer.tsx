@@ -5,6 +5,8 @@ import './MenuItemsContainer.scss';
 interface MenuItemsContainerProps {
   mainMenu: (setActiveSubmenu: Dispatch<SetStateAction<null | string>>) => ReactNode;
   parentDropdownOpen: Boolean;
+  // Lets an open submenu grow past the main menu's width so its longest label isn't clipped.
+  fitSubmenuToContent?: boolean;
   subMenus: {
     [activeSubmenu: string]: (setActiveSubmenu: (subMenu: string | null) => void) => ReactNode;
   };
@@ -12,7 +14,8 @@ interface MenuItemsContainerProps {
 export const MenuItemsContainer = ({
   mainMenu,
   subMenus,
-  parentDropdownOpen
+  parentDropdownOpen,
+  fitSubmenuToContent = false
 }: MenuItemsContainerProps) => {
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
 
@@ -22,7 +25,12 @@ export const MenuItemsContainer = ({
   }, [parentDropdownOpen, activeSubmenu]);
 
   return (
-    <div className="menu-items-container">
+    <div
+      className={clsx('menu-items-container', {
+        'menu-items-container--no-slide': fitSubmenuToContent,
+        'menu-items-container--fit-submenu': fitSubmenuToContent && activeSubmenu !== null
+      })}
+    >
       <div
         className={clsx('menu-items-container__main-frame', {
           'menu-items-container__main-frame--slide-right': activeSubmenu === null,

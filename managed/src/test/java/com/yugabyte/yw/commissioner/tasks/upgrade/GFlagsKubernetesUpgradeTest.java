@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,10 +17,13 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -102,6 +106,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.CheckFollowerLag,
           TaskType.LoadBalancerStateChange,
+          TaskType.UpdateUniverseFields,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.InstallingThirdPartySoftware,
           TaskType.UpdateAndPersistGFlags,
           TaskType.UniverseUpdateSucceeded,
@@ -207,6 +213,8 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of(
                 "masterGFlags", Json.parse("{\"master-flag\":\"m1\"}"),
@@ -262,6 +270,67 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGFlagUpgradeSavesReadReplicaGFlags() throws Exception {
+    setupUniverseSingleAZ(false, false);
+    addReadReplicaCluster();
+    // The read replica node is a YSQL server: WaitForServer(YSQLSERVER) queries it.
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
+            any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of(), Map.of());
+              details.getReadOnlyClusters().get(0).userIntent.specificGFlags =
+                  SpecificGFlags.constructInherited();
+              u.setUniverseDetails(details);
+            });
+
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getReadOnlyClusters().get(0).userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of(), Map.of("tserver-flag", "t1"));
+    taskParams.nodePrefix = NODE_PREFIX;
+    // Adding the read replica bumped the universe version past what submitTask expects.
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    TaskInfo taskInfo =
+        waitForTask(commissioner.submit(TaskType.GFlagsKubernetesUpgrade, taskParams));
+
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    SpecificGFlags readReplicaGFlags =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getUniverseDetails()
+            .getReadOnlyClusters()
+            .get(0)
+            .userIntent
+            .specificGFlags;
+    assertFalse(readReplicaGFlags.isInheritFromPrimary());
+    assertEquals(
+        Map.of("tserver-flag", "t1"), readReplicaGFlags.getGFlags(null, ServerType.TSERVER));
+  }
+
+  // Every pod rolled onto the new template, so the sidecar's TLS is recorded as rendered: off
+  // without node-to-node encryption.
+  @Test
+  public void testGFlagUpgradeRecordsSidecarTls() {
+    setupUniverseSingleAZ(false, false);
+    recordNodeExporterHttps();
+    gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertFalse(isNodeExporterHttpsRecorded());
   }
 
   @Test

@@ -1,9 +1,11 @@
+import { ReactNode } from 'react';
 import { MetricMeasure, MetricTypes } from '../components/metrics/constants';
 import { MetricsPanel } from '../components/metrics';
 import { getIsKubernetesUniverse } from './UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../components/common/indicators';
 import { isEmptyString, isNonEmptyObject, isNonEmptyString } from './ObjectUtils';
 import { DEFAULT_TIMEZONE } from '../redesign/helpers/constants';
+import { getNodeExporterPanelNotes } from './NodeExporterNotes';
 
 export const getTabContent = (
   graph: any,
@@ -15,9 +17,11 @@ export const getTabContent = (
   isGranularMetricsEnabled: boolean,
   isMetricsTimezoneEnabled: boolean,
   updateTimestamp: (start: 'object' | number, end: 'object' | number) => void,
-  printMode: boolean
+  printMode: boolean,
+  containerWidth: number | null = null,
+  loader: ReactNode = null
 ) => {
-  let tabData: any = <YBLoading />;
+  let tabData: any = loader ?? <YBLoading />;
   if (graph.error?.data && !graph.loading) {
     return (
       <YBErrorIndicator
@@ -64,6 +68,11 @@ export const getTabContent = (
           });
         }
         uniqueOperations = Array.from(uniqueOperations);
+        const nodeExporterPanelNotes = getNodeExporterPanelNotes(
+          metricKey,
+          metrics[type],
+          selectedUniverse
+        );
 
         return isNonEmptyObject(metric) && !metric?.error ? (
           <MetricsPanel
@@ -74,7 +83,7 @@ export const getTabContent = (
             metric={metric}
             metricType={type}
             className={'metrics-panel-container'}
-            containerWidth={null}
+            containerWidth={containerWidth}
             prometheusQueryEnabled={prometheusQueryEnabled}
             metricMeasure={metricMeasure}
             operations={uniqueOperations}
@@ -83,6 +92,7 @@ export const getTabContent = (
             updateTimestamp={updateTimestamp}
             printMode={printMode}
             metricsTimezone={timezone}
+            notes={nodeExporterPanelNotes}
           />
         ) : null;
       })
@@ -100,8 +110,13 @@ export const getTabContent = (
     //Hide empty panels for master pods.
     // eslint-disable-next-line eqeqeq
     if (nodeName.match('yb-master-') != null) {
-      const skipList = ['Tablet Server', 'YSQL Ops', 'YCQL Ops', 'Resource'];
-      if (skipList.includes(title)) {
+      const skipList: string[] = [
+        MetricTypes.TSERVER,
+        MetricTypes.TSERVER_TABLE,
+        MetricTypes.YSQL_OPS,
+        MetricTypes.YCQL_OPS
+      ];
+      if (skipList.includes(type)) {
         return null;
       }
     }

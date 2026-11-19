@@ -9,7 +9,7 @@
 
 import { forwardRef, useContext, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { useQuery } from 'react-query';
+import { useQueries } from 'react-query';
 import { isEmpty } from 'lodash';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { FormProvider, useForm } from 'react-hook-form';
@@ -33,11 +33,15 @@ import { CloudType } from '@app/redesign/features/universe/universe-form/utils/d
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { isCloudVendorCloudType } from '@app/components/configRedesign/providerRedesign/utils';
 import { OtherAdvancedProps } from './dtos';
-import { USER_TAGS_FIELD } from '../../fields/FieldNames';
+import { ACCESS_KEY_CODE_BY_PROVIDER, USER_TAGS_FIELD } from '../../fields/FieldNames';
 import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import { canOverrideCommunicationPorts } from '../../helpers/syncConnectionPoolingPorts';
 import { COMMUNICATION_PORT_FIELD_NAMES } from '../../helpers/duplicatePortValidation';
+import {
+  getPrimaryProvider,
+  getProviderConfigurations
+} from '../../helpers/providerConfigurations';
 import { useRuntimeConfigValues } from '../../helpers/utils';
 
 const { Box, Typography } = mui;
@@ -51,21 +55,38 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   const placementSpec = constructPlacements({ ...context });
 
-  const provider = generalSettings?.providerConfiguration;
+  const providers = getProviderConfigurations(generalSettings);
+  const provider = getPrimaryProvider(generalSettings);
   const dbVersion = generalSettings?.databaseVersion;
-  const isOnPrem = provider?.code === CloudType.onprem;
 
-  // On-prem providers (e.g. manually provisioned). Hide the Node Access
-  const { data: accessKeys, isLoading: isAccessKeysLoading } = useQuery(
-    [QUERY_KEY.getAccessKeys, provider?.uuid],
-    () => api.getAccessKeys(provider?.uuid),
-    { enabled: !!provider?.uuid && isOnPrem }
+  const sshProviders = useMemo(
+    () => providers.filter((p) => p.code !== CloudType.kubernetes),
+    [providers]
   );
-  const hasSshAccessKeys = (accessKeys?.length ?? 0) > 0;
-  const showNodeAccessCard =
-    !!provider &&
-    provider.code !== CloudType.kubernetes &&
-    !(isOnPrem && (isAccessKeysLoading || !hasSshAccessKeys));
+  const isMultiSsh = sshProviders.length >= 2;
+  const showNodeAccessCard = sshProviders.length > 0;
+  const showAwsArn = providers.some((p) => p.code === CloudType.aws);
+
+  const accessKeyQueries = useQueries(
+    sshProviders.map((p) => ({
+      queryKey: [QUERY_KEY.getAccessKeys, p.uuid],
+      queryFn: () => api.getAccessKeys(p.uuid),
+      enabled: !!p.uuid
+    }))
+  );
+
+  const accessKeyQueryFingerprint = accessKeyQueries
+    .map((q) => `${q.status}:${q.data?.length ?? 0}`)
+    .join('|');
+
+  const providersRequiringAccessKey = useMemo(
+    () =>
+      sshProviders
+        .filter((_, i) => (accessKeyQueries[i]?.data?.length ?? 0) > 0)
+        .map((p) => p.uuid),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fingerprint tracks query results
+    [sshProviders, accessKeyQueryFingerprint]
+  );
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.otherAdvancedSettings'
@@ -75,7 +96,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     () =>
       OtherAdvancedValidationSchema(t, {
         providerCode: provider?.code,
-        requireAccessKey: showNodeAccessCard,
+        providersRequiringAccessKey,
         ysql: !!databaseSettings?.ysql?.enable,
         ycql: !!databaseSettings?.ycql?.enable,
         enableConnectionPooling: !!databaseSettings?.enableConnectionPooling
@@ -83,7 +104,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
     [
       t,
       provider?.code,
-      showNodeAccessCard,
+      providersRequiringAccessKey,
       databaseSettings?.ysql?.enable,
       databaseSettings?.ycql?.enable,
       databaseSettings?.enableConnectionPooling
@@ -97,7 +118,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
       instanceTags: [],
       awsArnString: '',
       useSystemd: true,
-      accessKeyCode: '',
+      accessKeyCodeByProvider: {},
       universeOverrides: '',
       azOverrides: {},
       ...(provider?.code !== CloudType.kubernetes && {
@@ -118,8 +139,28 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const {
     watch,
     trigger,
+    setValue,
+    getValues,
     formState: { errors, isSubmitted }
   } = methods;
+
+  // Drop access-key map entries for providers no longer selected.
+  useEffect(() => {
+    const allowed = new Set(sshProviders.map((p) => p.uuid));
+    const map = getValues(ACCESS_KEY_CODE_BY_PROVIDER) ?? {};
+    const next: Record<string, string> = {};
+    let changed = false;
+    for (const [uuid, code] of Object.entries(map)) {
+      if (allowed.has(uuid)) {
+        next[uuid] = code;
+      } else {
+        changed = true;
+      }
+    }
+    if (changed) {
+      setValue(ACCESS_KEY_CODE_BY_PROVIDER, next, { shouldValidate: true });
+    }
+  }, [sshProviders, getValues, setValue]);
 
   const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
   const [portsAccordionExpanded, setPortsAccordionExpanded] = useState(false);
@@ -129,7 +170,8 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   );
 
   const userTagsValue = watch(USER_TAGS_FIELD);
-  const hasNamedUserTag = !!userTagsValue?.some((tag) => tag.name);
+  // Any row (even an invalid one kept via Back) must show, or its inline errors would be hidden.
+  const hasUserTagRow = !!userTagsValue?.length;
   const watched = watch();
 
   const { runtimeConfigs, devUserTags } = useRuntimeConfigValues();
@@ -189,13 +231,33 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <StyledInputWrapper>
                 <Typography variant="body1">{t('accessHeader')}</Typography>
-                <AccessKeyField
-                  disabled={false}
-                  provider={generalSettings?.providerConfiguration?.uuid ?? ''}
-                />
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {sshProviders.map((sshProvider) => (
+                    <AccessKeyField
+                      key={sshProvider.uuid}
+                      disabled={false}
+                      provider={sshProvider.uuid}
+                      providerCode={sshProvider.code}
+                      showProviderLogo={isMultiSsh}
+                      showHelperText={!isMultiSsh}
+                    />
+                  ))}
+                  {isMultiSsh && (
+                    <Typography
+                      sx={{
+                        fontSize: '12px',
+                        lineHeight: '16px',
+                        color: '#6D7C88',
+                        maxWidth: '560px'
+                      }}
+                    >
+                      {t('accessKeyHelper')}
+                    </Typography>
+                  )}
+                </Box>
               </StyledInputWrapper>
 
-              {provider?.code === CloudType.aws && (
+              {showAwsArn && (
                 <StyledInputWrapper>
                   <Typography variant="body1">{t('permissions')}</Typography>
                   <InstanceARNField disabled={false} />
@@ -210,7 +272,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
             key={devTagsApplied ? 'user-tags-seeded' : 'user-tags'}
             titleContent={t('userTagsHeader')}
             sx={{ width: '100%' }}
-            defaultExpanded={hasNamedUserTag}
+            defaultExpanded={hasUserTagRow}
           >
             <UserTagsField disabled={false} />
           </YBAccordion>
@@ -226,7 +288,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
               onChange={(_, expanded) => setPortsAccordionExpanded(expanded)}
             >
               <DeploymentPortsField
-                providerCode={generalSettings?.providerConfiguration?.code as string}
+                providerCode={getPrimaryProvider(generalSettings)?.code as string}
                 ysql={!!databaseSettings?.ysql?.enable}
                 ycql={!!databaseSettings?.ycql?.enable}
                 enableConnectionPooling={databaseSettings?.enableConnectionPooling}

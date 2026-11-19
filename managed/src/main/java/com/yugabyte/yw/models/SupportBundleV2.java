@@ -135,7 +135,7 @@ public class SupportBundleV2 extends Model {
     supportBundle.bundleDetails = buildBundleDetails(bundleData, confGetter);
   }
 
-  private static BundleDetails buildBundleDetails(
+  public static BundleDetails buildBundleDetails(
       SupportBundleFormDataV2 bundleData, RuntimeConfGetter confGetter) {
     BundleDetails bundleDetails =
         new BundleDetails(

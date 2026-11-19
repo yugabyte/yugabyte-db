@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -57,9 +58,11 @@ import com.yugabyte.yw.models.helpers.telemetry.OTLPConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.models.helpers.telemetry.S3Config;
 import com.yugabyte.yw.models.helpers.telemetry.SplunkConfig;
+import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -658,6 +661,13 @@ public class OtelCollectorConfigGenerator {
         .collect(Collectors.toList());
   }
 
+  // Scrape targets served by a job other than the yugabyte job.
+  private static final Set<ScrapeConfigTargetType> NON_YUGABYTE_SCRAPE_TARGETS =
+      EnumSet.of(
+          ScrapeConfigTargetType.NODE_EXPORT,
+          ScrapeConfigTargetType.NODE_AGENT_EXPORT,
+          ScrapeConfigTargetType.OTEL_EXPORT);
+
   private void addMetricsExporterPipelines(
       OtelCollectorConfigFormat collectorConfigFormat,
       NodeTaskParams nodeParams,
@@ -874,6 +884,8 @@ public class OtelCollectorConfigGenerator {
     private String region;
     private String zone;
     private UniverseDefinitionTaskParams.ClusterType clusterType;
+    // False when the helm release runs no master pods (read replica, or an AZ with no masters).
+    private boolean hasMasters;
   }
 
   /**
@@ -898,6 +910,23 @@ public class OtelCollectorConfigGenerator {
       TelemetryConfig telemetryConfig,
       K8sPodPlacement podPlacement,
       String logLinePrefix) {
+    return getOtelColConfigK8s(
+        provider,
+        universe,
+        telemetryConfig,
+        podPlacement,
+        logLinePrefix,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent);
+  }
+
+  /** Same as above, with API flags from {@code apiIntent}, the target intent of a helm upgrade. */
+  public K8sOtelConfig getOtelColConfigK8s(
+      Provider provider,
+      Universe universe,
+      TelemetryConfig telemetryConfig,
+      K8sPodPlacement podPlacement,
+      String logLinePrefix,
+      UniverseDefinitionTaskParams.UserIntent apiIntent) {
     AuditLogConfig auditLogConfig =
         telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
     QueryLogConfig queryLogConfig =
@@ -1096,6 +1125,7 @@ public class OtelCollectorConfigGenerator {
           universe,
           metricsExportConfig,
           podPlacement,
+          apiIntent,
           secretEnv,
           secretEnvProviderUuids);
     }
@@ -1270,9 +1300,19 @@ public class OtelCollectorConfigGenerator {
       Universe universe,
       MetricsExportConfig metricsExportConfig,
       K8sPodPlacement podPlacement,
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
       List<Object> secretEnv,
       Set<UUID> secretEnvProviderUuids) {
-    Set<ScrapeConfigTargetType> scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+    Set<ScrapeConfigTargetType> scrapeTargets =
+        getYugabyteScrapeTargetsForK8s(
+            apiIntent,
+            podPlacement == null || podPlacement.isHasMasters(),
+            metricsExportConfig.getScrapeConfigTargets());
+    // A receiver needs at least one job, and K8s builds only the yugabyte and otel jobs.
+    if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(scrapeTargets)
+        && !scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
+      scrapeTargets = metricsExportConfig.getScrapeConfigTargets();
+    }
 
     // Shared prometheus receiver scraping pod-local endpoints.
     OtelCollectorConfigFormat.PrometheusReceiver receiver =
@@ -2044,8 +2084,14 @@ public class OtelCollectorConfigGenerator {
     List<OtelCollectorConfigFormat.ScrapeConfig> scrapeConfigs = new ArrayList<>();
 
     // Add yugabyte scrape config. Includes master, tserver, ysql, cql exports.
+    Set<ScrapeConfigTargetType> requestedTargets = metricsExportConfig.getScrapeConfigTargets();
     Set<ScrapeConfigTargetType> yugabyteTargets =
-        getYugabyteScrapeTargetsForNode(nodeDetails, metricsExportConfig.getScrapeConfigTargets());
+        getYugabyteScrapeTargetsForNode(nodeDetails, requestedTargets);
+    // A receiver needs at least one job, so fall back to the unfiltered targets.
+    if (!OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)
+        && Collections.disjoint(requestedTargets, NON_YUGABYTE_SCRAPE_TARGETS)) {
+      yugabyteTargets = requestedTargets;
+    }
     if (OtelCollectorUtil.yugabyteJobScrapeConfigEnabled(yugabyteTargets)) {
       scrapeConfigs.add(
           createYugabyteScrapeConfig(
@@ -2243,17 +2289,36 @@ public class OtelCollectorConfigGenerator {
         nodeDetails.yqlServerHttpPort);
   }
 
+  /** Drops YSQL/CQL targets for APIs that are off, and the master target without master pods. */
+  static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForK8s(
+      UniverseDefinitionTaskParams.UserIntent apiIntent,
+      boolean releaseHasMasters,
+      Set<ScrapeConfigTargetType> requestedTargets) {
+    Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
+    targets.addAll(requestedTargets);
+    if (!releaseHasMasters) {
+      targets.remove(ScrapeConfigTargetType.MASTER_EXPORT);
+    }
+    if (!apiIntent.enableYSQL) {
+      targets.remove(ScrapeConfigTargetType.YSQL_EXPORT);
+    }
+    if (!apiIntent.enableYCQL) {
+      targets.remove(ScrapeConfigTargetType.CQL_EXPORT);
+    }
+    return targets;
+  }
+
   /**
-   * Drops the requested targets that have no server on this node, so the collector does not scrape
-   * a closed port every interval (PLAT-21847). The collector config is written during configure,
-   * before add/start node and master moves store isTserver/isMaster, so gate only on fields those
-   * flows do not change: dedicatedTo, and the API flags (ConfigureDBApis regenerates the config
-   * when it changes them). This is why MASTER_EXPORT is not gated.
+   * Drops requested targets with no server on this node. Tserver targets use dedicatedTo, since
+   * isTserver is not set yet at configure.
    */
   static Set<ScrapeConfigTargetType> getYugabyteScrapeTargetsForNode(
       NodeDetails nodeDetails, Set<ScrapeConfigTargetType> requestedTargets) {
     Set<ScrapeConfigTargetType> targets = EnumSet.noneOf(ScrapeConfigTargetType.class);
     targets.addAll(requestedTargets);
+    if (!nodeDetails.isMaster) {
+      targets.remove(ScrapeConfigTargetType.MASTER_EXPORT);
+    }
     boolean dedicatedMaster = nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER;
     if (dedicatedMaster) {
       targets.remove(ScrapeConfigTargetType.TSERVER_EXPORT);
@@ -2930,6 +2995,8 @@ public class OtelCollectorConfigGenerator {
     Map<String, OtelCollectorConfigFormat.Exporter> exporters = collectorConfig.getExporters();
     Map<String, OtelCollectorConfigFormat.Extension> extensions = collectorConfig.getExtensions();
     boolean setExtension = false;
+    UUID providerUuid = telemetryProvider.getUuid();
+    Map<String, String> credentials = cleanCredentialFields(telemetryProvider);
     switch (telemetryProvider.getConfig().getType()) {
       case DATA_DOG:
         DataDogConfig dataDogConfig = (DataDogConfig) telemetryProvider.getConfig();
@@ -2937,7 +3004,8 @@ public class OtelCollectorConfigGenerator {
             new OtelCollectorConfigFormat.DataDogExporter();
         OtelCollectorConfigFormat.DataDogApiConfig apiConfig =
             new OtelCollectorConfigFormat.DataDogApiConfig();
-        apiConfig.setKey(dataDogConfig.getApiKey());
+        apiConfig.setKey(
+            credentialRef(providerUuid, CRED_DD_API_KEY, credentials.get(CRED_DD_API_KEY)));
         apiConfig.setSite(dataDogConfig.getSite());
         dataDogExporter.setApi(apiConfig);
         exporterName = EXPORTER_PREFIX_DATADOG + exportTypeAndUUIDString;
@@ -2961,7 +3029,11 @@ public class OtelCollectorConfigGenerator {
 
         // Set the Authorization header with the API token
         Map<String, String> dynatraceHeaders = new HashMap<>();
-        dynatraceHeaders.put("Authorization", "Api-Token " + dynatraceConfig.getApiToken());
+        dynatraceHeaders.put(
+            "Authorization",
+            "Api-Token "
+                + credentialRef(
+                    providerUuid, CRED_DT_API_TOKEN, credentials.get(CRED_DT_API_TOKEN)));
         dynatraceExporter.setHeaders(dynatraceHeaders);
 
         exporterName = EXPORTER_PREFIX_DYNATRACE + exportTypeAndUUIDString;
@@ -2972,7 +3044,8 @@ public class OtelCollectorConfigGenerator {
         SplunkConfig splunkConfig = (SplunkConfig) telemetryProvider.getConfig();
         OtelCollectorConfigFormat.SplunkExporter splunkExporter =
             new OtelCollectorConfigFormat.SplunkExporter();
-        splunkExporter.setToken(splunkConfig.getToken());
+        splunkExporter.setToken(
+            credentialRef(providerUuid, CRED_SPLUNK_TOKEN, credentials.get(CRED_SPLUNK_TOKEN)));
         splunkExporter.setEndpoint(splunkConfig.getEndpoint());
         splunkExporter.setSource(splunkConfig.getSource());
         splunkExporter.setSourcetype(splunkConfig.getSourceType());
@@ -3081,14 +3154,11 @@ public class OtelCollectorConfigGenerator {
           setHeaders = true;
         }
         if (lokiConfig.getAuthType() == AuthType.BasicAuth) {
-          String credentials =
-              Base64.getEncoder()
-                  .encodeToString(
-                      (lokiConfig.getBasicAuth().getUsername()
-                              + ":"
-                              + lokiConfig.getBasicAuth().getPassword())
-                          .getBytes());
-          headers.put("Authorization", "Basic " + credentials);
+          headers.put(
+              "Authorization",
+              "Basic "
+                  + credentialRef(
+                      providerUuid, CRED_LOKI_BASIC_AUTH, credentials.get(CRED_LOKI_BASIC_AUTH)));
           setHeaders = true;
         }
         if (setHeaders) {
@@ -3105,7 +3175,15 @@ public class OtelCollectorConfigGenerator {
         otlpExporter.setEndpoint(otlpConfig.getEndpoint());
         otlpExporter.setTimeout(otlpConfig.getTimeoutSeconds() + "s");
         otlpExporter.setCompression(otlpConfig.getCompression().name());
-        otlpExporter.setHeaders(otlpConfig.getHeaders());
+        if (otlpConfig.getHeaders() != null) {
+          Map<String, String> otlpHeaders = new LinkedHashMap<>();
+          otlpHeaderFields(otlpConfig)
+              .forEach(
+                  (header, field) ->
+                      otlpHeaders.put(
+                          header, credentialRef(providerUuid, field, credentials.get(field))));
+          otlpExporter.setHeaders(otlpHeaders);
+        }
 
         OtelCollectorConfigFormat.TlsSettings otlpTLSSettings =
             new OtelCollectorConfigFormat.TlsSettings();
@@ -3127,8 +3205,11 @@ public class OtelCollectorConfigGenerator {
                 new OtelCollectorConfigFormat.BasicAuthExtension();
             OtelCollectorConfigFormat.ClientAuth clientAuth =
                 new OtelCollectorConfigFormat.ClientAuth();
-            clientAuth.setUsername(otlpConfig.getBasicAuth().getUsername());
-            clientAuth.setPassword(otlpConfig.getBasicAuth().getPassword());
+            clientAuth.setUsername(
+                TelemetryProviderConfig.removeLineBreaks(otlpConfig.getBasicAuth().getUsername()));
+            clientAuth.setPassword(
+                credentialRef(
+                    providerUuid, CRED_OTLP_PASSWORD, credentials.get(CRED_OTLP_PASSWORD)));
             basicAuthExt.setClient_auth(clientAuth);
 
             authExtensionName = "basicauth/" + exportTypeAndUUIDString;
@@ -3145,7 +3226,9 @@ public class OtelCollectorConfigGenerator {
           case BearerToken:
             OtelCollectorConfigFormat.BearerTokenAuthExtension bearerAuthExt =
                 new OtelCollectorConfigFormat.BearerTokenAuthExtension();
-            bearerAuthExt.setToken(otlpConfig.getBearerToken().getToken());
+            bearerAuthExt.setToken(
+                credentialRef(
+                    providerUuid, CRED_OTLP_BEARER_TOKEN, credentials.get(CRED_OTLP_BEARER_TOKEN)));
 
             authExtensionName = "bearertokenauth/" + exportTypeAndUUIDString;
             extensions.put(authExtensionName, bearerAuthExt);
@@ -3309,17 +3392,11 @@ public class OtelCollectorConfigGenerator {
     if (!appendedProviderUuids.add(telemetryProvider.getUuid())) {
       return;
     }
+    Pair<String, String> awsKeys = getAwsKeys(telemetryProvider);
+    if (awsKeys != null) {
+      addAwsCredentialsToSecretEnv(awsKeys.getFirst(), awsKeys.getSecond(), secretEnv);
+    }
     switch (telemetryProvider.getConfig().getType()) {
-      case AWS_CLOUDWATCH:
-        AWSCloudWatchConfig awsCloudWatchConfig =
-            (AWSCloudWatchConfig) telemetryProvider.getConfig();
-        addAwsCredentialsToSecretEnv(
-            awsCloudWatchConfig.getAccessKey(), awsCloudWatchConfig.getSecretKey(), secretEnv);
-        break;
-      case S3:
-        S3Config s3Config = (S3Config) telemetryProvider.getConfig();
-        addAwsCredentialsToSecretEnv(s3Config.getAccessKey(), s3Config.getSecretKey(), secretEnv);
-        break;
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
@@ -3337,6 +3414,120 @@ public class OtelCollectorConfigGenerator {
         }
         break;
     }
+    getCredentialEnv(telemetryProvider)
+        .forEach(
+            (name, value) ->
+                secretEnv.add(
+                    ImmutableMap.of(
+                        "envName",
+                        name,
+                        "envValue",
+                        Base64.getEncoder()
+                            .encodeToString(value.getBytes(StandardCharsets.UTF_8)))));
+  }
+
+  private static final String CRED_DD_API_KEY = "DD_API_KEY";
+  private static final String CRED_SPLUNK_TOKEN = "SPLUNK_TOKEN";
+  private static final String CRED_DT_API_TOKEN = "DT_API_TOKEN";
+  private static final String CRED_LOKI_BASIC_AUTH = "LOKI_BASIC_AUTH";
+  private static final String CRED_OTLP_PASSWORD = "OTLP_PASSWORD";
+  private static final String CRED_OTLP_BEARER_TOKEN = "OTLP_BEARER_TOKEN";
+  private static final String CRED_OTLP_HEADER_PREFIX = "OTLP_HEADER_";
+
+  /** Credentials the exporter config references, keyed by env var name. */
+  public static Map<String, String> getCredentialEnv(TelemetryProvider telemetryProvider) {
+    Map<String, String> env = new LinkedHashMap<>();
+    cleanCredentialFields(telemetryProvider)
+        .forEach(
+            (field, value) -> {
+              if (StringUtils.isNotEmpty(value)) {
+                env.put(credentialEnvName(telemetryProvider.getUuid(), field), value);
+              }
+            });
+    return env;
+  }
+
+  /** Shared by the config and the env, so they agree on which credentials are set. */
+  private static Map<String, String> cleanCredentialFields(TelemetryProvider telemetryProvider) {
+    Map<String, String> fields = new LinkedHashMap<>();
+    credentialFields(telemetryProvider.getConfig())
+        .forEach(
+            (field, value) -> fields.put(field, TelemetryProviderConfig.removeLineBreaks(value)));
+    return fields;
+  }
+
+  public static Pair<String, String> getAwsKeys(TelemetryProvider telemetryProvider) {
+    TelemetryProviderConfig config = telemetryProvider.getConfig();
+    String accessKey;
+    String secretKey;
+    switch (config.getType()) {
+      case AWS_CLOUDWATCH -> {
+        accessKey = ((AWSCloudWatchConfig) config).getAccessKey();
+        secretKey = ((AWSCloudWatchConfig) config).getSecretKey();
+      }
+      case S3 -> {
+        accessKey = ((S3Config) config).getAccessKey();
+        secretKey = ((S3Config) config).getSecretKey();
+      }
+      default -> {
+        return null;
+      }
+    }
+    return new Pair<>(
+        TelemetryProviderConfig.removeLineBreaks(accessKey),
+        TelemetryProviderConfig.removeLineBreaks(secretKey));
+  }
+
+  /** Each value must be in secretValues(), so its K8s Secret copy is redacted too. */
+  private static Map<String, String> credentialFields(TelemetryProviderConfig config) {
+    Map<String, String> fields = new LinkedHashMap<>();
+    switch (config.getType()) {
+      case DATA_DOG -> fields.put(CRED_DD_API_KEY, ((DataDogConfig) config).getApiKey());
+      case SPLUNK -> fields.put(CRED_SPLUNK_TOKEN, ((SplunkConfig) config).getToken());
+      case DYNATRACE -> fields.put(CRED_DT_API_TOKEN, ((DynatraceConfig) config).getApiToken());
+      case LOKI -> {
+        LokiConfig lokiConfig = (LokiConfig) config;
+        if (lokiConfig.getAuthType() == AuthType.BasicAuth) {
+          fields.put(CRED_LOKI_BASIC_AUTH, lokiConfig.basicAuthCredential());
+        }
+      }
+      case OTLP -> {
+        OTLPConfig otlpConfig = (OTLPConfig) config;
+        if (otlpConfig.getAuthType() == AuthType.BasicAuth) {
+          fields.put(CRED_OTLP_PASSWORD, otlpConfig.getBasicAuth().getPassword());
+        } else if (otlpConfig.getAuthType() == AuthType.BearerToken) {
+          fields.put(CRED_OTLP_BEARER_TOKEN, otlpConfig.getBearerToken().getToken());
+        }
+        // Header names are user-chosen, so every value is treated as a credential.
+        otlpHeaderFields(otlpConfig)
+            .forEach((header, field) -> fields.put(field, otlpConfig.getHeaders().get(header)));
+      }
+      default -> {}
+    }
+    return fields;
+  }
+
+  /** Indexed, as a header name need not be a valid env var name. */
+  private static Map<String, String> otlpHeaderFields(OTLPConfig otlpConfig) {
+    Map<String, String> fields = new LinkedHashMap<>();
+    if (otlpConfig.getHeaders() != null) {
+      List<String> names = new ArrayList<>(otlpConfig.getHeaders().keySet());
+      Collections.sort(names);
+      for (int i = 0; i < names.size(); i++) {
+        fields.put(names.get(i), CRED_OTLP_HEADER_PREFIX + i);
+      }
+    }
+    return fields;
+  }
+
+  private static String credentialEnvName(UUID providerUuid, String field) {
+    return "YB_OTEL_" + providerUuid.toString().replace('-', '_').toUpperCase() + "_" + field;
+  }
+
+  private static String credentialRef(UUID providerUuid, String field, String value) {
+    return StringUtils.isEmpty(value)
+        ? value
+        : "${env:" + credentialEnvName(providerUuid, field) + "}";
   }
 
   private void addCommonTransformProcessor(OtelCollectorConfigFormat collectorConfig) {

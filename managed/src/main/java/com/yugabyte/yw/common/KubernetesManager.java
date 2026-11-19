@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -55,10 +56,10 @@ import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.ToString;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
 
 public abstract class KubernetesManager {
@@ -1078,8 +1079,12 @@ public abstract class KubernetesManager {
   public abstract void PauseAllPodsInRelease(
       Map<String, String> config, String universePrefix, String namespace, boolean newNamingStyle);
 
+  // Deletes the StatefulSets, then the PVCs, labelled with any of the given helm release names.
   public abstract void deleteStorage(
-      Map<String, String> config, String universePrefix, String namespace);
+      UUID universeUUID,
+      Map<String, String> config,
+      Collection<String> helmReleaseNames,
+      String namespace);
 
   public abstract void deleteNamespace(Map<String, String> config, String namespace);
 

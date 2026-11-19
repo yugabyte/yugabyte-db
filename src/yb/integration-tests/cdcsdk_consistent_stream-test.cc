@@ -14,7 +14,13 @@
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
 
+#include "yb/common/transaction.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log_cache.h"
+#include "yb/tablet/operations/update_txn_operation.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/sync_point.h"
 
 namespace yb {
 namespace cdc {
@@ -962,6 +968,7 @@ TEST_F(CDCSDKConsistentStreamTest,
 
 TEST_F(CDCSDKConsistentStreamTest,
        YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMakesProgressWithLongRunningTxn)) {
+  ASSERT_EQ(FLAGS_cdc_resolve_intent_lag_threshold_ms, 500);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 10 * 1000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, kTableName));
@@ -1083,7 +1090,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
   // that order.
   const int expected_count[] = {
-      FLAGS_ysql_enable_packed_row ? 1 : 0,
+      0,
       2 * num_batches * inserts_per_batch,
       0,
       0,
@@ -1105,7 +1112,7 @@ TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
   for (int i = 0; i < 8; i++) {
     ASSERT_EQ(expected_count[i], count[i]);
   }
-  ASSERT_EQ(FLAGS_ysql_enable_packed_row ? 2021 : 2020, get_changes_resp.records.size());
+  ASSERT_EQ(2020, get_changes_resp.records.size());
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALSegmentBySegment) {
@@ -1139,6 +1146,7 @@ TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALSegmentBySegment) {
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestReadingOfWALWithUncommittedTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 5 * 60 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 10_KB;
 
@@ -1229,6 +1237,7 @@ TEST_F(CDCSDKConsistentStreamTest, TestConsumptionContinuationAfterSegmentGC) {
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 5 * 60 * 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_load_txn_for_cdc) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
 
@@ -1275,6 +1284,63 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
   // transactions.
   get_change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablet));
   ASSERT_EQ(get_change_resp.cdc_sdk_proto_records_size(), 12);
+}
+
+TEST_F(CDCSDKConsistentStreamTest, TestPartialTxnResumeWithOutOfOrderApply) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 10;
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto tablet_peer = ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets[0].tablet_id()));
+  auto* participant = ASSERT_RESULT(tablet_peer->shared_tablet())->transaction_participant();
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table SELECT i, i FROM generate_series(1, 15) i"));
+  const auto txn1_id = ASSERT_RESULT(TransactionIdFromString(
+      ASSERT_RESULT(conn.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"))));
+
+  CountDownLatch txn1_apply_held(1), release_txn1_apply(1);
+  std::atomic<bool> force_have_more_messages{false};
+  SyncPointScope sync_point;
+  auto release_on_exit = ScopeExit([&] { release_txn1_apply.CountDown(); });
+  sync_point->SetCallBack("TransactionParticipant::HandleApplying", [&](void* arg) {
+    auto* operation = static_cast<tablet::UpdateTxnOperation*>(arg);
+    if (operation->request()->transaction_id() == txn1_id.AsSlice()) {
+      txn1_apply_held.CountDown();
+      release_txn1_apply.WaitFor(MonoDelta::FromSeconds(60));
+    }
+  });
+  sync_point->SetCallBack("GetConsistentWALRecords::AfterReadOps", [&](void* arg) {
+    auto* read_ops = static_cast<consensus::ReadOpsResult*>(arg);
+    if (!read_ops->messages.empty() && force_have_more_messages.exchange(false)) {
+      read_ops->have_more_messages = consensus::HaveMoreMessages::kTrue;
+    }
+  });
+  sync_point->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_TRUE(txn1_apply_held.WaitFor(MonoDelta::FromSeconds(30)));
+  ASSERT_OK(WriteRowsHelper(101, 104, &test_cluster_, true));
+  ASSERT_OK(WaitFor(
+      [&] { return participant->GetNumRunningTransactions() == 1; }, MonoDelta::FromSeconds(30),
+      "Wait for txn 2 to apply"));
+  release_txn1_apply.CountDown();
+  ASSERT_OK(WaitFor(
+      [&] { return participant->GetNumRunningTransactions() == 0; }, MonoDelta::FromSeconds(30),
+      "Wait for txn 1 to apply"));
+
+  auto resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_NE(resp.cdc_sdk_checkpoint().write_id(), 0);
+  force_have_more_messages = true;
+
+  auto rest = GetAllPendingChangesFromCdc(
+      stream_id, tablets, &resp.cdc_sdk_checkpoint(), 0, resp.safe_hybrid_time(),
+      resp.wal_segment_index(), /* expected_records_count = */ 1);
+  ASSERT_FALSE(force_have_more_messages);
+  for (const auto& record : resp.cdc_sdk_proto_records()) {
+    UpdateRecordCount(record, rest.record_count);
+  }
+  ASSERT_EQ(rest.record_count[1], 18);
 }
 
 }  // namespace cdc

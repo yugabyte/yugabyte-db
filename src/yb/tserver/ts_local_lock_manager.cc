@@ -326,7 +326,12 @@ class TSLocalLockManager::Impl {
             ReleaseObjectLocksForLostMessages, std::reference_wrapper<client::YBClient>(client),
             lock_manager_weak, release_req, std::placeholders::_1),
         ToSteady(*apply_after_ht));
-    CleanupMaxDeadlineForTxn(txn_id, subtxn_id);
+    // A release naming specific objects leaves the subtxn's other locks held. Keep the subtxn's
+    // deadlines so that the later release of those locks schedules its own lost-message retry.
+    // Each named release in the subtxn hence schedules a retry at the same deadline.
+    if (release_req->object_locks().empty()) {
+      CleanupMaxDeadlineForTxn(txn_id, subtxn_id);
+    }
   }
 
   Status CheckRequestForDeadline(const tserver::AcquireObjectLockRequestPB& req) {
@@ -917,6 +922,11 @@ std::unordered_map<docdb::ObjectLockPrefix, docdb::LockState>
 
 TabletId TSLocalLockManager::TEST_GetStatusTabletForTxn(TransactionId txn) const {
   return impl_->TEST_GetStatusTabletForTxn(txn);
+}
+
+std::optional<CoarseTimePoint> TSLocalLockManager::TEST_MaxDeadlineForTxn(
+    const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id) {
+  return impl_->MaxDeadlineForTxn(txn_id, subtxn_id);
 }
 
 void TSLocalLockManager::TrackDeadlineForGlobalAcquire(

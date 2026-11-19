@@ -444,6 +444,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Disable Slow queries command logging in the Yugabyte Anywhere Logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> paActiveTableMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.active_table_metrics.enabled",
+          ScopeType.UNIVERSE,
+          "Perf Advisor Collector active table metrics",
+          "Have Perf Advisor Collector push the universe's most active and largest tables to its"
+              + " TServers, so Prometheus scrapes that opt into filtering keep table-level metrics"
+              + " only for those tables",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> perfAdvisorEnabled =
       new ConfKeyInfo<>(
           "yb.perf_advisor.enabled",
@@ -623,7 +633,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Skip TLS Cert Validation",
           "Used to skip certificates validation for the configure phase."
-              + "Possible values - ALL, HOSTNAME, NONE",
+              + "Possible values - ALL, HOSTNAME, REQUIRE_SAN, NONE",
           ConfDataType.SkipCertValdationEnum,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> deleteOrphanSnapshotOnStartup =
@@ -647,9 +657,9 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.node_exporter.tls.enabled",
           ScopeType.UNIVERSE,
           "Enable TLS on Node Exporter",
-          "Serve node_exporter over HTTPS on universes with node-to-node encryption once every"
-              + " node runs the user-level node_exporter unit. Read whenever YBA decides the"
-              + " exporter's scheme for the universe.",
+          "Serve node_exporter over HTTPS on universes with node-to-node encryption: on VMs once"
+              + " every node runs the user-level node_exporter unit, on Kubernetes through the"
+              + " node_exporter sidecar.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Long> helmTimeoutSecs =

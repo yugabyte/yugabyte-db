@@ -804,6 +804,43 @@ TEST_F(SysCatalogTest, TestTableIdsHasAtLeastOneTable) {
   }, 10s * kTimeMultiplier, "Wait for table_ids field to be updated in memory and on disk."));
 }
 
+// If the sys catalog tablet's table_ids lists a table twice, the master should load and drop the
+// repeated id in memory and on disk. See github issue 34672.
+TEST_F(SysCatalogTest, RepeatedTableIdInSysCatalogTablet) {
+  auto tablet = ASSERT_RESULT(master_->catalog_manager()->GetTabletInfo(kSysCatalogTabletId));
+  std::vector<TableId> expected_table_ids;
+  {
+    auto l = tablet->LockForWrite();
+    auto& pb = l.mutable_data()->pb;
+    ASSERT_GT(pb.table_ids_size(), 0);
+    expected_table_ids.assign(pb.table_ids().begin(), pb.table_ids().end());
+    auto repeated_table_id = pb.table_ids(0);
+    pb.add_table_ids(repeated_table_id);
+    // The lock is released without committing, so only the sys catalog has the repeated id.
+    ASSERT_OK(sys_catalog_->Upsert(
+        master_->catalog_manager_impl()->GetLeaderEpochInternal(), tablet));
+  }
+
+  ASSERT_OK(RestartMaster());
+  ASSERT_OK(master_->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    TestTabletLoader loader;
+    RETURN_NOT_OK(sys_catalog_->Visit(&loader));
+    auto in_mem_tablet =
+        VERIFY_RESULT(master_->catalog_manager()->GetTabletInfo(kSysCatalogTabletId));
+    auto in_mem_lock = in_mem_tablet->LockForRead();
+    auto persisted_it = loader.tablets.find(kSysCatalogTabletId);
+    SCHECK(persisted_it != loader.tablets.end(), NotFound, "Sys catalog tablet not persisted");
+    auto persisted_lock = persisted_it->second->LockForRead();
+    const auto& in_mem_table_ids = in_mem_lock->pb.table_ids();
+    const auto& persisted_table_ids = persisted_lock->pb.table_ids();
+    return std::vector<TableId>(in_mem_table_ids.begin(), in_mem_table_ids.end()) ==
+               expected_table_ids &&
+           std::vector<TableId>(persisted_table_ids.begin(), persisted_table_ids.end()) ==
+               expected_table_ids;
+  }, 10s * kTimeMultiplier, "Wait for the repeated table id to be dropped in memory and on disk."));
+}
+
 // Test the tasks tracker in catalog manager.
 TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   // Configure number of tasks flag and keep time flag.

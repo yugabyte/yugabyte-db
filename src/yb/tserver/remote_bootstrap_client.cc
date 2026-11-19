@@ -40,6 +40,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/retryable_requests.h"
 
@@ -319,6 +320,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
     first_wal_seqno_ = resp.first_wal_segment_seqno();
   } else {
     first_wal_seqno_ = 0;
+  }
+  if (resp.has_quiescent_marker()) {
+    quiescent_marker_ = resp.quiescent_marker();
+  } else {
+    quiescent_marker_.reset();
   }
   remote_committed_cstate_.reset(resp.release_initial_committed_cstate());
 
@@ -619,6 +625,12 @@ Status RemoteBootstrapClient::DownloadWALs() {
   // fsync() parent dir.
   RETURN_NOT_OK_PREPEND(env().SyncDir(wal_table_top_dir),
                         Format("Failed to sync WAL table directory $0", wal_table_top_dir));
+
+  // Downloaded segments may start after the marker.
+  if (quiescent_marker_) {
+    LOG_WITH_PREFIX(INFO) << "Writing quiescent marker: " << quiescent_marker_->ShortDebugString();
+    RETURN_NOT_OK(log::Log::WriteQuiescentMarkerFile(&env(), wal_dir, *quiescent_marker_));
+  }
 
   // Download the WAL segments.
   uint64_t counter = 0;

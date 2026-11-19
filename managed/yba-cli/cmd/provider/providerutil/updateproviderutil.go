@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -197,9 +198,25 @@ func BuildZoneMapFromString(
 	return zone
 }
 
-// BuildRegionMapFromString is for region flags
+// BuildRegionMapFromString is for region flags.
 func BuildRegionMapFromString(
 	regionString, operation string,
+) map[string]string {
+	return buildRegionMapFromString(regionString, operation, false)
+}
+
+// BuildRegionMapFromStringAllowingClearInstanceTemplate is BuildRegionMapFromString
+// for an edit that may clear instance-template with an empty value. Only the OCI
+// and GCP edit paths read that value; other providers must keep rejecting it.
+func BuildRegionMapFromStringAllowingClearInstanceTemplate(
+	regionString, operation string,
+) map[string]string {
+	return buildRegionMapFromString(regionString, operation, true)
+}
+
+func buildRegionMapFromString(
+	regionString, operation string,
+	allowClearInstanceTemplate bool,
 ) map[string]string {
 	region := map[string]string{}
 	for _, regionInfo := range strings.Split(regionString, util.Separator) {
@@ -245,6 +262,11 @@ func BuildRegionMapFromString(
 		case "instance-template":
 			if !util.IsEmptyString(val) {
 				region["instance-template"] = val
+			} else if allowClearInstanceTemplate && operation == "edit" {
+				// OCI and GCP edits write an empty template back as a clear.
+				// Other providers never read the key, so an empty value there
+				// must stay an error rather than a silent no-op.
+				region["instance-template"] = ""
 			} else {
 				ValueNotFoundForKeyError(key)
 			}
@@ -488,6 +510,35 @@ func BuildImageBundleRegionOverrideMapFromString(
 	return override
 }
 
+// SSHPort checks that an --ssh-port flag value is a TCP port, 1 to 65535.
+func SSHPort(port int) (int32, error) {
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid ssh-port %d; provide a port between 1 and 65535", port)
+	}
+	return int32(port), nil
+}
+
+// ImageBundleSSHPort parses ssh-port. An empty value is an omitted flag and
+// defaults to 22. Any other value must be a TCP port, 1 to 65535, so a bad
+// flag is neither stored as 22 nor sent to YBA out of range.
+func ImageBundleSSHPort(bundle map[string]string) (int32, error) {
+	raw := bundle["ssh-port"]
+	if raw == "" {
+		return 22, nil
+	}
+	port, err := strconv.ParseUint(raw, 10, 16)
+	if err != nil || port == 0 {
+		id := bundle["name"]
+		if id == "" {
+			id = bundle["uuid"]
+		}
+		return 0, fmt.Errorf(
+			"invalid ssh-port %s for image bundle %s; provide a port between 1 and 65535",
+			raw, id)
+	}
+	return int32(port), nil
+}
+
 // DefaultImageBundleValues is to set default values for image bundle
 func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
 	if _, ok := imageBundle["ssh-port"]; !ok {
@@ -503,4 +554,46 @@ func DefaultImageBundleValues(imageBundle map[string]string) map[string]string {
 		imageBundle["arch"] = util.X86_64
 	}
 	return imageBundle
+}
+
+// ValidateZoneRemovalLeavesActiveZone rejects a --remove-zone that deactivates
+// every zone of a region that is still part of the provider. Call it after the
+// region and zone edits are applied, so an added zone and a removed region
+// count. An omitted active flag counts as active: the server defaults a zone
+// or region to active, and a newly added zone omits the flag.
+func ValidateZoneRemovalLeavesActiveZone(
+	removeZones []string,
+	providerRegions []ybaclient.Region,
+) error {
+	regionsWithRemoval := make(map[string]bool, len(removeZones))
+	for _, zoneString := range removeZones {
+		zone := BuildZoneMapFromString(zoneString, "remove")
+		regionsWithRemoval[zone["region-name"]] = true
+	}
+	if len(regionsWithRemoval) == 0 {
+		return nil
+	}
+	for _, region := range providerRegions {
+		if !regionsWithRemoval[region.GetCode()] || !recordedActive(region.GetActiveOk()) {
+			continue
+		}
+		if !regionHasActiveZone(region) {
+			return fmt.Errorf("region %s would have no active zone; "+
+				"remove the region with --remove-region instead", region.GetCode())
+		}
+	}
+	return nil
+}
+
+func recordedActive(active *bool, ok bool) bool {
+	return !ok || *active
+}
+
+func regionHasActiveZone(region ybaclient.Region) bool {
+	for _, zone := range region.GetZones() {
+		if recordedActive(zone.GetActiveOk()) {
+			return true
+		}
+	}
+	return false
 }

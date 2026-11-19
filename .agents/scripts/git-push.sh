@@ -25,7 +25,7 @@
 #   layer above a change is rewritten whatever its review state. This script
 #   lints the whole stack and hands the push to `gh stack push`, which
 #   force-pushes each layer with a lease. Rebasing and syncing are gh-stack's
-#   job; see the gh-stack skill.
+#   job; see the stack-prs skill.
 #
 # usage: git-push [-b <base>] [-r <fork-remote>]
 #
@@ -199,7 +199,7 @@ run_lint() {
 if $is_stack_branch; then
   if ! gh stack --help >/dev/null 2>&1; then
     echo "error: stack branches are pushed with the gh-stack extension, which" >&2
-    echo "       is not installed. See the gh-stack skill." >&2
+    echo "       is not installed. See the stack-prs skill." >&2
     exit 1
   fi
   if ! stack_json=$(gh stack view --json); then
@@ -218,16 +218,29 @@ print(s["trunk"], live[-1] if live else "")' <<< "$stack_json")
     "+refs/heads/${trunk}:refs/remotes/${UPSTREAM_REMOTE}/${trunk}"
 
   # `gh stack push` sends every layer, and only the top layer's tree holds
-  # all of them, so lint there.
+  # all of them, so lint there.  Detach so this works even when another
+  # worktree has the top layer checked out, and switch back before pushing:
+  # `gh stack push` finds the stack from the current branch.
+  detached=false
   if [[ -n "$top_branch" && "$top_branch" != "$current_branch" ]]; then
-    if ! git checkout --quiet "$top_branch"; then
+    if ! git checkout --quiet --detach "$top_branch"; then
       echo "error: could not check out the top layer '${top_branch}' to lint" >&2
-      echo "       the stack. If another worktree has it, run this there." >&2
+      echo "       the stack." >&2
       exit 1
     fi
-    trap 'git checkout --quiet "$current_branch"' EXIT
+    detached=true
+    trap 'git checkout --quiet "$current_branch" ||
+            echo "warn: still on a detached HEAD; check out ${current_branch}" >&2' EXIT
   fi
   run_lint "${UPSTREAM_REMOTE}/${trunk}"
+  if $detached; then
+    trap - EXIT
+    if ! git checkout --quiet "$current_branch"; then
+      echo "error: could not switch back to '${current_branch}' after linting;" >&2
+      echo "       nothing was pushed.  Check it out, then re-run this script." >&2
+      exit 1
+    fi
+  fi
 
   echo ">>> gh stack push --remote ${UPSTREAM_REMOTE} (${GH_REPO})"
   gh stack push --remote "$UPSTREAM_REMOTE" || exit 5

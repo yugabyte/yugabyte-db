@@ -25,7 +25,7 @@ When choosing and designing the primary key of a table, it's important to get th
 
 - Data distribution.
 
-    In YugabyteDB, data is distributed based on the primary key. In [hash sharding](../../../../explore/going-beyond-sql/data-sharding#hash-sharding), the data is distributed based on the hash of the primary key. In [range sharding](../../../../explore/going-beyond-sql/data-sharding#range-sharding), it is based on the actual value of the primary key.
+    In YugabyteDB, data is distributed based on the primary key. In [hash sharding](../../../../explore/going-beyond-sql/data-sharding/#hash-sharding), the data is distributed based on the hash of the primary key. In [range sharding](../../../../explore/going-beyond-sql/data-sharding/#range-sharding), it is based on the actual value of the primary key.
 
 - Data ordering.
 

@@ -481,6 +481,36 @@ std::optional<std::pair<size_t, bool>> DocKey::TryGetEncodedSizeAndHashPresent(
   return std::make_pair(decoder.left_input().cdata() - initial_begin, hash_present);
 }
 
+Result<std::optional<size_t>> DocKey::EncodedHashGroupAndRangeComponentsSize(
+    Slice slice, size_t num_components) {
+  const auto* begin = slice.data();
+  size_t num_decoded = 0;
+  if (num_components) {
+    // Also skips the cotable or colocation id, which is not a hash group.
+    auto [hash_part_size, hash_present] = VERIFY_RESULT(
+        EncodedSizeAndHashPresent(slice, DocKeyPart::kUpToHash));
+    slice.remove_prefix(hash_part_size);
+    num_decoded = hash_present ? 1 : 0;
+  }
+  for (; num_decoded < num_components; ++num_decoded) {
+    if (slice.empty() || slice[0] == KeyEntryTypeAsChar::kGroupEnd) {
+      return std::nullopt;
+    }
+    RETURN_NOT_OK(KeyEntryValue::DecodeKey(&slice, /* out= */ nullptr));
+  }
+  return slice.data() - begin;
+}
+
+Result<size_t> DocKey::EncodedHashGroupAndRangeComponentsSizeStrict(
+    Slice slice, size_t num_components) {
+  auto result = VERIFY_RESULT(EncodedHashGroupAndRangeComponentsSize(slice, num_components));
+  SCHECK(
+      result, Corruption,
+      Format("Key $0 has fewer than $1 hash group and range components",
+             slice.ToDebugHexString(), num_components));
+  return *result;
+}
+
 Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
     Slice slice,
     AllowSpecial allow_special) {

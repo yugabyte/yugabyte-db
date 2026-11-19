@@ -58,7 +58,6 @@ export const EditNetworkPortsModal = ({ open, onClose }: EditNetworkPortsModalPr
     () =>
       OtherAdvancedValidationSchema(tSettings, {
         providerCode: providerCode as CloudType | undefined,
-        requireAccessKey: false,
         ysql: !!enableYSQL,
         ycql: !!enableYCQL,
         enableConnectionPooling: !!enableCP

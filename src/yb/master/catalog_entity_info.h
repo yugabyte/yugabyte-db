@@ -71,6 +71,7 @@ namespace yb::master {
 class RetryingRpcTask;
 
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
+YB_STRONGLY_TYPED_BOOL(SkipFreedTablets);
 
 // Per table structure for external cluster snapshot importing to this cluster.
 // Old IDs mean IDs on external/source cluster, new IDs - IDs on this cluster.
@@ -326,6 +327,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   // TODO: Make Set/Update private so users are forced to use the catalog manager wrappers which
   // update the tablet locations version.
   void SetReplicaLocations(std::shared_ptr<TabletReplicaMap> replica_locations);
+  // Removes this tablet's replicas from their tservers' replica load; later replica changes do not
+  // count. Called when the tablet is deleted or replaced.
+  void StopCountingReplicaLoad() EXCLUDES(lock_);
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptorPtr> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
@@ -426,6 +430,9 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   std::shared_ptr<TabletReplicaMap> replica_locations_ GUARDED_BY(lock_) =
       std::make_shared<TabletReplicaMap>();
 
+  // Whether replica_locations_ is counted in TSDescriptor::replica_load_.
+  bool counts_replica_load_ GUARDED_BY(lock_) = true;
+
   // Reported schema version (in-memory only).
   std::unordered_map<TableId, uint32_t> reported_schema_version_ GUARDED_BY(lock_);
 
@@ -474,7 +481,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const { return is_running() && !is_hidden(); }
+  // A HIDING table is already dropped or removed by PITR. Exposing it would let a client with a
+  // stale cache write to a colocated table whose parent tablet still accepts writes.
+  bool visible_to_client() const { return is_running() && !started_hiding(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;
@@ -836,7 +845,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   Result<TabletInfos> GetTablets(GetTabletsMode mode = GetTabletsMode::kOrderByPartitions) const;
-  Result<TabletInfos> GetTabletsIncludeInactive() const;
+  // Fails if a tablet is freed, unless `skip_freed` is set. Skipping is required for secondary
+  // tables whose tablets are owned by another table, e.g. vector indexes -- the tablets are
+  // deleted with that table and may be freed first.
+  Result<TabletInfos> GetTabletsIncludeInactive(
+      SkipFreedTablets skip_freed = SkipFreedTablets::kFalse) const;
+
   size_t TabletCount(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
   // Get info of the specified index.
@@ -1469,6 +1483,16 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const NamespaceId namespace_id() const;
 
   const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
+
+  // Whether the stream's table set is governed by the publication it is bound to.
+  bool IsCdcsdkYsqlPublicationsBoundStream() const;
+
+  // Name of the publication this stream is statically bound to. Non-empty exactly when
+  // IsCdcsdkYsqlPublicationsBoundStream() returns true.
+  const std::string GetCdcsdkYsqlBoundPublicationName() const;
+
+  // Whether a newly created table joins this publications bound stream.
+  bool CdcsdkYsqlIncludesNewTables() const;
 
   bool IsConsistentSnapshotStream() const;
 

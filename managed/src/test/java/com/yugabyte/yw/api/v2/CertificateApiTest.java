@@ -111,10 +111,8 @@ public class CertificateApiTest extends FakeDBApplication {
     UUID certUuid = UUID.fromString(cert.get("uuid").asText());
     assertEquals("n2n-root", cert.get("label").asText());
     assertEquals("SelfSigned", cert.get("cert_type").asText());
-    assertEquals(
-        caCert.getNotBefore().toInstant(), Instant.parse(cert.get("start_date").asText()));
-    assertEquals(
-        caCert.getNotAfter().toInstant(), Instant.parse(cert.get("expiry_date").asText()));
+    assertEquals(caCert.getNotBefore().toInstant(), Instant.parse(cert.get("start_date").asText()));
+    assertEquals(caCert.getNotAfter().toInstant(), Instant.parse(cert.get("expiry_date").asText()));
     assertFalse("the key isn't returned", cert.has("key_content"));
 
     CertificateInfo info = CertificateInfo.get(certUuid);
@@ -157,8 +155,7 @@ public class CertificateApiTest extends FakeDBApplication {
   @Test
   public void losingALabelRaceLeavesNoFilesBehind() throws Exception {
     createOk(spec("n2n-root", certPem, keyPem));
-    File customerCertsDir =
-        new File(AppConfigHelper.getStoragePath() + "/certs/" + customerUuid);
+    File customerCertsDir = new File(AppConfigHelper.getStoragePath() + "/certs/" + customerUuid);
     int dirsBefore = customerCertsDir.list().length;
     int filesInDbBefore = FileData.getCount();
 

@@ -157,6 +157,8 @@ extern PGDLLIMPORT bool criticalSharedRelcachesBuilt;
 
 /* YB */
 extern List *YbRelationGetFKeyReferencedByList(Relation relation);
+extern List *YbRelationGetUnConstifiedIndexExpressions(Relation relation);
+extern Node *YbRelationGetUnConstifiedIndexPredicate(Relation relation);
 extern void YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
 											   Relation indexDesc,
 											   const int Anum_pg_index,

@@ -94,7 +94,7 @@
 #include "commands/yb_profile.h"
 #include "commands/yb_tablegroup.h"
 #include "miscadmin.h"
-#include "yb/yql/pggate/ybc_gflags.h"
+#include "pg_yb_utils.h"
 
 
 /*
@@ -1320,7 +1320,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags,
 	HeapTuple	tup;
 	ObjectAddress implicit_tablegroup;
 	bool		is_colocated_tables_with_tablespace_enabled =
-		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+		yb_enable_colocated_tables_with_tablespaces;
 
 	/* DROP hook of the objects being removed */
 	InvokeObjectDropHookArg(object->classId, object->objectId,

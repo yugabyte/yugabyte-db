@@ -2585,6 +2585,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       assertNotNull(details);
       assertTrue(details.isRollbackSafe());
       // Listing hides Rollback while the flag is off (computer.isEnabled()).
+      factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "false");
       assertFalse(commissioner.canTaskRollback(taskInfo));
       assertFalse(commissioner.canTaskRollbackDetailed(taskInfo));
       factory.globalRuntimeConf().setValue("yb.task.allow_resize_node_rollback", "true");

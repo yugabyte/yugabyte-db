@@ -20,12 +20,12 @@ import SwitchCreateUniverseSteps from './SwitchCreateUniverseSteps';
 import { getCreateUniverseSteps } from './CreateUniverseUtils';
 import {
   CreateUniverseContext,
+  CreateUniverseSteps,
   createUniverseFormMethods,
   createUniverseFormProps,
   initialCreateUniverseFormState,
   StepsRef
 } from './CreateUniverseContext';
-import { ResilienceType } from './steps/resilence-regions/dtos';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import {
   CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
@@ -41,6 +41,12 @@ import './styles/override.css';
 import YBLogo from '../../../assets/yb_logo.svg';
 import Close from '../../../assets/close rounded.svg';
 import { CircularProgress } from '@material-ui/core';
+import {
+  ENABLE_MULTI_PROVIDER_CREATE,
+  getPrimaryProvider,
+  isMultiProvider
+} from './helpers/providerConfigurations';
+import { areAllProvidersInstanceConfigured } from './helpers/instanceByProvider';
 
 const { YBButton } = yba;
 
@@ -93,14 +99,33 @@ export function CreateUniverse() {
   // Seed once from profile available at mount; never late-overwrite if settings arrive later.
   const [initialFormState] = useState(() => buildInitialFormState(userSettings));
   const restoreContextData = useMethods(createUniverseFormMethods, initialFormState);
-  const [{ activeStep, resilienceType, generalSettings }] = restoreContextData;
+  const [
+    {
+      activeStep,
+      resilienceType,
+      generalSettings,
+      instanceByProvider,
+      nodesAvailabilitySettings
+    }
+  ] = restoreContextData;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
-  const steps = useMemo(
-    () => getCreateUniverseSteps(t, resilienceType, isK8s, false),
-    [t, resilienceType, isK8s]
-  );
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
+  const multiHardwareIncomplete =
+    activeStep === CreateUniverseSteps.INSTANCE &&
+    ENABLE_MULTI_PROVIDER_CREATE &&
+    isMultiProvider(generalSettings) &&
+    !areAllProvidersInstanceConfigured(
+      generalSettings?.providerConfigurations ?? [],
+      instanceByProvider,
+      !!nodesAvailabilitySettings?.useDedicatedNodes
+    );
+  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s, false), [
+    t,
+    resilienceType,
+    isK8s
+  ]);
+  const totalSteps = steps.reduce((count, group) => count + group.subSteps.length, 0);
   const currentStepRef = useRef<StepsRef>(null);
   // Sync lock prevents double-click from advancing activeStep twice before React re-renders.
   const isNavigatingRef = useRef(false);
@@ -125,13 +150,9 @@ export function CreateUniverse() {
   const { isLoading } = useQuery(CREATE_UNIVERSE_PROVIDERS_QUERY_KEY, fetchCreateUniverseProviders);
   useQuery(CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY, fetchCreateUniverseDbVersions);
 
-  const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
-    if (resType === ResilienceType.SINGLE_NODE) {
-      if (actStep === 8) return t('create', { keyPrefix: 'common' });
-      return t(actStep === 7 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
-    }
-    if (actStep === 9) return t('create', { keyPrefix: 'common' });
-    return t(actStep === 8 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
+  const getButtonLabel = (actStep: number) => {
+    if (actStep === totalSteps) return t('create', { keyPrefix: 'common' });
+    return t(actStep === totalSteps - 1 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
   };
 
   const runStepNavigation = async (action: () => void | Promise<boolean | void>) => {
@@ -251,13 +272,13 @@ export function CreateUniverse() {
                           onClick={() => {
                             void runStepNavigation(() => currentStepRef.current?.onNext());
                           }}
-                          disabled={isNavigating}
+                          disabled={isNavigating || multiHardwareIncomplete}
                           endIcon={isNavigating ? <CircularProgress size={12} /> : undefined}
                           variant="ybaPrimary"
                           size="large"
                           dataTestId="create-universe-next-button"
                         >
-                          {getButtonLabel(resilienceType, activeStep)}
+                          {getButtonLabel(activeStep)}
                         </YBButton>
                       </Grid>
                     </Grid>

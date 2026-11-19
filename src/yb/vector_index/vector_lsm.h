@@ -17,6 +17,7 @@
 #include <functional>
 #include <future>
 #include <map>
+#include <mutex>
 #include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
@@ -104,6 +105,7 @@ struct VectorLSMOptions {
   using VectorIndexTraits = vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>;
   using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
   using FrontiersFactory   = std::function<storage::UserFrontiersPtr()>;
+  using FrontierDurabilityWaiter = std::function<void(const storage::UserFrontier&)>;
 
   std::string log_prefix;
   std::string storage_dir;
@@ -112,6 +114,10 @@ struct VectorLSMOptions {
   rpc::ThreadPool* insert_thread_pool;
   PriorityThreadPoolTokenPtr compaction_token;
   FrontiersFactory frontiers_factory;
+  // Blocks until the ops up to the frontier are durable in the WAL.
+  // A chunk is added to the manifest only after that, otherwise a power loss could drop from the
+  // WAL the ops the flushed frontier covers.
+  FrontierDurabilityWaiter wait_frontier_durable;
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
   MetricEntityPtr metric_entity;
@@ -155,6 +161,9 @@ class VectorLSM {
   // to disk yet (the mutable chunk and immutable chunks not yet in the manifest).
   storage::UserFrontierRange GetInMemoryFrontiers();
   storage::FlushAbility GetFlushAbility();
+
+  // Returns terminal failure without waiting for in-flight saves.
+  Status GetFlushStatus() const;
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 
@@ -221,6 +230,7 @@ class VectorLSM {
 
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
+  size_t TEST_PendingSaveTasks() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);
   size_t TEST_NextManifestFileNo() const EXCLUDES(mutex_);
 
@@ -272,13 +282,15 @@ class VectorLSM {
   Status RollChunk(size_t num_entries, const VectorLSMInsertContext& context) REQUIRES(mutex_);
   Status DoFlush(std::promise<Status>* promise) REQUIRES(mutex_);
   void WaitForUpdatesQueueEmpty() EXCLUDES(mutex_);
+  bool FlushesRetiredUnlocked() const REQUIRES(mutex_);
 
   // Releases a hold added by Insert, see VectorLSMInsertContext::chunk_holds.
   void ReleaseChunkHold(MutableChunk& chunk);
 
-  // Use var arg to avoid specifying arguments twice in SaveChunk and DoSaveChunk.
+  // The caller increments pending_save_tasks_ when it schedules the save; SaveChunk retires it.
   void SaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
   void CheckFailure(const Status& status) EXCLUDES(mutex_);
+  void RecordFailureUnlocked(const Status& status) REQUIRES(mutex_);
 
   // Actual implementation for SaveChunk, to have ability simply return Status in case of failure.
   Status DoSaveChunk(const ImmutableChunkPtr& chunk) EXCLUDES(mutex_);
@@ -292,7 +304,7 @@ class VectorLSM {
   Status AddChunkToManifest(WritableFile& manifest_file, ImmutableChunk& chunk);
 
   bool ManifestAcquired() EXCLUDES(mutex_);
-  void AcquireManifest() EXCLUDES(mutex_);
+  Status AcquireManifest() EXCLUDES(mutex_);
   void ReleaseManifest() EXCLUDES(mutex_);
   void ReleaseManifestUnlocked() REQUIRES(mutex_);
   Result<WritableFile*> RollManifest() REQUIRES(mutex_);
@@ -339,16 +351,18 @@ class VectorLSM {
 
   // Returns compaction scope with a continuos subset of immutable chunks picked for a compaction
   // based either on size amplification or size ratio approaches.
-  CompactionScope PickChunksForCompaction(CompactionType type) const EXCLUDES(mutex_);
+  CompactionScope PickChunksForCompaction(CompactionType type) const
+      EXCLUDES(mutex_, pick_chunks_mutex_);
 
   // Returns new chunk(s) produced by compacting input chunks; every chunk is saved to a disk.
   // The suspender (may be null) lets the long-running merge yield its priority thread pool worker
   // to higher priority tasks (e.g. flushes) instead of holding it for the whole compaction.
   Result<ImmutableChunkPtrs> DoCompactChunks(
-      const ImmutableChunkPtrs& input_chunks, PriorityThreadPoolSuspender* suspender);
+      CompactionContext& context, const ImmutableChunkPtrs& input_chunks,
+      PriorityThreadPoolSuspender* suspender);
 
   Status DoCompact(
-      const CompactionContext& context, CompactionScope&& scope,
+      CompactionContext& context, CompactionScope&& scope,
       PriorityThreadPoolSuspender* suspender) EXCLUDES(mutex_);
 
   void ScheduleBackgroundCompaction(CompactionTask* task) EXCLUDES(mutex_);
@@ -382,6 +396,10 @@ class VectorLSM {
   Env* const env_;
 
   mutable rw_spinlock mutex_;
+
+  // Serializes compaction pickers; taken before mutex_.
+  mutable std::mutex pick_chunks_mutex_;
+
   uint64_t last_serial_no_ GUARDED_BY(mutex_) = 0;
   std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
 
@@ -406,6 +424,9 @@ class VectorLSM {
   // invariant must be kept. The value of order_no is used as key in this map.
   std::map<size_t, ImmutableChunkPtr> updates_queue_ GUARDED_BY(mutex_);
   std::condition_variable_any updates_queue_empty_cv_;
+  // Includes queued saves and saves waiting for inserts. Manifest failure can leave entries in
+  // updates_queue_ permanently, so error-path retirement cannot use queue emptiness alone.
+  size_t pending_save_tasks_ GUARDED_BY(mutex_) = 0;
 
   mutable rw_spinlock compaction_tasks_mutex_;
   std::condition_variable_any compaction_tasks_cv_;
@@ -418,6 +439,8 @@ class VectorLSM {
 
   std::shared_ptr<VectorLSMFileRemover> obsolete_files_remover_;
 
+  // Set via RecordFailureUnlocked to complete synchronous waiters. Must be copied, not moved,
+  // when returned: retirement and subsequent calls rely on this error.
   Status failed_status_ GUARDED_BY(mutex_);
 
   std::unique_ptr<VectorLSMMetrics> metrics_;

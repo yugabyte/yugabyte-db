@@ -26,17 +26,39 @@ If authentication is successful, or if an administrator unlocks a locked account
 
 ## Enable login profiles
 
-### Start local clusters
+Set `--ysql_enable_profile=true` on every [YB-Master](../../../reference/configuration/yb-master/#ysql-enable-profile) and every [YB-TServer](../../../reference/configuration/yb-tserver/#ysql-enable-profile).
 
-To enable login profiles in your local YugabyteDB clusters, include the YB-TServer [--ysql_enable_profile](../../../reference/configuration/yb-tserver/#ysql-enable-profile) flag with the [yugabyted start](../../../reference/configuration/yugabyted/#start) command `--tserver_flags` flag, as follows:
+{{< warning title="YSQL major upgrade" >}}
+
+The YB-Master setting is required for a YSQL major upgrade from PostgreSQL 11 (v2024.2) to PostgreSQL 15 (v2025.1 or later). The upgrade restores roles and login profiles on the YB-Master. If the flag is not set on the YB-Masters, the upgrade fails with `PROFILE not supported yet`.
+
+{{< /warning >}}
+
+### yugabyted
+
+Pass the flag in both `--master_flags` and `--tserver_flags` when you [start the cluster](../../../reference/configuration/yugabyted/#start):
 
 ```sh
-./bin/yugabyted start --tserver_flags="ysql_enable_profile=true"
+./bin/yugabyted start \
+  --master_flags="ysql_enable_profile=true" \
+  --tserver_flags="ysql_enable_profile=true"
 ```
 
-### Start YB-TServer services
+### YugabyteDB Anywhere
 
-To enable login profiles in deployable YugabyteDB clusters, you need to start your YB-TServer services using the `--ysql_enable_profile` flag. Your command should look similar to the following:
+Set `ysql_enable_profile` to `true` for both Master and T-Server. Refer to [Edit configuration flags](../../yugabyte-platform/manage-deployments/edit-config-flags/).
+
+### Manual deployment
+
+Add `--ysql_enable_profile=true` to both `master.conf` and `tserver.conf`. You can also pass the flag when you start each process:
+
+```sh
+./bin/yb-master \
+  --master_addresses <master addresses> \
+  --fs_data_dirs <data directories> \
+  --ysql_enable_profile=true \
+  >& /home/centos/disk1/yb-master.out &
+```
 
 ```sh
 ./bin/yb-tserver \
@@ -47,9 +69,7 @@ To enable login profiles in deployable YugabyteDB clusters, you need to start yo
   >& /home/centos/disk1/yb-tserver.out &
 ```
 
-You can also enable YSQL login profiles by adding the `--ysql_enable_profile=true` to the YB-TServer configuration file (`tserver.conf`).
-
-For more information, refer to [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
+For more information, refer to [Start YB-Masters](../../../deploy/manual-deployment/start-masters/) and [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).
 
 ## Manage login profiles
 
@@ -111,15 +131,15 @@ ALTER ROLE myuser ACCOUNT LOCK;
 
 ### Recover from complete lockout
 
-If you lock out all roles including administrator roles, you must restart the cluster with the `--ysql_enable_profile` flag disabled.
+If you lock out all roles including administrator roles, restart the cluster with `--ysql_enable_profile` disabled on the YB-Masters and the YB-TServers.
 
 While disabling login profiles allows users back in, you won't be able to change any profile information, as profile commands can't be run when the profile flag is disabled.
 
 To re-enable accounts, do the following:
 
-1. Restart the cluster without profiles enabled.
+1. Restart the cluster with `--ysql_enable_profile` disabled on the YB-Masters and the YB-TServers.
 1. Create a new superuser.
-1. Restart the cluster with profiles enabled.
+1. Restart the cluster with `--ysql_enable_profile=true` on the YB-Masters and the YB-TServers.
 1. Connect as the new superuser and issue the profile commands to unlock the accounts.
 
 <!--## Timed locked behaviour

@@ -29,7 +29,8 @@ enableGitInfo = true
   [security.funcs]
     getenv = [
       'ONETRUST_API_KEY',
-      'RUDDERSTACK_API_KEY'
+      'RUDDERSTACK_API_KEY',
+      'SCARF_PIXEL_ENABLED'
     ]
 
 # Fetchable Markdown at /path/page.md. Sections publish at /path/index.md,

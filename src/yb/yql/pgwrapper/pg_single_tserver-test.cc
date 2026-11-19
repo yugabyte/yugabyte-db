@@ -57,6 +57,7 @@ DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(TEST_skip_applying_truncate);
 DECLARE_bool(TEST_store_apply_state_without_apply_op_id);
 DECLARE_bool(use_fast_backward_scan);
+DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(ysql_enable_packed_row);
@@ -64,6 +65,7 @@ DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_int32(master_max_concurrent_ysql_catalog_prefetches);
 DECLARE_int32(max_prevs_to_avoid_seek);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -2404,9 +2406,24 @@ class PgSmallRpcWorkersTest : public PgSingleTServerTest {
 
     PgSingleTServerTest::SetUp();
   }
+
+  void TestManyYsqlConnections();
 };
 
-TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
+// Reproduces the pile-up behind issue #36104: preloading gives each connection a large catalog
+// read and a prefetch limit of one serializes those reads, so the connections are released
+// together and reach the rest of startup at the same instant with few RPC workers to serve them.
+class PgThrottledCatalogPrefetchTest : public PgSmallRpcWorkersTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_max_concurrent_ysql_catalog_prefetches) = 1;
+
+    PgSmallRpcWorkersTest::SetUp();
+  }
+};
+
+void PgSmallRpcWorkersTest::TestManyYsqlConnections() {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGINT PRIMARY KEY, value BIGINT)"));
   // The version increment is used to make sure that all the new connections which will be created
@@ -2441,6 +2458,15 @@ TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
     ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN v2"));
     std::this_thread::sleep_for(1s);
   }
+}
+
+TEST_F_EX(PgSingleTServerTest, ManyYsqlConnections, PgSmallRpcWorkersTest) {
+  TestManyYsqlConnections();
+}
+
+TEST_F_EX(PgSingleTServerTest, ManyYsqlConnectionsWithThrottledCatalogPrefetch,
+          PgThrottledCatalogPrefetchTest) {
+  TestManyYsqlConnections();
 }
 
 TEST_F(PgSingleTServerTest, IterKeyInvalidationDuringBackwardScan) {

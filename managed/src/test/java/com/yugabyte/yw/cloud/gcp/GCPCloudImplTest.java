@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.api.services.compute.model.Address;
+import com.google.api.services.compute.model.AttachedDisk;
 import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
 import com.google.api.services.compute.model.ForwardingRule;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -645,6 +647,8 @@ public class GCPCloudImplTest extends FakeDBApplication {
             LB_REGION, LB_NAME, "fp-new", Map.of("owner", "dba", "universe-name", "u1"));
     verify(mockApiClient, never()).deleteRegionalAddress(any(), any());
     verify(mockApiClient, never()).createInternalAddress(any(), any(), any());
+    // YBA replaces its own rule, so a port change needs no check.
+    gcpCloudImpl.validateManagedLoadBalancerPorts(defaultProvider, LB_REGION, LB_NAME, LB_PORTS);
   }
 
   @Test
@@ -663,6 +667,84 @@ public class GCPCloudImplTest extends FakeDBApplication {
         .createInternalForwardingRule(
             LB_REGION, LB_NAME, BS_URL, ADDRESS_URL, NETWORK_URL, SUBNET_URL, LB_PORTS);
     verify(mockApiClient, never()).createInternalAddress(any(), any(), any());
+  }
+
+  // The user's rules: one may share the backend service's name. No address has that name.
+  private void givenUserRules(ForwardingRule... rules) {
+    when(mockApiClient.getRegionalBackendServiceIfExists(LB_REGION, LB_NAME))
+        .thenReturn(new BackendService().setSelfLink(BS_URL));
+    for (ForwardingRule rule : rules) {
+      when(mockApiClient.getRegionalForwardingRuleIfExists(LB_REGION, rule.getName()))
+          .thenReturn(rule);
+    }
+    when(mockApiClient.getRegionalForwardingRulesForBackend(LB_REGION, BS_URL))
+        .thenReturn(List.of(rules));
+  }
+
+  @Test
+  public void testEnsureTakenOverLbKeepsTheUsersForwardingRulesAndAddress() {
+    setupLbProvider();
+    givenUserRules(
+        new ForwardingRule()
+            .setName(LB_NAME)
+            .setIPAddress("10.150.0.9")
+            .setPorts(List.of("5433"))
+            .setLabelFingerprint("fp-u"),
+        new ForwardingRule()
+            .setName("user-rule-ycql")
+            .setIPAddress("10.150.0.9")
+            .setPorts(List.of("9042"))
+            .setLabelFingerprint("fp-y"));
+
+    String address = ensureLb(lbZones, Map.of("universe-name", "u1"));
+
+    assertEquals("10.150.0.9", address);
+    verifyNoLbResourceCreated();
+    verify(mockApiClient, never()).deleteRegionalForwardingRule(any(), any());
+    verify(mockApiClient)
+        .setForwardingRuleLabels(LB_REGION, LB_NAME, "fp-u", Map.of("universe-name", "u1"));
+    verify(mockApiClient)
+        .setForwardingRuleLabels(
+            LB_REGION, "user-rule-ycql", "fp-y", Map.of("universe-name", "u1"));
+    gcpCloudImpl.validateManagedLoadBalancerPorts(defaultProvider, LB_REGION, LB_NAME, LB_PORTS);
+  }
+
+  @Test
+  public void testTakenOverLbFailsBeforeAnyChangeWhenTheUsersRulesMissAPort() {
+    setupLbProvider();
+    givenUserRules(
+        new ForwardingRule().setName(LB_NAME).setIPAddress("10.150.0.9").setPorts(List.of("5433")));
+
+    PlatformServiceException ensureError =
+        assertThrows(PlatformServiceException.class, () -> ensureLb(lbZones, Map.of()));
+    // Submit-time check of a later port change: the same refusal before the task starts.
+    PlatformServiceException checkError =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                gcpCloudImpl.validateManagedLoadBalancerPorts(
+                    defaultProvider, LB_REGION, LB_NAME, LB_PORTS));
+
+    assertEquals(BAD_REQUEST, ensureError.getHttpStatus());
+    assertEquals(ensureError.getMessage(), checkError.getMessage());
+    // A second address, or a recreated rule, would change the address that clients use.
+    verifyNoLbResourceCreated();
+    verify(mockApiClient, never()).deleteRegionalForwardingRule(any(), any());
+  }
+
+  @Test
+  public void testDeleteTakenOverLbDeletesTheUsersForwardingRuleBeforeTheBackendService() {
+    setupLbProvider();
+    when(mockApiClient.getRegionalBackendServiceIfExists(LB_REGION, LB_NAME))
+        .thenReturn(new BackendService().setSelfLink(BS_URL));
+    when(mockApiClient.getRegionalForwardingRulesForBackend(LB_REGION, BS_URL))
+        .thenReturn(List.of(new ForwardingRule().setName("user-rule")));
+
+    gcpCloudImpl.deleteManagedLoadBalancer(defaultProvider, LB_REGION, LB_NAME);
+
+    InOrder inOrder = Mockito.inOrder(mockApiClient);
+    inOrder.verify(mockApiClient).deleteRegionalForwardingRule(LB_REGION, "user-rule");
+    inOrder.verify(mockApiClient).deleteRegionalBackendService(LB_REGION, LB_NAME);
   }
 
   @Test
@@ -743,5 +825,22 @@ public class GCPCloudImplTest extends FakeDBApplication {
 
     assertEquals(
         Map.of("k" + "a".repeat(62), value63), GCPCloudImpl.toLabels(Map.of(key64, value63)));
+  }
+
+  @Test
+  public void persistentDataDisksSkipsBootDiskAndLocalSsd() {
+    // PLAT-23245: a local SSD (SCRATCH) has no disk resource to describe.
+    com.google.api.services.compute.model.Instance instance =
+        new com.google.api.services.compute.model.Instance()
+            .setDisks(
+                List.of(
+                    new AttachedDisk().setIndex(0).setType("PERSISTENT").setSource("boot"),
+                    new AttachedDisk().setIndex(1).setType("SCRATCH"),
+                    new AttachedDisk().setIndex(2).setType("PERSISTENT").setSource("data")));
+    assertEquals(
+        List.of("data"),
+        GCPProjectApiClient.persistentDataDisks(instance).stream()
+            .map(AttachedDisk::getSource)
+            .collect(Collectors.toList()));
   }
 }

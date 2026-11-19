@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -140,11 +141,14 @@ public abstract class BackupScheduleBaseKubernetes extends KubernetesUpgradeTask
     for (Cluster cluster : clusters) {
       KubernetesUpgradeCommonParams upgradeParams =
           new KubernetesUpgradeCommonParams(universe, cluster, confGetter);
+      // A read replica has its own helm releases. Treating it as the primary makes POD_INFO
+      // replace the primary's nodes and the helm upgrade resize the primary release in its zone.
+      boolean isReadOnlyCluster = cluster.clusterType == ClusterType.ASYNC;
       createSingleKubernetesExecutorTask(
           universe.getName(),
           CommandType.POD_INFO,
           cluster.getOverallPlacement(),
-          false /*isReadOnlyCluster*/);
+          isReadOnlyCluster);
       // Helm upgrade to modify gflag secret
       upgradePodsNonRestart(
           universe.getName(),
@@ -155,7 +159,7 @@ public abstract class BackupScheduleBaseKubernetes extends KubernetesUpgradeTask
           upgradeParams.getUniverseOverrides(),
           upgradeParams.getAzOverrides(),
           upgradeParams.isNewNamingStyle(),
-          false /* isReadOnlyCluster */,
+          isReadOnlyCluster,
           upgradeParams.isEnableYbc(),
           upgradeParams.getYbcSoftwareVersion());
 

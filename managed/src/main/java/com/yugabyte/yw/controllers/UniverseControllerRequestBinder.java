@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -153,20 +155,32 @@ public class UniverseControllerRequestBinder {
       Http.Request request, Class<T> paramType, Universe universe, RuntimeConfGetter confGetter) {
     T taskParams = bindFormDataToTaskParamsWithoutProviderConversion(request, paramType);
     if (!RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
-      Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      if (Util.isMulticloud(universe)) {
+        Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      }
       return taskParams;
     }
     T merged = mergeBoundTaskParamsWithUniverse(taskParams, universe, paramType);
     // Convert after merge so request flat-field updates win and Spec arrays are not replaced
     // with a partial Spec built from the request alone.
-    Util.convertOldSchemaToProviderSpecifications(confGetter, merged);
+    if (Util.isMulticloud(universe)) {
+      Util.convertOldSchemaToProviderSpecifications(confGetter, merged);
+    }
     return merged;
   }
 
-  /** Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. */
+  /**
+   * Merges bound params into universe details then runs copyGFlagsFromUniverseDetails. The merge
+   * sets the universe's current version, so the request's expectedUniverseVersion is put back:
+   * otherwise a request built from a stale copy of the universe would pass the task's version check
+   * and overwrite the changes made since.
+   */
   public static <T extends UniverseDefinitionTaskParams> T mergeBoundTaskParamsWithUniverse(
       T taskParams, Universe universe, Class<T> paramType) {
     T merged = mergeWithUniverse(taskParams, universe, paramType);
+    if (taskParams.expectedUniverseVersion != null) {
+      merged.expectedUniverseVersion = taskParams.expectedUniverseVersion;
+    }
     copyGFlagsFromUniverseDetails(merged, universe);
     return merged;
   }
@@ -201,21 +215,11 @@ public class UniverseControllerRequestBinder {
       UniverseDefinitionTaskParams.Cluster universeCluster =
           universeClustersByUuid.get(paramCluster.uuid);
       if (universeCluster == null || universeCluster.userIntent == null) {
-        // New cluster - no stored counterpart to merge from. Reject any REDACTED gflags so the
-        // sentinel is never written into universe metadata (the real value is unrecoverable).
-        UserIntent newIntent = paramCluster.userIntent;
-        if (mapContainsRedactedPlaceholder(newIntent.masterGFlags)
-            || mapContainsRedactedPlaceholder(newIntent.tserverGFlags)
-            || specificGFlagsContainsRedactedPlaceholder(newIntent.specificGFlags)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              "New cluster (type="
-                  + paramCluster.clusterType
-                  + ") cannot be created with "
-                  + RedactingService.SECRET_REPLACEMENT
-                  + " in gflags: there is no prior universe value to restore the real password"
-                  + " from. Submit the full gflags with the actual values.");
-        }
+        // A new cluster has nothing stored to restore REDACTED from, as on universe create.
+        GFlagsUtil.checkNoRedactedGFlagsOnCreate(
+            paramCluster.userIntent,
+            universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion,
+            StaticInjectorHolder.injector().instanceOf(GFlagsValidation.class));
         continue;
       }
       UserIntent src = universeCluster.userIntent;
@@ -277,6 +281,8 @@ public class UniverseControllerRequestBinder {
       Http.Request request, Class<T> paramType, UUID universeUUID, RuntimeConfGetter confGetter) {
     try {
       Universe universe = Universe.getOrBadRequest(universeUUID);
+      boolean multicloud = Util.isMulticloud(universe);
+
       ObjectNode formData = (ObjectNode) request.body().asJson();
       ArrayNode clustersJson = (ArrayNode) formData.get("clusters");
       List<UniverseDefinitionTaskParams.Cluster> clusters = new ArrayList<>();
@@ -328,7 +334,9 @@ public class UniverseControllerRequestBinder {
               currentCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
             }
           }
-          Util.convertSingleProviderSpecToOldSchema(confGetter, currentCluster.userIntent);
+          if (multicloud) {
+            Util.convertSingleProviderSpecToOldSchema(confGetter, currentCluster.userIntent);
+          }
           JsonNode currentClusterJson = Json.mapper().valueToTree(currentCluster);
           CommonUtils.deepMerge(currentClusterJson, clusterJson);
           UniverseDefinitionTaskParams.Cluster cluster =
@@ -372,7 +380,9 @@ public class UniverseControllerRequestBinder {
       }
 
       // V1 clients send the legacy flat schema; persist/operate on ProviderSpecification.
-      Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      if (multicloud) {
+        Util.convertOldSchemaToProviderSpecifications(confGetter, taskParams);
+      }
 
       return taskParams;
     } catch (JsonProcessingException exception) {

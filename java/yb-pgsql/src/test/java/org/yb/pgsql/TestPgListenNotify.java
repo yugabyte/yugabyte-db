@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -24,10 +25,12 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
@@ -50,6 +53,7 @@ import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.util.ProcessUtil;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.Timeouts;
 import org.yb.util.YBBackupUtil;
 
@@ -74,6 +78,10 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Arrays.fill(chars, 'x');
     LARGE_PAYLOAD = new String(chars);
   }
+  // Notifies, then blocks on a row another session holds; see payloadsAfterRetriedUpdate.
+  private static final String RETRIED_UPDATE =
+      "UPDATE notify_kv SET v = (SELECT v + 1 FROM notify_kv WHERE k = 1) WHERE k = 1"
+      + " AND pg_notify('" + CHANNEL + "', 'attempt_' || clock_timestamp()) IS NOT NULL";
 
   @Override
   protected Map<String, String> getMasterFlags() {
@@ -423,6 +431,213 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * A postmaster restart keeps the notifications poller registered, since it restarts after a
+   * crash, but loses the shared memory that tracks it. The poller from before the restart must
+   * exit instead of running alongside the one the next LISTEN starts, where it would take that
+   * LISTEN's session down when its own replication slot is dropped.
+   *
+   * Scenario:
+   *   1. Session 1 listens, which starts the poller.
+   *   2. The poller is killed with SIGKILL, so the postmaster restarts all backends.
+   *   3. Session 2 listens on the same node, which starts a new poller.
+   *   4. Exactly one poller runs, and session 2 receives a notification and stays connected.
+   */
+  @Test
+  public void testStalePollerExitsAfterPostmasterRestart() throws Exception {
+    final String channel = "stale_poller";
+
+    try (Connection listener1 = getConnectionBuilder().withTServer(0).connect()) {
+      int pollerPid;
+      try (Statement stmt = listener1.createStatement()) {
+        stmt.execute("LISTEN " + channel);
+        pollerPid = getPollerPid(stmt);
+      }
+
+      // Unlike SIGTERM, a bg worker killed by a signal restarts all backends.
+      ProcessUtil.signalProcess(pollerPid, "KILL");
+      LOG.info("Sent SIGKILL to notifications poller (pid " + pollerPid + ")");
+      TestUtils.waitFor(() -> {
+        try (Statement stmt = listener1.createStatement()) {
+          stmt.execute("SELECT 1");
+          return false;
+        } catch (SQLException e) {
+          return true;
+        }
+      }, Timeouts.adjustTimeoutSecForBuildType(30_000));
+    }
+
+    try (Connection listener2 = connectWithRetry(0);
+         Statement stmt2 = listener2.createStatement()) {
+      // Leave time for the old poller to be relaunched.
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+      stmt2.execute("LISTEN " + channel);
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+
+      List<Row> pollers = getRowList(stmt2,
+          "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+      assertEquals("Expected exactly one notifications poller, got " + pollers,
+          1, pollers.size());
+
+      try (Connection notifier = getConnectionBuilder().connect();
+           Statement notifierStmt = notifier.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", '" + PAYLOAD + "'");
+      }
+      waitForNotification(listener2, channel, PAYLOAD);
+
+      // Also fails if session 2 was terminated in the meantime.
+      waitAndAssertNoNotifications(listener2, "No further notifications expected");
+    }
+  }
+
+  /**
+   * A first LISTEN that fails while its notifications poller initializes must not leave that
+   * poller running, and the poller must not complete the start of the next LISTEN's poller.
+   *
+   * Scenario:
+   *   1. Poller initialization is delayed on tserver 0.
+   *   2. Session 1 listens, and is cancelled while it waits for its poller to initialize.
+   *   3. Session 2 listens on the same node, which starts a new poller.
+   *   4. Exactly one poller runs, and session 2 receives a notification once.
+   */
+  @Test
+  public void testCancelledFirstListenLeavesOnePoller() throws Exception {
+    final String channel = "cancelled_listen";
+    final String listenQuery = "LISTEN " + channel;
+    final long initDelayMs = Timeouts.adjustTimeoutSecForBuildType(8000);
+
+    setPollerInitDelay(0, initDelayMs);
+    try {
+      try (Connection listener1 = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt = listener1.createStatement();
+           Connection canceller = getConnectionBuilder().withTServer(0).connect();
+           Statement cancellerStmt = canceller.createStatement()) {
+        AtomicReference<SQLException> listenError = new AtomicReference<>();
+        Thread listenThread = new Thread(() -> {
+          try {
+            stmt.execute(listenQuery);
+          } catch (SQLException e) {
+            listenError.set(e);
+          }
+        });
+        listenThread.start();
+
+        // LISTEN waits for its poller at commit, where statement_timeout no longer applies, so
+        // cancel it directly, once a poller has started after it: the handle is published then.
+        TestUtils.waitFor(() -> getSingleRow(cancellerStmt,
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity l, pg_stat_activity p"
+                + " WHERE l.query = '" + listenQuery + "' AND l.state = 'active'"
+                + " AND p.backend_type = 'notifications poller'"
+                + " AND p.backend_start > l.query_start)").getBoolean(0),
+            Timeouts.adjustTimeoutSecForBuildType(30_000));
+        cancellerStmt.execute("SELECT pg_cancel_backend(pid) FROM pg_stat_activity"
+            + " WHERE query = '" + listenQuery + "' AND state = 'active'");
+
+        listenThread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+        assertTrue("LISTEN should have been cancelled", listenError.get() != null);
+        LOG.info("Expected LISTEN failure: {}", listenError.get().getMessage());
+        assertTrue("Error should mention the cancel",
+            listenError.get().getMessage().contains("canceling statement due to user request"));
+      }
+
+      try (Connection listener2 = getConnectionBuilder().withTServer(0).connect();
+           Statement stmt2 = listener2.createStatement()) {
+        stmt2.execute("LISTEN " + channel);
+
+        List<Row> pollers = getRowList(stmt2,
+            "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+        assertEquals("Expected exactly one notifications poller, got " + pollers,
+            1, pollers.size());
+
+        try (Connection notifier = getConnectionBuilder().connect();
+             Statement notifierStmt = notifier.createStatement()) {
+          notifierStmt.execute("NOTIFY " + channel + ", '" + PAYLOAD + "'");
+        }
+        waitForNotification(listener2, channel, PAYLOAD);
+        waitAndAssertNoNotifications(listener2, "Expected the notification only once");
+      }
+    } finally {
+      setPollerInitDelay(0, 0);
+    }
+  }
+
+  /**
+   * A LISTEN that fails before it starts a notifications poller must not terminate other bg
+   * workers. The poller handle in shared memory is zeroed once a poller stops, and a zeroed handle
+   * names bg worker slot 0, which holds a static worker: the YSQL webserver.
+   *
+   * Scenario:
+   *   1. A session on tserver 0 listens and unlistens, which starts and stops a poller.
+   *   2. With the replication slot limit reached, a LISTEN on tserver 0 fails to create its slot.
+   *   3. The YSQL webserver of tserver 0 is still up.
+   */
+  @Test
+  public void testFailedListenKeepsYsqlWebserver() throws Exception {
+    final String channel = "failed_listen";
+    MiniYBDaemon ts0 = miniCluster.getTabletServers().get(getRpcHostPortForTServer(0));
+
+    // The replication slot limit and the slot below stay in place.
+    markClusterNeedsRecreation();
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+      stmt.execute("UNLISTEN " + channel);
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SELECT pg_create_logical_replication_slot('webserver_slot', 'pgoutput')");
+    }
+    setMaxReplicationSlots("1");
+
+    try (Connection conn = getConnectionBuilder().withTServer(0).connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("LISTEN " + channel);
+      fail("LISTEN should have failed due to replication slot limit");
+    } catch (SQLException e) {
+      LOG.info("Expected LISTEN failure: {}", e.getMessage());
+      assertTrue("Error should mention replication slots",
+          e.getMessage().contains("all replication slots are in use"));
+    }
+
+    // A terminated webserver exits as soon as it sees the signal.
+    Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(3000));
+    TestUtils.waitForServer(ts0.getLocalhostIP(), ts0.getPgsqlWebPort(), 5000);
+  }
+
+  /**
+   * Sets the notifications poller initialization delay on the given tserver, and waits until its
+   * postmaster has loaded it: pollers started before then would not wait.
+   */
+  private void setPollerInitDelay(int tserverIndex, long delayMs) throws Exception {
+    setServerFlag(getRpcHostPortForTServer(tserverIndex),
+        "ysql_yb_test_notifs_poller_init_delay_ms", String.valueOf(delayMs));
+    TestUtils.waitFor(() -> {
+      try (Connection conn = getConnectionBuilder().withTServer(tserverIndex).connect();
+           Statement stmt = conn.createStatement()) {
+        return getSingleRow(stmt, "SELECT setting FROM pg_settings"
+            + " WHERE name = 'yb_test_notifs_poller_init_delay_ms'")
+            .getString(0).equals(String.valueOf(delayMs));
+      }
+    }, Timeouts.adjustTimeoutSecForBuildType(30_000));
+  }
+
+  /**
+   * Connects to the given tserver, retrying while its postmaster restarts.
+   */
+  private Connection connectWithRetry(int tserverIndex) throws Exception {
+    long deadline = System.currentTimeMillis() + Timeouts.adjustTimeoutSecForBuildType(60_000);
+    while (true) {
+      try {
+        return getConnectionBuilder().withTServer(tserverIndex).connect();
+      } catch (SQLException e) {
+        if (System.currentTimeMillis() > deadline)
+          throw e;
+        Thread.sleep(500);
+      }
+    }
+  }
+
+  /**
    * Verifies that a connection receives its own notifications (self-notify).
    */
   @Test
@@ -552,6 +767,115 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
         assertTrue("Should not receive notification from rolled-back subtransaction, got: "
             + n.getParameter(), !n.getParameter().equals("subtxn_abort"));
       }
+    }
+  }
+
+  /**
+   * A NOTIFY from a statement that reads a table, outside a transaction block, succeeds and is
+   * delivered once with both query protocols.
+   */
+  @Test
+  public void testNotifyAfterTableReadDeliveredOnce() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_src (id INT PRIMARY KEY)");
+      listenerStmt.execute("INSERT INTO notify_src VALUES (1)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+
+      for (String queryMode : Arrays.asList("simple", "extended")) {
+        try (Connection notifierConn =
+                 getConnectionBuilder().withPreferQueryMode(queryMode).connect();
+             Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("SELECT pg_notify('" + CHANNEL + "', '" + queryMode + "') FROM notify_src");
+          stmt.execute("NOTIFY " + CHANNEL + ", '" + queryMode + "_sentinel'");
+        }
+        assertEquals(Arrays.asList(queryMode, queryMode + "_sentinel"),
+            payloadsOf(waitForNotification(listenerConn, CHANNEL, queryMode + "_sentinel")));
+      }
+    }
+  }
+
+  /**
+   * Runs notifier while another session holds the row RETRIED_UPDATE needs, releases it once the
+   * UPDATE is blocked so the UPDATE is retried, and returns the payloads delivered up to a sentinel
+   * sent afterwards on notifierStmt.
+   */
+  private List<String> payloadsAfterRetriedUpdate(Statement notifierStmt,
+      ThrowingRunnable notifier) throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection holderConn = getConnectionBuilder().connect();
+         Statement holderStmt = holderConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_kv (k INT PRIMARY KEY, v INT)");
+      listenerStmt.execute("INSERT INTO notify_kv VALUES (1, 0)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+      holderStmt.execute("BEGIN");
+      holderStmt.execute("UPDATE notify_kv SET v = v + 1 WHERE k = 1");
+
+      AtomicReference<Exception> error = new AtomicReference<>();
+      Thread thread = new Thread(() -> {
+        try {
+          notifier.run();
+        } catch (Exception e) {
+          error.set(e);
+        }
+      });
+      thread.start();
+      TestUtils.waitFor(() -> getSingleRow(listenerStmt,
+          "SELECT EXISTS (SELECT 1 FROM pg_locks"
+              + " WHERE NOT granted AND relation = 'notify_kv'::regclass)").getBoolean(0),
+          Timeouts.adjustTimeoutSecForBuildType(30_000));
+      holderStmt.execute("COMMIT");
+      thread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+      assertFalse("Notifier still blocked", thread.isAlive());
+      assertTrue("Notifier failed: " + error.get(), error.get() == null);
+
+      notifierStmt.execute("NOTIFY " + CHANNEL + ", 'sentinel'");
+      return payloadsOf(waitForNotification(listenerConn, CHANNEL, "sentinel"));
+    }
+  }
+
+  /**
+   * A statement retried after a conflict delivers only its last attempt's notifications and keeps
+   * the ones queued earlier in its transaction. REPEATABLE READ, because READ COMMITTED retry
+   * rolls back internal subtransaction and passes even without the fix.
+   */
+  @Test
+  public void testNotifyFromRetriedStatementDeliveredOnce() throws Exception {
+    try (Connection notifierConn =
+             getConnectionBuilder().withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      List<String> payloads = payloadsAfterRetriedUpdate(notifierStmt, () -> {
+        notifierStmt.addBatch("NOTIFY " + CHANNEL + ", 'kept'");
+        notifierStmt.addBatch(RETRIED_UPDATE);
+        notifierStmt.executeBatch();
+      });
+      assertEquals("Notifications: " + payloads, 3, payloads.size());
+      assertTrue("Notifications: " + payloads, payloads.contains("kept"));
+    }
+  }
+
+  /**
+   * In READ COMMITTED with the simple query protocol, retry automatically drops the failed
+   * attempt's notification. This checks that rollback to the mark preserves the previous
+   * statement's notification until the retry starts.
+   */
+  @Test
+  public void testNotifyFromRetriedStatementInReadCommittedBlock() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+        Collections.singletonMap("yb_enable_read_committed_isolation", "true"));
+    waitForNotificationsTableReady(connection, getConnectionBuilder());
+
+    try (Connection notifierConn = getConnectionBuilder().withPreferQueryMode("simple").connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      List<String> payloads = payloadsAfterRetriedUpdate(notifierStmt, () -> {
+        notifierStmt.execute("BEGIN");
+        notifierStmt.execute("NOTIFY " + CHANNEL + ", 'kept'");
+        notifierStmt.execute(RETRIED_UPDATE);
+        notifierStmt.execute("COMMIT");
+      });
+      assertEquals("Notifications: " + payloads, 3, payloads.size());
+      assertTrue("Notifications: " + payloads, payloads.contains("kept"));
     }
   }
 
@@ -1019,6 +1343,131 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     }
 
     verifyListenNotifyWorks();
+  }
+
+  /**
+   * When the node's only listener UNLISTENs, the poller and its replication slot are dropped, and
+   * the next LISTEN creates a new slot whose virtual WAL numbers transactions from the start again.
+   * The re-listening backend must not mistake the first transaction on the new slot for a replay
+   * of the last transaction it saw on the old slot (same xid) and skip its notifications.
+   */
+  @Test
+  public void testNotifyAfterSoloListenerRelistens() throws Exception {
+    final String channel = "relisten";
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection notifierConn = getConnectionBuilder().withTServer(0).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n1a", "n1b");
+      assertEquals(Arrays.asList("n1a", "n1b"),
+          payloadsOf(waitForNotification(listenerConn, channel, "n1b")));
+
+      listenerStmt.execute("UNLISTEN " + channel);
+      waitForPollerAndSlotCleanup(listenerConn);
+
+      // Same backend, so it still remembers the last transaction it saw before UNLISTEN.
+      listenerStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n2a", "n2b");
+      // An autocommit NOTIFY after the transaction marks the end of what must be delivered.
+      notifierStmt.execute("NOTIFY " + channel + ", 'n3'");
+      assertEquals("Notifications delivered after re-LISTEN",
+          Arrays.asList("n2a", "n2b", "n3"),
+          payloadsOf(waitForNotification(listenerConn, channel, "n3")));
+    }
+  }
+
+  /**
+   * Like testNotifyAfterSoloListenerRelistens, but another backend becomes the node's first
+   * listener and recreates the slot, so the re-listening backend registers as a non-first
+   * listener and must still reset its stale duplicate-detection state.
+   */
+  @Test
+  public void testNotifyAfterRelistenOnSlotRecreatedByAnotherListener() throws Exception {
+    final String channel = "relisten_other";
+
+    try (Connection aConn = getConnectionBuilder().withTServer(0).connect();
+         Statement aStmt = aConn.createStatement();
+         Connection bConn = getConnectionBuilder().withTServer(0).connect();
+         Statement bStmt = bConn.createStatement();
+         Connection notifierConn = getConnectionBuilder().withTServer(0).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      aStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n1a", "n1b");
+      assertEquals(Arrays.asList("n1a", "n1b"),
+          payloadsOf(waitForNotification(aConn, channel, "n1b")));
+
+      aStmt.execute("UNLISTEN " + channel);
+      waitForPollerAndSlotCleanup(aConn);
+
+      // B is now the node's first listener and recreates the slot; A joins it.
+      bStmt.execute("LISTEN " + channel);
+      aStmt.execute("LISTEN " + channel);
+      notifyInTransaction(notifierStmt, channel, "n2a", "n2b");
+      notifierStmt.execute("NOTIFY " + channel + ", 'n3'");
+      List<String> expected = Arrays.asList("n2a", "n2b", "n3");
+      assertEquals("Re-listening backend", expected,
+          payloadsOf(waitForNotification(aConn, channel, "n3")));
+      assertEquals("Backend that recreated the slot", expected,
+          payloadsOf(waitForNotification(bConn, channel, "n3")));
+    }
+  }
+
+  /**
+   * A backend that re-LISTENs while another backend keeps the node's poller alive must keep
+   * suppressing that poller's replays of a transaction it received before UNLISTEN.
+   */
+  @Test
+  public void testNoDuplicateAfterRelistenWithSamePoller() throws Exception {
+    final String channel = "relisten_replay";
+
+    try {
+      // The poller now crashes after every queue write, before the CDC ack, so it keeps
+      // replaying the same transaction.
+      setFatalAfterNotifsQueueWriteFlag(true);
+      Thread.sleep(2000);
+
+      try (Connection aConn = getConnectionBuilder().withTServer(0).connect();
+           Statement aStmt = aConn.createStatement();
+           Connection bConn = getConnectionBuilder().withTServer(0).connect();
+           Statement bStmt = bConn.createStatement();
+           Connection notifierConn = getConnectionBuilder().withTServer(0).connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        aStmt.execute("LISTEN " + channel);
+        bStmt.execute("LISTEN " + channel);
+        notifierStmt.execute("NOTIFY " + channel + ", 'x'");
+        assertEquals(Arrays.asList("x"),
+            payloadsOf(waitForNotification(aConn, channel, "x")));
+
+        // B keeps the same poller and slot, so A must still recognize the replays of 'x'.
+        aStmt.execute("UNLISTEN " + channel);
+        aStmt.execute("LISTEN " + channel);
+        waitAndAssertNoNotifications(aConn,
+            "Replay of a transaction received before UNLISTEN was delivered again");
+      }
+    } finally {
+      setFatalAfterNotifsQueueWriteFlag(false);
+    }
+
+    verifyListenNotifyWorks();
+  }
+
+  private static void notifyInTransaction(Statement stmt, String channel, String... payloads)
+      throws Exception {
+    stmt.execute("BEGIN");
+    for (String payload : payloads) {
+      stmt.execute("NOTIFY " + channel + ", '" + payload + "'");
+    }
+    stmt.execute("COMMIT");
+  }
+
+  private static List<String> payloadsOf(List<PGNotification> notifications) {
+    List<String> payloads = new ArrayList<>();
+    for (PGNotification n : notifications) {
+      payloads.add(n.getParameter());
+    }
+    return payloads;
   }
 
   /**

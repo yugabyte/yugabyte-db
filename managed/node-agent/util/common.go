@@ -80,6 +80,7 @@ const (
 	PlatformVersionUpdateKey  = "platform.update_version"
 	PlatformSkipVerifyCertKey = "platform.skip_verify_cert"
 	PlatformCaCertPathKey     = "platform.ca_cert_path"
+	PlatformFipsEnabledKey    = "platform.fips_enabled"
 
 	// Node config keys.
 	NodeIpKey                     = "node.ip"

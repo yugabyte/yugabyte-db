@@ -4,12 +4,18 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.FORBIDDEN;
 
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 
@@ -43,15 +49,25 @@ public final class YnpProviderUtil {
   }
 
   /**
-   * Fails the request if it changes a provider that YNP owns and it does not come from YNP itself.
+   * Fails the request if it changes a provider that YNP owns and it does not come from YNP itself,
+   * unless {@link ProviderConfKeys#allowYnpManagedProviderEdit} is set for the provider.
    *
+   * @param confGetter used to read the runtime config override.
    * @param provider the provider being changed.
    * @param request the incoming request.
    * @param operation description of the attempted change, used in the error message.
    */
   public static void checkYnpManagedProvider(
-      Provider provider, Http.Request request, String operation) {
+      RuntimeConfGetter confGetter, Provider provider, Http.Request request, String operation) {
     if (!provider.isYnpManaged() || isYnpRequest(request)) {
+      return;
+    }
+    if (confGetter.getConfForScope(provider, ProviderConfKeys.allowYnpManagedProviderEdit)) {
+      log.info(
+          "{} on YNP managed provider {} is allowed by {}",
+          operation,
+          provider.getUuid(),
+          ProviderConfKeys.allowYnpManagedProviderEdit.getKey());
       return;
     }
     throw new PlatformServiceException(
@@ -96,5 +112,31 @@ public final class YnpProviderUtil {
       removed.add(instanceTypeCode);
     }
     return removed;
+  }
+
+  // Matches the results add_result writes in YNP's precheck script. add_result does not escape
+  // quotes, so the output is not always valid JSON, and the message runs to the last quote.
+  private static final Pattern PRECHECK_FAILURE_PATTERN =
+      Pattern.compile(
+          "(?m)\"check\": \"([^\"]*)\",\\s*\"result\": \"(FAIL|FATAL)\",\\s*\"message\":"
+              + " \"(.*)\"$");
+
+  /**
+   * The error for a failed YNP preflight check. The output lists every check, passed ones first, so
+   * the failed ones are named up front; the output follows only when none can be found in it.
+   */
+  public static String ynpPreflightFailureMessage(String nodeName, int exitCode, String output) {
+    List<String> failures = new ArrayList<>();
+    Matcher matcher = PRECHECK_FAILURE_PATTERN.matcher(output == null ? "" : output);
+    while (matcher.find()) {
+      failures.add(String.format("%s: %s", matcher.group(1), matcher.group(3)));
+    }
+    if (failures.isEmpty()) {
+      return String.format(
+          "Failed YNP preflight checks for node %s with exit code %d. Output: %s",
+          nodeName, exitCode, output);
+    }
+    return String.format(
+        "Failed YNP preflight checks for node %s: %s", nodeName, String.join("; ", failures));
   }
 }

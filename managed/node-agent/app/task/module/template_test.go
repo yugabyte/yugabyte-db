@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTestTemplate(t *testing.T, content string) string {
@@ -122,6 +124,71 @@ func TestCleanCoresTemplate(t *testing.T) {
 				t.Fatalf("Output still references obsolete template variable")
 			}
 		})
+	}
+}
+
+func TestCleanCoresScript(t *testing.T) {
+	if err := exec.Command("find", "/", "-maxdepth", "0", "-printf", "").Run(); err != nil {
+		t.Skip("Script requires GNU find with -printf")
+	}
+	projectDir := os.Getenv("PROJECT_DIR")
+	if projectDir == "" {
+		t.Fatal("PROJECT_DIR is not set")
+	}
+	templatePath := filepath.Join(projectDir, "resources/templates/server/clean_cores.sh.j2")
+	coresDir := t.TempDir()
+	output, err := ResolveTemplateStrict(
+		context.TODO(),
+		map[string]any{
+			"num_cores_to_keep": 2,
+			"yb_home_dir":       "/home/yugabyte",
+			"yb_cores_dir":      coresDir,
+		},
+		templatePath,
+		true, /*strictUndefined*/
+	)
+	if err != nil {
+		t.Fatalf("ResolveTemplateStrict failed: %v", err)
+	}
+	script := filepath.Join(t.TempDir(), "clean_cores.sh")
+	if err := os.WriteFile(script, []byte(output), 0755); err != nil {
+		t.Fatalf("Failed to write script: %v", err)
+	}
+	// Oldest first. The kernel appends " (deleted)" to the executable path when the
+	// crashed binary was replaced on disk.
+	cores := []string{
+		"core_1351_1771476246_!usr!sbin!auditd (deleted)",
+		"core_99_*",
+		"core_1",
+		"core_2",
+		"core_3",
+	}
+	now := time.Now()
+	for i, name := range cores {
+		path := filepath.Join(coresDir, name)
+		if err := os.WriteFile(path, nil, 0644); err != nil {
+			t.Fatalf("Failed to create %s: %v", name, err)
+		}
+		mtime := now.Add(time.Duration(i-len(cores)) * time.Hour)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatalf("Failed to set mtime on %s: %v", name, err)
+		}
+	}
+	cmd := exec.Command("bash", script)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "USER=yugabyte"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Script failed: %v\n%s", err, out)
+	}
+	entries, err := os.ReadDir(coresDir)
+	if err != nil {
+		t.Fatalf("Failed to read cores dir: %v", err)
+	}
+	var remaining []string
+	for _, e := range entries {
+		remaining = append(remaining, e.Name())
+	}
+	if want := []string{"core_2", "core_3"}; !slices.Equal(remaining, want) {
+		t.Fatalf("Expected remaining cores %v, got %v", want, remaining)
 	}
 }
 

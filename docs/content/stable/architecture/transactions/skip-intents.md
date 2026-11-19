@@ -71,7 +71,7 @@ Two session settings control the feature. Any user can change them; superuser pr
 
 Both have cluster-wide equivalents you can set as flags: `--ysql_yb_enable_new_relation_fastpath_write` and `--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks`.
 
-Change these at the start of a session. Neither can be changed once a transaction block is open, or after the first query of a transaction has run.
+You can set them with `SET`, per role or per database (`ALTER ROLE ... SET`, `ALTER DATABASE ... SET`), or as connection options. Setting a value with `SET` is refused once the first query of a transaction has run, and in a function's `SET` clause. A transaction keeps the values it had when it first uses the optimization; a later change, for example by `RESET` or `SET ... TO DEFAULT`, takes effect from the next transaction.
 
 To turn the optimization off for a session:
 
@@ -146,7 +146,7 @@ Look for `skip_intents_writes` under the `yb.tabletserver` entity. Sample it bef
 
 | Feature | Status |
 | :------ | :----- |
-| [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) | Fully supported. Replicated data is identical either way. |
+| [xCluster replication](../../docdb-replication/async-replication/) | Fully supported. Replicated data is identical either way. |
 | [Change data capture](../../../additional-features/change-data-capture/) and [logical replication](../../../additional-features/change-data-capture/using-logical-replication/) | The optimization disables itself automatically in any database that has a publication or a CDC stream, so replication stays correct. No action is required, but data loads in those databases will not get the speed-up. |
 | [Backups](../../../manage/backup-restore/), snapshots, and [point-in-time recovery](../../../explore/cluster-management/point-in-time-recovery-ysql/) | Unaffected. Restoring to a point before the table was created removes the table and its data, as expected. |
 | Rolling upgrades | Safe. The optimization may disable itself temporarily while a cluster is partly upgraded. |

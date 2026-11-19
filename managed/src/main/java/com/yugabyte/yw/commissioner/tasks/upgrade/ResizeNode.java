@@ -31,6 +31,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -294,9 +295,14 @@ public class ResizeNode extends UpgradeTaskBase {
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
+            // Nodes an earlier attempt left mid-batch go first, so their processes are back up
+            // before any running node is stopped.
             LinkedHashSet<NodeDetails> instanceChangingNodes =
                 nodesToApply.instanceChangingNodes.stream()
                     .filter(n -> n.isInPlacement(cluster.uuid))
+                    .sorted(
+                        Comparator.comparing(
+                            (NodeDetails n) -> n.state == NodeDetails.NodeState.Live))
                     .collect(Collectors.toCollection(LinkedHashSet::new));
 
             List<NodeDetails> justModifyDeviceNodes =
@@ -352,6 +358,36 @@ public class ResizeNode extends UpgradeTaskBase {
                 justModifyDeviceNodes,
                 ServerType.EITHER,
                 DEFAULT_CONTEXT);
+            List<NodeDetails> untouchedNodesToSetLive =
+                untouchedNodesToSetLive(
+                    fetchNodesForCluster().stream()
+                        .filter(n -> n.isInPlacement(cluster.uuid))
+                        .filter(n -> !instanceChangingNodes.contains(n))
+                        .filter(n -> !justModifyDeviceNodes.contains(n))
+                        .filter(n -> !nodesToApply.mastersToUpgradeGFlags.contains(n))
+                        .filter(n -> !nodesToApply.tserversToUpgradeGFlags.contains(n))
+                        .collect(Collectors.toList()));
+            if (!untouchedNodesToSetLive.isEmpty()) {
+              // Nothing restarted these nodes, so check their servers are up before setting Live.
+              List<NodeDetails> masters =
+                  untouchedNodesToSetLive.stream()
+                      .filter(n -> n.isMaster)
+                      .collect(Collectors.toList());
+              if (!masters.isEmpty()) {
+                createWaitForServersTasks(masters, ServerType.MASTER)
+                    .setSubTaskGroupType(getTaskSubGroupType());
+              }
+              List<NodeDetails> tservers =
+                  untouchedNodesToSetLive.stream()
+                      .filter(n -> n.isTserver)
+                      .collect(Collectors.toList());
+              if (!tservers.isEmpty()) {
+                createWaitForServersTasks(tservers, ServerType.TSERVER)
+                    .setSubTaskGroupType(getTaskSubGroupType());
+              }
+              createSetNodeStateTasks(untouchedNodesToSetLive, NodeDetails.NodeState.Live)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
             // Persist changes in the universe.
             createPersistResizeNodeTask(userIntent, cluster.uuid)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
@@ -435,11 +471,16 @@ public class ResizeNode extends UpgradeTaskBase {
       return true;
     }
     String currentInstanceType = node.cloudInfo.instance_type;
-    Integer newCgroupSize = newIntent.getCGroupSize(node);
-    Integer oldCgroupSize = currentIntent.getCGroupSize(node);
-
     return !currentInstanceType.equals(newIntent.getInstanceTypeForNode(node))
-        || !Objects.equals(oldCgroupSize, newCgroupSize);
+        || isCgroupChanging(node, newIntent, currentIntent);
+  }
+
+  /** Whether the node's cgroup size must be (re)applied. */
+  protected boolean isCgroupChanging(
+      NodeDetails node,
+      UniverseDefinitionTaskParams.UserIntent newIntent,
+      UniverseDefinitionTaskParams.UserIntent currentIntent) {
+    return !Objects.equals(currentIntent.getCGroupSize(node), newIntent.getCGroupSize(node));
   }
 
   protected boolean isModifyingDevice(
@@ -515,15 +556,13 @@ public class ResizeNode extends UpgradeTaskBase {
             String newInstanceType = newIntent.getInstanceType(type, node.getAzUuid());
             String currentInstanceType = instanceTypeForChangeDecision(node);
             DeviceInfo currentDeviceInfo = currentIntent.evaluateDeviceInfoForNode(node);
-            Integer newCgroupSize = newIntent.getCGroupSize(node);
-            Integer oldCgroupSize = currentIntent.getCGroupSize(node);
             createResizeNodeTasks(
                 Collections.singletonList(node),
                 newInstanceType,
                 newDeviceInfo,
                 currentInstanceType,
                 currentDeviceInfo,
-                !Objects.equals(oldCgroupSize, newCgroupSize));
+                isCgroupChanging(node, newIntent, currentIntent));
           }
         });
   }
@@ -547,12 +586,14 @@ public class ResizeNode extends UpgradeTaskBase {
     // Change instance type
     if (!newInstanceType.equals(currentInstanceType)
         || taskParams().isForceResizeNode()
-        || cgroupSizeChanging) {
+        || cgroupSizeChanging
+        || nodes.stream().anyMatch(this::mustRunChangeInstanceType)) {
       for (NodeDetails node : nodes) {
         // Check if the node needs to be resized.
         if (!taskParams().isForceResizeNode()
             && isNodeAlreadyAtInstanceType(node, newInstanceType)
-            && !cgroupSizeChanging) {
+            && !cgroupSizeChanging
+            && !mustRunChangeInstanceType(node)) {
           log.info("Skipping node {} as its type is already {}", node.nodeName, newInstanceType);
           continue;
         }
@@ -602,6 +643,19 @@ public class ResizeNode extends UpgradeTaskBase {
    */
   protected boolean isNodeAlreadyAtInstanceType(NodeDetails node, String targetInstanceType) {
     return node.cloudInfo.instance_type.equals(targetInstanceType);
+  }
+
+  /** Whether to run ChangeInstanceType for the node even when its type already matches. */
+  protected boolean mustRunChangeInstanceType(NodeDetails node) {
+    return false;
+  }
+
+  /**
+   * Nodes that no flow of this task touches (instance change, disk update or gflags restart) but
+   * that must still be set Live, as they are.
+   */
+  protected List<NodeDetails> untouchedNodesToSetLive(List<NodeDetails> untouchedNodes) {
+    return Collections.emptyList();
   }
 
   /**
