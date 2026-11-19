@@ -2037,8 +2037,6 @@ YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
 void
 YbWriteColocatedIndexTombstone(Relation index)
 {
-	YbcTableProperties yb_props = YbTryGetTableProperties(index);
-
 	/*
 	 * Copartitioned indexes (currently ybhnsw) store their rows in a
 	 * separate per-tablet LSM, not in the colocated tablet's DocDB. The
@@ -2055,7 +2053,7 @@ YbWriteColocatedIndexTombstone(Relation index)
 	 * avoids the empty-batch + isolation race; the actual storage is
 	 * cleaned up when the master drops the index.
 	 */
-	if (!yb_props || !yb_props->is_colocated || index->rd_indam->yb_amiscopartitioned)
+	if (index->rd_indam->yb_amiscopartitioned)
 		return;
 
 	YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
@@ -2087,7 +2085,8 @@ YBCDropIndex(Relation index)
 	 * safeguard against NotFound errors.
 	 */
 
-	YbWriteColocatedIndexTombstone(index);
+	if (yb_props->is_colocated)
+		YbWriteColocatedIndexTombstone(index);
 
 	bool		not_found = false;
 
