@@ -634,7 +634,7 @@ TEST_F(CDCStateTableTest, TestUpsertEntriesWithRemoveKey) {
 
 // A write that fails before it is flushed, here because the client is unavailable, must return the
 // error instead of aborting the process.
-TEST_F(CDCStateTableTest, TestWriteFailsWithoutClient) {
+TEST_F(CDCStateTableTest, TestUpsertReturnsErrorWhenClientUnavailable) {
   std::promise<client::YBClient*> client_promise;
   client_promise.set_value(nullptr);
   CDCStateTable cdc_state_table(client_promise.get_future().share());
