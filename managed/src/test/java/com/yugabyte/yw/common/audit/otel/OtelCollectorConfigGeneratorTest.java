@@ -1572,9 +1572,16 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     assertEquals(
         ImmutableMap.of("export_type", "node_export", "service", "node-exporter"),
         staticConfig.get("labels"));
-    assertTrue(
-        ((List<Map<String, Object>>) job.get("metric_relabel_configs"))
-            .stream().anyMatch(r -> "saved_name".equals(r.get("target_label"))));
+    List<Map<String, Object>> relabels =
+        (List<Map<String, Object>>) job.get("metric_relabel_configs");
+    assertTrue(relabels.stream().anyMatch(r -> "saved_name".equals(r.get("target_label"))));
+    // The sidecar's read-only mounts would make every data volume report read-only.
+    assertEquals(
+        ImmutableMap.of(
+            "source_labels", ImmutableList.of("__name__"),
+            "regex", "node_filesystem_readonly",
+            "action", "drop"),
+        relabels.get(relabels.size() - 1));
     // The node job shares the receiver, and with it the pod identity, of the yugabyte job.
     assertNotNull(scrapeJob(config, "yugabyte"));
   }

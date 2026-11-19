@@ -76,6 +76,7 @@ public class OtelCollectorConfigFormat {
     private String regex;
     private String target_label;
     private String replacement;
+    private String action;
   }
 
   @Data

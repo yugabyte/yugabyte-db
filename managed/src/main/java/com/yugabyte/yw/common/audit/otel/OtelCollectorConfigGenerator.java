@@ -1361,13 +1361,21 @@ public class OtelCollectorConfigGenerator {
               ports.yqlServerHttpPort));
     }
     if (scrapeNodeExporter) {
-      scrapeConfigs.add(
+      OtelCollectorConfigFormat.ScrapeConfig nodeExporterScrapeConfig =
           createNodeExporterScrapeConfig(
               K8S_POD_LOCAL_ADDRESS,
               nodeExporterSidecar != null
                   ? nodeExporterSidecar.getPort()
                   : universe.getUniverseDetails().communicationPorts.nodeExporterPort,
-              nodeExporterSidecar != null && nodeExporterSidecar.isHttps()));
+              nodeExporterSidecar != null && nodeExporterSidecar.isHttps());
+      // The sidecar mounts the data volumes read-only, so this series would read 1 for volumes
+      // the database writes to.
+      OtelCollectorConfigFormat.MetricRelabelConfig dropReadonly =
+          createMetricRelabelConfig(
+              ImmutableList.of("__name__"), "node_filesystem_readonly", null, null);
+      dropReadonly.setAction("drop");
+      nodeExporterScrapeConfig.getMetric_relabel_configs().add(dropReadonly);
+      scrapeConfigs.add(nodeExporterScrapeConfig);
     }
     if (scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
       scrapeConfigs.add(
