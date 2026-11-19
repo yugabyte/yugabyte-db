@@ -152,6 +152,24 @@ func TestAddOCIImageBundles(t *testing.T) {
 	})
 	checkErr(t, err, "unknown image bundles: typo")
 
+	_, err = addOCIImageBundles([]string{
+		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc::ssh-port=abc",
+	}, nil, one, nil)
+	checkErr(t, err, "invalid ssh-port abc for image bundle b1")
+
+	_, err = addOCIImageBundles([]string{
+		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc::ssh-port=70000",
+	}, nil, one, nil)
+	checkErr(t, err, "invalid ssh-port 70000 for image bundle b1")
+
+	got, err = addOCIImageBundles([]string{
+		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc::ssh-port=2222",
+	}, nil, one, nil)
+	checkErr(t, err, "")
+	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 2222 {
+		t.Errorf("ssh port = %v, want 2222", got[0].GetDetails().SshPort)
+	}
+
 	got, err = addOCIImageBundles([]string{
 		"image-bundle-name=b1::machine-image=img-a::ssh-user=opc",
 		"image-bundle-name=b2::machine-image=img-b::ssh-user=opc::default=true",
@@ -179,6 +197,47 @@ func TestEditOCIImageBundlesKeepsEarlierImage(t *testing.T) {
 	info := details.GetRegions()["us-ashburn-1"]
 	if info.GetYbImage() != "img-a" || details.GetSshUser() != "yb" {
 		t.Errorf("got image %q ssh-user %q", info.GetYbImage(), details.GetSshUser())
+	}
+}
+
+func TestEditOCIImageBundlesSSHPort(t *testing.T) {
+	regions := map[string]ybaclient.BundleInfo{
+		"us-ashburn-1": {YbImage: util.GetStringPointer("old")},
+	}
+	existing := func() []ybaclient.ImageBundle {
+		return []ybaclient.ImageBundle{{
+			Uuid: util.GetStringPointer("u1"),
+			Details: &ybaclient.ImageBundleDetails{
+				Regions: &regions,
+				SshPort: util.GetInt32Pointer(2200),
+			},
+		}}
+	}
+
+	_, err := editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-port=abc",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "invalid ssh-port abc for image bundle u1")
+
+	_, err = editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-port=70000",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "invalid ssh-port 70000 for image bundle u1")
+
+	got, err := editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-port=2222",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "")
+	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 2222 {
+		t.Errorf("ssh port = %v, want 2222", got[0].GetDetails().SshPort)
+	}
+
+	got, err = editOCIImageBundles([]string{
+		"image-bundle-uuid=u1::ssh-user=yb",
+	}, existing(), []string{"us-ashburn-1"}, nil)
+	checkErr(t, err, "")
+	if got[0].GetDetails().SshPort == nil || *got[0].GetDetails().SshPort != 2200 {
+		t.Errorf("omitted ssh-port changed the stored port to %v", got[0].GetDetails().SshPort)
 	}
 }
 
