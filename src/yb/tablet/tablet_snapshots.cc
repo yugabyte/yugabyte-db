@@ -82,6 +82,10 @@ DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
     "How much time in secs to delay restoring tablet split metadata after restoring "
     "checkpoint.");
 
+DEFINE_test_flag(int32, sleep_before_restore_checkpoint_resumes_ops_ms, 0,
+    "Sleep for the specified number of milliseconds at the end of a checkpoint restore, before "
+    "read/write operations on the tablet are resumed.");
+
 DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
     "How much time in milliseconds to delay before exporting tablet metadata during "
     "snapshot creation.");
@@ -902,20 +906,29 @@ Status TabletSnapshots::RestoreCheckpoint(
   }
 
   LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
+
+  // Ensure that op_pauses stays in scope throughout this function.
+  for (auto* op_pause : op_pauses.AsArray()) {
+    DFATAL_OR_RETURN_NOT_OK(op_pause->status());
+  }
+
+  // Right before the release, so that in tests a compaction enabled anywhere above, under the
+  // pause, hits the pause and fails.
+  AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_restore_checkpoint_resumes_ops_ms);
+
+  // A vector index compaction started under the pause fails with TryAgain, and the index keeps
+  // that failure. So compactions are enabled only after the pause is released.
+  op_pauses.Reset();
+
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
-  if (!s.ok()) {
+  s = tablet().EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  if (!s.ok() && !s.IsShutdownInProgress()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
     return s;
   }
 
   // Schedule post split compaction after compaction enabled on the tablet.
   tablet().TriggerPostSplitCompactionIfNeeded();
-
-  // Ensure that op_pauses stays in scope throughout this function.
-  for (auto* op_pause : op_pauses.AsArray()) {
-    DFATAL_OR_RETURN_NOT_OK(op_pause->status());
-  }
 
   return Status::OK();
 }

@@ -8,6 +8,7 @@ import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperation
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -17,6 +18,7 @@ import com.google.common.collect.Streams;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -70,6 +72,9 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   private static final String TABLESPACE_MOVE_DB_VERSION = "2024.2.3.0-b116";
   private static final String TABLESPACE_MOVE_DB_VERSION_URL =
       "https://software.yugabyte.com/releases/2024.2.3.0/yugabyte-2024.2.3.0-b116-%s-%s.tar.gz";
+
+  private static final String PER_AZ_GFLAG = "log_min_seconds_to_retain";
+  private static final String PER_AZ_GFLAG_VALUE = "1234";
 
   private Region region2;
   private AvailabilityZone az21;
@@ -599,6 +604,107 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyYSQL(universe);
     verifyPayload();
     assertEquals(3, universe.getMasters().size());
+  }
+
+  @Test
+  public void testToggleDedicatedNodesKeepsPerAZTserverGFlags() throws InterruptedException {
+    // The dedicated toggle restarts tservers without removing them from DNS, which
+    // LocalNodeManager rejects when the provider has a hosted zone.
+    provider.getDetails().getCloudInfo().local.setHostedZoneId(null);
+    provider.update();
+    localNodeManager.setCheckDNS(false);
+    AtomicReference<UUID> perAZUuid = new AtomicReference<>();
+    Universe universe =
+        createUniverse(
+            getDefaultUserIntent(),
+            params -> {
+              UUID azUuid = params.nodeDetailsSet.iterator().next().azUuid;
+              perAZUuid.set(azUuid);
+              params
+                  .getPrimaryCluster()
+                  .userIntent
+                  .specificGFlags
+                  .setPerAZ(
+                      new HashMap<>(
+                          Map.of(
+                              azUuid,
+                              new SpecificGFlags.PerProcessFlags(
+                                  Map.of(
+                                      UniverseTaskBase.ServerType.TSERVER,
+                                      Map.of(PER_AZ_GFLAG, PER_AZ_GFLAG_VALUE))))));
+            });
+    initYSQL(universe);
+    verifyPerAZTserverGFlag(universe, perAZUuid.get());
+
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    ApiUtils.configureDedicatedMasterFields(cluster.userIntent);
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 3, 0);
+    TaskInfo taskInfo =
+        waitForTask(
+            universeCRUDHandler.update(
+                customer,
+                Universe.getOrBadRequest(universe.getUniverseUUID()),
+                universe.getUniverseDetails()),
+            universe);
+    verifyUniverseTaskSuccess(taskInfo);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    // verifyUniverseState counts master-only nodes against numNodesInAZ.
+    assertEquals(3, universe.getMasters().size());
+    assertTrue(universe.getMasters().stream().noneMatch(n -> n.isTserver));
+    verifyYSQL(universe);
+    verifyPerAZTserverGFlag(universe, perAZUuid.get());
+    for (NodeDetails node : universe.getTServers()) {
+      assertEquals(
+          0.9,
+          Double.parseDouble(
+              getVarz(node, universe, UniverseTaskBase.ServerType.TSERVER)
+                  .get(GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO)),
+          0.001);
+    }
+
+    cluster = universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.dedicatedNodes = false;
+    TestUtils.existingProviderInitializer(cluster.userIntent)
+        .setMasterInstanceType(null)
+        .setMasterDeviceInfo(null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 0, 3);
+    taskInfo =
+        waitForTask(
+            universeCRUDHandler.update(
+                customer,
+                Universe.getOrBadRequest(universe.getUniverseUUID()),
+                universe.getUniverseDetails()),
+            universe);
+    verifyUniverseTaskSuccess(taskInfo);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyUniverseState(universe);
+    verifyYSQL(universe);
+    verifyPerAZTserverGFlag(universe, perAZUuid.get());
+  }
+
+  private void verifyPerAZTserverGFlag(Universe universe, UUID perAZUuid) {
+    int perAZTservers = 0;
+    for (NodeDetails node : universe.getTServers()) {
+      String value = getVarz(node, universe, UniverseTaskBase.ServerType.TSERVER).get(PER_AZ_GFLAG);
+      if (node.azUuid.equals(perAZUuid)) {
+        assertEquals(node.nodeName, PER_AZ_GFLAG_VALUE, value);
+        perAZTservers++;
+      } else {
+        assertNotEquals(node.nodeName, PER_AZ_GFLAG_VALUE, value);
+      }
+    }
+    assertTrue(perAZTservers > 0);
   }
 
   //  @Test

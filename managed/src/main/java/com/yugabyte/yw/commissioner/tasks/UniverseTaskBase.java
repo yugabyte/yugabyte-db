@@ -1345,6 +1345,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         && !universeDetails.placementModificationTaskUuid.equals(getUserTaskUUID());
   }
 
+  /** Whether the universe's placement lock is held by a task of the given type. */
+  protected static boolean isPlacementLockHeldBy(Universe universe, TaskType taskType) {
+    UUID taskUuid = universe.getUniverseDetails().placementModificationTaskUuid;
+    return taskUuid != null
+        && TaskInfo.maybeGet(taskUuid).map(t -> t.getTaskType() == taskType).orElse(false);
+  }
+
   private void initAndAddPrecheckTasks(Universe universe) {
     createPrecheckTasks(universe);
     ExecutionContext context = getOrCreateExecutionContext();
@@ -6323,6 +6330,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;
             node.cloudInfo.public_ip = null;
+            // The node may come back on another machine, which may run on another cloud.
+            node.cloudInfo.physicalCloud = null;
           }
 
           // Update the node details.

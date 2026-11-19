@@ -461,6 +461,16 @@ public class Universe extends Model {
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
+  /** Which of the given universe UUIDs exist. Fetches only the IDs, not the universe details. */
+  public static Set<UUID> getExistingUUIDs(Collection<UUID> uuids) {
+    if (uuids.isEmpty()) {
+      return Collections.emptySet();
+    }
+    ExpressionList<Universe> query = find.query().where();
+    CommonUtils.appendInClause(query, "universeUUID", uuids);
+    return new HashSet<>(query.findIds());
+  }
+
   public static Set<Universe> getUniversesForSwamperConfigUpdate() {
     List<Universe> rawList = find.query().where().eq("swamperConfigWritten", false).findList();
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());

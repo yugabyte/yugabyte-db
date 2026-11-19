@@ -1335,11 +1335,11 @@ Status ObjectLockInfoManager::Impl::PopulateDbCatalogVersionCache(
   }
 
   // Feed the same snapshot into the heartbeat catalog versions cache, before the request above is
-  // sent. That cache is refreshed by a background task which can stall (its thread pool is shared
-  // with DDL verification work), and while it is stalled the broadcast would push tservers past
-  // any version the heartbeat will ever report -- which the tserver's staleness check treats as
-  // divergence and crashes on. Installing here keeps the cache at least as new as anything
-  // broadcast, independently of that task's health.
+  // sent. That cache is refreshed by a periodic task, which can lag a broadcast by up to one
+  // period, and longer when its sys catalog read is slow. While it lags, the broadcast would push
+  // tservers past any version the heartbeat will ever report -- which the tserver's staleness
+  // check treats as divergence and crashes on. Installing here keeps the cache at least as new as
+  // anything broadcast, independently of that task's timing.
   //
   // `messages` is passed by value, i.e. copied, because the loop below moves it into the request.
   // Installing after that loop instead would cache empty message lists for real versions, which a

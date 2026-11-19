@@ -43,7 +43,6 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -143,7 +142,7 @@ public class CreateBackup extends UniverseTaskBase {
         CustomerConfig customerConfig =
             customerConfigService.getOrBadRequest(
                 params().customerUUID, params().storageConfigUUID);
-        if (!customerConfig.getState().equals(ConfigState.Active)) {
+        if (!customerConfig.isActive()) {
           throw new RuntimeException("Storage config cannot be used as it is not in Active state");
         }
 
