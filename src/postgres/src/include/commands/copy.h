@@ -118,6 +118,6 @@ extern List *CopyGetAttnums(TupleDesc tupDesc, Relation rel,
 							List *attnamelist);
 
 /* YB declarations */
-extern uint64 YbCopyFromRemainingBatches(CopyFromState cstate, Relation *rel);
+extern Relation YbCopyFromGetRelation(CopyFromState cstate);
 
 #endif							/* COPY_H */

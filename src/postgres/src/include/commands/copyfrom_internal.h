@@ -172,6 +172,8 @@ typedef struct CopyFromStateData
 	/* YB fields */
 	bool		yb_more_batches;	/* input left after this batch? */
 	bool		yb_loaded_a_batch;	/* is this a later batch? */
+	int64		yb_processed;	/* rows loaded by earlier batches */
+	int64		yb_excluded;	/* rows excluded by earlier batches */
 } CopyFromStateData;
 
 extern void ReceiveCopyBegin(CopyFromState cstate);

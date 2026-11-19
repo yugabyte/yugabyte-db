@@ -115,6 +115,7 @@ static void ClosePipeFromProgram(CopyFromState cstate);
 
 /* YB declarations */
 static bool YbCopyIsTopLevelStatement(void);
+static void YbCopyFromStartNextBatch(CopyFromState cstate);
 static void YbCopyFromCommitBatch(CopyFromState cstate);
 static void YbCopyFromCheckTableUnchanged(Relation rel, TupleDesc old_desc);
 
@@ -541,6 +542,13 @@ CopyMultiInsertInfoStore(CopyMultiInsertInfo *miinfo, ResultRelInfo *rri,
 uint64
 CopyFrom(CopyFromState cstate)
 {
+	/*
+	 * YB: A later batch of a batched COPY starts here, in a new transaction.
+	 * Going through the declarations again gives each variable its initial
+	 * value, so the batch builds its state from the catalog like a new COPY.
+	 */
+yb_process_more_batches:
+	;
 	ResultRelInfo *resultRelInfo;
 	ResultRelInfo *target_resultRelInfo;
 	ResultRelInfo *prevResultRelInfo = NULL;
@@ -571,6 +579,10 @@ CopyFrom(CopyFromState cstate)
 	bool		yb_is_copy_replace = false;
 	/* on_conflict_action for the relation or partition being inserted into */
 	OnConflictAction yb_on_conflict_action = ONCONFLICT_NONE;
+
+	/* YB: the rows of the batches loaded before this one */
+	processed = cstate->yb_processed;
+	excluded = cstate->yb_excluded;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
@@ -1402,9 +1414,10 @@ CopyFrom(CopyFromState cstate)
 	if (cstate->opts.batch_size > 0)
 	{
 		/*
-		 * YB: A call loads one batch.  YbCopyFromRemainingBatches commits the
-		 * transaction and calls again, so the next batch takes its locks and
-		 * builds its state from the catalog like a new COPY.
+		 * YB: The batch ends like a COPY: the code below flushes, fires the
+		 * AFTER triggers and closes what was opened.  If input is left, the
+		 * transaction is then committed and the next batch starts from the
+		 * top.
 		 */
 		cstate->yb_more_batches = has_more_tuples;
 	}
@@ -1464,6 +1477,17 @@ yb_no_more_tuples:
 	ExecCloseRangeTableRelations(estate);
 
 	FreeExecutorState(estate);
+
+	/* YB */
+	if (cstate->yb_more_batches)
+	{
+		cstate->yb_processed = processed;
+		cstate->yb_excluded = excluded;
+		YbCopyFromStartNextBatch(cstate);
+		goto yb_process_more_batches;
+	}
+	if (cstate->yb_loaded_a_batch)
+		PopActiveSnapshot();
 
 	return processed;
 }
@@ -1942,10 +1966,10 @@ ClosePipeFromProgram(CopyFromState cstate)
 /*
  * YB: Batched COPY FROM (ROWS_PER_TRANSACTION > 0).
  *
- * CopyFrom loads one batch.  For each batch after the first,
- * YbCopyFromRemainingBatches ends the transaction and starts a new one, as
- * VACUUM and REINDEX do between tables, opens the table again and calls
- * CopyFrom again.  The batch then takes its locks and builds its indexes,
+ * CopyFrom loads the batches one after the other.  Between two batches
+ * YbCopyFromStartNextBatch ends the transaction and starts a new one, as
+ * VACUUM and REINDEX do between tables, and opens the table again.  CopyFrom
+ * then starts from its top: the batch takes its locks and builds its indexes,
  * partition routing, constraints and triggers from the catalog, like a new
  * COPY.  A DDL that needs a conflicting lock waits for the batch in progress,
  * and the next batch sees what the DDL did.
@@ -1954,50 +1978,43 @@ ClosePipeFromProgram(CopyFromState cstate)
  * the input and what was derived from the table's columns.  If a column or a
  * default changed, the input no longer fits that state and the COPY stops.
  */
-uint64
-YbCopyFromRemainingBatches(CopyFromState cstate, Relation *rel)
+static void
+YbCopyFromStartNextBatch(CopyFromState cstate)
 {
-	uint64		processed = 0;
-	bool		pushed_snapshot = false;
+	Oid			relid = RelationGetRelid(cstate->rel);
+	MemoryContext oldcontext = MemoryContextSwitchTo(cstate->copycontext);
+	TupleDesc	old_desc = CreateTupleDescCopyConstr(RelationGetDescr(cstate->rel));
 
-	while (cstate->yb_more_batches)
-	{
-		Oid			relid = RelationGetRelid(*rel);
-		MemoryContext oldcontext = MemoryContextSwitchTo(cstate->copycontext);
-		TupleDesc	old_desc = CreateTupleDescCopyConstr(RelationGetDescr(*rel));
+	MemoryContextSwitchTo(oldcontext);
 
-		MemoryContextSwitchTo(oldcontext);
+	cstate->yb_more_batches = false;
+	cstate->yb_loaded_a_batch = true;
+	table_close(cstate->rel, NoLock);
+	cstate->rel = NULL;
 
-		cstate->yb_more_batches = false;
-		cstate->yb_loaded_a_batch = true;
-		cstate->rel = NULL;
-		table_close(*rel, NoLock);
-		*rel = NULL;
+	YbCopyFromCommitBatch(cstate);
+	PushActiveSnapshot(GetTransactionSnapshot());
 
-		YbCopyFromCommitBatch(cstate);
-		PushActiveSnapshot(GetTransactionSnapshot());
-		pushed_snapshot = true;
+	cstate->rel = try_table_open(relid, RowExclusiveLock);
+	if (cstate->rel == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_TABLE),
+				 errmsg("table \"%s\" was dropped during COPY",
+						cstate->cur_relname)));
+	YbCopyFromCheckTableUnchanged(cstate->rel, old_desc);
+	FreeTupleDesc(old_desc);
+	ExecCheckRTPerms(cstate->range_table, true);
+	cstate->cur_relname = RelationGetRelationName(cstate->rel);
+}
 
-		*rel = try_table_open(relid, RowExclusiveLock);
-		if (*rel == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_TABLE),
-					 errmsg("table \"%s\" was dropped during COPY",
-							cstate->cur_relname)));
-		YbCopyFromCheckTableUnchanged(*rel, old_desc);
-		FreeTupleDesc(old_desc);
-		ExecCheckRTPerms(cstate->range_table, true);
-
-		cstate->rel = *rel;
-		cstate->cur_relname = RelationGetRelationName(*rel);
-
-		processed += CopyFrom(cstate);
-	}
-
-	if (pushed_snapshot)
-		PopActiveSnapshot();
-
-	return processed;
+/*
+ * The table as the last batch opened it.  DoCopy opened the table for the
+ * first batch and closes this one.
+ */
+Relation
+YbCopyFromGetRelation(CopyFromState cstate)
+{
+	return cstate->rel;
 }
 
 /*
