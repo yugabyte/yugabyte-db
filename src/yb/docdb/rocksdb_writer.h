@@ -101,7 +101,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   Status Finish();
   Status AddWeakIntent(
       const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
-      const std::array<Slice, 4>& value,
+      const std::array<Slice, 3>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
 
   const LWKeyValueWriteBatchPB& put_batch_;
@@ -170,7 +170,13 @@ class IntentsWriterContext {
       const Slice& key, const Slice& value, bool metadata,
       rocksdb::DirectWriteHandler& handler) = 0;
 
-  virtual Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) = 0;
+  // ids are the vector ids deleted by a batch of subtransaction_id. A
+  // ValueEntryType::kDeleteVectorIds record has no subtransaction id and passes
+  // kMinSubTransactionId, so it is applied even when the subtransaction of its batch was rolled
+  // back.
+  virtual Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) = 0;
 
   virtual Status Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) = 0;
 
@@ -375,7 +381,9 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
 
   Status Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
 
-  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+  Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) override;
 
   // Releases the holds on the vector index chunks the applied intents were inserted into.
   void WriteApplied() override;
@@ -415,7 +423,9 @@ class RemoveIntentsContext : public IntentsWriterContext {
 
   Status Complete(rocksdb::DirectWriteHandler& handler, bool finished) override;
 
-  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+  Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) override;
 
  private:
   uint8_t reason_;
@@ -529,7 +539,9 @@ class DumpIntentsContext : public IntentsWriterContextBase {
       const Slice& reverse_index_key, const Slice& reverse_index_value, bool metadata,
       rocksdb::DirectWriteHandler& handler) override;
 
-  Status DeleteVectorIds(Slice key, Slice ids, rocksdb::DirectWriteHandler& handler) override;
+  Status DeleteVectorIds(
+      Slice key, SubTransactionId subtransaction_id, Slice ids,
+      rocksdb::DirectWriteHandler& handler) override;
 
   Status Complete(rocksdb::DirectWriteHandler& handler, bool transaction_finished) override;
 
