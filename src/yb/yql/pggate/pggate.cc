@@ -181,7 +181,8 @@ Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
     const YbcPgTableLocalityInfo& locality_info,
     const YbcPgSkipIntentsOptimizationInfo& skip_intents_info) {
   if (params && params->index_only_scan) {
-    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_info);
+    return PgSelectIndex::Make(
+        pg_session, index_id, locality_info, IndexSkipIntentsInfo(skip_intents_info));
   }
   return PgSelect::Make(
       pg_session, table_id, locality_info, skip_intents_info, MakeIndexQueryInfo(index_id, params));

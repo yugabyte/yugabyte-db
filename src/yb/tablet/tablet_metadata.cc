@@ -2965,6 +2965,7 @@ void FinalizeIndexBirthTime(
   }
   if (index_info_pb.birth_time_state() == pending_state) {
     index_info_pb.clear_birth_time_state();
+    index_info_pb.clear_birth_time_pending_txn_id();
   }
   table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
 }

@@ -4763,24 +4763,25 @@ Result<bool> VectorIndexStoresPayload(
   return true;
 }
 
-// Returns the initial IndexInfoPB.birth_time_state of a new YSQL index: whether its birth_time is
+// Sets the initial IndexInfoPB.birth_time_state of a new YSQL index: whether its birth_time is
 // not final yet, and which build path finalizes it. Vector indexes are not covered by the read
 // guard.
-IndexInfoPB::BirthTimeState InitialIndexBirthTimeState(
-    const CreateTableRequestPB& req, const IndexInfoPB& index_info, bool index_backfill_enabled) {
-  if (!FLAGS_enable_ysql_index_birth_time_state || index_info.has_vector_idx_options()) {
-    return IndexInfoPB::BIRTH_TIME_FINAL;
+void SetInitialIndexBirthTimeState(
+    const CreateTableRequestPB& req, bool index_backfill_enabled, IndexInfoPB* index_info) {
+  if (!FLAGS_enable_ysql_index_birth_time_state || index_info->has_vector_idx_options()) {
+    return;
   }
   if (index_backfill_enabled && !req.skip_index_backfill()) {
     // Finalized when backfill completes (BackfillTable::AllowCompactionsToGCDeleteMarkers).
-    return IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL;
+    index_info->set_birth_time_state(IndexInfoPB::BIRTH_TIME_PENDING_BACKFILL);
+    return;
   }
   if (req.skip_index_backfill() && req.has_transaction() && req.ysql_yb_ddl_rollback_enabled()) {
     // Finalized when the CREATE INDEX transaction commits (HandleSuccessfulYsqlDdlTxn). That only
     // runs for tables with DDL transaction verification, so without it the index stays FINAL.
-    return IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT;
+    index_info->set_birth_time_state(IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT);
+    index_info->set_birth_time_pending_txn_id(req.transaction().transaction_id());
   }
-  return IndexInfoPB::BIRTH_TIME_FINAL;
 }
 
 } // namespace
@@ -5098,11 +5099,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (req.has_index_info() && is_pg_table) {
-    const auto birth_time_state =
-        InitialIndexBirthTimeState(req, index_info, index_backfill_enabled);
-    if (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL) {
-      index_info.set_birth_time_state(birth_time_state);
-    }
+    SetInitialIndexBirthTimeState(req, index_backfill_enabled, &index_info);
   }
 
   if ((req.has_index_info() || req.has_indexed_table_id()) &&

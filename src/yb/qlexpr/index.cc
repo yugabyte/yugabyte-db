@@ -101,6 +101,7 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       num_rows_backfilled_in_index_(pb.num_rows_backfilled_in_index()),
       birth_time_(pb.birth_time()),
       birth_time_state_(pb.birth_time_state()),
+      birth_time_pending_txn_id_(pb.birth_time_pending_txn_id()),
       use_mangled_column_name_(pb.use_mangled_column_name()),
       where_predicate_spec_(pb.has_where_predicate_spec() ?
         std::make_shared<IndexInfoPB::WherePredicateSpecPB>(pb.where_predicate_spec()) : nullptr) {
@@ -161,6 +162,9 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
   }
   if (birth_time_state_ != IndexInfoPB::BIRTH_TIME_FINAL) {
     pb->set_birth_time_state(birth_time_state_);
+  }
+  if (!birth_time_pending_txn_id_.empty()) {
+    pb->set_birth_time_pending_txn_id(birth_time_pending_txn_id_);
   }
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (where_predicate_spec_) {

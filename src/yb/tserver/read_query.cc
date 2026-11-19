@@ -929,9 +929,20 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
         // finalized. Reject reads with a retryable error meanwhile rather than serve a
         // possibly-incomplete index. retain_delete_markers is a legacy fallback for backfilled
         // indexes created before birth_time_state existed (or while its AutoFlag was off).
-        if (birth_time == 0 &&
-            (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL ||
-             table_info->schema().table_properties().retain_delete_markers())) {
+        //
+        // The transaction that created a nonconcurrently built index is exempt: it wrote the
+        // index, so the index is complete for it, and the index only becomes final once that
+        // transaction commits.
+        const auto retain_delete_markers =
+            table_info->schema().table_properties().retain_delete_markers();
+        const auto read_by_creating_txn =
+            birth_time_state == IndexInfoPB::BIRTH_TIME_PENDING_DDL_COMMIT &&
+            !retain_delete_markers && req_->has_transaction() &&
+            !table_info->index_info->birth_time_pending_txn_id().empty() &&
+            req_->transaction().transaction_id() ==
+                table_info->index_info->birth_time_pending_txn_id();
+        if (birth_time == 0 && !read_by_creating_txn &&
+            (birth_time_state != IndexInfoPB::BIRTH_TIME_FINAL || retain_delete_markers)) {
           return STATUS_FORMAT(
               LeaderNotReadyToServe,
               "Index table $0 birth time not yet finalized locally",

@@ -550,6 +550,7 @@ Status CatalogManager::HandleSuccessfulYsqlDdlTxn(
         index_info->set_birth_time(index_birth_time);
       }
       index_info->clear_birth_time_state();
+      index_info->clear_birth_time_pending_txn_id();
     }
     RETURN_NOT_OK(ClearYsqlDdlTxnState(txn_data));
     // Propagate birth time related information so that the index starts accepting reads.
