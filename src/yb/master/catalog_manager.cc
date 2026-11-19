@@ -14965,9 +14965,10 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   ClearRestoringSysCatalogIfNotFenced();
 
   // Writing to cdc_state needs this master to answer IsCreateTableDone, which it rejects while
-  // restoring_sys_catalog_ is set. The flag stays set only while another restore is fenced. That
-  // restore reloads the sys catalog when it is applied, and that load runs the backfill; if it is
-  // never applied, the next sys catalog load does.
+  // restoring_sys_catalog_ is set. Here the flag is still set only while another restore is
+  // fenced, and that restore's sys catalog reload, or a later one if it is never applied, runs the
+  // backfill. A restore fenced after this check makes the backfill fail instead, and a later sys
+  // catalog load retries it.
   if (!restoring_sys_catalog_) {
     WARN_NOT_OK(
         BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
