@@ -8793,6 +8793,17 @@ static const char *const YbDbAdminVariables[] = {
 	"yb_pg_stat_plans_show_max_exec_params",
 };
 
+/*
+ * YB: PGC_SUSET variables that the yb_db_admin role can set for one specific
+ * role through ALTER ROLE ... SET, without being a superuser.  See
+ * YbDbAdminCanSetRoleSetting.
+ */
+static const char *const YbDbAdminRoleSettingVariables[] = {
+	"yb_password_reuse_history",
+	"yb_password_reuse_interval",
+	"yb_password_validity",
+};
+
 
 /*
  * Actual lookup of variables is done through this single, sorted array.
@@ -18210,6 +18221,33 @@ check_yb_allow_prehashed_passwords(bool *newVal, void **extra, GucSource source)
 		return false;
 	}
 	return true;
+}
+
+/*
+ * Whether the current user (GetUserId(): the effective user, after SET ROLE,
+ * SET SESSION AUTHORIZATION and SECURITY DEFINER) is a member of yb_db_admin
+ * and name is one of YbDbAdminRoleSettingVariables.  Per-role password policy
+ * is account management that yb_db_admin does on clusters that do not hand
+ * out superuser (for example, YugabyteDB Aeon).
+ *
+ * This only identifies the parameter.  AlterRoleSet decides whether the
+ * statement qualifies (ALTER ROLE <non-superuser role> SET/RESET, without
+ * IN DATABASE) and then runs it as superuser, so the GUC permission checks
+ * shared with ALTER DATABASE ... SET and CREATE/ALTER FUNCTION ... SET are
+ * unchanged.
+ */
+bool
+YbDbAdminCanSetRoleSetting(const char *name)
+{
+	if (name == NULL || !IsYbDbAdminUser(GetUserId()))
+		return false;
+
+	for (size_t i = 0; i < lengthof(YbDbAdminRoleSettingVariables); i++)
+	{
+		if (guc_name_compare(name, YbDbAdminRoleSettingVariables[i]) == 0)
+			return true;
+	}
+	return false;
 }
 
 /*

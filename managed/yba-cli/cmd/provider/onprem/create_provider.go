@@ -56,6 +56,13 @@ var createOnpremProviderCmd = &cobra.Command{
 		if err := providerutil.ValidateCreateZoneRegions(regions, zones); err != nil {
 			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
+		sshPort, err := cmd.Flags().GetInt("ssh-port")
+		if err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
+		if _, err := providerutil.SSHPort(sshPort); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
