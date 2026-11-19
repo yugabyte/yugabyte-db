@@ -3534,6 +3534,9 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
       UpdateMetrics();
       time_since_update_metrics = MonoTime::Now();
     }
+    // Fires on each iteration while CDC is enabled, so a test can wait out a pass that began before
+    // it disabled metrics.
+    TEST_SYNC_POINT_CALLBACK("UpdatePeersAndMetrics::AfterUpdateMetrics", this);
 
     const auto& update_peers_interval = MonoDelta::FromSeconds(get_update_peers_interval_());
     if (!FLAGS_enable_log_retention_by_op_idx ||
