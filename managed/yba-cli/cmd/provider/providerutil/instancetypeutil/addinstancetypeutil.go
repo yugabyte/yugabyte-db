@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider/providerutil"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
@@ -170,6 +171,8 @@ func buildVolumeDetails(volumeStrings []string, providerType string) []ybaclient
 				if !util.IsEmptyString(val) {
 					volume["type"] = val
 				}
+			default:
+				providerutil.UnknownKeyError(key, "volume")
 			}
 		}
 		if _, ok := volume["mount-points"]; !ok {

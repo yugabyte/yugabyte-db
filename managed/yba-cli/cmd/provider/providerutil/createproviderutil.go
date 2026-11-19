@@ -79,3 +79,11 @@ func ValueNotFoundForKeyError(key string) {
 			fmt.Sprintf("Key \"%s\" specified but value is empty\n", key),
 			formatter.RedColor))
 }
+
+// UnknownKeyError exits when a key-value flag has a key its parser does not know
+func UnknownKeyError(key, description string) {
+	logrus.Fatalln(
+		formatter.Colorize(
+			fmt.Sprintf("Unknown key \"%s\" in %s description\n", key, description),
+			formatter.RedColor))
+}
