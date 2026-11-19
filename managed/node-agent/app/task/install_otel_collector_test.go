@@ -263,6 +263,8 @@ func TestExecStartRuns(t *testing.T) {
 		{"{ path=/usr/bin/otelcol-contrib ; argv[]=/usr/bin/otelcol-contrib -c " + ours + " }",
 			false},
 		{"ExecStart=" + entry(ours), true},
+		{"ExecStart=" + entry(ours) + "\nId=otel-collector.service", true},
+		{"Id=otel-collector.service", false},
 		{entry(ours + "-custom"), false},
 		// A masked unit.
 		{"ExecStart=", false},

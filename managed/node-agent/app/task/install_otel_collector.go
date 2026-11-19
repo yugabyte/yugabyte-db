@@ -585,8 +585,8 @@ func (h *InstallOtelCollector) hasYbaRootOtelCollectorUnit(ctx context.Context) 
 		return false, err
 	}
 	// systemd applies the drop-ins, so this is the command that the unit runs. No --value: it
-	// needs systemd 230, and AL2 has 219. A masked unit prints only "ExecStart=".
-	execStart, err := h.rootUnitState(ctx, "show -p ExecStart")
+	// needs systemd 230, and AL2 has 219. Id always prints, so a unit with no command is not empty.
+	execStart, err := h.rootUnitState(ctx, "show -p ExecStart -p Id")
 	if err != nil {
 		return false, err
 	}
