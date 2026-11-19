@@ -8143,24 +8143,30 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void slotSkipsXClusterDdlReplicationTablesCreatedWhileStreaming() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t1 (id int primary key)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
     }
 
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
     PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
-    createSlot(replConnection, "test_slot", "test_decoding");
+    createSlot(replConnection, "test_decoding_slot", "test_decoding");
+    createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES (1)");
     }
 
     PGReplicationStream stream = replConnection.replicationStream()
                                      .logical()
-                                     .withSlotName("test_slot")
+                                     .withSlotName("test_decoding_slot")
                                      .withStartPosition(LogSequenceNumber.valueOf(0L))
                                      .withSlotOption("include-xids", false)
                                      .withSlotOption("skip-empty-xacts", true)
                                      .start();
     assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:1", "COMMIT"),
         receiveStringMessages(stream, 3));
+    Connection pubConn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationStream pubStream = openStream(pubConn, "yboutput_slot", "pub", 0);
+    /* BEGIN, RELATION, INSERT and COMMIT. */
+    assertTrue(receiveMessage(pubStream, 4).contains(PgOutputInsertMessage.Create("1")));
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
@@ -8168,8 +8174,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     }
     assertEquals(Arrays.asList("BEGIN", "table public.t1: INSERT: id[integer]:2", "COMMIT"),
         receiveStringMessages(stream, 3));
+    /* BEGIN, INSERT and COMMIT, as RELATION for t1 was already sent. */
+    assertTrue(receiveMessage(pubStream, 3).contains(PgOutputInsertMessage.Create("2")));
     stream.close();
     conn.close();
+    pubStream.close();
+    pubConn.close();
   }
 
   // Slots also leave these tables out when a publication lists them explicitly.
