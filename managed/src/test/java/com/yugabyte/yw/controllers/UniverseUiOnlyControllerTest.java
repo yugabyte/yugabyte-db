@@ -406,6 +406,28 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   }
 
   @Test
+  public void testConfigureEditKeepsTheRequestsChangedLdapGFlags() {
+    enableGFlagsSensitiveDataApiRedaction();
+    Universe u = setUpUniverseWithLdapGFlags();
+    UniverseDefinitionTaskParams taskParams = u.getUniverseDetails();
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.emptyMap(),
+            Map.of(
+                "ycql_ldap_bind_passwd", "dummy-new-pass", GFlagsUtil.YSQL_HBA_CONF_CSV, LDAP_HBA));
+    Result result = sendPrimaryEditConfigureRequest((ObjectNode) Json.toJson(taskParams));
+    assertOk(result);
+    String body = contentAsString(result);
+    assertFalse(body, body.contains("dummy-hba-pass"));
+    JsonNode tserverGFlags =
+        Json.parse(body).at("/clusters/0/userIntent/specificGFlags/perProcessFlags/value/TSERVER");
+    assertEquals("dummy-new-pass", tserverGFlags.get("ycql_ldap_bind_passwd").asText());
+    assertEquals(
+        LDAP_HBA.replace("dummy-hba-pass", SECRET_REPLACEMENT),
+        tserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV).asText());
+  }
+
+  @Test
   public void testConfigureCreateKeepsTheRequestsLdapGFlags() {
     enableGFlagsSensitiveDataApiRedaction();
     Universe u = setUpUniverse();

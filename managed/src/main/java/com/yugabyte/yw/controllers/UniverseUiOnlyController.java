@@ -6,9 +6,13 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -23,6 +27,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -60,6 +66,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private RoleBindingUtil roleBindingUtil;
+  @Inject private GFlagsValidation gFlagsValidation;
 
   /**
    * @deprecated Use UniverseInfoController.getUniverseResources that returns resources for universe
@@ -146,14 +153,46 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Objects.toString(taskParams.getUniverseUUID(), null),
             Audit.ActionType.Configure);
     Util.convertSingleProviderSpecsToOldSchema(confGetter, taskParams);
-    // A create's response holds only the client's own gflags, and redacting them would make the
-    // create send REDACTED, which it rejects. An edit's response can hold the universe's stored
-    // gflags, such as after a reset of its configuration, and the edit restores redacted values.
-    if (taskParams.clusterOperation == UniverseConfigureTaskParams.ClusterOperationType.CREATE) {
-      return PlatformResults.withData(
-          taskParams, false /* enableGFlagsSensitiveDataApiRedaction */);
+    if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      redactStoredGFlags(taskParams);
     }
-    return PlatformResults.withData(taskParams);
+    return PlatformResults.withData(taskParams, false /* enableGFlagsSensitiveDataApiRedaction */);
+  }
+
+  // The response can hold the universe's stored gflags, such as after a reset of its
+  // configuration. Only values equal to the stored ones are redacted: the edit restores REDACTED
+  // values from the stored cluster, and other values are the client's own.
+  private void redactStoredGFlags(UniverseConfigureTaskParams taskParams) {
+    Universe universe = PlacementInfoUtil.getUniverseForParams(taskParams);
+    if (universe == null || taskParams.clusters == null) {
+      return;
+    }
+    for (Cluster cluster : taskParams.clusters) {
+      Cluster storedCluster = cluster.uuid == null ? null : universe.getCluster(cluster.uuid);
+      if (cluster.userIntent == null || storedCluster == null || storedCluster.userIntent == null) {
+        continue;
+      }
+      UserIntent stored = storedCluster.userIntent;
+      UserIntent userIntent = cluster.userIntent;
+      userIntent.masterGFlags =
+          GFlagsUtil.redactSensitiveGFlagsMatchingStored(
+              stored.masterGFlags,
+              userIntent.masterGFlags,
+              gFlagsValidation,
+              stored.ybSoftwareVersion);
+      userIntent.tserverGFlags =
+          GFlagsUtil.redactSensitiveGFlagsMatchingStored(
+              stored.tserverGFlags,
+              userIntent.tserverGFlags,
+              gFlagsValidation,
+              stored.ybSoftwareVersion);
+      userIntent.specificGFlags =
+          GFlagsUtil.redactSensitiveSpecificGFlagsMatchingStored(
+              stored.specificGFlags,
+              userIntent.specificGFlags,
+              gFlagsValidation,
+              stored.ybSoftwareVersion);
+    }
   }
 
   @ApiOperation(

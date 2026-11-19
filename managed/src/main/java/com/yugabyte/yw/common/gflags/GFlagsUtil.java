@@ -3025,4 +3025,71 @@ public class GFlagsUtil {
 
     return mergedSpecificGFlags;
   }
+
+  /**
+   * Redacts the gflag values that equal the stored value of the same gflag, which an edit restores
+   * from the stored map. Other values are left as they are.
+   */
+  public static Map<String, String> redactSensitiveGFlagsMatchingStored(
+      Map<String, String> storedGFlags,
+      Map<String, String> gflags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (gflags == null || storedGFlags == null) {
+      return gflags;
+    }
+    Map<String, String> result = new HashMap<>(gflags);
+    RedactingService.redactGFlags(gflags, ybSoftwareVersion, gFlagsValidation)
+        .forEach(
+            (name, redacted) -> {
+              String value = gflags.get(name);
+              if (value != null && value.equals(storedGFlags.get(name))) {
+                result.put(name, redacted);
+              }
+            });
+    return result;
+  }
+
+  /** Applies {@link #redactSensitiveGFlagsMatchingStored} to the per-process and per-AZ maps. */
+  public static SpecificGFlags redactSensitiveSpecificGFlagsMatchingStored(
+      SpecificGFlags storedSpecificGFlags,
+      SpecificGFlags specificGFlags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (specificGFlags == null || storedSpecificGFlags == null) {
+      return specificGFlags;
+    }
+    SpecificGFlags redacted = specificGFlags.clone();
+    redactPerProcessFlagsMatchingStored(
+        storedSpecificGFlags.getPerProcessFlags(),
+        redacted.getPerProcessFlags(),
+        gFlagsValidation,
+        ybSoftwareVersion);
+    if (redacted.getPerAZ() != null && storedSpecificGFlags.getPerAZ() != null) {
+      redacted
+          .getPerAZ()
+          .forEach(
+              (azUuid, azFlags) ->
+                  redactPerProcessFlagsMatchingStored(
+                      storedSpecificGFlags.getPerAZ().get(azUuid),
+                      azFlags,
+                      gFlagsValidation,
+                      ybSoftwareVersion));
+    }
+    return redacted;
+  }
+
+  private static void redactPerProcessFlagsMatchingStored(
+      SpecificGFlags.PerProcessFlags stored,
+      SpecificGFlags.PerProcessFlags flags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (stored == null || stored.value == null || flags == null || flags.value == null) {
+      return;
+    }
+    flags.value.replaceAll(
+        (serverType, gflags) ->
+            redactSensitiveGFlagsMatchingStored(
+                stored.value.get(serverType), gflags, gFlagsValidation, ybSoftwareVersion));
+  }
 }
