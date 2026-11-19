@@ -650,7 +650,7 @@ Status YBClient::BackfillIndex(const TableId& table_id,
 }
 
 Status YBClient::StartTableBackfill(
-    const TableId& source_table_id, uint32_t target_table_oid,
+    const TableId& source_table_id, const TableId& target_table_id,
     uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id,
     CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
@@ -658,7 +658,7 @@ Status YBClient::StartTableBackfill(
   }
   master::StartTableBackfillRequestPB req;
   req.mutable_source_table()->set_table_id(source_table_id);
-  req.set_target_table_oid(target_table_oid);
+  req.mutable_target_table()->set_table_id(target_table_id);
   req.set_transform_fn_oid(transform_fn_oid);
   req.set_backfill_timestamp(backfill_timestamp);
   req.set_pg_job_id(pg_job_id);
@@ -670,6 +670,42 @@ Status YBClient::StartTableBackfill(
     return StatusFromPB(resp.error().status());
   }
   return Status::OK();
+}
+
+Status YBClient::AbortTableBackfill(
+    const TableId& source_table_id, int64_t pg_job_id, CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint()) {
+    deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  }
+  master::AbortTableBackfillRequestPB req;
+  req.mutable_source_table()->set_table_id(source_table_id);
+  req.set_pg_job_id(pg_job_id);
+  master::AbortTableBackfillResponsePB resp;
+  RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "AbortTableBackfill",
+      &MasterDdlProxy::AbortTableBackfillAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<master::TableBackfillStatusPB> YBClient::GetTableBackfillStatus(
+    const TableId& source_table_id, int64_t pg_job_id, CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint()) {
+    deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  }
+  master::GetTableBackfillStatusRequestPB req;
+  req.mutable_source_table()->set_table_id(source_table_id);
+  req.set_pg_job_id(pg_job_id);
+  master::GetTableBackfillStatusResponsePB resp;
+  RETURN_NOT_OK(data_->SyncLeaderMasterRpc(
+      deadline, req, &resp, "GetTableBackfillStatus",
+      &MasterDdlProxy::GetTableBackfillStatusAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return std::move(*resp.mutable_job_status());
 }
 
 Status YBClient::GetIndexBackfillProgress(

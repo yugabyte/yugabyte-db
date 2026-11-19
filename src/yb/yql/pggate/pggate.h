@@ -449,8 +449,11 @@ class PgApiImpl {
 
   Status BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block);
   Status StartTableBackfill(
-      const PgObjectId& source_table_id, uint32_t target_table_oid,
+      const PgObjectId& source_table_id, const PgObjectId& target_table_id,
       uint32_t transform_fn_oid, uint64_t backfill_timestamp, int64_t pg_job_id);
+  Status AbortTableBackfill(const PgObjectId& source_table_id, int64_t pg_job_id);
+  Result<master::TableBackfillStatusPB> GetTableBackfillStatus(
+      const PgObjectId& source_table_id, int64_t pg_job_id);
   Status WaitVectorIndexReady(const PgObjectId& table_id);
 
   Status NewDropSequence(const YbcPgOid database_oid,

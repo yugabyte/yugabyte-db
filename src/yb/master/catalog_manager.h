@@ -468,9 +468,22 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                             rpc::RpcContext* rpc,
                             const LeaderEpoch& epoch);
 
-  // The target of an online schema change backfill always lives in the source table's namespace.
-  Result<scoped_refptr<TableInfo>> GetOnlineSchemaChangeTargetTable(
-      const NamespaceId& source_namespace_id, uint32_t target_table_oid);
+  Status AbortTableBackfill(const AbortTableBackfillRequestPB* req,
+                            AbortTableBackfillResponsePB* resp,
+                            rpc::RpcContext* rpc,
+                            const LeaderEpoch& epoch);
+
+  // Postgres reads this to learn whether an active job's copy has ended, and for its progress.
+  Status GetTableBackfillStatus(const GetTableBackfillStatusRequestPB* req,
+                                GetTableBackfillStatusResponsePB* resp,
+                                rpc::RpcContext* rpc,
+                                const LeaderEpoch& epoch);
+
+  // The state of job `pg_job_id` on `source_table`, from its durable entry and, while it copies,
+  // from the resume keys and row counts on the source tablets. NotFound if there is no entry.
+  Status FillTableBackfillStatus(
+      const scoped_refptr<TableInfo>& source_table, int64_t pg_job_id,
+      TableBackfillStatusPB* status);
 
   // Sets retain_delete_markers and table_backfill_pin_job_id on an online schema change backfill's
   // target and on each of its indexes, for the life of the backfill.
@@ -491,9 +504,13 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // clears tables whose table_backfill_pin_job_id matches, so it never takes a pin owned by an
   // index backfill or by another online schema change job. The clear reaches the tablets through
   // the BACKFILL_DONE op, as for the index backfill, because an alter does not see a
-  // retain_delete_markers change. Idempotent.
+  // retain_delete_markers change. A valid `birth_time` is recorded as the birth time of each
+  // pinned index, as the index backfill records its read time: reads of the index at or after it
+  // are then served while the clear is reaching its tablets, instead of being retried as reads of
+  // an index whose backfill has not finished. Idempotent.
   Status UnpinOnlineSchemaChangeTargetDeleteMarkers(
-      const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch);
+      const scoped_refptr<TableInfo>& target, int64_t pg_job_id, const LeaderEpoch& epoch,
+      HybridTime birth_time = HybridTime::kInvalid);
 
   void AcquireObjectLocksGlobal(
       const AcquireObjectLocksGlobalRequestPB* req, AcquireObjectLocksGlobalResponsePB* resp,

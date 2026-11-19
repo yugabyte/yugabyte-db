@@ -1066,6 +1066,23 @@ typedef struct {
   uint32_t end_range;
 } YbcReplicationSlotHashRange;
 
+// The master's state of an online schema change backfill (OnlineSchemaChangeJobPB::State).
+typedef enum {
+  YB_TABLE_BACKFILL_RUNNING,
+  YB_TABLE_BACKFILL_SUCCEEDED,
+  YB_TABLE_BACKFILL_FAILED,
+  YB_TABLE_BACKFILL_ABORTED,
+} YbcPgTableBackfillState;
+
+typedef struct {
+  YbcPgTableBackfillState state;
+  uint64_t rows_done;
+  int32_t tablets_done;
+  int32_t tablets_total;
+  // Set for YB_TABLE_BACKFILL_FAILED only; palloc'd.
+  const char *error_message;
+} YbcPgTableBackfillStatus;
+
 typedef struct {
   uint32_t db_oid;
   uint32_t relation_oid;

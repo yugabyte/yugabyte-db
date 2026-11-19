@@ -269,6 +269,8 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kAlterTable)
   (kBackfillIndex)
   (kStartTableBackfill)
+  (kAbortTableBackfill)
+  (kGetTableBackfillStatus)
   (kCreateDatabase)
   (kCreateReplicationSlot)
   (kCreateTable)

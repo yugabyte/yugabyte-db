@@ -1446,6 +1446,27 @@ class PgClient::Impl : public BigDataFetcher {
     return ResponseStatus(resp);
   }
 
+  Status AbortTableBackfill(
+      tserver::PgAbortTableBackfillRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgAbortTableBackfillResponsePB resp;
+    req->set_session_id(session_id_);
+
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::AbortTableBackfill,
+        *req, resp, PggateRPC::kAbortTableBackfill, deadline));
+    return ResponseStatus(resp);
+  }
+
+  Result<master::TableBackfillStatusPB> GetTableBackfillStatus(
+      tserver::PgGetTableBackfillStatusRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgGetTableBackfillStatusResponsePB resp;
+    req->set_session_id(session_id_);
+
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::GetTableBackfillStatus,
+        *req, resp, PggateRPC::kGetTableBackfillStatus, deadline));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return std::move(*resp.mutable_job_status());
+  }
+
   Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
                                   uint64_t* num_rows_read_from_table,
                                   double* num_rows_backfilled) {
@@ -2350,6 +2371,16 @@ Status PgClient::BackfillIndex(
 Status PgClient::StartTableBackfill(
     tserver::PgStartTableBackfillRequestPB* req, CoarseTimePoint deadline) {
   return impl_->StartTableBackfill(req, deadline);
+}
+
+Status PgClient::AbortTableBackfill(
+    tserver::PgAbortTableBackfillRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->AbortTableBackfill(req, deadline);
+}
+
+Result<master::TableBackfillStatusPB> PgClient::GetTableBackfillStatus(
+    tserver::PgGetTableBackfillStatusRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->GetTableBackfillStatus(req, deadline);
 }
 
 Status PgClient::GetIndexBackfillProgress(

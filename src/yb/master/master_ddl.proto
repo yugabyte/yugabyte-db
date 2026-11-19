@@ -389,9 +389,12 @@ message GetBackfillStatusResponsePB {
   repeated IndexStatusPB index_status = 2;
 }
 
+// Both tables are named by DocDB table id, which a table rewrite (TRUNCATE, ALTER COLUMN TYPE)
+// derives from the new relfilenode rather than from the pg_class OID.
 message StartTableBackfillRequestPB {
+  reserved 2;
   optional TableIdentifierPB source_table = 1;
-  optional uint32 target_table_oid = 2;
+  optional TableIdentifierPB target_table = 6;
   optional uint32 transform_fn_oid = 3;
   // Lower bound for the read time. The master reads at the max of this and the source tablets'
   // safe times, because the client's clock cannot bound the commit times tablet leaders assign.
@@ -401,6 +404,36 @@ message StartTableBackfillRequestPB {
 
 message StartTableBackfillResponsePB {
   optional MasterErrorPB error = 1;
+}
+
+message AbortTableBackfillRequestPB {
+  optional TableIdentifierPB source_table = 1;
+  optional int64 pg_job_id = 2;
+}
+
+message AbortTableBackfillResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+// The master's state of an online schema change job's copy. Postgres reads it to learn whether the
+// copy has ended, and shows the counters as the job's progress.
+message TableBackfillStatusPB {
+  optional OnlineSchemaChangeJobPB.State state = 1;
+  optional uint64 rows_done = 2;
+  optional int32 tablets_done = 3;
+  optional int32 tablets_total = 4;
+  // FAILED only.
+  optional string error_message = 5;
+}
+
+message GetTableBackfillStatusRequestPB {
+  optional TableIdentifierPB source_table = 1;
+  optional int64 pg_job_id = 2;
+}
+
+message GetTableBackfillStatusResponsePB {
+  optional MasterErrorPB error = 1;
+  optional TableBackfillStatusPB job_status = 2;
 }
 
 
@@ -939,6 +972,12 @@ service MasterDdl {
 
   rpc StartTableBackfill(StartTableBackfillRequestPB)
       returns (StartTableBackfillResponsePB);
+
+  rpc AbortTableBackfill(AbortTableBackfillRequestPB)
+      returns (AbortTableBackfillResponsePB);
+
+  rpc GetTableBackfillStatus(GetTableBackfillStatusRequestPB)
+      returns (GetTableBackfillStatusResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);

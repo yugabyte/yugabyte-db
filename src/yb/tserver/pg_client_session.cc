@@ -2200,9 +2200,30 @@ class PgClientSession::Impl {
       rpc::RpcContext* context) {
     return client_.StartTableBackfill(
         PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
-        req.target_table_oid(), req.transform_fn_oid(),
+        PgObjectId::GetYbTableIdFromPB(req.target_table_id()), req.transform_fn_oid(),
         req.backfill_timestamp(), req.pg_job_id(),
         context->GetClientDeadline());
+  }
+
+  Status AbortTableBackfill(
+      const PgAbortTableBackfillRequestPB& req,
+      PgAbortTableBackfillResponsePB* resp,
+      rpc::RpcContext* context) {
+    return client_.AbortTableBackfill(
+        PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
+        req.pg_job_id(),
+        context->GetClientDeadline());
+  }
+
+  Status GetTableBackfillStatus(
+      const PgGetTableBackfillStatusRequestPB& req,
+      PgGetTableBackfillStatusResponsePB* resp,
+      rpc::RpcContext* context) {
+    *resp->mutable_job_status() = VERIFY_RESULT(client_.GetTableBackfillStatus(
+        PgObjectId::GetYbTableIdFromPB(req.source_table_id()),
+        req.pg_job_id(),
+        context->GetClientDeadline()));
+    return Status::OK();
   }
 
   Status CreateTablegroup(

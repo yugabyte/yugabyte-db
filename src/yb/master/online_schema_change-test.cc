@@ -38,9 +38,7 @@
 
 DECLARE_bool(TEST_online_schema_change_backfill_pause_controller);
 DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
-DECLARE_int32(ysql_index_backfill_rpc_timeout_ms);
 DECLARE_uint32(online_schema_change_backfill_max_resumes);
-DECLARE_uint32(online_schema_change_backfill_pin_release_margin_ms);
 DECLARE_uint32(TEST_online_schema_change_backfill_replay_chunks_per_tablet);
 
 namespace yb {
@@ -57,6 +55,11 @@ constexpr uint32_t kSourceLeafAOid = kPgFirstNormalObjectId + 104;
 constexpr uint32_t kSourceLeafBOid = kPgFirstNormalObjectId + 105;
 constexpr uint32_t kTargetLeafAOid = kPgFirstNormalObjectId + 106;
 constexpr uint32_t kTargetLeafBOid = kPgFirstNormalObjectId + 107;
+// A source and a target that have been rewritten, so their relfilenodes differ from their OIDs.
+constexpr uint32_t kRewrittenSourceOid = kPgFirstNormalObjectId + 108;
+constexpr uint32_t kRewrittenSourceRelfilenode = kPgFirstNormalObjectId + 109;
+constexpr uint32_t kRewrittenTargetOid = kPgFirstNormalObjectId + 110;
+constexpr uint32_t kRewrittenTargetRelfilenode = kPgFirstNormalObjectId + 111;
 constexpr int64_t kPgJobId = 9001;
 constexpr uint64_t kReadTime = 123456789;
 
@@ -73,25 +76,18 @@ class OnlineSchemaChangeTest : public MasterTestBase {
 
     CreateNamespaceResponsePB ns_resp;
     ASSERT_OK(CreatePgsqlNamespace("osc_db", GetPgsqlNamespaceId(kDatabaseOid), &ns_resp));
-    Schema schema({ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
-                   ColumnSchema("v", DataType::INT32)});
     for (const auto& [name, oid] : std::vector<std::pair<std::string, uint32_t>>{
              {"src", kSourceTableOid}, {"dst", kTargetTableOid},
              {"src_a", kSourceLeafAOid}, {"src_b", kSourceLeafBOid},
              {"dst_a", kTargetLeafAOid}, {"dst_b", kTargetLeafBOid}}) {
       ASSERT_OK(CreatePgsqlTable(
-          GetPgsqlNamespaceId(kDatabaseOid), name, TableIdOf(oid), schema));
+          GetPgsqlNamespaceId(kDatabaseOid), name, TableIdOf(oid), TableSchema()));
     }
     source_table_ = ASSERT_RESULT(catalog_manager().FindTableById(TableIdOf(kSourceTableOid)));
     epoch_ = catalog_manager().GetLeaderEpochInternal();
-    // With no tablet server, no tablet would become RUNNING by itself.
     for (const auto oid : {kSourceTableOid, kSourceLeafAOid, kSourceLeafBOid}) {
-      for (const auto& tablet : ASSERT_RESULT(ASSERT_RESULT(Table(oid))->GetTablets())) {
-        auto l = tablet->LockForWrite();
-        l.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
-        ASSERT_OK(catalog_manager().sys_catalog()->Upsert(epoch_, tablet));
-        l.Commit();
-      }
+      const auto table = ASSERT_RESULT(Table(oid));
+      ASSERT_NO_FATALS(MarkTabletsRunning(table));
     }
 
     controller().TEST_send_safe_time_ = [this](const TabletInfoPtr& tablet, HybridTime) {
@@ -119,6 +115,33 @@ class OnlineSchemaChangeTest : public MasterTestBase {
 
   static TableId TableIdOf(uint32_t oid) { return GetPgsqlTableId(kDatabaseOid, oid); }
 
+  static Schema TableSchema() {
+    return Schema({ColumnSchema("key", DataType::INT32, ColumnKind::HASH),
+                   ColumnSchema("v", DataType::INT32)});
+  }
+
+  // A table as a rewrite leaves it: the DocDB id comes from the relfilenode, and pg_table_id keeps
+  // the OID.
+  Result<scoped_refptr<TableInfo>> CreateRewrittenTable(
+      const std::string& name, uint32_t oid, uint32_t relfilenode) {
+    CreateTableRequestPB req;
+    req.set_table_id(TableIdOf(relfilenode));
+    req.set_pg_table_id(TableIdOf(oid));
+    RETURN_NOT_OK(
+        CreatePgsqlTable(GetPgsqlNamespaceId(kDatabaseOid), name, TableSchema(), &req));
+    return Table(relfilenode);
+  }
+
+  // With no tablet server, no tablet would become RUNNING by itself.
+  void MarkTabletsRunning(const scoped_refptr<TableInfo>& table) {
+    for (const auto& tablet : ASSERT_RESULT(table->GetTablets())) {
+      auto l = tablet->LockForWrite();
+      l.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+      ASSERT_OK(catalog_manager().sys_catalog()->Upsert(epoch_, tablet));
+      l.Commit();
+    }
+  }
+
   Result<scoped_refptr<TableInfo>> Table(uint32_t oid) {
     return catalog_manager().FindTableById(TableIdOf(oid));
   }
@@ -130,6 +153,7 @@ class OnlineSchemaChangeTest : public MasterTestBase {
     job.set_backfilling_timestamp(kReadTime);
     job.set_source_table_oid(kSourceTableOid);
     job.set_target_table_oid(kTargetTableOid);
+    job.set_target_table_id(TableIdOf(kTargetTableOid));
     job.set_transform_fn_oid(kTransformFnOid);
     job.set_database_name("osc_db");
     return job;
@@ -295,6 +319,24 @@ class OnlineSchemaChangeTest : public MasterTestBase {
     return MasterError(status) == MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS;
   }
 
+  Result<TableBackfillStatusPB> GetStatus() {
+    TableBackfillStatusPB status;
+    RETURN_NOT_OK(catalog_manager().FillTableBackfillStatus(source_table_, kPgJobId, &status));
+    return status;
+  }
+
+  Status Abort() {
+    AbortTableBackfillRequestPB req;
+    AbortTableBackfillResponsePB resp;
+    req.mutable_source_table()->set_table_id(source_table_->id());
+    req.set_pg_job_id(kPgJobId);
+    RETURN_NOT_OK(catalog_manager().AbortTableBackfill(&req, &resp, nullptr, epoch_));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return Status::OK();
+  }
+
   scoped_refptr<TableInfo> source_table_;
   LeaderEpoch epoch_;
 
@@ -380,29 +422,18 @@ TEST_F(OnlineSchemaChangeTest, TheJobSucceedsOnceEveryTabletHasDrained) {
   ASSERT_TRUE(job.has_finished_at());
 }
 
-// A chunk sent before the job succeeded can still be writing on a tserver, e.g. one a deposed
-// leader sent. Releasing the pin before it lands lets compaction drop a tombstone that hides the
-// row the chunk brings back.
-TEST_F(OnlineSchemaChangeTest, TheSuccessKeepsItsPinUntilNoChunkCanStillLand) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_index_backfill_rpc_timeout_ms) = 1000;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_online_schema_change_backfill_pin_release_margin_ms) = 0;
+// As the index backfill does when it finishes, the pin comes off before SUCCESS is recorded, so a
+// cutover never finds the target pinned. A pinned index with no birth time has its reads retried
+// until the pin is released.
+TEST_F(OnlineSchemaChangeTest, TheSuccessIsRecordedAfterThePinIsReleased) {
   ASSERT_NO_FATALS(StartCopying());
   const auto tablets = ASSERT_RESULT(SourceTablets());
   for (const auto& tablet : tablets) {
     ASSERT_NO_FATALS(AnswerChunk(tablet, "", 1));
   }
   ASSERT_EQ(ReadDurableJob().state(), State::SUCCESS);
-  ASSERT_TRUE(TargetIsPinned()) << "the pin went with the outcome write";
+  ASSERT_FALSE(TargetIsPinned()) << "SUCCESS was recorded while the target was still pinned";
   Visit();
-  ASSERT_TRUE(TargetIsPinned());
-  ASSERT_TRUE(Job()) << "the job was forgotten while it still held its pin";
-
-  ASSERT_OK(WaitFor(
-      [this]() {
-        Visit();
-        return !TargetIsPinned();
-      },
-      30s * kTimeMultiplier, "Wait for the pin to be released"));
   ASSERT_FALSE(TabletResumeKey(tablets[0])) << "the resume keys outlived the release";
   ASSERT_FALSE(Job());
 }
@@ -543,25 +574,77 @@ TEST_F(OnlineSchemaChangeTest, ATabletThatIsNotRunningFailsTheJob) {
   ASSERT_EQ(SafeTimesSent(), 0);
 }
 
+// A rewrite (TRUNCATE, ALTER COLUMN TYPE) gives a table a new DocDB id, from its new relfilenode.
+// Postgres names both tables by DocDB id, and the copy opens them by OID.
+TEST_F(OnlineSchemaChangeTest, StartFindsRewrittenTablesAndCopiesThemByOid) {
+  const auto source = ASSERT_RESULT(
+      CreateRewrittenTable("src_rw", kRewrittenSourceOid, kRewrittenSourceRelfilenode));
+  const auto target = ASSERT_RESULT(
+      CreateRewrittenTable("dst_rw", kRewrittenTargetOid, kRewrittenTargetRelfilenode));
+  ASSERT_NO_FATALS(MarkTabletsRunning(source));
+  source_table_ = source;
+
+  auto chunk_oids = std::make_shared<std::vector<std::pair<uint32_t, uint32_t>>>();
+  controller().TEST_send_chunk_ =
+      [this, chunk_oids](const TabletInfoPtr&, const tserver::TableBackfillChunkRequestPB& req) {
+        std::lock_guard lock(sent_mutex_);
+        chunk_oids->emplace_back(req.source_table_oid(), req.target_table_oid());
+        return Status::OK();
+      };
+
+  StartTableBackfillRequestPB req;
+  req.mutable_source_table()->set_table_id(source->id());
+  req.mutable_target_table()->set_table_id(target->id());
+  req.set_transform_fn_oid(kTransformFnOid);
+  req.set_backfill_timestamp(kReadTime);
+  req.set_pg_job_id(kPgJobId);
+  StartTableBackfillResponsePB resp;
+  ASSERT_OK(catalog_manager().StartTableBackfill(&req, &resp, nullptr, epoch_));
+  ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
+
+  const auto job = ReadDurableJob();
+  ASSERT_EQ(job.source_table_oid(), kRewrittenSourceOid);
+  ASSERT_EQ(job.target_table_oid(), kRewrittenTargetOid);
+  ASSERT_EQ(job.target_table_id(), target->id());
+  ASSERT_TRUE(HasPin(target));
+
+  std::vector<uint64_t> times(SafeTimesSent(), 0);
+  ASSERT_NO_FATALS(AnswerSafeTimes(times));
+  ASSERT_EQ(ReadDurableJob().state(), State::IN_PROGRESS);
+  const auto num_tablets = ASSERT_RESULT(source->GetTablets()).size();
+  std::lock_guard lock(sent_mutex_);
+  ASSERT_EQ(chunk_oids->size(), num_tablets);
+  for (const auto& [source_oid, target_oid] : *chunk_oids) {
+    ASSERT_EQ(source_oid, kRewrittenSourceOid);
+    ASSERT_EQ(target_oid, kRewrittenTargetOid);
+  }
+}
+
 TEST_F(OnlineSchemaChangeTest, AMissingTargetFailsTheJob) {
   auto job = NewJob();
-  job.set_target_table_oid(kTargetTableOid + 50);
+  job.set_target_table_id(TableIdOf(kTargetTableOid + 50));
   ASSERT_NOK(controller().Start(source_table_, job, epoch_));
   ASSERT_EQ(ReadDurableJob().state(), State::FAILED);
 }
 
-TEST_F(OnlineSchemaChangeTest, ACancelStopsAJobThisMasterIsNotDrivingYet) {
-  SetDurableJob([](OnlineSchemaChangeJobPB* job) {
-    job->set_state(State::IN_PROGRESS);
-    job->set_cancel_requested(true);
-  });
+// The abort's own visit stops the copy and releases the pin, without waiting for the bg tasks.
+TEST_F(OnlineSchemaChangeTest, AbortStopsAJobThisMasterIsNotDrivingYet) {
+  SetDurableJob([](OnlineSchemaChangeJobPB* job) { job->set_state(State::IN_PROGRESS); });
   SetPin(TargetTable());
 
-  Discover();
-  RunOnce();
-  ASSERT_EQ(ReadDurableJob().state(), State::CANCELLED);
+  ASSERT_OK(Abort());
+  ASSERT_EQ(ReadDurableJob().state(), State::ABORTED);
   ASSERT_FALSE(TargetIsPinned());
   ASSERT_TRUE(TakeChunksSent().empty());
+}
+
+TEST_F(OnlineSchemaChangeTest, AbortLeavesAFinishedJobAlone) {
+  SetDurableJob([](OnlineSchemaChangeJobPB* job) { job->set_state(State::SUCCESS); });
+  ASSERT_OK(Abort());
+  ASSERT_EQ(ReadDurableJob().state(), State::SUCCESS);
+
+  ASSERT_NO_FATALS(ClearDurableJob());
+  ASSERT_OK(Abort());
 }
 
 // A retried StartTableBackfill finds the entry its first attempt wrote. A source has one live job,
@@ -585,6 +668,38 @@ TEST_F(OnlineSchemaChangeTest, StartIsIdempotentAndOneJobPerSource) {
   ASSERT_OK(Start(kPgJobId + 1));
   ASSERT_EQ(ReadDurableJob().pg_job_id(), kPgJobId + 1);
   ASSERT_EQ(ReadDurableJob().state(), State::COMPUTING_READ_TIME);
+}
+
+TEST_F(OnlineSchemaChangeTest, StatusReportsTheJobsProgress) {
+  const auto tablets = ASSERT_RESULT(SourceTablets());
+  ASSERT_GE(tablets.size(), 3);
+  SetDurableJob([](OnlineSchemaChangeJobPB* job) { job->set_state(State::IN_PROGRESS); });
+  SetTabletProgress(tablets[0], "", 10);
+  SetTabletProgress(tablets[1], "", 15);
+  SetTabletProgress(tablets[2], "resume-here", 5);
+
+  auto status = ASSERT_RESULT(GetStatus());
+  ASSERT_EQ(status.state(), State::IN_PROGRESS);
+  ASSERT_EQ(status.rows_done(), 30);
+  ASSERT_EQ(status.tablets_done(), 2);
+  ASSERT_EQ(status.tablets_total(), static_cast<int32_t>(tablets.size()));
+
+  // A finished job reports what it recorded with its outcome.
+  SetDurableJob([](OnlineSchemaChangeJobPB* job) {
+    job->set_state(State::SUCCESS);
+    job->set_num_rows_processed(90);
+    job->set_num_tablets_done(9);
+    job->set_num_tablets_total(9);
+  });
+  status = ASSERT_RESULT(GetStatus());
+  ASSERT_EQ(status.state(), State::SUCCESS);
+  ASSERT_EQ(status.rows_done(), 90);
+  ASSERT_EQ(status.tablets_done(), 9);
+
+  ASSERT_NO_FATALS(ClearDurableJob());
+  const auto missing = GetStatus();
+  ASSERT_FALSE(missing.ok());
+  ASSERT_TRUE(missing.status().IsNotFound()) << missing.status();
 }
 
 TEST_F(OnlineSchemaChangeTest, SplitsAreRefusedWhileTheJobCopies) {
@@ -620,16 +735,10 @@ TEST_F(OnlineSchemaChangeTest, TheReapLeavesALiveJobsPinAlone) {
   Discover();
   ASSERT_TRUE(TargetIsPinned()) << "the reap took a running job's pin";
 
-  // A SUCCESS job's pin stays until no chunk sent before it can still land.
   SetDurableJob([this](OnlineSchemaChangeJobPB* job) {
     job->set_state(State::SUCCESS);
     job->set_finished_at(mini_master_->master()->clock()->Now().ToUint64());
   });
-  controller().Reset();
-  Discover();
-  ASSERT_TRUE(TargetIsPinned()) << "the reap took the pin of a job that has just succeeded";
-
-  SetDurableJob([](OnlineSchemaChangeJobPB* job) { job->set_finished_at(kReadTime); });
   controller().Reset();
   Discover();
   ASSERT_FALSE(TargetIsPinned()) << "a finished job's pin was left behind";
@@ -654,6 +763,7 @@ TEST_F(OnlineSchemaChangeTest, ValidateRejectsHalfWrittenJobs) {
       {"zero source oid",
        [](OnlineSchemaChangeJobPB* j) { j->set_source_table_oid(kPgInvalidOid); }},
       {"no target oid", [](OnlineSchemaChangeJobPB* j) { j->clear_target_table_oid(); }},
+      {"no target id", [](OnlineSchemaChangeJobPB* j) { j->clear_target_table_id(); }},
       {"no transform oid", [](OnlineSchemaChangeJobPB* j) { j->clear_transform_fn_oid(); }},
   };
   for (const auto& [name, mutate] : mutations) {
