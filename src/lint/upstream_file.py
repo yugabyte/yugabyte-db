@@ -25,13 +25,32 @@
 
 from pathlib import Path
 import csv
+import email.utils
+import http.client
 import os
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 CSV_FILEPATH = f"{SCRIPT_PATH}/upstream_repositories.csv"
+
+# A remote fetch that fails in a way another attempt can get past is tried up to this many times.
+FETCH_ATTEMPTS = 3
+# Seconds to wait before the second attempt.  The wait doubles before each later attempt.
+FETCH_BACKOFF_S = 1.0
+# The longest wait a Retry-After header can ask for.
+RETRY_AFTER_CAP_S = 30.0
+FETCH_TIMEOUT_S = 10
+# build-support/lint.py sets this to a file that every fetch in one lint run shares.  Each retry
+# adds its cost, the wait plus FETCH_TIMEOUT_S, to the file, and no fetch retries once the total
+# would pass FETCH_RETRY_BUDGET_S.  So during an outage, retries add at most that much to a lint
+# run, however many files it checks.  When the variable is unset, as under arc lint, each fetch
+# still makes at most FETCH_ATTEMPTS attempts.
+RETRY_BUDGET_FILE_ENV = "YB_LINT_FETCH_RETRY_BUDGET_FILE"
+FETCH_RETRY_BUDGET_S = 60.0
 
 
 class NotFoundError(Exception):
@@ -105,32 +124,104 @@ def fetch(filepath):
     else:
         assert repository.startswith("https://gitlab.com"), repository
         url = f"https://gitlab.com/{repo_name}/-/raw/{commit}/{upstream_filepath}"
+    return fetch_url(url)
+
+
+def fetch_url(url):
+    """Return the body at url, retrying a failure that another attempt can get past.
+
+    Raise NotFoundError on a 404.
+    """
+    for attempt in range(FETCH_ATTEMPTS):
+        try:
+            # The body is read inside the try, so a timeout while reading it is retried too.
+            with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_S) as req:
+                return req.read()
+        except Exception as e:
+            # Examples:
+            # - urllib.error.HTTPError: HTTP Error 403: Forbidden
+            # - urllib.error.HTTPError: HTTP Error 404: Not Found
+            # - urllib.error.HTTPError: HTTP Error 429: Too Many Requests
+            # - urllib.error.HTTPError: HTTP Error 503: Service Unavailable
+            # - urllib.error.URLError: <urlopen error [Errno -2] Name or service not known>
+            # - urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name
+            #   resolution>
+            # - urllib.error.URLError: <urlopen error [Errno 110] Connection timed out>
+            # - urllib.error.URLError: <urlopen error timed out>
+            # - (older python version) socket.timeout: The read operation timed out
+            # - (newer python version) TimeoutError: The read operation timed out
+
+            # Only 404 should be considered expected.  That happens if the file path or commit
+            # does not exist.  403 happens for gitlab when the repository does not exist (github
+            # gives 404), and that should be considered a fatal issue.
+            if isinstance(e, urllib.error.HTTPError) and e.code == 404:
+                raise NotFoundError(url) from e
+
+            wait = _retry_wait(e, attempt)
+            if (wait is not None and attempt < FETCH_ATTEMPTS - 1
+                    and _take_retry_budget(wait + FETCH_TIMEOUT_S)):
+                time.sleep(wait)
+                continue
+
+            # The rest should rethrow.  Also print the error message to stdout so that it shows
+            # in arc lint stdout (otherwise, it gets buried under stacktrace in stderr, and arc
+            # lint truncates it so that it's not seen).
+            print(f"{type(e).__name__}: {e}")
+            raise
+    raise AssertionError("unreachable")
+
+
+def _retry_wait(e, attempt):
+    """Return the seconds to wait before retrying after e, or None if e is not retried.
+
+    Retried: 429, any 5xx, and any network error (a timeout while connecting or reading, a DNS
+    failure, a refused or reset connection, a truncated body).  Any other HTTP error is not.
+    """
+    if isinstance(e, urllib.error.HTTPError):
+        if e.code != 429 and e.code < 500:
+            return None
+        if e.code in (429, 503):
+            retry_after = _retry_after_s(e)
+            if retry_after is not None:
+                return min(retry_after, RETRY_AFTER_CAP_S)
+    elif not isinstance(e, (OSError, http.client.HTTPException)):
+        # URLError and every timeout are OSErrors.
+        return None
+    return FETCH_BACKOFF_S * 2 ** attempt
+
+
+def _retry_after_s(e):
+    """Return the seconds a Retry-After header asks for, or None if there is no valid one."""
+    value = e.headers.get("Retry-After") if e.headers else None
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
     try:
-        req = urllib.request.urlopen(url, timeout=10)
-    except Exception as e:
-        # Examples:
-        # - urllib.error.HTTPError: HTTP Error 403: Forbidden
-        # - urllib.error.HTTPError: HTTP Error 404: Not Found
-        # - urllib.error.HTTPError: HTTP Error 503: Service Unavailable
-        # - urllib.error.URLError: <urlopen error [Errno -2] Name or service not known>
-        # - urllib.error.URLError: <urlopen error [Errno -3] Temporary failure in name resolution>
-        # - urllib.error.URLError: <urlopen error [Errno 110] Connection timed out>
-        # - urllib.error.URLError: <urlopen error timed out>
-        # - (older python version) socket.timeout: The read operation timed out
-        # - (newer python version) TimeoutError: The read operation timed out
+        when = email.utils.parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        return None
+    return max(0.0, when.timestamp() - time.time())
 
-        # Only 404 should be considered expected.  That happens if the file path or commit does not
-        # exist.  403 happens for gitlab when the repository does not exist (github gives 404), and
-        # that should be considered a fatal issue.
-        if isinstance(e, urllib.error.HTTPError) and e.code == 404:
-            raise NotFoundError(url) from e
 
-        # The rest should rethrow.  Also print the error message to stdout so that it shows in arc
-        # lint stdout (otherwise, it gets buried under stacktrace in stderr, and arc lint truncates
-        # it so that it's not seen).
-        print(f"{type(e).__name__}: {e}")
-        raise
-    return req.read()
+def _take_retry_budget(cost):
+    """Whether the lint run's retry budget has `cost` seconds left; if so, spend them."""
+    path = os.environ.get(RETRY_BUDGET_FILE_ENV)
+    if not path:
+        return True
+    try:
+        with open(path, "a+") as f:
+            f.seek(0)
+            spent = sum(float(x) for x in f.read().split())
+            if spent + cost > FETCH_RETRY_BUDGET_S:
+                return False
+            f.write(f"{cost}\n")
+    except (OSError, ValueError):
+        return True
+    return True
 
 
 def main(filepath, output_filepath):

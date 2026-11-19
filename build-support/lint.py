@@ -20,12 +20,14 @@ passed on the command line).
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +35,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CPPLINT_PATH = REPO_ROOT / "src" / "lint" / "cpplint.py"
+# src/lint/upstream_file.py retries a failed download of a file's upstream counterpart.  The
+# retries of one lint run share a time budget kept in this file; see RETRY_BUDGET_FILE_ENV there.
+FETCH_RETRY_BUDGET_FILE_ENV = "YB_LINT_FETCH_RETRY_BUDGET_FILE"
 
 
 @dataclass
@@ -385,6 +390,13 @@ def _resolve_files(args: argparse.Namespace) -> list[str]:
     return _changed_files(args.rev)
 
 
+def _remove_file(path: str) -> None:
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
 def main() -> int:
     """Entry point: parse args, load config, run linters, print findings."""
     ap = argparse.ArgumentParser(description="YugabyteDB linter.")
@@ -415,6 +427,12 @@ def main() -> int:
         print("No files to lint.")
         return 0
 
+    if FETCH_RETRY_BUDGET_FILE_ENV not in os.environ:
+        # The linter scripts inherit the variable.
+        fd, budget_file = tempfile.mkstemp(prefix="yb-lint-fetch-retries-")
+        os.close(fd)
+        atexit.register(_remove_file, budget_file)
+        os.environ[FETCH_RETRY_BUDGET_FILE_ENV] = budget_file
     all_msgs: list[Message] = []
     for linter in linters:
         if args.only and not any(flt in linter.name for flt in args.only):
