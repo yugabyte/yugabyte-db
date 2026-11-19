@@ -5849,7 +5849,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestVWALStopsPollingDroppedTable)
 }
 
 // A transaction that writes a table and then drops it must still have its COMMIT shipped after
-// the drop triggers a publication refresh that removes the table's tablet queue.
+// the drop triggers a publication refresh that removes the table's tablet queue. Why it is:
+// - transactional_ddl off: at equal commit time, sys-catalog records sort after every COMMIT, so
+//   the table's COMMIT is shipped before the drop is detected.
+// - transactional_ddl on: the drop is detected first and removing the table discards the COMMIT
+//   in its queue, but the DROP's write to the sys-catalog tablet has its own COMMIT for the same
+//   transaction, which is shipped instead.
 void CDCSDKConsumptionConsistentChangesTest::TestDmlAndDropTableInTxnBlock(
     bool transactional_ddl) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) =
