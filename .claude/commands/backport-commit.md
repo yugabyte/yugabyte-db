@@ -7,7 +7,7 @@ model: sonnet
 
 Backport a merged commit to one or more YugabyteDB release branches using the bundled `backport-commit.sh` at `.agents/scripts/backport-commit.sh`. The script handles cherry-picking, message rewriting, fork detection, push, and PR creation. Wrap it with conflict-resolution logic: trivial whitespace conflicts are fixed automatically; anything more complex is escalated to the user.
 
-**This command produces GitHub PRs.** A backport should go through the same review system the original went through, so if the original landed via Phorge — the argument is a `Dxxxxx` revision ID, or `git log -n1 --format=%b <commit>` shows a `Differential Revision:` line — stop and use `/backport-diff` instead. If neither pattern matches cleanly, ask the user rather than guessing.
+**This command produces GitHub PRs, and is the default for every backport** — including commits that landed via Phorge, since Phorge is being retired (no new diffs from 2026-11-23). The script records a Phorge original as `Original commit: <sha> / D<id>`. Given a `Dxxxxx` revision ID instead of a SHA, find the landed commit with `git log origin/master -n1 --format=%H --grep='^Differential Revision: .*/Dxxxxx$'` and pass that. Use `/backport-diff` only if the user explicitly asks for a Phorge backport.
 
 **Always pass the full branch list in a single invocation.** After each successful branch, the script chains the next branch's cherry-pick from the previous branch's task branch — so a conflict you resolve on `b2` carries forward, and `b3+` typically apply cleanly without re-resolving the same conflict.
 
@@ -142,6 +142,7 @@ Output a single summary listing, per branch:
 ## Notes
 
 - The script auto-detects reviewers from the originating PR (union of pending review requests and actual reviewers, minus bots and self) — do not pass `-r` unless the user asks for a different list.
+- For a Phorge-landed original, the script maps the `Reviewers:` / `Reviewed By:` names in the commit body to GitHub logins through the internal roster (`yugabyte/eng-team`, `scripts/lib/yb-eng.json`). If it warns that it could not read the roster, or that it skipped people who are missing from it, tell the user which names were not requested and ask whether to pass `-r`.
 - The script auto-links the originating PR in the backport body via the `/repos/<repo>/commits/<sha>/pulls` API; do not duplicate that link manually.
 - `master` is silently skipped by the script if passed as a branch — that's expected.
 - If a backport PR from the fork's `backport-<id>-<branch>` branch already exists, the script logs and skips it. Treat that as a no-op success for that branch.

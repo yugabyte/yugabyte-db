@@ -39,7 +39,7 @@ Keep the tier for the rest of the session. If a change fits two tiers, use the s
 
 ## Step 3: Publish
 
-Use `/create-pr` (or `/create-diff`) and pass the tier to the script:
+Use `/create-pr` and pass the tier to the script:
 
 ```
 .agents/scripts/create-pr.sh -s <tier> -i <JIRA key> ...

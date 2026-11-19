@@ -1,8 +1,10 @@
 ---
 name: create-pr
 description: >-
-  Create a Pull Request for the current branch's changes.
-  Use when the user wants to publish a branch for review as a GitHub PR.
+  Create a GitHub Pull Request for the current branch's changes -- the
+  default way to publish changes for review.  Use when the user wants to
+  publish, post, or send their changes for review, or asks for a PR or a
+  "diff", unless they explicitly ask for a Phorge diff.
 allowed-tools: Bash(.agents/scripts/create-pr.sh *)
 model: sonnet
 ---
