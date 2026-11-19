@@ -73,7 +73,8 @@ ANALYZE gap_idx_tbl;
 SET TimeZone = 'UTC';
 CREATE TABLE gap_unread_tbl (ord2 int, gap timestamp, x timestamp, bkt int,
     ord1 timestamptz, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
-CREATE INDEX NONCONCURRENTLY gap_unread_tbl_idx ON gap_unread_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC) INCLUDE (x);
+CREATE INDEX NONCONCURRENTLY gap_unread_tbl_idx ON gap_unread_tbl
+    (bkt ASC, ord1 ASC, gap ASC, ord2 ASC) INCLUDE (x);
 INSERT INTO gap_unread_tbl (bkt, ord1, gap, ord2, x) VALUES
     (1, '2020-01-02', '2020-01-02', 10, '2020-01-02'),  -- stream bkt = 1
     (1, '2020-01-02', '2020-01-02', 30, '2020-01-02'),
