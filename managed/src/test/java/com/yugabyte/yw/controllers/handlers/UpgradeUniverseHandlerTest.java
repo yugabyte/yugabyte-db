@@ -1291,6 +1291,29 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertEquals(hbaWithSecret.trim(), submitted.tserverGFlags.get("ysql_hba_conf_csv"));
   }
 
+  @Test
+  public void testResizeNodeWithoutGFlagsChange() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResizeNode);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    ResizeNodeParams params = new ResizeNodeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.clusters = copyStoredClusters(u);
+    params.setForceResizeNode(true);
+
+    handler.resizeNode(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    ResizeNodeParams submitted = (ResizeNodeParams) paramsArgumentCaptor.getValue();
+    assertNull(submitted.masterGFlags);
+    assertNull(submitted.tserverGFlags);
+  }
+
   // Legacy maps copied from the stored cluster, as UniverseControllerRequestBinder does when the
   // request omits them.
   private List<UniverseDefinitionTaskParams.Cluster> copyStoredClusters(Universe u)

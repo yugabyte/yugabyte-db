@@ -389,8 +389,12 @@ public class UpgradeUniverseHandler {
 
   private static void trimGFlags(UserIntent userIntent) {
     GFlagsUtil.trimFlags(userIntent.specificGFlags);
-    userIntent.masterGFlags = GFlagsUtil.trimFlags(userIntent.masterGFlags);
-    userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
+    userIntent.masterGFlags = trimFlagsIfSet(userIntent.masterGFlags);
+    userIntent.tserverGFlags = trimFlagsIfSet(userIntent.tserverGFlags);
+  }
+
+  private static Map<String, String> trimFlagsIfSet(Map<String, String> gflags) {
+    return gflags == null ? null : GFlagsUtil.trimFlags(gflags);
   }
 
   // The merges restore stored values, which may be untrimmed, into every request cluster.
@@ -744,16 +748,16 @@ public class UpgradeUniverseHandler {
           universeDetails != null ? universeDetails.getPrimaryCluster() : null;
       if (primaryUniverseCluster != null && primaryUniverseCluster.userIntent != null) {
         // verifyParams trimmed and checked these maps, and the merges restore stored values, which
-        // may be untrimmed.
+        // may be untrimmed. Both maps are null for a resize without gflags changes.
         requestParams.masterGFlags =
-            GFlagsUtil.trimFlags(
+            trimFlagsIfSet(
                 GFlagsUtil.mergeSensitiveGFlags(
                     primaryUniverseCluster.userIntent.masterGFlags,
                     requestParams.masterGFlags,
                     gFlagsValidation,
                     primaryUniverseCluster.userIntent.ybSoftwareVersion));
         requestParams.tserverGFlags =
-            GFlagsUtil.trimFlags(
+            trimFlagsIfSet(
                 GFlagsUtil.mergeSensitiveGFlags(
                     primaryUniverseCluster.userIntent.tserverGFlags,
                     requestParams.tserverGFlags,
