@@ -477,7 +477,8 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 		 * (odyssey 535a27e), which also signals on_read when the
 		 * readahead is full but the io still has pending bytes (e.g. TLS
 		 * data buffered by OpenSSL), so that they are not left unread.
-		 * That is not ported here yet, so plain od_relay_read() is used.
+		 * That is not ported here, so plain od_relay_read() is used. YB
+		 * handles those pending bytes after od_readahead_reuse() below.
 		 */
 		rc = od_relay_read(relay);
 		if (rc != OD_OK)
