@@ -32,6 +32,10 @@ The following table lists the most important YCQL features which you would find 
 | [Operators](../../api/ycql/expr_ocall/)| Binary, Unary, Null operators ... |
 | [Security](../../api/ycql/#ddl-security-statements) | Roles and Permissions |
 
+{{<lead link="../../api/ycql/cassandra-feature-support/">}}
+To learn more, see [Cassandra feature support](../../api/ycql/cassandra-feature-support/)
+{{</lead>}}
+
 ## Going beyond Cassandra
 
 YCQL has a number of features that are not present in Cassandra, as summarized in the following table.
@@ -48,4 +52,4 @@ YCQL has a number of features that are not present in Cassandra, as summarized i
 
 - [Comparison with Apache Cassandra](/stable/faq/comparisons/cassandra/)
 - [YCQL command reference](../../api/ycql/)
-- [Cassandra 3.4 Feature parity](cassandra-feature-support/)
+- [Cassandra 3.4 Feature parity](../../api/ycql/cassandra-feature-support/)
