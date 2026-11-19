@@ -143,6 +143,7 @@ YbLogicalClientVersionType
 YbLsmBuildState
 YbMergeScanInfo
 YbMergeScanStreamColInfo
+YbModificationRecord
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry
@@ -212,6 +213,8 @@ YbRelationAttrsProcessingState
 YbRemovedAclKind
 YbResetBatchFn_t
 YbRowBounds
+YbRowKey
+YbRowModification
 YbRunWithPrefetcherContext
 YbSample
 YbSampleData
@@ -234,6 +237,7 @@ YbStatementType
 YbStatusErrorData
 YbStatusErrorDataErrorLocation
 YbStatusErrorDataFormatText
+YbSubXactDepth
 YbSubstConstsContext
 YbSubstituteContext
 YbSysCatalogModificationAspect
