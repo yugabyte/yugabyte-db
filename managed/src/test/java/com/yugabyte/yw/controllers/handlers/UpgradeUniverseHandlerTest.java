@@ -1314,6 +1314,63 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     assertNull(submitted.tserverGFlags);
   }
 
+  // The v1 API gets the redacted value back from the client, and the v2 API builds the request
+  // clusters from the stored ones.
+  @Test
+  @Parameters({"true", "false"})
+  public void testResizeNodeWithoutGFlagsChangeKeepsUntrimmedStoredGFlags(boolean redactedRequest)
+      throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResizeNode);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    String hbaWithSecret = " host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-lr23812 \n";
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.getPrimaryCluster().userIntent.enableYSQLAuth = true;
+              details.getPrimaryCluster().userIntent.specificGFlags =
+                  SpecificGFlags.construct(
+                      ImmutableMap.of("m", "1"),
+                      ImmutableMap.of("t", "1", "ysql_hba_conf_csv", hbaWithSecret));
+              universe.setUniverseDetails(details);
+            });
+    List<UniverseDefinitionTaskParams.Cluster> requestClusters = copyStoredClusters(u);
+    if (redactedRequest) {
+      requestClusters
+          .get(0)
+          .userIntent
+          .specificGFlags
+          .getPerProcessFlags()
+          .value
+          .get(ServerType.TSERVER)
+          .put(
+              "ysql_hba_conf_csv",
+              RedactingService.redactAllLdapBindPasswdHbaFormattedValues(hbaWithSecret));
+    }
+    ResizeNodeParams params = new ResizeNodeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.clusters = requestClusters;
+    params.setForceResizeNode(true);
+
+    handler.resizeNode(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    ResizeNodeParams submitted = (ResizeNodeParams) paramsArgumentCaptor.getValue();
+    Universe stored = Universe.getOrBadRequest(u.getUniverseUUID());
+    // ResizeNode restarts the nodes for a gflags upgrade only when this is true.
+    assertFalse(submitted.flagsProvided(stored));
+    assertEquals(
+        stored.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags,
+        submitted.getPrimaryCluster().userIntent.specificGFlags);
+  }
+
   // Legacy maps copied from the stored cluster, as UniverseControllerRequestBinder does when the
   // request omits them.
   private List<UniverseDefinitionTaskParams.Cluster> copyStoredClusters(Universe u)

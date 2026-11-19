@@ -397,7 +397,9 @@ public class UpgradeUniverseHandler {
     return gflags == null ? null : GFlagsUtil.trimFlags(gflags);
   }
 
-  // The merges restore stored values, which may be untrimmed, into every request cluster.
+  // The merges restore stored values, which may be untrimmed, into every request cluster. Only the
+  // gflags that differ from the stored ones are trimmed: the others must stay equal to them, or
+  // the task treats them as changed, and a resize without gflags changes restarts its nodes.
   private void mergeSensitiveGFlagsForRequestClusters(
       UpgradeWithGFlags requestParams, Universe universe) {
     mergeSensitiveMasterTserverGFlagsForRequestClusters(requestParams, universe);
@@ -407,8 +409,20 @@ public class UpgradeUniverseHandler {
       return;
     }
     for (UniverseDefinitionTaskParams.Cluster cluster : requestParams.clusters) {
-      if (cluster.userIntent != null) {
-        trimGFlags(cluster.userIntent);
+      UserIntent userIntent = cluster.userIntent;
+      if (userIntent == null) {
+        continue;
+      }
+      UniverseDefinitionTaskParams.Cluster storedCluster = universe.getCluster(cluster.uuid);
+      UserIntent stored = storedCluster != null ? storedCluster.userIntent : null;
+      if (stored == null || !Objects.equals(userIntent.specificGFlags, stored.specificGFlags)) {
+        GFlagsUtil.trimFlags(userIntent.specificGFlags);
+      }
+      if (stored == null || !Objects.equals(userIntent.masterGFlags, stored.masterGFlags)) {
+        userIntent.masterGFlags = trimFlagsIfSet(userIntent.masterGFlags);
+      }
+      if (stored == null || !Objects.equals(userIntent.tserverGFlags, stored.tserverGFlags)) {
+        userIntent.tserverGFlags = trimFlagsIfSet(userIntent.tserverGFlags);
       }
     }
   }
