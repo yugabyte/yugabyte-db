@@ -34,6 +34,9 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /* GUC variables */
 int			wal_skip_threshold = 2048;	/* in kilobytes */
 
@@ -205,6 +208,14 @@ void
 RelationDropStorage(Relation rel)
 {
 	PendingRelDelete *pending;
+
+	/*
+	 * YB: Only temp relations have local storage, so there is nothing to unlink
+	 * for the rest.  This also covers sequences, which IsYBRelation() does not.
+	 */
+	if (YBIsEnabledInPostgresEnvVar() &&
+		rel->rd_rel->relpersistence != RELPERSISTENCE_TEMP)
+		return;
 
 	/* Add the relation to the list of stuff to delete at commit */
 	pending = (PendingRelDelete *)

@@ -543,9 +543,6 @@ extern void YBCommitTransactionIntermediate(void);
 extern void YBResetTransactionReadPoint(void);
 extern void YBRestartReadPoint(void);
 extern void YBCRestartWriteTransaction(void);
-extern void YbSetTxnUsesTempRel(void);
-extern void YBMarkTxnUsesTempRelAndSetTxnId();
-extern bool YbCurrentTxnUsesTempRel(void);
 extern void YbBeginInternalSubTransactionForReadCommittedStatement();
 
 /*

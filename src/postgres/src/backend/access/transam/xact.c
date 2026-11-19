@@ -222,8 +222,6 @@ typedef struct TransactionStateData
 	bool		ybDataSentForCurrQuery; /* Whether any data has been sent to
 										 * frontend as part of current query's
 										 * execution */
-	bool		ybTxnUsesTempRel;	/* True if the transaction operates on a
-									 * temporary table */
 	List	   *YBPostponedDdlOps;	/* We postpone execution of non-revertable
 									 * DocDB operations (e.g. drop
 									 * table/index) until the rest of the txn
@@ -267,7 +265,6 @@ static TransactionStateData TopTransactionStateData = {
 	.topXidLogged = false,
 	.ybDataSent = false,
 	.ybDataSentForCurrQuery = false,
-	.ybTxnUsesTempRel = false,
 	.YBPostponedDdlOps = NULL,
 };
 
@@ -1388,9 +1385,6 @@ RecordTransactionCommit(void)
 	bool		RelcacheInitFileInval = false;
 	bool		wrote_xlog;
 
-	if (IsYugaByteEnabled() && !YbCurrentTxnUsesTempRel())
-		return InvalidTransactionId;
-
 	/*
 	 * Log pending invalidations for logical decoding of in-progress
 	 * transactions.  Normally for DDLs, we log this at each command end,
@@ -1423,8 +1417,14 @@ RecordTransactionCommit(void)
 		 *
 		 * Use a real test not just an Assert to check this, since it's a bit
 		 * fragile.
+		 *
+		 * YB: Dropping a YB relation drops its local stats entry, but the
+		 * transaction may not have a PG XID, so the premise above does not hold.
+		 * The stats are dropped regardless.
+		 * YB relations do not register pending relfile deletes, so the nrels
+		 * check still applies.
 		 */
-		if (nrels != 0 || ndroppedstats != 0)
+		if (nrels != 0 || (ndroppedstats != 0 && !IsYugaByteEnabled()))
 			elog(ERROR, "cannot commit a transaction that deleted files but has no xid");
 
 		/* Can't have child XIDs either; AssignTransactionId enforces this */
@@ -2088,7 +2088,6 @@ static void
 YBStartTransaction(TransactionState s)
 {
 	elog(DEBUG2, "YBStartTransaction");
-	s->ybTxnUsesTempRel = false;
 	s->ybDataSent = false;
 	s->ybDataSentForCurrQuery = false;
 	s->YBPostponedDdlOps = NULL;
@@ -3483,40 +3482,6 @@ RestoreTransactionCharacteristics(const SavedTransactionCharacteristics *s)
 	XactDeferrable = s->save_XactDeferrable;
 }
 
-void
-YbSetTxnUsesTempRel()
-{
-	TransactionState s = CurrentTransactionState;
-
-	/*
-	 * TODO(kramanathan): This flag needs to be rolled back appropriately when
-	 * rolling back a sub-transaction. Currently, the flag(s) being set is
-	 * persisted until commit/abort, even if the transaction at commit does not
-	 * end up performing the operation whose flag is being set.
-	 */
-	while (s != NULL)
-	{
-		s->ybTxnUsesTempRel = true;
-		s = s->parent;
-	}
-}
-
-void
-YBMarkTxnUsesTempRelAndSetTxnId()
-{
-	YbSetTxnUsesTempRel();
-	/*
-	 * Invoke GetCurrentTransactionId() to assign a txn id
-	 * as we we want to use PG txn code paths for txns that use temp relations.
-	 */
-	GetCurrentTransactionId();
-}
-
-bool
-YbCurrentTxnUsesTempRel(void)
-{
-	return CurrentTransactionState->ybTxnUsesTempRel;
-}
 
 /*
  *	CommitTransactionCommand

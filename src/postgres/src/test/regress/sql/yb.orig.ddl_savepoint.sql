@@ -407,3 +407,32 @@ CREATE OR REPLACE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN 
 SELECT f_34485_b();
 ROLLBACK;
 SELECT f_34485_b();
+
+-- Rolling back a subtransaction that created a temp table removes the table
+-- and its file.  Temp DDL that writes no tuples assigns no PG xid, so this
+-- must not depend on one.
+-- ROLLBACK TO a savepoint
+BEGIN;
+SAVEPOINT a;
+CREATE TEMP TABLE sp_t (k int);
+SELECT pg_relation_filepath('sp_t') AS sp_path \gset
+SELECT (pg_stat_file(:'sp_path', true)).size IS NOT NULL AS file_exists;
+ROLLBACK TO a;
+COMMIT;
+SELECT to_regclass('pg_temp.sp_t') IS NULL AS table_gone,
+       (pg_stat_file(:'sp_path', true)).size IS NULL AS file_removed;
+
+-- PL/pgSQL exception block
+DO $$
+BEGIN
+  CREATE TEMP TABLE exc_t (k int);
+  INSERT INTO exc_t VALUES (1);
+  RAISE EXCEPTION 'boom';
+EXCEPTION WHEN others THEN
+  NULL;
+END $$;
+SELECT to_regclass('pg_temp.exc_t') IS NULL AS table_gone;
+CREATE TEMP TABLE exc_t (k int);
+INSERT INTO exc_t VALUES (2);
+SELECT * FROM exc_t;
+DROP TABLE exc_t;
