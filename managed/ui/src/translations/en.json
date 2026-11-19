@@ -677,7 +677,11 @@
         "disableWarningImpact": "Database nodes in this universe will lose federated access to backup storage in other clouds. Backups and restores using that storage will fail, including scheduled backups.",
         "disableWarningPermissions": "Existing IAM permissions in AWS and Google Cloud will remain unchanged. To revoke those permissions, remove them in the respective cloud providers.",
         "enableSuccess": "Cross-cloud federated access enabled.",
-        "disableSuccess": "Cross-cloud federated access disabled."
+        "disableSuccess": "Cross-cloud federated access disabled.",
+        "enableInProgress": "Enabling cross-cloud federated access...",
+        "disableInProgress": "Disabling cross-cloud federated access...",
+        "enableFailed": "Failed to enable cross-cloud federated access.",
+        "disableFailed": "Failed to disable cross-cloud federated access."
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -3585,7 +3589,9 @@
           "enableSuccess": "Metrics export successfully enabled.",
           "disableSuccess": "Metrics export successfully disabled.",
           "updateSuccess": "Metrics export successfully updated.",
-          "enableFailed": "Failed to enable metrics export.",
+          "enableInProgress": "Enabling cross-cloud federated access...",
+        "disableInProgress": "Disabling cross-cloud federated access...",
+        "enableFailed": "Failed to enable metrics export.",
           "disableFailed": "Failed to disable metrics export.",
           "updateFailed": "Failed to update metrics export.",
           "enableRequestFailed": "Metrics export enable request failed:",

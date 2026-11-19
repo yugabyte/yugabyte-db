@@ -323,3 +323,45 @@ int yb_handle_oid_pkt_client(od_instance_t *instance, od_client_t *client,
 
 	return 0;
 }
+
+/*
+ * Read the YbObjectDropped packet and set related fields on server
+ * object. Marking the routes inactive here would make the relay stop at
+ * the next packet, so the ErrorResponse that follows would never reach
+ * the client. So, that part is separated out in `yb_apply_dropped_object`
+ * which is called at RFQ or when server disconnects, whichever's earlier.
+ */
+int yb_handle_object_dropped_pkt(od_server_t *server, char *data,
+				 uint32_t size)
+{
+	char *pos = data + 1;
+	uint32_t pos_size = size - 1;
+	uint32_t len;
+	char kind;
+	uint32_t oid;
+
+	if (kiwi_read32(&len, &pos, &pos_size) == -1 ||
+	    kiwi_read8(&kind, &pos, &pos_size) == -1 ||
+	    kiwi_read32(&oid, &pos, &pos_size) == -1)
+		return -1;
+
+	/* TODO(#33018): Mark routes of a dropped database inactive. */
+	od_route_t *route = server->route;
+	if (kind == YB_DROPPED_ROLE &&
+	    (uint32_t)route->id.yb_user_oid == oid)
+		server->yb_role_dropped = true;
+
+	return 0;
+}
+
+void yb_apply_dropped_object(od_server_t *server)
+{
+	od_route_t *route = server->route;
+
+	if (!server->yb_role_dropped)
+		return;
+	server->yb_role_dropped = false;
+
+	yb_mark_routes_inactive(server->global->router, -1,
+				route->id.yb_user_oid);
+}

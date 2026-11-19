@@ -13,28 +13,41 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.export.TelemetryConfig;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.yaml.SkipNullRepresenter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
@@ -58,11 +71,16 @@ import com.yugabyte.yw.models.helpers.exporters.server.YsqlConnMgrLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.*;
 import com.yugabyte.yw.models.helpers.telemetry.AuthCredentials.AuthType;
 import com.yugabyte.yw.models.helpers.telemetry.TelemetryProviderConfig;
+import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -1371,6 +1389,31 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     generateAndAssertConfig(null, queryLogConfig, null, "audit/aws_query_log_config.yml");
   }
 
+  // Charts below the passthrough version read exporters and secretEnv as separate values.
+  @Test
+  @SuppressWarnings("unchecked")
+  public void generateOtelHelmValuesDataDogUsesSecretEnv() {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("apikey123");
+    TelemetryProvider dd = createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), config);
+
+    Map<String, Object> overrides =
+        generator.getOtelHelmValues(
+            createAuditLogConfigWithYSQL(dd.getUuid(), ImmutableMap.of()), "%m [%p] ");
+
+    String exporters = new Yaml().dump(overrides.get("exporters"));
+    assertFalse(exporters.contains("apikey123"));
+    List<Map<String, String>> secretEnv = (List<Map<String, String>>) overrides.get("secretEnv");
+    assertEquals(1, secretEnv.size());
+    assertThat(exporters, containsString("${env:" + secretEnv.get(0).get("envName") + "}"));
+    assertEquals(
+        "apikey123",
+        new String(
+            Base64.getDecoder().decode(secretEnv.get(0).get("envValue")), StandardCharsets.UTF_8));
+  }
+
   @Test
   public void generateOtelHelmValuesYsqlPlusAWS() {
     AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
@@ -1702,7 +1745,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
-  public void getOtelColConfigK8sExporterCredentialsAreRedactedInShellOutput() {
+  public void exporterCredentialsReachCollectorOnlyThroughEnv() {
     DataDogConfig dataDog = new DataDogConfig();
     dataDog.setType(ProviderType.DATA_DOG);
     dataDog.setSite("datadoghq.com");
@@ -1778,30 +1821,139 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
       // Redaction reads the credentials to redact from the DB, not from the mocked service.
       telemetryProvider.save();
 
+      AuditLogConfig auditLogConfig =
+          createAuditLogConfigWithYSQL(telemetryProvider.getUuid(), ImmutableMap.of());
       OtelCollectorConfigGenerator.K8sOtelConfig result =
           generator.getOtelColConfigK8s(
               provider,
               universe,
-              TelemetryConfig.builder()
-                  .auditLogConfig(
-                      createAuditLogConfigWithYSQL(telemetryProvider.getUuid(), ImmutableMap.of()))
-                  .build(),
+              TelemetryConfig.builder().auditLogConfig(auditLogConfig).build(),
               null,
               "%m [%p] ");
+      String vmConfig = generateConfig(auditLogConfig, null, null);
 
-      assertThat(
-          "test is only meaningful if the renderer inlines the credential",
-          result.getConfig(),
-          containsString(secret));
-
-      for (String line : result.getConfig().split("\\n")) {
-        String redacted =
-            RedactingService.redactShellProcessOutput(line, RedactionTarget.HELM_VALUES);
+      Map<String, String> credentialEnv =
+          OtelCollectorConfigGenerator.getCredentialEnv(telemetryProvider);
+      Map<String, String> k8sEnv = new HashMap<>();
+      for (Object secretEnvEntry : result.getSecretEnv()) {
+        @SuppressWarnings("unchecked")
+        Map<String, String> env = (Map<String, String>) secretEnvEntry;
+        k8sEnv.put(
+            env.get("envName"),
+            new String(Base64.getDecoder().decode(env.get("envValue")), StandardCharsets.UTF_8));
+        // Helm values carry the Secret data, and support bundles collect them.
+        String helmLine = "envValue: " + env.get("envValue");
         assertFalse(
-            config.getType() + " credential leaked into shell output: " + redacted,
-            redacted.contains(secret));
+            config.getType() + " Secret data leaked into shell output",
+            RedactingService.redactShellProcessOutput(helmLine, RedactionTarget.HELM_VALUES)
+                .contains(env.get("envValue")));
+      }
+      assertEquals(config.getType() + " K8s Secret", credentialEnv, k8sEnv);
+
+      // Kubelet collapses "$$" in the K8s config before the collector reads it.
+      for (String rendered : ImmutableList.of(vmConfig, result.getConfig().replace("$$", "$"))) {
+        assertFalse(
+            config.getType() + " credential inlined in collector config",
+            rendered.contains(secret));
+        assertThat(
+            config.getType() + " credential must reach the exporter",
+            resolveEnvRefs(rendered, credentialEnv),
+            containsString(secret));
       }
     }
+  }
+
+  @Test
+  public void vmConfigEnvCoversPausedAuditExporters() {
+    DataDogConfig dataDog = new DataDogConfig();
+    dataDog.setType(ProviderType.DATA_DOG);
+    dataDog.setSite("datadoghq.com");
+    dataDog.setApiKey("dd-paused-audit-0123456789abcdef");
+    TelemetryProvider auditProvider =
+        createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), dataDog);
+
+    SplunkConfig splunk = new SplunkConfig();
+    splunk.setType(ProviderType.SPLUNK);
+    splunk.setEndpoint("https://splunk:8088");
+    splunk.setToken("splunk-active-query-token");
+    TelemetryProvider queryProvider =
+        createTelemetryProvider(new UUID(0, 2), "splunk", ImmutableMap.of(), splunk);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(auditProvider.getUuid(), ImmutableMap.of());
+    auditLogConfig.setExportActive(false);
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            queryProvider.getUuid(),
+            ImmutableMap.of(),
+            YSQLQueryLogConfig.YSQLLogStatement.ALL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.VERBOSE,
+            false,
+            false,
+            false,
+            false,
+            -1);
+    // Build the payload as the VM install does, and resolve the config it uploads.
+    when(mockFileHelperService.createTempFile(any(), any()))
+        .thenAnswer(
+            i ->
+                Files.createTempFile(
+                    Paths.get(OTEL_COL_TMP_PATH), i.getArgument(0), i.getArgument(1)));
+    NodeAgentClient nodeAgentClient = mock(NodeAgentClient.class);
+    List<String> uploaded = new ArrayList<>();
+    doAnswer(
+            i ->
+                uploaded.add(
+                    FileUtils.readFileToString(
+                        new File((String) i.getArgument(1)), StandardCharsets.UTF_8)))
+        .when(nodeAgentClient)
+        .uploadFile(any(), contains("otel_collector_config_"), any(), any(), anyInt(), any());
+    NodeAgentRpcPayload payload =
+        new NodeAgentRpcPayload(
+            mockReleaseManager,
+            app.config(),
+            app.injector().instanceOf(RuntimeConfGetter.class),
+            generator,
+            mockTelemetryProviderService,
+            mockFileHelperService,
+            nodeAgentClient,
+            null,
+            null);
+    universe.getUniverseDetails().arch = Architecture.x86_64;
+    NodeDetails node = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = node.nodeName;
+    params.otelCollectorEnabled = true;
+    params.deviceInfo = new DeviceInfo();
+    params.deviceInfo.mountPoints = "/mnt/d0";
+    params.gflags = new HashMap<>();
+    params.telemetryConfig = TelemetryConfig.of(auditLogConfig, queryLogConfig, null);
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setVersion(Util.getYbaVersion());
+
+    InstallOtelCollectorInput input =
+        payload.setupInstallOtelCollectorBits(universe, node, params, nodeAgent);
+
+    assertEquals(1, uploaded.size());
+    // The paused audit exporter is still rendered.
+    assertThat(uploaded.get(0), containsString("_DD_API_KEY}"));
+    String resolved = resolveEnvRefs(uploaded.get(0), input.getOtelColSecretEnvMap());
+    assertThat(resolved, containsString(dataDog.getApiKey()));
+    assertThat(resolved, containsString(splunk.getToken()));
+  }
+
+  /** Resolves ${env:NAME} as the collector does; fails on a reference the env does not carry. */
+  private static String resolveEnvRefs(String config, Map<String, String> env) {
+    Matcher ref = Pattern.compile("(?<!\\$)\\$\\{env:([A-Za-z_][A-Za-z0-9_]*)\\}").matcher(config);
+    StringBuilder resolved = new StringBuilder();
+    while (ref.find()) {
+      assertTrue("unset env reference " + ref.group(1), env.containsKey(ref.group(1)));
+      ref.appendReplacement(resolved, Matcher.quoteReplacement(env.get(ref.group(1))));
+    }
+    ref.appendTail(resolved);
+    return resolved.toString();
   }
 
   // The K8s config reaches the collector through the OTEL_CONFIG env var, and kubelet's $(VAR)
@@ -1853,7 +2005,7 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     while (envRef.find()) {
       assertTrue(
           "collector would reject env reference ${" + envRef.group(1) + "}",
-          envRef.group(1).matches("[a-zA-Z_][a-zA-Z0-9_]*"));
+          envRef.group(1).matches("(env:)?[a-zA-Z_][a-zA-Z0-9_]*"));
     }
   }
 
@@ -2362,5 +2514,72 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   public void re2ToPosixEreTranslatesPcreConstructs() {
     assertEquals("[0-9]+ [A-Za-z0-9_]+", OtelCollectorConfigGenerator.re2ToPosixEre("\\d{3} \\w+"));
     assertEquals("(x)", OtelCollectorConfigGenerator.re2ToPosixEre("(?P<foo>x)"));
+  }
+
+  @Test
+  public void credentialTrailingLineBreakIsStripped() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setApiKey("apikey123\r\n");
+    TelemetryProvider dd =
+        createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), ddConfig);
+    assertEquals(
+        List.of("apikey123"),
+        new ArrayList<>(OtelCollectorConfigGenerator.getCredentialEnv(dd).values()));
+
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setAccessKey("access\n");
+    s3Config.setSecretKey("secret");
+    TelemetryProvider s3 =
+        createTelemetryProvider(new UUID(0, 2), "s3", ImmutableMap.of(), s3Config);
+    Pair<String, String> keys = OtelCollectorConfigGenerator.getAwsKeys(s3);
+    assertEquals("access", keys.getFirst());
+    assertEquals("secret", keys.getSecond());
+  }
+
+  @Test
+  public void credentialOfOnlyLineBreakIsNotReferenced() throws IOException {
+    DataDogConfig config = new DataDogConfig();
+    config.setType(ProviderType.DATA_DOG);
+    config.setSite("ddsite");
+    config.setApiKey("\r\n");
+    TelemetryProvider dd = createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), config);
+    assertTrue(OtelCollectorConfigGenerator.getCredentialEnv(dd).isEmpty());
+    String vmConfig =
+        generateConfig(createAuditLogConfigWithYSQL(dd.getUuid(), ImmutableMap.of()), null, null);
+    assertThat(vmConfig, not(containsString("${env:")));
+  }
+
+  // A line break inside a credential is removed too, on VM and K8s, so no task fails on it.
+  @Test
+  public void credentialInnerLineBreakIsRemoved() {
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setSite("ddsite");
+    ddConfig.setApiKey("apikey\ncredential_process=x\n");
+    TelemetryProvider dd =
+        createTelemetryProvider(new UUID(0, 1), "dd", ImmutableMap.of(), ddConfig);
+    assertEquals(
+        List.of("apikeycredential_process=x"),
+        new ArrayList<>(OtelCollectorConfigGenerator.getCredentialEnv(dd).values()));
+    AuditLogConfig auditLogConfig = createAuditLogConfigWithYSQL(dd.getUuid(), ImmutableMap.of());
+    generateConfig(auditLogConfig, null, null);
+    OtelCollectorConfigGenerator.K8sOtelConfig k8sConfig =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder().auditLogConfig(auditLogConfig).build(),
+            null,
+            "%m [%p] ");
+    assertEquals(1, k8sConfig.getSecretEnv().size());
+
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setAccessKey("access");
+    awsConfig.setSecretKey("sec\rret");
+    TelemetryProvider aws =
+        createTelemetryProvider(new UUID(0, 2), "aws", ImmutableMap.of(), awsConfig);
+    assertEquals("secret", OtelCollectorConfigGenerator.getAwsKeys(aws).getSecond());
   }
 }

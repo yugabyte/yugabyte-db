@@ -72,6 +72,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -1074,6 +1075,16 @@ public class Util {
       throw new RuntimeException("Failed to create " + dirPath);
     }
     return dirPath;
+  }
+
+  // Older YBA versions restored files from the DB as 0400, which makes in-place rewrites fail with
+  // "Permission denied" (PLAT-23953).
+  public static void ensureOwnerWritable(Path file) throws IOException {
+    if (Files.exists(file) && !Files.isWritable(file)) {
+      Set<PosixFilePermission> permissions = new HashSet<>(Files.getPosixFilePermissions(file));
+      permissions.add(PosixFilePermission.OWNER_WRITE);
+      Files.setPosixFilePermissions(file, permissions);
+    }
   }
 
   public static String getNodeHomeDir(UUID universeUUID, NodeDetails node) {

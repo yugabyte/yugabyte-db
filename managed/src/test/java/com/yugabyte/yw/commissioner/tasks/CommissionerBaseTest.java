@@ -288,6 +288,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected CapacityReservationMetrics reservationMetrics =
       Mockito.mock(CapacityReservationMetrics.class);
 
+  /** An upgraded node-agent, as the OTEL install payload requires. */
+  protected static NodeAgent upgradedNodeAgent(String ip) {
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setUuid(UUID.randomUUID());
+    nodeAgent.setIp(ip);
+    nodeAgent.setVersion(Util.getYbaVersion());
+    return nodeAgent;
+  }
+
   @Before
   public void setUpBase() {
     UUID yugawareUuid = UUID.randomUUID();
@@ -405,6 +414,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
     lenient().when(mockKubernetesManagerFactory.getManager()).thenReturn(mockKubernetesManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
+    lenient()
+        .when(mockNodeAgentClient.getAndUpgradeOrThrow(anyString()))
+        .thenAnswer(inv -> upgradedNodeAgent(inv.getArgument(0)));
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);

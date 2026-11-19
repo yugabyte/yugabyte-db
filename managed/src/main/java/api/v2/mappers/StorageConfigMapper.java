@@ -105,9 +105,14 @@ public interface StorageConfigMapper {
   }
 
   static ConfigState toV1State(StorageConfigState state) {
-    return state == StorageConfigState.StorageConfigQueuedForDeletion
-        ? ConfigState.QueuedForDeletion
-        : ConfigState.Active;
+    switch (state) {
+      case StorageConfigQueuedForDeletion:
+        return ConfigState.QueuedForDeletion;
+      case StorageConfigValidating:
+        return ConfigState.Validating;
+      default:
+        return ConfigState.Active;
+    }
   }
 
   // ---- v1 to v2 ----
@@ -125,11 +130,18 @@ public interface StorageConfigMapper {
   default StorageConfigInfo toStorageConfigInfo(CustomerConfig config) {
     return new StorageConfigInfo()
         .uuid(config.getConfigUUID())
-        .state(
-            config.getState() == ConfigState.QueuedForDeletion
-                ? StorageConfigState.StorageConfigQueuedForDeletion
-                : StorageConfigState.StorageConfigActive)
+        .state(toStorageConfigState(config.getState()))
         .isKubernetesOperatorControlled(config.isKubernetesOperatorControlled());
+  }
+
+  default StorageConfigState toStorageConfigState(ConfigState state) {
+    if (state == ConfigState.QueuedForDeletion) {
+      return StorageConfigState.StorageConfigQueuedForDeletion;
+    }
+    if (state == ConfigState.Validating) {
+      return StorageConfigState.StorageConfigValidating;
+    }
+    return StorageConfigState.StorageConfigActive;
   }
 
   default StorageSpec toStorageSpec(CustomerConfigData data) {
