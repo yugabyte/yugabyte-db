@@ -1673,13 +1673,15 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
    */
   @Test
   public void testPollerErrorHoldingQueueLock() throws Exception {
+    Map<HostAndPort, String> originalPgConf = new HashMap<>();
     try (Connection listener = getConnectionBuilder().withTServer(0).connect();
          Connection nonListener = getConnectionBuilder().withTServer(0).connect();
          Statement stmt = nonListener.createStatement()) {
       listener.createStatement().execute("LISTEN ch1");
       getPollerPid(stmt);
 
-      setPgConfOnAllTServers("yb_test_notifs_poller_error_holding_queue_lock", true);
+      appendToPgConfOnAllTServers(
+          "yb_test_notifs_poller_error_holding_queue_lock=true", originalPgConf);
       Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
 
       stmt.execute("NOTIFY ch1, 'x'");
@@ -1687,7 +1689,9 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       waitForPollerAndSlotCleanup(nonListener);
       assertConnectionDead(listener, "listener");
     } finally {
-      setPgConfOnAllTServers("yb_test_notifs_poller_error_holding_queue_lock", false);
+      for (Map.Entry<HostAndPort, String> e : originalPgConf.entrySet()) {
+        setServerFlag(e.getKey(), "ysql_pg_conf_csv", e.getValue());
+      }
     }
 
     verifyListenNotifyWorks();
@@ -1768,22 +1772,17 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Turns a boolean test GUC on or off on every tserver through ysql_pg_conf_csv. A change to
-   * that flag reloads postgresql.conf, so it reaches background workers such as the poller.
+   * Appends an entry to ysql_pg_conf_csv on every tserver, first saving each prior value in
+   * {@code original} for the caller to restore. The value is CSV with quoting, so it is only
+   * appended to, never split. A change to the flag reloads postgresql.conf, so it reaches
+   * background workers such as the poller.
    */
-  private void setPgConfOnAllTServers(String guc, boolean value) throws Exception {
+  private void appendToPgConfOnAllTServers(String entry, Map<HostAndPort, String> original)
+      throws Exception {
     for (HostAndPort tserver : miniCluster.getTabletServers().keySet()) {
-      List<String> entries = new ArrayList<>();
-      for (String entry :
-           miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv").split(",")) {
-        if (!entry.isEmpty() && !entry.trim().split("[\\s=]", 2)[0].equals(guc)) {
-          entries.add(entry);
-        }
-      }
-      if (value) {
-        entries.add(guc + "=true");
-      }
-      setServerFlag(tserver, "ysql_pg_conf_csv", String.join(",", entries));
+      String current = miniCluster.getClient().getFlag(tserver, "ysql_pg_conf_csv");
+      original.put(tserver, current);
+      setServerFlag(tserver, "ysql_pg_conf_csv", current.isEmpty() ? entry : current + "," + entry);
     }
   }
 
