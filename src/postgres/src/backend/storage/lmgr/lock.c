@@ -450,11 +450,11 @@ static bool
 YbSkipCatalogObjectLockDuringPrefetch(const LOCKTAG *locktag,
 									  LOCKMODE lockmode, bool sessionLock)
 {
-	return !sessionLock &&
+	return YBCIsSysTablePrefetchingStarted() &&
+		IsCatalogRelationOid(locktag->locktag_field2) &&
 		lockmode == AccessShareLock &&
 		locktag->locktag_type == LOCKTAG_RELATION &&
-		IsCatalogRelationOid(locktag->locktag_field2) &&
-		YBCIsSysTablePrefetchingStarted();
+		!sessionLock;
 }
 
 /*
@@ -499,7 +499,7 @@ YbFindLockOwner(LOCALLOCK *locallock, ResourceOwner owner)
  * because its owner still holds the tserver object lock it acquired.
  */
 static void
-YbMarkSkippedGrant(LOCALLOCK *locallock, ResourceOwner owner)
+YbMarkOwnerSkippedIfNew(LOCALLOCK *locallock, ResourceOwner owner)
 {
 	LOCALLOCKOWNER *lockOwner = YbFindLockOwner(locallock, owner);
 
@@ -979,8 +979,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	bool		log_lock = false;
 
 	YbObjectLockMode yb_object_lock_mode = YBGetObjectLockMode();
-	bool		yb_skip_object_lock;
-	bool		yb_holds_txn_object_lock;
+	bool		yb_catalog_lock_in_prefetch;
 	bool		yb_force_tserver_lock_acquire;
 
 	if (yb_object_lock_mode == YB_OBJECT_LOCK_DISABLED)
@@ -1079,38 +1078,39 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 * object locks as the session lock might be released early on docdb,
 	 * before the txn commit.
 	 *
-	 * Likewise, a transactional lock must go to the tserver, outside catalog
-	 * prefetching, when the only transactional grants held are ones made
-	 * during prefetching without a tserver object lock (see
-	 * YbSkipCatalogObjectLockDuringPrefetch).  A grant that skips the tserver
-	 * marks its owner's entry skipped if the entry is new (see
-	 * YbMarkSkippedGrant).
+	 * With object locking enabled, that rule is part of a broader one: a
+	 * transactional lock goes to the tserver unless some transactional owner
+	 * already holds it with a grant backed by a tserver object lock (see
+	 * YbHoldsTransactionalObjectLock).  A session owner never counts, and
+	 * neither does a grant made during catalog prefetching without a tserver
+	 * object lock.
 	 *
-	 * While prefetching is active, a skip-eligible request skips the tserver
-	 * even when a session lock is the only other owner, overriding the
-	 * session lock rule above.  That rule keeps a transaction from relying on
-	 * a session lock that docdb may release early; a skipped grant relies on
-	 * no object lock at all, for the reasons given at
-	 * YbSkipCatalogObjectLockDuringPrefetch, so an early release of the
-	 * session lock takes nothing away from it.  Outside prefetching the
-	 * session lock rule applies as before, since a session owner never
-	 * counts as a backed transactional owner.
+	 * The exception is a request that is itself a catalog lock taken during
+	 * prefetching (see YbSkipCatalogObjectLockDuringPrefetch).  It never goes
+	 * to the tserver, even when a session lock is the only other owner: it
+	 * relies on no object lock at all, so an early release of the session
+	 * lock takes nothing away from it.  Its grant marks its owner's entry
+	 * skipped if the entry is new (see YbMarkOwnerSkippedIfNew).
 	 */
-	yb_skip_object_lock =
+	yb_catalog_lock_in_prefetch =
 		yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED &&
 		YbSkipCatalogObjectLockDuringPrefetch(locktag, lockmode, sessionLock);
-	yb_holds_txn_object_lock = YbHoldsTransactionalObjectLock(locallock);
-	yb_force_tserver_lock_acquire =
-		IsYugaByteEnabled() &&
-		((locallock->numLockOwners == 1 && locallock->lockOwners[0].owner == NULL) ||
-		 sessionLock ||
-		 (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED &&
-		  !yb_skip_object_lock && !yb_holds_txn_object_lock));
+	if (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED)
+		yb_force_tserver_lock_acquire =
+			sessionLock ||
+			(!yb_catalog_lock_in_prefetch &&
+			 !YbHoldsTransactionalObjectLock(locallock));
+	else
+		yb_force_tserver_lock_acquire =
+			IsYugaByteEnabled() &&
+			(sessionLock ||
+			 (locallock->numLockOwners == 1 &&
+			  locallock->lockOwners[0].owner == NULL));
 	if (locallock->nLocks > 0 && !yb_force_tserver_lock_acquire) /* YB: session locks go to the tserver */
 	{
 		GrantLockLocal(locallock, owner);
-		if (yb_skip_object_lock)
-			YbMarkSkippedGrant(locallock, owner);
+		if (yb_catalog_lock_in_prefetch)
+			YbMarkOwnerSkippedIfNew(locallock, owner);
 		if (locallock->lockCleared)
 			return LOCKACQUIRE_ALREADY_CLEAR;
 		else
@@ -1124,13 +1124,13 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 */
 	Assert(!IsRelationExtensionLockHeld);
 
-	if (yb_skip_object_lock)
+	if (yb_catalog_lock_in_prefetch)
 	{
 		elog(DEBUG4, "LockAcquire skipped during catalog prefetch: lock [%u,%u] mode: %s",
 			 locktag->locktag_field1, locktag->locktag_field2,
 			 lockMethodTable->lockModeNames[lockmode]);
 		GrantLockLocal(locallock, owner);
-		YbMarkSkippedGrant(locallock, owner);
+		YbMarkOwnerSkippedIfNew(locallock, owner);
 		return LOCKACQUIRE_OK;
 	}
 
@@ -2008,7 +2008,7 @@ GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner)
 	if (owner != NULL)
 		ResourceOwnerRememberLock(owner, locallock);
 
-	/* YB: a new entry is backed until YbMarkSkippedGrant says otherwise */
+	/* YB: a new entry is backed until YbMarkOwnerSkippedIfNew says otherwise */
 	lockOwners[i].yb_object_lock_skipped = false;
 
 	/* Indicate that the lock is acquired for certain types of locks. */
