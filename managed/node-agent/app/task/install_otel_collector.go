@@ -46,12 +46,13 @@ type InstallOtelCollector struct {
 	logOut    util.Buffer
 	// Where a root-level unit lives, on nodes provisioned with root systemd.
 	rootUnitPath string
-	// These are tryStopRootOtelCollector, refreshLogPurgeScript, the user unit disable and
-	// rootOtelCollectorNeedsStop; tests replace them.
+	// These are tryStopRootOtelCollector, refreshLogPurgeScript, the user unit disable,
+	// rootOtelCollectorNeedsStop and rootOtelCollectorState; tests replace them.
 	stopRootUnit    func(context.Context) rootOtelCollectorStop
 	refreshPurge    func(context.Context, string) error
 	disableUserUnit func(context.Context) error
 	rootInUse       func(context.Context) (bool, error)
+	rootUnitState   func(context.Context, string) (string, error)
 }
 
 func NewInstallOtelCollectorHandler(
@@ -67,6 +68,7 @@ func NewInstallOtelCollectorHandler(
 	h.stopRootUnit = h.tryStopRootOtelCollector
 	h.refreshPurge = h.refreshLogPurgeScript
 	h.rootInUse = h.rootOtelCollectorNeedsStop
+	h.rootUnitState = h.rootOtelCollectorState
 	h.disableUserUnit = func(ctx context.Context) error {
 		// Keep the unit file so that a later enable can start the service again.
 		return module.DisableSystemdService(ctx, h.username, OtelCollectorService, "", h.logOut)
@@ -518,7 +520,7 @@ func otelCollectorUnitBinary(ybHome string) string {
 const otelCollectorRootCgroup = "/system.slice/" + OtelCollectorService
 
 // otelCollectorProcessCheckCmd prints the PIDs of collectors that run binary. It skips the root
-// unit's, which gets its own warning, and those that exited after pgrep (grep exits 2). pgrep
+// unit's, which the root stop handles, and those that exited after pgrep (grep exits 2). pgrep
 // exits 1 when nothing matches; a higher exit is a pgrep error and must fail.
 func otelCollectorProcessCheckCmd(binary, procDir string) string {
 	pattern := shellSingleQuote("^" + regexp.QuoteMeta(binary) + "( |$)")
@@ -565,7 +567,7 @@ const (
 )
 
 // otelCollectorStillRunningError reports a user collector that runs on with no manager to stop it.
-// The check skips the root unit's collector, which gets its own warning.
+// The check skips the root unit's collector, which the root stop handles.
 func otelCollectorStillRunningError(binary string) error {
 	return fmt.Errorf(
 		"%s is still running and cannot be stopped: the user systemd manager does not respond",
@@ -573,14 +575,39 @@ func otelCollectorStillRunningError(binary string) error {
 	)
 }
 
-func (h *InstallOtelCollector) hasRootOtelCollectorUnit() (bool, error) {
+// hasYbaRootOtelCollectorUnit reports whether the root unit exists and runs the YBA collector.
+// A customer can have their own unit with this name, and node agent must leave it alone.
+func (h *InstallOtelCollector) hasYbaRootOtelCollectorUnit(ctx context.Context) (bool, error) {
 	if _, err := os.Stat(h.rootUnitPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
 		return false, err
 	}
+	// systemd applies the drop-ins, so this is the command that the unit runs. No --value: it
+	// needs systemd 230, and AL2 has 219. A masked unit prints only "ExecStart=".
+	execStart, err := h.rootUnitState(ctx, "show -p ExecStart")
+	if err != nil {
+		return false, err
+	}
+	binary := otelCollectorUnitBinary(h.param.GetYbHomeDir())
+	if !execStartRuns(execStart, binary) {
+		util.FileLogger().Infof(ctx, "The root-level %s does not run %s, so it is left alone",
+			otelCollectorRootUnitName, binary)
+		return false, nil
+	}
 	return true, nil
+}
+
+// execStartRuns reports whether the last command in systemctl show ExecStart output, such as
+// "ExecStart={ path=/x ; argv[]=/x -c y ; ... }", runs binary.
+func execStartRuns(execStart, binary string) bool {
+	i := strings.LastIndex(execStart, "{ path=")
+	if i < 0 {
+		return false
+	}
+	path, _, _ := strings.Cut(execStart[i+len("{ path="):], " ;")
+	return filepath.Clean(strings.TrimSpace(path)) == filepath.Clean(binary)
 }
 
 // stopOtelCollectorsForInstall stops the user unit, runs configure, then stops the root unit,
@@ -662,10 +689,10 @@ func (h *InstallOtelCollector) tryStopRootOtelCollector(
 	util.FileLogger().Warnf(
 		ctx, "Failed to stop or disable the root-level otel-collector - %s", stopErr)
 	// Either step can fail, so the state after it decides. A running unit needs no is-enabled.
-	active, err := h.rootOtelCollectorState(ctx, "is-active")
+	active, err := h.rootUnitState(ctx, "is-active")
 	enabled := ""
 	if err == nil && !rootOtelCollectorRunning(active) {
-		enabled, err = h.rootOtelCollectorState(ctx, "is-enabled")
+		enabled, err = h.rootUnitState(ctx, "is-enabled")
 	}
 	if err != nil {
 		util.FileLogger().Warnf(ctx, "Failed to check the root-level otel-collector - %s", err)
@@ -703,14 +730,14 @@ func rootOtelCollectorStopOutcome(active, enabled string, checkErr error) rootOt
 	return rootOtelCollectorNotRunning
 }
 
-// rootOtelCollectorNeedsStop reports whether the root unit is active or enabled. The check needs
-// no sudo, so a root unit that is stopped and disabled needs no sudoers rules.
+// rootOtelCollectorNeedsStop reports whether the YBA root unit is active or enabled. The check
+// needs no sudo, so a root unit that is stopped and disabled needs no sudoers rules.
 func (h *InstallOtelCollector) rootOtelCollectorNeedsStop(ctx context.Context) (bool, error) {
-	hasRoot, err := h.hasRootOtelCollectorUnit()
+	hasRoot, err := h.hasYbaRootOtelCollectorUnit(ctx)
 	if err != nil || !hasRoot {
 		return false, err
 	}
-	active, err := h.rootOtelCollectorState(ctx, "is-active")
+	active, err := h.rootUnitState(ctx, "is-active")
 	if err != nil {
 		return false, err
 	}
@@ -718,15 +745,15 @@ func (h *InstallOtelCollector) rootOtelCollectorNeedsStop(ctx context.Context) (
 	if rootOtelCollectorRunning(active) {
 		return true, nil
 	}
-	enabled, err := h.rootOtelCollectorState(ctx, "is-enabled")
+	enabled, err := h.rootUnitState(ctx, "is-enabled")
 	if err != nil {
 		return false, err
 	}
 	return rootOtelCollectorInUse(active, enabled), nil
 }
 
-// rootOtelCollectorState returns the output of systemctl is-active or is-enabled for the root
-// unit. Both exit non-zero for a stopped or disabled unit, so only empty output is an error.
+// rootOtelCollectorState returns the output of a systemctl query for the root unit. is-active
+// and is-enabled exit non-zero for a stopped or disabled unit, so only empty output is an error.
 func (h *InstallOtelCollector) rootOtelCollectorState(
 	ctx context.Context,
 	check string,

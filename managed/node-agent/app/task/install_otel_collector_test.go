@@ -217,16 +217,61 @@ func TestStopOtelCollectorsForInstall(t *testing.T) {
 }
 
 // A root-systemd node has its unit in the system unit directory.
-func TestHasRootOtelCollectorUnit(t *testing.T) {
-	handler := newDisableCollectorHandler(t, t.TempDir())
-	if hasRoot, err := handler.hasRootOtelCollectorUnit(); err != nil || hasRoot {
+// Only a root unit that runs the YBA collector counts. A customer unit with the same name does
+// not, so node agent never stops it.
+func TestHasYbaRootOtelCollectorUnit(t *testing.T) {
+	ctx := context.Background()
+	handler := newDisableCollectorHandler(t, "/home/yugabyte")
+	execStart := ""
+	// Both units run, so only the ExecStart check can tell them apart.
+	handler.rootUnitState = func(_ context.Context, check string) (string, error) {
+		if strings.HasPrefix(check, "show") {
+			return execStart, nil
+		}
+		return "active", nil
+	}
+	if hasRoot, err := handler.hasYbaRootOtelCollectorUnit(ctx); err != nil || hasRoot {
 		t.Fatalf("no root unit yet: hasRoot=%v, err=%v", hasRoot, err)
 	}
-	if err := os.WriteFile(handler.rootUnitPath, []byte("[Unit]\n"), 0644); err != nil {
+	if err := os.WriteFile(handler.rootUnitPath, []byte("[Service]\n"), 0644); err != nil {
 		t.Fatalf("write unit: %v", err)
 	}
-	if hasRoot, err := handler.hasRootOtelCollectorUnit(); err != nil || !hasRoot {
-		t.Fatalf("root unit not found: hasRoot=%v, err=%v", hasRoot, err)
+	for command, want := range map[string]bool{
+		"/home/yugabyte/otel-collector/otelcol-contrib": true,
+		"/usr/bin/otelcol-contrib":                      false,
+	} {
+		execStart = "ExecStart={ path=" + command + " ; argv[]=" + command + " --config c }"
+		if inUse, err := handler.rootOtelCollectorNeedsStop(ctx); err != nil || inUse != want {
+			t.Fatalf("%s: want in use %v, got %v, err=%v", command, want, inUse, err)
+		}
+	}
+}
+
+func TestExecStartRuns(t *testing.T) {
+	binary := otelCollectorUnitBinary("/home/yugabyte/")
+	ours := "/home/yugabyte/otel-collector/otelcol-contrib"
+	entry := func(path string) string {
+		return "{ path=" + path + " ; argv[]=" + path + " --config c ; ignore_errors=no ; pid=0 }"
+	}
+	tests := []struct {
+		execStart string
+		want      bool
+	}{
+		{entry(ours), true},
+		{entry("/usr/bin/otelcol-contrib") + " " + entry(ours), true},
+		{entry(ours) + " " + entry("/usr/bin/otelcol-contrib"), false},
+		{"{ path=/usr/bin/otelcol-contrib ; argv[]=/usr/bin/otelcol-contrib -c " + ours + " }",
+			false},
+		{"ExecStart=" + entry(ours), true},
+		{entry(ours + "-custom"), false},
+		// A masked unit.
+		{"ExecStart=", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := execStartRuns(tt.execStart, binary); got != tt.want {
+			t.Errorf("%q: want %v, got %v", tt.execStart, tt.want, got)
+		}
 	}
 }
 
@@ -582,7 +627,10 @@ func TestWriteSecretEnvFile(t *testing.T) {
 func TestCheckCredentialsRejectsLineBreak(t *testing.T) {
 	cases := map[string]*pb.InstallOtelCollectorInput{
 		"secret env": {OtelColSecretEnv: map[string]string{"YB_OTEL_A_DD_API_KEY": "key\n"}},
-		"aws secret": {OtelColAwsAccessKey: "AKIA", OtelColAwsSecretKey: "x\rcredential_process=id"},
+		"aws secret": {
+			OtelColAwsAccessKey: "AKIA",
+			OtelColAwsSecretKey: "x\rcredential_process=id",
+		},
 	}
 	for name, input := range cases {
 		if err := NewInstallOtelCollectorHandler(input, "").checkCredentials(); err == nil {

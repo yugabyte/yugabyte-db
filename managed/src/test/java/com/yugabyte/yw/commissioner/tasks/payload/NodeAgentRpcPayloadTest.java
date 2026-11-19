@@ -249,6 +249,13 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
   }
 
   @Test
+  public void nodeAgentWithoutVersionWithSecretEnvFails() {
+    assertThrows(
+        IllegalStateException.class,
+        () -> NodeAgentRpcPayload.checkNodeAgentReadsSecretEnv(nodeAgent(null), SECRET_ENV));
+  }
+
+  @Test
   public void oldNodeAgentWithoutSecretEnvPasses() {
     NodeAgentRpcPayload.checkNodeAgentReadsSecretEnv(
         nodeAgent("2026.1.0.0-b5"), Collections.emptyMap());
