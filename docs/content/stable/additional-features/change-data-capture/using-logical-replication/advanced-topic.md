@@ -17,7 +17,7 @@ This section explores a range of topics designed to provide deeper insights and 
 
 ## Schema evolution
 
-Logical replication keeps streaming while the schema of the published tables, or the publication itself, changes. You do not drop or recreate the replication slot. This page describes the current behavior. For how it differs across releases and from PostgreSQL, see [Behavior by release](../behavior-by-release/).
+Logical replication keeps streaming while the schema of the published tables, or the publication itself, changes. You do not drop or recreate the replication slot. This page describes the current behavior. For how it differs across releases and from PostgreSQL, see [Slot behavior by version](../slot-behavior-by-version/#schema-changes).
 
 ### Column changes
 
@@ -122,7 +122,7 @@ When the publication changes, a replication stream applies the change to the set
 - **Immediate effect**, called [implicit publication](#implicit-publication). The change takes effect at the commit point of the `ALTER PUBLICATION` or `CREATE TABLE`.
 - **Refresh interval**, called [periodic publication](#periodic-publication). The change takes effect at the next scheduled refresh of the publication's table list.
 
-Implicit publication is the default. [Behavior by release](../behavior-by-release/#publication-change-detection) lists the default in each release. The mode is fixed for each replication slot when the slot is created. See [Slots using periodic publication](#slots-using-periodic-publication) for the consequences.
+Implicit publication is the default. [Slot behavior by version](../slot-behavior-by-version/#publication-change-detection) lists the default in each release. The mode is fixed for each replication slot when the slot is created. See [Slots using periodic publication](#slots-using-periodic-publication) for the consequences.
 
 ### Implicit publication
 
