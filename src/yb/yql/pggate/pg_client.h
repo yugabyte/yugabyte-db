@@ -324,6 +324,9 @@ class PgClient {
 
   bool TryReleaseAllObjectLocksInSharedMemory();
 
+  // Whether the session's object lock shared state is usable and enabled for a transaction.
+  bool IsObjectLockSharedStateEnabled();
+
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
       bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);

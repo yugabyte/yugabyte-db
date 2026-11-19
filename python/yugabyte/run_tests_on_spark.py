@@ -58,6 +58,7 @@ import glob
 import gzip
 import json
 import logging
+import math
 import operator
 import os
 import platform
@@ -145,6 +146,22 @@ NEW_TEST_LIMIT = 50
 # the previous launch of the lane; one that ended early reported a fraction of its tests, and every
 # test it never reached would otherwise read as new.
 NEW_TEST_MIN_KNOWN_RATIO = 0.9
+
+# Least share of a job's tests that must have an expected run time for the job to be packed
+# (--pack_target_sec, see plan_spark_tasks). A durations file that covers less than this was most
+# likely written from another lane's launch or from one that ended early, and the times it does
+# have are then not to be trusted either.
+PACK_MIN_KNOWN_RATIO = 0.9
+
+# The largest job, in test attempts, that is packed (see plan_spark_tasks). A job this small is
+# what packing is for: with one test per task it asks for an executor per test, and each sets up a
+# build tree to run a handful of them. A larger job keeps every executor it gets busy for long, so
+# one test per task wastes little there, and it is where a lost executor would cost a packed job
+# the most.
+PACK_MAX_TESTS = 1000
+
+# How long to wait for the Spark master's status page when asking how many cores are free.
+SPARK_MASTER_UI_TIMEOUT_SEC = 10
 
 # The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
 # scaling in (symptom: "Master removed our application: FAILED"). Submit the job for the
@@ -304,6 +321,14 @@ g_max_num_test_failures = sys.maxsize
 # Job groups whose Spark job was explicitly cancelled (because the number of test failures reached
 # the limit)
 g_cancelled_job_groups: Set[str] = set()
+# Packing several tests into one Spark task (see plan_spark_tasks). The target is the expected run
+# time a task should hold, in seconds; 0 turns packing off.
+g_pack_target_sec: float = 0
+# Expected run time of a test in seconds, by its descriptor without the attempt index. Loaded from
+# --test_durations_file, then set for every test of the main pass to the time it took there.
+g_expected_test_time_sec: Dict[str, float] = {}
+# The Spark master's web UI, e.g. http://host:8080, which says how many cores the cluster has.
+g_spark_master_ui_url: Optional[str] = None
 
 
 # Name of the job group each Spark job runs in, so when some jobs share Spark context we can:
@@ -714,9 +739,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                       env_vars: Dict[str, str],
                       job_log_prefix: str) -> None:
     """
-    Runs one test attempt as a Spark task: run_tests_job maps this over the test descriptors, so
-    Spark executes as many copies concurrently as the cluster has cores, and this is where a test is
-    actually executed.
+    Runs one test attempt inside a Spark task: run_tests_job calls this for each test attempt of a
+    task (one, unless the job is packed - see plan_spark_tasks), Spark runs as many tasks
+    concurrently as the cluster has cores, and this is where a test is actually executed.
 
     conf is the submitting job's tree config, unpickled from the task closure, so it is this
     task's own copy rather than module state a previous task on this worker happened to leave
@@ -779,7 +804,12 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
     try:
         start_time_sec = time.time()
 
-        csi_id = csi_report.create_test(test_descriptor, start_time_sec, attempt, rerun)
+        csi_id, failed_in_earlier_task_attempt = csi_report.create_test(
+            test_descriptor, start_time_sec, attempt, rerun)
+        if failed_in_earlier_task_attempt:
+            logging.info(
+                f"{job_log_prefix}Test {test_descriptor} failed in an earlier attempt of this "
+                f"Spark task (this is attempt {attempt}); it counts as failed whatever it does now")
 
         error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
         file_util.mkdir_p(error_log_dir_path)
@@ -832,8 +862,10 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             f"{elapsed_time_sec:.2f} seconds, exit code: {exit_code}{additional_log_message}")
         csi_result = 'passed'
         if exit_code != 0:
-            fail_count.add(1)
             csi_result = 'failed'
+        if exit_code != 0 or failed_in_earlier_task_attempt:
+            # The count of the earlier attempt was dropped with the rest of its results.
+            fail_count.add(1)
 
         artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
         spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
@@ -906,7 +938,8 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             artifact_paths=rel_artifact_paths,
             artifact_copy_result=artifact_copy_result,
             spark_error_copy_result=spark_error_copy_result,
-            skipped=csi_result == 'skipped'))
+            skipped=csi_result == 'skipped',
+            failed_in_earlier_task_attempt=failed_in_earlier_task_attempt))
         return None
     finally:
         delete_if_exists_log_errors(test_tmp_dir)
@@ -916,6 +949,26 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
         if timer_thread is not None:
             timer_thread.cancel()
             timer_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
+
+
+def run_spark_task(test_descriptor_strs: List[str], fail_count: Any, test_results: Any,
+                   rerun: bool,
+                   conf: yb_dist_tests.TestConfig,
+                   env_vars: Dict[str, str],
+                   job_log_prefix: str) -> None:
+    """
+    Runs the test attempts of one Spark task in sequence on this executor: one attempt, or the
+    several that plan_spark_tasks packed together.
+
+    The results of a task reach the driver only when the whole task finishes. When an attempt
+    raises or the executor is lost, Spark runs the whole task again, and the results of the
+    attempts that had already finished are dropped with it: those tests run and report once more.
+    What a test did before the loss is still in CSI, and a test that had failed stays a failed one
+    (TestResult.failed_in_earlier_task_attempt).
+    """
+    for test_descriptor_str in test_descriptor_strs:
+        parallel_run_test(test_descriptor_str, fail_count, test_results, rerun, conf, env_vars,
+                          job_log_prefix)
 
 
 def get_bash_shebang() -> str:
@@ -1549,6 +1602,177 @@ def run_spark_action(action: Any, job_group: str, cancel_requested: threading.Ev
     return results
 
 
+# A time as CSI reports it for a test: ISO 8601 in UTC, e.g. 2026-01-31T10:20:30.123Z.
+def parse_csi_time(value: str) -> float:
+    time_format = '%Y-%m-%dT%H:%M:%S.%f%z' if '.' in value else '%Y-%m-%dT%H:%M:%S%z'
+    return datetime.strptime(value, time_format).timestamp()
+
+
+# The expected run time of this lane's tests, in seconds, from the file the pipeline wrote from a
+# previous CSI launch of the lane. One test per line: its uniqueId (the descriptor without the
+# attempt index), and the start and end time CSI recorded for it, separated by tabs. Lines that do
+# not parse are skipped: an estimate is then missing for that test, which only leaves it alone in
+# its task. Bytes that are not UTF-8 are replaced and cannot fail the read: such a line then names
+# no test, or does not parse.
+def load_test_durations(path: str) -> Dict[str, float]:
+    durations: Dict[str, float] = {}
+    num_bad_lines = 0
+    with open(path, 'r', encoding='utf-8', errors='replace') as input_file:
+        for line in input_file:
+            line = line.strip()
+            if not line:
+                continue
+            fields = line.split('\t')
+            try:
+                if len(fields) != 3:
+                    raise ValueError(line)
+                seconds = parse_csi_time(fields[2].strip()) - parse_csi_time(fields[1].strip())
+                if seconds < 0:
+                    raise ValueError(line)
+            except ValueError:
+                num_bad_lines += 1
+                continue
+            durations[fields[0].strip()] = seconds
+    logging.info("Loaded the expected run time of %d tests from %s (%d lines skipped)",
+                 len(durations), path, num_bad_lines)
+    return durations
+
+
+# The cores of the cluster's alive workers that no application holds, as the Spark master reports
+# them, or None when the master's web UI is not known or does not answer. A worker has one core
+# here, so this is the number of tasks the cluster can start now without growing. Executors this
+# application still holds from an earlier job count as used, which errs toward not packing.
+def get_free_cluster_cores() -> Optional[int]:
+    import urllib.request
+    if not g_spark_master_ui_url:
+        return None
+    status_url = g_spark_master_ui_url.rstrip('/') + '/json/'
+    try:
+        with urllib.request.urlopen(status_url, timeout=SPARK_MASTER_UI_TIMEOUT_SEC) as response:
+            status = json.loads(response.read().decode('utf-8'))
+        return max(0, int(status['cores']) - int(status['coresused']))
+    except Exception as ex:
+        logging.warning("Could not read the free cores of the cluster from %s: %s", status_url, ex)
+        return None
+
+
+# Groups test attempts into Spark tasks of at most target_sec of expected run time each, first-fit
+# over the attempts from the longest down. Alone in its task: an attempt whose test has no expected
+# run time, or one of target_sec or more. Two attempts of one test never share a task.
+def pack_tests(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        expected_sec_by_test: Dict[str, float],
+        target_sec: float) -> List[List[yb_dist_tests.TestDescriptor]]:
+    def expected_sec(test_descriptor: yb_dist_tests.TestDescriptor) -> float:
+        return expected_sec_by_test.get(
+            test_descriptor.descriptor_str_without_attempt_index, math.inf)
+
+    alone: List[List[yb_dist_tests.TestDescriptor]] = []
+    packs: List[List[yb_dist_tests.TestDescriptor]] = []
+    pack_sec: List[float] = []
+    pack_test_names: List[Set[str]] = []
+    for test_descriptor in sorted(test_descriptors, key=expected_sec, reverse=True):
+        test_sec = expected_sec(test_descriptor)
+        if test_sec >= target_sec:
+            alone.append([test_descriptor])
+            continue
+        test_name = test_descriptor.descriptor_str_without_attempt_index
+        for i in range(len(packs)):
+            if pack_sec[i] + test_sec <= target_sec and test_name not in pack_test_names[i]:
+                packs[i].append(test_descriptor)
+                pack_sec[i] += test_sec
+                pack_test_names[i].add(test_name)
+                break
+        else:
+            packs.append([test_descriptor])
+            pack_sec.append(test_sec)
+            pack_test_names.append({test_name})
+    return alone + packs
+
+
+# Decides the Spark tasks of a job: for each task, the test attempts it runs in sequence on one
+# executor.
+#
+# A task normally runs one test, and with dynamic allocation every task waiting asks for an executor
+# of its own. An executor sets up the build tree before its first test, which takes minutes, so a
+# job of short tests on a cluster with free workers pays one setup per test. With packing
+# (--pack_target_sec) a task holds about that much expected run time, and the job asks for as many
+# executors as it has such tasks. Executors still pull tasks from one queue, so a slow task only
+# means its executor takes fewer of them.
+#
+# Every rule falls back to one test per task, which is exactly a job without packing:
+#   - A job of more than PACK_MAX_TESTS test attempts is not packed.
+#   - A test with no expected run time, or one at least as long as the target, is alone in its task
+#     (pack_tests). Tests in one task run in a fixed sequence, so an estimate that is too low makes
+#     the tests behind a slow one wait, where a test alone costs at most one setup.
+#   - A job is packed only if at least PACK_MIN_KNOWN_RATIO of its tests have an expected run time.
+#   - Two attempts of one test never share a task (pack_tests), so repetitions of a test keep being
+#     spread over executors the way separate tasks are.
+#   - A job is packed only if the cluster has a free core for each of its tasks now. The cluster
+#     scaling daemon adds nodes by the number of tasks running and waiting, at a fixed number of
+#     tasks per node that assumes one test per task. A packed job that needs the cluster to grow
+#     would get far too few nodes; one test per task is what the daemon sizes correctly. A job
+#     that shares the Spark context with another one (shares_context) counts half the free cores
+#     as its own.
+#
+# What a packed task changes when its executor is lost (a worker can go away under a running task):
+# Spark runs the task again, as it does for a task of one, but the results of the tests that had
+# finished in it never reached the driver, so those run and report a second time. A test that
+# failed before the loss still counts as failed, from what CSI recorded (csi_report.create_test);
+# without CSI, a test that fails and then passes in the second run is taken as passed. A pack's
+# failures also reach the failure limit only when the pack ends.
+#
+# Expected run times come from --test_durations_file for the main pass. For the jobs after it (the
+# re-runs of failed tests, on the diff and on the baseline, and the new-test repetitions) they are
+# the times the main pass just measured in this build.
+#
+# TODO(DEVOPS-4058): this leaves two task models, one test per task and packed tasks, with the
+# rules above choosing between them. Once packing has run in production for a while, make packed
+# tasks the only model: an expected run time for every test, with a default where there is no
+# history, and a cluster scaling daemon that sizes a cluster by packed tasks, so that the
+# cluster-size rule can go.
+def plan_spark_tasks(
+        test_descriptors: List[yb_dist_tests.TestDescriptor],
+        job_group: str,
+        shares_context: bool) -> List[List[yb_dist_tests.TestDescriptor]]:
+    one_test_per_task = [[test_descriptor] for test_descriptor in test_descriptors]
+    num_tests = len(test_descriptors)
+    if g_pack_target_sec <= 0 or num_tests < 2:
+        return one_test_per_task
+
+    def not_packed(reason: str) -> List[List[yb_dist_tests.TestDescriptor]]:
+        logging.info("Job %s: one test per task for its %d tests: %s",
+                     job_group, num_tests, reason)
+        return one_test_per_task
+
+    if num_tests > PACK_MAX_TESTS:
+        return not_packed("more than %d" % PACK_MAX_TESTS)
+
+    known_sec = [
+        g_expected_test_time_sec[test_descriptor.descriptor_str_without_attempt_index]
+        for test_descriptor in test_descriptors
+        if test_descriptor.descriptor_str_without_attempt_index in g_expected_test_time_sec]
+    if len(known_sec) < PACK_MIN_KNOWN_RATIO * num_tests:
+        return not_packed("only %d of them have an expected run time" % len(known_sec))
+
+    free_cores = get_free_cluster_cores()
+    if free_cores is None:
+        return not_packed("the free cores of the cluster are not known")
+    if shares_context:
+        free_cores //= 2
+
+    packs = pack_tests(test_descriptors, g_expected_test_time_sec, g_pack_target_sec)
+    if len(packs) > free_cores:
+        return not_packed("%d tasks of %d sec would be more than the %d free cores it can have" %
+                          (len(packs), g_pack_target_sec, free_cores))
+    logging.info(
+        "Job %s: %d tests packed into %d task(s) of at most %d sec of expected run time each "
+        "(%.0f sec expected for %d tests, %d tests without an expected run time, %d free cores "
+        "of the cluster to run on)", job_group, num_tests, len(packs), g_pack_target_sec,
+        sum(known_sec), len(known_sec), num_tests - len(known_sec), free_cores)
+    return packs
+
+
 # Run the tests in parallel on Spark. This is executed on the main Spark driver.
 def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: bool,
                   conf: yb_dist_tests.TestConfig,
@@ -1635,9 +1859,14 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
 
     # Randomize test order to avoid any kind of skew.
     random.shuffle(test_descriptors)
+    # One element, and so one Spark task, per list of test attempts to run in sequence on one
+    # executor: a single attempt unless the job is packed.
+    spark_tasks = plan_spark_tasks(test_descriptors, job_group, shares_context)
+    random.shuffle(spark_tasks)
     test_names_rdd = spark_context.parallelize(  # type: ignore
-            [test_descriptor.descriptor_str for test_descriptor in test_descriptors],
-            numSlices=len(test_descriptors))
+            [[test_descriptor.descriptor_str for test_descriptor in spark_task]
+             for spark_task in spark_tasks],
+            numSlices=len(spark_tasks))
 
     try:
         if counter_thread is not None:
@@ -1648,8 +1877,8 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
         # tree config.
         job_log_prefix = f"[{job_group}] " if shares_context else ''
         run_spark_action(lambda: test_names_rdd.map(
-            lambda test_name: parallel_run_test(test_name, fail_count, test_results, rerun,
-                                                conf, env_vars, job_log_prefix)
+            lambda test_names: run_spark_task(test_names, fail_count, test_results, rerun,
+                                              conf, env_vars, job_log_prefix)
         ).collect(), job_group, cancel_requested)
 
     finally:
@@ -2157,7 +2386,7 @@ def report_skipped_test(test_descriptor: yb_dist_tests.TestDescriptor) -> None:
     suite_var_name = 'YB_CSI_' + test_descriptor.language
     skip_time = time.time()
     os.environ[suite_var_name] = propagated_env_vars[suite_var_name]
-    csi_id = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
+    csi_id, _ = csi_report.create_test(test_descriptor, skip_time, 0, rerun=False)
     csi_report.close_item(csi_id, skip_time, 'skipped', ['muted'],
                           launch=csi_report.env_launch())
 
@@ -2238,7 +2467,7 @@ def run_new_test_repetitions(args: argparse.Namespace,
             # repeating it would hang reps - 1 executions of nothing on a skipped item while the
             # tag told readers its first attempt passed.
             num_new_skipped += 1
-        elif result.exit_code == 0:
+        elif not result.failed:
             new_passed.append(result.test_descriptor)
         else:
             num_new_failed += 1
@@ -2405,6 +2634,23 @@ def main() -> None:
                              'line, written by the pipeline from CSI. The baseline '
                              '--new_test_repetitions calls a test new against; without it '
                              'nothing is repeated.')
+    parser.add_argument('--pack_target_sec', type=float, default=0,
+                        help='Pack several tests into one Spark task, so that a task holds about '
+                             'this many seconds of expected run time and a job of short tests '
+                             'asks for fewer executors. Tests without an expected run time and '
+                             'tests at least this long keep a task of their own. 0, the default, '
+                             'runs one test per task. Needs --spark_master_ui_url, and '
+                             '--test_durations_file for the main pass.')
+    parser.add_argument('--test_durations_file',
+                        help='A file path with the run time of tests in a previous launch of this '
+                             'lane, written by the pipeline from CSI. One test per line: its '
+                             'uniqueId (descriptor without attempt index) and the start and end '
+                             'time CSI recorded, separated by tabs. Used by --pack_target_sec for '
+                             'the main pass.')
+    parser.add_argument('--spark_master_ui_url',
+                        help='URL of the Spark master\'s web UI, e.g. http://host:8080. '
+                             '--pack_target_sec asks it for the free cores of the cluster, and '
+                             'packs a job only if there is one for each of its tasks.')
     parser.add_argument('--failed_test_list',
                         help='A file path to save the list of failed tests to. The format is '
                              'one test descriptor per line.')
@@ -2472,6 +2718,23 @@ def main() -> None:
     verbose = args.verbose
 
     configure_logging()
+
+    # Nothing may log before configure_logging(): a log call on the unconfigured root logger
+    # installs the default handler, which drops INFO, and configure_logging() then changes nothing.
+    global g_pack_target_sec
+    global g_spark_master_ui_url
+    global g_expected_test_time_sec
+    if args.pack_target_sec < 0:
+        fatal_error("--pack_target_sec must not be negative, got: {}".format(args.pack_target_sec))
+    g_pack_target_sec = args.pack_target_sec
+    g_spark_master_ui_url = args.spark_master_ui_url
+    if g_pack_target_sec > 0 and args.test_durations_file:
+        try:
+            g_expected_test_time_sec = load_test_durations(args.test_durations_file)
+        except OSError:
+            # The file is an optimization input. Without it the main pass runs one test per task.
+            logging.exception("Could not read %s; the main pass will not be packed",
+                              args.test_durations_file)
 
     if not args.run_cpp_tests and not args.run_java_tests:
         fatal_error("At least one of --java or --cpp has to be specified")
@@ -2734,6 +2997,16 @@ def main() -> None:
 
     test_phase_end_time = time.time()
 
+    # The jobs after the main pass repeat tests that have just run in this build, so the time each
+    # took here is the best estimate there is for packing them (plan_spark_tasks). The longest one
+    # when a test has several results.
+    main_pass_time_sec: Dict[str, float] = {}
+    for main_pass_result in results:
+        test_name = main_pass_result.test_descriptor.descriptor_str_without_attempt_index
+        main_pass_time_sec[test_name] = max(
+            main_pass_result.elapsed_time_sec, main_pass_time_sec.get(test_name, 0))
+    g_expected_test_time_sec.update(main_pass_time_sec)
+
     test_exit_codes = set([result.exit_code for result in results])
 
     # Success if we got results for all the tests we intended to run.
@@ -2753,9 +3026,11 @@ def main() -> None:
     total_test_run_time_sec: float = 0.0
     for result in results:
         test_language = result.test_descriptor.language
-        if result.exit_code != 0:
+        if result.failed:
             how_test_failed = ""
-            if result.failed_without_output:
+            if result.exit_code == 0:
+                how_test_failed = " in an earlier attempt of its Spark task"
+            elif result.failed_without_output:
                 how_test_failed = " without any output"
             logging.info("Test failed%s: %s", how_test_failed, result.test_descriptor)
             failures_by_language[test_language] += 1

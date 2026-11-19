@@ -1332,13 +1332,20 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         "t1_26462", NODE_INDEX_SCAN, 10.0, 10000.0,
         "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
 
+      /*
+       * A two-column key is batched as one row comparison and estimated at one
+       * target per tuple of the batch: 1024 seeks and 2048 nexts in the index,
+       * and a seek and a next in the table for each of the 1024 rows the batch
+       * matches.  The scan walks the batch's consecutive index entries with
+       * nexts, so it takes about 1000 fewer seeks and nexts than estimated.
+       */
       testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
         "/*+ YbBatchedNL(t1_26462 t2_26462) IndexScan(t1_26462 t1_26462_idx) "
         + "IndexScan(t2_26462 t2_26462_idx) */ SELECT * FROM t1_26462 JOIN t2_26462 "
         + "ON t1_26462.k1 = t2_26462.k1 AND t1_26462.k2 = t2_26462.k2;",
         NODE_YB_BATCHED_NESTED_LOOP,
         "t1_26462", NODE_INDEX_SCAN, 10010.0, 20000.0,
-        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
+        "t2_26462", NODE_INDEX_SCAN, 2048.0, 3072.0);
 
       testSeekAndNextEstimationJoinHelper_IgnoreActualResults(stmt,
         "/*+ YbBatchedNL(t1_26462 t2_26462) IndexScan(t1_26462 t1_26462_idx) "
@@ -1346,7 +1353,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         + "ON ROW(t1_26462.k1, t1_26462.k2) = ROW(t2_26462.k1, t2_26462.k2);",
         NODE_YB_BATCHED_NESTED_LOOP,
         "t1_26462", NODE_INDEX_SCAN, 10010.0, 20000.0,
-        "t2_26462", NODE_INDEX_SCAN, 1024.0, 2048.0);
+        "t2_26462", NODE_INDEX_SCAN, 2048.0, 3072.0);
     }
   }
 
