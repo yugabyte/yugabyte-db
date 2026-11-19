@@ -1234,6 +1234,19 @@ Status NotEnoughBytes(size_t present, size_t required, const Slice& full) {
       required, full.ToDebugHexString());
 }
 
+// Only the xCluster consumer writes external intents and applies external transactions.
+bool HasExternalTransactions(const LWKeyValueWriteBatchPB& put_batch) {
+  if (!put_batch.apply_external_transactions().empty()) {
+    return true;
+  }
+  for (const auto& write_pair : put_batch.write_pairs()) {
+    if (write_pair.key().starts_with(KeyEntryTypeAsChar::kExternalTransactionId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
@@ -1264,12 +1277,6 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     return can_delete_entire_batch;
   }
 
-  std::optional<VectorIndexesUpdater> vector_indexes_updater;
-  if (ShouldMaintainVectorIndexes(table_type_)) {
-    vector_indexes_updater.emplace(
-        vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        chunk_holds_, /* xcluster_target= */ true);
-  }
   for (;;) {
     auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
     if (key_size == 0) {
@@ -1317,10 +1324,10 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     // See NonTransactionalBatchWriter::Apply.
     const auto decode_row =
         apply_to_storages_.TestRegularDB() ||
-        (vector_indexes_updater &&
-         vector_indexes_updater->AppliesToRow(output_key, apply_data.commit_ht));
-    if (vector_indexes_updater && decode_row) {
-      RETURN_NOT_OK(vector_indexes_updater->Feed(
+        (vector_indexes_updater_ &&
+         vector_indexes_updater_->AppliesToRow(output_key, apply_data.commit_ht));
+    if (vector_indexes_updater_ && decode_row) {
+      RETURN_NOT_OK(vector_indexes_updater_->Feed(
           regular_write_handler, output_key, output_value,
           DocHybridTime(apply_data.commit_ht, apply_data.write_id)));
     }
@@ -1342,11 +1349,6 @@ Result<bool> NonTransactionalBatchWriter::PrepareApplyExternalIntentsBatch(
     if (decode_row) {
       RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
     }
-  }
-  // See ApplyIntentsContext::Complete.
-  FlushSchemaVersion();
-  if (vector_indexes_updater) {
-    RETURN_NOT_OK(vector_indexes_updater->Complete());
   }
 
   // Remaining bytes after the key-value terminator are delete_vector_ids appended by
@@ -1460,22 +1462,27 @@ Result<bool> NonTransactionalBatchWriter::AddEntryToWriteBatch(
 }
 
 Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) {
+  // One updater for every record of the op, so each vector index gets all of the op's vectors in
+  // one insert, which lands in a single chunk. A chunk saved with only part of them would carry
+  // the op's OpId as flushed, and bootstrap, also after a remote bootstrap, would not replay the
+  // op into the index, losing the vectors left in later chunks (GH#37821).
+  if (ShouldMaintainVectorIndexes(table_type_)) {
+    // On an xCluster target rows are written at the source's hybrid time, which can be below
+    // the hybrid time of a vector index whose backfill ran before this write arrived (#34697).
+    // A consumer older than WritePB.xcluster_target_applied does not set it, but its external
+    // transactions still mark the op as an xCluster one.
+    vector_indexes_updater_.emplace(
+        vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_, chunk_holds_,
+        xcluster_target_applied_ || (vector_indexes_ && HasExternalTransactions(put_batch_)));
+  }
+
   auto apply_external_transactions = VERIFY_RESULT(ExternalTxnApplyStateData::FromPB(put_batch_));
   if (!apply_external_transactions.empty()) {
     DCHECK(intents_db_iter_.Initialized());
     RETURN_NOT_OK(PrepareApplyExternalIntents(apply_external_transactions, handler));
   }
 
-  std::optional<VectorIndexesUpdater> vector_indexes_updater;
   IntraTxnWriteId write_id = 0;
-  if (ShouldMaintainVectorIndexes(table_type_)) {
-    // On an xCluster target rows are written at the source's hybrid time, which can be below
-    // the hybrid time of a vector index whose backfill ran before this write arrived (#34697).
-    vector_indexes_updater.emplace(
-        vector_indexes_, schema_packing_provider_, frontiers_, apply_to_storages_,
-        chunk_holds_, xcluster_target_applied_.get());
-  }
-
   DocHybridTimeBuffer doc_ht_buffer;
   for (const auto& write_pair : put_batch_.write_pairs()) {
     if (VERIFY_RESULT(AddEntryToWriteBatch(
@@ -1485,10 +1492,10 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
       // tables: their schema packings could be GCed already (GH#35466).
       const auto decode_row =
           apply_to_storages_.TestRegularDB() ||
-          (vector_indexes_updater &&
-           vector_indexes_updater->AppliesToRow(write_pair.key(), pair_ht));
-      if (vector_indexes_updater && decode_row) {
-        RETURN_NOT_OK(vector_indexes_updater->Feed(
+          (vector_indexes_updater_ &&
+           vector_indexes_updater_->AppliesToRow(write_pair.key(), pair_ht));
+      if (vector_indexes_updater_ && decode_row) {
+        RETURN_NOT_OK(vector_indexes_updater_->Feed(
             handler, write_pair.key(), write_pair.value(), DocHybridTime(pair_ht, write_id)));
       }
       // GH#32797: bootstrap replay clears the regular bit when the op is already flushed to the
@@ -1514,8 +1521,11 @@ Status NonTransactionalBatchWriter::Apply(rocksdb::DirectWriteHandler& handler) 
 
   // See ApplyIntentsContext::Complete.
   FlushSchemaVersion();
-  if (vector_indexes_updater) {
-    RETURN_NOT_OK(vector_indexes_updater->Complete());
+  if (vector_indexes_updater_) {
+    RETURN_NOT_OK(vector_indexes_updater_->Complete());
+    // The indexes copied the vectors, so do not keep them while the op waits for its intents DB
+    // write.
+    vector_indexes_updater_.reset();
   }
 
   if (put_batch_.has_delete_vector_ids()) {
