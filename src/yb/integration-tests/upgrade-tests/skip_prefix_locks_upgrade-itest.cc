@@ -190,5 +190,5 @@ TEST_P(SkipPrefixLocksUpgradeTest, TestSkipPrefixLocksUpgrade_PackedRowDisabled)
 INSTANTIATE_TEST_SUITE_P(
     UpgradeFrom_2026_1_4_0, SkipPrefixLocksUpgradeTest, ::testing::Values(kBuild_2026_1_4_0));
 INSTANTIATE_TEST_SUITE_P(
-    UpgradeFrom_2_25_0_0, SkipPrefixLocksUpgradeTest, ::testing::Values(kBuild_2_25_0_0));
+    UpgradeFrom_2_31_0_1900, SkipPrefixLocksUpgradeTest, ::testing::Values(kBuild_2_31_0_1900));
 }  // namespace yb

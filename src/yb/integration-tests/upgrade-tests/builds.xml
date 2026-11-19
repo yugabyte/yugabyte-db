@@ -96,4 +96,16 @@ Every other build type of the current version, including debug, runs against the
       https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2026.1.4.0-b20/yugabyte-2026.1.4.0-b20-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
+  <build version="2.31.0.1900">
+    <build_number>b73</build_number>
+    <linux_release_x86>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.31.0.1900-b73/yugabyte-2.31.0.1900-b73-centos-x86_64.tar.gz
+    </linux_release_x86>
+    <linux_release_aarch64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.31.0.1900-b73/yugabyte-2.31.0.1900-b73-almalinux8-aarch64.tar.gz
+    </linux_release_aarch64>
+    <darwin_release_arm64>
+      https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.31.0.1900-b73/yugabyte-2.31.0.1900-b73-darwin-arm64.tar.gz
+    </darwin_release_arm64>
+  </build>
 </builds>

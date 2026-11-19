@@ -23,7 +23,7 @@ namespace yb {
 class PgAdvisoryLocksUpgradeTest : public UpgradeTestBase,
                                   public ::testing::WithParamInterface<uint32_t> {
  public:
-  PgAdvisoryLocksUpgradeTest() : UpgradeTestBase(kBuild_2025_1_1_0) {}
+  PgAdvisoryLocksUpgradeTest() : UpgradeTestBase(kBuild_2_31_0_1900) {}
 
   void SetUpOptions(ExternalMiniClusterOptions& opts) override {
     AddUnDefOkAndSetFlag(

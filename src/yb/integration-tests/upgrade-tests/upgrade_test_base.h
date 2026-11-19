@@ -132,5 +132,6 @@ static constexpr auto kBuild_2_25_0_0 = "2.25.0.0";
 static constexpr auto kBuild_2025_1_1_0 = "2025.1.1.0";
 static constexpr auto kBuild_2026_1_2_0 = "2026.1.2.0";
 static constexpr auto kBuild_2026_1_4_0 = "2026.1.4.0";
+static constexpr auto kBuild_2_31_0_1900 = "2.31.0.1900";
 
 }  // namespace yb
