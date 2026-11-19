@@ -54,6 +54,7 @@ import com.yugabyte.yw.forms.DrConfigSetTablesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -1493,6 +1494,13 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             Json.toJson(setTablesForm));
     assertOk(setTablesResult);
 
+    // Pass bootstrapParams as DrConfigController.setTables does; without them a DR config fails
+    // the bootstrapParams check before the materialized view check runs.
+    BootstrapParams bootstrapParams =
+        app.injector()
+            .instanceOf(DrConfigHelper.class)
+            .getBootstrapParamsFromRestartBootstrapParams(
+                drConfig.getBootstrapBackupParams(), setTablesForm.tables);
     PlatformServiceException exception =
         assertThrows(
             PlatformServiceException.class,
@@ -1503,7 +1511,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
                     sourceUniverse,
                     targetUniverse,
                     setTablesForm.tables,
-                    null /* bootstrapParams */,
+                    bootstrapParams,
                     false /* autoIncludeIndexTables */,
                     true /* dryRun */,
                     true /* validateRequestedChange */));
