@@ -80,6 +80,8 @@ DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_bool(TEST_create_table_with_empty_pgschema_name);
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 
@@ -104,27 +106,25 @@ DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
 DECLARE_int32(replication_factor);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(xcluster_skip_index_column_name_check_on_setup);
 DECLARE_bool(ysql_disable_index_backfill);
+DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
 DECLARE_bool(TEST_vector_index_exact);
-DECLARE_bool(TEST_skip_deleting_split_tablets);
-DECLARE_double(TEST_transaction_ignore_applying_probability);
-DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
-DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
-DECLARE_uint64(transaction_resend_applying_interval_usec);
-DECLARE_bool(ysql_enable_auto_analyze);
 
 namespace yb {
 

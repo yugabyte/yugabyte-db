@@ -774,6 +774,8 @@ class VectorMetadataFilter {
       // is applied, so min running is not newer than its start: a tombstone which is not older
       // than min running is kept, and is removed later by a regular compaction. On an xCluster
       // target, min running is kMin while the tablet holds external intents of such a transaction.
+      // On a non-transactional target, a regular compaction can remove the tombstone before
+      // the apply, see GH #38648.
       EncodedDocHybridTime encoded_doc_ht;
       RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
       const auto keep = encoded_doc_ht >= encoded_min_running_ht_;
