@@ -439,6 +439,10 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
  *
  * This is useful partly to ensure consistency of the error message wording;
  * some callers have checked XactReadOnly for themselves.
+ *
+ * YB: #35522, this also throws under relaxed read-after-commit visibility
+ * (YbIsRelaxedReadOnly). A caller that checks XactReadOnly for itself must
+ * check YbIsRelaxedReadOnly too, or relaxed mode lets the command through.
  */
 void
 PreventCommandIfReadOnly(const char *cmdname)
@@ -449,6 +453,17 @@ PreventCommandIfReadOnly(const char *cmdname)
 		/* translator: %s is name of a SQL command, eg CREATE */
 				 errmsg("cannot execute %s in a read-only transaction",
 						cmdname)));
+
+	/* YB */
+	if (YbIsRelaxedReadOnly())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot execute %s under relaxed read-after-commit visibility",
+						cmdname),
+				 errhint("Relaxed mode allows only reads. To avoid read restart errors "
+						 "on writes, set yb_read_after_commit_visibility to deferred "
+						 "outside a transaction block; deferred mode waits out the "
+						 "clock skew, so it adds latency.")));
 }
 
 /*
@@ -621,6 +636,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 		if ((readonly_flags & COMMAND_OK_IN_RECOVERY) == 0)
 			PreventCommandDuringRecovery(GetCommandTagName(commandtag));
 	}
+
+	/* YB */
+	if ((readonly_flags & COMMAND_OK_IN_READ_ONLY_TXN) == 0 &&
+		YbIsRelaxedReadOnly())
+		PreventCommandIfReadOnly(GetCommandTagName(CreateCommandTag(parsetree)));
 
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
