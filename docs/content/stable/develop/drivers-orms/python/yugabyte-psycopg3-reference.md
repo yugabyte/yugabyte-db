@@ -41,7 +41,7 @@ type: docs
   </li>
 </ul>
 
-Yugabyte Psycopg 3 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg), with additional connection load balancing and [xCluster failover](#xcluster-failover) features.
+Yugabyte Psycopg 3 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL Psycopg 3 driver](https://github.com/psycopg/psycopg), with additional connection load balancing and [xCluster failover](#bidirectional-xcluster-failover) features.
 
 For more information on the Yugabyte Psycopg 3 smart driver, see the following:
 
@@ -91,7 +91,7 @@ The following connection properties need to be added to enable load balancing:
 - `load_balance_hosts` - enable cluster-aware load balancing by setting this property to `true`; disabled by default (omit the parameter or set to `false`). The libpq values `disable` and `random` pass through unchanged.
 - `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone` (use `*` for any zone in that cloud/region). List multiple placements to allow more than one zone; a tserver matches if it satisfies _any_ listed key (OR logic). Ignored if `load_balance_hosts` is `false`. Cloud and region wildcards are rejected at parse time.
 
-By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter (clamped to [0, 600] seconds). When [xCluster failover](#xcluster-failover) is enabled, the same interval also sets how often the circuit breakers are checked (at most once per second). After a failed connect to a TServer, the driver quarantines that host for `failed_host_reconnect_delay_secs` seconds (default 5, clamped to [0, 60]) before reconsidering it. A host that refuses the connection is quarantined after the first failure; a host that doesn't answer within `connect_timeout` is quarantined after three consecutive timeouts, so that a briefly slow node stays in rotation.
+By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter (clamped to [0, 600] seconds). When [xCluster failover](#bidirectional-xcluster-failover) is enabled, the same interval also sets how often the circuit breakers are checked (at most once per second). After a failed connect to a TServer, the driver quarantines that host for `failed_host_reconnect_delay_secs` seconds (default 5, clamped to [0, 60]) before reconsidering it. A host that refuses the connection is quarantined after the first failure; a host that doesn't answer within `connect_timeout` is quarantined after three consecutive timeouts, so that a briefly slow node stays in rotation.
 
 The driver uses one contact host from the `host` parameter to bootstrap (one is enough, the rest of the cluster is discovered via `yb_servers()`), and then keeps a long-lived control connection per cluster for periodic refresh.
 
@@ -173,7 +173,7 @@ with pool.connection() as conn:
 
 An equivalent async path exists via `AsyncConnection` and `AsyncConnectionPool`; the smart driver dispatcher is the same.
 
-## xCluster failover
+## Bidirectional xCluster failover
 
 xCluster failover lets an application keep running when a YugabyteDB universe becomes unavailable. It is for two universes in a bidirectional [xCluster](../../../../deploy/multi-dc/async-replication/) setup, each replicating to the other: a primary universe that the application normally uses, and a secondary universe.
 
@@ -188,10 +188,10 @@ The driver doesn't decide by itself whether a universe is available. The applica
 
 The two universes, their circuit breakers, and the current routing state together make up a _failover group_. A process has one failover group for each primary universe, and every connection to that universe belongs to the group, so all of them switch universes together.
 
-A switch from one universe to the other happens in two phases:
+A switch from one universe to the other happens in two phases. On failover, the driver switches from the primary universe to the secondary universe; on failback, from the secondary universe to the primary universe.
 
-1. **Drain** - the driver stops opening new connections, and gives the transactions already running on the current universe time to finish. Connections that are still open when the time is up are closed, so that no more writes reach the universe being left.
-1. **Replication lag wait** - if YugabyteDB Anywhere (YBA) is configured, the driver checks the xCluster replication lag, and waits until the other universe has received the writes made before the drain. Without YBA, this phase is skipped.
+1. **Drain** - the driver stops opening new connections, and gives the transactions already running on the universe it is switching from time to finish. Connections that are still open when the time is up are closed, so that no more writes reach that universe.
+1. **Replication lag wait** - if YugabyteDB Anywhere (YBA) is configured, the driver checks the xCluster replication lag, and waits until the universe it is switching to has received the writes made before the drain. Without YBA, this phase is skipped.
 
 New connections then go to the other universe. If the replication lag wait runs out of time, a failover proceeds anyway, as the primary universe is unavailable. A failback is postponed and retried after a cooldown, so that the application isn't moved back to a primary universe that is still missing recent writes.
 
@@ -203,23 +203,23 @@ The following connection properties enable xCluster failover and control its mai
 
 - `load_balance_hosts` - must be set to `true`; xCluster failover is part of the smart driver.
 - `host` - the hosts of the primary universe. One reachable host is enough; the rest of the universe is discovered.
-- `yb.failover.secondaryClusterHosts` - comma-separated hosts of the secondary universe. Setting this property turns on xCluster failover.
-- `yb_servers_refresh_interval` - the node-list refresh interval described in [Load balancing connection properties](#load-balancing-connection-properties), which with xCluster failover also sets how often, in seconds, the circuit breakers are checked (default 300). Set it to a few seconds for timely failure detection.
-- `yb.failover.drainTimeoutSecs` - how long running transactions get to finish during the drain (default 10). `-1` waits for all of them; `0` closes connections immediately.
-- `yb.failover.lagWaitTimeoutSecs` - maximum duration of the replication lag wait (default 30).
-- `yb.failover.globalTimeBudgetSecs` - an upper limit on the whole switch (unset by default). When set, it is split between the drain (40%) and the replication lag wait (60%), unless those are set explicitly.
-- `yb.failover.cooldownSecs` - minimum time between two status changes of the same circuit breaker (default 1500). This prevents switching back and forth when a universe is unstable.
+- `yb.failover.secondaryClusterHosts` - comma-separated hosts of the secondary universe. As with `host`, one reachable host is enough; the rest of the universe is discovered. Setting this property turns on xCluster failover.
+- `yb_servers_refresh_interval` - the node-list refresh interval (see [Load balancing connection properties](#load-balancing-connection-properties)). If xCluster failover is active, this value also sets how often, in seconds, the circuit breakers are checked (default 300). Set it to a few seconds for timely failure detection.
+- `yb.failover.drainTimeoutSecs` - how much time running transactions get to finish (in seconds) during the drain (default 10). `-1` waits for all of them; `0` closes connections immediately.
+- `yb.failover.lagWaitTimeoutSecs` - maximum duration in seconds of the replication lag wait (default 30).
+- `yb.failover.globalTimeBudgetSecs` - an optional time limit in seconds for the whole switch (unset by default). Use it instead of setting the two timeouts separately: when set, the drain timeout defaults to 40% of it and the replication lag wait timeout to 60%. If you also set `yb.failover.drainTimeoutSecs` or `yb.failover.lagWaitTimeoutSecs`, the value you set is used for that phase; if you set both, this property has no effect.
+- `yb.failover.cooldownSecs` - minimum time in seconds between two status changes of the same circuit breaker (default 1500). This prevents switching back and forth when a universe is unstable.
 - `yb.failover.autoFailbackEnabled` - set to `false` to stay on the secondary universe after the primary universe recovers, until you fail back manually (default `true`).
 
 To enable the replication lag wait, add the following properties:
 
 - `yb.failover.ybaEndpoint` - the YugabyteDB Anywhere base URL, for example `https://yba.example.com`.
-- `yb.failover.ybaApiToken` - a YugabyteDB Anywhere [API token](../../../../yugabyte-platform/anywhere-automation/anywhere-api/).
+- `yb.failover.ybaApiToken` - a YugabyteDB Anywhere [API token](../../../../yugabyte-platform/anywhere-automation/#authentication).
 - `yb.failover.replicationName` - the name of the [xCluster replication configuration](../../../../yugabyte-platform/create-deployments/xcluster-replication/xcluster-replication-setup/) from the primary to the secondary universe, used on failover.
 - `yb.failback.replicationName` - the name of the replication configuration from the secondary to the primary universe, used on failback.
-- `yb.failover.thresholdReplicationLagMs` - the driver switches once the replication lag is at or below this value (default 0).
+- `yb.failover.thresholdReplicationLagMs` - the driver switches once the replication lag is at or below this many milliseconds (default 0, meaning the universe being switched to has received all writes).
 
-Each `yb.failover.*` timing property has a `yb.failback.*` counterpart for the failback direction; when it isn't set, the failover value is used. For the complete list of properties, see the driver's [README](https://github.com/yugabyte/psycopg#xcluster-failover).
+Each `yb.failover.*` timing property has a `yb.failback.*` counterpart for the failback direction; when it isn't set, the failover value is used. For the complete list of properties, see [Other connection parameters](https://github.com/yugabyte/psycopg/tree/3.3.4.x#other-connection-parameters) in the driver's README.
 
 ### Use xCluster failover
 
