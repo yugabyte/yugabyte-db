@@ -19,6 +19,7 @@ import api.v2.handlers.StorageConfigHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
+import com.yugabyte.yba.v2.client.ApiResponse;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.StorageConfigApi;
 import com.yugabyte.yba.v2.client.models.AzureCredentialType;
@@ -52,6 +53,7 @@ import com.yugabyte.yba.v2.client.models.StorageConfigUsage;
 import com.yugabyte.yba.v2.client.models.StorageSpec;
 import com.yugabyte.yba.v2.client.models.StorageType;
 import com.yugabyte.yba.v2.client.models.YBATask;
+import com.yugabyte.yw.commissioner.tasks.EditStorageConfig;
 import com.yugabyte.yw.commissioner.tasks.ValidateStorageConfig;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -99,6 +101,33 @@ public class StorageConfigApiTest extends FakeDBApplication {
     when(mockCommissioner.submit(eq(TaskType.ValidateStorageConfig), any(ITaskParams.class)))
         // CustomerTask rows carry a foreign key onto task_info, so the task has to really exist.
         .thenAnswer(invocation -> buildTaskInfo(null, TaskType.ValidateStorageConfig));
+    when(mockCommissioner.submit(eq(TaskType.EditStorageConfig), any(ITaskParams.class)))
+        .thenAnswer(invocation -> buildTaskInfo(null, TaskType.EditStorageConfig));
+  }
+
+  /** The params of the EditStorageConfig task submitted last. */
+  private EditStorageConfig.Params submittedEdit(int submits) {
+    ArgumentCaptor<ITaskParams> params = ArgumentCaptor.forClass(ITaskParams.class);
+    verify(mockCommissioner, times(submits))
+        .submit(eq(TaskType.EditStorageConfig), params.capture());
+    return (EditStorageConfig.Params) params.getValue();
+  }
+
+  private YBATask edit(UUID scUUID, StorageConfigSpec spec, String ifMatch) throws ApiException {
+    return storageConfigApi.editStorageConfig(customer.getUuid(), scUUID, spec, ifMatch, null);
+  }
+
+  /** An S3 spec with access key credentials whose keys are left out. */
+  private static StorageConfigSpec s3SpecWithoutKeys(String name, String westLocation) {
+    StorageConfigSpec spec = s3Spec(name);
+    S3StorageSpec s3 = spec.getStorage().getS3StorageSpec();
+    s3.credentials(
+            new S3Credentials(
+                new S3AccessKeyCredentials()
+                    .credentialType(S3CredentialType.S3CredentialAccessKey)))
+        .regionLocations(
+            List.of(new S3RegionLocation().region("us-west-2").location(westLocation)));
+    return spec;
   }
 
   /** The params of the ValidateStorageConfig task submitted last. */
@@ -731,5 +760,108 @@ public class StorageConfigApiTest extends FakeDBApplication {
     S3IamCredentials iam = s3.getCredentials().getS3IamCredentials();
     assertEquals(S3CredentialType.S3CredentialIam, iam.getCredentialType());
     assertTrue(s3.getGlobalBucketAccess());
+  }
+
+  @Test
+  public void editKeepsLeftOutSecretsUntilTheTaskAppliesIt() throws ApiException {
+    UUID uuid = createActive(s3Spec("s3"));
+
+    YBATask task = edit(uuid, s3SpecWithoutKeys("s3-renamed", "s3://bucket-west2/yba"), null);
+
+    assertEquals(uuid, task.getResourceUuid());
+    assertNotNull(task.getTaskUuid());
+    EditStorageConfig.Params params = submittedEdit(1);
+    assertEquals(uuid, params.configUUID);
+    CustomerConfig stored = CustomerConfig.get(customer.getUuid(), uuid);
+    assertEquals(stored.getUpdateTime().getTime(), params.revision);
+    CustomerConfig edited =
+        app.injector().instanceOf(UnsavedStorageConfigs.class).get(params.editKey);
+    CustomerConfigStorageS3Data data = (CustomerConfigStorageS3Data) edited.getDataObject();
+    assertEquals("s3-renamed", edited.getConfigName());
+    assertEquals("AKIAEXAMPLE", data.awsAccessKeyId);
+    assertEquals("s3cr3t-key", data.awsSecretAccessKey);
+    assertEquals("s3://bucket-west2/yba", data.regionLocations.get(0).location);
+    // Unchanged until the task applies the edit.
+    assertEquals("s3", stored.getConfigName());
+    assertEquals(
+        "s3://bucket-west/yba",
+        stored.getData().get("REGION_LOCATIONS").get(0).get("LOCATION").asText());
+    // The create's task hasn't finished either: the commissioner is a mock.
+    assertTrue(
+        CustomerTask.findIncompleteByTargetUUID(uuid).stream()
+            .anyMatch(t -> t.getType() == CustomerTask.TaskType.Edit));
+  }
+
+  @Test
+  public void editCantChangeTheStorageTypeOrBackupLocation() throws ApiException {
+    UUID uuid = createActive(nfsSpec("nfs", "/mnt/a"));
+
+    ApiException type = assertThrows(ApiException.class, () -> edit(uuid, s3Spec("nfs"), null));
+    assertEquals(400, type.getCode());
+    assertTrue(type.getResponseBody(), type.getResponseBody().contains("storage_type"));
+    ApiException location =
+        assertThrows(ApiException.class, () -> edit(uuid, nfsSpec("nfs", "/mnt/b"), null));
+    assertEquals(400, location.getCode());
+    assertTrue(location.getResponseBody(), location.getResponseBody().contains("backup_location"));
+    verify(mockCommissioner, never()).submit(eq(TaskType.EditStorageConfig), any());
+  }
+
+  @Test
+  public void editOfAMissingConfigIs404() {
+    ApiException e =
+        assertThrows(
+            ApiException.class, () -> edit(UUID.randomUUID(), nfsSpec("nfs", "/mnt/a"), null));
+    assertEquals(404, e.getCode());
+  }
+
+  @Test
+  public void editConflicts() throws ApiException {
+    // Still being checked.
+    UUID validating = create(nfsSpec("validating", "/mnt/v"));
+    ApiException notActive =
+        assertThrows(
+            ApiException.class, () -> edit(validating, nfsSpec("validating", "/mnt/v"), null));
+    assertEquals(409, notActive.getCode());
+    assertEquals("STORAGE_CONFIG_NOT_ACTIVE", error(notActive).get("code").asText());
+    assertEquals("VALIDATING", error(notActive).get("storage_config_state").asText());
+
+    UUID first = createActive(nfsSpec("first", "/mnt/a"));
+    UUID second = createActive(nfsSpec("second", "/mnt/b"));
+    ApiException name =
+        assertThrows(ApiException.class, () -> edit(first, nfsSpec("second", "/mnt/a"), null));
+    assertEquals(409, name.getCode());
+    assertEquals(StorageConfigHandler.NAME_CONFLICT, error(name).get("code").asText());
+    assertEquals(second.toString(), error(name).get("storage_config_uuid").asText());
+
+    // An edit whose task hasn't finished.
+    YBATask pending = edit(first, nfsSpec("first-renamed", "/mnt/a"), null);
+    ApiException inProgress =
+        assertThrows(ApiException.class, () -> edit(first, nfsSpec("first-2", "/mnt/a"), null));
+    assertEquals(409, inProgress.getCode());
+    assertEquals("STORAGE_CONFIG_EDIT_IN_PROGRESS", error(inProgress).get("code").asText());
+    assertEquals(pending.getTaskUuid().toString(), error(inProgress).get("task_uuid").asText());
+  }
+
+  @Test
+  public void editHonoursIfMatchWithConditionalGet() throws ApiException {
+    UUID fresh = createActive(nfsSpec("fresh", "/mnt/b"));
+    // On in application.test.conf; off by default.
+    String etag = etag(storageConfigApi.getStorageConfigWithHttpInfo(customer.getUuid(), fresh));
+    assertNotNull(etag);
+    ApiException mismatch =
+        assertThrows(
+            ApiException.class,
+            () -> edit(fresh, nfsSpec("fresh-1", "/mnt/b"), "\"no-such-etag\""));
+    assertEquals(412, mismatch.getCode());
+    assertEquals("STORAGE_CONFIG_REVISION_MISMATCH", error(mismatch).get("code").asText());
+    assertEquals(fresh, edit(fresh, nfsSpec("fresh-1", "/mnt/b"), etag).getResourceUuid());
+  }
+
+  private static String etag(ApiResponse<StorageConfig> response) {
+    return response.getHeaders().entrySet().stream()
+        .filter(header -> header.getKey().equalsIgnoreCase("ETag"))
+        .map(header -> header.getValue().get(0))
+        .findFirst()
+        .orElse(null);
   }
 }
