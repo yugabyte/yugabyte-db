@@ -2,6 +2,7 @@
 package api.v2.mappers;
 
 import api.v2.models.CloudSpecificInfo;
+import api.v2.models.XClusterInfo;
 import api.v2.models.ClusterGFlags;
 import api.v2.models.EncryptionAtRestInfo;
 import api.v2.models.EncryptionAtRestSpec;
@@ -186,6 +187,16 @@ public interface UniverseDefinitionTaskParamsMapper {
   UniverseInfo toV2UniverseInfo(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
   // below methods are used implicitly to generate other mapping
+
+  // These fields are computable, so omitting them in mapper.
+  @Mapping(target = "sourceXClusterConfigs", ignore = true)
+  @Mapping(target = "targetXClusterConfigs", ignore = true)
+  UniverseDefinitionTaskParams.XClusterInfo toXClusterInfo(
+      UniverseDefinitionTaskParams.XClusterInfo source, @Context Request request);
+
+  @Mapping(target = "sourceXClusterConfigs", ignore = true)
+  @Mapping(target = "targetXClusterConfigs", ignore = true)
+  XClusterInfo toV2XClusterInfo(UniverseDefinitionTaskParams.XClusterInfo source);
 
   UniverseSettings toV2UniverseSettings(
       UniverseDefinitionTaskParams.UniverseSettings universeSettings);
