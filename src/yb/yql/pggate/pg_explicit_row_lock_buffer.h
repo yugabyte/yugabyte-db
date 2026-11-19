@@ -34,6 +34,10 @@ class ExplicitRowLockBuffer {
     int pg_wait_policy;
     int docdb_wait_policy;
     PgOid database_id;
+    // Catalog and user rows must not share a batch: a batch is sent as one Perform, and a
+    // catalog first table makes PgSession::DoRunAsync use the catalog snapshot read point for
+    // the whole Perform.
+    bool is_catalog;
 
     friend bool operator==(const LockInfo&, const LockInfo&) = default;
   };

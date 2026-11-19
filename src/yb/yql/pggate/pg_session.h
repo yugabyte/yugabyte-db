@@ -53,12 +53,11 @@ class PgFlushDebugContext;
 struct PgSessionRunOptions {
   HybridTime in_txn_limit{};
   ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
-  std::optional<PgSessionRunOperationMarker> marker{};
 
   friend bool operator==(const PgSessionRunOptions&, const PgSessionRunOptions&) = default;
 
   std::string ToString() const {
-      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable, marker);
+      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable);
   }
 };
 

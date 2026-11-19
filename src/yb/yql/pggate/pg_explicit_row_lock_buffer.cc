@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
@@ -55,18 +56,21 @@ class ExplicitRowLockBuffer::Impl {
 
   Status Flush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
     const auto has_pending = HasPendingLocks();
-    VLOG(5) << "Flush has pending: " <<  has_pending << " intents size: " << intents_.size();
+    VLOG(5) << "Flush has pending: " <<  has_pending
+            << " intents size: " << pending_.intents.size();
     return has_pending ? DoFlush(error_info) : Status::OK();
   }
 
   void Clear() {
-    ClearIntents();
+    pending_ = {};
+    in_flight_ = {};
+    ybctids_set_.clear();
     skipped_.clear();
     latest_known_check_handle_.reset();
   }
 
   bool HasPendingLocks() const {
-    return !intents_.empty();
+    return !pending_.intents.empty();
   }
 
   Result<bool> IsSkipped(
@@ -77,7 +81,7 @@ class ExplicitRowLockBuffer::Impl {
       return true;
     }
 
-    if (skippable_.empty()) {
+    if (pending_.skippable.empty()) {
       return false;
     }
 
@@ -86,25 +90,34 @@ class ExplicitRowLockBuffer::Impl {
   }
 
  private:
+  struct Locks {
+    std::optional<LockInfo> info;
+    MemoryOptimizedTableYbctidSet intents;
+    TableLocalityMap table_locality_map;
+    std::vector<SkippableLockInfo> skippable;
+  };
+
   Status DoAdd(
       const AddLockData& data,
       std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle>* handle = nullptr) {
-    if (info_ && *info_ != data.lock_info && HasPendingLocks()) {
+    auto& info = pending_.info;
+    if (info && *info != data.lock_info && HasPendingLocks()) {
       RETURN_NOT_OK(DoFlush(data.error_info));
     }
 
-    if (!info_) {
-      info_ = data.lock_info;
+    if (!info) {
+      info = data.lock_info;
     }
     const auto& ybctid = data.lock_key.ybctid;
     const auto& table_id = data.lock_key.table_id;
 
-    auto ipair = intents_.emplace(table_id, ybctid);
+    auto ipair = pending_.intents.emplace(table_id, ybctid);
     if (ipair.second) {
-      table_locality_map_.Add(table_id, data.table_locality);
+      pending_.table_locality_map.Add(table_id, data.table_locality);
     }
 
     if (handle) {
+      auto& skippable = pending_.skippable;
       size_t handle_idx = 0;
       // Handle is kind of a signature to indicate that multiple ybctids belongs to it.
       // It is expected that all the ybctids for same handle are added one after another,
@@ -115,62 +128,62 @@ class ExplicitRowLockBuffer::Impl {
             "Latest known skip locked handle is only expected (got $0 instead of $1)",
             *handle, latest_known_check_handle_);
         // Skippable candidates could be empty because of previous flush.
-        DCHECK(skippable_.empty() || **handle == skippable_.back().handle);
-        if (!skippable_.empty()) [[likely]] {
-          handle_idx = skippable_.back().handle_idx + 1;
+        DCHECK(skippable.empty() || **handle == skippable.back().handle);
+        if (!skippable.empty()) [[likely]] {
+          handle_idx = skippable.back().handle_idx + 1;
         }
       } else {
         latest_known_check_handle_ =
             latest_known_check_handle_.has_value() ? (*latest_known_check_handle_ + 1) : 0;
         handle->emplace(*latest_known_check_handle_);
       }
-      skippable_.emplace_back(**handle, *ipair.first, handle_idx);
+      skippable.emplace_back(**handle, *ipair.first, handle_idx);
     }
 
-    return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
+    return narrow_cast<int>(pending_.intents.size()) >= yb_explicit_row_locking_batch_size
         ? DoFlush(data.error_info) : Status::OK();
-  }
-
-  void ClearIntents() {
-    info_.reset();
-    intents_.clear();
-    table_locality_map_.Clear();
-    ybctids_set_.clear();
-    skippable_.clear();
   }
 
   Status DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
     DCHECK(HasPendingLocks());
+    // Detach the batch before sending it, so a flush of this buffer during the send finds nothing
+    // pending: the Perform for a catalog batch switches to the catalog read point, which flushes
+    // all buffered entities. PG code runs during the send, and an ereport there longjmps past
+    // this frame; the batch is then dropped by the next flush or Clear() instead of staying
+    // pending.
+    in_flight_ = std::exchange(pending_, {});
     auto status = DoFlushImpl();
     if (!status.ok()) {
       error_info.emplace(
-          info_->pg_wait_policy,
+          in_flight_.info->pg_wait_policy,
           TransactionError(status).value() == TransactionErrorCode::kNone
               ? kInvalidOid
               : RelationOid::ValueFromStatus(status).value_or(kInvalidOid));
     }
-    ClearIntents();
+    in_flight_ = {};
+    ybctids_set_.clear();
     return status;
   }
 
   auto DoRead(YbctidReader::BatchAccessor& batch) {
+    const auto& info = *in_flight_.info;
     return batch.Read(
-        info_->database_id, table_locality_map_,
-        {.rowmark = info_->rowmark,
-        .pg_wait_policy = info_->pg_wait_policy,
-        .docdb_wait_policy = info_->docdb_wait_policy,
-        .run_marker = PgSessionRunOperationMarker::ExplicitRowLock});
+        info.database_id, in_flight_.table_locality_map,
+        {.rowmark = info.rowmark,
+        .pg_wait_policy = info.pg_wait_policy,
+        .docdb_wait_policy = info.docdb_wait_policy});
   }
 
   Status DoFlushImpl() {
-    return skippable_.empty() ? DoFlushRegular() : DoFlushSkippable();
+    return in_flight_.skippable.empty() ? DoFlushRegular() : DoFlushSkippable();
   }
 
   Status DoFlushRegular() {
-    DCHECK(skippable_.empty());
-    const auto intents_count = intents_.size();
+    const auto& intents = in_flight_.intents;
+    DCHECK(in_flight_.skippable.empty());
+    const auto intents_count = intents.size();
     auto batch = ybctid_reader_.StartNewBatch(intents_count);
-    for (const auto& intent : intents_) {
+    for (const auto& intent : intents) {
       batch.Add(intent);
     }
     const auto ybctids_count = VERIFY_RESULT(DoRead(batch)).size();
@@ -179,17 +192,18 @@ class ExplicitRowLockBuffer::Impl {
   }
 
   Status DoFlushSkippable() {
-    DCHECK(!skippable_.empty());
-    const auto intents_count = intents_.size();
+    auto& skippable = in_flight_.skippable;
+    DCHECK(!skippable.empty());
+    const auto intents_count = in_flight_.intents.size();
     std::ranges::sort(
-        skippable_,
+        skippable,
         [](const auto& lhs, const auto& rhs) { return lhs.handle_idx < rhs.handle_idx; });
-    for(auto i = skippable_.begin(); i != skippable_.end();) {
+    for(auto i = skippable.begin(); i != skippable.end();) {
       auto batch = ybctid_reader_.StartNewBatch(intents_count);
       size_t batch_size = 0;
       const auto group_start = i;
       const auto group_handle_idx = group_start->handle_idx;
-      for(; i != skippable_.end() && i->handle_idx == group_handle_idx; ++i) {
+      for(; i != skippable.end() && i->handle_idx == group_handle_idx; ++i) {
         if (!skipped_.contains(i->handle)) {
           batch.Add(i->ybctid);
           ++batch_size;
@@ -215,14 +229,12 @@ class ExplicitRowLockBuffer::Impl {
   }
 
   YbctidReader ybctid_reader_;
-  std::optional<LockInfo> info_;
-  MemoryOptimizedTableYbctidSet intents_;
-  TableLocalityMap table_locality_map_;
+  Locks pending_;
+  Locks in_flight_;
 
   std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle> latest_known_check_handle_;
   LightweightYbctidSet ybctids_set_;
   std::unordered_set<YbcIsExplicitlyLockedRowSkippedCheckHandle> skipped_;
-  std::vector<SkippableLockInfo> skippable_;
 };
 
 ExplicitRowLockBuffer::ExplicitRowLockBuffer(PgSession& session)
