@@ -8087,17 +8087,17 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     createSlot(replConnection, "yboutput_slot", YB_OUTPUT_PLUGIN_NAME);
 
     // The walsender asks the master for every table in its list, so the list must equal the user
-    // tables in the slot's stream. The stream also holds the catalog tables that CDC polls.
+    // tables in each slot's stream. The stream also holds the catalog tables that CDC polls.
     Set<String> walsenderTables;
-    String streamId;
+    List<Row> slots;
     try (Statement stmt = connection.createStatement()) {
       walsenderTables = getRowList(stmt,
           "SELECT schemaname || '.' || tablename FROM pg_publication_tables").stream()
           .map(row -> row.getString(0))
           .collect(Collectors.toSet());
-      streamId = getSingleRow(stmt, "SELECT yb_stream_id FROM pg_replication_slots "
-          + "WHERE slot_name = 'yboutput_slot'").getString(0);
+      slots = getRowList(stmt, "SELECT slot_name, yb_stream_id FROM pg_replication_slots");
     }
+    assertEquals(2, slots.size());
     Map<String, String> userTableNamesById = new HashMap<>();
     for (TableInfo table :
         miniCluster.getClient().getTablesList(null, false, null).getTableInfoList()) {
@@ -8106,12 +8106,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             table.getId().toStringUtf8(), table.getPgschemaName() + "." + table.getName());
       }
     }
-    Set<String> streamTables = miniCluster.getClient().getDBStreamInfo(streamId)
-        .getTableInfoList().stream()
-        .map(table -> userTableNamesById.get(table.getTableId().toStringUtf8()))
-        .filter(Objects::nonNull)
-        .collect(Collectors.toSet());
-    assertEquals(walsenderTables, streamTables);
+    for (Row slot : slots) {
+      Set<String> streamTables = miniCluster.getClient().getDBStreamInfo(slot.getString(1))
+          .getTableInfoList().stream()
+          .map(table -> userTableNamesById.get(table.getTableId().toStringUtf8()))
+          .filter(Objects::nonNull)
+          .collect(Collectors.toSet());
+      assertEquals(slot.getString(0), walsenderTables, streamTables);
+    }
 
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("INSERT INTO t1 VALUES (1)");
