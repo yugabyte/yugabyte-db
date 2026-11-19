@@ -112,6 +112,38 @@ static char *limit_printout_length(const char *str);
 
 static void ClosePipeFromProgram(CopyFromState cstate);
 
+/* YB declarations */
+
+/*
+ * The input of a batched COPY FROM between two batches: where it is read
+ * from, and what was read ahead but not yet used.
+ */
+typedef struct YbCopyFromInput
+{
+	CopySource	copy_src;
+	FILE	   *copy_file;
+	StringInfo	fe_msgbuf;
+	EolType		eol_type;
+	uint64		cur_lineno;
+	uint64		bytes_processed;
+	char	   *raw_buf;
+	int			raw_buf_index;
+	int			raw_buf_len;
+	bool		raw_reached_eof;
+	bool		input_buf_is_raw_buf;
+	char	   *input_buf;
+	int			input_buf_index;
+	int			input_buf_len;
+	bool		input_reached_eof;
+} YbCopyFromInput;
+
+static bool yb_copy_batching_allowed = false;
+static YbCopyFromInput *yb_carried_input = NULL;
+
+static void YbCopyFromCarryInput(CopyFromState cstate);
+static void YbCopyFromContinueInput(CopyFromState cstate);
+static void YbCommitCopyBatch(void);
+
 /*
  * error context callback for COPY FROM
  *
@@ -815,6 +847,13 @@ CopyFrom(CopyFromState cstate)
 					 errhint("Either run this COPY outside of a %s or set rows_per_transaction option to `0` "
 							 " to remove this warning.", context)));
 		}
+		else if (!yb_copy_batching_allowed)
+		{
+			/*
+			 * A COPY that is not a top-level statement cannot commit: the
+			 * caller's work would be committed with the batch.
+			 */
+		}
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1013,7 +1052,9 @@ CopyFrom(CopyFromState cstate)
 	has_more_tuples = true;
 
 	/* Skip num_initial_skipped_rows. */
-	for (uint64 i = 0; i < cstate->opts.num_initial_skipped_rows; i++)
+	for (uint64 i = 0;
+		 !cstate->yb_continues_input && i < cstate->opts.num_initial_skipped_rows;
+		 i++)
 	{
 		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */ );
 		if (!has_more_tuples)
@@ -1023,7 +1064,6 @@ CopyFrom(CopyFromState cstate)
 	if (!has_more_tuples)
 		goto yb_no_more_tuples;
 
-yb_process_more_batches:
 	/*
 	 * When batch size is not provided from the query option,
 	 * default behavior is to read each line from the file
@@ -1388,34 +1428,13 @@ yb_process_more_batches:
 	if (cstate->opts.batch_size > 0)
 	{
 		/*
-		 * YB: Fire AFTER triggers in the query context, as upstream does
-		 * before AfterTriggerEndQuery() at the end of CopyFrom(). The last
-		 * batch gets here in the per-tuple context, from the break after
-		 * NextCopyFrom().
+		 * YB: A call loads one batch.  YbDoCopy commits the transaction and
+		 * runs the next batch as a new COPY, which takes its locks and builds
+		 * its state from the catalog again.  A DDL that commits between two
+		 * batches is then seen by the next one.
 		 */
-		MemoryContextSwitchTo(oldcontext);
-
-		/*
-		 * Handle queued AFTER triggers before committing. If there are errors,
-		 * do not commit the current batch.
-		 */
-		AfterTriggerEndQuery(estate);
-
-		/*
-		 * Commit transaction per batch.
-		 * When CopyFrom method is called, we are already inside a transaction block
-		 * and relevant transaction state properties have been previously set.
-		 */
-		YBCommitTransactionIntermediate();
-
-		/*
-		 * Update progress of the COPY command as well.
-		 */
-		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
-		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-
-		/* Start a new AFTER trigger */
-		AfterTriggerBeginQuery();
+		if (has_more_tuples)
+			YbCopyFromCarryInput(cstate);
 	}
 	else
 	{
@@ -1428,36 +1447,6 @@ yb_process_more_batches:
 		/* Update progress of the COPY command as well */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-	}
-
-	if (has_more_tuples)
-	{
-		if (cstate->opts.batch_size > 0)
-		{
-			/*
-			 * Re-acquire the relation lock(s) for the new transaction. This is
-			 * necessary because when YB performs batched COPY, it commits the
-			 * intermediate transaction, resulting in release of all the object
-			 * locks associated with that transaction.
-			 *
-			 * It still doesn't resolve the problem fully as a ddl could have
-			 * changed the schema and 'cstate' would need to be computed again,
-			 * without which the subsequent batches may fail. Nevertheless,
-			 * acquire locks to gate ddls for the duration of the batch.
-			 *
-			 * TODO(#27120): Once session level object locking is supported, we
-			 * could acquire session locks and skip transactional object locks
-			 * all together, leaving no window for DDLs to come in between
-			 * internal batches of COPY execution.
-			 */
-			LockRelation(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
-			for (int i = 0; i < resultRelInfo->ri_NumIndices; ++i)
-			{
-				LockRelation(resultRelInfo->ri_IndexRelationDescs[i],
-							 RowExclusiveLock);
-			}
-		}
-		goto yb_process_more_batches;
 	}
 
 yb_no_more_tuples:
@@ -1813,7 +1802,15 @@ BeginCopyFrom(ParseState *pstate,
 	cstate->num_defaults = num_defaults;
 	cstate->is_program = is_program;
 
-	if (data_source_cb)
+	cstate->yb_continues_input = (yb_carried_input != NULL);
+	if (cstate->yb_continues_input)
+	{
+		/* YB: read on from the input of the previous batch. */
+		if (!pipe)
+			cstate->filename = pstrdup(filename);
+		YbCopyFromContinueInput(cstate);
+	}
+	else if (data_source_cb)
 	{
 		progress_vals[1] = PROGRESS_COPY_TYPE_CALLBACK;
 		cstate->copy_src = COPY_CALLBACK;
@@ -1895,7 +1892,7 @@ BeginCopyFrom(ParseState *pstate,
 
 	pgstat_progress_update_multi_param(3, progress_cols, progress_vals);
 
-	if (cstate->opts.binary)
+	if (cstate->opts.binary && !cstate->yb_continues_input)
 	{
 		/* Read and verify binary header */
 		ReceiveCopyBinaryHeader(cstate);
@@ -1922,7 +1919,11 @@ void
 EndCopyFrom(CopyFromState cstate)
 {
 	/* No COPY FROM related resources except memory. */
-	if (cstate->is_program)
+	if (yb_carried_input != NULL)
+	{
+		/* YB: the next batch reads on from this input; keep it open. */
+	}
+	else if (cstate->is_program)
 	{
 		ClosePipeFromProgram(cstate);
 	}
@@ -1975,4 +1976,189 @@ ClosePipeFromProgram(CopyFromState cstate)
 						cstate->filename),
 				 errdetail_internal("%s", wait_result_to_str(pclose_rc))));
 	}
+}
+
+/*
+ * YB: Batched COPY FROM (ROWS_PER_TRANSACTION > 0).
+ *
+ * Each batch is a COPY of its own: YbDoCopy calls DoCopy once per batch and
+ * commits the transaction between two calls, as VACUUM and REINDEX do for
+ * each table.  The batch opens and locks the table, checks the privilege and
+ * builds its indexes, partition routing, constraints and triggers from the
+ * catalog, like any new statement.  Nothing derived from the catalog outlives
+ * a commit, so a DDL that commits between two batches is seen by the next
+ * batch, and one that needs a conflicting lock waits for the batch in
+ * progress.
+ *
+ * The one thing a batch hands to the next is the input: the open file,
+ * program or client stream, and the bytes read ahead of the last row.
+ * YbCopyFromCarryInput saves it at the end of a batch, in the portal's memory
+ * so that it outlives the commit, and YbCopyFromContinueInput gives it to the
+ * COPY state of the next batch.
+ */
+static void
+YbCopyFromCarryInput(CopyFromState cstate)
+{
+	MemoryContext oldcontext = MemoryContextSwitchTo(PortalContext);
+	YbCopyFromInput *input = palloc0(sizeof(YbCopyFromInput));
+
+	input->copy_src = cstate->copy_src;
+	input->copy_file = cstate->copy_file;
+	input->eol_type = cstate->eol_type;
+	input->cur_lineno = cstate->cur_lineno;
+	input->bytes_processed = cstate->bytes_processed;
+
+	input->raw_buf = palloc(RAW_BUF_SIZE + 1);
+	memcpy(input->raw_buf, cstate->raw_buf, RAW_BUF_SIZE + 1);
+	input->raw_buf_index = cstate->raw_buf_index;
+	input->raw_buf_len = cstate->raw_buf_len;
+	input->raw_reached_eof = cstate->raw_reached_eof;
+
+	if (!cstate->opts.binary)
+	{
+		input->input_buf_is_raw_buf = (cstate->input_buf == cstate->raw_buf);
+		if (!input->input_buf_is_raw_buf)
+		{
+			input->input_buf = palloc(INPUT_BUF_SIZE + 1);
+			memcpy(input->input_buf, cstate->input_buf, INPUT_BUF_SIZE + 1);
+		}
+		input->input_buf_index = cstate->input_buf_index;
+		input->input_buf_len = cstate->input_buf_len;
+		input->input_reached_eof = cstate->input_reached_eof;
+	}
+
+	if (cstate->fe_msgbuf != NULL)
+	{
+		input->fe_msgbuf = makeStringInfo();
+		appendBinaryStringInfo(input->fe_msgbuf, cstate->fe_msgbuf->data,
+							   cstate->fe_msgbuf->len);
+		input->fe_msgbuf->cursor = cstate->fe_msgbuf->cursor;
+	}
+
+	MemoryContextSwitchTo(oldcontext);
+	yb_carried_input = input;
+}
+
+static void
+YbCopyFromContinueInput(CopyFromState cstate)
+{
+	YbCopyFromInput *input = yb_carried_input;
+
+	cstate->copy_src = input->copy_src;
+	cstate->copy_file = input->copy_file;
+	cstate->eol_type = input->eol_type;
+	cstate->cur_lineno = input->cur_lineno;
+	cstate->bytes_processed = input->bytes_processed;
+
+	memcpy(cstate->raw_buf, input->raw_buf, RAW_BUF_SIZE + 1);
+	cstate->raw_buf_index = input->raw_buf_index;
+	cstate->raw_buf_len = input->raw_buf_len;
+	cstate->raw_reached_eof = input->raw_reached_eof;
+
+	if (!cstate->opts.binary)
+	{
+		Assert(input->input_buf_is_raw_buf ==
+			   (cstate->input_buf == cstate->raw_buf));
+		if (!input->input_buf_is_raw_buf)
+			memcpy(cstate->input_buf, input->input_buf, INPUT_BUF_SIZE + 1);
+		cstate->input_buf_index = input->input_buf_index;
+		cstate->input_buf_len = input->input_buf_len;
+		cstate->input_reached_eof = input->input_reached_eof;
+	}
+
+	if (input->fe_msgbuf != NULL)
+	{
+		cstate->fe_msgbuf = makeStringInfo();
+		appendBinaryStringInfo(cstate->fe_msgbuf, input->fe_msgbuf->data,
+							   input->fe_msgbuf->len);
+		cstate->fe_msgbuf->cursor = input->fe_msgbuf->cursor;
+		pfree(input->fe_msgbuf->data);
+		pfree(input->fe_msgbuf);
+	}
+
+	if (input->input_buf != NULL)
+		pfree(input->input_buf);
+	pfree(input->raw_buf);
+	pfree(input);
+	yb_carried_input = NULL;
+}
+
+/*
+ * The end of a transaction closes the files it opened, so the input file is
+ * taken out of that list for the commit and put into the list of the new
+ * transaction.
+ */
+static void
+YbCommitCopyBatch(void)
+{
+	FILE	   *file = yb_carried_input->copy_file;
+	bool		is_pipe = false;
+	bool		detached = (file != NULL &&
+							YbDetachAllocatedFile(file, &is_pipe));
+
+	PG_TRY();
+	{
+		YbCommitTransactionCommandIntermediate();
+	}
+	PG_CATCH();
+	{
+		if (detached)
+		{
+			if (is_pipe)
+				pclose(file);
+			else
+				fclose(file);
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (detached)
+		YbAttachAllocatedFile(file, is_pipe);
+}
+
+void
+YbDoCopy(ParseState *pstate, const CopyStmt *stmt,
+		 int stmt_location, int stmt_len,
+		 uint64 *processed, bool is_top_level)
+{
+	const char *source_text = pstate->p_sourcetext;
+	QueryEnvironment *query_env = pstate->p_queryEnv;
+	bool		pushed_snapshot = false;
+
+	yb_carried_input = NULL;
+	yb_copy_batching_allowed = is_top_level;
+
+	PG_TRY();
+	{
+		DoCopy(pstate, stmt, stmt_location, stmt_len, processed);
+
+		while (yb_carried_input != NULL)
+		{
+			ParseState *batch_pstate;
+			uint64		batch_processed;
+
+			YbCommitCopyBatch();
+			PushActiveSnapshot(GetTransactionSnapshot());
+			pushed_snapshot = true;
+
+			batch_pstate = make_parsestate(NULL);
+			batch_pstate->p_sourcetext = source_text;
+			batch_pstate->p_queryEnv = query_env;
+			DoCopy(batch_pstate, stmt, stmt_location, stmt_len,
+				   &batch_processed);
+			free_parsestate(batch_pstate);
+			*processed += batch_processed;
+		}
+	}
+	PG_FINALLY();
+	{
+		/* The portal's memory holds the carried input; it goes with it. */
+		yb_carried_input = NULL;
+		yb_copy_batching_allowed = false;
+	}
+	PG_END_TRY();
+
+	if (pushed_snapshot)
+		PopActiveSnapshot();
 }

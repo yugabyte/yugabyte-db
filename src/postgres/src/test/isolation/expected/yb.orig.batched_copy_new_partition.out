@@ -1,0 +1,101 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s3_lock s1_copy_def_first attach s3_unlock where
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_def_first: COPY pt FROM PROGRAM $$echo 9000,1; seq -f "%g,1" 1 40; seq -f "%g,1" 2000 2009$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step attach: ALTER TABLE pt ATTACH PARTITION pt3 FOR VALUES FROM (2000) TO (3000);
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_def_first: <... completed>
+step where: SELECT tableoid::regclass AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
+part  |count
+------+-----
+pt1   |   40
+pt_def|    1
+pt3   |   10
+(3 rows)
+
+
+starting permutation: s3_lock s1_copy_def_first create_part s3_unlock where
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_def_first: COPY pt FROM PROGRAM $$echo 9000,1; seq -f "%g,1" 1 40; seq -f "%g,1" 2000 2009$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step create_part: CREATE TABLE pt4 PARTITION OF pt FOR VALUES FROM (2000) TO (3000); <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_def_first: <... completed>
+step create_part: <... completed>
+step where: SELECT tableoid::regclass AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
+part  |count
+------+-----
+pt1   |   40
+pt_def|    1
+pt4   |   10
+(3 rows)
+
+
+starting permutation: s3_lock s1_copy_def_later attach s3_unlock where
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_def_later: COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40; seq -f "%g,1" 2000 2009$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step attach: ALTER TABLE pt ATTACH PARTITION pt3 FOR VALUES FROM (2000) TO (3000);
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_def_later: <... completed>
+step where: SELECT tableoid::regclass AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
+part|count
+----+-----
+pt1 |   40
+pt3 |   10
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_def_later create_part s3_unlock where
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_def_later: COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40; seq -f "%g,1" 2000 2009$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step create_part: CREATE TABLE pt4 PARTITION OF pt FOR VALUES FROM (2000) TO (3000); <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_def_later: <... completed>
+step create_part: <... completed>
+step where: SELECT tableoid::regclass AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
+part|count
+----+-----
+pt1 |   40
+pt4 |   10
+(2 rows)
+

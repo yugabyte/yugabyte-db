@@ -789,9 +789,14 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			{
 				uint64		processed;
 
-				DoCopy(pstate, (CopyStmt *) parsetree,
-					   pstmt->stmt_location, pstmt->stmt_len,
-					   &processed);
+				if (IsYugaByteEnabled())
+					YbDoCopy(pstate, (CopyStmt *) parsetree,
+							 pstmt->stmt_location, pstmt->stmt_len,
+							 &processed, isTopLevel);
+				else
+					DoCopy(pstate, (CopyStmt *) parsetree,
+						   pstmt->stmt_location, pstmt->stmt_len,
+						   &processed);
 				if (qc)
 					SetQueryCompletion(qc, CMDTAG_COPY, processed);
 			}

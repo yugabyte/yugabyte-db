@@ -72,6 +72,7 @@ YbColFoldState
 YbColFoldType
 YbCommandInfo
 YbConcurrencyContext
+YbCopyFromInput
 YbCostModel
 YbCounters
 YbCreateProfileStmt

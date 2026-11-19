@@ -117,4 +117,9 @@ extern uint64 DoCopyTo(CopyToState cstate);
 extern List *CopyGetAttnums(TupleDesc tupDesc, Relation rel,
 							List *attnamelist);
 
+/* YB declarations */
+extern void YbDoCopy(ParseState *pstate, const CopyStmt *stmt,
+					 int stmt_location, int stmt_len,
+					 uint64 *processed, bool is_top_level);
+
 #endif							/* COPY_H */
