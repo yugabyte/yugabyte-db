@@ -201,6 +201,7 @@ make_restrictinfo_internal(PlannerInfo *root,
 	restrictinfo->parent_ec = NULL;
 
 	restrictinfo->yb_batched_rinfo = NULL;
+	restrictinfo->yb_derived_source_vars = NIL;
 
 	restrictinfo->eval_cost.startup = -1;
 	restrictinfo->norm_selec = -1;

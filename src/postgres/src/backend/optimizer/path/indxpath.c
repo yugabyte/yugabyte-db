@@ -5092,7 +5092,8 @@ yb_try_derive_equal_from_clauses(PlannerInfo *root, Index relid,
 	 * just this relation: it is single-rel with no nullable relids.
 	 */
 	return yb_make_derived_restrictinfo(root, derived_clause,
-										NULL);	/* nullable_relids */
+										NULL,	/* nullable_relids */
+										generation_expr);
 }
 
 /*

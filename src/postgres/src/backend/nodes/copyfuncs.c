@@ -2551,6 +2551,9 @@ _copyRestrictInfo(const RestrictInfo *from)
 	COPY_SCALAR_FIELD(left_hasheqoperator);
 	COPY_SCALAR_FIELD(right_hasheqoperator);
 
+	/* YB fields */
+	COPY_NODE_FIELD(yb_derived_source_vars);
+
 	return newnode;
 }
 

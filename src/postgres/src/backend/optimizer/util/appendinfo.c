@@ -31,7 +31,6 @@
 #include "pg_yb_utils.h"
 #include "utils/reltrigger.h"
 
-
 typedef struct
 {
 	PlannerInfo *root;
@@ -451,6 +450,16 @@ adjust_appendrel_attrs_mutator(Node *node,
 		/* YB: Also adjust rinfos within yb_batched_rinfo. */
 		newinfo->yb_batched_rinfo = (List *)
 			expression_tree_mutator((Node *) oldinfo->yb_batched_rinfo,
+									adjust_appendrel_attrs_mutator,
+									context);
+
+		/*
+		 * YB: The Vars a derived equality was inferred from follow its
+		 * clause; a table child's translation of a Var is a Var, which is
+		 * what yb_derived_clause_is_redundant reads.
+		 */
+		newinfo->yb_derived_source_vars = (List *)
+			expression_tree_mutator((Node *) oldinfo->yb_derived_source_vars,
 									adjust_appendrel_attrs_mutator,
 									context);
 

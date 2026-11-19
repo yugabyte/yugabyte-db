@@ -3131,17 +3131,22 @@ yb_create_derived_clause(Expr *inferrable_expr, Expr *substituted_expr,
  *	  current qual security level and running the mergejoinable/batchable
  *	  checks.  nullable_relids is the set of outer-join-nullable rels whose
  *	  Vars appear in the clause; pass NULL for a single-rel clause (e.g. when
- *	  the substituted side is a Const).
+ *	  the substituted side is a Const).  generation_expr is the expression
+ *	  the clause was derived from: its Vars are recorded in
+ *	  yb_derived_source_vars, on the clause and on its batched versions, so
+ *	  costing can see that the clause adds nothing to whatever binds them.
  *
  * Shared by the equivalence-class (yb_try_derive_equal_from_ec) and OR-arm
  * (yb_try_derive_equal_from_clauses) derivation paths.
  */
 RestrictInfo *
-yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids)
+yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_relids,
+							 Expr *generation_expr)
 {
 	Relids		clause_relids = pull_varnos(root, (Node *) clause);
 	bool		outerjoin_delayed = !bms_is_empty(nullable_relids);
 	bool		is_pushed_down = (bms_num_members(clause_relids) == 1 && !outerjoin_delayed);
+	ListCell   *lc;
 
 	RestrictInfo *rinfo = make_restrictinfo(root,
 											(Expr *) clause,
@@ -3153,8 +3158,13 @@ yb_make_derived_restrictinfo(PlannerInfo *root, OpExpr *clause, Relids nullable_
 											NULL,
 											nullable_relids);
 
+	rinfo->yb_derived_source_vars =
+		pull_var_clause((Node *) generation_expr, 0);
 	check_mergejoinable(rinfo);
 	yb_check_batchable(root, rinfo);
+	foreach(lc, rinfo->yb_batched_rinfo)
+		lfirst_node(RestrictInfo, lc)->yb_derived_source_vars =
+			rinfo->yb_derived_source_vars;
 	return rinfo;
 }
 
@@ -3299,7 +3309,8 @@ yb_try_derive_equal_from_ec(PlannerInfo *root, Index rti, Index target_rti,
 										  opfamily);
 	}
 	if (clause)
-		return yb_make_derived_restrictinfo(root, clause, nullable_relids);
+		return yb_make_derived_restrictinfo(root, clause, nullable_relids,
+											generation_expr);
 	bms_free(nullable_relids);
 	return NULL;
 }
