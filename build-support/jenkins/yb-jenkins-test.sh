@@ -218,6 +218,15 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         fi
       fi
       run_tests_extra_args+=( "--send_archive_to_workers" )
+      # A gs:// prefix from the pipeline: the workers download the archive from there instead of
+      # all fetching it from this host through Spark. Without it the archive goes through Spark.
+      # The pipeline sets it only for lanes whose Spark cluster is on GCP: the workers get their
+      # GCS credentials from the GCP metadata server. The check of this host only guards against a
+      # prefix set for a lane that runs outside GCP.
+      # TODO(DEVOPS-4059): the same for lanes whose Spark cluster is on AWS, from S3.
+      if [[ -n "${YB_SPARK_ARCHIVE_GCS_PREFIX:-}" ]] && is_running_on_gcp; then
+        run_tests_extra_args+=( "--archive_gcs_prefix" "$YB_SPARK_ARCHIVE_GCS_PREFIX" )
+      fi
 
       # Workers use /private path, which caused mis-match when check is done by yb_dist_tests that
       # YB_MVN_LOCAL_REPO is in source tree. So unsetting value here to allow default.
@@ -239,6 +248,18 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
         run_tests_extra_args+=( "--new_test_repetitions" "${YB_NEW_TEST_REPETITIONS:-0}" )
         if [[ -n ${YB_KNOWN_TEST_LIST_FILE:-} ]]; then
           run_tests_extra_args+=( "--known_test_list" "${YB_KNOWN_TEST_LIST_FILE}" )
+        fi
+      fi
+
+      # Several short tests in one Spark task, so that a small job does not set up a worker per
+      # test. Off unless the pipeline sets a target; the harness also needs the Spark master's web
+      # UI, to see how many cores are free, and for the main pass the expected run times the
+      # pipeline wrote from CSI (YB_TEST_DURATIONS_FILE, next to rerun_list.txt).
+      if [[ ${YB_SPARK_PACK_TARGET_SEC:-0} != 0 && -n ${YB_SPARK_MASTER_UI_URL:-} ]]; then
+        run_tests_extra_args+=( "--pack_target_sec" "${YB_SPARK_PACK_TARGET_SEC}" )
+        run_tests_extra_args+=( "--spark_master_ui_url" "${YB_SPARK_MASTER_UI_URL}" )
+        if [[ -n ${YB_TEST_DURATIONS_FILE:-} ]]; then
+          run_tests_extra_args+=( "--test_durations_file" "${YB_TEST_DURATIONS_FILE}" )
         fi
       fi
 

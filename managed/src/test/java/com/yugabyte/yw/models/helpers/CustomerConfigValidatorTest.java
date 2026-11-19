@@ -17,7 +17,9 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
+import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
@@ -50,6 +52,7 @@ import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
@@ -687,6 +690,191 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, data);
     // Does not throw despite refuseKeys=true.
     customerConfigValidator.validateConfig(config);
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_S3_FederationWithKeysIsRejected() {
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_S3, s3FederationWithKeys());
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "errorJson: {\""
+                + fieldFullName(AWS_ACCESS_KEY_ID_FIELDNAME)
+                + "\":[\"AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY cannot be used together with"
+                + " USE_CROSS_CLOUD_FEDERATION and IAM_INSTANCE_PROFILE, as YBA then uses its IAM"
+                + " role and never the keys. Remove the keys, or set IAM_INSTANCE_PROFILE to false"
+                + " so YBA uses them where it does not federate.\"]}"));
+  }
+
+  /** Without IAM_INSTANCE_PROFILE, the keys are YBA's own credential where it does not federate. */
+  @Test
+  public void testValidateDataContent_Storage_S3_FederationWithKeysWithoutIamRoleIsAccepted() {
+    ObjectNode data = s3FederationWithKeys();
+    data.put("IAM_INSTANCE_PROFILE", false);
+    customerConfigValidator.validateConfig(createConfig(ConfigType.STORAGE, NAME_S3, data));
+  }
+
+  /** A config saved with keys, IAM_INSTANCE_PROFILE and federation still takes a rename. */
+  @Test
+  public void testValidateDataContent_Storage_S3_SavedFederationWithKeysCanBeRenamed() {
+    ObjectNode data = s3FederationWithKeys();
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, data);
+    customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
+  }
+
+  /** The edit path passes the saved config, so an edit through the service is exempt too. */
+  @Test
+  public void testValidateDataContent_Storage_S3_SavedFederationWithKeysCanBeEdited() {
+    ObjectNode data = s3FederationWithKeys();
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, data);
+    app.injector().instanceOf(CustomerConfigService.class).edit(renamed(saved, data.deepCopy()));
+    assertEquals(
+        "renamed-" + NAME_S3,
+        CustomerConfig.get(saved.getCustomerUUID(), saved.getConfigUUID()).getConfigName());
+  }
+
+  /**
+   * Saved data with a field the current class does not have, as an older YBA may have written, is
+   * still read as the edit's baseline, so a rename that keeps the stored combination is accepted.
+   */
+  @Test
+  public void testValidateDataContent_Storage_S3_SavedDataWithRemovedFieldKeepsExemption() {
+    ObjectNode data = s3FederationWithKeys();
+    ObjectNode savedData = data.deepCopy();
+    savedData.put("REMOVED_FIELD", "value");
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, savedData);
+    customerConfigValidator.validateConfig(renamed(saved, data), saved);
+  }
+
+  /** A create is checked as a new config, even when its body carries a saved config's UUID. */
+  @Test
+  public void testValidateDataContent_Storage_S3_CreateWithSavedConfigUuidIsRejected() {
+    ObjectNode data = s3FederationWithKeys();
+    CustomerConfig created = renamed(saveWithoutValidation(NAME_S3, data), data.deepCopy());
+    CustomerConfigService service = app.injector().instanceOf(CustomerConfigService.class);
+    assertThat(
+        () -> service.create(created),
+        thrown(PlatformServiceException.class, containsString("cannot be used together with")));
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_S3_EditAddingKeysToFederationIsRejected() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put("IAM_INSTANCE_PROFILE", true);
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig saved = saveWithoutValidation(NAME_S3, data);
+    ObjectNode edited = data.deepCopy();
+    edited.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    edited.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    CustomerConfig config = renamed(saved, edited);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config, saved),
+        thrown(PlatformServiceException.class, containsString("cannot be used together with")));
+  }
+
+  /** A config saved with both a JSON key and USE_GCP_IAM still takes a rename. */
+  @Test
+  public void testValidateDataContent_Storage_GCS_SavedJsonWithGcpIamCanBeRenamed() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_GCP_IAM", true);
+    CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
+    customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
+  }
+
+  @Test
+  public void testValidateDataContent_Storage_GCS_JsonWithGcpIamIsRejected() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://itest-backup/test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_GCP_IAM", true);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_GCS, data);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            containsString("Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.")));
+  }
+
+  /** Without USE_GCP_IAM, the JSON key is the federated config's credential, for YBA too. */
+  @Test
+  public void testValidateDataContent_Storage_GCS_FederationWithJsonWithoutGcpIamIsAccepted() {
+    customerConfigValidator.validateConfig(
+        createConfig(ConfigType.STORAGE, NAME_GCS, gcsFederationWithJson()));
+  }
+
+  /** A config saved with federation, a JSON key and USE_GCP_IAM still takes a rename. */
+  @Test
+  public void testValidateDataContent_Storage_GCS_SavedFederationWithJsonAndGcpIamCanBeRenamed() {
+    ObjectNode data = gcsFederationWithJson();
+    data.put("USE_GCP_IAM", true);
+    CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
+    customerConfigValidator.validateConfig(renamed(saved, data.deepCopy()), saved);
+  }
+
+  /**
+   * A config saved with a JSON key and USE_GCP_IAM is exempt from the key-with-IAM rule, but an
+   * edit that turns on federation is rejected: the DB nodes would still use the key.
+   */
+  @Test
+  public void testValidateDataContent_Storage_GCS_EditAddingFederationToJsonWithGcpIamIsRejected() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_GCP_IAM", true);
+    CustomerConfig saved = saveWithoutValidation(NAME_GCS, data);
+    ObjectNode edited = data.deepCopy();
+    edited.put("USE_CROSS_CLOUD_FEDERATION", true);
+    CustomerConfig config = renamed(saved, edited);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config, saved),
+        thrown(
+            PlatformServiceException.class,
+            containsString(
+                "USE_CROSS_CLOUD_FEDERATION cannot be turned on while both GCS_CREDENTIALS_JSON"
+                    + " and USE_GCP_IAM are set.")));
+  }
+
+  private static ObjectNode gcsFederationWithJson() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "gs://test");
+    data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    return data;
+  }
+
+  /** Keys that are never used: with IAM_INSTANCE_PROFILE, YBA uses its IAM role. */
+  private static ObjectNode s3FederationWithKeys() {
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, "s3://itest-backup/test");
+    data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
+    data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "SecretKey");
+    data.put("IAM_INSTANCE_PROFILE", true);
+    data.put("USE_CROSS_CLOUD_FEDERATION", true);
+    return data;
+  }
+
+  /** Saves a storage config without validation, as an older YBA could have. */
+  private CustomerConfig saveWithoutValidation(String name, ObjectNode data) {
+    Customer customer = ModelFactory.testCustomer();
+    ObjectNode formData = Json.newObject();
+    formData.put("configName", "saved-" + name);
+    formData.put("name", name);
+    formData.put("type", ConfigType.STORAGE.name());
+    formData.set("data", data);
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
+  /** A request that renames {@code saved} and carries {@code data}. */
+  private CustomerConfig renamed(CustomerConfig saved, ObjectNode data) {
+    CustomerConfig config = createConfig(ConfigType.STORAGE, saved.getName(), data);
+    config.setCustomerUUID(saved.getCustomerUUID());
+    config.setConfigUUID(saved.getConfigUUID());
+    config.setConfigName("renamed-" + saved.getName());
+    return config;
   }
 
   private void setupGCPReadValidation(

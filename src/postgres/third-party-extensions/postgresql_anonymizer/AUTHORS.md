@@ -16,6 +16,39 @@ help of many contributors.
 Contributors
 -------------------------------------------------------------------------------
 
+* Sarath Kumar: Security report
+* Mehmet Ince: Security report
+* Buut: Security report
+* Adem Bencheikh Lehocine: Differential Privacy
+* Daniel Bakker: Security reports
+* Ludovic Gilbon: Documentation
+* Alex Akeno: Bug fix
+* pkhartsk: Documentation and cleaning
+* MonsieurTain: Bug reports and analysis
+* Marcus Olsson: Documentation
+* mardub: Documentation
+* Pierre Giraud: Proofreading
+* Benoit Lobréau: Prototyping, Code Review, Major Contributions
+* Robin Portigliatti: Tutorials and doc reviews
+* Suhas Thalanki: Build on Mac OS X
+* Daniel Solsona: Feature idea
+* Jukka Heiskanen: Bug reports and analysis
+* Julien Acroute: Documentation
+* Philip Olson: Documentation
+* Anthony Dumontois: Documentation
+* Matthias van de Meent: Documentation
+* Ben Dempsey: Beta Testing
+* Pierre-Marie Petit: major contributions
+* Danilo Lourenço Costa Oliveira: Beta Testing
+* Leo Long: Testing
+* Konrad Kucharski: Beta Testing
+* Giampaolo Capelli: Documentation
+* José Pedro Saraiva: Build on ARM64
+* Guillaume Risbourg: CI improvements
+* Austin Putman: Bug fixes
+* Carlos Ruiz: Documentation
+* Bojan Mihelac: Documentation
+* Pedro Gallegos: Security improvements
 * Mark Shay: Support in Google Cloud SQL
 * Jitesh Srivastava: Documentation
 * GPGIT2 : Feedback, Testing and Ideas
@@ -54,7 +87,6 @@ Contributors
 * Matthieu Larcher (@somatt) : Bug reports
 * Nikolay Samokhvalov (@NikolayS) : Bug fix + Documentation
 * Gunnar "Nick" Bluth (@nickbluth) : Some additional functions
-* Yann ROBIN (@me.show) : version() function and DBAAS install
 * Ilya Gorbunov (@dAverk) : Bug fixes
 * Peter Neave (@peterneave) : Typos
 * Yann Robin (@me.show) : version() function and DBAAS install

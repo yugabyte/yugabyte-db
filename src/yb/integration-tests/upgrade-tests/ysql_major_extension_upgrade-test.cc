@@ -11,9 +11,15 @@
 // under the License.
 //
 
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
 #include "yb/util/env_util.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
@@ -349,45 +355,6 @@ class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
     };
   }
 
-  // Anon's dynamic masking adds event triggers that fire on every DDL in its database, so it gets
-  // a database of its own.
-  ExtensionUpgradeCase Anon() {
-    static const auto kDb = "anon_db";
-    auto check_query = [this](std::optional<size_t> tserver_idx) {
-      auto conn = ASSERT_RESULT(ConnectToDb(kDb, tserver_idx, "test_role"));
-      auto result = ASSERT_RESULT((conn.FetchRows<std::string>("SELECT * FROM test")));
-      ASSERT_VECTORS_EQ(result, (decltype(result){"CONFIDENTIAL", "CONFIDENTIAL"}));
-    };
-    return {
-      .name = "Anon",
-      .setup = [this] {
-        ASSERT_OK(ExecuteStatement(Format("CREATE DATABASE $0", kDb)));
-        auto conn = ASSERT_RESULT(ConnectToDb(kDb, kAnyTserver));
-        ASSERT_OK(conn.Execute("CREATE EXTENSION anon"));
-        ASSERT_OK(conn.Execute("BEGIN"));
-        ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = TRUE"));
-        auto result = ASSERT_RESULT(conn.FetchRows<bool>("SELECT anon.start_dynamic_masking()"));
-        ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = FALSE"));
-        ASSERT_OK(conn.Execute("COMMIT"));
-        ASSERT_EQ(result, (decltype(result){true}));
-        ASSERT_OK(conn.Execute("CREATE TABLE test (name text)"));
-        ASSERT_OK(conn.Execute("CREATE ROLE test_role LOGIN"));
-        ASSERT_OK(conn.Execute("SECURITY LABEL FOR anon ON ROLE test_role IS 'MASKED'"));
-        ASSERT_OK(conn.Execute("GRANT SELECT ON test TO test_role"));
-        ASSERT_OK(conn.Execute(
-            "SECURITY LABEL FOR anon ON COLUMN test.name IS "
-            "'MASKED WITH VALUE ''CONFIDENTIAL'''"));
-        ASSERT_OK(conn.Execute("INSERT INTO test VALUES ('hi'), ('bye')"));
-      },
-      .check_before_upgrade = [check_query] { ASSERT_NO_FATALS(check_query(kAnyTserver)); },
-      .check_in_mixed_mode = [check_query] {
-        ASSERT_NO_FATALS(check_query(kMixedModeTserverPg15));
-        ASSERT_NO_FATALS(check_query(kMixedModeTserverPg11));
-      },
-      .check_after_upgrade = [check_query] { ASSERT_NO_FATALS(check_query(kAnyTserver)); },
-    };
-  }
-
   // pg_stat_statements counts the statements of every database, so this case gets a database of
   // its own and only looks at its statements.
   ExtensionUpgradeCase PgStatStatements() {
@@ -461,7 +428,7 @@ class YsqlMajorExtensionUpgradeTest : public YsqlMajorUpgradeTestBase {
 TEST_F(YsqlMajorExtensionUpgradeTest, Upgrade) {
   TestUpgrade({
       Simple(), HStore(), FileFdw(), FuzzyStrMatch(), PasswordCheck(), PgCrypto(),
-      PgStatStatements(), PostgresFdw(), HypoPG(), Orafce(), PgHintPlan(), Anon(), PlPgsql(),
+      PgStatStatements(), PostgresFdw(), HypoPG(), Orafce(), PgHintPlan(), PlPgsql(),
       YbYcqlUtils()});
 }
 
@@ -490,6 +457,121 @@ TEST_F(YsqlMajorExtensionUpgradeTest, IncompatibleExtensions) {
   }));
   ASSERT_OK(UpgradeClusterToCurrentVersion());
   ASSERT_OK(ExecuteStatement("CREATE EXTENSION pg_stat_monitor"));
+}
+
+// The old release ships anon 1.x, whose catalog objects reference C symbols that the pgrx-based
+// anon 3.x no longer exports, so the upgrade must be refused until anon is dropped.  DROP
+// EXTENSION leaves anon's security labels behind, and those must be removed as well.
+TEST_F(YsqlMajorExtensionUpgradeTest, Anon) {
+  const auto kColumnLabel =
+      "SECURITY LABEL FOR anon ON COLUMN test.name IS 'MASKED WITH VALUE ''CONFIDENTIAL'''";
+  const auto kRoleLabel = "SECURITY LABEL FOR anon ON ROLE test_role IS 'MASKED'";
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION anon"));
+  ASSERT_OK(ExecuteStatement("CREATE TABLE test (name text, \"Email\" text)"));
+  ASSERT_OK(ExecuteStatement("INSERT INTO test VALUES ('hi', 'a'), ('bye', 'b')"));
+  ASSERT_OK(ExecuteStatement("CREATE ROLE test_role LOGIN"));
+  ASSERT_OK(ExecuteStatement("GRANT SELECT ON test TO test_role"));
+  ASSERT_OK(ExecuteStatement(kRoleLabel));
+  ASSERT_OK(ExecuteStatement(kColumnLabel));
+  ASSERT_OK(ExecuteStatement(
+      "SECURITY LABEL FOR anon ON COLUMN test.\"Email\" IS 'MASKED WITH VALUE ''CONFIDENTIAL'''"));
+  // anon.init() puts a TRUSTED label on schema anon, a member of the extension.  DROP EXTENSION
+  // removes it, so the label check must not report it.
+  {
+    auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver));
+    ASSERT_OK(conn.Execute("BEGIN"));
+    ASSERT_OK(conn.Execute("SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed = true"));
+    ASSERT_OK(conn.Fetch("SELECT anon.init()"));
+    ASSERT_OK(conn.Execute("COMMIT"));
+    ASSERT_GE(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT count(*) FROM pg_seclabels WHERE objtype = 'schema' AND objname = 'anon'")), 1);
+  }
+  StringWaiterLogSink anon_schema_label("ON schema anon");
+  constexpr auto kAnonSteps = "anon 1.x cannot be upgraded in place. Before the upgrade";
+
+  // Both anon checks refuse here, and the steps are printed once.
+  {
+    StringWaiterLogSink steps(kAnonSteps);
+    ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+        "In database: yugabyte",
+        "  anon",
+        "Your installation contains extensions that are not compatible",
+        "Your installation contains security labels from the anon",
+        "     SELECT anon.stop_dynamic_masking();",
+    }));
+    ASSERT_EQ(steps.GetEventCount(), 1);
+  }
+  ASSERT_FALSE(anon_schema_label.IsEventOccurred());
+  ASSERT_OK(ExecuteStatement("DROP EXTENSION anon"));
+
+  // Labels are reported as runnable removal statements.
+  const std::vector<std::string> kRemovals = {
+      "SECURITY LABEL FOR anon ON column public.test.\"Email\" IS NULL;",
+      "SECURITY LABEL FOR anon ON column public.test.name IS NULL;",
+      "SECURITY LABEL FOR anon ON role test_role IS NULL;",
+  };
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(std::vector<std::string>{
+      "  \\c yugabyte",
+      "  " + kRemovals[0],
+      "  " + kRemovals[1],
+      "  " + kRemovals[2],
+      "Your installation contains security labels from the anon",
+      kAnonSteps,
+  }));
+  ASSERT_FALSE(anon_schema_label.IsEventOccurred());
+
+  // The second file holds the statements that restore the labels after the upgrade.
+  std::string restore;
+  {
+    std::filesystem::path newest;
+    std::error_code ec;
+    for (auto it = std::filesystem::recursive_directory_iterator(
+             GetTestDataDirectory(), std::filesystem::directory_options::skip_permission_denied,
+             ec);
+         it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+      if (it->path().filename() == "anon_security_labels_restore.txt" &&
+          (newest.empty() ||
+           it->last_write_time(ec) > std::filesystem::last_write_time(newest, ec))) {
+        newest = it->path();
+      }
+    }
+    ASSERT_FALSE(newest.empty());
+    std::ifstream in(newest);
+    restore.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  }
+  LOG(INFO) << "Restore file:\n" << restore;
+  for (const auto& line : {
+           "\\c yugabyte\n",
+           "SECURITY LABEL FOR anon ON column public.test.\"Email\" IS "
+           "'MASKED WITH VALUE ''CONFIDENTIAL''';\n",
+           "SECURITY LABEL FOR anon ON column public.test.name IS "
+           "'MASKED WITH VALUE ''CONFIDENTIAL''';\n",
+           "SECURITY LABEL FOR anon ON role test_role IS 'MASKED';\n"}) {
+    ASSERT_STR_CONTAINS(restore, line);
+  }
+
+  for (const auto& stmt : kRemovals) {
+    ASSERT_OK(ExecuteStatement(stmt));
+  }
+
+  ASSERT_OK(UpgradeClusterToCurrentVersion());
+
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION anon"));
+  // Replay the restore file; every label here is in database yugabyte or on a shared object.
+  {
+    std::istringstream lines(restore);
+    for (std::string line; std::getline(lines, line);) {
+      if (!line.empty() && !line.starts_with("\\c ")) {
+        ASSERT_OK(ExecuteStatement(line));
+      }
+    }
+  }
+  ASSERT_OK(ExecuteStatement(
+      "ALTER DATABASE yugabyte SET anon.transparent_dynamic_masking TO true"));
+
+  auto conn = ASSERT_RESULT(CreateConnToTs(kAnyTserver, "test_role"));
+  auto result = ASSERT_RESULT(conn.FetchRows<std::string>("SELECT name FROM test"));
+  ASSERT_VECTORS_EQ(result, (decltype(result){"CONFIDENTIAL", "CONFIDENTIAL"}));
 }
 
 } // namespace yb

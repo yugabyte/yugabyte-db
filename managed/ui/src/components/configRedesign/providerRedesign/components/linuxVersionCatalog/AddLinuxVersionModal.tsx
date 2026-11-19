@@ -267,18 +267,16 @@ export const AddLinuxVersionModal: FC<AddLinuxVersionModalProps> = ({
             />
           </div>
         )}
-        {isPerRegionImage && (
-          <div>
-            <Typography variant="body1">{t('form.cpuArch')}</Typography>
-            <YBRadioGroupField
-              control={formControl}
-              options={CPU_ARCH_OPTIONS}
-              name="details.arch"
-              orientation={RadioGroupOrientation.HORIZONTAL}
-              isDisabled={isEditMode || isYBAManagedBundle || isDisabled}
-            />
-          </div>
-        )}
+        <div>
+          <Typography variant="body1">{t('form.cpuArch')}</Typography>
+          <YBRadioGroupField
+            control={formControl}
+            options={CPU_ARCH_OPTIONS}
+            name="details.arch"
+            orientation={RadioGroupOrientation.HORIZONTAL}
+            isDisabled={isEditMode || isYBAManagedBundle || isDisabled}
+          />
+        </div>
         {isPerRegionImage && (
           <div>
             <Typography variant="body1">{perRegionImageTitle}</Typography>
