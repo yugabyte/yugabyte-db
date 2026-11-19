@@ -5866,28 +5866,37 @@ void CDCSDKConsumptionConsistentChangesTest::TestDmlAndDropTableInTxnBlock(
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
   auto dropped_table =
       ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "dropped_table"));
-  auto live_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "live_table"));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
   ASSERT_OK(InitVirtualWAL(
-      stream_id, {dropped_table.table_id(), live_table.table_id()}, kVWALSessionId1,
-      nullptr /* vslot_hash_range */, true /* include_oid_to_relfilenode */));
+      stream_id, {dropped_table.table_id()}, kVWALSessionId1, nullptr /* vslot_hash_range */,
+      true /* include_oid_to_relfilenode */));
 
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", dropped_table.table_name()));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", dropped_table.table_name()));
   ASSERT_OK(conn.Execute("COMMIT"));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", live_table.table_name()));
 
-  // Applies the refresh with only the live table, as the walsender would, and waits until every
-  // BEGIN has its COMMIT.
-  auto resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
-      stream_id, {} /* table_ids */, 2 /* expected_dml_records */, false /* init_virtual_wal */,
-      kVWALSessionId1, true /* allow_sending_feedback */, nullptr /* slot_hash_range */,
-      {live_table.table_id()} /* new_table_ids */));
-  ASSERT_TRUE(resp.has_publication_refresh_indicator);
-  ASSERT_EQ(resp.record_count[1], 2);  // INSERT
-  ASSERT_EQ(resp.record_count[6], 2);  // BEGIN
-  ASSERT_EQ(resp.record_count[7], 2);  // COMMIT
+  // The drop leaves the publication empty, so apply its refresh with no tables, as the walsender
+  // does. That removes dropped_table's tablet queue.
+  bool refreshed = false;
+  int count[8] = {0};  // DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          UpdateRecordCount(record, count);
+        }
+        if (resp.needs_publication_table_list_refresh()) {
+          refreshed = true;
+          RETURN_NOT_OK(UpdatePublicationTableList(stream_id, {} /* table_ids */));
+        }
+        return count[7] > 0;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the transaction's COMMIT"));
+  ASSERT_TRUE(refreshed);
+  ASSERT_EQ(count[1], 1);  // INSERT
+  ASSERT_EQ(count[6], 1);  // BEGIN
+  ASSERT_EQ(count[7], 1);  // COMMIT
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDmlAndDropTableInTxnBlock) {
