@@ -1225,7 +1225,6 @@ public class RedactingServiceTest {
 
   @Test
   public void testFilterSecretFieldsApisHidesKubernetesOverridesWhoseRedactionFails() {
-    // Redacted nowhere else, so the redactor's cache can't skip the failing rewrite.
     String overrides =
         "gflags:\n  master:\n    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap"
             + " ldapbindpasswd=dummy-hba-pass\n    note: response-redaction-fails\n";
