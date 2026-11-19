@@ -769,6 +769,42 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   @Test
+  public void testAddReadReplicaRestoresRedactedHbaStoredWithSurroundingWhitespace()
+      throws ApiException {
+    UniverseApi api = apiWithPrimaryLdapGFlags();
+    Universe.saveDetails(
+        universeUuid,
+        u ->
+            u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                SpecificGFlags.construct(
+                    Map.of(), Map.of(GFlagsUtil.YSQL_HBA_CONF_CSV, " " + HBA_WITH_SECRET + " \n")));
+    Map<String, String> primaryTserverGFlags =
+        api.getUniverse(customer.getUuid(), universeUuid).getSpec().getClusters().stream()
+            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .findAny()
+            .get()
+            .getGflags()
+            .getTserver();
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    clusterAddSpec.setGflags(new ClusterGFlags().master(Map.of()).tserver(primaryTserverGFlags));
+
+    YBATask addTask = api.addCluster(customer.getUuid(), universeUuid, clusterAddSpec);
+    ArgumentCaptor<UniverseConfigureTaskParams> paramsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.ReadOnlyClusterCreate), paramsCapture.capture());
+    Map<String, String> readReplicaTserverGFlags =
+        paramsCapture
+            .getValue()
+            .getClusterByUuid(addTask.getResourceUuid())
+            .userIntent
+            .specificGFlags
+            .getPerProcessFlags()
+            .value
+            .get(ServerType.TSERVER);
+    assertThat(readReplicaTserverGFlags.get(GFlagsUtil.YSQL_HBA_CONF_CSV), is(HBA_WITH_SECRET));
+  }
+
+  @Test
   public void testAddReadReplicaWithTserverGFlagsOnly() throws ApiException {
     UniverseApi api = apiWithPrimaryLdapGFlags();
     UUID azUuid =
