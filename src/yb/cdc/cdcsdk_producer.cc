@@ -2266,6 +2266,7 @@ Status GetConsistentWALRecords(
           *last_seen_op_id, *consistent_safe_time, deadline, /* fetch_single_entry */ false,
           &last_readable_opid_index));
     }
+    TEST_SYNC_POINT_CALLBACK("GetConsistentWALRecords::AfterReadOps", &read_ops);
 
     if (read_ops.read_from_disk_size && mem_tracker) {
       (*consumption) = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
@@ -2896,15 +2897,15 @@ Status GetChangesForCDCSDK(
 
     have_more_messages = HaveMoreMessages(true);
 
-    if (wal_records.empty()) {
-      RSTATUS_DCHECK(
-          wait_for_wal_update, IllegalState,
-          Format(
-            "Did not receive any WAL record for from_op_id: $0 for tablet_id: $1 and stream_id: $2",
-            OpId::FromPB(from_op_id),
-            tablet_id,
-            stream_id));
+    RSTATUS_DCHECK(
+        !wal_records.empty() || wait_for_wal_update, IllegalState,
+        Format(
+          "Did not receive any WAL record for from_op_id: $0 for tablet_id: $1 and stream_id: $2",
+          OpId::FromPB(from_op_id),
+          tablet_id,
+          stream_id));
 
+    if (wait_for_wal_update) {
       VLOG(1) << "Returning empty response while resuming partial txn."
               << " tablet_id: " << tablet_id << ", stream_id: " << stream_id
               << ", from_op_id: " << OpId::FromPB(from_op_id)
