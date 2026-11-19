@@ -237,6 +237,10 @@ DEFINE_UNKNOWN_int32(ysql_transaction_abort_timeout_ms, 15 * 60 * 1000,  // 15 m
     "after DDL (eg. DROP TABLE) is executed. This deadline is same as "
     "unresponsive_ts_rpc_timeout_ms");
 
+DEFINE_test_flag(bool, fail_tier_target_db_update, false,
+    "Fail the regular DB's target_path_id update in SetTierMigrationTarget, after the target is "
+    "persisted.");
+
 DEFINE_test_flag(int32, backfill_sabotage_frequency, 0,
     "If set to value greater than 0, every nth row will be corrupted in the backfill process "
     "to create an inconsistency between the index and the indexed tables where n is the "
@@ -5621,18 +5625,20 @@ Result<ScopedRWOperation> Tablet::CheckTierTargetUsable(
 Status Tablet::SetTierMigrationTarget(const std::string& target_tier, uint32_t target_path_id) {
   auto scoped_operation = VERIFY_RESULT(CheckTierTargetUsable(target_tier, target_path_id));
   bool changed = false;
+  Status write_status;
   {
     std::lock_guard lock(tier_target_mutex_);
-    changed = VERIFY_RESULT(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
   }
   if (changed) {
     NotifyTierStateChanged();
   }
-  return Status::OK();
+  return write_status;
 }
 
-Result<bool> Tablet::SetTierMigrationTargetUnlocked(
-    const std::string& target_tier, uint32_t target_path_id) {
+Status Tablet::SetTierMigrationTargetUnlocked(
+    const std::string& target_tier, uint32_t target_path_id, bool* changed) {
+  *changed = false;
   const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
     std::lock_guard lock(tier_migration_mutex_);
@@ -5649,13 +5655,16 @@ Result<bool> Tablet::SetTierMigrationTargetUnlocked(
   if (!same_target) {
     RETURN_NOT_OK(metadata()->SetTargetTier(target_tier, target_path_id));
   }
-  RETURN_NOT_OK_PREPEND(
-      regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}}),
-      "Failed to set target_path_id on regular DB");
-
-  std::lock_guard lock(tier_migration_mutex_);
-  const bool state_changed = ReassertTierIntentUnlocked();
-  return state_changed || !same_target;
+  const auto db_status = FLAGS_TEST_fail_tier_target_db_update
+      ? STATUS(IOError, "Injected target_path_id update failure")
+      : regular_db_->SetOptions({{"target_path_id", std::to_string(target_path_id)}});
+  {
+    std::lock_guard lock(tier_migration_mutex_);
+    const bool state_changed = ReassertTierIntentUnlocked();
+    *changed = state_changed || !same_target;
+  }
+  RETURN_NOT_OK_PREPEND(db_status, "Failed to set target_path_id on regular DB");
+  return Status::OK();
 }
 
 bool Tablet::ReassertTierIntentUnlocked() {
@@ -5847,17 +5856,21 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
 
   bool changed = false;
   std::optional<TierMigrationStatus> in_flight;
+  Status write_status;
   {
     std::lock_guard target_lock(tier_target_mutex_);
-    changed = VERIFY_RESULT(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
-    std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.migration_pass_in_flight) {
-      in_flight = tier_migration_status_;
+    write_status = SetTierMigrationTargetUnlocked(target_tier, target_path_id, &changed);
+    if (write_status.ok()) {
+      std::lock_guard lock(tier_migration_mutex_);
+      if (tier_migration_status_.migration_pass_in_flight) {
+        in_flight = tier_migration_status_;
+      }
     }
   }
   if (changed) {
     NotifyTierStateChanged();
   }
+  RETURN_NOT_OK(write_status);
   if (in_flight) {
     // Only the same target gets past the write with a pass in flight: that pass already serves
     // this request, re-asserted just now like any accepted one, so report it.

@@ -842,7 +842,9 @@ class Tablet : public AbstractTablet,
   // Tiered storage. Records (target_tier, target_path_id) as this tablet's placement intent:
   // persists it to the superblock (RaftGroupMetadata::SetTargetTier) and points new flushes and
   // compaction outputs of the regular DB at that disk. Re-asserting an unchanged intent skips
-  // the superblock write but still re-points the DB and resets the migration status.
+  // the superblock write but still re-points the DB and resets the migration status. A DB
+  // re-point that fails after the superblock write still resets the status and reports the
+  // persisted target, then returns the error for the caller to retry.
   // target_path_id must be a tier_paths slot the caller already resolved within target_tier
   // (TSTabletManager::SelectPathIdForTier). A different target is refused with ServiceUnavailable
   // while a migration pass is in flight: nothing changes the target under a running pass. The
@@ -1455,10 +1457,12 @@ class Tablet : public AbstractTablet,
   // Tiered storage: the one place an open tablet's target is written; creation, remote bootstrap
   // and OpenTablet's path_id repair write it before the Tablet exists. Refuses a different target
   // while a pass is in flight, so a pass always runs toward the current persisted target; the
-  // same target is a re-assert. Returns whether the target or the migration state changed, for
-  // the caller to report (NotifyTierStateChanged) once it has released the locks.
-  Result<bool> SetTierMigrationTargetUnlocked(
-      const std::string& target_tier, uint32_t target_path_id) REQUIRES(tier_target_mutex_);
+  // same target is a re-assert. Sets *changed to whether the target or the migration state
+  // changed, for the caller to report (NotifyTierStateChanged) once it has released the locks;
+  // set on an error too, since a failed DB update comes after the target is persisted.
+  Status SetTierMigrationTargetUnlocked(
+      const std::string& target_tier, uint32_t target_path_id, bool* changed)
+      REQUIRES(tier_target_mutex_);
 
   // Tiered storage: intent (re)asserted. Convergence is unproven again and earlier failures no
   // longer count toward kFailed. Returns whether the state changed.
