@@ -3776,12 +3776,10 @@ YBCommitTransactionContainingDDL()
 				 */
 				int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
 
-				/* The statement may carry a ROLE password, so don't log it. */
-				ereport(LOG_SERVER_ONLY,
-						(errmsg("connection manager: adding sleep of %d microseconds "
-								"after global impact DDL commit",
-								sleep),
-						 errhidestmt(true)));
+				elog(LOG_SERVER_ONLY,
+					 "connection manager: adding sleep of %d microseconds "
+					 "after global impact DDL commit",
+					 sleep);
 				pg_usleep(sleep);
 			}
 		}

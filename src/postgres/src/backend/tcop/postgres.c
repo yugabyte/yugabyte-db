@@ -8734,6 +8734,22 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 }
 
 /*
+ * debug_query_string with any password redacted, for the statement text that
+ * the server log writers append to a log entry (STATEMENT: and the csvlog /
+ * jsonlog statement field).  elog appends it to every message that doesn't set
+ * errhidestmt(), so a LOG line emitted while a CREATE/ALTER ROLE ... PASSWORD
+ * runs or commits, or the error of a failed one, would otherwise carry the
+ * plaintext password.  The command tag isn't known there, so redact from any
+ * password token on; this also covers a role statement that isn't first in a
+ * multi-statement string.
+ */
+const char *
+YbDebugQueryStringForLog(void)
+{
+	return YbRedactPasswordIfExists(debug_query_string, CMDTAG_UNKNOWN);
+}
+
+/*
  * YBHasProcessableAbortInterrupt:
  *
  * Checks for pending interrupts which might abort execution and there are no blockers

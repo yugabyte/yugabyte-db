@@ -245,7 +245,7 @@ write_jsonlog(ErrorData *edata)
 	/* user query --- only reported if not disabled by the caller */
 	if (check_log_of_query(edata))
 	{
-		appendJSONKeyValue(&buf, "statement", debug_query_string, true);
+		appendJSONKeyValue(&buf, "statement", YbDebugQueryStringForLog(), true);
 		if (edata->cursorpos > 0)
 			appendJSONKeyValueFmt(&buf, "cursor_position", false, "%d",
 								  edata->cursorpos);

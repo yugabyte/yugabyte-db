@@ -3682,7 +3682,7 @@ send_message_to_server_log(ErrorData *edata)
 	{
 		log_line_prefix(&buf, edata);
 		appendStringInfoString(&buf, _("STATEMENT:  "));
-		append_with_tabs(&buf, debug_query_string);
+		append_with_tabs(&buf, YbDebugQueryStringForLog());
 		appendStringInfoChar(&buf, '\n');
 	}
 

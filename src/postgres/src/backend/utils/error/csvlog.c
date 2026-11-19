@@ -200,7 +200,7 @@ write_csvlog(ErrorData *edata)
 	/* user query --- only reported if not disabled by the caller */
 	print_stmt = check_log_of_query(edata);
 	if (print_stmt)
-		appendCSVLiteral(&buf, debug_query_string);
+		appendCSVLiteral(&buf, YbDebugQueryStringForLog());
 	appendStringInfoChar(&buf, ',');
 	if (print_stmt && edata->cursorpos > 0)
 		appendStringInfo(&buf, "%d", edata->cursorpos);
