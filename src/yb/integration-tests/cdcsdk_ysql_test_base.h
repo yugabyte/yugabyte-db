@@ -995,6 +995,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
 
+  void TestSchemaPackingNotFoundForConcurrentDDLAndDML(bool multiple_responses);
+
   void TestStreamsDroppedOnDBDropAndMasterRestart(
       const string& sync_point_name, bool use_logical_replication);
 

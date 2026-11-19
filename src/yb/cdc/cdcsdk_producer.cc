@@ -786,6 +786,9 @@ void FillDDLInfo(
 // Whether the table's latest DDL record in the response already has this schema version. A cache
 // entry can be dropped and reloaded with the same version for each row, e.g. when the sys catalog
 // at the row's hybrid time is ahead of the row's packing.
+// Compare against the response, not the cache: the cache can hold a version whose DDL record was
+// never sent, e.g. after a CHANGE_METADATA_OP that only marks columns for deletion, or after the
+// CacheMissError retry, which clears the response but keeps the cache.
 bool IsLastDDLRecordInResponse(
     const GetChangesResponsePB& resp, const TableId& table_id, SchemaVersion schema_version) {
   const auto& records = resp.cdc_sdk_proto_records();
