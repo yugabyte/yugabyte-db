@@ -58,14 +58,14 @@ transaction_block ::= START TRANSACTION ';'
 - There is no explicit rollback. To rollback a transaction, abort, or interrupt the client session.
 - DDLs are always executed outside of a transaction block, and like DMLs outside a transaction block, are committed immediately.
 - Inside a transaction block only insert, update, and delete statements are allowed. Select statements are not allowed.
-- An `IF` clause in a transaction block must be followed by `ELSE ERROR`. Otherwise, an error is raised.
-- If an `IF` condition is not satisfied, the transaction fails. None of its statements are applied.
+- An `IF` clause in a transaction block must be followed by `ELSE ERROR`. Without it, an error is raised. `ERROR` is the only option allowed after `ELSE`.
+- If an `IF` condition is not satisfied, `ELSE ERROR` makes the transaction fail. None of its statements are applied.
 - If the row does not exist, an `UPDATE` such as `SET balance = balance + 200` has no effect. No error is raised.
   - This applies when every assignment uses `+` or `-` on the column's current value.
   - The column types are `TINYINT`, `SMALLINT`, `INT`, `BIGINT`, `VARINT`, `FLOAT`, and `DOUBLE`. It also applies to `+` on `TEXT` columns.
   - The behavior is the same inside and outside a transaction block.
-  - The other statements in the transaction block are still applied.
-  - To raise an error instead, add `IF EXISTS ELSE ERROR`. See [Transfer a balance to a row that does not exist](#transfer-a-balance-to-a-row-that-does-not-exist).
+  - In a transaction block, this `UPDATE` does not fail the transaction when the row does not exist. The other statements are still applied.
+  - To make the transaction fail instead, add `IF EXISTS ELSE ERROR`. See [Transfer a balance to a row that does not exist](#transfer-a-balance-to-a-row-that-does-not-exist).
 
 ## Examples
 
