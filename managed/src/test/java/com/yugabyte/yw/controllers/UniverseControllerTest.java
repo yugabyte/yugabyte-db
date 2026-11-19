@@ -40,7 +40,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.http.conditional.ConditionalGets;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -238,7 +237,6 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   public void testUniverseGetConditionalDisabledByRuntimeFlag() {
     when(mockRuntimeConfig.getBoolean(GlobalConfKeys.conditionalGetEnabled.getKey()))
         .thenReturn(false);
-    app.injector().instanceOf(RuntimeConfigCache.class).invalidateCache();
 
     UniverseDefinitionTaskParams.UserIntent ui = getDefaultUserIntent(customer);
     UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
