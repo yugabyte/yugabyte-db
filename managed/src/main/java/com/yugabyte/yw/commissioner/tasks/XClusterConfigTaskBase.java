@@ -2001,7 +2001,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(
             customerUUID, bootstrapBackupParams.storageConfigUUID);
-    if (!customerConfig.getState().equals(CustomerConfig.ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
