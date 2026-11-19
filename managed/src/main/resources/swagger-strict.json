@@ -1004,7 +1004,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1211,7 +1212,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -1514,7 +1516,8 @@
             "NODE_EXPORTER_ROOT_NON_UNIVERSE",
             "DB_K8S_CPU_USAGE",
             "DB_K8S_MEMORY_USAGE",
-            "DB_K8S_DATA_VOLUME_USAGE"
+            "DB_K8S_DATA_VOLUME_USAGE",
+            "NODE_METRICS_COLLECTION_FAILURE"
           ],
           "type" : "string"
         },
@@ -30330,35 +30333,6 @@
       },
       "type" : "object"
     },
-    "UpdateLoadBalancerConfig" : {
-      "properties" : {
-        "firstTry" : {
-          "type" : "boolean"
-        },
-        "name" : {
-          "type" : "string"
-        },
-        "retryLimit" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "sleepMultiplier" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "taskInfo" : {
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "firstTry",
-        "name",
-        "retryLimit",
-        "sleepMultiplier",
-        "taskInfo"
-      ],
-      "type" : "object"
-    },
     "UpdatePitrConfigParams" : {
       "description" : "Update PITR config parameters",
       "properties" : {
@@ -46576,7 +46550,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_lb_config" : {
       "put" : {
-        "description" : "WARNING: This is a preview API that could change.",
+        "description" : "WARNING: This is a preview API that could change. Queues a task that updates the load balancers a universe uses. YBA does not create these load balancers. Send the current universe definition with `universeUUID` set to the universe in the path. For each existing cluster, YBA saves `userIntent.enableLB`, each region's `lbFQDN` and each zone's `lbName`. YBA registers the nodes in `nodeDetailsSet` on those load balancers and removes them from load balancers no longer named.",
         "operationId" : "updateLoadBalancerConfig",
         "parameters" : [
           {
@@ -46597,13 +46571,21 @@
             "in" : "query",
             "name" : "request",
             "required" : false
+          },
+          {
+            "in" : "body",
+            "name" : "UpdateLoadBalancerConfigRequest",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/UniverseDefinitionTaskParams"
+            }
           }
         ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UpdateLoadBalancerConfig"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
@@ -46611,7 +46593,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UpdateLoadBalancerConfig"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },

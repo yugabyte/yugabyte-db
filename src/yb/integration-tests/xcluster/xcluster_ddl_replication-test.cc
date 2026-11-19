@@ -84,9 +84,9 @@ DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
-DECLARE_bool(vector_index_enable_compactions);
 DECLARE_uint64(vector_index_initial_chunk_size);
-DECLARE_uint64(vector_index_max_merge_tasks);
+DECLARE_uint64(vector_index_max_insert_tasks);
+DECLARE_uint64(vector_index_task_size);
 DECLARE_int32(xcluster_cleanup_tables_frequency_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 DECLARE_int64(xcluster_ddl_queue_advisory_lock_key);
@@ -693,6 +693,30 @@ TEST_F(XClusterDDLReplicationTest, BootstrappingEmptyTable) {
   auto bootstrap_required =
       ASSERT_RESULT(IsXClusterBootstrapRequired(kReplicationGroupId, namespace_id));
   EXPECT_EQ(bootstrap_required, true);
+}
+
+// Test that 'CREATE EXTENSION yb_xcluster_ddl_replication' is processed properly when the database
+// already has an end-of-statement event trigger.
+TEST_F(XClusterDDLReplicationTest, CreateExtensionWithPreexistingEndOfStatementTrigger) {
+  ASSERT_OK(SetUpClusters());
+
+  // pgaudit creates its own ddl_command_end and sql_drop event triggers.
+  ASSERT_OK(producer_conn_->Execute("CREATE EXTENSION pgaudit"));
+
+  ASSERT_OK(producer_conn_->Execute(
+      "SET yb_xcluster_ddl_replication.TEST_replication_role_override = 'source'"));
+  ASSERT_OK(producer_conn_->Execute("CREATE EXTENSION yb_xcluster_ddl_replication"));
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(
+          "SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue")),
+      "");
+
+  // DDLs after the extension is created are still captured.
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE t (key int PRIMARY KEY)"));
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchAllAsString(
+          "SELECT yb_data->>'query' FROM yb_xcluster_ddl_replication.ddl_queue")),
+      "CREATE TABLE t (key int PRIMARY KEY)");
 }
 
 // TODO(Julien): As part of #24888, undisable this or make this a test that this correctly fails
@@ -6761,30 +6785,17 @@ TEST_F(XClusterDDLReplicationColocatedVectorTest, NoRepairForTableCreatedFirst) 
   ASSERT_NO_FATALS(ExpectSameResults({SearchQuery("vec_test", "[0, 0, 0]", 200)}));
 }
 
-// The consumer applies every external transaction of a polled batch in one write op, and each
-// write of those transactions inserts its vectors into the vector index separately. So a single
-// op can fill and save several vector chunks before RocksDB publishes the op's rows and their
-// reverse mappings. A merge of those chunks running before the publish must not discard their
-// vectors as deleted. Here the consumer apply is parked after enough inserts to roll several
-// chunks, the saved chunks are merged without flushing the mutable chunk, and only then the apply
-// is released (GH #34246).
-TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) {
-  constexpr int kNumTxns = 40;
+// A consumer apply inserts its vectors before RocksDB publishes the op's rows and their reverse
+// mappings. Until then the chunk holding those vectors must not be saved, since a merge of the
+// saved chunk would drop them as deleted. Here the apply is parked right after its insert while
+// the vector index is flushed (GH #34246).
+TEST_F(XClusterDDLReplicationTest, VectorIndexFlushDuringUnpublishedApply) {
+  constexpr int kNumTxns = 4;
   constexpr int kRowsPerTxn = 5;
   constexpr int kNumRows = kNumTxns * kRowsPerTxn;
-  constexpr size_t kChunkSize = 8;
-  // Even with a single vector per insert, this many inserts roll several chunks of kChunkSize.
-  constexpr int kParkAtInsert = 30;
-
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
-  // Merge on the compaction thread itself, so the merge does not hit the insert registry sync
-  // point used to park the apply.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_merge_tasks) = 0;
 
   const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
 
-  // Pause replication of the table, so the consumer later receives all transactions in one batch.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
   ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
@@ -6817,10 +6828,10 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
 
   CountDownLatch parked(1);
   CountDownLatch resume(1);
-  std::atomic<int> num_inserts{0};
+  std::atomic<bool> armed{true};
   auto* sync_point = SyncPoint::GetInstance();
   sync_point->SetCallBack("VectorLSMInsertRegistryBase::ExecuteTasks:Enqueued", [&](void*) {
-    if (++num_inserts != kParkAtInsert) {
+    if (!armed.exchange(false)) {
       return;
     }
     parked.CountDown();
@@ -6837,32 +6848,97 @@ TEST_F(XClusterDDLReplicationTest, VectorIndexMergeDuringMultiTransactionApply) 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
   ASSERT_TRUE(parked.WaitFor(kTimeout));
 
-  // The apply is open: its rows and reverse mappings are in an unpublished RocksDB batch, while
-  // the chunks rolled by its earlier inserts are being saved. Merge them, but leave the mutable
-  // chunk alone. WaitForFlush would wait for the apply, so wait for the insert tasks instead: a
-  // chunk which is not held is saved by the last of them.
   auto indexes = ListVectorIndexes(consumer_cluster());
   ASSERT_EQ(indexes.size(), 1);
   auto& index = indexes.front();
+  ASSERT_OK(index->Flush());
+  // A chunk which is not held is saved by the last of its insert tasks.
   ASSERT_OK(WaitFor(
       [&index] { return !index->TEST_HasBackgroundInserts(); }, kTimeout,
       "Wait for vector inserts"));
-  ASSERT_OK(index->Compact());
-  ASSERT_OK(index->WaitForCompaction());
+  ASSERT_NOK(WaitFor(
+      [&index] { return index->GetFlushAbility() == storage::FlushAbility::kNoNewData; },
+      3s * kTimeMultiplier, "Wait for the chunk of the parked apply to be saved"))
+      << "The chunk of an unpublished apply was saved";
 
   resume.CountDown();
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-  LOG(INFO) << "Consumer vector inserts: " << num_inserts.load();
 
   ASSERT_EQ(
       ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
+  ASSERT_EQ(ASSERT_RESULT(index->TotalEntries()), static_cast<size_t>(kNumRows));
   const auto query = Format(
       "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kNumRows);
-  ASSERT_STR_CONTAINS(
-      ASSERT_RESULT(consumer_conn_->FetchAllAsString("EXPLAIN (COSTS OFF) " + query)),
-      "vec_test_idx");
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn_->HasIndexScan(query)));
   auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
   auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(query));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// The consumer applies every external transaction of a polled batch in one write op, and that op
+// must insert all of its vectors into the vector index at once. A chunk saved with only part of
+// them carries the op's OpId as flushed, so neither a restart nor a remote bootstrap from this copy
+// replays the op into the index, and the vectors left in later chunks are lost (GH #37821).
+TEST_F(XClusterDDLReplicationTest, VectorIndexBootstrapAfterMultiTransactionApply) {
+  constexpr int kNumTxns = 4;
+  constexpr int kRowsPerTxn = 5;
+  constexpr int kNumRows = kNumTxns * kRowsPerTxn;
+  // Not a divisor of kNumRows, so a chunk boundary falls inside the transaction applied last, even
+  // if the consumer splits the transactions over several ops.
+  constexpr size_t kChunkSize = 8;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_initial_chunk_size) = kChunkSize;
+  // An op's single insert is not bounded by any chunk or task limit. With one task per vector and
+  // a task limit that every consumer op reaches, its insert waits for the index to have no running
+  // tasks, as one of vector_index_max_insert_tasks * vector_index_task_size vectors (16k by
+  // default) does, on the apply and on the bootstrap replay.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_task_size) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_max_insert_tasks) = kRowsPerTxn;
+  const auto producer_tablet_id = ASSERT_RESULT(SetUpSingleTabletVectorIndexTable());
+
+  // Pause replication of the table, so the consumer later receives all transactions in one batch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = producer_tablet_id;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
+  ASSERT_OK(WaitForConsumerPollersToSleep({producer_tablet_id}));
+
+  // Distributed transactions are replicated as external transactions, a single row insert would
+  // take the fast path and reach the consumer as a plain write.
+  for (int txn = 0; txn != kNumTxns; ++txn) {
+    ASSERT_OK(producer_conn_->StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    for (int i = 0; i != kRowsPerTxn; ++i) {
+      const auto id = txn * kRowsPerTxn + i + 1;
+      ASSERT_OK(producer_conn_->ExecuteFormat(
+          "INSERT INTO vec_test VALUES ($0, '[$0, $0, $0]')", id));
+    }
+    ASSERT_OK(producer_conn_->CommitTransaction());
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), kNumRows);
+  {
+    // TotalEntries waits for the running vector inserts.
+    auto indexes = ListVectorIndexes(consumer_cluster());
+    ASSERT_EQ(indexes.size(), 1);
+    ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+  }
+
+  // Saved chunks stay, the mutable chunk is lost.
+  DisableFlushOnShutdown(*consumer_cluster(), true);
+  ASSERT_OK(consumer_cluster()->mini_tablet_server(0)->Restart(
+      tserver::WaitTabletsBootstrapped::kTrue));
+  auto indexes = ListVectorIndexes(consumer_cluster());
+  ASSERT_EQ(indexes.size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(indexes.front()->TotalEntries()), static_cast<size_t>(kNumRows));
+
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  const auto query = Format(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[0, 0, 0]' LIMIT $0", kNumRows);
+  ASSERT_TRUE(ASSERT_RESULT(consumer_conn.HasIndexScan(query)));
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(query));
+  auto c_search = ASSERT_RESULT(consumer_conn.FetchAllAsString(query));
   ASSERT_EQ(p_search, c_search);
 }
 

@@ -114,6 +114,15 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           } else {
             throw new RuntimeException("Invalid rootCA rotation type");
           }
+          // The node_exporter sidecar's scrape scheme follows the TLS the restarted pods render.
+          // Only these paths restart the pods on the re-rendered template: a rolling server-cert
+          // rotation deletes them onto the old revision, and a non-restart one restarts none.
+          if (taskParams().upgradeOption == UpgradeOption.NON_ROLLING_UPGRADE
+              || (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
+                  && taskParams().rootCARotationType
+                      == CertsRotateParams.CertRotationType.RootCert)) {
+            createSwamperTargetUpdateTask(false /* removeFile */);
+          }
         });
   }
 
