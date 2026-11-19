@@ -113,6 +113,13 @@ class OnlineSchemaChangeTest : public MasterTestBase {
   CatalogManager& catalog_manager() { return mini_master_->catalog_manager_impl(); }
   OnlineSchemaChangeController& controller() { return catalog_manager().online_schema_change(); }
 
+  // Replaces SetUp's hook, which records only the tablet and start key of each chunk sent.
+  void SetSendChunk(
+      std::function<Status(const TabletInfoPtr&, const tserver::TableBackfillChunkRequestPB&)>
+          send_chunk) {
+    controller().TEST_send_chunk_ = std::move(send_chunk);
+  }
+
   static TableId TableIdOf(uint32_t oid) { return GetPgsqlTableId(kDatabaseOid, oid); }
 
   static Schema TableSchema() {
@@ -585,12 +592,12 @@ TEST_F(OnlineSchemaChangeTest, StartFindsRewrittenTablesAndCopiesThemByOid) {
   source_table_ = source;
 
   auto chunk_oids = std::make_shared<std::vector<std::pair<uint32_t, uint32_t>>>();
-  controller().TEST_send_chunk_ =
+  SetSendChunk(
       [this, chunk_oids](const TabletInfoPtr&, const tserver::TableBackfillChunkRequestPB& req) {
         std::lock_guard lock(sent_mutex_);
         chunk_oids->emplace_back(req.source_table_oid(), req.target_table_oid());
         return Status::OK();
-      };
+      });
 
   StartTableBackfillRequestPB req;
   req.mutable_source_table()->set_table_id(source->id());
