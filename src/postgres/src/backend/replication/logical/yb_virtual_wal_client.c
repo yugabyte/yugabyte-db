@@ -27,7 +27,6 @@
 
 #include "access/xact.h"
 #include "catalog/pg_publication.h"
-#include "catalog/yb_type.h"
 #include "commands/yb_cmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
@@ -42,6 +41,7 @@
 static MemoryContext virtual_wal_context = NULL;
 static MemoryContext cached_records_context = NULL;
 static MemoryContext unacked_txn_list_context = NULL;
+static MemoryContext decode_record_context = NULL;
 
 /* Cached records received from the CDC service. */
 static YbcPgChangeRecordBatch *cached_records = NULL;
@@ -138,6 +138,9 @@ YBCInitVirtualWal(List *yb_publication_names)
 												   "YB cached record batch "
 												   "context",
 												   ALLOCSET_DEFAULT_SIZES);
+	decode_record_context = AllocSetContextCreate(virtual_wal_context,
+												  "YB decode record context",
+												  ALLOCSET_DEFAULT_SIZES);
 	/*
 	 * A separate memory context for the unacked txn list as a child of the
 	 * virtual wal context.
@@ -187,6 +190,11 @@ YBCDestroyVirtualWal()
 
 	if (virtual_wal_context)
 		MemoryContextDelete(virtual_wal_context);
+
+	unacked_txn_list_context = NULL;
+	cached_records_context = NULL;
+	virtual_wal_context = NULL;
+	decode_record_context = NULL;
 
 	last_filtered_commit_lsn = InvalidXLogRecPtr;
 	needs_publication_table_list_refresh = false;
@@ -389,31 +397,11 @@ InitVirtualWal(List *publication_names,
 	pfree(yb_publication_oids);
 }
 
-static const YbcPgTypeEntity *
-GetDynamicTypeEntity(int attr_num, Oid relid)
+MemoryContext
+YBCGetDecodeRecordContext(void)
 {
-	bool		is_in_txn = IsTransactionOrTransactionBlock();
-	MemoryContext caller_context = CurrentMemoryContext;
-
-	if (!is_in_txn)
-		StartTransactionCommand();
-
-	Relation	rel = RelationIdGetRelation(relid);
-
-	if (!RelationIsValid(rel))
-		elog(ERROR, "Could not open relation with OID %u", relid);
-	Oid			type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
-
-	RelationClose(rel);
-	const YbcPgTypeEntity *type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
-
-	if (!is_in_txn)
-	{
-		AbortCurrentTransaction();
-		MemoryContextSwitchTo(caller_context);
-	}
-
-	return type_entity;
+	Assert(decode_record_context);
+	return decode_record_context;
 }
 
 YbVirtualWalRecord *
@@ -493,8 +481,9 @@ YBCReadRecord(List *publication_names)
 
 		AckFilteredTransactions();
 
+		Assert(CurrentMemoryContext == cached_records_context);
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
-								   &cached_records, &GetDynamicTypeEntity);
+								   &cached_records);
 
 		cached_records_last_sent_row_idx = 0;
 		YbWalSndTotalTimeInYBDecodeMicros = 0;
@@ -554,15 +543,6 @@ PreProcessBeforeFetchingNextBatch()
 		TimestampDifference(last_getconsistentchanges_response_receipt_time,
 							GetCurrentTimestamp(), &secs, &microsecs);
 
-		/*
-		 * Note that this processing time does not include the time taken for
-		 * the conversion from QLValuePB (proto) to PG datum values. This is
-		 * done in ybc_pggate and is logged separately.
-		 *
-		 * The time being logged here is the total time it took for processing
-		 * and sending a whole batch AFTER converting all the values to the PG
-		 * format.
-		 */
 		elog(DEBUG1,
 			 "Walsender processing time for the last batch is (%ld s, %d us)",
 			 secs, microsecs);
