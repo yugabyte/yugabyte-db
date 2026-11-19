@@ -226,6 +226,9 @@ var updateAWSProviderCmd = &cobra.Command{
 		)
 
 		providerRegions = addAWSRegions(addRegions, addZones, providerRegions)
+		if err := providerutil.ValidateZoneRemovalLeavesActiveZone(removeZones, providerRegions); err != nil {
+			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+		}
 
 		provider.SetRegions(providerRegions)
 		// End of Updating Regions
@@ -346,7 +349,9 @@ func init() {
 			"\"zone-name=<zone-name>::region-name=<region-name>\". "+
 			formatter.Colorize("Zone name, Region name are required values. ",
 				formatter.GreenColor)+
-			"Each zone needs to be removed using a separate --remove-zone flag.")
+			"Each zone needs to be removed using a separate --remove-zone flag. "+
+			"Removing every zone of a region is rejected; remove the region with "+
+			"--remove-region instead.")
 
 	updateAWSProviderCmd.Flags().StringArray("edit-region", []string{},
 		"[Optional] Edit region details associated with the AWS provider. "+
@@ -678,16 +683,11 @@ func editAWSImageBundles(
 						details.SetSshUser(imageBundle["ssh-user"])
 					}
 					if len(imageBundle["ssh-port"]) != 0 {
-						sshPort, err := strconv.ParseInt(imageBundle["ssh-port"], 10, 64)
+						sshPort, err := providerutil.ImageBundleSSHPort(imageBundle)
 						if err != nil {
-							errMessage := err.Error() +
-								" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-							logrus.Errorln(
-								formatter.Colorize(errMessage, formatter.YellowColor),
-							)
-							sshPort = 22
+							logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 						}
-						details.SetSshPort(int32(sshPort))
+						details.SetSshPort(sshPort)
 					}
 					if len(imageBundle["imdsv2"]) != 0 {
 						useIMDSv2, err := strconv.ParseBool(imageBundle["imdsv2"])
@@ -777,14 +777,9 @@ func addAWSImageBundles(
 			))
 		}
 
-		sshPort, err := strconv.ParseInt(bundle["ssh-port"], 10, 64)
+		sshPort, err := providerutil.ImageBundleSSHPort(bundle)
 		if err != nil {
-			errMessage := err.Error() +
-				" Invalid or missing value provided for 'ssh-port'. Setting it to '22'.\n"
-			logrus.Errorln(
-				formatter.Colorize(errMessage, formatter.YellowColor),
-			)
-			sshPort = 22
+			logrus.Fatalln(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
 		defaultBundle, err := strconv.ParseBool(bundle["default"])

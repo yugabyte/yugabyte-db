@@ -855,7 +855,8 @@ Tablet::Tablet(const TabletInitData& data)
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
+          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get(),
+          data.is_transactional_xcluster_target_provider)),
       full_compaction_pool_(data.full_compaction_pool),
       tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),

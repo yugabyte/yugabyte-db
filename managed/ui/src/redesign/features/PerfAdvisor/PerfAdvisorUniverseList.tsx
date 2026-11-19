@@ -7,6 +7,10 @@ import { YBErrorIndicator, YBLoading } from '../../../components/common/indicato
 import { YBTable } from '../../../components/common/YBTable/YBTable';
 import { PaRegistrationMode, QUERY_KEY, PerfAdvisorAPI } from './api';
 import { toast } from 'react-toastify';
+import {
+  getMonitoringItemPath,
+  getPerfAdvisorDefaultItem
+} from '../../../components/universes/Monitoring/monitoringUrlHelpers';
 
 interface PerfAdvisorUniverseListProps {
   paUuid: string;
@@ -119,11 +123,11 @@ export const PerfAdvisorUniverseList = ({
     if (!row.universeName) {
       return displayName;
     }
-    // Online-mode universes have no local data behind the Perf Advisor view, so they link to the
-    // universe itself. Basic and advanced both open the Performance tab.
+    // Online-mode universes have no local data behind the Perf Advisor views, so they link to the
+    // universe itself.
     const path =
       isEmbeddedPAEnabled && row.mode !== PaRegistrationMode.ONLINE
-        ? `/universes/${row.universeUuid}/perfAdvisor`
+        ? getMonitoringItemPath(row.universeUuid, getPerfAdvisorDefaultItem(row.mode))
         : `/universes/${row.universeUuid}`;
     return <Link to={path}>{displayName}</Link>;
   };

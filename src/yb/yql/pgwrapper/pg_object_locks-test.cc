@@ -1749,6 +1749,78 @@ TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyReadOnlyTxnReleasesLocksAtRollb
   ASSERT_OK(legacy_conn.Execute("ROLLBACK"));
 }
 
+namespace {
+
+// A fast path write from a transaction without global object locks holds a local object lock while
+// it waits on a row lock. The transaction on `ddl_conn`, which takes global object locks, holds
+// that row lock and then runs an ALTER TABLE, which waits on the object lock. The deadlock detector
+// sees the cycle only if the fast path write waits as its object lock owner, as in
+// TestDeadlockFastPath; otherwise both sides wait until the ALTER's statement timeout. Exactly one
+// of the two writers commits. `while_writer_waits` runs once the fast path write is queued on the
+// row lock. Expects table test(k, v) with v = 0 for k = 1.
+void CheckFastPathWriteDeadlockIsDetected(
+    ExternalMiniCluster& cluster, PGConn ddl_conn, PGConn writer_conn,
+    const std::function<void()>& while_writer_waits = {}) {
+  ASSERT_OK(ddl_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(ddl_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1"));
+
+  std::vector<ExternalDaemon*> tservers;
+  for (size_t i = 0; i < cluster.num_tablet_servers(); ++i) {
+    tservers.push_back(cluster.tablet_server(i));
+  }
+  ASSERT_OK(cluster.SetFlagOnTServers("vmodule", "wait_queue=4"));
+  LogWaiter waiter_log(tservers, "WaitOn: waiter_txn_id=");
+  auto writer_future = std::async(std::launch::async, [&writer_conn]() -> Status {
+    RETURN_NOT_OK(writer_conn.ExecuteFormat(
+        "SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
+    return writer_conn.Execute("UPDATE test SET v = v + 1 WHERE k = 1");
+  });
+  ASSERT_OK(waiter_log.WaitFor(30s * kTimeMultiplier));
+  if (while_writer_waits) {
+    ASSERT_NO_FATALS(while_writer_waits());
+  }
+
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
+  auto alter_status = ddl_conn.Execute("ALTER TABLE test ADD COLUMN v1 INT");
+  // A missed cycle leaves the ALTER waiting until its statement timeout.
+  ASSERT_STR_NOT_CONTAINS(alter_status.ToString(), "statement timeout");
+  // The detector aborts one side. The ALTER's transaction's abort can surface at the ALTER or only
+  // at COMMIT; a failed transaction's COMMIT rolls back.
+  auto commit_status = ddl_conn.Execute("COMMIT");
+  auto writer_status = writer_future.get();
+  LOG(INFO) << "ALTER: " << alter_status << ", COMMIT: " << commit_status
+            << ", fast path UPDATE: " << writer_status;
+  const auto ddl_txn_committed = alter_status.ok() && commit_status.ok();
+  ASSERT_NE(ddl_txn_committed, writer_status.ok());
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int32_t>("SELECT v FROM test WHERE k = 1")), 1);
+  ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'test' AND "
+      "column_name = 'v1'")), ddl_txn_committed ? 1 : 0);
+}
+
+}  // namespace
+
+// The fast path writer's transaction latched ysql_yb_enable_global_object_locking_infra off. With
+// the parameter true, its node promotes the flag while the write waits.
+TEST_P(PgObjectLocksTestLegacyTxnVsNewDdl, LegacyFastPathWriteDeadlockIsDetected) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  ASSERT_OK(cluster_->SetFlag(ts2, "ysql_yb_enable_global_object_locking_infra", "true"));
+  ASSERT_NO_FATALS(CheckFastPathWriteDeadlockIsDetected(
+      *cluster_, ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2)),
+      ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1)), [this, ts1] {
+        if (GetParam()) {
+          ASSERT_OK(cluster_->SetFlag(ts1, "ysql_yb_enable_global_object_locking_infra", "true"));
+        }
+      }));
+}
+
 // A legacy transaction's lock taken in DDL mode is kept only in PG's local lock table. A DML that
 // later takes the same lock in the same transaction finds it there and does not send it, so a new
 // mode DDL does not wait for the DML. That gap no longer shows: the CREATE VIEW also took the
@@ -2097,6 +2169,331 @@ INSTANTIATE_TEST_SUITE_P(
           "$0Then$1", std::get<0>(info.param) ? "Global" : "Legacy",
           std::get<1>(info.param) ? "Global" : "Legacy");
     });
+
+// Tests for turning global object locks, then table locks, off on a running cluster (#37326).
+//
+// Neither flag is a runtime flag, so each takes a rolling restart. In the first,
+// disable_global_object_locks is turned on one node at a time: nodes not yet restarted take
+// global object locks; on restarted nodes each DDL runs in a separate transaction and no statement
+// takes an object lock stronger than ROW EXCLUSIVE. In the second,
+// enable_object_locking_for_table_locks is turned off: restarted nodes take no object locks at all.
+// A DDL on any node must not miss a write from a transaction on another.
+class PgObjectLocksTestGlobalLocksRollingRestart : public PgObjectLocksTestMixModeDuringPromotion {
+ protected:
+  void PromoteAll() {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      ASSERT_OK(cluster_->SetFlag(
+          cluster_->tablet_server(i), "ysql_yb_enable_global_object_locking_infra", "true"));
+    }
+  }
+
+  // Restarts ts with flags, keeping the infra AutoFlag promoted. The flags replace the fixture's
+  // stored ones because flags passed to Restart come first on the command line, so the fixture's
+  // values would win.
+  void RestartWithFlags(ExternalTabletServer* ts, std::vector<std::string> flags) {
+    flags.push_back("--ysql_yb_enable_global_object_locking_infra=true");
+    for (const auto& flag : flags) {
+      const auto eq = flag.find('=');
+      const auto name = flag.substr(2, eq - 2);
+      ts->RemoveExtraFlag(name);
+      ts->AddExtraFlag(name, flag.substr(eq + 1));
+    }
+    ts->Shutdown();
+    ASSERT_OK(ts->Restart());
+    ASSERT_OK(LoggedWaitFor(
+        [this, ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
+        MonoDelta::FromSeconds(kTimeMultiplier * 60), "restarted tserver to accept connections"));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_yb_enable_global_object_locking_infra")), "true");
+  }
+
+  // The state a node is in after the first rolling restart.
+  void RestartWithGlobalLocksOff(ExternalTabletServer* ts) {
+    ASSERT_NO_FATALS(RestartWithFlags(ts, {"--disable_global_object_locks=true"}));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("disable_global_object_locks")), "true");
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "true");
+  }
+
+  // The state a node is in after the second rolling restart. Table locks off needs concurrent and
+  // transactional DDL off too.
+  void RestartWithTableLocksOff(ExternalTabletServer* ts) {
+    std::vector<std::string> flags;
+    ToggleDDLMode(flags, /* use_legacy = */ true);
+    ASSERT_NO_FATALS(RestartWithFlags(ts, std::move(flags)));
+    ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("enable_object_locking_for_table_locks")), "false");
+  }
+
+  // Starts CREATE INDEX test_v_idx on ts and returns once it has committed the index with
+  // indislive=true, just before it waits for writers. A fixed wait could end before the CREATE
+  // INDEX even starts.
+  Result<std::future<Status>> StartCreateIndexUpToWait(ExternalTabletServer* ts) {
+    RETURN_NOT_OK(cluster_->SetFlag(ts, "ysql_yb_test_block_index_phase", "indisready"));
+    LogWaiter blocked(ts, "blocking index state change indisready=true");
+    auto create_index_future = std::async(std::launch::async, [this, ts]() -> Status {
+      auto conn = VERIFY_RESULT(LibPqTestBase::ConnectToTs(*ts));
+      return conn.Execute("CREATE INDEX test_v_idx ON test(v)");
+    });
+    const auto blocked_status = blocked.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 60));
+    RETURN_NOT_OK(cluster_->SetFlag(ts, "ysql_yb_test_block_index_phase", "none"));
+    RETURN_NOT_OK(blocked_status);
+    return create_index_future;
+  }
+
+  void CreateTestTable(ExternalTabletServer* ts) {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn.Execute("INSERT INTO test SELECT generate_series(1, 10), 0"));
+  }
+
+  void CheckIndex(PGConn& conn, int64_t expected_rows_with_v_42) {
+    ASSERT_OK(conn.Fetch("SELECT yb_index_check('test_v_idx'::regclass)"));
+    ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM test WHERE v = 42")), expected_rows_with_v_42);
+    ASSERT_OK(conn.Execute("SET enable_seqscan = on"));
+  }
+
+  // A transaction refreshes its catalog cache on a new lock only up to the catalog version its node
+  // has heard of. Waits until ts has heard of the latest one, so that its next lock sees the DDL.
+  void WaitForCatalogVersionOn(ExternalTabletServer* ts) {
+    auto observer = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts));
+    const auto latest_version =
+        ASSERT_RESULT(observer.FetchRow<int64_t>("SELECT yb_catalog_version()"));
+    ASSERT_OK(WaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(observer.FetchRow<int64_t>(
+          "SELECT catalog_version FROM pg_stat_activity WHERE pid = pg_backend_pid()")) >=
+          latest_version;
+    }, 30s * kTimeMultiplier, "the writer's node to hear of the DDL's catalog version"));
+  }
+
+  // A CREATE INDEX on ddl_ts and a transaction on writer_ts that starts before it. The index must
+  // end up consistent with the table.
+  // - write_before_ddl: the transaction updates a row before the CREATE INDEX starts. The CREATE
+  //   INDEX must wait for its commit, or backfill reads the old value and the index keeps it
+  //   (#37355).
+  // - Otherwise the transaction reads before the CREATE INDEX starts and inserts while it runs. A
+  //   transaction that takes object locks refreshes its catalog cache on the insert's new lock,
+  //   sees the index and writes its entry. One on a node with table locks off does not refresh
+  //   mid-transaction, so the tablet rejects its insert with a schema version mismatch, as before
+  //   object locking.
+  void CheckCreateIndexWithWriter(
+      ExternalTabletServer* ddl_ts, ExternalTabletServer* writer_ts, bool write_before_ddl,
+      bool writer_takes_object_locks = true) {
+    auto writer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*writer_ts));
+    ASSERT_OK(writer_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    if (write_before_ddl) {
+      ASSERT_OK(writer_conn.Execute("UPDATE test SET v = 42 WHERE k = 1"));
+      auto create_index_future = ASSERT_RESULT(StartCreateIndexUpToWait(ddl_ts));
+      const auto create_index_waited =
+          create_index_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
+      ASSERT_OK(writer_conn.Execute("COMMIT"));
+      ASSERT_TRUE(create_index_waited);
+      ASSERT_OK(create_index_future.get());
+    } else {
+      ASSERT_EQ(ASSERT_RESULT(writer_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+      auto create_index_future = ASSERT_RESULT(StartCreateIndexUpToWait(ddl_ts));
+      ASSERT_NO_FATALS(WaitForCatalogVersionOn(writer_ts));
+      const auto insert_status = writer_conn.Execute("INSERT INTO test VALUES (100, 42)");
+      if (!writer_takes_object_locks) {
+        ASSERT_STR_CONTAINS(insert_status.ToString(), "schema version mismatch");
+        ASSERT_OK(writer_conn.Execute("ROLLBACK"));
+        ASSERT_OK(create_index_future.get());
+        auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ddl_ts));
+        ASSERT_NO_FATALS(CheckIndex(conn, 0));
+        return;
+      }
+      ASSERT_OK(insert_status);
+      ASSERT_OK(writer_conn.Execute("COMMIT"));
+      ASSERT_OK(create_index_future.get());
+    }
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ddl_ts));
+    ASSERT_NO_FATALS(CheckIndex(conn, 1));
+  }
+};
+
+// A lock stronger than ROW EXCLUSIVE on a node with global object locks off takes no object lock
+// at all; only that node's PG lock table records it. So a reader on another node does not wait.
+TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, StrongLockIsNotGlobal) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(CreateTestTable(ts1));
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
+
+  auto locker_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(locker_conn.Execute("BEGIN"));
+  ASSERT_OK(locker_conn.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
+
+  // A read that waited on the lock would fail with a statement timeout.
+  auto reader_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(reader_conn.ExecuteFormat("SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(reader_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test")), 10);
+  ASSERT_OK(locker_conn.Execute("COMMIT"));
+}
+
+// With global object locks off, a DDL runs in a separate transaction even inside a transaction
+// block, although ysql_yb_ddl_transaction_block_enabled is on: a ROLLBACK leaves the table behind.
+TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, DdlIsNotTransactional) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
+  ASSERT_EQ(ASSERT_RESULT(ts2->GetFlag("ysql_yb_ddl_transaction_block_enabled")), "true");
+
+  auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT COUNT(*) FROM pg_class WHERE relname = 't'")), 1);
+}
+
+// The first rolling restart: ts2 has global object locks off and ts1 still takes them. A DDL runs
+// on one of the two nodes and a transaction that started before it on the other.
+// - First parameter: the DDL runs on ts2, and the transaction on ts1. Otherwise the other way
+//   round.
+// - Second parameter: the transaction writes before the DDL starts. Otherwise it reads before the
+//   DDL starts and writes once the DDL has started.
+class PgObjectLocksTestGlobalLocksOffDdlVsWriter
+    : public PgObjectLocksTestGlobalLocksRollingRestart,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+ protected:
+  void SetUpNodes() {
+    ASSERT_NO_FATALS(PromoteAll());
+    ts1_ = cluster_->tablet_server(0);
+    ts2_ = cluster_->tablet_server(1);
+    ASSERT_NO_FATALS(CreateTestTable(ts1_));
+    {
+      auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1_));
+      ASSERT_OK(conn.Execute("CREATE TABLE parent(k INT PRIMARY KEY)"));
+      ASSERT_OK(conn.Execute("CREATE TABLE child(k INT PRIMARY KEY, p INT)"));
+      ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1)"));
+    }
+    ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2_));
+  }
+
+  bool DdlOnGlobalLocksOffNode() const { return std::get<0>(GetParam()); }
+  bool WriteBeforeDdl() const { return std::get<1>(GetParam()); }
+  ExternalTabletServer* DdlTs() const { return DdlOnGlobalLocksOffNode() ? ts2_ : ts1_; }
+  ExternalTabletServer* WriterTs() const { return DdlOnGlobalLocksOffNode() ? ts1_ : ts2_; }
+
+  ExternalTabletServer* ts1_ = nullptr;
+  ExternalTabletServer* ts2_ = nullptr;
+};
+
+// With the write first, a CREATE INDEX on ts1 waits for lock holders, so it waits only through the
+// writer's local lock on ts2; a CREATE INDEX on ts2 takes no object locks and waits for the
+// writer's backend to reach its catalog version.
+TEST_P(PgObjectLocksTestGlobalLocksOffDdlVsWriter, CreateIndex) {
+  ASSERT_NO_FATALS(SetUpNodes());
+  ASSERT_NO_FATALS(CheckCreateIndexWithWriter(DdlTs(), WriterTs(), WriteBeforeDdl()));
+}
+
+// The transaction inserts a row with no parent; an ADD FOREIGN KEY on the other node must never add
+// the constraint while that row exists.
+// - Write first, ADD FOREIGN KEY on ts1: it waits for the writer's local ROW EXCLUSIVE lock on
+//   ts2, then validates the committed row and fails, so the row stays and the constraint does not.
+// - Write first, ADD FOREIGN KEY on ts2: it takes no object locks and does not wait. Its DDL
+//   transaction does not use table locks, so the tablets abort every transaction on the table, and
+//   the writer's COMMIT fails.
+// - Write after the ADD FOREIGN KEY: the insert takes a new lock, refreshes its catalog cache, sees
+//   the constraint and fails its check.
+TEST_P(PgObjectLocksTestGlobalLocksOffDdlVsWriter, AddForeignKey) {
+  ASSERT_NO_FATALS(SetUpNodes());
+  constexpr auto kAddForeignKey =
+      "ALTER TABLE child ADD CONSTRAINT child_p_fk FOREIGN KEY (p) REFERENCES parent(k)";
+  constexpr auto kInsertOrphan = "INSERT INTO child VALUES (1, 2)";
+
+  auto writer_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*WriterTs()));
+  ASSERT_OK(writer_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*DdlTs()));
+  if (WriteBeforeDdl()) {
+    ASSERT_OK(writer_conn.Execute(kInsertOrphan));
+    auto add_fk_future = std::async(std::launch::async, [&ddl_conn]() -> Status {
+      return ddl_conn.Execute(kAddForeignKey);
+    });
+    if (DdlOnGlobalLocksOffNode()) {
+      ASSERT_OK(add_fk_future.get());
+      ASSERT_NOK(writer_conn.Execute("COMMIT"));
+    } else {
+      const auto add_fk_waited =
+          add_fk_future.wait_for(3s * kTimeMultiplier) == std::future_status::timeout;
+      ASSERT_OK(writer_conn.Execute("COMMIT"));
+      ASSERT_TRUE(add_fk_waited);
+      ASSERT_STR_CONTAINS(add_fk_future.get().ToString(), "violates foreign key constraint");
+      ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int64_t>(
+          "SELECT COUNT(*) FROM pg_constraint WHERE conname = 'child_p_fk'")), 0);
+    }
+  } else {
+    ASSERT_EQ(ASSERT_RESULT(writer_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM child")), 0);
+    ASSERT_OK(ddl_conn.Execute(kAddForeignKey));
+    ASSERT_NO_FATALS(WaitForCatalogVersionOn(WriterTs()));
+    const auto insert_status = writer_conn.Execute(kInsertOrphan);
+    LOG(INFO) << "Insert after the ADD FOREIGN KEY: " << insert_status;
+    ASSERT_STR_CONTAINS(insert_status.ToString(), "violates foreign key constraint");
+    ASSERT_OK(writer_conn.Execute("ROLLBACK"));
+  }
+  // Where the constraint was added, no row may violate it.
+  if (ASSERT_RESULT(ddl_conn.FetchRow<int64_t>(
+          "SELECT COUNT(*) FROM pg_constraint WHERE conname = 'child_p_fk'")) > 0) {
+    ASSERT_EQ(ASSERT_RESULT(ddl_conn.FetchRow<int64_t>(
+        "SELECT COUNT(*) FROM child c LEFT JOIN parent p ON c.p = p.k WHERE p.k IS NULL")), 0);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    FirstRollingRestart, PgObjectLocksTestGlobalLocksOffDdlVsWriter,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+      return Format("DdlOn$0_Write$1",
+                    std::get<0>(info.param) ? "GlobalLocksOffNode" : "GlobalLocksNode",
+                    std::get<1>(info.param) ? "First" : "AfterDdlStarts");
+    });
+
+// The second rolling restart, after every node has global object locks off: ts3 restarts with
+// table locks off, so a transaction there takes no object locks. Neither node's CREATE INDEX takes
+// global object locks, so each waits for all backends to reach its catalog version, including the
+// other node's transaction, instead of waiting for lock holders (#37355).
+// - First parameter: the CREATE INDEX runs on ts3, and the transaction on ts1. Otherwise the other
+//   way round.
+// - Second parameter: as in PgObjectLocksTestGlobalLocksOffDdlVsWriter.
+class PgObjectLocksTestTableLocksOffCreateIndex
+    : public PgObjectLocksTestGlobalLocksRollingRestart,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {};
+
+TEST_P(PgObjectLocksTestTableLocksOffCreateIndex, CreateIndex) {
+  const auto [ddl_on_table_locks_off_node, write_before_ddl] = GetParam();
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts3 = cluster_->tablet_server(2);
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ASSERT_NO_FATALS(RestartWithGlobalLocksOff(cluster_->tablet_server(i)));
+  }
+  ASSERT_NO_FATALS(CreateTestTable(ts1));
+  ASSERT_NO_FATALS(RestartWithTableLocksOff(ts3));
+  ASSERT_NO_FATALS(CheckCreateIndexWithWriter(
+      ddl_on_table_locks_off_node ? ts3 : ts1, ddl_on_table_locks_off_node ? ts1 : ts3,
+      write_before_ddl, /* writer_takes_object_locks = */ ddl_on_table_locks_off_node));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SecondRollingRestart, PgObjectLocksTestTableLocksOffCreateIndex,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+      return Format("DdlOn$0_Write$1",
+                    std::get<0>(info.param) ? "TableLocksOffNode" : "TableLocksOnNode",
+                    std::get<1>(info.param) ? "First" : "AfterDdlStarts");
+    });
+
+// The fast path writer runs on a node with global object locks off, which still takes local ones.
+TEST_F(PgObjectLocksTestGlobalLocksRollingRestart, FastPathWriteDeadlockIsDetected) {
+  ASSERT_NO_FATALS(PromoteAll());
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  ASSERT_NO_FATALS(CreateTestTable(ts1));
+  ASSERT_NO_FATALS(RestartWithGlobalLocksOff(ts2));
+  ASSERT_NO_FATALS(CheckFastPathWriteDeadlockIsDetected(
+      *cluster_, ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1)),
+      ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2))));
+}
 
 TEST_F(PgObjectLocksTest, ExclusiveLockReleaseInvalidatesCatalogCache) {
   const auto ts1_idx = 1;
@@ -3457,6 +3854,121 @@ TEST_F(PgObjectLocksFastpathTest, TestTServerLockManagerRelease) {
     auto g = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_releases, /*delta=*/1);
     ASSERT_OK(conn1.CommitTransaction());
   }
+}
+
+// pg_relation_size opens the relation with AccessShareLock and releases it when done, so postgres
+// re-requests the lock on every call. A lock already held by the transaction should not be
+// requested again, until the transaction ends or the subtransaction holding it is rolled back.
+TEST_F(PgObjectLocksFastpathTest, TestRepeatedLockRequestSkipped) {
+  constexpr auto kRelationSizeQuery = "SELECT pg_relation_size('test'::regclass)";
+  auto conn = ASSERT_RESULT(Connect());
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+
+  auto expect_fastpath_acquires = [this](uint64_t delta) {
+    return ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, delta);
+  };
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  {
+    auto g = expect_fastpath_acquires(1);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  {
+    auto g1 = expect_fastpath_acquires(0);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_tserver_acquires, /*delta=*/0);
+    auto g3 = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_acquires, /*delta=*/0);
+    for (int i = 0; i < 3; ++i) {
+      ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+    }
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  // A new transaction acquires the lock again. A lock acquired in a savepoint that is then released
+  // stays held, so the parent, whose subtransaction id is lower, doesn't request it again. Rolling
+  // back the outer savepoint forgets it.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("SAVEPOINT outer_sp"));
+  ASSERT_OK(conn.Execute("SAVEPOINT inner_sp"));
+  {
+    auto g = expect_fastpath_acquires(1);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT inner_sp"));
+  {
+    auto g = expect_fastpath_acquires(0);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT outer_sp"));
+  {
+    auto g = expect_fastpath_acquires(1);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  ASSERT_OK(conn.CommitTransaction());
+
+  // A lock served without a request after releasing the savepoint that acquired it is really held.
+  // This is checked last, since the conflicting exclusive request leaves exclusive intents behind
+  // that disable the fastpath for a while.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("SAVEPOINT inner_sp"));
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT inner_sp"));
+  {
+    auto g = expect_fastpath_acquires(0);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.Execute("SET lock_timeout = '2s'"));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_NOK_STR_CONTAINS(
+      conn2.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"), "lock timeout");
+  ASSERT_OK(conn2.RollbackTransaction());
+  ASSERT_OK(conn.CommitTransaction());
+}
+
+// If DocDB aborts the transaction, its lock owner registration is cleared and its locks are
+// released. A lock tracked as held by the transaction must then not be served without a request.
+TEST_F(PgObjectLocksFastpathTest, TestRepeatedLockRequestAfterRemoteAbort) {
+  google::SetVLOGLevel("pg_client_session*", 1);
+  constexpr auto kRelationSizeQuery = "SELECT pg_relation_size('test'::regclass)";
+  auto& metric_entity = cluster_->mini_tablet_server(0)->metric_entity();
+  auto num_lock_requests = [&metric_entity] {
+    return metric_entity.FindOrNull<FunctionGauge<uint64_t>>(
+               METRIC_object_locking_fastpath_pg_acquires)->value() +
+           metric_entity.FindOrNull<FunctionGauge<uint64_t>>(
+               METRIC_object_locking_fastpath_tserver_acquires)->value() +
+           metric_entity.FindOrNull<Counter>(METRIC_object_locking_lock_acquires)->value();
+  };
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // A write makes the session's lock owner transaction its distributed transaction.
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1)"));
+  ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/0);
+    ASSERT_OK(conn.Fetch(kRelationSizeQuery));
+  }
+
+  auto txn_id = ASSERT_RESULT(
+      conn.FetchRow<std::string>("SELECT yb_get_current_transaction()::text"));
+  auto conn2 = ASSERT_RESULT(Connect());
+  auto log_waiter = StringWaiterLogSink("Clearing lock owner registration for remote aborted txn");
+  ASSERT_TRUE(ASSERT_RESULT(
+      conn2.FetchRow<bool>(Format("SELECT yb_cancel_transaction('$0')", txn_id))));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10 * kTimeMultiplier)));
+
+  // The lock must be requested again rather than served from the tracked locks. The statement
+  // then fails when its write is prepared on the aborted transaction.
+  const auto requests_before = num_lock_requests();
+  ASSERT_NOK(conn.Execute("INSERT INTO test SELECT pg_relation_size('test'::regclass)"));
+  ASSERT_GT(num_lock_requests(), requests_before);
+  ASSERT_OK(conn.RollbackTransaction());
 }
 
 class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
