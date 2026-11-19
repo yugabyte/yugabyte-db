@@ -257,6 +257,12 @@ FlagValidatorSink& GetFlagValidatorSink();
 
 Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::string& flag_file_name);
 
+// Returns the value of the last "--<flag_name>=" line in the flag file, or an empty string if the
+// file has no such line. Unlike the in-memory flag, this reflects edits made to the file after
+// startup.
+Result<std::string> ReadFlagValueFromFlagFile(
+    const std::string& flag_file_path, const std::string& flag_name);
+
 // Log error message to the error log and the flag validator sink, which will ensure it is sent
 // back to the user. Also masks any sensitive values.
 #define LOG_FLAG_VALIDATION_ERROR(flag_name, value) \

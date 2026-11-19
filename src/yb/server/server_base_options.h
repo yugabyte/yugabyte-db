@@ -129,6 +129,10 @@ Status DetermineMasterAddresses(
     uint64_t master_replication_factor, MasterAddresses* master_addresses,
     std::string* master_addresses_resolved_str);
 
+// Parses a master address list in the --tserver_master_addrs / --master_addresses format, without
+// resolving host names.
+Result<MasterAddresses> ParseMasterAddresses(const std::string& source);
+
 std::string MasterAddressesToString(const MasterAddresses& addresses);
 
 Result<std::vector<Endpoint>> ResolveMasterAddresses(const MasterAddresses& master_addresses);

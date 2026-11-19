@@ -65,6 +65,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 
@@ -81,6 +82,13 @@ DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
              "Tablet Server backs off to the normal heartbeat interval, "
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
+
+DEFINE_RUNTIME_int32(tserver_master_addrs_flagfile_refresh_interval_ms, 10000,
+    "When the tablet server has not heartbeated to the master leader for this long, it re-reads "
+    "--tserver_master_addrs from its flag file, at most once per interval, and adds any masters "
+    "it does not know yet. This lets a tablet server that missed a master move, and only knows "
+    "removed masters, find the new ones. 0 disables it.");
+TAG_FLAG(tserver_master_addrs_flagfile_refresh_interval_ms, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
 DEFINE_test_flag(bool, tserver_disable_catalog_refresh_on_heartbeat, false,
@@ -110,6 +118,8 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   const std::string& LogPrefix() const override;
 
  private:
+  Status DoPoll();
+  void MaybeAddMasterAddressesFromFlagFile();
   Status TryHeartbeat();
   Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
@@ -130,6 +140,9 @@ class HeartbeatPoller : public MasterLeaderPollerInterface {
   std::optional<int32> full_report_seq_no_;
 
   std::vector<std::unique_ptr<HeartbeatDataProvider>> data_providers_;
+
+  CoarseTimePoint last_leader_heartbeat_time_ = CoarseMonoClock::Now();
+  CoarseTimePoint last_flagfile_refresh_time_;
 };
 
 class Heartbeater::Impl {
@@ -252,6 +265,34 @@ HeartbeatPoller::HeartbeatPoller(
     : server_(server), finder_(finder), data_providers_(std::move(data_providers)) {}
 
 Status HeartbeatPoller::Poll() {
+  auto status = DoPoll();
+  if (status.ok()) {
+    last_leader_heartbeat_time_ = CoarseMonoClock::Now();
+  } else {
+    MaybeAddMasterAddressesFromFlagFile();
+  }
+  return status;
+}
+
+// Heartbeat replies are the only other source of master addresses, and removed masters send none.
+// So a tablet server that missed every heartbeat while all the masters it knows were replaced
+// would stay cut off until restart; the flag file is where the deployment publishes the new list.
+void HeartbeatPoller::MaybeAddMasterAddressesFromFlagFile() {
+  const auto interval = FLAGS_tserver_master_addrs_flagfile_refresh_interval_ms * 1ms;
+  if (interval <= 0ms) {
+    return;
+  }
+  const auto now = CoarseMonoClock::Now();
+  if (now - last_leader_heartbeat_time_ < interval ||
+      now - last_flagfile_refresh_time_ < interval) {
+    return;
+  }
+  last_flagfile_refresh_time_ = now;
+  WARN_NOT_OK(
+      server_.AddMasterAddressesFromFlagFile(), "Failed to add master addresses from flag file");
+}
+
+Status HeartbeatPoller::DoPoll() {
   if (PREDICT_FALSE(server_.fail_heartbeats_for_tests())) {
     return STATUS(IOError, "failing all heartbeats for tests");
   }

@@ -1099,6 +1099,30 @@ bool RecordFlagForDelayedValidation(const std::string& flag_name) {
   return true;
 }
 
+Result<std::string> ReadFlagValueFromFlagFile(
+    const std::string& flag_file_path, const std::string& flag_name) {
+  std::ifstream input_file(flag_file_path);
+  if (!input_file) {
+    return STATUS_FORMAT(IOError, "Unable to open flag file '$0': $1",
+        flag_file_path, strerror(errno));
+  }
+  const std::string flag_prefix = "--" + flag_name + "=";
+  std::string line;
+  std::string value;
+  while (input_file.good() && std::getline(input_file, line)) {
+    if (line.starts_with(flag_prefix)) {
+      value = line.substr(flag_prefix.size());
+    }
+  }
+
+  if (input_file.bad()) {
+    // Do not check input_file.fail() here, reaching EOF may set that.
+    return STATUS_FORMAT(IOError, "Failed reading flag file '$0': $1",
+        flag_file_path, strerror(errno));
+  }
+  return value;
+}
+
 // Read the flags xml file and return the list of flag names.
 Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::string& flag_file_name) {
   std::unordered_set<std::string> flag_names;
