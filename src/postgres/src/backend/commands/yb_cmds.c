@@ -2263,12 +2263,13 @@ YBCValidatePlacements(const char *live_placement_info,
  */
 static void
 YbGetPublicationRelfileNodes(const char *publication_name, Oid **relfilenodes,
-							 size_t *num_tables, bool *all_tables)
+							 size_t *num_tables, bool *all_tables,
+							 bool yb_expand_all_tables_pub)
 {
 	MemoryContext caller_context = CurrentMemoryContext;
 	bool		is_in_txn = IsTransactionOrTransactionBlock();
 	Publication *publication;
-	List	   *tables = NIL;
+	List	   *tables;
 	ListCell   *lc;
 	size_t		table_idx = 0;
 
@@ -2277,12 +2278,10 @@ YbGetPublicationRelfileNodes(const char *publication_name, Oid **relfilenodes,
 		StartTransactionCommand();
 
 	publication = GetPublicationByName(publication_name, false /* missing_ok */ );
-	*all_tables = publication->alltables;
-	if (!publication->alltables)
-		tables = GetPublicationRelations(publication->oid,
-										 publication->pubviaroot ?
-										 PUBLICATION_PART_ROOT :
-										 PUBLICATION_PART_LEAF);
+	/* yb_pg_get_publications_tables() only sets *all_tables when it is true. */
+	*all_tables = false;
+	tables = yb_pg_get_publications_tables(list_make1(publication), all_tables,
+										   yb_expand_all_tables_pub);
 
 	*num_tables = list_length(tables);
 	*relfilenodes = MemoryContextAlloc(caller_context,
@@ -2343,13 +2342,15 @@ YBCCreateReplicationSlot(const char *slot_name,
 
 	/*
 	 * The master starts a publication bound slot with exactly these tables, so
-	 * it never has to look the publication up itself.
+	 * it never has to look the publication up itself.  For a FOR ALL TABLES
+	 * publication no tables are sent: the master adds every table itself.
 	 */
 	if (yb_publication_name != NULL)
 		YbGetPublicationRelfileNodes(yb_publication_name,
 									 &publication_relfilenodes,
 									 &num_publication_tables,
-									 &publication_all_tables);
+									 &publication_all_tables,
+									 false /* yb_expand_all_tables_pub */ );
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,

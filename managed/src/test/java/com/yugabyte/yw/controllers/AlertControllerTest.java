@@ -248,6 +248,11 @@ public class AlertControllerTest extends FakeDBApplication {
                   + " node_exporter over TLS until node-agent-provision.sh is re-run with root on"
                   + " them.\nAffected nodes: node1 node2 node3")
           .put(
+              NODE_METRICS_COLLECTION_FAILURE,
+              "Node metrics collection failed for universe 'Test Universe' on 1 node(s). Alerts"
+                  + " based on node metrics can't fire for these nodes."
+                  + "\nAffected nodes: node1 node2 node3")
+          .put(
               YSQL_OP_AVG_LATENCY,
               "Average YSQL operations latency for universe 'Test Universe'"
                   + " is above 10000 ms. Current value is 10001 ms."

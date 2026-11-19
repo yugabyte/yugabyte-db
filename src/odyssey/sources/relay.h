@@ -490,6 +490,20 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 			machine_cond_signal(relay->dst->on_write);
 		} else {
 			od_readahead_reuse(&relay->src->readahead);
+			/*
+			 * YB: If the read above found the readahead full, it read
+			 * nothing and the on_read signal is used up. Bytes buffered
+			 * by TLS do not wake the poller, so signal on_read again, or
+			 * they are never read. Signal only when the readahead has
+			 * room, so the next od_relay_read() can read the pending
+			 * bytes.
+			 * Upstream fixed this in 535a27e by signalling from
+			 * od_relay_read() whenever the readahead is full, which here
+			 * would busy-loop while the relay is paused after a Sync.
+			 */
+			if (od_readahead_left(&relay->src->readahead) > 0 &&
+			    yb_machine_tls_read_pending(relay->src->io))
+				machine_cond_signal(relay->src->on_read);
 		}
 	}
 

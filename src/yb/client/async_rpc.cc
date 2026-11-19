@@ -1040,6 +1040,17 @@ ReadRpc::~ReadRpc() {
   }
 }
 
+bool ReadRpc::AppliedBeforeReplication() const {
+  if (!req_.use_async_write()) {
+    return false;
+  }
+  // The tserver writes intents for a read, and so may apply it early, only when the read takes row
+  // locks or runs in serializable isolation.
+  const auto isolation = batcher_->in_flight_ops().metadata.transaction.isolation;
+  return std::ranges::any_of(
+      ops_, [isolation](const auto& op) { return op.yb_op->should_apply_intents(isolation); });
+}
+
 void ReadRpc::CallRemoteMethod() {
   DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ReadRpc::CallRemoteMethod", &req_);
   resp_.Clear();
