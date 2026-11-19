@@ -8182,14 +8182,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     pubConn.close();
   }
 
-  // Slots also leave these tables out when a publication lists them explicitly.
+  // Slots also leave these tables out when a publication lists them explicitly, whether they are
+  // listed on CREATE PUBLICATION or added with ALTER PUBLICATION while the slot streams.
   @Test
   public void slotSkipsXClusterDdlReplicationTablesListedInPublication() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
       stmt.execute("CREATE TABLE t1 (id int primary key)");
-      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, yb_xcluster_ddl_replication.ddl_queue, "
-          + "yb_xcluster_ddl_replication.replicated_ddls");
+      stmt.execute("CREATE PUBLICATION pub FOR TABLE t1, yb_xcluster_ddl_replication.ddl_queue");
     }
 
     Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
@@ -8202,6 +8202,14 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     PGReplicationStream stream = openStream(conn, "test_slot", "pub", 0);
     /* BEGIN, RELATION, INSERT and COMMIT. */
     assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("1")));
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute(
+          "ALTER PUBLICATION pub ADD TABLE yb_xcluster_ddl_replication.replicated_ddls");
+      stmt.execute("INSERT INTO t1 VALUES (2)");
+    }
+    /* BEGIN, RELATION, INSERT and COMMIT, as the publication change resends RELATION. */
+    assertTrue(receiveMessage(stream, 4).contains(PgOutputInsertMessage.Create("2")));
     stream.close();
     conn.close();
   }
