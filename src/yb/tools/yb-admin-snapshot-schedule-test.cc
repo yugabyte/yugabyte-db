@@ -7053,7 +7053,7 @@ class YbAdminSnapshotScheduleTestWithYsqlObjectLocks : public YbAdminSnapshotSch
       flags->insert(flags->end(), {
           "--ysql_yb_ddl_transaction_block_enabled=true",
           "--enable_object_locking_for_table_locks=true",
-          "--ysql_enable_concurrent_ddl=true"});
+          "--ysql_yb_disable_concurrent_ddl=false"});
     }
   }
 

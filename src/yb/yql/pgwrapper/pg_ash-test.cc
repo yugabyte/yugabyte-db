@@ -314,8 +314,7 @@ const Configuration kIndexRPCs{
     "--enable_object_locking_for_table_locks=false",
     "--ysql_yb_ddl_transaction_block_enabled=false",
     "--ysql_yb_enable_ddl_savepoint_support=false",
-    "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false",
-    "--ysql_enable_concurrent_ddl=false"}};
+    "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=false"}};
 
 // Test for RPCs which are fired with queries related to replication slots
 const Configuration kReplicationRPCs{

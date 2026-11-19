@@ -1106,6 +1106,8 @@ extern bool yb_enable_xcluster_analyze_replication;
 
 extern bool yb_user_ddls_preempt_auto_analyze;
 
+extern bool yb_disable_concurrent_ddl;
+
 /*
  * If true, enable RPC execution time stats for pg_stat_statements.
  */

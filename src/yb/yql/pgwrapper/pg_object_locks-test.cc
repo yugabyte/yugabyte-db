@@ -53,7 +53,6 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
-DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(TEST_check_broadcast_address);
@@ -939,10 +938,8 @@ class PgObjectLocksTestMixModeDuringPromotion : public PgObjectLocksTest {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
     // Start off with the flag disabled.
     opts->extra_tserver_flags.emplace_back("--ysql_yb_enable_global_object_locking_infra=false");
-    // ysql_enable_concurrent_ddl defaults to kEnableDdlTransactionBlocks, which is only true in
-    // release builds. The flag validators require it with enable_object_locking_for_table_locks,
-    // so pin it on for every build type.
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    // These tests run DDLs with global object locks concurrently.
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_disable_concurrent_ddl=false");
   }
 
   // Promotes the infra auto flag on ts2 and returns a connection there whose open new mode
@@ -2090,17 +2087,22 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
 // when they lock different objects. During the switch to global object locks, a legacy DDL and a
 // DDL with global object locks run side by side, and each sees neither mechanism of the other.
 //
-// The parameters say whether the first and the second DDL take global object locks. A DDL takes
-// them on ts2, whose object locking infra flag is promoted, and runs in legacy mode on ts1. The
+// With yb_disable_concurrent_ddl (#34673), DDLs with global object locks do not overlap either.
+//
+// The first two parameters say whether the first and the second DDL take global object locks; the
+// third sets yb_disable_concurrent_ddl. A DDL takes global object locks on ts2, whose object locking
+// infra flag is promoted, and runs in legacy mode on ts1. The
 // first DDL alters a, and a ddl_command_end event trigger holds it open, after its catalog writes
 // and before it commits, while the second DDL alters b. "Overlap" means the second DDL commits
 // while the first is held, and the first commits as well.
 class PgObjectLocksTestOverlappingDdls
     : public PgObjectLocksTestMixModeDuringPromotion,
-      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
+      public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        Format("--ysql_yb_disable_concurrent_ddl=$0", std::get<2>(GetParam())));
     // Legacy DDLs conflict only when both increment the catalog version.
     opts->extra_tserver_flags.emplace_back(Format(
         "--ysql_pg_conf_csv=$0,yb_always_increment_catalog_version_on_ddl=true",
@@ -2113,7 +2115,7 @@ class PgObjectLocksTestOverlappingDdls
 };
 
 TEST_P(PgObjectLocksTestOverlappingDdls, OnlyDdlsWithGlobalObjectLocksOverlap) {
-  const auto [first_global, second_global] = GetParam();
+  const auto [first_global, second_global, disable_concurrent_ddl] = GetParam();
   ASSERT_OK(cluster_->SetFlag(
       cluster_->tablet_server(1), "ysql_yb_enable_global_object_locking_infra", "true"));
   {
@@ -2158,16 +2160,17 @@ TEST_P(PgObjectLocksTestOverlappingDdls, OnlyDdlsWithGlobalObjectLocksOverlap) {
 
   const bool overlapped =
       first_status.ok() && second_status.ok() && second_ended_while_first_held;
-  ASSERT_EQ(overlapped, first_global && second_global);
+  ASSERT_EQ(overlapped, first_global && second_global && !disable_concurrent_ddl);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     DdlModes, PgObjectLocksTestOverlappingDdls,
-    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
-    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+    ::testing::Combine(::testing::Bool(), ::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<std::tuple<bool, bool, bool>>& info) {
       return Format(
-          "$0Then$1", std::get<0>(info.param) ? "Global" : "Legacy",
-          std::get<1>(info.param) ? "Global" : "Legacy");
+          "$0Then$1$2", std::get<0>(info.param) ? "Global" : "Legacy",
+          std::get<1>(info.param) ? "Global" : "Legacy",
+          std::get<2>(info.param) ? "ConcurrentDdlDisabled" : "");
     });
 
 // Tests for turning global object locks, then table locks, off on a running cluster (#37326).
@@ -3975,7 +3978,7 @@ class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTest::UpdateMiniClusterOptions(opts);
-    opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=true");
+    opts->extra_tserver_flags.emplace_back("--ysql_yb_disable_concurrent_ddl=false");
     opts->extra_tserver_flags.emplace_back(
         "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=8000");
     opts->extra_tserver_flags.emplace_back(

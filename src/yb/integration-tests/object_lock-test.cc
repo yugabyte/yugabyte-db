@@ -3074,7 +3074,7 @@ ClusterFlags ExternalObjectLockTest::BaseFlags() {
   cluster_flags.tserver_flags = FlagMap{
       {"ysql_yb_ddl_transaction_block_enabled", true},
       {"enable_object_locking_for_table_locks", true},
-      {"ysql_enable_concurrent_ddl", true},
+      {"ysql_yb_disable_concurrent_ddl", false},
       {"ysql_lease_refresher_interval_ms", kDefaultYSQLLeaseRefreshIntervalMilli},
       {"TEST_olm_skip_sending_wait_for_probes", false}};
   return cluster_flags;

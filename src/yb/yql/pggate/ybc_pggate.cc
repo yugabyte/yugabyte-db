@@ -96,9 +96,6 @@ DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
 
-// Not read here today. The guardrail that blocks concurrent DDLs by default (#34673) will read it.
-DECLARE_bool(ysql_enable_concurrent_ddl);
-
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);
 
@@ -112,6 +109,12 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_user_ddls_preempt_auto_analyze, true,
     "only applicable without object locking. If object locking is enabled, it ensures that "
     "concurrent DDLs block on each other for serialization. Also, this flag is valid only if "
     "yb_enable_invalidation_messages is enabled.");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_concurrent_ddl, false,
+    "[This is an advanced flag, avoid using it unless recommended by Yugabyte support.] "
+    "When true, DDLs with global object locks in the same database run one at a time. When false, "
+    "they run concurrently unless they lock the same objects. Either way they wait for DDLs "
+    "without global object locks in the same database.");
 
 DECLARE_bool(TEST_ash_debug_aux);
 DECLARE_bool(TEST_ysql_yb_enable_replication_slot_transactional_ddl);

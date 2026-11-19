@@ -2555,6 +2555,8 @@ bool		yb_enable_extended_sql_codes = false;
 
 bool		yb_user_ddls_preempt_auto_analyze = true;
 
+bool		yb_disable_concurrent_ddl = false;
+
 bool		yb_enable_pg_stat_statements_rpc_stats = true;
 
 bool		yb_enable_pg_stat_statements_docdb_metrics = true;
@@ -2952,6 +2954,13 @@ YbLockDatabaseForLegacyDdl(void)
 					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID, RowExclusiveLock);
 }
 
+/*
+ * A DDL with global object locks takes SHARE, or EXCLUSIVE when
+ * yb_disable_concurrent_ddl is set, so that DDLs with global object locks in
+ * one database also run one at a time (#34673). EXCLUSIVE conflicts with
+ * itself, with SHARE and with ROW EXCLUSIVE, so a DDL that takes it waits for
+ * every other DDL in its database even while backends disagree on the setting.
+ */
 static void
 YbLockDatabaseForGlobalDdl(void)
 {
@@ -2959,7 +2968,8 @@ YbLockDatabaseForGlobalDdl(void)
 		return;
 
 	LockSharedObject(DatabaseRelationId, MyDatabaseId,
-					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID, ShareLock);
+					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID,
+					 yb_disable_concurrent_ddl ? ExclusiveLock : ShareLock);
 }
 
 void
