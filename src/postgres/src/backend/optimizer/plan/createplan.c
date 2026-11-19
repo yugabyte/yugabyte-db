@@ -55,7 +55,6 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "executor/ybExpr.h"
-#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "parser/parse_coerce.h"
 #include "pg_yb_utils.h"
@@ -4816,13 +4815,14 @@ create_indexscan_plan(PlannerInfo *root,
 
 	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
-	if (best_path->yb_index_path_info.merge_scan_stream_cols)
+	if (best_path->yb_index_path_info.merge_scan_info)
 	{
 		ListCell   *yb_lc;
 
 		yb_merge_scan_info = makeNode(YbMergeScanInfo);
 		/* setrefs.c repoints each entry's clause, so copy the entries. */
-		foreach(yb_lc, best_path->yb_index_path_info.merge_scan_stream_cols)
+		foreach(yb_lc,
+				best_path->yb_index_path_info.merge_scan_info->stream_cols)
 		{
 			YbMergeScanStreamColInfo *yb_info =
 				makeNode(YbMergeScanStreamColInfo);
@@ -4831,6 +4831,8 @@ create_indexscan_plan(PlannerInfo *root,
 			yb_merge_scan_info->stream_cols =
 				lappend(yb_merge_scan_info->stream_cols, yb_info);
 		}
+		yb_merge_scan_info->sort_cols =
+			best_path->yb_index_path_info.merge_scan_info->sort_cols;
 	}
 
 	/* Finally ready to build the plan node */
@@ -4885,34 +4887,6 @@ create_indexscan_plan(PlannerInfo *root,
 			index_scan_plan->yb_merge_scan_info = yb_merge_scan_info;
 
 		scan_plan = (Scan *) index_scan_plan;
-	}
-
-	if (yb_merge_scan_info)
-	{
-		Bitmapset  *yb_stream_col_idxs = NULL;
-		ListCell   *yb_lc;
-		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
-			makeNode(YbSortInfo);
-
-		foreach(yb_lc, yb_merge_scan_info->stream_cols)
-		{
-			YbMergeScanStreamColInfo *yb_stream_col_info =
-				lfirst_node(YbMergeScanStreamColInfo, yb_lc);
-
-			yb_stream_col_idxs = bms_add_member(yb_stream_col_idxs,
-												yb_stream_col_info->indexcol);
-		}
-
-		yb_sort_info->type = T_YbSortInfo;
-		yb_get_sort_info_from_pathkeys(indexinfo->indextlist,
-									   best_path->path.pathkeys,
-									   best_path->path.parent->relids,
-									   yb_stream_col_idxs,
-									   &yb_sort_info->numCols,
-									   &yb_sort_info->sortColIdx,
-									   &yb_sort_info->sortOperators,
-									   &yb_sort_info->collations,
-									   &yb_sort_info->nullsFirst);
 	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
@@ -7474,6 +7448,9 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	List	   *fixed_indexquals;
 	ListCell   *lc;
 
+	YbMergeScanInfo *yb_merge_scan_info =
+		index_path->yb_index_path_info.merge_scan_info;
+
 	stripped_indexquals = fixed_indexquals = NIL;
 
 	yb_get_batched_indexquals(root, index_path, &stripped_indexquals,
@@ -7509,10 +7486,10 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.merge_scan_stream_cols.  Add these to ..._indexquals
+	 * yb_index_path_info.merge_scan_info.  Add these to ..._indexquals
 	 * as well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.merge_scan_stream_cols)
+	foreach(lc, yb_merge_scan_info ? yb_merge_scan_info->stream_cols : NIL)
 	{
 		YbMergeScanStreamColInfo *info =
 			lfirst_node(YbMergeScanStreamColInfo, lc);

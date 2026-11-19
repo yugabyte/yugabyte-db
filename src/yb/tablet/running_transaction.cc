@@ -675,6 +675,10 @@ bool RunningTransaction::ProcessingApply() const {
   return processing_apply_.load(std::memory_order_acquire);
 }
 
+void RunningTransaction::SetProcessingApply(bool value) {
+  processing_apply_.store(value, std::memory_order_release);
+}
+
 const TabletId& RunningTransaction::status_tablet() const {
   return metadata_.status_tablet;
 }

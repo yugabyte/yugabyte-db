@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.DeltaEvaluator.DeltaRetainLatest;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -143,18 +144,18 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // TODO: Add a version number to prevent stale updates.
   // Set to true when an create/edit/destroy intent on the universe is started.
-  @ApiModelProperty public boolean updateInProgress = false;
+  @DeltaRetainLatest @ApiModelProperty public boolean updateInProgress = false;
 
   // Type of task which set updateInProgress flag.
-  @ApiModelProperty public TaskType updatingTask = null;
+  @DeltaRetainLatest @ApiModelProperty public TaskType updatingTask = null;
 
   // UUID of task which set updateInProgress flag.
-  @ApiModelProperty public UUID updatingTaskUUID = null;
+  @DeltaRetainLatest @ApiModelProperty public UUID updatingTaskUUID = null;
 
   // This tracks that if latest operation on this universe has successfully completed. This flag is
   // reset each time a new operation on the universe starts, and is set at the very end of that
   // operation.
-  @ApiModelProperty public boolean updateSucceeded = true;
+  @DeltaRetainLatest @ApiModelProperty public boolean updateSucceeded = true;
 
   // Set to true the first time a CreateUniverse task successfully finishes on this universe. Once
   // true it is never reset, so it distinguishes "universe was brought up at least once" from "the
@@ -168,7 +169,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty public boolean universePaused = false;
 
   // UUID of last failed task that applied modification to cluster state.
-  @ApiModelProperty public UUID placementModificationTaskUuid = null;
+  @DeltaRetainLatest @ApiModelProperty public UUID placementModificationTaskUuid = null;
 
   // Indicates whether automatic rollback was performed by the last update task.
   @ApiModelProperty public boolean autoRollbackPerformed = false;
@@ -258,6 +259,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // local value for sequence number
   @ApiModelProperty(hidden = true)
+  @DeltaRetainLatest
   public int sequenceNumber = -1;
 
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
@@ -335,10 +337,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "YbaApi Internal. Install node agent in background if it is true")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
+  @DeltaRetainLatest
   public boolean installNodeAgent = false;
 
   @ApiModelProperty(value = "YbaApi Internal. True if a node agent for missing in any of the nodes")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.4.0")
+  @DeltaRetainLatest
   public boolean nodeAgentMissing = false;
 
   @ApiModelProperty(value = "YbaApi Internal. State for additional services")
@@ -374,6 +378,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Getter
   @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  @DeltaRetainLatest
   private UUID paCollectorUuid = null;
 
   /**
@@ -386,6 +391,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @Setter
   @ApiModelProperty(value = "YbaApi Internal. Perf Advisor Endpoint UUID")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  @DeltaRetainLatest
   private UUID paEndpointUuid = null;
 
   @Data
@@ -466,6 +472,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  /** How far a K8s edit's master move got, in order. A retry reads it to pick master lists. */
+  public enum MasterMoveStage {
+    STARTED,
+    // The masters the edit adds outside a master full move run, and may be in the Raft config.
+    ADDED_MASTERS_RUNNING,
+    // Those masters are in the Raft config. Recorded only before a master full move, which then
+    // creates its pods.
+    ADDED_MASTERS_JOINED,
+    // The master full move's new masters run too, and may be in the Raft config.
+    FULL_MOVE_MASTERS_RUNNING,
+    OLD_MASTERS_REMOVED,
+    // Every master step is over. From here tserver pods change, so a retry renders and pushes no
+    // master list: one at the pre-edit pod counts would undo those changes.
+    MASTERS_SETTLED
+  }
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -537,6 +559,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         hidden = true,
         value = "YbaApi Internal. Saved full move batch index for Master")
     private int currentMasterFullMoveBatchIndex = -1;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. How far a K8s master move got")
+    private MasterMoveStage masterMoveStage;
 
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter
@@ -1488,7 +1515,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Flags for YB-Controller.
-    @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
+    @DeltaRetainLatest @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
 
     // Instance tags
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();

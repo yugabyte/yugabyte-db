@@ -266,6 +266,7 @@ TAG_FLAG(catalog_manager_inject_latency_in_delete_table_ms, hidden);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 DECLARE_bool(enable_qos);
+DECLARE_bool(enable_tiered_storage);
 DEFINE_RUNTIME_int32(qos_max_db_count, 0,
     "Maximum number of YSQL databases allowed per cluster when QoS is enabled "
     "(enable_qos=true). CREATE DATABASE is rejected when the non-template database "
@@ -667,8 +668,10 @@ DEFINE_RUNTIME_bool(vector_index_store_payload, false,
     "so search resolves rows without the reverse mapping, and such a table writes no reverse "
     "mapping entries at all, neither on insert nor on delete. The value is fixed for a table and "
     "for an index when it is created, and indexes of a table that writes no reverse mapping always "
-    "store the payload. Disabled by default, because deleted vectors are not removed from such an "
-    "index yet.");
+    "store the payload. Creating an index that stores the payload fails on a table that writes the "
+    "reverse mapping without owning it, see enable_table_owned_vector_reverse_mapping. Disabled by "
+    "default, because deleted vectors are not removed yet from the indexes of a table that writes "
+    "no reverse mapping.");
 
 DEFINE_RUNTIME_uint32(vector_index_tenant_hash_group_and_range_components, 0,
     "Temporary, until the tenant of a vector index can be specified when the index is created, "
@@ -4724,6 +4727,27 @@ bool EnableTableOwnedVectorReverseMapping() {
       : FLAGS_enable_table_owned_vector_reverse_mapping;
 }
 
+// An index on a table that does not write the reverse mapping must store the payload, it is the
+// only way for its search to resolve rows. Compaction drops deleted vectors of an index which
+// stores payloads via the reverse mapping when the table writes it, and only a table which owns the
+// reverse mapping has entries for the vectors backfilled into such an index.
+Result<bool> VectorIndexStoresPayload(
+    const TablePropertiesPB& indexed_table_properties, const std::string& index_name,
+    const std::string& indexed_table_name) {
+  if (indexed_table_properties.skip_vector_reverse_mapping()) {
+    return true;
+  }
+  if (!FLAGS_vector_index_store_payload) {
+    return false;
+  }
+  SCHECK(indexed_table_properties.owns_vector_reverse_mapping(), NotSupported, Format(
+      "Vector index $0 cannot store payloads, see vector_index_store_payload: its table $1 "
+      "writes the vector reverse mapping without owning it. Turn off vector_index_store_payload, "
+      "or recreate the table with it off while enable_table_owned_vector_reverse_mapping is on",
+      index_name, indexed_table_name));
+  return true;
+}
+
 } // namespace
 
 Status CatalogManager::PersistNewTable(
@@ -5002,12 +5026,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (is_vector_index) {
       auto& vector_index_options = *index_info.mutable_vector_idx_options();
       vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
-      // An index on a table that does not write the reverse mapping must store the payload, it is
-      // the only way for its search to resolve rows.
       auto indexed_table_lock = indexed_table->LockForRead();
-      vector_index_options.set_store_payload(
-          FLAGS_vector_index_store_payload ||
-          indexed_table_lock->schema().table_properties().skip_vector_reverse_mapping());
+      vector_index_options.set_store_payload(VERIFY_RESULT(VectorIndexStoresPayload(
+          indexed_table_lock->schema().table_properties(), req.name(),
+          indexed_table_lock->name())));
       vector_index_options.mutable_hnsw()->set_backend(
           FLAGS_vector_index_backend == kYbHnswUsearch
               ? HnswBackend::YB_HNSW_USEARCH : HnswBackend::YB_HNSW_HNSWLIB);
@@ -5621,35 +5643,8 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
 
     // Try allocating tservers for the replicas and see if we can place a quorum
     // number of replicas.
-    // Essentially, the logic is:
-    // 1. We satisfy whatever we can from the minimums.
-    // 2. We then satisfy whatever we can from the slack.
-    //    Slack replicas can go into any of the valid placement blocks, as long as the block
-    //    stays within its effective maximum number of replicas.
-    // Overall, if in this process we are able to place n/2 + 1 replicas
-    // then we succeed otherwise we fail.
-    size_t total_extra_replicas = num_replicas - minimum_sum;
-    size_t total_feasible_replicas = 0;
-    size_t total_extra_servers = 0;
-    for (const auto& pb : placement_info.placement_blocks()) {
-      auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
-      size_t allowed_ts_size = allowed_ts.size();
-      size_t min_num_replicas = pb.min_num_replicas();
-      size_t max_num_replicas =
-          GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
-      // For every placement block, we can only satisfy upto the number of
-      // tservers present in that particular placement block.
-      total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
-      // Extra tablet servers beyond min_num_replicas will be used to place
-      // the extra replicas over and above the minimums.
-      size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
-      if (max_feasible_replicas > min_num_replicas) {
-        total_extra_servers += max_feasible_replicas - min_num_replicas;
-      }
-    }
-    // The total number of extra replicas that we can put cannot be more than
-    // the total tablet servers that are extra.
-    total_feasible_replicas += min(total_extra_replicas, total_extra_servers);
+    const size_t total_feasible_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
 
     // If we place the replicas in accordance with above, we should be able to place
     // at least replica_quorum_needed otherwise we fail.
@@ -5664,6 +5659,52 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
   }
 
   return Status::OK();
+}
+
+// Without placement blocks every tserver can take a replica. With them, replica selection
+// satisfies each block's minimum from the tservers in that block, then places the slack replicas
+// on the tservers left in any block that stays within its effective maximum, so a tserver outside
+// every block takes no replica. Blocks can overlap (a zone's block next to its region's; the
+// tablespace parser rejects duplicates only). Each block is counted from all of its tservers,
+// while selection gives a tserver to the first block that takes it, so the sum is capped at the
+// distinct tservers in some block; with overlapping blocks it stays an upper bound, since the
+// tservers an earlier block takes can leave a later one short.
+Result<size_t> CatalogManager::CountPlaceableReplicas(
+    const PlacementInfoPB& placement_info, const TSDescriptorVector& ts_descs) {
+  if (placement_info.placement_blocks().empty()) {
+    return ts_descs.size();
+  }
+  const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+  size_t minimum_sum = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    minimum_sum += pb.min_num_replicas();
+  }
+  // CheckValidPlacementInfo rejects minimums above num_replicas; there is no slack then.
+  const size_t total_extra_replicas = num_replicas > minimum_sum ? num_replicas - minimum_sum : 0;
+  size_t total_feasible_replicas = 0;
+  size_t total_extra_servers = 0;
+  for (const auto& pb : placement_info.placement_blocks()) {
+    const auto allowed_ts = VERIFY_RESULT(FindTServersForPlacementBlock(pb, ts_descs));
+    const size_t allowed_ts_size = allowed_ts.size();
+    const size_t min_num_replicas = pb.min_num_replicas();
+    const size_t max_num_replicas =
+        GetEffectiveMaxNumReplicas(pb, narrow_cast<int32_t>(num_replicas));
+    // For every placement block, we can only satisfy upto the number of
+    // tservers present in that particular placement block.
+    total_feasible_replicas += min(allowed_ts_size, min_num_replicas);
+    // Extra tablet servers beyond min_num_replicas will be used to place
+    // the extra replicas over and above the minimums.
+    const size_t max_feasible_replicas = min(allowed_ts_size, max_num_replicas);
+    if (max_feasible_replicas > min_num_replicas) {
+      total_extra_servers += max_feasible_replicas - min_num_replicas;
+    }
+  }
+  // The total number of extra replicas that we can put cannot be more than
+  // the total tablet servers that are extra.
+  const size_t total_placeable_replicas =
+      total_feasible_replicas + min(total_extra_replicas, total_extra_servers);
+  const auto in_some_block = VERIFY_RESULT(FindTServersForPlacementInfo(placement_info, ts_descs));
+  return min(total_placeable_replicas, in_some_block.size());
 }
 
 Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
@@ -7903,7 +7944,8 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   // The deletion is persisted and committed, so a failure from here on is not rolled back. A
-  // failed alter of the indexed table is returned at the end, after the steps below have run.
+  // failed alter of the indexed table or a failure to delete the tablets of a table is returned
+  // at the end, after the steps below have run.
   Status post_persist_status;
   if (op.altered_indexed_table) {
     post_persist_status = SendAlterTableRequest(op.altered_indexed_table->info, epoch);
@@ -7965,46 +8007,20 @@ Status CatalogManager::DeleteTableInternal(
   for (const auto& table : tables) {
     LOG(INFO) << "Deleting table: " << table.ToString();
 
-    // Send a DeleteTablet() request to each tablet replica in the table.
-    RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
-        *table.table_info_with_write_lock, table.delete_retainer, epoch));
-    // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
-    // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
-    // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
-    // it is possible that the tablet is already removed from table by a racing thread and
-    // in that case colocated_tablet will be nullptr.
-    if (table.table_info_with_write_lock->IsSecondaryTable()) {
-      RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
-      for (const auto& colocated_tablet :
-               VERIFY_RESULT(table.table_info_with_write_lock->GetTabletsIncludeInactive())) {
-        // Send a RemoveTableFromTablet() request to each
-        // colocated parent tablet replica in the table.
-        if (!table.delete_retainer.IsHideOnly()) {
-          LOG(INFO)
-              << "Notifying tablet with id " << colocated_tablet->tablet_id()
-              << " to remove this colocated table " << table.table_info_with_write_lock->name()
-              << " from its metadata.";
-          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-              master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
-              epoch);
-          table.table_info_with_write_lock->AddTask(call);
-          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-        } else {
-          // Set the snapshot schedules that prevented the table from getting deleted.
-          const auto retained_by_snapshot_schedules =
-              table.delete_retainer.RetainedBySnapshotSchedules();
-          if (!retained_by_snapshot_schedules.empty()) {
-            auto tablet_lock = colocated_tablet->LockForWrite();
+    // Don't stop on a failure as nothing retries the remaining tables -- their tablets
+    // would keep running and the DDL verification would never complete (#37744).
+    auto status = DeleteOrHideTablets(table, epoch);
 
-            *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-                retained_by_snapshot_schedules;
+    std::pair<const TableInfo*, Status*> sync_point_arg {
+        table.table_info_with_write_lock.info.get(), &status };
+    TEST_SYNC_POINT_CALLBACK("DeleteTableInternal::AfterDeleteOrHideTablets", &sync_point_arg);
 
-            // Upsert to sys catalog and commit to memory.
-            RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
-            tablet_lock.Commit();
-          }
-          CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
-        }
+    if (!status.ok()) {
+      status = status.CloneAndPrepend(
+          Format("Failed to delete or hide tablets of $0", table.ToString()));
+      LOG(WARNING) << status;
+      if (post_persist_status.ok()) {
+        post_persist_status = std::move(status);
       }
     }
   }
@@ -8057,9 +8073,11 @@ Status CatalogManager::DeleteTableInternal(
     TRACE("No system tables to delete");
   }
 
-  LOG(INFO) << "Successfully initiated deletion of "
-            << (req->is_index_table() ? "index" : "table") << " with "
-            << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  if (post_persist_status.ok()) {
+    LOG(INFO) << "Successfully initiated deletion of "
+              << (req->is_index_table() ? "index" : "table") << " with "
+              << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  }
 
   TEST_SYNC_POINT("DeleteTableInternal::End");
 
@@ -12319,6 +12337,60 @@ Status CatalogManager::CheckIfForbiddenToDeleteTabletOf(const TableInfo& table) 
   return Status::OK();
 }
 
+Status CatalogManager::DeleteOrHideTablets(
+    const DeletingTableData& table, const LeaderEpoch& epoch) {
+  // Send a DeleteTablet() request to each tablet replica in the table.
+  RETURN_NOT_OK(DeleteOrHideTabletsOfTable(
+      *table.table_info_with_write_lock, table.delete_retainer, epoch));
+  if (!table.table_info_with_write_lock->IsSecondaryTable()) {
+    return Status::OK();
+  }
+
+  // TryRemoveFromTablegroup only affects tables that are part of some tablegroup.
+  // We directly remove it from tablegroup no matter if it is retained by snapshot schedules.
+  // Note that we call TryRemoveFromTablegroup irrespective of colocated_tablet because
+  // it is possible that the tablet is already removed from table by a racing thread and
+  // in that case colocated_tablet will be nullptr.
+  RETURN_NOT_OK(TryRemoveFromTablegroup(table.table_info_with_write_lock->id()));
+
+  // A vector index lives on the tablets of its indexed table. When both are dropped, the tablets
+  // may be freed by the background cleanup before the index gets here. It is ok to skip them as
+  // a freed tablet is already deleted -- there is nothing to remove the index from.
+  auto colocated_tablets = VERIFY_RESULT(
+      table.table_info_with_write_lock->GetTabletsIncludeInactive(SkipFreedTablets::kTrue));
+  for (const auto& colocated_tablet : colocated_tablets) {
+    // Send a RemoveTableFromTablet() request to each
+    // colocated parent tablet replica in the table.
+    if (table.delete_retainer.IsHideOnly()) {
+      // Set the snapshot schedules that prevented the table from getting deleted.
+      const auto retained_by_snapshot_schedules =
+          table.delete_retainer.RetainedBySnapshotSchedules();
+      if (!retained_by_snapshot_schedules.empty()) {
+        auto tablet_lock = colocated_tablet->LockForWrite();
+
+        *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+            retained_by_snapshot_schedules;
+
+        // Upsert to sys catalog and commit to memory.
+        RETURN_NOT_OK(sys_catalog_->Upsert(epoch, colocated_tablet));
+        tablet_lock.Commit();
+      }
+      CheckTableDeleted(table.table_info_with_write_lock.info, epoch);
+    } else {
+      LOG(INFO)
+          << "Notifying tablet with id " << colocated_tablet->tablet_id()
+          << " to remove this colocated table " << table.table_info_with_write_lock->name()
+          << " from its metadata.";
+      auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+          master_, AsyncTaskPool(), colocated_tablet, table.table_info_with_write_lock.info,
+          epoch);
+      table.table_info_with_write_lock->AddTask(call);
+      WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::DeleteOrHideTabletsOfTable(
     const TableInfo& table_info, const TabletDeleteRetainerInfo& delete_retainer,
     const LeaderEpoch& epoch) {
@@ -12890,7 +12962,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
     } else {
-      LOG_WITH_FUNC(INFO)
+      VLOG_WITH_FUNC(1)
           << "Selected replicas for tablet " << tablet->id() << ": "
           << AsString(tablet->mutable_metadata()->mutable_dirty()->pb.committed_consensus_state());
       ok_status_tables.emplace(tablet->table().get());
@@ -13010,6 +13082,13 @@ namespace {
 // A tserver belongs to the placement that names its placement uuid; a placement without one is
 // the live placement, whose tservers have an empty placement uuid.
 bool TsInPlacement(const PlacementInfoPB& placement_info, const TSDescriptor& ts_desc) {
+  // A placement that names a storage tier needs a tserver with a disk on it. With tiered storage
+  // off the tier is not acted on: the tablespace refresh already drops it, and a placement that
+  // still carries one (built by a client directly) is placed as untiered.
+  if (FLAGS_enable_tiered_storage && !placement_info.storage_tier().empty() &&
+      !ts_desc.HasStorageTier(placement_info.storage_tier())) {
+    return false;
+  }
   if (placement_info.has_placement_uuid()) {
     return ts_desc.placement_uuid() == placement_info.placement_uuid();
   }
@@ -13106,7 +13185,7 @@ Status CatalogManager::SelectReplicasForTablet(
     RETURN_NOT_OK(SelectReplicasForPlacement(ts_descs, placement, config, per_table_state));
   }
 
-  LOG_WITH_FUNC(INFO)
+  VLOG_WITH_FUNC(1)
       << "Initial tserver uuids for tablet " << tablet->tablet_id() << " [table_id="
       << tablet->table()->id() << "]: "
       << CollectionToString(config->peers(), [](const auto& p) { return p.permanent_uuid(); });
@@ -13116,8 +13195,8 @@ Status CatalogManager::SelectReplicasForTablet(
   // initial leader after it receives a quorum of reports from bootstrapped replicas.
   RETURN_NOT_OK(SelectProtegeForTablet(tablet, config, global_state));
 
-  LOG(INFO) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
-            << tablet->InitiaLeaderElectionProtege();
+  VLOG(1) << "Initial tserver protege for tablet " << tablet->tablet_id() << ": "
+          << tablet->InitiaLeaderElectionProtege();
 
   VLOG_WITH_FUNC(3) << "Committed consensus state has been updated to: " << AsString(cstate);
 
@@ -13253,14 +13332,15 @@ Status CatalogManager::SendCreateTabletRequests(
       for (const auto& entry : cdc_stream_map_) {
         const auto stream = entry.second;
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
-        // one stream with replication slot consumption exists on the namespace.
+        // one stream with replication slot consumption on the namespace takes the table.
         if (PREDICT_FALSE(FLAGS_TEST_cdc_add_dynamic_index_to_state_table) ||
             (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
              IsCdcLogicalReplicationStream(*stream) &&
              IsTableEligibleForCDCSDKStream(
                  tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
                  stream->IsTablesWithoutPrimaryKeyAllowed(),
-                 stream->DetectPublicationChangesImplicitly()))) {
+                 stream->DetectPublicationChangesImplicitly()) &&
+             CDCSDKStreamTakesNewTable(*stream, *tablet->table()))) {
           can_set_cdc_sdk_retention_barriers = true;
           break;
         }
@@ -14108,10 +14188,52 @@ Status CatalogManager::ValidateReplicationInfo(
   if (placement_info.placement_uuid().empty()) {
     placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
   }
-  GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+  // Validate the placement without its tier first, so a placement that is short of tservers
+  // whatever their tiers keeps the count messages below and the tier is blamed only when it is
+  // the reason.
+  {
+    PlacementInfoPB untiered_placement_info = placement_info;
+    untiered_placement_info.clear_storage_tier();
+    GetTsDescsFromPlacementInfo(untiered_placement_info, all_ts_descs, &ts_descs);
+  }
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
     return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO, s);
+  }
+
+  // A tier is a hard constraint at creation. CheckValidPlacementInfo accepts a quorum of tservers,
+  // but a tablet created on fewer tservers than its replication factor starts under-replicated,
+  // and the load balancer, which does not consider tiers, would add the missing replicas on
+  // tservers without the tier. So every replica needs a live tserver that registered a data
+  // directory on the tier, within the placement blocks and under their maximums as
+  // CountPlaceableReplicas bounds it, exactly unless the blocks overlap. Gated on
+  // catalog_manager_check_ts_count_for_create_table like the live tablet server count.
+  // "Registered" also covers tservers whose tiers are unknown, which create-time placement does
+  // not use.
+  const auto& storage_tier = placement_info.storage_tier();
+  if (FLAGS_enable_tiered_storage && FLAGS_catalog_manager_check_ts_count_for_create_table &&
+      !storage_tier.empty()) {
+    GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
+    if (ts_descs.empty()) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "No live tablet server has registered a data directory on storage tier $0",
+              storage_tier));
+    }
+    const size_t num_replicas = GetNumReplicasOrGlobalReplicationFactor(placement_info);
+    const size_t placeable_replicas =
+        VERIFY_RESULT(CountPlaceableReplicas(placement_info, ts_descs));
+    if (placeable_replicas < num_replicas) {
+      return SetupError(
+          resp->mutable_error(), MasterErrorPB::INVALID_TABLE_REPLICATION_INFO,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "The placement needs $0 replicas on storage tier $1, but only $2 can be placed on "
+              "live tablet servers that have registered a data directory on it",
+              num_replicas, storage_tier, placeable_replicas));
+    }
   }
 
   s = CatalogManagerUtil::CheckValidLeaderAffinity(replication_info);

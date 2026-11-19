@@ -715,15 +715,14 @@ class ScanResultChecksummer {
         value.value().AppendToString(&buffer_);
       }
     }
-    crc_->Compute(buffer_.c_str(), buffer_.size(), &agg_checksum_, nullptr);
+    crc_.Feed(buffer_.data(), buffer_.size());
   }
 
   // Accessors for initializing / setting the checksum.
-  uint64_t agg_checksum() const { return agg_checksum_; }
+  uint64_t agg_checksum() const { return crc_.result(); }
 
  private:
-  crc::Crc* const crc_ = crc::GetCrc32cInstance();
-  uint64_t agg_checksum_ = 0;
+  crc::Crc32Accumulator crc_;
   std::string buffer_;
 };
 
@@ -2248,7 +2247,7 @@ TierMigrationStatusPB::State ToTierMigrationStatePB(tablet::TierMigrationStatus:
 void FillTierMigrationStatusPB(
     const tablet::TierMigrationStatus& status, TierMigrationStatusPB* pb) {
   pb->set_state(ToTierMigrationStatePB(status.state));
-  pb->set_pass_in_flight(status.pass_in_flight);
+  pb->set_migration_pass_in_flight(status.migration_pass_in_flight);
   pb->set_files_total(status.files_total);
   pb->set_files_moved(status.files_moved);
   pb->set_files_failed(status.files_failed);
@@ -2411,6 +2410,22 @@ void TabletServiceAdminImpl::CountIntents(
     total_intents += *num_intents;
   }
   resp->set_num_intents(total_intents);
+  context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::ClearRocksDBCache(
+    const ClearRocksDBCacheRequestPB* req,
+    ClearRocksDBCacheResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "ClearRocksDBCache", req, resp, &context)) {
+    return;
+  }
+  const auto result = server_->tablet_manager()->ClearRocksDBCache();
+  if (result.block_cache_evicted_bytes) {
+    resp->set_block_cache_evicted_bytes(*result.block_cache_evicted_bytes);
+  }
+  resp->set_table_readers_evicted(result.table_readers_evicted);
   context.RespondSuccess();
 }
 

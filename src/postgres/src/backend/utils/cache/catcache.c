@@ -3453,3 +3453,23 @@ yb_log_catcache_stats(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(true);
 }
+
+/*
+ * Like CatalogCacheFlushCatalog, but without calling the syscache callbacks,
+ * so that the next lookups read the catalog again without making the
+ * callbacks' owners, such as an output plugin, rebuild what they derived from
+ * it.
+ */
+void
+YbCatalogCacheFlushCatalogWithoutCallbacks(Oid catId)
+{
+	slist_iter	iter;
+
+	slist_foreach(iter, &CacheHdr->ch_caches)
+	{
+		CatCache   *cache = slist_container(CatCache, cc_next, iter.cur);
+
+		if (cache->cc_reloid == catId)
+			ResetCatalogCache(cache, false);
+	}
+}

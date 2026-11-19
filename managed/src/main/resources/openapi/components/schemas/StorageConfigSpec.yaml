@@ -1,0 +1,20 @@
+title: StorageConfigSpec
+description: |
+  StorageConfigSpec
+
+  The client-settable part of a storage configuration. Secrets are accepted here and never
+  returned. Part of StorageConfig, StorageConfigCreateReq and StorageConfigValidateReq.
+type: object
+required:
+  - name
+  - storage
+properties:
+  name:
+    description: 'Name of the storage configuration, unique within the customer'
+    type: string
+    maxLength: 100
+    minLength: 1
+  storage:
+    $ref: "./StorageSpec.yaml"
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

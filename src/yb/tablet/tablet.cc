@@ -121,6 +121,7 @@
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
@@ -854,7 +855,8 @@ Tablet::Tablet(const TabletInitData& data)
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
+          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get(),
+          data.is_transactional_xcluster_target_provider)),
       full_compaction_pool_(data.full_compaction_pool),
       tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
@@ -1103,30 +1105,31 @@ struct Tablet::IntentsDbFlushFilterState {
   }
 };
 
+bool Tablet::WalAllowsPersist(const OpId& op_id, const char* what) {
+  auto state = tablet_context_->WalState(op_id);
+  switch (state) {
+    case log::WalEntryState::kAppended:
+      // A power loss could drop the ops from the WAL while their data is persisted.
+      return false;
+    case log::WalEntryState::kSyncFailed:
+      // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
+      // failing, so risk the power loss case instead.
+      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
+          << "Flushing " << what << " with ops not fsynced in log, op id: " << op_id;
+      return true;
+    case log::WalEntryState::kDurable:
+      return true;
+  }
+  FATAL_INVALID_ENUM_VALUE(log::WalEntryState, state);
+}
+
 Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
   auto frontiers = memtable.Frontiers();
   if (frontiers) {
     const auto& op_id = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id();
-    auto wal_state = tablet_context_->WalState(op_id);
-    switch (wal_state) {
-      case log::WalEntryState::kNone:
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
-            << "Skipping flush on memtable with ops not in log, memtable op id: " << op_id;
-        return false;
-      case log::WalEntryState::kAppended:
-        // A power loss could drop it from the WAL while it is flushed, and bootstrap would fail
-        // with "WAL files missing". The flush is retried after the fsync.
-        return false;
-      case log::WalEntryState::kSyncFailed:
-        // Waiting could block flushes, including the shutdown one, for as long as fsync keeps
-        // failing, so risk the power loss case instead.
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 10)
-            << "Flushing memtable with ops not fsynced in log, memtable op id: " << op_id;
-        return true;
-      case log::WalEntryState::kDurable:
-        return true;
-    }
-    FATAL_INVALID_ENUM_VALUE(log::WalEntryState, wal_state);
+    // Otherwise bootstrap after a power loss could fail with "WAL files missing".
+    // A skipped flush is retried after the fsync.
+    return WalAllowsPersist(op_id, "memtable");
   }
 
   // It is correct to not have frontiers when memtable is empty
@@ -1141,6 +1144,13 @@ Result<bool> Tablet::RegularDbFlushFilter(const rocksdb::MemTable& memtable) {
       "flush! This should not happen.";
   LOG_WITH_PREFIX(DFATAL) << error_msg;
   return STATUS(IllegalState, error_msg);
+}
+
+void Tablet::WaitWalDurable(const OpId& op_id) {
+  BusyWait(
+      make_lw_function([this, &op_id] { return WalAllowsPersist(op_id, "vector index"); }),
+      Format("$0op $1 to become durable in log", LogPrefix(), op_id),
+      /* poll_interval= */ 1ms, /* warn_after= */ 10s, /* max_poll_interval= */ 100ms);
 }
 
 Result<bool> Tablet::IntentsDbFlushFilter(
@@ -1218,13 +1228,10 @@ Result<bool> Tablet::IntentsDbFlushFilter(
   if (!state->HasNewData(memtable_index)) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "No new data: " << state->ToString();
     // Regular DB flushed op id does not bound this flush, so the intents must be durable in WAL.
-    // See RegularDbFlushFilter for kSyncFailed.
     if (!frontiers) {
       return true;
     }
-    auto wal_state = tablet_context_->WalState(memtable_op_id);
-    return wal_state == log::WalEntryState::kDurable ||
-           wal_state == log::WalEntryState::kSyncFailed;
+    return WalAllowsPersist(memtable_op_id, "intents");
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
@@ -2902,6 +2909,19 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> que
   }
 
   WriteQuery::Execute(std::move(query));
+}
+
+Result<size_t> Tablet::EvictTableReaders() {
+  auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation);
+
+  size_t evicted = 0;
+  for (auto* db : {regular_db_.get(), intents_db_.get()}) {
+    if (db) {
+      evicted += db->EvictTableReaders();
+    }
+  }
+  return evicted;
 }
 
 Status Tablet::Flush(
@@ -4974,7 +4994,13 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   for (auto* op_pause : op_pauses.AsArray()) {
     LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
-  return DoEnableCompactions();
+
+  // Compactions are enabled only after the pause is released, see
+  // TabletSnapshots::RestoreCheckpoint. During bootstrap EnableCompactions does nothing, and
+  // CompleteStartup enables them.
+  op_pauses.Reset();
+  s = EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  return s.IsShutdownInProgress() ? Status::OK() : s;
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
@@ -5599,7 +5625,7 @@ Status Tablet::SetTierMigrationTargetUnlocked(
   const bool same_target = IsPersistedTierTarget(target_tier, target_path_id);
   {
     std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight && !same_target) {
+    if (tier_migration_status_.migration_pass_in_flight && !same_target) {
       // ScheduleDBPathMove has no cancel: the pass would keep copying to the old disk, and
       // FinishTierMigrationPass would book its outcome against the new target. The same target
       // re-asserts what the pass is already doing, so it goes through as usual.
@@ -5686,7 +5712,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
 
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    if (status.pass_in_flight) {
+    if (status.migration_pass_in_flight) {
       return STATUS(
           ServiceUnavailable, "A tier migration pass is already in flight for this tablet");
     }
@@ -5695,7 +5721,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
       result.status = status;
       return result;
     }
-    status.pass_in_flight = true;
+    status.migration_pass_in_flight = true;
     state_before = status.state;
   }
 
@@ -5708,7 +5734,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
     if (candidates.empty()) {
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.files_total = 0;
       status.files_moved = 0;
       status.files_deferred = 0;
@@ -5731,7 +5757,7 @@ Result<TierReconcileResult> Tablet::RunTierMigrationPass(
     if (reconciler_pass && options.failed_pass_threshold > 0 &&
         status.consecutive_failed_passes >= options.failed_pass_threshold) {
       // The counters of the last failed pass stay as they were, for GetTierInfo.
-      status.pass_in_flight = false;
+      status.migration_pass_in_flight = false;
       status.state = State::kFailed;
       result.state_changed = status.state != state_before;
       result.status = status;
@@ -5798,7 +5824,7 @@ Result<TierMigrationStatus> Tablet::AlterTabletTier(
     std::lock_guard target_lock(tier_target_mutex_);
     RETURN_NOT_OK(SetTierMigrationTargetUnlocked(target_tier, target_path_id));
     std::lock_guard lock(tier_migration_mutex_);
-    if (tier_migration_status_.pass_in_flight) {
+    if (tier_migration_status_.migration_pass_in_flight) {
       // Only the same target gets past the write with a pass in flight: that pass already serves
       // this request, re-asserted just now like any accepted one, so report it.
       return tier_migration_status_;
@@ -5896,7 +5922,7 @@ void Tablet::FinishTierMigrationPass(const std::shared_ptr<TierMigrationPass>& p
   {
     std::lock_guard lock(tier_migration_mutex_);
     auto& status = tier_migration_status_;
-    status.pass_in_flight = false;
+    status.migration_pass_in_flight = false;
     status.files_moved = moved;
     status.files_deferred = deferred;
     status.files_failed = hard_failed;
@@ -7372,8 +7398,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }

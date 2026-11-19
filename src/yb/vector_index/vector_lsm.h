@@ -17,6 +17,7 @@
 #include <functional>
 #include <future>
 #include <map>
+#include <mutex>
 #include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
@@ -104,6 +105,7 @@ struct VectorLSMOptions {
   using VectorIndexTraits = vector_index::VectorIndexTraitsPtr<Vector, DistanceResult>;
   using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
   using FrontiersFactory   = std::function<storage::UserFrontiersPtr()>;
+  using FrontierDurabilityWaiter = std::function<void(const storage::UserFrontier&)>;
 
   std::string log_prefix;
   std::string storage_dir;
@@ -112,6 +114,10 @@ struct VectorLSMOptions {
   rpc::ThreadPool* insert_thread_pool;
   PriorityThreadPoolTokenPtr compaction_token;
   FrontiersFactory frontiers_factory;
+  // Blocks until the ops up to the frontier are durable in the WAL.
+  // A chunk is added to the manifest only after that, otherwise a power loss could drop from the
+  // WAL the ops the flushed frontier covers.
+  FrontierDurabilityWaiter wait_frontier_durable;
   MergeFilterFactory vector_merge_filter_factory;
   std::string file_extension;
   MetricEntityPtr metric_entity;
@@ -345,7 +351,8 @@ class VectorLSM {
 
   // Returns compaction scope with a continuos subset of immutable chunks picked for a compaction
   // based either on size amplification or size ratio approaches.
-  CompactionScope PickChunksForCompaction(CompactionType type) const EXCLUDES(mutex_);
+  CompactionScope PickChunksForCompaction(CompactionType type) const
+      EXCLUDES(mutex_, pick_chunks_mutex_);
 
   // Returns new chunk(s) produced by compacting input chunks; every chunk is saved to a disk.
   // The suspender (may be null) lets the long-running merge yield its priority thread pool worker
@@ -389,6 +396,10 @@ class VectorLSM {
   Env* const env_;
 
   mutable rw_spinlock mutex_;
+
+  // Serializes compaction pickers; taken before mutex_.
+  mutable std::mutex pick_chunks_mutex_;
+
   uint64_t last_serial_no_ GUARDED_BY(mutex_) = 0;
   std::shared_ptr<MutableChunk> mutable_chunk_ GUARDED_BY(mutex_);
 

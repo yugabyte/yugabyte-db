@@ -11,10 +11,78 @@
 
 use crate::datum::{DatumWithOid, FromDatum, IntoDatum, Json, TryFromDatumError};
 use crate::pg_sys;
+use crate::memcxt::PgMemoryContexts; // YB
+use core::cell::Cell; // YB
 use core::fmt::Formatter;
 use std::ffi::{CStr, CString};
 use std::fmt::Debug;
 use std::mem;
+
+// YB: Upstream records "this transaction has mutated" by calling
+// pg_sys::GetCurrentTransactionId(), which assigns a transaction ID.  On YB, a
+// Postgres transaction ID is assigned only to transactions that use temporary
+// relations (#36986), so this version of pgrx stamps the transaction instead, the
+// way GetStableLatestTransactionId() in xact.c does: mark_mutable() stores the
+// current local transaction ID (lxid) and is_xact_still_immutable() compares the
+// stored value with the current one.  Every transaction gets a new lxid, including
+// one restarted by YbCommitTransactionCommandIntermediate() or by COMMIT in a
+// procedure, so the stamp needs no reset when a transaction ends.
+//
+// The stamp is shared through a rendezvous variable (find_rendezvous_variable(),
+// fmgr.h), so a write made through one extension also makes every other extension
+// built with this pgrx run later statements in the transaction with
+// read_only = false.  Two kinds of write are still not detected (#36987): writes
+// made outside pgrx, and writes made by functions called from a statement that
+// pgrx runs as read-only, such as a select() whose query calls a volatile function
+// that writes.
+
+/// Name of the rendezvous variable that holds the stamp.  The suffix versions what the variable
+/// points to: a pgrx copy that stores anything else there must use a new name.
+const YB_MUTATING_LXID_VAR: &CStr = c"pgrx_yb_mutating_lxid_v1";
+
+thread_local! {
+    /// This copy of pgrx's pointer to the shared stamp, looked up on first use.
+    static YB_MUTATING_LXID: Cell<*mut pg_sys::LocalTransactionId> =
+        const { Cell::new(std::ptr::null_mut()) };
+}
+
+/// Returns the shared stamp: the lxid of the last transaction that a pgrx extension marked as
+/// mutating in this backend.  The first copy to use it allocates it in `TopMemoryContext`.
+fn yb_mutating_lxid() -> *mut pg_sys::LocalTransactionId {
+    YB_MUTATING_LXID.with(|cached| {
+        if cached.get().is_null() {
+            // SAFETY: the variable is only ever set here, to memory allocated for a
+            // LocalTransactionId, so every copy that finds it non-NULL reads the same type.
+            unsafe {
+                let slot = pg_sys::find_rendezvous_variable(YB_MUTATING_LXID_VAR.as_ptr());
+                if (*slot).is_null() {
+                    *slot = PgMemoryContexts::TopMemoryContext
+                        .palloc0_struct::<pg_sys::LocalTransactionId>()
+                        .cast();
+                }
+                cached.set((*slot).cast());
+            }
+        }
+        cached.get()
+    })
+}
+
+fn yb_current_lxid() -> pg_sys::LocalTransactionId {
+    // SAFETY: MyProc is checked for NULL before it is read.
+    unsafe {
+        if pg_sys::MyProc.is_null() {
+            return pg_sys::InvalidLocalTransactionId;
+        }
+        #[cfg(any(feature = "pg13", feature = "pg14", feature = "pg15", feature = "pg16"))]
+        {
+            (*pg_sys::MyProc).lxid
+        }
+        #[cfg(any(feature = "pg17", feature = "pg18"))]
+        {
+            (*pg_sys::MyProc).vxid.lxid
+        }
+    }
+}
 
 mod client;
 mod cursor;
@@ -209,7 +277,19 @@ impl Spi {
     /// PGRX interprets this to mean that within a transaction, it's fine to execute Spi commands
     /// as `read_only = true` until the first mutable statement (DDL or DML).  From that point
     /// forward **all** statements must be executed as `read_only = false`.
+    ///
+    /// YB: the text above describes upstream.  On YB this returns `false` once an extension built
+    /// with this pgrx has called [`Spi::mark_mutable()`] in the current transaction, or once the
+    /// transaction has an xid, which on YB means it wrote to a temporary relation.  See the comment
+    /// at the top of this file.
     fn is_xact_still_immutable() -> bool {
+        // YB: see the comment at the top of this file.
+        let lxid = yb_current_lxid();
+        // SAFETY: yb_mutating_lxid() returns a valid pointer.
+        if lxid != pg_sys::InvalidLocalTransactionId && unsafe { *yb_mutating_lxid() } == lxid {
+            return false;
+        }
+
         unsafe {
             // SAFETY:  `pg_sys::GetCurrentTransactionIdIfAny()` will always return a valid
             // TransactionId value, even if it's `InvalidTransactionId`.
@@ -224,15 +304,24 @@ impl Spi {
     ///
     /// From this point forward, within the current transaction, [`Spi::is_xact_still_immutable()`] will
     /// return `false`.
+    ///
+    /// YB: diverges from upstream pgrx, which calls `pg_sys::GetCurrentTransactionId()`
+    /// here.  See the comment at the top of this file.  `update()` calls this before inspecting
+    /// the statement, so it also fires for read-only statements routed through
+    /// [`SpiClient::update`] (which includes [`Spi::get_one`] and [`Spi::run`]).
     fn mark_mutable() {
-        unsafe {
-            // SAFETY:  `pg_sys::GetCurrentTransactionId()` will return a valid, possibly newly-created
-            // TransactionId or it'll raise an ERROR trying.
-
-            // The act of marking this transaction mutable is simply asking Postgres for the current
-            // TransactionId in a way where it will assign one if necessary
-            let _ = pg_sys::GetCurrentTransactionId();
-        }
+        // YB: the stamp stays set for the rest of the transaction, including after `ROLLBACK
+        // TO` and inside savepoints opened after the write, such as a PL/pgSQL `BEGIN ...
+        // EXCEPTION` block.  That is stricter than upstream on purpose.  Upstream checks
+        // GetCurrentTransactionIdIfAny(), the current subtransaction's xid, so in those cases it
+        // reports the transaction as immutable again.  With `read_only = false`, a later
+        // statement takes a new snapshot, so it sees commits made by other transactions after
+        // the outer statement started, and `select()` can run a data-changing query.  Running a
+        // statement read-only too early could instead hide writes made earlier in the
+        // transaction.
+        //
+        // SAFETY: yb_mutating_lxid() returns a valid pointer.
+        unsafe { *yb_mutating_lxid() = yb_current_lxid() };
     }
 
     pub fn get_one<A: FromDatum + IntoDatum>(query: &str) -> Result<Option<A>> {

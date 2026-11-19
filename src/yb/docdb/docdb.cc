@@ -416,12 +416,11 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
             dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime) {
       auto reverse_index_value = reverse_index_iter.value();
 
-      // The intents with kDeleteVectorIds value type correspond to the tombstones added for
-      // optimal vector indexing. They do not contain a main intent data key in their value field
-      // and hence should be skipped.
-      if (dockv::DecodeValueEntryType(reverse_index_value) ==
-              dockv::ValueEntryType::kDeleteVectorIds) {
-        VLOG_WITH_FUNC(3) << "Skipping an intent of type kDeleteVectorIds, with key: "
+      // The delete list records correspond to the tombstones added for optimal vector indexing.
+      // They do not contain a main intent data key in their value field and hence should be
+      // skipped.
+      if (dockv::IsVectorIndexRecord(reverse_index_value)) {
+        VLOG_WITH_FUNC(3) << "Skipping a delete list record, with key: "
                           << key_slice.ToDebugHexString() << ", transactionId: " << transaction_id;
         reverse_index_iter.Next();
         continue;
@@ -457,14 +456,7 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
                 intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
-            if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
-              reverse_index_iter.Next();
-              continue;
-            }
-
-            // Skip intents from aborted subtransactions (Ex: From rolled-back savepoints).
-            // These writes were never committed and should not be streamed to CDC.
-            if (aborted.Test(decoded_value.subtransaction_id)) {
+            if (IsNonRecordStrongWriteIntent(intent.doc_path, decoded_value, aborted)) {
               reverse_index_iter.Next();
               continue;
             }

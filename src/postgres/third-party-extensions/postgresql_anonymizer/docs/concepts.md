@@ -49,3 +49,12 @@ The data can be altered with several techniques:
   of pseudonymization techniques. However a pseudonymizated data is still linked
   to the original data.
 
+* **Local Differential Privacy (LDP)** perturbs each data point individually
+  before collection, so that no raw value is ever exposed to anyone. The amount
+  of perturbation is controlled by a privacy parameter called **epsilon**: a
+  smaller epsilon gives stronger privacy guarantees at the cost of accuracy.
+
+* **GRRM** (Generalized Randomized Response Mechanism) is an LDP method for
+  categorical values. Each value is either reported truthfully or replaced with
+  a random alternative. The probability of keeping the true value depends on
+  epsilon and the total number of possible categories.

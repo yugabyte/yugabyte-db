@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
@@ -35,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +55,8 @@ import okhttp3.Response;
 @Slf4j
 public class NativeKubernetesManager extends KubernetesManager {
 
-  private KubernetesClient getClient(Map<String, String> config) {
+  @VisibleForTesting
+  KubernetesClient getClient(Map<String, String> config) {
     if (config.containsKey("KUBECONFIG") && !config.get("KUBECONFIG").isEmpty()) {
       try {
         String kubeConfigContents =
@@ -291,12 +294,23 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void deleteStorage(Map<String, String> config, String helmReleaseName, String namespace) {
+  public void deleteStorage(
+      UUID universeUUID,
+      Map<String, String> config,
+      Collection<String> helmReleaseNames,
+      String namespace) {
+    String[] releaseNames = helmReleaseNames.toArray(new String[0]);
     try (KubernetesClient client = getClient(config)) {
+      client
+          .apps()
+          .statefulSets()
+          .inNamespace(namespace)
+          .withLabelIn("release", releaseNames)
+          .delete();
       client
           .persistentVolumeClaims()
           .inNamespace(namespace)
-          .withLabel("release", helmReleaseName)
+          .withLabelIn("release", releaseNames)
           .delete();
     }
   }
