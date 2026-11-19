@@ -14972,6 +14972,9 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   if (!restoring_sys_catalog_) {
     WARN_NOT_OK(
         BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Deferring backfill of legacy gRPC CDC streams to a later sys catalog "
+                          << "load: another restore is fenced";
   }
 
   if (FLAGS_enable_ysql) {
