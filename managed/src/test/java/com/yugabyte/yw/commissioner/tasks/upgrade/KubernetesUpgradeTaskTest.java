@@ -381,6 +381,19 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
     }
   }
 
+  // Records the node_exporter sidecars as serving TLS, so a test can see whether a task rewrote it.
+  protected void recordNodeExporterHttps() {
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> u.updateConfig(ImmutableMap.of(Universe.NODE_EXPORTER_HTTPS, "true")),
+            false /* incrementVersion */);
+  }
+
+  protected boolean isNodeExporterHttpsRecorded() {
+    return Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).isNodeExporterHttps();
+  }
+
   protected TaskInfo submitTask(
       UpgradeTaskParams taskParams, TaskType taskType, Commissioner commissioner) {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());

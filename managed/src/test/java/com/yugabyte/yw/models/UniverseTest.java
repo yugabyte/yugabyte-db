@@ -33,6 +33,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.NodeExporterSidecarTestUtil;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -558,7 +559,7 @@ public class UniverseTest extends FakeDBApplication {
             k8s.getUniverseUUID(),
             u ->
                 u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
-                    "2026.2.0.0-b1");
+                    NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
     assertTrue(
         new UniverseResp(k8s, null, null, null, null, confGetter).nodeExporterSidecarScraped);
     assertFalse(new UniverseResp(k8s, null).nodeExporterSidecarScraped);
@@ -582,7 +583,8 @@ public class UniverseTest extends FakeDBApplication {
   public void testNodeExporterSidecarScrapedFollowsUniverseKeyAndVersion() {
     RuntimeConfGetter confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
 
-    Universe keyOff = k8sUniverseAtVersion("k8s-key-off", "2026.2.0.0-b1");
+    Universe keyOff =
+        k8sUniverseAtVersion("k8s-key-off", NodeExporterSidecarTestUtil.SUPPORTED_VERSION);
     app.injector()
         .instanceOf(SettableRuntimeConfigFactory.class)
         .forUniverse(keyOff)

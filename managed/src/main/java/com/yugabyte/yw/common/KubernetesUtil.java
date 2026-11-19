@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase.KubernetesPlacement;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ConfigureNodeExporterTls;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -90,8 +91,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_FULL_MOVE_SUPPORT_STABLE = "2026.1.0.0-b0";
   public static String MIN_VERSION_NON_ROOT_DB_PREVIEW = "2.31.0.0-b0";
   public static String MIN_VERSION_NON_ROOT_DB_STABLE = "2026.1.2.0-b0";
-  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW = "2.31.0.0-b615";
-  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = "2026.2.0.0-b1";
+  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW = "2.33.0.0-b58";
+  public static String MIN_VERSION_NODE_EXPORTER_SIDECAR_STABLE = "2026.2.0.0-b15";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -100,6 +101,16 @@ public class KubernetesUtil {
             MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW,
             true)
         >= 0;
+  }
+
+  /** Whether the pods of this K8s universe, at its recorded DB version, get the sidecar. */
+  public static boolean isNodeExporterSidecarEnabled(
+      Universe universe, RuntimeConfGetter confGetter) {
+    return Util.isKubernetesBasedUniverse(universe)
+        && isNodeExporterSidecarEnabled(
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            universe,
+            confGetter);
   }
 
   public static boolean isNodeExporterSidecarEnabled(
@@ -112,6 +123,15 @@ public class KubernetesUtil {
                 MIN_VERSION_NODE_EXPORTER_SIDECAR_PREVIEW,
                 true)
             >= 0;
+  }
+
+  /** Whether YBA renders the node_exporter sidecar with TLS for a pod running this DB version. */
+  public static boolean isNodeExporterSidecarTlsEnabled(
+      @Nullable String universeSoftwareVersion, Universe universe, RuntimeConfGetter confGetter) {
+    return isNodeExporterSidecarEnabled(universeSoftwareVersion, universe, confGetter)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableNodeToNodeEncrypt
+        && ConfigureNodeExporterTls.isNodeExporterTlsAllowed(
+            confGetter, Customer.get(universe.getCustomerId()), universe);
   }
 
   public static boolean isNamespacedServiceSupported(String universeSoftwareVersion) {

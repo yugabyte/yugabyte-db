@@ -155,6 +155,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
             break;
         }
       }
+      // The node_exporter sidecar's scrape scheme follows the TLS the restarted pods render.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Marks update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -322,6 +324,10 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       }
 
       createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
+    }
+
+    if (upgradeMaster && upgradeTservers) {
+      createRecordNodeExporterTlsTask(ybSoftwareVersion);
     }
   }
 }
