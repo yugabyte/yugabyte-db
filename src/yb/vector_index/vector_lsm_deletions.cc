@@ -51,8 +51,9 @@ VectorLSMDeletionMap::VectorLSMDeletionMap(MemTrackerPtr mem_tracker) {
 }
 
 auto& VectorLSMDeletionMap::ShardFor(this auto& self, const VectorId& vector_id) {
-  // Multiplicative hashing spreads ids that are not random too.
-  constexpr uint64_t kMultiplier = 0x9E3779B97F4A7C15ULL;
+  // Multiplicative hashing spreads ids that are not random too. Not with phi, which boost 1.83+
+  // mixes the hash with: the ids of a shard would then share the bits that pick their group.
+  constexpr uint64_t kMultiplier = 0xD6E8FEB86659FD93ULL;
   constexpr int kShardBits = std::countr_zero(kNumShards);
   return self.shards_[(VectorIdHash()(vector_id) * kMultiplier) >> (64 - kShardBits)];
 }
