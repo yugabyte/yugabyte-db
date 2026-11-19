@@ -13,6 +13,9 @@ import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,6 +27,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -359,6 +364,66 @@ public class TlsToggleTest extends UpgradeTaskTest {
     taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
     assertThrows(RuntimeException.class, () -> submitTask(taskParams));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+  }
+
+  @Test
+  public void testTlsToggleNonRestartKeepsUserYsqlPgConfCsv() throws Exception {
+    UUID rootCA = UUID.randomUUID();
+    prepareUniverse(false, false, false, rootCA, rootCA);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe ->
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+                    SpecificGFlags.construct(
+                        ImmutableMap.of(),
+                        ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "log_statement=ddl")),
+            false);
+    // Enabling node-to-node encryption runs the second round in a non-restart way, which sets
+    // allow_insecure_connections in memory.
+    TlsToggleParams taskParams =
+        getTaskParams(true, false, false, rootCA, null, UpgradeOption.NON_ROLLING_UPGRADE);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockClient, atLeastOnce())
+        .setFlag(
+            any(HostAndPort.class),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            contains("log_statement=ddl"),
+            anyBoolean());
+  }
+
+  @Test
+  public void testTlsToggleNonRestartSetsNewInstallYsqlPgConfCsv() throws Exception {
+    UUID rootCA = UUID.randomUUID();
+    prepareUniverse(false, false, false, rootCA, rootCA);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              SpecificGFlags.PerProcessFlags newInstallGFlags =
+                  new SpecificGFlags.PerProcessFlags();
+              newInstallGFlags.value.put(
+                  TSERVER, ImmutableMap.of(GFlagsUtil.YSQL_PG_CONF_CSV, "yb_enable_cbo=on"));
+              universe.setNewInstallGFlags(newInstallGFlags);
+            },
+            false);
+    // No user or telemetry entries: the in-memory value must still match the new install entries
+    // in the server's gflags file.
+    TlsToggleParams taskParams =
+        getTaskParams(true, false, false, rootCA, null, UpgradeOption.NON_ROLLING_UPGRADE);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockClient, atLeastOnce())
+        .setFlag(
+            any(HostAndPort.class),
+            eq(GFlagsUtil.YSQL_PG_CONF_CSV),
+            eq("yb_enable_cbo=on"),
+            anyBoolean());
   }
 
   @Test

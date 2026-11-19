@@ -17,6 +17,7 @@
 #include <google/protobuf/io/printer.h>
 
 #include "yb/gen_yrpc/model.h"
+#include "yb/gen_yrpc/trace_generator.h"
 
 #include "yb/gutil/stl_util.h"
 
@@ -34,7 +35,7 @@ const std::string kFieldCase =
     "$message_name$::$field_containing_oneof_cap_name$Case::k$field_camelcase_name$";
 
 std::string SetHasField(const google::protobuf::FieldDescriptor* field) {
-  return field->containing_oneof()
+  return field->real_containing_oneof()
       ? "$field_containing_oneof_name$_case_ = " + kFieldCase + ";"
       : "has_fields_.Set($message_name$Fields::k$field_camelcase_name$);";
 }
@@ -67,7 +68,7 @@ class Message {
 
     for (int j = 0; j != message_->field_count(); ++j) {
       const auto* field = message_->field(j);
-      if (field->is_repeated() || StoreAsPointer(field) || field->containing_oneof()) {
+      if (field->is_repeated() || StoreAsPointer(field) || field->real_containing_oneof()) {
         continue;
       }
       if (!need_has_fields_enum_) {
@@ -158,8 +159,8 @@ class Message {
       const auto* field = message_->field(j);
       ScopedSubstituter field_substituter(printer, field);
 
-      if (last_oneof != field->containing_oneof()) {
-        last_oneof = field->containing_oneof();
+      if (last_oneof != field->real_containing_oneof()) {
+        last_oneof = field->real_containing_oneof();
         if (last_oneof) {
           printer(
               "$message_name$::$field_containing_oneof_cap_name$Case "
@@ -212,7 +213,7 @@ class Message {
             "using $field_camelcase_name$ReturnType = const $field_stored_type$&;\n"
             "const $field_stored_type$& $field_name$() const {\n"
             "  return ");
-        if (field->containing_oneof()) {
+        if (field->real_containing_oneof()) {
           printer("$field_containing_oneof_name$_case_ == " + kFieldCase);
         } else {
           printer("$field_accessor$");
@@ -223,7 +224,7 @@ class Message {
             "}\n\n"
             "$field_stored_type$& ref_$field_name$($field_stored_type$* value) {\n"
         );
-        if (field->containing_oneof()) {
+        if (field->real_containing_oneof()) {
           printer("  " + set_has_field + "\n");
         }
         printer(
@@ -254,7 +255,7 @@ class Message {
       ScopedIndent mutable_ident(printer);
 
       if (StoreAsPointer(field)) {
-        if (field->containing_oneof()) {
+        if (field->real_containing_oneof()) {
           printer("if (!has_$field_name$()) {\n"
                   "  " + set_has_field + "\n");
         } else {
@@ -279,7 +280,7 @@ class Message {
 
       if (!field->is_repeated() || IsPointerField(field)) {
         printer("bool has_$field_name$() const {\n");
-        if (field->containing_oneof()) {
+        if (field->real_containing_oneof()) {
           printer(
               "  return $field_containing_oneof_name$_case_ == "
               "$message_name$::$field_containing_oneof_cap_name$Case::k$field_camelcase_name$;\n");
@@ -290,7 +291,7 @@ class Message {
         }
         printer("}\n\n");
         printer("void clear_$field_name$() {\n");
-        if (field->containing_oneof()) {
+        if (field->real_containing_oneof()) {
           printer(
             "  if (!has_$field_name$()) {\n"
             "    return;\n"
@@ -366,6 +367,14 @@ class Message {
         "}\n\n"
     );
 
+    if (MessageHasTracingAttributes(message_)) {
+      printer(
+          "std::vector<std::pair<std::string, std::string>> TracingAttributes() const;\n"
+          "void AppendTracingAttributes(\n"
+          "    const std::string& prefix, ::yb::rpc::TracingAttributeCollector* out) const;\n\n"
+      );
+    }
+
     public_scope.Reset();
 
     printer(" private:\n");
@@ -388,7 +397,7 @@ class Message {
 
     for (int j = 0; j != message_->field_count(); ++j) {
       const auto* field = message_->field(j);
-      if (!StoredAsSlice(field) || !field->containing_oneof()) {
+      if (!StoredAsSlice(field) || !field->real_containing_oneof()) {
         continue;
       }
       ScopedSubstituter field_substituter(printer, field);
@@ -410,8 +419,8 @@ class Message {
     for (int j = 0; j != message_->field_count();) {
       const auto* field = message_->field(j);
       ScopedSubstituter field_substituter(printer, field);
-      if (field->containing_oneof() != current_oneof) {
-        current_oneof = field->containing_oneof();
+      if (field->real_containing_oneof() != current_oneof) {
+        current_oneof = field->real_containing_oneof();
         if (current_oneof) {
           printer("union {\n");
           printer.Indent();
@@ -424,7 +433,7 @@ class Message {
           printer(" = nullptr");
         }
         printer(";\n");
-      } else if (StoredAsSlice(field) && field->containing_oneof()) {
+      } else if (StoredAsSlice(field) && field->real_containing_oneof()) {
         printer("alignas($field_stored_type$) char $field_name$_[sizeof($field_stored_type$)];\n");
       } else if (IsSimple(field)) {
         printer("$field_stored_type$ $field_name$_");
@@ -441,7 +450,8 @@ class Message {
         }
       }
       ++j;
-      if (j == message_->field_count() || message_->field(j)->containing_oneof() != current_oneof) {
+      if (j == message_->field_count() ||
+          message_->field(j)->real_containing_oneof() != current_oneof) {
         FinishOneOf(printer, current_oneof);
       }
     }
@@ -492,6 +502,9 @@ class Message {
     if (!message_->options().map_entry()) {
       ToGoogleProtobuf(printer);
     }
+    if (MessageHasTracingAttributes(message_)) {
+      TracingAttributes(printer);
+    }
   }
 
  private:
@@ -530,7 +543,7 @@ class Message {
     }
     for (int j = 0; j != message_->field_count(); ++j) {
       const auto* field = message_->field(j);
-      if (field->containing_oneof()) {
+      if (field->real_containing_oneof()) {
         continue;
       }
       NextCtorField(printer, &first);
@@ -653,12 +666,12 @@ class Message {
   void CopyFields(YBPrinter printer, Lightweight lightweight, OneOfOnly oneof_only) const {
     for (int j = 0; j != message_->field_count(); ++j) {
       const auto* field = message_->field(j);
-      if (oneof_only && !field->containing_oneof()) {
+      if (oneof_only && !field->real_containing_oneof()) {
         continue;
       }
       ScopedSubstituter field_substituter(printer, field);
 
-      auto source = lightweight && (!StoredAsSlice(field) || !field->containing_oneof())
+      auto source = lightweight && (!StoredAsSlice(field) || !field->real_containing_oneof())
           ? "rhs.$field_accessor$"s : "rhs.$field_name$()"s;
       if (!lightweight && message_->options().map_entry()) {
         if (field->name() == "key") {
@@ -713,7 +726,7 @@ class Message {
               "if (rhs.has_$field_name$()) {\n"
               "  mutable_$field_name$()->CopyFrom("s + (lightweight ? "*" : "") + source + ");\n"
           );
-          if (field->containing_oneof()) {
+          if (field->real_containing_oneof()) {
               printer("  " + SetHasField(field) + "\n");
           }
         } else {
@@ -729,7 +742,7 @@ class Message {
           } else {
             printer("  $field_accessor$ = " + source + ";\n");
           }
-          if (!lightweight || field->containing_oneof()) {
+          if (!lightweight || field->real_containing_oneof()) {
             printer("  " + SetHasField(field) + "\n");
           }
         }
@@ -1120,9 +1133,27 @@ class Message {
     method_indent.Reset("}\n\n");
   }
 
+  // Collects trace-tagged fields (recursing into nested messages) as (dotted-path, text-value)
+  // pairs; bytes hex-encoded unless bytes_as_string. The pb free-function form lives in the
+  // .trace.{h,cc} the trace generator emits for every proto file.
+  void TracingAttributes(YBPrinter printer) const {
+    printer(
+        "std::vector<std::pair<std::string, std::string>> "
+            "$message_lw_name$::TracingAttributes() const {\n"
+        "  ::yb::rpc::TracingAttributeCollector collector;\n"
+        "  AppendTracingAttributes(\"req.\", &collector);\n"
+        "  return collector.Finish();\n"
+        "}\n"
+        "\n"
+        "void $message_lw_name$::AppendTracingAttributes(\n"
+        "    const std::string& prefix, ::yb::rpc::TracingAttributeCollector* out) const {\n"
+    );
+    TracingAttributesBody(printer, message_, Lightweight::kTrue);
+  }
+
   bool StoreAsPointer(const google::protobuf::FieldDescriptor* field) const {
     return cycle_dependencies_.count(field) || IsPointerField(field) ||
-           (field->containing_oneof() && field->message_type());
+           (field->real_containing_oneof() && field->message_type());
   }
 
   const google::protobuf::Descriptor* message_;
@@ -1156,6 +1187,10 @@ class MessagesGenerator::Impl {
         "// THIS FILE IS AUTOGENERATED FROM $path$\n"
         "\n"
         "#pragma once\n"
+        "\n"
+        "#include <string>\n"
+        "#include <utility>\n"
+        "#include <vector>\n"
         "\n"
     );
 

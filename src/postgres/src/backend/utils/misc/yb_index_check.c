@@ -295,8 +295,16 @@ yb_index_check(PG_FUNCTION_ARGS)
 	 */
 	char		relkind = get_rel_relkind(indexoid);
 
+	/*
+	 * A '\0' relkind means there is no such relation; any other non-index
+	 * relkind means the OID names something that is not an index. The argument
+	 * is a bare OID, so both are ordinary caller error rather than a symptom of
+	 * concurrent DDL -- say a caller reading OIDs out of pg_class.
+	 */
 	if (relkind != RELKIND_INDEX && relkind != RELKIND_PARTITIONED_INDEX)
-		elog(ERROR, "Object is not an index");
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("index with OID %u does not exist", indexoid)));
 
 	List	   *leaf_indexes = lock_index_check_relations(indexoid);
 
@@ -386,9 +394,8 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode, YbIndexInconsistencyLogSt
 	/* lock_index_check_relations() already holds AccessShareLock on indexrel/baserel. */
 	Relation	indexrel = relation_open(indexoid, NoLock);
 
-	if (indexrel->rd_rel->relkind != RELKIND_INDEX)
-		elog(ERROR, "Object is not an index");
-
+	/* lock_index_check_relations() returns scannable leaves only. */
+	Assert(indexrel->rd_rel->relkind == RELKIND_INDEX);
 	Assert(indexrel->rd_index);
 
 	if (indexrel->rd_rel->relam != LSM_AM_OID)
@@ -429,7 +436,10 @@ do_index_check(Oid indexoid, bool multi_snapshot_mode, YbIndexInconsistencyLogSt
  *
  * 1. DDL on the table/index: AccessShareLock blocks most DDL, including DROP,
  *    TRUNCATE, non-concurrent DETACH PARTITION and most ALTER TABLEs.
- *    DML is left unblocked.
+ *    DML is left unblocked. It does not block DDL that commits before the
+ *    lock is granted: indexoid reaches us already resolved (a regclass
+ *    argument resolves at parse time), so every OID here must be rechecked
+ *    once its lock is held.
  *
  * 2. ATTACH PARTITION: AccessShareLock is insufficient here, as ATTACH
  *    PARTITION takes ShareUpdateExclusiveLock. Instead the partition list
@@ -459,6 +469,29 @@ lock_index_check_relations(Oid indexoid)
 
 	/* find_all_inheritors() locks the descendants, but not indexoid itself. */
 	LockRelationOid(indexoid, AccessShareLock);
+
+	/*
+	 * Recheck indexoid existence after acquiring the lock.
+	 *
+	 * If a concurrent DROP committed while we were waiting for the lock, proceeding
+	 * with catalog lookups below will trigger internal errors ("cache lookup failed"
+	 * in find_all_inheritors() or "could not open relation" in relation_open()).
+	 *
+	 * This must stay immediately after LockRelationOid(). Moving this below any
+	 * catalog lookup reopens race conditions.
+	 *
+	 * Because the caller already verified relkind before blocking, a missing OID
+	 * here specifically indicates a concurrent DROP, so it gets a different
+	 * message from the relkind check above. Both raise ERRCODE_UNDEFINED_OBJECT,
+	 * making the message the only discriminator -- the stress-test workloads that
+	 * run DDL alongside this check allowlist expected errors by message substring,
+	 * not by SQLSTATE.
+	 */
+	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(indexoid)))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("index with OID %u was concurrently dropped", indexoid)));
+
 	all_indexes = find_all_inheritors(indexoid, AccessShareLock, NULL);
 
 	foreach(lc, all_indexes)

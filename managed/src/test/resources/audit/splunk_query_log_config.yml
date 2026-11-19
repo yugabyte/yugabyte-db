@@ -7,7 +7,7 @@ exporters:
     source: source
     sourcetype: some_type
     tls: {insecure_skip_verify: true}
-    token: apitoken
+    token: ${env:YB_OTEL_00000000_0000_0000_0000_000000000000_SPLUNK_TOKEN}
 extensions:
   file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
     compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true, rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}

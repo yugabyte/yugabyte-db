@@ -21,6 +21,7 @@ import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet_types.proto";
+import "yb/rpc/lightweight_message.proto";
 
 // TODO: rename to FlushOrCompact TablesRequestPB
 // https://github.com/YugaByte/yugabyte-db/issues/729
@@ -123,7 +124,7 @@ message IsInitDbDoneResponsePB {
 }
 
 message SplitTabletRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
   optional int32 split_factor = 2;
 }
 
@@ -149,7 +150,7 @@ message AddTransactionStatusTabletResponsePB {
 }
 
 message DeleteNotServingTabletRequestPB {
-  required bytes tablet_id = 1;
+  required bytes tablet_id = 1 [(yb.rpc.trace) = {enabled: true, bytes_as_string: true}];
 }
 
 message DeleteNotServingTabletResponsePB {

@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
@@ -24,6 +25,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,7 @@ import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.util.ProcessUtil;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.Timeouts;
 import org.yb.util.YBBackupUtil;
 
@@ -72,12 +75,18 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Arrays.fill(chars, 'x');
     LARGE_PAYLOAD = new String(chars);
   }
+  // Notifies, then blocks on a row another session holds; see payloadsAfterRetriedUpdate.
+  private static final String RETRIED_UPDATE =
+      "UPDATE notify_kv SET v = (SELECT v + 1 FROM notify_kv WHERE k = 1) WHERE k = 1"
+      + " AND pg_notify('" + CHANNEL + "', 'attempt_' || clock_timestamp()) IS NOT NULL";
 
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put("tserver_unresponsive_timeout_ms",
-        String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
+    // The snapshot schedule created by testListenNotifyWithDbClone forces a multi-second
+    // sys_catalog flush on a loaded sanitizer build, which costs the master leader its lease and
+    // aborts concurrent DDL. Double the sanitizer failure-detection window.
+    flagMap.put("leader_failure_max_missed_heartbeat_periods", "20");
     return flagMap;
   }
 
@@ -755,6 +764,115 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * A NOTIFY from a statement that reads a table, outside a transaction block, succeeds and is
+   * delivered once with both query protocols.
+   */
+  @Test
+  public void testNotifyAfterTableReadDeliveredOnce() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_src (id INT PRIMARY KEY)");
+      listenerStmt.execute("INSERT INTO notify_src VALUES (1)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+
+      for (String queryMode : Arrays.asList("simple", "extended")) {
+        try (Connection notifierConn =
+                 getConnectionBuilder().withPreferQueryMode(queryMode).connect();
+             Statement stmt = notifierConn.createStatement()) {
+          stmt.execute("SELECT pg_notify('" + CHANNEL + "', '" + queryMode + "') FROM notify_src");
+          stmt.execute("NOTIFY " + CHANNEL + ", '" + queryMode + "_sentinel'");
+        }
+        assertEquals(Arrays.asList(queryMode, queryMode + "_sentinel"),
+            payloadsOf(waitForNotification(listenerConn, CHANNEL, queryMode + "_sentinel")));
+      }
+    }
+  }
+
+  /**
+   * Runs notifier while another session holds the row RETRIED_UPDATE needs, releases it once the
+   * UPDATE is blocked so the UPDATE is retried, and returns the payloads delivered up to a sentinel
+   * sent afterwards on notifierStmt.
+   */
+  private List<String> payloadsAfterRetriedUpdate(Statement notifierStmt,
+      ThrowingRunnable notifier) throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Statement listenerStmt = listenerConn.createStatement();
+         Connection holderConn = getConnectionBuilder().connect();
+         Statement holderStmt = holderConn.createStatement()) {
+      listenerStmt.execute("CREATE TABLE notify_kv (k INT PRIMARY KEY, v INT)");
+      listenerStmt.execute("INSERT INTO notify_kv VALUES (1, 0)");
+      listenerStmt.execute("LISTEN " + CHANNEL);
+      holderStmt.execute("BEGIN");
+      holderStmt.execute("UPDATE notify_kv SET v = v + 1 WHERE k = 1");
+
+      AtomicReference<Exception> error = new AtomicReference<>();
+      Thread thread = new Thread(() -> {
+        try {
+          notifier.run();
+        } catch (Exception e) {
+          error.set(e);
+        }
+      });
+      thread.start();
+      TestUtils.waitFor(() -> getSingleRow(listenerStmt,
+          "SELECT EXISTS (SELECT 1 FROM pg_locks"
+              + " WHERE NOT granted AND relation = 'notify_kv'::regclass)").getBoolean(0),
+          Timeouts.adjustTimeoutSecForBuildType(30_000));
+      holderStmt.execute("COMMIT");
+      thread.join(Timeouts.adjustTimeoutSecForBuildType(60_000));
+      assertFalse("Notifier still blocked", thread.isAlive());
+      assertTrue("Notifier failed: " + error.get(), error.get() == null);
+
+      notifierStmt.execute("NOTIFY " + CHANNEL + ", 'sentinel'");
+      return payloadsOf(waitForNotification(listenerConn, CHANNEL, "sentinel"));
+    }
+  }
+
+  /**
+   * A statement retried after a conflict delivers only its last attempt's notifications and keeps
+   * the ones queued earlier in its transaction. REPEATABLE READ, because READ COMMITTED retry
+   * rolls back internal subtransaction and passes even without the fix.
+   */
+  @Test
+  public void testNotifyFromRetriedStatementDeliveredOnce() throws Exception {
+    try (Connection notifierConn =
+             getConnectionBuilder().withIsolationLevel(IsolationLevel.REPEATABLE_READ).connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      List<String> payloads = payloadsAfterRetriedUpdate(notifierStmt, () -> {
+        notifierStmt.addBatch("NOTIFY " + CHANNEL + ", 'kept'");
+        notifierStmt.addBatch(RETRIED_UPDATE);
+        notifierStmt.executeBatch();
+      });
+      assertEquals("Notifications: " + payloads, 3, payloads.size());
+      assertTrue("Notifications: " + payloads, payloads.contains("kept"));
+    }
+  }
+
+  /**
+   * In READ COMMITTED with the simple query protocol, retry automatically drops the failed
+   * attempt's notification. This checks that rollback to the mark preserves the previous
+   * statement's notification until the retry starts.
+   */
+  @Test
+  public void testNotifyFromRetriedStatementInReadCommittedBlock() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+        Collections.singletonMap("yb_enable_read_committed_isolation", "true"));
+    waitForNotificationsTableReady(connection, getConnectionBuilder());
+
+    try (Connection notifierConn = getConnectionBuilder().withPreferQueryMode("simple").connect();
+         Statement notifierStmt = notifierConn.createStatement()) {
+      List<String> payloads = payloadsAfterRetriedUpdate(notifierStmt, () -> {
+        notifierStmt.execute("BEGIN");
+        notifierStmt.execute("NOTIFY " + CHANNEL + ", 'kept'");
+        notifierStmt.execute(RETRIED_UPDATE);
+        notifierStmt.execute("COMMIT");
+      });
+      assertEquals("Notifications: " + payloads, 3, payloads.size());
+      assertTrue("Notifications: " + payloads, payloads.contains("kept"));
+    }
+  }
+
+  /**
    * Sends a large number of notifications in a single transaction and verifies
    * that all are delivered in order to the listener.
    */
@@ -923,8 +1041,22 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
     Thread.sleep(2000);
 
     final String cloneDb = "clone_db";
-    try (Statement stmt = connection.createStatement()) {
-      stmt.execute("CREATE DATABASE " + cloneDb + " TEMPLATE yugabyte");
+    // A master leader election aborts the clone DDL, and the query layer cannot retry CREATE
+    // DATABASE, so retry the whole statement here.
+    for (int attempt = 0; attempt < 3; ++attempt) {
+      try (Statement stmt = connection.createStatement()) {
+        if (attempt > 0) {
+          stmt.execute("DROP DATABASE IF EXISTS " + cloneDb);
+        }
+        stmt.execute("CREATE DATABASE " + cloneDb + " TEMPLATE yugabyte");
+        break;
+      } catch (SQLException e) {
+        if (attempt == 2 || !e.getMessage().contains("expired or aborted")) {
+          throw e;
+        }
+        LOG.info("Retrying the clone after a DDL abort: {}", e.getMessage());
+        Thread.sleep(1000);
+      }
     }
 
     // Set up listeners on both source and clone databases.
@@ -1687,6 +1819,12 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   public void testSlotCleanupOnTServerDecommission() throws Exception {
     final String channel = "decommission_test";
     YBClient client = miniCluster.getClient();
+
+    markClusterNeedsRecreation();
+    for (HostAndPort master : miniCluster.getMasters().keySet()) {
+      client.setFlag(master, "tserver_unresponsive_timeout_ms",
+          String.valueOf(TSERVER_UNRESPONSIVE_TIMEOUT_MS));
+    }
 
     HostAndPort ts0RpcHostPort = getRpcHostPortForTServer(0);
 

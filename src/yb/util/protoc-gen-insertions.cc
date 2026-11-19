@@ -77,6 +77,10 @@ class InsertAnnotations : public ::google::protobuf::compiler::CodeGenerator {
 
     return true;
   }
+
+  uint64_t GetSupportedFeatures() const override {
+    return FEATURE_PROTO3_OPTIONAL;
+  }
 };
 
 } // namespace yb
