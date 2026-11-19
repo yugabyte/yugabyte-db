@@ -69,12 +69,14 @@ ANALYZE gap_idx_tbl;
 -- gap, fails ord1 = x, and comes first in stream bkt = 1, so a merge that
 -- compared gap without reading it would return the rows out of order.  The
 -- primary key scan reads gap from the table row, and the index-only scan reads
--- gap from the index row.
+-- gap from the index row.  The table's columns come in a different order from
+-- the primary key's, so a scan that read the merge sort columns from the wrong
+-- columns of the table row would also return the rows out of order.
 SET TimeZone = 'UTC';
-CREATE TABLE gap_unread_tbl (bkt int, ord1 timestamptz, gap timestamp, ord2 int,
-    x timestamp, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
+CREATE TABLE gap_unread_tbl (ord2 int, gap timestamp, x timestamp, bkt int,
+    ord1 timestamptz, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
 CREATE INDEX NONCONCURRENTLY gap_unread_tbl_idx ON gap_unread_tbl (bkt ASC, ord1 ASC, gap ASC, ord2 ASC) INCLUDE (x);
-INSERT INTO gap_unread_tbl VALUES
+INSERT INTO gap_unread_tbl (bkt, ord1, gap, ord2, x) VALUES
     (1, '2020-01-02', '2020-01-02', 10, '2020-01-02'),  -- stream bkt = 1
     (1, '2020-01-02', '2020-01-02', 30, '2020-01-02'),
     (2, '2020-01-02', '2020-01-02', 20, '2020-01-02'),  -- stream bkt = 2
