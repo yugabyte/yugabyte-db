@@ -486,5 +486,21 @@ times what the model charges, enough to change the plan of the #36851 query.
 Constants cannot make up that charge, because under preloading the fixed delay
 follows the tables and functions in the database and the catalog tables the
 gflags name. `YbCatalogPreloadRequired()` tells whether a new backend
-preloads. The size of the delay has to come from the database; one candidate
-is the time the leader's own backend took to preload when it started.
+preloads, but the size of the delay has to be measured in the database.
+
+The planner is not the place to measure the delay. A prototype charged the
+time the planning backend's own preload had taken. The prototype gave the
+#36851 query its serial plan with preloading on and changed no cost with
+preloading off, but the planning backend's preload is not a worker's: on the
+laptop on 2026-11-18 a client backend preloaded in 213 to 265 ms and a worker
+in 62 to 71 ms. A client backend's preload time also differs from one
+connection to the next, so the same query got different costs in different
+sessions.
+
+The delays are properties of the cluster and of each database, so they belong
+in statistics gathered outside the planner, as `ANALYZE` gathers the
+statistics of a table: the launch time of a worker, the preload time of a new
+backend in each database, and the catalog priming time per relation. The
+planner would read the stored values, so a plan's cost would change only when
+the statistics are gathered again, and the settings of this model would
+remain the values charged when no statistics exist.
