@@ -20,13 +20,12 @@ public class PauseXClusterUniverses extends XClusterConfigTaskBase {
   }
 
   // The source is locked first. Check both keys then, so a target KMS failure does not leave the
-  // source frozen. A retry only finishes stopping processes, which needs no key.
+  // source frozen.
   @Override
   protected void createPrecheckTasks(Universe universe) {
     super.createPrecheckTasks(universe);
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
-    if (!isFirstTry()
-        || !universe.getUniverseUUID().equals(xClusterConfig.getSourceUniverseUUID())) {
+    if (!universe.getUniverseUUID().equals(xClusterConfig.getSourceUniverseUUID())) {
       return;
     }
     createCheckUniverseKeyInKmsTask(universe);

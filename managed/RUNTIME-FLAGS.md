@@ -370,7 +370,7 @@
 | "Leaderless tablets check timeout" | "yb.checks.leaderless_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the CheckLeaderlessTablets subtask" | "Duration" |
 | "Enable Clock Sync check" | "yb.wait_for_clock_sync.enabled" | "UNIVERSE" | "Enable Clock Sync check" | "Boolean" |
 | "Enable YBC" | "ybc.universe.enabled" | "UNIVERSE" | "Enable YBC for universes during software upgrade" | "Boolean" |
-| "Check KMS universe key before master restarts" | "yb.checks.kms_universe_key.enabled" | "UNIVERSE" | "Before a task stops, starts or restarts masters on an encrypted universe, check that YBA can get the active universe key from KMS, and fail the task if it cannot." | "Boolean" |
+| "Check KMS universe key before master restarts" | "yb.checks.kms_universe_key.enabled" | "UNIVERSE" | "On an encrypted universe, before an upgrade, restart, pause or resume task that can stop, start or restart masters, check that YBA can get the active universe key from KMS, and fail the task if it cannot." | "Boolean" |
 | "Enable comprehensive prechecks" | "yb.checks.comprehensive_prechecks.enabled" | "UNIVERSE" | "When enabled (default), extra runtime prechecks run during universe create/edit and rolling upgrades (e.g. node connectivity and service/command checks). Disable to skip these checks." | "Boolean" |
 | "Target Node Disk Usage Percentage" | "yb.checks.node_disk_size.target_usage_percentage" | "UNIVERSE" | "Percentage of current disk usage that may consume on the target nodes" | "Integer" |
 | "Enable Automated Master Failover" | "yb.auto_master_failover.enabled" | "UNIVERSE" | "Enable Automated Master Failover for universes in background process" | "Boolean" |

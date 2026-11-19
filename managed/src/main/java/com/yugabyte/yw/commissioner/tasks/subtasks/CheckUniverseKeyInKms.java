@@ -6,10 +6,10 @@ import com.google.common.base.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.models.KmsHistoryId;
 import java.util.Base64;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -41,7 +41,10 @@ public class CheckUniverseKeyInKms extends AbstractTaskBase {
   @Override
   public void run() {
     UUID universeUUID = taskParams().getUniverseUUID();
-    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universeUUID);
+    // Not EncryptionAtRestUtil.getActiveKey: it turns a DB error into null, which would pass the
+    // check without asking KMS.
+    KmsHistory activeKey =
+        KmsHistory.getActiveHistory(universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
     if (activeKey == null
         || activeKey.getUuid().keyRef == null
         || activeKey.getUuid().keyRef.isEmpty()) {

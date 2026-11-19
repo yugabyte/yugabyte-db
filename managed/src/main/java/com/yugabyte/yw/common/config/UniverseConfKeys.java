@@ -1347,8 +1347,9 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.checks.kms_universe_key.enabled",
           ScopeType.UNIVERSE,
           "Check KMS universe key before master restarts",
-          "Before a task stops, starts or restarts masters on an encrypted universe, check that YBA"
-              + " can get the active universe key from KMS, and fail the task if it cannot.",
+          "On an encrypted universe, before an upgrade, restart, pause or resume task that can"
+              + " stop, start or restart masters, check that YBA can get the active universe key"
+              + " from KMS, and fail the task if it cannot.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
