@@ -928,52 +928,6 @@ class UniverseDetail extends Component {
           </Tab.Pane>
         ),
 
-        isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
-          <Tab.Pane
-            eventKey={'recovery'}
-            tabtitle="xCluster Disaster Recovery"
-            key="recovery-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-          >
-            <DrConfigList currentUniverseUuid={currentUniverse.data.universeUUID} />
-          </Tab.Pane>
-        ),
-        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
-          <Tab.Pane
-            eventKey={'replication'}
-            tabtitle="xCluster Replication"
-            key="replication-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
-          >
-            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
-            ) : (
-              <ReplicationContainer />
-            )}
-          </Tab.Pane>
-        ),
-        isNotHidden(currentCustomer.data.features, 'universes.details.tasks') && (
-          <Tab.Pane
-            eventKey={'tasks'}
-            tabtitle="Tasks"
-            key="tasks-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.tasks')}
-          >
-            <UniverseTaskList
-              universeUuid={currentUniverse.data.universeUUID}
-              abortTask={this.props.abortTask}
-              hideTaskAbortModal={this.props.hideTaskAbortModal}
-              showTaskAbortModal={this.props.showTaskAbortModal}
-              refreshUniverseData={this.getUniverseInfo}
-              visibleModal={visibleModal}
-            />
-          </Tab.Pane>
-        ),
         showMonitoringTab && (
           <Tab.Pane
             eventKey={'monitoring'}
@@ -1020,6 +974,53 @@ class UniverseDetail extends Component {
                 </div>
               }
               queries={<QueriesViewer isLegacyPAEnabled={isLegacyPAEnabled} />}
+            />
+          </Tab.Pane>
+        ),
+
+        isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
+          <Tab.Pane
+            eventKey={'recovery'}
+            tabtitle="xCluster Disaster Recovery"
+            key="recovery-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+          >
+            <DrConfigList currentUniverseUuid={currentUniverse.data.universeUUID} />
+          </Tab.Pane>
+        ),
+        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
+          <Tab.Pane
+            eventKey={'replication'}
+            tabtitle="xCluster Replication"
+            key="replication-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
+          >
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
+          </Tab.Pane>
+        ),
+        isNotHidden(currentCustomer.data.features, 'universes.details.tasks') && (
+          <Tab.Pane
+            eventKey={'tasks'}
+            tabtitle="Tasks"
+            key="tasks-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.tasks')}
+          >
+            <UniverseTaskList
+              universeUuid={currentUniverse.data.universeUUID}
+              abortTask={this.props.abortTask}
+              hideTaskAbortModal={this.props.hideTaskAbortModal}
+              showTaskAbortModal={this.props.showTaskAbortModal}
+              refreshUniverseData={this.getUniverseInfo}
+              visibleModal={visibleModal}
             />
           </Tab.Pane>
         )
