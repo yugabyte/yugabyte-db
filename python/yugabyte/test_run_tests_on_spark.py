@@ -1999,7 +1999,8 @@ def use_master_status(monkeypatch: pytest.MonkeyPatch, cores: int,
     asked: List[str] = []
     status_json = json.dumps({
         "aliveworkers": cores, "cores": cores, "coresused": sum(cores_by_app.values()),
-        "activeapps": [{"id": app_id, "cores": app_cores, "state": "RUNNING"}
+        "activeapps": [{"id": app_id, "cores": app_cores,
+                        "state": "RUNNING" if app_cores else "WAITING"}
                        for app_id, app_cores in cores_by_app.items()]}).encode('utf-8')
 
     class OwnSparkContext:
@@ -2162,6 +2163,21 @@ def test_idle_cores_and_this_applications_own_do_not_count(
     tests = use_four_tests_of_two_tasks(monkeypatch)
     use_master_status(monkeypatch, 180, {OWN_APP_ID: 30, "app-of-another-run": 1})
 
+    assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
+
+
+@pytest.mark.parametrize("cores_by_app", [{}, {OWN_APP_ID: 0}])
+def test_a_job_on_an_empty_cluster_is_not_packed(
+        monkeypatch: pytest.MonkeyPatch, cores_by_app: Any) -> None:
+    """
+    A cluster that has scaled down to no workers, and this application the first to come to it,
+    whether or not the master lists it yet. The job runs one test per task, so that the scaling
+    daemon sizes the cluster from the number of tests, as it does without packing.
+    """
+    tests = use_four_tests_of_two_tasks(monkeypatch)
+    use_master_status(monkeypatch, 0, cores_by_app)
+
+    assert rts.get_cores_of_other_apps() == 0
     assert rts.plan_spark_tasks(tests, "a-job", False) == [[td] for td in tests]
 
 
