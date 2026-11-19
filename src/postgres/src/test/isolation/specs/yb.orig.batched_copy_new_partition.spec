@@ -1,18 +1,18 @@
-# A partition is added for a range of rows that a batched COPY has yet to
-# load, while the COPY is stopped in its third batch. The table has a DEFAULT
-# partition, which is where those rows would go if COPY kept routing them with
-# the partition list of its first batch (GH #34963).
+# A partition is added for rows that a batched COPY has yet to load, while the
+# COPY is stopped in its third batch by the same advisory lock gate as in
+# yb.orig.batched_copy_concurrent_ddl. If COPY kept routing rows with the
+# partition list of its first batch, those rows would be stored in the
+# DEFAULT partition (GH #34963). No row may end up in the wrong partition.
 #
-# When COPY has put a row in the DEFAULT partition, ATTACH PARTITION must wait
-# for COPY. When COPY has not touched the DEFAULT partition, ATTACH PARTITION
-# does not wait, as in PostgreSQL, and the rows of the new range then fail the
-# DEFAULT partition's constraint; CREATE TABLE ... PARTITION OF waits, and then
-# fails on the rows COPY put in the DEFAULT partition.
-#
-# In the first permutation the COPY fails with "schema version mismatch" on
-# the DEFAULT partition once ATTACH PARTITION has waited for it, where
-# PostgreSQL loads every row and then fails the ATTACH. An unbatched COPY
-# fails the same way.
+# s1_copy_def_first sends its first row to the DEFAULT partition;
+# s1_copy_def_later does not. Expected outcome, by permutation:
+# 1. ATTACH waits for COPY. COPY then fails with "schema version mismatch",
+#    where PostgreSQL loads every row and fails the ATTACH. An unbatched COPY
+#    fails the same way.
+# 2. ATTACH does not wait, as in PostgreSQL, and COPY fails on the DEFAULT
+#    partition's constraint.
+# 3. CREATE TABLE ... PARTITION OF waits for COPY, as in PostgreSQL, and then
+#    fails on the rows COPY stored in the DEFAULT partition.
 
 setup
 {

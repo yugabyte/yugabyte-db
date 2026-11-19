@@ -1,27 +1,21 @@
-# A DDL must wait for a batched COPY (ROWS_PER_TRANSACTION > 0) to finish, as
-# it waits for an unbatched one. COPY commits a YB transaction per batch, and
-# the object locks it took in earlier batches must survive those commits
-# (GH #34963).
+# A DDL must not commit in the middle of a batched COPY (ROWS_PER_TRANSACTION
+# > 0): each batch writes with the indexes, constraints, triggers and
+# partitions that COPY set up for its first batch (GH #34963).
 #
-# Every COPY loads 40 rows in batches of 10. A CHECK constraint calls
-# copy_gate(), which takes advisory lock 1 at row 25, so COPY stops in its
-# third batch, after two batch commits, until s3 releases the lock. s2 runs
-# its DDL while COPY is stopped there, and s3 then reads the catalog to show
-# that the DDL has not taken effect. The DDL must block until COPY completes;
-# a DDL that validates existing rows then fails against rows 21-40.
+# Each permutation:
+# - s3 holds advisory lock 1. copy_gate(), a CHECK constraint on each table,
+#   waits for that lock at row 25, so a COPY of 40 rows in batches of 10 stops
+#   in its third batch, after two batch commits.
+# - s2 runs a DDL there. The (s1_copy_*) marker on the DDL step prints it as
+#   waiting until COPY completes whether or not it blocked, so the s3 catalog
+#   read that follows is the check: the DDL must not have taken effect yet.
+# - s3 releases the lock and COPY finishes. A DDL that validates existing rows
+#   (ADD CHECK, SET NOT NULL, ADD FOREIGN KEY) then fails on rows 21-40.
 #
-# The targets cover each kind of lock COPY holds: the table and its indexes,
-# a partition (locked when the first row is routed to it), and a sequence used
-# by a column default. The DDLs include ones that change what COPY built for
-# its first batch: the columns, the CHECK constraints it checks, and the
-# partitions it routes rows to.
-#
-# The parent table of a foreign key is different. COPY queues the foreign key
-# check of each row and runs the queued checks at the end of a batch, or at the
-# end of the statement when it is not batched. Until then it holds no lock on
-# the parent table, so a DDL on the parent table does not wait while COPY is
-# stopped at row 25. The last two permutations record this, and that COPY then
-# completes against the changed parent table.
+# The parent table of a foreign key is the exception. COPY runs its foreign
+# key checks at the end of each batch and holds no lock on the parent until
+# then, so a DDL on the parent does not wait, batched or not, as in
+# PostgreSQL.
 
 setup
 {
@@ -114,8 +108,8 @@ permutation s3_lock s1_copy_t s2_add_fk(s1_copy_t) s3_constraints s3_unlock s2_c
 permutation s3_lock s1_copy_t s2_create_index(s1_copy_t) s3_indexes s3_unlock s2_index_check s2_counts_t
 permutation s3_lock s1_copy_t s2_add_column(s1_copy_t) s3_columns s3_unlock s2_counts_t
 
-# Dropping one CHECK constraint must not stop COPY from checking the others:
-# rows 26-40 violate ck_b, so COPY fails there.
+# Dropping one CHECK constraint must not stop COPY from checking the other:
+# rows 26-40 violate ck_b, so COPY fails at row 26.
 permutation s3_lock s1_copy_t2 s2_drop_check(s1_copy_t2) s3_ck_a s3_unlock s2_count_t2
 
 # A partition of the target table.
