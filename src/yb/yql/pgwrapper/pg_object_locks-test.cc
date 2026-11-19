@@ -4030,7 +4030,7 @@ TEST_P(PgObjectLocksRetryTest, IndexStaysConsistentUnderRetriedWrites) {
     });
   }
 
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 20; ++i) {
     ASSERT_OK(conn.Execute("CREATE INDEX stress_v ON stress (v)"));
     ASSERT_OK(conn.Fetch("SELECT yb_index_check('stress_v'::regclass)"));
     ASSERT_OK(conn.Execute("DROP INDEX stress_v"));
