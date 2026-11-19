@@ -112,6 +112,7 @@ DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_string(ysql_pg_conf_csv);
+DECLARE_string(ysql_sequence_cache_method);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_bool(ysql_yb_enable_update_reltuples_after_create_index);
 DECLARE_int32(ysql_yb_major_version_upgrade_compatibility);
@@ -3097,6 +3098,47 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverWithPendingSequenceBump) 
     auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
     auto final = ASSERT_RESULT(conn_B.FetchRow<int64_t>("SELECT last_value FROM my_sequence;"));
     EXPECT_EQ(final, kInitialSequenceValue + 9);
+  }
+}
+
+// After A fills the TServer sequence cache, switchover to B, advance the sequence on B past A's
+// cached range, then switchover back to A. Becoming primary again must invalidate A's stale
+// server-side cache so nextval() continues past B's values rather than replaying the old range.
+TEST_F(XClusterDDLReplicationSwitchoverTest, SwitchoverInvalidatesServerSequenceCache) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sequence_cache_method) = "server";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_sequence_cache_minval) = 100;
+
+  const int64_t kInitialSequenceValue = 5000;
+  ASSERT_OK(SetUpClustersAndReplication());
+  {
+    auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    ASSERT_OK(conn_A.ExecuteFormat(
+        "CREATE SEQUENCE my_sequence START WITH $0;", kInitialSequenceValue));
+    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+    // Fetch one value; with server cache this also caches a block of 100 on A's TServer.
+    auto first = ASSERT_RESULT(conn_A.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    ASSERT_EQ(first, kInitialSequenceValue);
+  }
+
+  ASSERT_OK(Switchover());
+  int64_t last_on_b = 0;
+  {
+    auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
+    // Advance past the range still held in A's TServer cache (values after the first nextval).
+    for (int i = 0; i < 150; i++) {
+      last_on_b = ASSERT_RESULT(conn_B.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    }
+  }
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(SwitchoverBack());
+  {
+    auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
+    auto next_on_a = ASSERT_RESULT(conn_A.FetchRow<int64_t>("SELECT nextval('my_sequence')"));
+    // Without invalidate, A would return a stale cached value below last_on_b.
+    LOG(INFO) << "next_on_a=" << next_on_a << " last_on_b=" << last_on_b;
+    ASSERT_GT(next_on_a, last_on_b);
   }
 }
 
