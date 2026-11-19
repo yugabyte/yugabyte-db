@@ -18197,8 +18197,9 @@ check_yb_allow_prehashed_passwords(bool *newVal, void **extra, GucSource source)
 	/*
 	 * ysql_pg_conf_csv is applied in file order, as PGC_S_FILE and the other
 	 * sources below PGC_S_CLIENT. Rejecting a conflicting pair there keeps the
-	 * postmaster from starting. CREATE and ALTER ROLE still refuse it, as do
-	 * SET and the ALTER ROLE validation pass.
+	 * postmaster from starting. SET and the ALTER ROLE validation pass still
+	 * refuse it; where both end up on anyway, CREATE and ALTER ROLE refuse a
+	 * pre-hashed password.
 	 */
 	if (*newVal &&
 		source >= PGC_S_CLIENT &&
@@ -18240,7 +18241,7 @@ yb_password_policy_source_allowed(GucSource source)
  * Mutual exclusion with yb_allow_prehashed_passwords is enforced on the
  * ALTER ROLE validation pass. A conflicting value in the configuration file
  * is not rejected here, so it cannot keep a backend from starting;
- * CREATE/ALTER ROLE still refuses the combination.
+ * CREATE/ALTER ROLE then refuses a pre-hashed password.
  */
 static bool
 check_yb_password_reuse(int *newVal, void **extra, GucSource source)

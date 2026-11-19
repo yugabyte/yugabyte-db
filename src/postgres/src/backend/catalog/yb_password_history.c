@@ -15,9 +15,9 @@
  *
  * The reuse windows are gated by yb_password_reuse_history and
  * yb_password_reuse_interval (superuser-only).  yb_allow_prehashed_passwords
- * rejects an already-hashed PASSWORD clause on its own, and cannot be on
- * while a reuse window is on.  A globals dump has only the verifier, so
- * binary upgrade and yb_binary_restore may load it anyway.
+ * rejects an already-hashed PASSWORD clause on its own, and so does a reuse
+ * window.  A globals dump has only the verifier, so binary upgrade and
+ * yb_binary_restore may load it anyway.
  *
  * Those windows are the session's, loaded for the authenticated user at
  * login.  An admin resetting another role's password does not apply them:
@@ -79,8 +79,7 @@ yb_password_history_catalog_exists(void)
 
 /*
  * Returns true when the given reuse windows are on and enforceable at DDL
- * time. Errors if they are on together with yb_allow_prehashed_passwords,
- * since pre-hashed secrets cannot be compared and reuse would be skipped.
+ * time.
  *
  * warn_if_catalog_missing is set only from YbApplyPasswordHistory(). The
  * pre-hashed check calls this too, and one password change should warn once.
@@ -105,41 +104,20 @@ YbPasswordReusePolicyActive(int reuse_max, int reuse_time_mins,
 		return false;
 	}
 
-	if (yb_allow_prehashed_passwords)	/* path should not be reachable unless
-										 * a setting is overridden */
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("password reuse policy cannot be enforced while pre-hashed passwords are accepted"),
-				 errdetail("yb_allow_prehashed_passwords is on while yb_password_reuse_history is %d and yb_password_reuse_interval is %d.",
-						   reuse_max, reuse_time_mins),
-				 errhint("Set yb_allow_prehashed_passwords to off.")));
-
 	return true;
 }
 
 /*
- * Reject pre-hashed passwords when yb_allow_prehashed_passwords is off.
- * That rejection stands on its own: both reuse windows may be 0, in which
- * case nothing is recorded, but an already-hashed PASSWORD clause is still
- * refused.  Mutual exclusion with the reuse GUCs is enforced at SET time in
- * guc.c and, for combinations that skip that check, at DDL time inside
- * YbPasswordReusePolicyActive().
+ * Reject pre-hashed passwords when yb_allow_prehashed_passwords is off, or
+ * when a reuse window is on: a pre-hashed secret cannot be compared with the
+ * history. guc.c refuses turning both on at SET time, but saved settings for
+ * a role or for all roles can still combine them; a plaintext password is
+ * accepted then too.
  */
 void
 YbCheckPreHashedPasswordAllowed(const char *password)
 {
-	if (!IsYugaByteEnabled())
-		return;
-
-	/*
-	 * Errors when a reuse window is on while pre-hashed passwords are
-	 * accepted. False when no window is configured, or when the history
-	 * catalog does not exist yet.
-	 */
-	(void) YbPasswordReusePolicyActive(yb_password_reuse_history,
-									   yb_password_reuse_interval, false);
-
-	if (yb_allow_prehashed_passwords ||
+	if (!IsYugaByteEnabled() ||
 		get_password_type(password) == PASSWORD_TYPE_PLAINTEXT)
 		return;
 
@@ -152,11 +130,21 @@ YbCheckPreHashedPasswordAllowed(const char *password)
 	if (IsBinaryUpgrade || yb_binary_restore)
 		return;
 
-	ereport(ERROR,
-			(errcode(ERRCODE_INVALID_PASSWORD),
-			 errmsg("pre-hashed passwords are not accepted"),
-			 errdetail("yb_allow_prehashed_passwords is off."),
-			 errhint("Supply the password in plaintext; it is encrypted before being stored.")));
+	if (!yb_allow_prehashed_passwords)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PASSWORD),
+				 errmsg("pre-hashed passwords are not accepted"),
+				 errdetail("yb_allow_prehashed_passwords is off."),
+				 errhint("Supply the password in plaintext; it is encrypted before being stored.")));
+
+	if (YbPasswordReusePolicyActive(yb_password_reuse_history,
+									yb_password_reuse_interval, false))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PASSWORD),
+				 errmsg("pre-hashed passwords are not accepted while a password reuse policy is in force"),
+				 errdetail("yb_password_reuse_history is %d and yb_password_reuse_interval is %d.",
+						   yb_password_reuse_history, yb_password_reuse_interval),
+				 errhint("Supply the password in plaintext; it is encrypted before being stored.")));
 }
 
 /*
