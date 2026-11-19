@@ -897,16 +897,6 @@ Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
   }
 }
 
-bool SchemaPackingStorageContainsVersion(
-    SchemaPackingStorage* schema_packing_storage, uint32_t schema_version) {
-  auto result = schema_packing_storage->GetPacking(schema_version);
-  if (!result.ok()) {
-    DCHECK(result.status().IsNotFound());
-    return false;
-  }
-  return true;
-}
-
 // Copies the schema packing for the given schema version from the tablet metadata into
 // 'schema_packing_storage'.
 bool TryResolveSchemaPackingFromTabletMetadata(
@@ -3256,8 +3246,7 @@ Status GetChangesForCDCSDK(
             }
 
             auto schema_packing_storage = &schema_packing_storages->at(table_id);
-            if (!SchemaPackingStorageContainsVersion(
-                    schema_packing_storage, changed_schema_version)) {
+            if (!schema_packing_storage->HasVersion(changed_schema_version)) {
               schema_packing_storage->AddSchema(changed_schema_version, current_schema);
             }
 
