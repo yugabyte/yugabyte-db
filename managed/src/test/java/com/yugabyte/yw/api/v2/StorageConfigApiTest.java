@@ -4,6 +4,7 @@ package com.yugabyte.yw.api.v2;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
@@ -30,6 +31,7 @@ import com.yugabyte.yba.v2.client.models.AzureSasTokenCredentials;
 import com.yugabyte.yba.v2.client.models.AzureStorageSpec;
 import com.yugabyte.yba.v2.client.models.GcsCredentialType;
 import com.yugabyte.yba.v2.client.models.GcsCredentials;
+import com.yugabyte.yba.v2.client.models.GcsIamCredentials;
 import com.yugabyte.yba.v2.client.models.GcsServiceAccountKeyCredentials;
 import com.yugabyte.yba.v2.client.models.GcsStorageSpec;
 import com.yugabyte.yba.v2.client.models.NfsStorageSpec;
@@ -40,6 +42,7 @@ import com.yugabyte.yba.v2.client.models.OciStorageSpec;
 import com.yugabyte.yba.v2.client.models.S3AccessKeyCredentials;
 import com.yugabyte.yba.v2.client.models.S3CredentialType;
 import com.yugabyte.yba.v2.client.models.S3Credentials;
+import com.yugabyte.yba.v2.client.models.S3CrossCloudFederationCredentials;
 import com.yugabyte.yba.v2.client.models.S3IamCredentials;
 import com.yugabyte.yba.v2.client.models.S3RegionLocation;
 import com.yugabyte.yba.v2.client.models.S3StorageSpec;
@@ -917,6 +920,88 @@ public class StorageConfigApiTest extends FakeDBApplication {
         editedGcs.getData().get("EXTERNAL_ACCOUNT_CONFIG").asText());
     assertTrue(editedGcs.getData().get("USE_IMDSV2").asBoolean());
     assertEquals("G-CREDS", editedGcs.getData().get("GCS_CREDENTIALS_JSON").asText());
+  }
+
+  @Test
+  public void editKeepsCredentialsTheSpecCantExpress() throws ApiException {
+    // Federated, with keys as YBA's own credential where it doesn't federate: v1 accepts it.
+    CustomerConfig s3 = ModelFactory.createS3StorageConfig(customer, "s3-federated");
+    s3.getData()
+        .put("USE_CROSS_CLOUD_FEDERATION", true)
+        .put("IAM_INSTANCE_PROFILE", false)
+        .putObject("IAM_CONFIGURATION")
+        .put("IAM_USER_PROFILE", "yba-profile");
+    s3.update();
+    StorageConfigSpec s3Edit =
+        new StorageConfigSpec()
+            .name("s3-federated-renamed")
+            .storage(
+                new StorageSpec(
+                    new S3StorageSpec()
+                        .storageType(StorageType.StorageTypeS3)
+                        .backupLocation("s3://foo")
+                        .credentials(
+                            new S3Credentials(
+                                new S3CrossCloudFederationCredentials()
+                                    .credentialType(
+                                        S3CredentialType.S3CredentialCrossCloudFederation)))));
+    edit(s3.getConfigUUID(), s3Edit, null);
+    CustomerConfigStorageS3Data editedS3 =
+        (CustomerConfigStorageS3Data) submittedEditedConfig(1).getDataObject();
+    assertTrue(editedS3.useCrossCloudFederation);
+    assertFalse(editedS3.isIAMInstanceProfile);
+    assertEquals("A-KEY", editedS3.awsAccessKeyId);
+    assertEquals("A-SECRET", editedS3.awsSecretAccessKey);
+    assertEquals("yba-profile", editedS3.iamConfig.iamUserProfile);
+
+    // Saved with both a key and IAM, which an earlier YBA accepted.
+    CustomerConfig gcs = ModelFactory.createGcsStorageConfig(customer, "gcs-key-and-iam");
+    gcs.getData().put("USE_GCP_IAM", true);
+    gcs.update();
+    StorageConfigSpec gcsEdit =
+        new StorageConfigSpec()
+            .name("gcs-key-and-iam-renamed")
+            .storage(
+                new StorageSpec(
+                    new GcsStorageSpec()
+                        .storageType(StorageType.StorageTypeGCS)
+                        .backupLocation("gs://foo")
+                        .credentials(
+                            new GcsCredentials(
+                                new GcsIamCredentials()
+                                    .credentialType(GcsCredentialType.GcsCredentialIam)))));
+    edit(gcs.getConfigUUID(), gcsEdit, null);
+    CustomerConfig editedGcs = submittedEditedConfig(2);
+    assertTrue(editedGcs.getData().get("USE_GCP_IAM").asBoolean());
+    assertEquals("G-CREDS", editedGcs.getData().get("GCS_CREDENTIALS_JSON").asText());
+  }
+
+  @Test
+  public void etagFollowsWhatUsesTheConfig() throws ApiException {
+    // Conditional GET is on in application.test.conf.
+    UUID uuid = createActive(nfsSpec("nfs", "/mnt/a"));
+    String before = etag(storageConfigApi.getStorageConfigWithHttpInfo(customer.getUuid(), uuid));
+    Universe universe = ModelFactory.createUniverse("scheduled", customer.getId());
+    ModelFactory.createScheduleBackup(customer.getUuid(), universe.getUniverseUUID(), uuid);
+
+    String after = etag(storageConfigApi.getStorageConfigWithHttpInfo(customer.getUuid(), uuid));
+
+    assertNotEquals(before, after);
+    ApiException stale =
+        assertThrows(ApiException.class, () -> edit(uuid, nfsSpec("nfs-1", "/mnt/a"), before));
+    assertEquals(412, stale.getCode());
+  }
+
+  @Test
+  public void editOfDataThatNoLongerParses() throws ApiException {
+    CustomerConfig nfs = ModelFactory.createNfsStorageConfig(customer, "old", "/mnt/a");
+    // A field whose type changed since an older YBA wrote it.
+    nfs.getData().putObject("NFS_BUCKET").put("name", "yugabyte_backup");
+    nfs.update();
+
+    assertEquals(
+        nfs.getConfigUUID(),
+        edit(nfs.getConfigUUID(), nfsSpec("old-renamed", "/mnt/a"), null).getResourceUuid());
   }
 
   private static String etag(ApiResponse<StorageConfig> response) {

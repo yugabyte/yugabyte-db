@@ -85,7 +85,8 @@ public class EditStorageConfig extends AbstractTaskBase {
       }
       CustomerConfig stored = CustomerConfig.get(params().customerUUID, params().configUUID);
       checkUnchanged(stored);
-      if (normalized(edited).equals(normalized(stored))) {
+      JsonNode storedData = normalized(stored);
+      if (storedData != null && storedData.equals(normalized(edited))) {
         log.info(
             "Storage config {}: only the name changed, skipping its storage check",
             params().configUUID);
@@ -130,8 +131,15 @@ public class EditStorageConfig extends AbstractTaskBase {
    * The config's data as the v2 edit writes it: the stored JSON can differ from it in the fields'
    * order, defaults and fields this YBA no longer has, none of which is a storage change.
    */
+  @Nullable
   private static JsonNode normalized(CustomerConfig config) {
-    return StorageConfigMapper.DATA_MAPPER.valueToTree(config.getDataObjectLenient());
+    try {
+      return StorageConfigMapper.DATA_MAPPER.valueToTree(config.getDataObjectLenient());
+    } catch (RuntimeException e) {
+      // Data that no longer parses: compared as changed, so that the storage check runs.
+      log.warn("Storage config {} data doesn't parse: {}", config.getConfigUUID(), e.getMessage());
+      return null;
+    }
   }
 
   private void checkUnchanged(@Nullable CustomerConfig config) {

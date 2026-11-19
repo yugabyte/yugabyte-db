@@ -127,14 +127,15 @@ public class CustomerConfigTest extends FakeDBApplication {
     cc.update();
     assertTrue(CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime() > created);
 
-    Thread.sleep(5);
-    long renamed = CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime();
     cc.setState(CustomerConfig.ConfigState.Validating);
     cc.update();
+    long validating = CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime();
     // Bulk state updates set it too.
     Thread.sleep(5);
-    CustomerConfig.updateStateIfValidating(cc.getConfigUUID(), CustomerConfig.ConfigState.Active);
-    assertTrue(CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime() > renamed);
+    assertTrue(
+        CustomerConfig.updateStateIfValidating(
+            cc.getConfigUUID(), CustomerConfig.ConfigState.Active));
+    assertTrue(CustomerConfig.get(cc.getConfigUUID()).getUpdateTime().getTime() > validating);
     // Not part of the v1 config JSON.
     assertFalse(Json.toJson(cc).has("updateTime"));
   }

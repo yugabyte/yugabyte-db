@@ -24,7 +24,9 @@ import java.util.Map;
  * Fills the secrets an edit of a storage config leaves out from the stored config. Secrets are
  * never returned, so a client editing a config can't send them back: a secret left out keeps the
  * stored one, when the stored config has the same credential type (an S3 config edited from IAM to
- * access keys needs its keys). An Azure region's SAS token is kept by region.
+ * access keys needs its keys). An Azure region's SAS token is kept by region. The credentials a
+ * spec can't express at all (S3 federation with keys, a GCS key kept alongside IAM) are kept by
+ * StorageConfigHandler after the spec is mapped.
  */
 final class StorageConfigSecrets {
 

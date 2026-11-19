@@ -144,6 +144,17 @@ public class EditStorageConfigTest extends FakeDBApplication {
   }
 
   @Test
+  public void renameOfDataThatNoLongerParsesRunsTheCheck() {
+    // A field whose type changed since an older YBA wrote it: compared as changed.
+    stored.getData().putObject("NFS_BUCKET").put("name", "yugabyte_backup");
+    stored.update();
+    EditStorageConfig.Params params = params(edit("renamed", null));
+
+    assertThrows(AssertionError.class, task(failingValidator(), params)::run);
+    assertEquals("nfs", reloaded().getConfigName());
+  }
+
+  @Test
   public void passingCheckAppliesTheEdit() {
     task(params(edit("nfs", withRegion("/mnt/west")))).run();
 

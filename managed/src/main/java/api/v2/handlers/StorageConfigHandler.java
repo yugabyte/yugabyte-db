@@ -40,7 +40,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.UnsavedStorageConfigs;
-import com.yugabyte.yw.common.http.conditional.StorageConfigRevisionProvider;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -345,7 +344,13 @@ public class StorageConfigHandler {
       throw badRequest(
           "storage.storage_type can't change: the configuration is " + stored.getName());
     }
-    StorageConfigSecrets.keepStored(storage, stored.getDataObjectLenient());
+    // Null when the stored data no longer parses: the edit then keeps nothing from it, so the
+    // client
+    // must send the secrets, and the task runs the storage check.
+    CustomerConfigData storedData = storedDataOrNull(stored);
+    if (storedData != null) {
+      StorageConfigSecrets.keepStored(storage, storedData);
+    }
     checkSpec(storage);
     String name = spec.getName().trim();
     if (name.isEmpty()) {
@@ -361,7 +366,9 @@ public class StorageConfigHandler {
     if (!StringUtils.equals(backupLocation(edited), backupLocation(stored))) {
       throw badRequest("storage.backup_location can't change");
     }
-    keepUnmodelledFields(edited, stored);
+    if (storedData != null) {
+      keepWhatTheSpecCantExpress(edited, storedData);
+    }
     edited.setConfigName(name);
     try {
       configValidator.validateConfigData(edited);
@@ -387,33 +394,72 @@ public class StorageConfigHandler {
   }
 
   /**
-   * Keeps the stored config's v1 data fields that the v2 spec doesn't model, which the edited data,
-   * built from the spec, would otherwise drop: the S3 proxy (deprecated, but still used by YBC and
-   * YBA's STS calls) and the GCS external account config and IMDSv2 flag.
+   * Keeps what the stored config has that the v2 spec can't express, which the edited data, built
+   * from the spec, would otherwise drop or rewrite:
+   *
+   * <ul>
+   *   <li>the S3 proxy (deprecated, but still used by YBC and YBA's STS calls);
+   *   <li>for an S3 config federated both before and after the edit, the access keys, IAM flag and
+   *       IAM settings that v1 lets it keep: the keys are YBA's own credential where it doesn't
+   *       federate, e.g. after an HA promotion;
+   *   <li>the GCS external account config and IMDSv2 flag;
+   *   <li>for a GCS config on IAM both before and after the edit, the service account key that v1
+   *       lets a config saved with both keep.
+   * </ul>
    */
-  private static void keepUnmodelledFields(CustomerConfig edited, CustomerConfig stored) {
+  private static void keepWhatTheSpecCantExpress(
+      CustomerConfig edited, CustomerConfigData storedData) {
     CustomerConfigData editedData = edited.getDataObject();
-    CustomerConfigData storedData = stored.getDataObjectLenient();
     if (editedData instanceof CustomerConfigStorageS3Data
         && storedData instanceof CustomerConfigStorageS3Data) {
-      ((CustomerConfigStorageS3Data) editedData).proxySetting =
-          ((CustomerConfigStorageS3Data) storedData).proxySetting;
+      CustomerConfigStorageS3Data s3 = (CustomerConfigStorageS3Data) editedData;
+      CustomerConfigStorageS3Data storedS3 = (CustomerConfigStorageS3Data) storedData;
+      s3.proxySetting = storedS3.proxySetting;
+      if (s3.useCrossCloudFederation && storedS3.useCrossCloudFederation) {
+        s3.awsAccessKeyId = storedS3.awsAccessKeyId;
+        s3.awsSecretAccessKey = storedS3.awsSecretAccessKey;
+        s3.isIAMInstanceProfile = storedS3.isIAMInstanceProfile;
+        s3.iamConfig = storedS3.iamConfig;
+      }
     } else if (editedData instanceof CustomerConfigStorageGCSData
         && storedData instanceof CustomerConfigStorageGCSData) {
       CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) editedData;
-      gcs.externalAccountConfig = ((CustomerConfigStorageGCSData) storedData).externalAccountConfig;
-      gcs.useImdsv2 = ((CustomerConfigStorageGCSData) storedData).useImdsv2;
+      CustomerConfigStorageGCSData storedGcs = (CustomerConfigStorageGCSData) storedData;
+      gcs.externalAccountConfig = storedGcs.externalAccountConfig;
+      gcs.useImdsv2 = storedGcs.useImdsv2;
+      if (gcs.useGcpIam && storedGcs.useGcpIam && gcs.gcsCredentialsJson == null) {
+        gcs.gcsCredentialsJson = storedGcs.gcsCredentialsJson;
+      }
     } else {
       return;
     }
     edited.setData((ObjectNode) StorageConfigMapper.DATA_MAPPER.valueToTree(editedData));
   }
 
+  /** The stored data, or null if it no longer parses (a field whose type changed since). */
+  @Nullable
+  private static CustomerConfigData storedDataOrNull(CustomerConfig stored) {
+    try {
+      return stored.getDataObjectLenient();
+    } catch (RuntimeException e) {
+      log.warn(
+          "Editing storage config {} as a new config: its stored data doesn't parse: {}",
+          stored.getConfigUUID(),
+          e.getMessage());
+      return null;
+    }
+  }
+
   private static String backupLocation(CustomerConfig config) {
     return config.getData().path(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText(null);
   }
 
-  /** One edit at a time: the task of an earlier edit would fail this one's apply anyway. */
+  /**
+   * Refuses an edit while the task of an earlier one runs, so that clients don't race each other.
+   * It doesn't exclude anything: two concurrent requests can both pass it, and an earlier edit that
+   * fails doesn't block a later one. What prevents a lost update is the task's check that the
+   * config is unchanged since the request.
+   */
   private static void checkNoEditInProgress(UUID scUUID) {
     for (CustomerTask task : CustomerTask.findIncompleteByTargetUUID(scUUID)) {
       if (task.getType() == CustomerTask.TaskType.Edit) {

@@ -2182,10 +2182,10 @@ paths:
         access: when the runtime flag yb.api.conditional_get.enabled is set, the response
         carries an
 
-        ETag, to send in If-None-Match (304 Not Modified while the configuration is
-        unchanged) or in
+        ETag, to send in If-None-Match (304 Not Modified while the configuration and
+        what uses it are
 
-        the If-Match of editStorageConfig.
+        unchanged) or in the If-Match of editStorageConfig.
 
         '
       tags:
@@ -2215,7 +2215,7 @@ paths:
           sourceType: endpoint
         checkOnlyPermission: true
       x-yba-api-conditional-get:
-        provider: com.yugabyte.yw.common.http.conditional.StorageConfigRevisionProvider
+        provider: api.v2.handlers.StorageConfigRevisionProvider
         resourcePathSegment: storage-configs
       x-yba-api-since: 2026.2.0.0
       x-yba-api-visibility: preview
@@ -2270,7 +2270,10 @@ paths:
         Early access: when yb.api.conditional_get.enabled is set, If-Match takes the
         ETag of
 
-        getStorageConfig, and a configuration changed since then is answered 412.
+        getStorageConfig, and a configuration changed since then, or whose usage changed,
+        is answered
+
+        412.
 
         '
       tags:
