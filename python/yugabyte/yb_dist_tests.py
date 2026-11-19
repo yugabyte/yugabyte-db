@@ -60,6 +60,10 @@ class TestConfig:
     rel_build_root: str
     archive_sha256sum: Optional[str]
     compiler_type: str
+    # gs:// URL of archive_for_workers when the workers download it from GCS instead of receiving
+    # it through Spark. Set by the driver once the archive is there (uploaded, or found from an
+    # earlier run); None otherwise.
+    archive_gcs_url: Optional[str]
 
     def __init__(
             self,
@@ -77,6 +81,7 @@ class TestConfig:
         self.rel_build_root = rel_build_root
         self.archive_sha256sum = archive_sha256sum
         self.compiler_type = compiler_type
+        self.archive_gcs_url = None
 
     def get_run_test_script_path(self) -> str:
         return os.path.join(self.yb_src_root, 'build-support', 'run-test.sh')

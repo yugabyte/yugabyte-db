@@ -409,7 +409,25 @@ externalResolvers := {
 }
 
 (Compile / compile) := (Compile / compile).dependsOn(buildDependentArtifacts).value
-(Test / test) := (Test / test).dependsOn(testDependentArtifacts).value
+// The support bundle Go helpers aren't Maven modules, so mvn test never reaches them. Their tests
+// run after the Java tests, and a failure fails `sbt test`. testDependentArtifacts can't carry
+// this: sbt ignores its exit status.
+(Test / test) := {
+  val javaTests = (Test / test).dependsOn(testDependentArtifacts).result.value
+  ybLog("Testing support bundle Go helpers...")
+  val goStatus = Process("bash devops/supportbundle/run_go_tests.sh", baseDirectory.value).!
+  javaTests.toEither.left.foreach(incomplete => throw incomplete)
+  goStatus match {
+    case 0 =>
+    case 2 =>
+      sys.error(
+        "Support bundle Go tests could not run: go is missing, a Go download failed, or the" +
+          " report folders could not be cleared or created; see the log above. This is a" +
+          " tooling failure, not a test failure.")
+    case _ =>
+      sys.error("Support bundle Go tests failed: see devops/supportbundle/*/target/test-reports")
+  }
+}
 
 (Compile / compilePlatform) := {
   Def.sequential(
@@ -1050,6 +1068,11 @@ Universal / javaOptions += "-J-XX:+PreserveFramePointer"
 
 // Disable shutdown hook of ebean to let play manage its lifecycle.
 Universal / javaOptions += "-Debean.registerShutdownHook=false"
+
+// Turn off HotSpot's Base64 encode and decode intrinsics on every CPU. The AVX-512 decode one can
+// write out of bounds on malformed input (CVE-2026-114938). Base64 then runs the bounds-checked
+// Java code, with the same results.
+Universal / javaOptions += "-J-XX:-UseBASE64Intrinsics"
 
 Universal / mappings ++= {
   compileYbaCliBinary.value.flatMap { folderPath =>
