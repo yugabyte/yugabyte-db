@@ -32,6 +32,7 @@
 #include "access/htup_details.h"
 #include "access/nbtree.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "access/yb_cost.h"
 #include "access/yb_parallel_scan.h"
 #include "access/yb_scan_core.h"
@@ -3717,6 +3718,32 @@ YbBeginScan(Relation table,
 }
 
 /*
+ * A scan that the executor does not set up sees the transaction's writes of
+ * earlier commands only, as a heap scan would with the given snapshot: by the
+ * snapshot's command id, or by the current one for a catalog scan without a
+ * snapshot, which would use the catalog snapshot.  Other snapshot types see
+ * all of the transaction's writes.
+ */
+void
+YbSetScanReadCommandId(YbOpaque ybScan, Snapshot snapshot)
+{
+	CommandId	command_id;
+
+	if (snapshot == InvalidSnapshot)
+	{
+		if (!IsTransactionState())
+			return;
+		command_id = GetCurrentCommandId(false);
+	}
+	else if (IsMVCCSnapshot(snapshot))
+		command_id = snapshot->curcid;
+	else
+		return;
+
+	HandleYBStatus(YBCPgSetReadCommandId(ybScan->handle, command_id));
+}
+
+/*
  * There are two levels of recheck:
  * - YB recheck
  * - PG recheck
@@ -4128,6 +4155,7 @@ ybc_heap_beginscan(Relation relation,
 								 yb_options->fetch_ybctids_only);
 
 	Assert(!YbNeedsPgRecheck(ybDesc->ybscan));
+	YbSetScanReadCommandId(ybDesc->ybscan, snapshot);
 
 	if (yb_options->rowmark != YBC_NO_ROW_MARK)
 	{
