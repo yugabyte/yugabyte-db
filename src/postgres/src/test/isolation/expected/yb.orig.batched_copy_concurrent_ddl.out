@@ -187,6 +187,68 @@ step s2_counts_t: SELECT b, count(*) FROM t GROUP BY b ORDER BY b;
 (2 rows)
 
 
+starting permutation: s3_lock s1_copy_t s2_add_column s3_columns s3_unlock s2_counts_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_add_column: ALTER TABLE t ADD COLUMN x int DEFAULT 7; <waiting ...>
+step s3_columns: SELECT count(*) FROM pg_attribute WHERE attrelid = 't'::regclass AND attname = 'x';
+count
+-----
+    0
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step s2_add_column: <... completed>
+step s2_counts_t: SELECT b, count(*) FROM t GROUP BY b ORDER BY b;
+  b|count
+---+-----
+  1|   20
+999|   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_t2 s2_drop_check s3_ck_a s3_unlock s2_count_t2
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t2: COPY t2 FROM PROGRAM $$seq -f "%g,1" 1 25; seq -f "%g,1500" 26 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_drop_check: ALTER TABLE t2 DROP CONSTRAINT ck_a; <waiting ...>
+step s3_ck_a: SELECT count(*) FROM pg_constraint WHERE conrelid = 't2'::regclass AND conname = 'ck_a';
+count
+-----
+    1
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t2: <... completed>
+ERROR:  new row for relation "t2" violates check constraint "ck_b"
+step s2_drop_check: <... completed>
+step s2_count_t2: SELECT count(*), max(b) FROM t2;
+count|max
+-----+---
+   20|  1
+(1 row)
+
+
 starting permutation: s3_lock s1_copy_pt s2_index_partition s3_indexes s3_unlock s2_count_pt
 step s3_lock: SELECT pg_advisory_lock(1);
 pg_advisory_lock
@@ -214,6 +276,36 @@ step s2_count_pt: SELECT count(*) FROM pt;
 count
 -----
    40
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_pt s2_detach s3_pt1_attached s3_unlock s2_where_pt1
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_pt: COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_detach: ALTER TABLE pt DETACH PARTITION pt1; <waiting ...>
+step s3_pt1_attached: SELECT count(*) FROM pg_inherits WHERE inhrelid = 'pt1'::regclass;
+count
+-----
+    1
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_pt: <... completed>
+step s2_detach: <... completed>
+step s2_where_pt1: SELECT (SELECT count(*) FROM pt) AS via_parent, (SELECT count(*) FROM pt1) AS in_pt1;
+via_parent|in_pt1
+----------+------
+         0|    40
 (1 row)
 
 
