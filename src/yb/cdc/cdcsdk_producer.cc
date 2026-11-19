@@ -114,7 +114,8 @@ DEFINE_RUNTIME_bool(cdc_process_change_metadata_op_below_request_safe_time, true
                     "If 'true', GetChanges processes a CHANGE_METADATA_OP at or below the request "
                     "safe time, but above the consistent snapshot time, instead of skipping it as "
                     "already streamed. Such an op can still be uncommitted when an earlier "
-                    "response's safe time passes it, and skipping it leaves a stale cached schema.");
+                    "response's safe time passes it, and skipping it leaves a stale cached "
+                    "schema.");
 
 DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "If 'true', CDC streaming will filter out intents from aborted "
