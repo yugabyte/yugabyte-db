@@ -294,7 +294,7 @@ public class YsqlQueryExecutor {
                   authEnabled,
                   cpEnabled,
                   logCmdOutput)
-              .processErrors("Ysql Query Execution Error");
+              .processErrors("Ysql Query Execution Error", logCmdOutput);
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));
       return response;
@@ -390,7 +390,7 @@ public class YsqlQueryExecutor {
           nodeUniverseManager
               .runYsqlBatchCommands(
                   node, universe, dbName, queries, timeoutSec, authEnabled, cpEnabled, logCmdOutput)
-              .processErrors("YSQL query batch execution error");
+              .processErrors("YSQL query batch execution error", logCmdOutput);
       response.put("result", shellResponse.message);
     } catch (RuntimeException e) {
       response.put("error", ShellResponse.cleanedUpErrorMessage(e.getMessage()));

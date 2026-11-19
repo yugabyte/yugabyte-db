@@ -24,8 +24,6 @@ public class ShellResponse {
   public String message = null;
   public long durationMs = 0;
   public String description = null;
-  // False when the command ran with logCmdOutput false: message must stay out of the log.
-  public boolean logCmdOutput = true;
 
   public static ShellResponse create(int code, String message) {
     ShellResponse sr = new ShellResponse();
@@ -48,11 +46,22 @@ public class ShellResponse {
     return processErrors(() -> errorMessage);
   }
 
+  // Same as processErrors(errorMessage), but with logOutput false the logged error leaves out the
+  // output, for commands run with logCmdOutput false. The thrown exception still has the output.
+  public ShellResponse processErrors(String errorMessage, boolean logOutput) {
+    return processErrors(() -> errorMessage, logOutput);
+  }
+
   // Call this method to process or validate the exit code with custom error message supplier if
   // required. It performs delayed evaluation of the error message only when the code is not success
   // and avoids unnecessary computation of the error message when the code is success.
   public ShellResponse processErrors(Supplier<String> errorMessageSupplier) {
+    return processErrors(errorMessageSupplier, true);
+  }
+
+  private ShellResponse processErrors(Supplier<String> errorMessageSupplier, boolean logOutput) {
     if (code != ERROR_CODE_SUCCESS) {
+      String loggedOutput = logOutput ? message : OUTPUT_NOT_LOGGED;
       String errorMessage = errorMessageSupplier.get();
       String formatted = StringUtils.isBlank(errorMessage) ? "Error occurred" : errorMessage;
       String logged = formatted;
@@ -63,11 +72,11 @@ public class ShellResponse {
             logged = formatted;
             throw new CancellationException(formatted);
           case ERROR_CODE_RECOVERABLE_ERROR:
-            logged = withOutput(formatted, loggedOutput());
+            logged = withOutput(formatted, loggedOutput);
             formatted = withOutput(formatted, message);
             throw new RecoverableException(formatted);
           default:
-            logged = withOutput(formatted, loggedOutput());
+            logged = withOutput(formatted, loggedOutput);
             formatted = withOutput(formatted, message);
             throw new RuntimeException(formatted);
         }
@@ -80,11 +89,6 @@ public class ShellResponse {
 
   private String withOutput(String errorMessage, String output) {
     return String.format("%s. Code: %d. Output: %s", errorMessage, code, output);
-  }
-
-  // The caller still gets the output through the exception.
-  private String loggedOutput() {
-    return logCmdOutput ? message : OUTPUT_NOT_LOGGED;
   }
 
   public static String cleanedUpErrorMessage(String message) {

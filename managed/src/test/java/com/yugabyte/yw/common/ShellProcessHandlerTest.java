@@ -103,15 +103,6 @@ public class ShellProcessHandlerTest extends TestCase {
   }
 
   @Test
-  public void testResponseRecordsWhetherOutputMayBeLogged() {
-    List<String> command = List.of("pwd");
-    ShellProcessContext logged = ShellProcessContext.builder().logCmdOutput(true).build();
-    ShellProcessContext unlogged = ShellProcessContext.builder().logCmdOutput(false).build();
-    assertTrue(shellProcessHandler.run(command, logged).isLogCmdOutput());
-    assertFalse(shellProcessHandler.run(command, unlogged).isLogCmdOutput());
-  }
-
-  @Test
   public void testRunWithInvalidDevopsHome() {
     when(mockConfig.getString("yb.devops.home")).thenReturn("/foo");
     List<String> command = new ArrayList<String>();

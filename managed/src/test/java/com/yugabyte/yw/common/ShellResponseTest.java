@@ -50,32 +50,27 @@ public class ShellResponseTest {
   }
 
   @Test
-  public void processErrorsLogsOutputOfLoggedCommand() {
-    ShellResponse shellResponse = ShellResponse.create(1, "sentinel_output");
-
+  public void processErrorsLogsOutputWhenAsked() {
     assertThat(
-        loggedProcessErrors(shellResponse),
-        equalTo("Query failed. Code: 1. Output: sentinel_output"));
+        loggedProcessErrors(true), equalTo("Query failed. Code: 1. Output: sentinel_output"));
   }
 
   @Test
-  public void processErrorsKeepsOutputOfUnloggedCommandOutOfTheLog() {
-    ShellResponse shellResponse = ShellResponse.create(1, "sentinel_output");
-    shellResponse.logCmdOutput = false;
-
-    assertThat(
-        loggedProcessErrors(shellResponse), equalTo("Query failed. Code: 1. Output: <not logged>"));
+  public void processErrorsKeepsOutputOutOfTheLogWhenAsked() {
+    assertThat(loggedProcessErrors(false), equalTo("Query failed. Code: 1. Output: <not logged>"));
   }
 
   // Returns the log of processErrors, after checking that the exception still has the output.
-  private static String loggedProcessErrors(ShellResponse shellResponse) {
+  private static String loggedProcessErrors(boolean logOutput) {
+    ShellResponse shellResponse = ShellResponse.create(1, "sentinel_output");
     Logger logger = (Logger) LoggerFactory.getLogger(ShellResponse.class);
     ListAppender<ILoggingEvent> appender = new ListAppender<>();
     appender.start();
     logger.addAppender(appender);
     try {
       RuntimeException e =
-          assertThrows(RuntimeException.class, () -> shellResponse.processErrors("Query failed"));
+          assertThrows(
+              RuntimeException.class, () -> shellResponse.processErrors("Query failed", logOutput));
       assertThat(e.getMessage(), equalTo("Query failed. Code: 1. Output: sentinel_output"));
     } finally {
       logger.detachAppender(appender);

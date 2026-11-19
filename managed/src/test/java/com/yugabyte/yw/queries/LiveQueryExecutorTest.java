@@ -11,6 +11,12 @@ package com.yugabyte.yw.queries;
 
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -21,6 +27,7 @@ import com.yugabyte.yw.queries.QueryHelper.QueryApi;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
+import play.libs.Json;
 
 public class LiveQueryExecutorTest {
 
@@ -30,7 +37,7 @@ public class LiveQueryExecutorTest {
   @Before
   public void setUp() {
     liveQueryExecutor =
-        new LiveQueryExecutor("test-node", "test-host", 12000, QueryApi.YCQL, mockClient);
+        new LiveQueryExecutor("test-node", "test-host", 12000, QueryApi.YCQL, mockClient, true);
   }
 
   @Test
@@ -43,5 +50,21 @@ public class LiveQueryExecutorTest {
     ArrayNode nodes = (ArrayNode) processResult.get("ycql");
     nodes.elements().forEachRemaining(node -> ((ObjectNode) node).remove("id"));
     assertThat(processResult, equalTo(expectedResult));
+  }
+
+  @Test
+  public void testRpczBodyIsLoggedOnlyWhenAllowed() throws Exception {
+    ApiHelper apiHelper = mock(ApiHelper.class);
+    when(apiHelper.getRequest(anyString())).thenReturn(Json.newObject());
+    when(apiHelper.getRequestWithoutLoggingBody(anyString())).thenReturn(Json.newObject());
+    String url = "http://test-host:13000/rpcz";
+
+    new LiveQueryExecutor("test-node", "test-host", 13000, QueryApi.YSQL, apiHelper, true).call();
+    verify(apiHelper).getRequest(url);
+    verify(apiHelper, never()).getRequestWithoutLoggingBody(anyString());
+
+    new LiveQueryExecutor("test-node", "test-host", 13000, QueryApi.YSQL, apiHelper, false).call();
+    verify(apiHelper).getRequestWithoutLoggingBody(url);
+    verify(apiHelper, times(1)).getRequest(anyString());
   }
 }

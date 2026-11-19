@@ -25,21 +25,30 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
   private final String nodeName;
   private final int port;
   private final QueryHelper.QueryApi apiType;
+  // The response holds the text of the running queries.
+  private final boolean logResponse;
 
   LiveQueryExecutor(
-      String nodeName, String hostName, int port, QueryHelper.QueryApi api, ApiHelper apiHelper) {
+      String nodeName,
+      String hostName,
+      int port,
+      QueryHelper.QueryApi api,
+      ApiHelper apiHelper,
+      boolean logResponse) {
     this.nodeName = nodeName;
     this.hostName = hostName;
     this.port = port;
     this.apiType = api;
     this.apiHelper = apiHelper;
+    this.logResponse = logResponse;
   }
 
   @Override
   public JsonNode call() throws Exception {
     String url = String.format("http://%s:%d/rpcz", hostName, port);
     try {
-      JsonNode response = apiHelper.getRequest(url);
+      JsonNode response =
+          logResponse ? apiHelper.getRequest(url) : apiHelper.getRequestWithoutLoggingBody(url);
       if (apiType == QueryHelper.QueryApi.YSQL) {
         return processYSQLRowData(response);
       } else {

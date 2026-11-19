@@ -113,6 +113,13 @@ public class ApiHelper {
   // Common helper method to invoke the processor function.
   private HttpResponse handleHttpRequest(
       WSRequest request, Function<WSRequest, CompletionStage<WSResponse>> processor) {
+    return handleHttpRequest(request, processor, true);
+  }
+
+  private HttpResponse handleHttpRequest(
+      WSRequest request,
+      Function<WSRequest, CompletionStage<WSResponse>> processor,
+      boolean logUnparsableBody) {
     CompletionStage<HttpResponse> responsePromise =
         processor
             .apply(request)
@@ -123,11 +130,19 @@ public class ApiHelper {
                     body = Json.parse(r.getBody());
                   } catch (RuntimeException e) {
                     // Suppress and report as HTTP status.
-                    log.warn(
-                        "Unexpected exception while parsing response body {} from {} - {}",
-                        r.getBody(),
-                        request.getUrl(),
-                        e.getMessage());
+                    if (logUnparsableBody) {
+                      log.warn(
+                          "Unexpected exception while parsing response body {} from {} - {}",
+                          r.getBody(),
+                          request.getUrl(),
+                          e.getMessage());
+                    } else {
+                      // The parser's message can quote the body.
+                      log.warn(
+                          "Unexpected exception while parsing response body from {} - {}",
+                          request.getUrl(),
+                          e.getClass().getSimpleName());
+                    }
                   }
                   return new HttpResponse(request.getUrl(), r.getStatus(), body);
                 });
@@ -439,6 +454,18 @@ public class ApiHelper {
       @Nullable Map<String, String> queryParams,
       @Nullable Duration timeout) {
     return getHttpRequest(url, headers, queryParams, timeout).getBodyOrThrow();
+  }
+
+  /**
+   * Same as {@link #getRequest(String)}, but a response body that doesn't parse is not logged, for
+   * responses that hold data such as users' query text.
+   */
+  public JsonNode getRequestWithoutLoggingBody(String url) {
+    return handleHttpRequest(
+            requestWithHeaders(url, null /* headers */, null /* queryParams */, null /* timeout */),
+            WSRequest::get,
+            false /* logUnparsableBody */)
+        .getBodyOrThrow();
   }
 
   public HttpResponse deleteHttpRequest(
