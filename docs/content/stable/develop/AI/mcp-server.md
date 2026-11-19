@@ -22,7 +22,8 @@ With the YugabyteDB MCP Server, developers can:
 - Map authenticated users to database roles via OIDC identity mapping
 - Integrate instantly with AI coding agents such as Claude Desktop, Cursor, and Windsurf
 
-To manage Serverless Postgres clusters in YugabyteDB Aeon, use the [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/). The AMP MCP server lists, creates, updates, and deletes clusters, branches, and endpoints. To use the YugabyteDB MCP Server with a database on a Serverless Postgres cluster, see [Query a Serverless Postgres endpoint](/stable/reference/mcp/#query-a-serverless-postgres-endpoint).
+To manage Serverless Postgres clusters in YugabyteDB Aeon, use the [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/). The AMP MCP Server lists, creates, and deletes clusters, branches, and endpoints, and updates endpoints.
+To use the YugabyteDB MCP Server with a database on a Serverless Postgres cluster, see [Query a Serverless Postgres endpoint](/stable/reference/mcp/#query-a-serverless-postgres-endpoint).
 
 For information on MCP servers and skills published by YugabyteDB, see [MCP servers](../../../reference/mcp/).
 

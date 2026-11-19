@@ -14,7 +14,7 @@ unversioned: true
 
 Use the YugabyteDB Docs MCP Server to access official YugabyteDB documentation, including API and CLI references, blogs, and support articles, directly from your IDE or AI tool (including ChatGPT, Claude, Cursor, and VS Code).
 
-For information on MCP servers published by YugabyteDB, see [MCP servers](../).
+For information on MCP servers published by YugabyteDB, see [MCP servers](../mcp/).
 
 Once connected, you can get answers to questions about YugabyteDB without leaving your IDE.
 

@@ -169,9 +169,9 @@ Prompt:
 Create a branch named preview, forked from main.
 ```
 
-The client may show you the request, including the cluster and the parent branch, before it creates the branch. Whether it asks depends on the client settings. A new branch has no endpoint until you add one.
+The server waits for your confirmation before it creates the branch, and it shows you the request, including the cluster and the parent branch. When the client supports MCP elicitation, that confirmation is a dialog, and auto-approve doesn't skip it. Otherwise the server makes no change until the tool is called again with your confirmation. A new branch has no endpoint until you add one.
 
-Creating, updating, and deleting follow the same pattern. What the API key is allowed to do is what limits the change. See [Read-only and write tools](/stable/reference/mcp/#read-only-and-write-tools).
+Creating, updating, and deleting wait the same way. The API key's permissions still bound what the server can do. See [Read-only and write tools](/stable/reference/mcp/#read-only-and-write-tools).
 
 {{< note title="Verify changes" >}}
 

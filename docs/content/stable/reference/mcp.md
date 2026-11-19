@@ -19,11 +19,11 @@ The Model Context Protocol (MCP) is an industry standard that lets an AI client 
 
 YugabyteDB publishes the following servers.
 
-| Server | Purpose | Audience | Link |
-| :----- | :------ | :------- | :--- |
-| YugabyteDB MCP Server | Query a database. Summarize a schema, run read-only SQL, and optionally run guarded writes. | Developers with a YugabyteDB or PostgreSQL database. | [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/) |
-| AMP MCP Server | Manage Serverless Postgres clusters, branches, and endpoints in YugabyteDB Aeon. | Aeon users managing Serverless Postgres from an AI client. | [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/) |
-| YugabyteDB Docs MCP Server | Look up official documentation, API and CLI references, blogs, and support articles. | Anyone answering questions about YugabyteDB from an IDE or AI tool. | [Docs MCP Server](docs-mcp-server/) |
+| Server | Purpose | Audience |
+| :----- | :------ | :------- |
+| [YugabyteDB MCP Server](/stable/develop/ai/mcp-server/) | Query a database. Summarize a schema, run read-only SQL, and optionally run guarded writes. | Developers with a YugabyteDB or PostgreSQL database. |
+| [AMP MCP Server](/stable/yugabyte-cloud/serverless/mcp-server-amp/) | Manage Serverless Postgres clusters, branches, and endpoints in YugabyteDB Aeon. | Aeon users managing Serverless Postgres from an AI client. |
+| [Docs MCP Server](../docs-mcp-server/) | Look up official documentation, API and CLI references, blogs, and support articles. | Anyone answering questions about YugabyteDB from an IDE or AI tool. |
 
 ## Skills
 
@@ -61,7 +61,7 @@ To obtain the connection parameters, navigate to the endpoint and click **Connec
 host=<HOST_ADDRESS> port=<PORT> user=<DB_USER> password=<DB_PASSWORD> dbname=postgres sslmode=verify-full sslrootcert=<ROOT_CERT_PATH>
 ```
 
-If **Connect** dialog includes `sslmode` and `sslrootcert` parameters, replace `<ROOT_CERT_PATH>` with the path to the CA certificate you download in the **Connect** dialog. Replace `postgres` if you're connecting to a different database.
+If the **Connect** dialog includes `sslmode` and `sslrootcert` parameters, replace `<ROOT_CERT_PATH>` with the path to the CA certificate you download in the **Connect** dialog. Replace `postgres` if you're connecting to a different database.
 
 The YugabyteDB MCP Server runs on your computer and connects to the endpoint; add your computer's IP address to the endpoint's **Trusted IP addresses** so that it can connect. You can add the address when creating a branch or endpoint; to update endpoint network settings, see [Change network settings](/stable/yugabyte-cloud/serverless/manage/#change-network-settings).
 
@@ -71,7 +71,7 @@ The YugabyteDB MCP Server runs on your computer and connects to the endpoint; ad
 
 Read-only tools fetch information. A schema summary, a `SELECT`, a search of the docs, and a list of clusters don't change your data.
 
-Write tools create, update, or delete. The client may ask you to confirm the request before it runs. Whether it asks depends on its settings. A client set to auto-approve, or a tool you have already allowed, runs the change with no prompt. On the YugabyteDB MCP Server, write queries stay off until you enable them. The Docs MCP Server has no write tools.
+Write tools create, update, or delete. The AMP MCP Server waits for your confirmation on every write. When the client supports MCP elicitation, the server shows a dialog, and auto-approve doesn't skip it. When the client doesn't support elicitation, the server makes no change and tells the agent to ask you, then call the tool again with `confirm` set to true. The YugabyteDB MCP Server marks its write tool as destructive, and the client decides whether to prompt. A client set to auto-approve, or a tool you have already allowed, runs that write with no prompt. On that server, write queries also stay off until you enable them.
 
 The credential limits the change: grant it only the access the task needs. A read-only database role can run the read tools. An Aeon API key with only Read permission can list resources and can't create, update, or delete.
 
