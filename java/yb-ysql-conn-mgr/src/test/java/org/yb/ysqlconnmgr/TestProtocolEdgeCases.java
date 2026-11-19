@@ -139,6 +139,17 @@ public class TestProtocolEdgeCases extends BaseYsqlConnMgr {
         }
     }
 
+    // ConnMgr stops reading a client after its Sync until the backend's ReadyForQuery. Writing
+    // that Sync to the server must not start the client read again: with the readahead full and
+    // more client bytes on the socket, level-triggered epoll would wake the client coroutine in a
+    // busy loop for as long as the statement before the Sync runs.
+    @Test
+    public void testNoBusyLoopWhilePausedAfterSync() throws Exception {
+        restartClusterWithAdditionalFlags(Collections.emptyMap(),
+            Collections.singletonMap("ysql_conn_mgr_readahead_buffer_size", "64"));
+        assertNoBusyLoopWhilePausedAfterSync(rawConnBuilder(), 4096);
+    }
+
     // A client disconnects mid-Query on a backend holding more prepared statements than
     // ysql_conn_mgr_max_prepared_statements.
     // 1. BEGIN keeps the client attached, so no detach-time reset evicts s1/s2 before the

@@ -16,6 +16,7 @@ package org.yb.ysqlconnmgr;
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.fail;
@@ -30,8 +31,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -863,6 +867,45 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         String.format("ps -p %d -o rss=", pid));
     try (Scanner scanner = new Scanner(process.getInputStream())) {
       return scanner.nextLong();
+    }
+  }
+
+  /** User plus system CPU time used so far by the process, in seconds. Linux only. */
+  protected static double getCpuSecondsForPid(int pid) throws Exception {
+    String stat = new String(Files.readAllBytes(Paths.get("/proc/" + pid + "/stat")),
+        StandardCharsets.UTF_8);
+    // The fields after "(comm) " start at field 3, so utime and stime (fields 14 and 15, in
+    // USER_HZ ticks of 1/100 s) are at indexes 11 and 12.
+    String[] fields = stat.substring(stat.lastIndexOf(')') + 2).split(" ");
+    return (Long.parseLong(fields[11]) + Long.parseLong(fields[12])) / 100.0;
+  }
+
+  /**
+   * Sends Parse/Bind/Execute/Sync for a slow statement and a Query of about tailBytes in one
+   * write, and checks that Odyssey stays idle while the client is paused on the Sync. The Query
+   * does not fit in the readahead, so most of it waits on the client socket during the pause.
+   */
+  protected void assertNoBusyLoopWhilePausedAfterSync(WireConn.Builder builder, int tailBytes)
+      throws Exception {
+    final int sleepSec = 4;
+    String literal = String.join("", Collections.nCopies(tailBytes, "a"));
+    int odysseyPid = getOdysseyPidForHost(
+        miniCluster.getYsqlConnMgrContactPoints().get(0).getHostString());
+    try (WireConn conn = builder.socketTimeoutMs(30000).connect()) {
+      double cpuBefore = getCpuSecondsForPid(odysseyPid);
+      conn.createPipeline()
+          .parse("SELECT pg_sleep(" + sleepSec + ")").bind().execute().rowCount(1)
+          .sync()
+          .query("SELECT '" + literal + "'").row(literal)
+          .run();
+      double cpuUsed = getCpuSecondsForPid(odysseyPid) - cpuBefore;
+      // A busy loop burns about one core for the whole sleep; an idle wait takes milliseconds.
+      double limit = sleepSec / 4.0;
+      String msg = String.format(
+          "Odyssey used %.2f s of CPU during a %d s statement with the client paused after its"
+          + " Sync (limit %.2f s)", cpuUsed, sleepSec, limit);
+      LOG.info(msg);
+      assertLessThan(msg, cpuUsed, limit);
     }
   }
 
