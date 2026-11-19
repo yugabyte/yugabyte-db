@@ -2090,10 +2090,10 @@ TEST_F(PgObjectLocksTestMixModeDuringPromotion, LegacyDdlLeavesNoStaleCatalogEnt
 // With yb_disable_concurrent_ddl (#34673), DDLs with global object locks do not overlap either.
 //
 // The first two parameters say whether the first and the second DDL take global object locks; the
-// third sets yb_disable_concurrent_ddl. A DDL takes global object locks on ts2, whose object locking
-// infra flag is promoted, and runs in legacy mode on ts1. The
-// first DDL alters a, and a ddl_command_end event trigger holds it open, after its catalog writes
-// and before it commits, while the second DDL alters b. "Overlap" means the second DDL commits
+// third sets yb_disable_concurrent_ddl. A DDL takes global object locks on ts2, whose object
+// locking infra flag is promoted, and runs in legacy mode on ts1. The first DDL alters a, and a
+// ddl_command_end event trigger holds it open, after its catalog writes and before it commits,
+// while the second DDL alters b. "Overlap" means the second DDL commits
 // while the first is held, and the first commits as well.
 class PgObjectLocksTestOverlappingDdls
     : public PgObjectLocksTestMixModeDuringPromotion,
