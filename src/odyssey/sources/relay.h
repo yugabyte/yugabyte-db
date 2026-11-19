@@ -505,6 +505,24 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 			    yb_machine_tls_read_pending(relay->src->io))
 				machine_cond_signal(relay->src->on_read);
 		}
+
+		/*
+		 * YB: While the relay is paused after a Sync, nothing frees
+		 * the readahead, so keep the client read armed only while it
+		 * has room. With room, each wakeup reads client bytes or the
+		 * EOF of a client that went away, which the frontend's cleanup
+		 * then turns into a cancel of the running statement. Once it
+		 * is full, a read gets nothing, and level-triggered epoll
+		 * would wake this coroutine in a busy loop for as long as
+		 * client bytes are left on the socket.
+		 * yb_resume_client_relay() starts the read again.
+		 */
+		if (relay->yb_paused &&
+		    od_readahead_left(&relay->src->readahead) == 0) {
+			rc = od_io_read_stop(relay->src);
+			if (rc == -1)
+				return relay->error_read;
+		}
 	}
 
 	if (relay->dst == NULL)
@@ -525,14 +543,12 @@ static inline od_frontend_status_t od_relay_step(od_relay_t *relay)
 
 			/*
 			 * YB: A relay paused after a Sync writes the Sync here,
-			 * after the frontend has stopped the client read. Starting
-			 * the read again would put the client back on epoll: with
-			 * client bytes left on the socket and the readahead full,
-			 * level-triggered epoll then wakes this coroutine in a busy
-			 * loop until ReadyForQuery. yb_resume_client_relay() starts
-			 * the read when the pause ends.
+			 * after the frontend has stopped the client read. Start it
+			 * again only if the readahead has room; see the paused
+			 * check in the read branch above.
 			 */
-			if (!relay->yb_paused) {
+			if (!relay->yb_paused ||
+			    od_readahead_left(&relay->src->readahead) > 0) {
 				rc = od_io_read_start(relay->src);
 				if (rc == -1)
 					return relay->error_read;
