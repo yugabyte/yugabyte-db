@@ -643,6 +643,8 @@ class PgApiImpl {
 
   Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
 
+  Status SetReadCommandId(PgStatement *handle, uint32_t command_id);
+
   Status ExecSelect(PgStatement *handle, const YbcPgExecParameters *exec_params);
   Result<bool> RetrieveYbctids(
       PgStatement *handle, const YbcPgExecParameters *exec_params, int natts,
