@@ -14965,7 +14965,8 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   ClearRestoringSysCatalogIfNotFenced();
 
   // Writing to cdc_state needs this master to answer IsCreateTableDone, which it rejects while
-  // restoring_sys_catalog_ is set, so this must run after the flag is cleared.
+  // restoring_sys_catalog_ is set, so this runs after ClearRestoringSysCatalogIfNotFenced(). The
+  // flag stays set while another restore is fenced, which this does not handle.
   WARN_NOT_OK(BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
 
   if (FLAGS_enable_ysql) {
