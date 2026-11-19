@@ -129,6 +129,8 @@ DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(TEST_sleep_before_restore_checkpoint_resumes_ops_ms);
+DECLARE_int32(tasks_tracker_num_tasks);
+DECLARE_uint32(ddl_verification_timeout_multiplier);
 DECLARE_uint32(vector_index_backfill_retry_delay_ms);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_uint64(transaction_resend_applying_interval_usec);
@@ -8024,6 +8026,168 @@ TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
 
     tablet_peers.pop_back();
   }
+}
+
+class PgVectorIndexIndexedTableCleanupTest : public PgVectorIndexUtilTest {
+ protected:
+  // Runs `setup`, creates table t with indexes and runs `ddl`, which drops t together with its
+  // indexes. The drop is held until the background cleanup frees t's tablets, i.e. before it gets
+  // to the vector index. It is expected that the index after the vector index is still deleted and
+  // the DDL does not block other DDLs (#37744). `fail_vector_index` makes deleting the vector index
+  // fail as well.
+  void TestDdlAfterIndexedTableCleanedUp(
+      const std::vector<std::string>& setup, const std::string& ddl,
+      bool fail_vector_index = false) {
+    // Finished tasks kept for the UI hold their tablets, which keeps tablets of dropped tables
+    // alive. The tracker is sized when the master starts.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_num_tasks) = 0;
+    // A DDL waits for this many admin operation timeouts if its verification fails.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ddl_verification_timeout_multiplier) = 1;
+    // The backfill of t_after and the rewrite of t in ALTER COLUMN TYPE scan t, which has a vector
+    // index.
+    ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+    ASSERT_OK(RestartMaster());
+
+    auto conn = ASSERT_RESULT(PgMiniTestBase::Connect());
+    ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+    for (const auto& statement : setup) {
+      ASSERT_OK(conn.Execute(statement));
+    }
+    ASSERT_OK(conn.Execute(
+        "CREATE TABLE t (id int PRIMARY KEY, a int, embedding vector(3)) SPLIT INTO 1 TABLETS"));
+    // Indexes are deleted after t in creation order -- t_before, t_vector, t_after. The drop is
+    // held at t_before, so t_after is the one deleted after the vector index.
+    ASSERT_OK(conn.Execute("CREATE INDEX t_before ON t (a)"));
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE INDEX t_vector ON t USING ybhnsw (embedding $0)",
+        VectorOpsName()));
+    ASSERT_OK(conn.Execute("CREATE INDEX t_after ON t ((a + 1))"));
+    ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1, '[1, 2, 3]')"));
+
+    std::vector<TableId> table_ids;
+    for (const auto& name : {"t", "t_before", "t_vector", "t_after"}) {
+      table_ids.push_back(ASSERT_RESULT(GetTableIDFromTableName(name)));
+    }
+
+    auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+    // Hold the vector index as the background cleanup may erase it from the catalog manager before
+    // freeing t's tablets.
+    auto vector_index = catalog_manager.GetTableInfo(table_ids[2]);
+    ASSERT_NE(vector_index, nullptr);
+    auto index_after = catalog_manager.GetTableInfo(table_ids[3]);
+    ASSERT_NE(index_after, nullptr);
+    std::atomic<size_t> num_started_tables{0};
+    std::atomic<bool> tablets_freed{false};
+    std::atomic<bool> drop_released{false};
+    // Set before drop_released, so it is safe to read once index_after_done is set.
+    MonoDelta held_for;
+    auto* sync_point = SyncPoint::GetInstance();
+    sync_point->SetCallBack(
+        "CatalogManager::DeleteOrHideTabletsAndSendRequests::Start", [&](void*) {
+          // t goes first, then t_before. Hold the drop at t_before until the background cleanup
+          // frees t's tablets -- the vector index refers to them.
+          if (num_started_tables.fetch_add(1) != 1) {
+            return;
+          }
+          const auto start = MonoTime::Now();
+          tablets_freed = WaitFor(
+              [&vector_index] { return !vector_index->GetTabletsIncludeInactive().ok(); },
+              30s * kTimeMultiplier, "Tablets of the indexed table freed").ok();
+          held_for = MonoTime::Now() - start;
+          drop_released = true;
+        });
+    std::atomic<bool> vector_index_after_free{false};
+    std::atomic<bool> vector_index_failed{false};
+    std::atomic<bool> vector_index_done{false};
+    std::atomic<bool> index_after_vector_index{false};
+    std::atomic<bool> index_after_done{false};
+    sync_point->SetCallBack("DeleteTableInternal::AfterDeleteOrHideTablets", [&](void* arg) {
+      auto [table, status] = *static_cast<std::pair<const master::TableInfo*, Status*>*>(arg);
+      if (table == index_after.get()) {
+        index_after_vector_index = vector_index_done.load();
+        index_after_done = true;
+        return;
+      }
+      if (table != vector_index.get()) {
+        return;
+      }
+      vector_index_after_free = drop_released.load();
+      // The freed tablets of t must be skipped, the failure below is injected on top of that.
+      if (!status->ok()) {
+        vector_index_failed = true;
+      }
+      if (fail_vector_index) {
+        *status = STATUS(InternalError, "Injected failure");
+      }
+      vector_index_done = true;
+    });
+    sync_point->EnableProcessing();
+    auto sync_point_cleanup = ScopeExit([sync_point] {
+      sync_point->DisableProcessing();
+      sync_point->ClearAllCallBacks();
+    });
+
+    // Logged when the DDL verification of t gets an error.
+    StringWaiterLogSink verification_failed_log("YsqlDdlTxnCompleteCallback failed for table");
+    const auto start = MonoTime::Now();
+    ASSERT_OK(conn.Execute(ddl));
+    const auto ddl_time = MonoTime::Now() - start;
+    LOG(INFO) << ddl << " took " << ddl_time;
+    // Some DDLs, e.g. TRUNCATE, do not wait for the old table to be dropped. t_after is processed
+    // after the vector index on the same thread, so the flags below are set by then.
+    ASSERT_OK(WaitFor(
+        [&index_after_done] { return index_after_done.load(); }, 60s * kTimeMultiplier,
+        "Index after the vector index processed"));
+    ASSERT_TRUE(tablets_freed);
+    ASSERT_TRUE(vector_index_after_free);
+    ASSERT_FALSE(vector_index_failed);
+    ASSERT_TRUE(index_after_vector_index);
+    // A DDL waiting for its verification returns only after the timeout if the verification fails.
+    ASSERT_LT(ddl_time, held_for + 30s * kTimeMultiplier);
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          for (const auto& table_id : table_ids) {
+            auto table = catalog_manager.GetTableInfo(table_id);
+            if (table && !table->is_deleted()) {
+              return false;
+            }
+          }
+          return true;
+        },
+        30s * kTimeMultiplier, "Dropped tables deleted"));
+    if (fail_vector_index) {
+      // The failure must be returned to the DDL verification of t.
+      ASSERT_OK(verification_failed_log.WaitFor(30s * kTimeMultiplier));
+    }
+
+    // Other DDLs must not be blocked by the DDL above, fail fast if they are.
+    ASSERT_OK(conn.ExecuteFormat(
+        "SET statement_timeout = $0", ToMilliseconds(30s * kTimeMultiplier)));
+    ASSERT_OK(conn.Execute("CREATE TABLE public.probe (k int)"));
+  }
+};
+
+TEST_F(PgVectorIndexIndexedTableCleanupTest, DropTable) {
+  TestDdlAfterIndexedTableCleanedUp({}, "DROP TABLE t");
+}
+
+TEST_F(PgVectorIndexIndexedTableCleanupTest, Truncate) {
+  TestDdlAfterIndexedTableCleanedUp({}, "TRUNCATE t");
+}
+
+TEST_F(PgVectorIndexIndexedTableCleanupTest, AlterColumnType) {
+  TestDdlAfterIndexedTableCleanedUp({}, "ALTER TABLE t ALTER COLUMN a TYPE bigint");
+}
+
+TEST_F(PgVectorIndexIndexedTableCleanupTest, DropSchemaCascade) {
+  TestDdlAfterIndexedTableCleanedUp(
+      {"CREATE SCHEMA s", "SET search_path TO s, public"}, "DROP SCHEMA s CASCADE");
+}
+
+// Deleting the vector index fails, the tables after it must still be deleted.
+TEST_F(PgVectorIndexIndexedTableCleanupTest, DropTableAfterFailure) {
+  TestDdlAfterIndexedTableCleanedUp({}, "DROP TABLE t", /* fail_vector_index= */ true);
 }
 
 TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
