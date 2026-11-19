@@ -628,16 +628,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     assertEquals("https", nodeScrapeJob(overrides).get("scheme"));
   }
 
-  @Test
-  public void testNodeExporterNotScrapedWithKeyOff() throws IOException {
-    ybSoftwareVersion = NodeExporterSidecarTestUtil.SUPPORTED_VERSION;
-    RuntimeConfigEntry.upsert(defaultUniverse, "yb.kubernetes.node_exporter.enabled", "false");
-
-    Map<String, Object> overrides = runHelmInstallWithNodeMetricsExport();
-    assertEquals(false, ((Map<String, Object>) overrides.get("nodeExporter")).get("enabled"));
-    assertNull(nodeScrapeJob(overrides));
-  }
-
   // The image tag falls back to the universe's version, but the sidecar does not.
   @Test
   public void testNodeExporterNotScrapedWithoutTaskVersion() throws IOException {

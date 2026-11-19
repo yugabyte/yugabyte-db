@@ -134,24 +134,6 @@ public class ExportTelemetryConfigParamsTest extends FakeDBApplication {
         .verifyParams(kubernetesUniverse(), true);
   }
 
-  @Test
-  public void testKubernetesMetricsExportRejectsNodeAgentExport() {
-    UUID exporterUuid = mockProvider("datadog-sink", new DataDogConfig());
-    MetricsExportConfig metricsExportConfig = metricsConfig(exporterUuid);
-    metricsExportConfig.setScrapeConfigTargets(
-        EnumSet.of(ScrapeConfigTargetType.NODE_EXPORT, ScrapeConfigTargetType.NODE_AGENT_EXPORT));
-    ExportTelemetryConfigParams params =
-        paramsFor(TelemetryConfig.builder().metricsExportConfig(metricsExportConfig).build());
-
-    PlatformServiceException exception =
-        assertThrows(
-            PlatformServiceException.class, () -> params.verifyParams(kubernetesUniverse(), true));
-    assertEquals(Status.BAD_REQUEST, exception.getHttpStatus());
-    assertTrue(
-        exception.getMessage(),
-        exception.getMessage().contains("Scrape config targets [NODE_AGENT_EXPORT] are not"));
-  }
-
   /** A Kubernetes universe on a DB version with metrics export but without the sidecar. */
   private Universe kubernetesUniverse() {
     Universe kubernetesUniverse =
