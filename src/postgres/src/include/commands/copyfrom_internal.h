@@ -168,6 +168,10 @@ typedef struct CopyFromStateData
 #define RAW_BUF_BYTES(cstate) ((cstate)->raw_buf_len - (cstate)->raw_buf_index)
 
 	uint64		bytes_processed;	/* number of bytes processed so far */
+
+	/* YB fields */
+	bool		yb_more_batches;	/* input left after this batch? */
+	bool		yb_loaded_a_batch;	/* is this a later batch? */
 } CopyFromStateData;
 
 extern void ReceiveCopyBegin(CopyFromState cstate);

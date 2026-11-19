@@ -1,0 +1,349 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s3_lock s1_copy_t create_trigger s3_unlock count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step create_trigger: CREATE TRIGGER reject_big_b BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION reject_big_b(); <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+s1: WARNING:  ROWS_PER_TRANSACTION is not supported on table with non RI trigger
+DETAIL:  Defaulting to using one transaction for the entire copy.
+HINT:  Set rows_per_transaction option to `0` to disable batching and remove this warning.
+step s1_copy_t: <... completed>
+ERROR:  rejected b=999
+step create_trigger: <... completed>
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   30
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_t create_index_nc s3_unlock count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step create_index_nc: CREATE INDEX NONCONCURRENTLY t_b_idx ON t (b); <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step create_index_nc: <... completed>
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_t create_index s3_unlock index_check count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step create_index: CREATE INDEX t_b_idx ON t (b); <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step create_index: <... completed>
+step index_check: SELECT yb_index_check('t_b_idx'::regclass);
+yb_index_check
+--------------
+(0 rows)
+
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_t add_column s3_unlock count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step add_column: ALTER TABLE t ADD COLUMN x int; <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+ERROR:  missing data for column "x"
+step add_column: <... completed>
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   30
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_t truncate s3_unlock count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step truncate: TRUNCATE t; <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step truncate: <... completed>
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   10
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_t validate s3_unlock count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step validate: ALTER TABLE t VALIDATE CONSTRAINT k_pos;
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_t analyze s3_unlock count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_t: COPY t FROM PROGRAM $$seq -f "%g,1" 1 20; seq -f "%g,999" 21 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step analyze: ANALYZE t;
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t: <... completed>
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_set_role s1_copy_t1 grant s3_unlock s1_reset_role count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_set_role: SET ROLE copier;
+step s1_copy_t1: COPY t FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step grant: GRANT SELECT ON t TO copier;
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t1: <... completed>
+step s1_reset_role: RESET ROLE;
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_set_role s1_copy_t1 revoke s3_unlock s1_reset_role count_t
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_set_role: SET ROLE copier;
+step s1_copy_t1: COPY t FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step revoke: REVOKE INSERT ON t FROM copier;
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_t1: <... completed>
+ERROR:  permission denied for table t
+step s1_reset_role: RESET ROLE;
+step count_t: SELECT count(*) FROM t;
+count
+-----
+   30
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_pt index_pt2 s3_unlock count_pt
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_pt: COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step index_pt2: CREATE INDEX NONCONCURRENTLY pt2_b_idx ON pt2 (b); <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_pt: <... completed>
+step index_pt2: <... completed>
+step count_pt: SELECT tableoid::regclass::text AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
+part|count
+----+-----
+pt1 |   20
+pt2 |   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_pt attach s3_unlock count_pt
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_pt: COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step attach: ALTER TABLE pt ATTACH PARTITION pt3 FOR VALUES FROM (1000) TO (2000);
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_pt: <... completed>
+step count_pt: SELECT tableoid::regclass::text AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
+part|count
+----+-----
+pt1 |   20
+pt2 |   20
+(2 rows)
+
+
+starting permutation: s3_lock s1_copy_pt detach s3_unlock count_pt
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_pt: COPY pt FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step detach: ALTER TABLE pt DETACH PARTITION pt2; <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_pt: <... completed>
+ERROR:  no partition of relation "pt" found for row
+step detach: <... completed>
+step count_pt: SELECT tableoid::regclass::text AS part, count(*) FROM pt GROUP BY 1 ORDER BY 1;
+part|count
+----+-----
+pt1 |   20
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_c alter_fk_parent s3_unlock count_c
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_c: COPY c FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step alter_fk_parent: ALTER TABLE p ADD COLUMN note text;
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_c: <... completed>
+step count_c: SELECT count(*) FROM c;
+count
+-----
+   40
+(1 row)
+
+
+starting permutation: s3_lock s1_copy_ts alter_sequence s3_unlock count_ts
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_ts: COPY ts (k, b) FROM PROGRAM $$seq -f "%g,1" 1 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step alter_sequence: ALTER SEQUENCE sq MAXVALUE 1000000; <waiting ...>
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_ts: <... completed>
+step alter_sequence: <... completed>
+step count_ts: SELECT count(*) FROM ts;
+count
+-----
+   40
+(1 row)
+

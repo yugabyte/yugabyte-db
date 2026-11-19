@@ -57,6 +57,7 @@
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
 #include "storage/lmgr.h"
+#include "tcop/pquery.h"
 #include "utils/builtins.h"
 
 /*
@@ -111,6 +112,11 @@ typedef struct CopyMultiInsertInfo
 static char *limit_printout_length(const char *str);
 
 static void ClosePipeFromProgram(CopyFromState cstate);
+
+/* YB declarations */
+static bool YbCopyIsTopLevelStatement(void);
+static void YbCopyFromCommitBatch(CopyFromState cstate);
+static void YbCopyFromCheckTableUnchanged(Relation rel, TupleDesc old_desc);
 
 /*
  * error context callback for COPY FROM
@@ -815,6 +821,13 @@ CopyFrom(CopyFromState cstate)
 					 errhint("Either run this COPY outside of a %s or set rows_per_transaction option to `0` "
 							 " to remove this warning.", context)));
 		}
+		else if (!YbCopyIsTopLevelStatement())
+		{
+			/*
+			 * A COPY inside a function or a DO block cannot commit: the
+			 * caller's work would be committed with the batch.
+			 */
+		}
 		else if (HasNonRITrigger(cstate->rel->trigdesc))
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1013,7 +1026,9 @@ CopyFrom(CopyFromState cstate)
 	has_more_tuples = true;
 
 	/* Skip num_initial_skipped_rows. */
-	for (uint64 i = 0; i < cstate->opts.num_initial_skipped_rows; i++)
+	for (uint64 i = 0;
+		 !cstate->yb_loaded_a_batch && i < cstate->opts.num_initial_skipped_rows;
+		 i++)
 	{
 		has_more_tuples = NextCopyFrom(cstate, econtext, NULL, NULL, true /* skip_row */ );
 		if (!has_more_tuples)
@@ -1023,7 +1038,6 @@ CopyFrom(CopyFromState cstate)
 	if (!has_more_tuples)
 		goto yb_no_more_tuples;
 
-yb_process_more_batches:
 	/*
 	 * When batch size is not provided from the query option,
 	 * default behavior is to read each line from the file
@@ -1388,34 +1402,11 @@ yb_process_more_batches:
 	if (cstate->opts.batch_size > 0)
 	{
 		/*
-		 * YB: Fire AFTER triggers in the query context, as upstream does
-		 * before AfterTriggerEndQuery() at the end of CopyFrom(). The last
-		 * batch gets here in the per-tuple context, from the break after
-		 * NextCopyFrom().
+		 * YB: A call loads one batch.  YbCopyFromRemainingBatches commits the
+		 * transaction and calls again, so the next batch takes its locks and
+		 * builds its state from the catalog like a new COPY.
 		 */
-		MemoryContextSwitchTo(oldcontext);
-
-		/*
-		 * Handle queued AFTER triggers before committing. If there are errors,
-		 * do not commit the current batch.
-		 */
-		AfterTriggerEndQuery(estate);
-
-		/*
-		 * Commit transaction per batch.
-		 * When CopyFrom method is called, we are already inside a transaction block
-		 * and relevant transaction state properties have been previously set.
-		 */
-		YBCommitTransactionIntermediate();
-
-		/*
-		 * Update progress of the COPY command as well.
-		 */
-		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
-		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-
-		/* Start a new AFTER trigger */
-		AfterTriggerBeginQuery();
+		cstate->yb_more_batches = has_more_tuples;
 	}
 	else
 	{
@@ -1428,36 +1419,6 @@ yb_process_more_batches:
 		/* Update progress of the COPY command as well */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
-	}
-
-	if (has_more_tuples)
-	{
-		if (cstate->opts.batch_size > 0)
-		{
-			/*
-			 * Re-acquire the relation lock(s) for the new transaction. This is
-			 * necessary because when YB performs batched COPY, it commits the
-			 * intermediate transaction, resulting in release of all the object
-			 * locks associated with that transaction.
-			 *
-			 * It still doesn't resolve the problem fully as a ddl could have
-			 * changed the schema and 'cstate' would need to be computed again,
-			 * without which the subsequent batches may fail. Nevertheless,
-			 * acquire locks to gate ddls for the duration of the batch.
-			 *
-			 * TODO(#27120): Once session level object locking is supported, we
-			 * could acquire session locks and skip transactional object locks
-			 * all together, leaving no window for DDLs to come in between
-			 * internal batches of COPY execution.
-			 */
-			LockRelation(resultRelInfo->ri_RelationDesc, RowExclusiveLock);
-			for (int i = 0; i < resultRelInfo->ri_NumIndices; ++i)
-			{
-				LockRelation(resultRelInfo->ri_IndexRelationDescs[i],
-							 RowExclusiveLock);
-			}
-		}
-		goto yb_process_more_batches;
 	}
 
 yb_no_more_tuples:
@@ -1975,4 +1936,153 @@ ClosePipeFromProgram(CopyFromState cstate)
 						cstate->filename),
 				 errdetail_internal("%s", wait_result_to_str(pclose_rc))));
 	}
+}
+
+
+/*
+ * YB: Batched COPY FROM (ROWS_PER_TRANSACTION > 0).
+ *
+ * CopyFrom loads one batch.  For each batch after the first,
+ * YbCopyFromRemainingBatches ends the transaction and starts a new one, as
+ * VACUUM and REINDEX do between tables, opens the table again and calls
+ * CopyFrom again.  The batch then takes its locks and builds its indexes,
+ * partition routing, constraints and triggers from the catalog, like a new
+ * COPY.  A DDL that needs a conflicting lock waits for the batch in progress,
+ * and the next batch sees what the DDL did.
+ *
+ * The COPY state lives in the portal and is kept across the commits: it holds
+ * the input and what was derived from the table's columns.  If a column or a
+ * default changed, the input no longer fits that state and the COPY stops.
+ */
+uint64
+YbCopyFromRemainingBatches(CopyFromState cstate, Relation *rel)
+{
+	uint64		processed = 0;
+	bool		pushed_snapshot = false;
+
+	while (cstate->yb_more_batches)
+	{
+		Oid			relid = RelationGetRelid(*rel);
+		MemoryContext oldcontext = MemoryContextSwitchTo(cstate->copycontext);
+		TupleDesc	old_desc = CreateTupleDescCopyConstr(RelationGetDescr(*rel));
+
+		MemoryContextSwitchTo(oldcontext);
+
+		cstate->yb_more_batches = false;
+		cstate->yb_loaded_a_batch = true;
+		cstate->rel = NULL;
+		table_close(*rel, NoLock);
+		*rel = NULL;
+
+		YbCopyFromCommitBatch(cstate);
+		PushActiveSnapshot(GetTransactionSnapshot());
+		pushed_snapshot = true;
+
+		*rel = try_table_open(relid, RowExclusiveLock);
+		if (*rel == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_TABLE),
+					 errmsg("table \"%s\" was dropped during COPY",
+							cstate->cur_relname)));
+		YbCopyFromCheckTableUnchanged(*rel, old_desc);
+		FreeTupleDesc(old_desc);
+		ExecCheckRTPerms(cstate->range_table, true);
+
+		cstate->rel = *rel;
+		cstate->cur_relname = RelationGetRelationName(*rel);
+
+		processed += CopyFrom(cstate);
+	}
+
+	if (pushed_snapshot)
+		PopActiveSnapshot();
+
+	return processed;
+}
+
+/*
+ * The end of a transaction closes the files it opened, so the input file is
+ * taken out of that list for the commit and put into the list of the new
+ * transaction.
+ */
+static void
+YbCopyFromCommitBatch(CopyFromState cstate)
+{
+	FILE	   *file = cstate->copy_file;
+	bool		is_pipe = false;
+	bool		detached = (file != NULL &&
+							YbDetachAllocatedFile(file, &is_pipe));
+
+	PG_TRY();
+	{
+		YbCommitTransactionCommandIntermediate();
+	}
+	PG_CATCH();
+	{
+		if (detached)
+		{
+			if (is_pipe)
+				pclose(file);
+			else
+				fclose(file);
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if (detached)
+		YbAttachAllocatedFile(file, is_pipe);
+}
+
+static void
+YbCopyFromCheckTableUnchanged(Relation rel, TupleDesc old_desc)
+{
+	TupleDesc	new_desc = RelationGetDescr(rel);
+	int			old_ndef = old_desc->constr ? old_desc->constr->num_defval : 0;
+	int			new_ndef = new_desc->constr ? new_desc->constr->num_defval : 0;
+	bool		unchanged = (old_desc->natts == new_desc->natts &&
+							 old_ndef == new_ndef);
+
+	for (int i = 0; unchanged && i < old_desc->natts; i++)
+	{
+		Form_pg_attribute old_att = TupleDescAttr(old_desc, i);
+		Form_pg_attribute new_att = TupleDescAttr(new_desc, i);
+
+		unchanged = (old_att->atttypid == new_att->atttypid &&
+					 old_att->atttypmod == new_att->atttypmod &&
+					 old_att->attisdropped == new_att->attisdropped &&
+					 old_att->attgenerated == new_att->attgenerated &&
+					 old_att->atthasdef == new_att->atthasdef &&
+					 strcmp(NameStr(old_att->attname),
+							NameStr(new_att->attname)) == 0);
+	}
+
+	for (int i = 0; unchanged && i < old_ndef; i++)
+		unchanged = (old_desc->constr->defval[i].adnum ==
+					 new_desc->constr->defval[i].adnum &&
+					 strcmp(old_desc->constr->defval[i].adbin,
+							new_desc->constr->defval[i].adbin) == 0);
+
+	if (!unchanged)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("columns of table \"%s\" changed during COPY",
+						RelationGetRelationName(rel)),
+				 errdetail("The rows of the batches already loaded are committed.")));
+}
+
+/*
+ * A COPY that is the statement the client sent runs in a portal of its own.
+ * One run from a function or a DO block does not.
+ */
+static bool
+YbCopyIsTopLevelStatement(void)
+{
+	PlannedStmt *pstmt;
+
+	if (ActivePortal == NULL || list_length(ActivePortal->stmts) != 1)
+		return false;
+
+	pstmt = linitial_node(PlannedStmt, ActivePortal->stmts);
+	return pstmt->utilityStmt != NULL && IsA(pstmt->utilityStmt, CopyStmt);
 }
