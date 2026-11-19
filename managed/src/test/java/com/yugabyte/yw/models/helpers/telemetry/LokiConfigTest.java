@@ -79,4 +79,14 @@ public class LokiConfigTest {
     withBasePath.validateConfigFields();
     assertEquals("https://gateway.example.com/loki", withBasePath.getEndpoint());
   }
+
+  @Test
+  public void testBasicAuthCredentialRemovesLineBreaks() {
+    LokiConfig config = config("http://loki:3100");
+    config.setAuthType(AuthCredentials.AuthType.BasicAuth);
+    config.setBasicAuth(new AuthCredentials.BasicAuthCredentials("user\r\n", "pa\nss\n"));
+    String withLineBreak = config.basicAuthCredential();
+    config.setBasicAuth(new AuthCredentials.BasicAuthCredentials("user", "pass"));
+    assertEquals(config.basicAuthCredential(), withLineBreak);
+  }
 }

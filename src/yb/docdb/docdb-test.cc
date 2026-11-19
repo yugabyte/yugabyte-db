@@ -16,7 +16,12 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/util/fast_varint.h"
@@ -1174,6 +1179,121 @@ TEST_F(DocDBMissingSchemaTest, ColocationNonTombstoneDroppedDuringPartialCompact
   const auto id = RandomUniformInt<ColocationId>(
       kFirstNormalColocationId, std::numeric_limits<ColocationId>::max() - 1);
   TestNonTombstoneDroppedDuringPartialCompaction(id, id + 1);
+}
+
+class DocDBVectorMetadataCompactionTest
+    : public DocDBTestQl, public DocVectorMetadataIteratorProvider {
+ protected:
+  Status InitRocksDBOptions() override {
+    RETURN_NOT_OK(DocDBTestQl::InitRocksDBOptions());
+    regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
+        retention_policy_, &key_bounds_,
+        [](const std::vector<rocksdb::FileMetaData*>&) {
+          return CompactionHybridTimeConstraints{};
+        },
+        /* schema_packing_provider= */ this, /* vector_metadata_iterator_provider= */ this,
+        CompactionMetrics{});
+    return Status::OK();
+  }
+
+  // Reads the regular DB only, as TabletVectorIndexes::CreateVectorMetadataIterator does.
+  Result<IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
+      const ReadHybridTime& read_ht, DocDBStatistics* statistics) const override {
+    static const std::array<char, 2> kUpperBound {
+        dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, dockv::KeyEntryTypeAsChar::kMaxByte };
+    auto read_operation_data = ReadOperationData::FromReadTime(read_ht);
+    read_operation_data.statistics = statistics;
+    auto iter = CreateIntentAwareIterator(
+        DocDB::FromRegularUnbounded(regular_db_.get()), BloomFilterOptions::Inactive(),
+        rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data);
+    auto bounds = std::make_unique<IntentAwareIteratorBoundsScope>(
+        Slice(&dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, 1), Slice(kUpperBound),
+        iter.get());
+    return IntentAwareIteratorWithBounds { std::move(iter), std::move(bounds) };
+  }
+
+  HybridTime MinRunningHybridTime() const override {
+    return min_running_ht_;
+  }
+
+  // Writes a legacy reverse mapping record, whose value is the ybctid.
+  Status PutReverseMapping(vector_index::VectorId vector_id, HybridTime ht, Slice value) {
+    DocHybridTimeBuffer ht_buf;
+    auto key = dockv::DocVectorKey(vector_id);
+    key.AppendRawBytes(ht_buf.EncodeWithValueType(DocHybridTime(ht, 0)));
+    rocksdb::WriteBatch batch;
+    batch.Put(key.AsSlice(), value);
+    return regular_db_->Write(rocksdb::WriteOptions(), &batch);
+  }
+
+  Status PutReverseMappingTombstone(vector_index::VectorId vector_id, HybridTime ht) {
+    return PutReverseMapping(
+        vector_id, ht, Slice(&dockv::ValueEntryTypeAsChar::kTombstone, 1));
+  }
+
+  Result<size_t> NumReverseMappingRecords(vector_index::VectorId vector_id) {
+    auto prefix = dockv::DocVectorKey(vector_id);
+    std::unique_ptr<rocksdb::Iterator> it(regular_db_->NewIterator(rocksdb::ReadOptions()));
+    size_t result = 0;
+    for (it->Seek(prefix.AsSlice()); it->Valid() && it->key().starts_with(prefix.AsSlice());
+         it->Next()) {
+      ++result;
+    }
+    RETURN_NOT_OK(it->status());
+    return result;
+  }
+
+  Status PostSplitCompact() {
+    RETURN_NOT_OK(FlushRocksDbAndWait(rocksdb::FlushReason::kTestOnly));
+    rocksdb::CompactRangeOptions options;
+    options.compaction_reason = rocksdb::CompactionReason::kPostSplitCompaction;
+    return ForceRocksDBCompact(regular_db_.get(), options);
+  }
+
+  // A child tablet, which owns ybctids below "m".
+  KeyBounds key_bounds_{Slice(), Slice("m")};
+  // Start time of the oldest running transaction.
+  HybridTime min_running_ht_ = HybridTime::kMax;
+};
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/38070.
+TEST_F(DocDBVectorMetadataCompactionTest, PostSplitCompaction) {
+  // In key order: the lookups for the last two tombstones find no mapping entry, and the lookup for
+  // the last one reaches the end of the reverse mapping.
+  std::array<vector_index::VectorId, 4> ids;
+  for (auto& id : ids) {
+    id = vector_index::VectorId::GenerateRandom();
+  }
+  std::ranges::sort(ids, [](const auto& lhs, const auto& rhs) {
+    return dockv::DocVectorKey(lhs).AsSlice().compare(dockv::DocVectorKey(rhs).AsSlice()) < 0;
+  });
+  const auto [sibling, own, unapplied, removed] = ids;
+
+  min_running_ht_ = 1500_usec_ht;
+  // Deleted rows of the sibling and of this child.
+  ASSERT_OK(PutReverseMapping(sibling, 1000_usec_ht, "z"));
+  ASSERT_OK(PutReverseMappingTombstone(sibling, 2000_usec_ht));
+  ASSERT_OK(PutReverseMapping(own, 1000_usec_ht, "a"));
+  ASSERT_OK(PutReverseMappingTombstone(own, 2000_usec_ht));
+  // Deleted, while its insert is not applied yet.
+  ASSERT_OK(PutReverseMappingTombstone(unapplied, 2000_usec_ht));
+  // Deleted before the oldest running transaction started, its mapping entry is already removed.
+  ASSERT_OK(PutReverseMappingTombstone(removed, 1200_usec_ht));
+  ASSERT_OK(PostSplitCompact());
+
+  ASSERT_EQ(ASSERT_RESULT(NumReverseMappingRecords(unapplied)), 1);
+  ASSERT_EQ(ASSERT_RESULT(NumReverseMappingRecords(removed)), 0);
+  ASSERT_EQ(ASSERT_RESULT(NumReverseMappingRecords(sibling)), 0);
+  ASSERT_EQ(ASSERT_RESULT(NumReverseMappingRecords(own)), 2);
+}
+
+TEST_F(DocDBVectorMetadataCompactionTest, PostSplitCompactionTransactionsNotLoaded) {
+  // Until the transactions are loaded, any of them could write the mapping entry of the tombstone.
+  min_running_ht_ = HybridTime::kMin;
+  const auto vector_id = vector_index::VectorId::GenerateRandom();
+  ASSERT_OK(PutReverseMappingTombstone(vector_id, 1000_usec_ht));
+  ASSERT_OK(PostSplitCompact());
+  ASSERT_EQ(ASSERT_RESULT(NumReverseMappingRecords(vector_id)), 1);
 }
 
 }  // namespace yb::docdb

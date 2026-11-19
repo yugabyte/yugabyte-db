@@ -197,10 +197,12 @@ message InstallOtelCollectorInput {
     // zip_purge_yb_logs.sh needs it to group multi-line audit statements into
     // whole records when archiving; empty falls back to the script's default.
     string ysqlAuditLineStartRegex = 14;
+    // Exporter credentials the collector config references as ${env:NAME}, keyed by NAME.
+    map<string, string> otelColSecretEnv = 15;
     // When true, no export is enabled: stop and disable the collector if it is installed,
     // remove its config and credentials, and refresh the log-purge script. The package is not
     // installed, so a broken package cannot block turning export off.
-    bool disableCollector = 15;
+    bool disableCollector = 16;
 }
 
 message InstallOtelCollectorOutput {

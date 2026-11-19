@@ -270,6 +270,14 @@ struct TabletScopedRWOperationPauses {
   std::array<ScopedRWOperationPause*, 2> AsArray() {
     return {&blocking_rocksdb_shutdown_start, &not_blocking_rocksdb_shutdown_start};
   }
+
+  // Releases the pauses in the reverse order of StartShutdownStorages, the same order the
+  // destructor uses: not blocking operation first, then blocking operation. Callers rely on this
+  // order, so changing it requires renaming the method or adding an explicit order parameter.
+  void Reset() {
+    not_blocking_rocksdb_shutdown_start.Reset();
+    blocking_rocksdb_shutdown_start.Reset();
+  }
 };
 
 class Tablet : public AbstractTablet,

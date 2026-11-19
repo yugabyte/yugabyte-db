@@ -55,6 +55,7 @@ DEFINE_NON_RUNTIME_int32(xcluster_safe_time_table_num_tablets, 1,
     "0 to use the same default num tablets as for regular tables.");
 TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
+DECLARE_bool(xcluster_safe_time_table_include_stream_id);
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
 
 DEFINE_RUNTIME_uint32(xcluster_safe_time_log_outliers_interval_secs, 600,
@@ -592,8 +593,10 @@ XClusterNamespaceToSafeTimeMap XClusterSafeTimeService::GetMaxNamespaceSafeTimeF
 
 Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
   auto latest_config_version = VERIFY_RESULT(catalog_manager_->GetClusterConfigVersion());
+  const bool include_stream_id = FLAGS_xcluster_safe_time_table_include_stream_id;
 
-  if (latest_config_version == cluster_config_version_) {
+  if (latest_config_version == cluster_config_version_ &&
+      include_stream_id == producer_tablet_keys_have_stream_id_) {
     return Status::OK();
   }
 
@@ -612,7 +615,7 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
           continue;
         }
 
-        for (const auto& [_, stream_entry] : producer_entry.stream_map()) {
+        for (const auto& [stream_id_str, stream_entry] : producer_entry.stream_map()) {
           const auto& consumer_table_id = stream_entry.consumer_table_id();
           const auto& producer_table_id = stream_entry.producer_table_id();
           NamespaceId consumer_namespace_id;
@@ -623,10 +626,11 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
             consumer_namespace_id =
                 VERIFY_RESULT(catalog_manager_->GetTableNamespaceId(consumer_table_id));
           }
+          const auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(stream_id_str));
           for (const auto& [_, producer_tablets] : stream_entry.consumer_producer_tablet_map()) {
             for (const auto& tablet_id : producer_tablets.tablets()) {
               const auto key = VERIFY_RESULT(xcluster::SafeTimeTablePK::FromProducerTabletInfo(
-                  replication_group_id, tablet_id, producer_table_id));
+                  replication_group_id, tablet_id, producer_table_id, stream_id));
               producer_tablet_namespace_map_[key] = consumer_namespace_id;
               if (stream_entry.is_ddl_queue_table()) {
                 ddl_queue_tablet_ids_.insert(tablet_id);
@@ -638,9 +642,10 @@ Status XClusterSafeTimeService::RefreshProducerTabletToNamespaceMap() {
     }
   }
 
-  // Its important to use the version we got before getting the registry, as it could have
-  // changed again.
+  // It's important to use the version and flag value we got before getting the registry, as they
+  // could have changed again.
   cluster_config_version_ = latest_config_version;
+  producer_tablet_keys_have_stream_id_ = include_stream_id;
 
   return Status::OK();
 }

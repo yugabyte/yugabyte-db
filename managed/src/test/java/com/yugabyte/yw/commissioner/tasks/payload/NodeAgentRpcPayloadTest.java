@@ -4,12 +4,12 @@ package com.yugabyte.yw.commissioner.tasks.payload;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
@@ -45,18 +46,26 @@ import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.telemetry.DataDogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
 import com.yugabyte.yw.nodeagent.InstallOtelCollectorInput;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
 public class NodeAgentRpcPayloadTest extends FakeDBApplication {
+  private static final Map<String, String> SECRET_ENV =
+      Collections.singletonMap("YB_OTEL_A_DD_API_KEY", "k");
 
   private NodeAgentClient mockNodeAgentClient;
   private OtelCollectorConfigGenerator mockConfigGenerator;
@@ -66,9 +75,12 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
   private NodeDetails node;
   private UserIntent userIntent;
   private NodeAgent nodeAgent;
+  private String savedYbaVersion;
 
   @Before
   public void setUp() {
+    savedYbaVersion = Util.getYbaVersion();
+    Util.setYbaVersion("2026.2.0.0-b10");
     Customer customer = ModelFactory.testCustomer();
     Provider provider = ModelFactory.awsProvider(customer);
     Region region = Region.create(provider, "us-west-2", "US West 2", "yb-image");
@@ -112,6 +124,18 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
             mock(NodeManager.class));
   }
 
+  @After
+  public void tearDown() {
+    Util.setYbaVersion(savedYbaVersion);
+  }
+
+  private static NodeAgent nodeAgent(String version) {
+    NodeAgent nodeAgent = new NodeAgent();
+    nodeAgent.setIp("10.0.0.1");
+    nodeAgent.setVersion(version);
+    return nodeAgent;
+  }
+
   private ManageOtelCollector.Params params(
       boolean otelCollectorEnabled, TelemetryConfig telemetryConfig) {
     ManageOtelCollector.Params params = new ManageOtelCollector.Params();
@@ -127,9 +151,14 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
 
   private TelemetryConfig metricsExportTelemetryConfig() {
     UUID exporterUuid = UUID.randomUUID();
-    TelemetryProvider telemetryProvider = mock(TelemetryProvider.class, RETURNS_DEEP_STUBS);
-    when(telemetryProvider.getConfig().getType()).thenReturn(ProviderType.DATA_DOG);
+    DataDogConfig ddConfig = new DataDogConfig();
+    ddConfig.setType(ProviderType.DATA_DOG);
+    ddConfig.setApiKey("apiKey");
+    TelemetryProvider telemetryProvider = new TelemetryProvider();
+    telemetryProvider.setUuid(exporterUuid);
+    telemetryProvider.setConfig(ddConfig);
     when(mockTelemetryProviderService.get(exporterUuid)).thenReturn(telemetryProvider);
+    when(mockTelemetryProviderService.getOrBadRequest(exporterUuid)).thenReturn(telemetryProvider);
     UniverseMetricsExporterConfig exporterConfig = new UniverseMetricsExporterConfig();
     exporterConfig.setExporterUuid(exporterUuid);
     MetricsExportConfig metricsExportConfig = new MetricsExportConfig();
@@ -149,6 +178,7 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
     assertFalse(input.getRefreshScriptOnly());
     assertEquals("", input.getOtelColPackagePath());
     assertEquals("", input.getOtelColConfigFile());
+    assertTrue(input.getOtelColSecretEnvMap().isEmpty());
     verify(mockNodeAgentClient, never()).uploadFile(any(), any(), any(), any(), anyInt(), any());
   }
 
@@ -203,8 +233,48 @@ public class NodeAgentRpcPayloadTest extends FakeDBApplication {
     assertFalse(input.getRefreshScriptOnly());
     assertFalse(input.getOtelColPackagePath().isEmpty());
     assertTrue(input.getOtelColConfigFile().endsWith("otel-collector-config.yml"));
+    assertTrue(input.getOtelColSecretEnvMap().containsValue("apiKey"));
     // One upload for the package, one for the config file.
     verify(mockNodeAgentClient, times(2))
         .uploadFile(eq(nodeAgent), any(), anyString(), any(), anyInt(), any());
+  }
+
+  @Test
+  public void oldNodeAgentWithSecretEnvFails() {
+    assertThrows(
+        IllegalStateException.class,
+        () ->
+            NodeAgentRpcPayload.checkNodeAgentReadsSecretEnv(
+                nodeAgent("2026.1.0.0-b5"), SECRET_ENV));
+  }
+
+  @Test
+  public void oldNodeAgentWithoutSecretEnvPasses() {
+    NodeAgentRpcPayload.checkNodeAgentReadsSecretEnv(
+        nodeAgent("2026.1.0.0-b5"), Collections.emptyMap());
+  }
+
+  @Test
+  public void upgradedNodeAgentWithSecretEnvPasses() {
+    NodeAgentRpcPayload.checkNodeAgentReadsSecretEnv(nodeAgent("2026.2.0.0-b10"), SECRET_ENV);
+  }
+
+  @Test
+  public void unknownExporterFailsWithBadRequest() {
+    TelemetryProviderService telemetryProviderService = mock(TelemetryProviderService.class);
+    when(telemetryProviderService.getOrBadRequest(any(UUID.class))).thenCallRealMethod();
+    NodeAgentRpcPayload payload =
+        new NodeAgentRpcPayload(
+            null, null, null, null, telemetryProviderService, null, null, null, null);
+    UUID exporterUUID = UUID.randomUUID();
+    UniverseLogsExporterConfig exporterConfig = new UniverseLogsExporterConfig();
+    exporterConfig.setExporterUuid(exporterUUID);
+    AuditLogConfig auditLogConfig = new AuditLogConfig();
+    auditLogConfig.setUniverseLogsExporterConfig(List.of(exporterConfig));
+    TelemetryConfig telemetryConfig = new TelemetryConfig();
+    telemetryConfig.setAuditLogConfig(auditLogConfig);
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> payload.getVmExporters(telemetryConfig));
+    assertEquals("Invalid Telemetry Provider UUID: " + exporterUUID, e.getMessage());
   }
 }

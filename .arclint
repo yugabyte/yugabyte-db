@@ -231,7 +231,8 @@
         "(^src/postgres/third-party-extensions/mage/sql/)",
         "(^src/postgres/third-party-extensions/pg_duckdb/sql/.*$)",
         "(^src/postgres/third-party-extensions/pg_hint_plan/.*$)",
-        "(^src/postgres/third-party-extensions/pgvector/sql/.*$)"
+        "(^src/postgres/third-party-extensions/pgvector/sql/.*$)",
+        "(^src/postgres/third-party-extensions/postgresql_anonymizer/sql/.*$)"
       ],
       "script-and-regex.script": "src/lint/regress_test.sh",
       "script-and-regex.regex":

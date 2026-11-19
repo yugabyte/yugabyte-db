@@ -38,7 +38,8 @@ export const TaskType = {
   ROLLBACK_UPGRADE: 'RollbackUpgrade',
   FINALIZE_UPGRADE: 'FinalizeUpgrade',
   RESIZE_NODE: 'ResizeNode',
-  RESTORE_YBA_BACKUP: 'RestoreYbaBackup'
+  RESTORE_YBA_BACKUP: 'RestoreYbaBackup',
+  MANAGE_CROSS_CLOUD_FEDERATION: 'ManageCrossCloudFederation'
 };
 export const TargetType = {
   UNIVERSE: 'Universe',
