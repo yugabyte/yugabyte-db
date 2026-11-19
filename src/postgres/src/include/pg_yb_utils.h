@@ -198,6 +198,13 @@ extern struct YbPgExecOutParam *yb_osc_backfill_out_param;
 extern bool yb_osc_backfill_outer_started;
 
 /*
+ * Errors out of a DDL that changes or drops function fn_oid while it is the
+ * transform of an active online schema change job.  ddl is the verb for the
+ * message, e.g. "replace".  Defined in yb_osc_catalog.c.
+ */
+extern void YbOscCheckTransformChange(Oid fn_oid, const char *ddl);
+
+/*
  * Parsed span context from the yb_dist_tracecontext GUC.
  * Allocated in TopMemoryContext to ensure it persists across query executions.
  */

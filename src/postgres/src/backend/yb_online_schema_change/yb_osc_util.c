@@ -20,6 +20,7 @@
 #include "access/table.h"
 #include "catalog/index.h"
 #include "catalog/pg_index.h"
+#include "catalog/pg_proc.h"
 #include "executor/spi.h"
 #include "fmgr.h"
 #include "utils/builtins.h"
@@ -641,4 +642,19 @@ YbOscRenameTable(Relation rel, const char *newName)
 		ereport(ERROR, (errmsg("failed to rename table")));
 
 	SPI_finish();
+}
+
+/* The role the copy runs the transform as. */
+Oid
+YbOscTransformOwner(Oid transformOid)
+{
+	HeapTuple	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(transformOid));
+
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for function %u", transformOid);
+
+	Oid			owner = ((Form_pg_proc) GETSTRUCT(tuple))->proowner;
+
+	ReleaseSysCache(tuple);
+	return owner;
 }

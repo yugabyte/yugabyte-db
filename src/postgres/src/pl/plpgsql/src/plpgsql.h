@@ -1351,4 +1351,9 @@ extern void plpgsql_scanner_finish(void);
  */
 extern int	plpgsql_yyparse(void);
 
+/* YB declarations */
+extern void yb_plpgsql_estate_setup_for_analysis(PLpgSQL_execstate *estate,
+												 PLpgSQL_function *func);
+extern Node *yb_plpgsql_single_return_expr(Oid fnOid, const char **why);
+
 #endif							/* PLPGSQL_H */
