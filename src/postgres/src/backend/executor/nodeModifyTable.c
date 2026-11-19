@@ -93,6 +93,7 @@
 #include "catalog/pg_database.h"
 #include "executor/ybModifyTable.h"
 #include "executor/ybOptimizeModifyTable.h"
+#include "executor/ybRowModification.h"
 #include "optimizer/ybplan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
@@ -1302,6 +1303,14 @@ YbExecInsertAct(ModifyTableContext *context,
 								  ONCONFLICT_NONE);
 				}
 
+				/*
+				 * A later proposed row of this command must not update the
+				 * row, see ExecOnConflictUpdate.
+				 */
+				if (onconflict == ONCONFLICT_UPDATE)
+					YbRecordRowModification(mtstate, resultRelationDesc, slot,
+											false /* deleted */ );
+
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(resultRelInfo, slot, estate, true, true,
 													   &specConflict, arbiterIndexes);
@@ -1624,6 +1633,14 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 	if (IsYBRelation(resultRelationDesc))
 	{
+		TM_Result	result = YbGetRowModificationResult(estate,
+														resultRelationDesc,
+														context->planSlot,
+														&context->tmfd);
+
+		if (result != TM_Ok)
+			return result;
+
 		bool		row_found = YBCExecuteDelete(resultRelationDesc,
 												 context->planSlot,
 												 ((ModifyTable *) context->mtstate->ps.plan)->ybReturningColumns,
@@ -1645,6 +1662,8 @@ ExecDeleteAct(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		if (!row_found)
 			return TM_Invisible;
 
+		YbRecordRowModification(context->mtstate, resultRelationDesc,
+								context->planSlot, true /* deleted */ );
 		return TM_Ok;
 	}
 
@@ -2564,6 +2583,12 @@ lreplace:
 		*yb_is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
 												  *yb_cols_marked_for_update);
 
+		/* Where heap_update reports TM_SelfModified */
+		result = YbGetRowModificationResult(estate, resultRelationDesc,
+											context->planSlot, &context->tmfd);
+		if (result != TM_Ok)
+			return result;
+
 		if (*yb_is_pk_updated)
 		{
 			YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, slot, estate);
@@ -2588,6 +2613,12 @@ lreplace:
 		if (!row_found)
 			return TM_Invisible;
 
+		YbRecordRowModification(context->mtstate, resultRelationDesc,
+								context->planSlot,
+								*yb_is_pk_updated /* deleted */ );
+		if (*yb_is_pk_updated)
+			YbRecordRowModification(context->mtstate, resultRelationDesc, slot,
+									false /* deleted */ );
 		updateCxt->updated = true;
 		return TM_Ok;
 	}
@@ -3254,6 +3285,9 @@ yb_skip_transaction_control_check:
 											false, &ybShouldFree);
 		ExecStoreHeapTuple(ybOldTuple, existing, false /* shouldFree */ );
 		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(ybOldTuple);
+		/* What table_tuple_lock finds invisible above */
+		YbCheckOnConflictRowNotModified(context->estate, relation,
+										HEAPTUPLE_YBCTID(ybOldTuple));
 	}
 
 	/*
@@ -4717,6 +4751,9 @@ ExecModifyTable(PlanState *pstate)
 
 	node->mt_done = true;
 
+	/* YB: This node modifies no more rows. */
+	YbEndRowModifications(node);
+
 	return NULL;
 }
 
@@ -5382,6 +5419,10 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		YbInitIocStrategy(resultRelInfo, node, mtstate->yb_ioc_batch_size);
 	}
 
+	/* YB: Rows the node modifies may need TM_SelfModified checks. */
+	if (IsYugaByteEnabled())
+		YbBeginRowModifications(mtstate);
+
 	/*
 	 * Lastly, if this is not the primary (canSetTag) ModifyTable node, add it
 	 * to estate->es_auxmodifytables so that it will be run to completion by
@@ -5417,6 +5458,9 @@ ExecEndModifyTable(ModifyTableState *node)
 	 */
 	if (node->yb_ioc_state)
 		YbFreeInsertOnConflictBatchState(node->yb_ioc_state);
+
+	/* YB: in case the node did not get to its last row */
+	YbEndRowModifications(node);
 
 	/*
 	 * Allow any FDWs to shut down
@@ -5927,6 +5971,20 @@ YbExecCheckIndexConstraints(EState *estate,
 																  yb_ioc_state,
 																  &info));
 					Assert(info.slot);
+
+					/*
+					 * The arbiter check of a heap table, with a dirty
+					 * snapshot, does not find a row that this command
+					 * deleted after the batch read it.
+					 */
+					if (YbIsRowDeletedByCommand(estate,
+												resultRelInfo->ri_RelationDesc,
+												info.slot))
+					{
+						ExecDropSingleTupleTableSlot(info.slot);
+						descriptors = lappend(descriptors, descr);
+						continue;
+					}
 					*ybConflictSlot = info.slot;
 				}
 

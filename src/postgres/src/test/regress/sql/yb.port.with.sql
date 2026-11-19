@@ -1375,7 +1375,7 @@ upsert_cte AS (
     RETURNING k, v)
 INSERT INTO withz VALUES(2, 'Red') ON CONFLICT (k) DO
 UPDATE SET (k, v) = (SELECT k, v FROM upsert_cte WHERE upsert_cte.k = withz.k)
-RETURNING k, v; -- YB: output is different from PG (see #6782)
+RETURNING k, v;
 
 DROP TABLE withz;
 
