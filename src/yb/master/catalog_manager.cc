@@ -14964,17 +14964,19 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   EnqueuePendingBackfillsAfterLoad();
   ClearRestoringSysCatalogIfNotFenced();
 
-  // Writing to cdc_state needs this master to answer IsCreateTableDone, which it rejects while
-  // restoring_sys_catalog_ is set. Here the flag is still set only while another restore is
-  // fenced, and that restore's sys catalog reload, or a later one if it is never applied, runs the
-  // backfill. A restore fenced after this check makes the backfill fail instead, and a later sys
-  // catalog load retries it.
+  // BackfillLegacyGrpcStreams writes to cdc_state, which needs this master to answer
+  // IsCreateTableDone, and the master rejects it while restoring_sys_catalog_ is set. The flag is
+  // still set here only while a restore is in progress, and that restore's sys catalog load calls
+  // BackfillLegacyGrpcStreams. A restore that starts after this check makes
+  // BackfillLegacyGrpcStreams fail instead, and that restore's sys catalog load calls it again. If
+  // the restore is never applied, the next sys catalog load calls it, which can be a master restart
+  // or leader change much later.
   if (!restoring_sys_catalog_) {
     WARN_NOT_OK(
         BackfillLegacyGrpcStreams(state.epoch), "Failed to backfill legacy gRPC CDC streams");
   } else {
-    LOG_WITH_PREFIX(INFO) << "Deferring backfill of legacy gRPC CDC streams to a later sys catalog "
-                          << "load: another restore is fenced";
+    LOG_WITH_PREFIX(INFO) << "Deferring BackfillLegacyGrpcStreams to a later sys catalog load: "
+                          << "a restore is in progress";
   }
 
   if (FLAGS_enable_ysql) {
