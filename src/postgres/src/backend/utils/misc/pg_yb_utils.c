@@ -1486,12 +1486,24 @@ YBCRollbackToSubTransaction(SubTransactionId id)
 	 * handling this failure end up trying to abort the transaction which
 	 * would anyway terminate the backend on failure. Revisit this approach in
 	 * case the behavior of YBCAbortTransaction changes.
+	 *
+	 * During proc_exit, log the error instead, as YBCAbortTransaction does:
+	 * a FATAL here would skip the rest of the transaction abort.
 	 */
 	YbcStatus	status = YBCPgRollbackToSubTransaction(id);
 
 	if (unlikely(status))
-		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
-			 id, YBCMessageAsCString(status));
+	{
+		if (!proc_exit_inprogress)
+			elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
+				 id, YBCMessageAsCString(status));
+		/* Only reached when proc_exit_inprogress: elog(FATAL) does not return. */
+		ereport(LOG,
+				(errmsg("failed to rollback to subtransaction %" PRId32
+						" during shutdown: %s",
+						id, YBCMessageAsCString(status))));
+		YBCFreeStatus(status);
+	}
 
 	YbInvalidateTableCacheForAlteredTables();
 
@@ -7505,7 +7517,8 @@ yb_assign_max_replication_slots(int newval, void *extra)
 {
 	ereport(NOTICE,
 			(errmsg("max_replication_slots should be controlled using the Gflag"
-					" \"max_replication_slots\" on the YB-Master process"),
+					" \"max_replication_slots\" on the YB-Master and YB-TServer"
+					" processes"),
 			 errdetail("In Yugabyte clusters, the replication slots are managed by"
 					   " the YB-Master globally. Hence limits on the number of"
 					   " replication slots should be controlled using Gflags and"

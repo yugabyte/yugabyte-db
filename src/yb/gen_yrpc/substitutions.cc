@@ -199,7 +199,7 @@ std::string DefaultValueToString(
     case google::protobuf::FieldDescriptor::CPPTYPE_ENUM:
       return "::" + ReplaceNamespaceDelimiters(field->default_value_enum()->full_name());
     case google::protobuf::FieldDescriptor::CPPTYPE_STRING:
-      return field->default_value_string();
+      return "\"" + google::protobuf::CEscape(field->default_value_string()) + "\"";
     case google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE:
       return "NOT SUPPORTED";
   }
@@ -213,16 +213,17 @@ Substitutions CreateSubstitutions(const google::protobuf::FieldDescriptor* field
     field_name += "_";
   }
   result.emplace_back("field_name", field_name);
-  if (field->containing_oneof()) {
+  if (field->real_containing_oneof()) {
     if (StoredAsSlice(field)) {
       result.emplace_back("field_accessor", "direct_" + field_name + "()");
     } else {
       result.emplace_back("field_accessor",
-                          Format("$0_.$1_", field->containing_oneof()->name(), field_name));
+                          Format("$0_.$1_", field->real_containing_oneof()->name(), field_name));
     }
-    result.emplace_back("field_containing_oneof_name", field->containing_oneof()->name());
+    result.emplace_back("field_containing_oneof_name", field->real_containing_oneof()->name());
     result.emplace_back(
-        "field_containing_oneof_cap_name", SnakeToCamelCase(field->containing_oneof()->name()));
+        "field_containing_oneof_cap_name",
+        SnakeToCamelCase(field->real_containing_oneof()->name()));
   } else {
     result.emplace_back("field_accessor", field_name + "_");
   }

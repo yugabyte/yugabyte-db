@@ -24,7 +24,8 @@ add_executable(protoc-gen-yrpc
     protoc-gen-yrpc.cc
     proxy_generator.cc
     service_generator.cc
-    substitutions.cc)
+    substitutions.cc
+    trace_generator.cc)
 target_link_libraries(protoc-gen-yrpc
     ${YB_BASE_LIBS}
     protoc

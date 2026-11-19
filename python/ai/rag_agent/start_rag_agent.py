@@ -268,6 +268,45 @@ def _resolve_worker_document_types() -> List[str]:
     return document_types
 
 
+def _maybe_preload_docling_models():
+    """Preload Docling PDF->Markdown models when this worker handles PDFs.
+
+    Only runs when fine-tuning is enabled (``ENABLE_FINETUNING=true``) AND this
+    worker is configured to process PDFs, so non-PDF/text workers never pay the
+    model-loading cost. Failures are logged but non-fatal -- per-document
+    conversion will surface a clear error if artifacts are missing.
+    """
+    finetuning_enabled = (
+        os.getenv("ENABLE_FINETUNING", "false").strip().lower() == "true"
+    )
+    if not finetuning_enabled:
+        logger.info("Fine-tuning disabled; skipping Docling model preload")
+        return
+
+    document_types = _resolve_worker_document_types()
+    if "application/pdf" not in document_types:
+        logger.info(
+            "Worker does not handle PDFs; skipping Docling model preload"
+        )
+        return
+
+    try:
+        from pdf_processing.docling_loader import preload_docling_models
+
+        logger.info("Preloading Docling PDF models for fine-tuning...")
+        if preload_docling_models():
+            logger.info("Docling PDF models preloaded successfully")
+        else:
+            logger.error(
+                "Docling model preload reported failure; PDF fine-tuning tasks "
+                "will error until model artifacts are available"
+            )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error preloading Docling models: {e}", exc_info=True
+        )
+
+
 def polling_worker():
     """
     Synchronous worker thread that continuously polls for work queue tasks.
@@ -309,7 +348,8 @@ def polling_worker():
                         f"type={task.task_type}, "
                         f"lease_token={task.lease_token}"
                     )
-                    status = route_task(task)
+                    with poller.keep_lease(task, lease_duration):
+                        status = route_task(task)
                 else:
                     # No task available, sleep briefly before polling again
                     sleep_duration = POLL_IDLE_SLEEP
@@ -330,6 +370,27 @@ def polling_worker():
                 )
     finally:
         logger.info("Polling worker thread shutting down")
+
+
+# The pg_dist_rag version this agent is written against. The agent also runs
+# on 0.0.3, as it must during a rolling upgrade: without _queue_document a
+# crawled document is queued when its source completes, and without
+# maintenance_runs every worker sweeps on its own timer (see db/capabilities.py).
+REQUIRED_EXTENSION_VERSION = "0.0.4"
+
+
+def _version_tuple(version: str):
+    return tuple(int(part) for part in version.split(".") if part.isdigit())
+
+
+def _warn_if_extension_outdated(installed: str) -> None:
+    if _version_tuple(installed) < _version_tuple(REQUIRED_EXTENSION_VERSION):
+        logger.error(
+            f"pg_dist_rag {installed} is installed; this agent expects "
+            f"{REQUIRED_EXTENSION_VERSION}. Upgrade with ALTER EXTENSION pg_dist_rag UPDATE "
+            f"TO '{REQUIRED_EXTENSION_VERSION}'; on a running cluster, first follow "
+            f"\"Upgrading a running cluster\" in the pg_dist_rag README."
+        )
 
 
 def wait_for_extension_creation():
@@ -358,10 +419,11 @@ def wait_for_extension_creation():
             connection = psycopg.connect(db_connection_string)
             cursor = connection.cursor()
             cursor.execute(
-                "SELECT * FROM pg_extension WHERE extname = 'pg_dist_rag'"
+                "SELECT extversion FROM pg_extension WHERE extname = 'pg_dist_rag'"
             )
             extension = cursor.fetchone()
             if extension:
+                _warn_if_extension_outdated(extension[0])
                 logger.info("Extension created, starting polling workers...")
                 polling_active = True
                 embedding_generation_poller_active = True
@@ -489,6 +551,8 @@ async def lifespan(app: FastAPI):
                 UserPromptEmbedder()
             )
             logger.info("Task processors registered successfully")
+
+            _maybe_preload_docling_models()
 
             # Start the polling worker thread
             poller_thread = threading.Thread(target=polling_worker, daemon=True)

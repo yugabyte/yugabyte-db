@@ -34,10 +34,12 @@ var (
 
 // CommandInfo holds command information.
 type CommandInfo struct {
-	User   string
-	Desc   string
-	Cmd    string
-	Args   []string
+	User string
+	Desc string
+	Cmd  string
+	Args []string
+	// Used by RunCmd only. It cannot override HOME, PWD or the user name vars.
+	Env    []string
 	StdOut util.Buffer
 	StdErr util.Buffer
 }
@@ -86,6 +88,7 @@ func (cmdInfo *CommandInfo) RunCmd(ctx context.Context) error {
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
 	env, _ := userEnv(ctx, userDetail)
+	env = append(env, cmdInfo.Env...)
 	cmd := createCmd(ctx, userDetail, env, cmdInfo.Cmd, cmdInfo.Args...)
 	if cmdInfo.StdOut != nil {
 		cmd.Stdout = cmdInfo.StdOut
@@ -144,11 +147,22 @@ func RunShellCmd(
 	user, desc, cmdStr string,
 	logOut util.Buffer,
 ) (*CommandInfo, error) {
+	return RunShellCmdWithEnv(ctx, user, desc, cmdStr, nil, logOut)
+}
+
+// RunShellCmdWithEnv runs a shell command with extra env vars, which are not logged.
+func RunShellCmdWithEnv(
+	ctx context.Context,
+	user, desc, cmdStr string,
+	env []string,
+	logOut util.Buffer,
+) (*CommandInfo, error) {
 	cmdInfo := &CommandInfo{
 		User:   user,
 		Desc:   desc,
 		Cmd:    util.DefaultShell,
 		Args:   []string{"-c", cmdStr},
+		Env:    env,
 		StdOut: util.NewBuffer(MaxBufferCapacity),
 		StdErr: util.NewBuffer(MaxBufferCapacity),
 	}
