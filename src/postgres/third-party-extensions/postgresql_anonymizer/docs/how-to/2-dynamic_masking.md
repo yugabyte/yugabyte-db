@@ -1,6 +1,6 @@
 # 2- How to use Dynamic Masking
 
-> With Dynamic Masking, the database owner can hide personnal data for
+> With Dynamic Masking, the database owner can hide personal data for
 > some users, while other users are still allowed to read and write the
 > authentic data.
 
@@ -8,27 +8,27 @@
 
 Paul has 2 employees:
 
--   Jack is operating the new sales application, he needs access to the
+- Jack is operating the new sales application, he needs access to the
     real data. He is what the GPDR would call a **\"data processor\"**.
--   Pierre is a data analyst who runs statistic queries on the database.
-    He should not have access to any personnal data.
+- Pierre is a data analyst who runs statistic queries on the database.
+    He should not have access to any personal data.
 
 ## How it works
 
-![](./img/anon_dynamic.png)
+![Anon Dynamic image](./img/anon_dynamic.png)
 
 ## Objectives
 
 In this section, we will learn:
 
--   How to write simple masking rules
--   The advantage and limitations of dynamic masking
--   The concept of \"Linkability\" of a person
+- How to write simple masking rules
+- The advantage and limitations of dynamic masking
+- The concept of \"Linkability\" of a person
 
 ## The "company" table
 
 
-``` { .run-postgres parse_query=False }
+```text { .run-postgres parse_query=False }
 
 DROP TABLE IF EXISTS supplier CASCADE;
 
@@ -56,7 +56,7 @@ SELECT * FROM company;
 
 ## The \"supplier\" table
 
-``` { .run-postgres parse_query=False }
+```text { .run-postgres parse_query=False }
 CREATE TABLE supplier (
     id SERIAL PRIMARY KEY,
     fk_company_id INT REFERENCES company(id),
@@ -112,7 +112,7 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO jack;
 
 Now connect as Pierre and try to read the supplier table:
 
-``` { .run-postgres user=pierre}
+```text { .run-postgres user=pierre}
 SELECT * FROM supplier;
 ```
 
@@ -133,7 +133,7 @@ IS 'MASKED WITH VALUE $$CONFIDENTIAL$$';
 
 Now connect as Pierre and try to read the supplier table again:
 
-``` { .run-postgres user=pierre}
+```text { .run-postgres user=pierre}
 SELECT * FROM supplier;
 ```
 
@@ -141,11 +141,11 @@ SELECT * FROM supplier;
 
 Now connect as Jack and try to read the real data:
 
-``` { .run-postgres user=jack }
+```text { .run-postgres user=jack }
 SELECT * FROM supplier;
 ```
 
-## Exercices
+## Exercises
 
 ### E201 - Guess who is the CEO of \"Johnny\'s Shoe Store\"
 
@@ -182,7 +182,7 @@ Connect as Pierre and check that he cannot view the real company info:
 
 ### E203 - Pseudonymize the company name
 
-Because of dynamic masking, the fake values will be different everytime
+Because of dynamic masking, the fake values will be different every time
 Pierre tries to read the table.
 
 Pierre would like to have always the same fake values for a given
@@ -199,7 +199,7 @@ function](https://postgresql-anonymizer.readthedocs.io/en/stable/masking_functio
 
 ### S201
 
-``` { .run-postgres user=pierre }
+```text { .run-postgres user=pierre }
 SELECT s.id, s.contact, s.job_title, c.name
 FROM supplier s
 JOIN company c ON s.fk_company_id = c.id;
@@ -218,13 +218,13 @@ IS 'MASKED WITH FUNCTION anon.random_string(10)';
 
 Now connect as Pierre and read the table again:
 
-``` { .run-postgres user=pierre }
+```text { .run-postgres user=pierre }
 SELECT * FROM company;
 ```
 
-Pierre will see different \"fake data\" everytime he reads the table:
+Pierre will see different \"fake data\" every time he reads the table:
 
-``` { .run-postgres user=pierre }
+```text { .run-postgres user=pierre }
 SELECT * FROM company;
 ```
 
@@ -239,11 +239,12 @@ IS 'MASKED WITH FUNCTION anon.pseudo_company(id)';
 
 Connect as Pierre and read the table multiple times:
 
-``` { .run-postgres user=pierre }
+```text { .run-postgres user=pierre }
 SELECT * FROM company;
 ```
 
-``` { .run-postgres user=pierre }
+```text { .run-postgres user=pierre }
 SELECT * FROM company;
 ```
+
 Now the fake company name is always the same.

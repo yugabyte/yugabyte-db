@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -57,6 +58,8 @@ public class ShellProcessHandlerTest extends TestCase {
 
   @Before
   public void beforeTest() {
+    // No DB here, so redaction must not load telemetry providers.
+    RedactingService.setTelemetrySecretsForTesting(Collections.emptyList());
     new File(TMP_STORAGE_PATH).mkdirs();
     when(mockConfig.getString("yb.devops.home")).thenReturn(TMP_STORAGE_PATH);
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
@@ -78,6 +81,7 @@ public class ShellProcessHandlerTest extends TestCase {
 
   @After
   public void tearDown() throws IOException {
+    RedactingService.setTelemetrySecretsForTesting(null);
     FileUtils.deleteDirectory(new File(TMP_STORAGE_PATH));
   }
 

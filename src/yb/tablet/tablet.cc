@@ -855,7 +855,8 @@ Tablet::Tablet(const TabletInitData& data)
       txns_enabled_(data.txns_enabled),
       allowed_history_cutoff_provider_(data.allowed_history_cutoff_provider),
       retention_policy_(std::make_shared<TabletRetentionPolicy>(
-          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get())),
+          clock_, [this](const auto&) { return AllowedHistoryCutoff(); }, metadata_.get(),
+          data.is_transactional_xcluster_target_provider)),
       full_compaction_pool_(data.full_compaction_pool),
       tier_migration_hooks_(std::move(data.tier_migration_hooks)),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
@@ -4993,7 +4994,13 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   for (auto* op_pause : op_pauses.AsArray()) {
     LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
-  return DoEnableCompactions();
+
+  // Compactions are enabled only after the pause is released, see
+  // TabletSnapshots::RestoreCheckpoint. During bootstrap EnableCompactions does nothing, and
+  // CompleteStartup enables them.
+  op_pauses.Reset();
+  s = EnableCompactions(/* blocking_rocksdb_shutdown_start_ops_pause = */ nullptr);
+  return s.IsShutdownInProgress() ? Status::OK() : s;
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
@@ -7391,8 +7398,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
              (!max_txn_locks_per_tablet || txn_intents_count <= max_txn_locks_per_tablet)) {
         DCHECK_EQ(intent_iter->key()[0], KeyEntryTypeAsChar::kTransactionId);
 
-        // The delete-list record of a batch holds vector ids, not an intent key.
-        if (intent_iter->value().starts_with(dockv::ValueEntryTypeAsChar::kDeleteVectorIds)) {
+        // The delete list record of a batch holds vector ids, not an intent key.
+        if (dockv::IsVectorIndexRecord(intent_iter->value())) {
           intent_iter->Next();
           continue;
         }

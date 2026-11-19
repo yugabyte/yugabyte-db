@@ -11,17 +11,17 @@ their views.
 
 He hired a web agency to develop a new design for his website. The
 agency asked for a SQL export (dump) of the current website database.
-Paul wants to \"clean\" the database export and remove any personnal
+Paul wants to \"clean\" the database export and remove any personal
 information contained in the comment section.
 
 ## How it works
 
-![](img/anon_dump.png)
+![Anon Dump image](img/anon_dump.png)
 
 ## Learning Objective
 
--   Extract the anonymized data from the database
--   Write a custom masking function to handle a JSON field.
+- Extract the anonymized data from the database
+- Write a custom masking function to handle a JSON field.
 
 ## Load the data
 
@@ -46,7 +46,7 @@ COPY website_comment
 FROM '/tmp/website_comment.tsv'
 ```
 
----
+------------------------------------------------------------------------
 
 ``` run-postgres
 SELECT
@@ -73,7 +73,7 @@ the field does not have a standard schema makes our tasks harder.
 
 As we can see, web visitors can write any kind of information in the
 comment section. Our best option is to remove this key entirely because
-there\'s no way to extract personnal data properly.
+there\'s no way to extract personal data properly.
 
 
 ------------------------------------------------------------------------
@@ -153,7 +153,7 @@ export PGUSER=paul
 pg_dump_anon boutique --table=website_comment > /tmp/dump.sql
 ```
 
-## Exercices
+## Exercises
 
 ### E301 - Dump the anonymized data into a new database
 
@@ -164,17 +164,17 @@ database into it.
 
 Pierre plans to extract general information from the metadata. For
 instance, he wants to calculate the number of unique visitors based on
-the different IP adresses. But an IP adress is an **indirect
+the different IP addresses. But an IP address is an **indirect
 identifier**, so Paul needs to anonymize this field while maintaining
 the fact that some values appear multiple times.
 
 Replace the `remove_content` function with a better one called
 `clean_comment` that will:
 
--   Remove the content key
--   Replace the \"name\" value with a fake last name
--   Replace the \"ip_address\" value with its MD5 signature
--   Nullify the \"email\" key
+- Remove the content key
+- Replace the \"name\" value with a fake last name
+- Replace the \"ip_address\" value with its MD5 signature
+- Nullify the \"email\" key
 
 > HINT: Look at the `jsonb_set()` and `jsonb_build_object()` functions
 

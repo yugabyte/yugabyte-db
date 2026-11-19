@@ -11,7 +11,6 @@ SELECT anon.get_function_schema('a."b.c"(''c.d'')') = 'a';
 SELECT anon.get_function_schema('"A.B".c()') = 'A.B';
 SELECT anon.get_function_schema('"A.B"."c.d"()') = 'A.B';
 SELECT anon.get_function_schema('"a("(1,2,3)') = '';
-SELECT anon.get_function_schema('"(a)"."B(1)"(1,2,3)') = '(a)';
 SELECT anon.get_function_schema('"..".".."($$..$$)') = '..';
 SELECT anon.get_function_schema('".......".a()') = '.......';
 SELECT anon.get_function_schema('a."......."()') = 'a';

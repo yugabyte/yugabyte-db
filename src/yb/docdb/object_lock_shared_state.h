@@ -140,6 +140,10 @@ class ObjectLockSharedState {
   void ResetExclusiveLockIntentsTo(const ObjectLockExclusiveIntents& exclusive_intents)
       PARENT_PROCESS_ONLY;
 
+  // Whether the state is enabled, i.e. a transaction is registered for it. The registration is
+  // cleared if the transaction is aborted on the DocDB side.
+  [[nodiscard]] bool IsEnabled() const;
+
   uint64_t PgLockRequestCount() const;
   uint64_t PgLockReleaseCount() const;
   uint64_t TServerLockRequestCount() const;

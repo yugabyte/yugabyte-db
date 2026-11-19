@@ -1,0 +1,7 @@
+run-sql:
+  - dbname: boutique
+  - user: paul
+    #  - host: runbooks-anon-pg-1
+    #- port: 65432
+  - parse_query: False
+    # - autocommit: False

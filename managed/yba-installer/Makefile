@@ -39,7 +39,7 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_VERSION ?= 1.8.0-b9
+PERF_ADVISOR_VERSION ?= 1.8.0-b14
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
 PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
 PA_BINARY_SHA_URL := $(PA_BINARY_URL).sha
@@ -57,7 +57,7 @@ PROMETHEUS_VERSION ?= 3.15.1
 NODE_EXPORTER_VERSION ?= 1.12.1-fips
 
 # https://github.com/yugabyte/yba-pg-build/
-POSTGRES_VERSION ?= 18.6
+POSTGRES_VERSION ?= 18.7
 
 # Built against a bundled OpenSSL 3 with the validated FIPS provider, instead of the system 1.1.1.
 PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}-openssl3.tar.gz

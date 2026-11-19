@@ -15,7 +15,9 @@ import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.TelemetryConfig;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.export.ExportTelemetryConfigMapper;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Universe;
@@ -24,6 +26,7 @@ import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
+import io.ebean.DB;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -116,6 +119,49 @@ public class UniverseApiControllerExportTelemetryConfigTest extends UniverseCont
     assertEquals(2000, entry.get("send_batch_max_size").asInt());
     assertEquals(4096, entry.get("memory_limit_mib").asInt());
     assertFalse("metrics_prefix leaked into query response", entry.has("metrics_prefix"));
+  }
+
+  @Test
+  public void requestWithoutOptionalFieldsMatchesItsSavedRow() {
+    // Optional exporter fields left out of a v2 request must equal the saved row's defaults, or
+    // the handler sees a change in every section and restarts the DB processes.
+    String exporter = "[{\"exporter_uuid\": \"" + UUID.randomUUID() + "\"}]";
+    String[] sections = {
+      "master_logs",
+      "tserver_logs",
+      "ysql_conn_mgr_logs",
+      "node_agent_logs",
+      "ynp_logs",
+      "controller_logs"
+    };
+    StringBuilder body = new StringBuilder("{");
+    body.append("\"audit_logs\": {\"ysql_audit_config\": {\"enabled\": true}, \"exporters\": ")
+        .append(exporter)
+        .append("},");
+    body.append("\"query_logs\": {\"ysql_query_log_config\": {\"enabled\": true}, \"exporters\": ")
+        .append(exporter)
+        .append("},");
+    body.append("\"metrics\": {\"exporters\": ").append(exporter).append("}");
+    for (String section : sections) {
+      body.append(",\"").append(section).append("\": {\"exporters\": ").append(exporter);
+      body.append("}");
+    }
+    body.append("}");
+    ExportTelemetryConfigParams params = new ExportTelemetryConfigParams();
+    ExportTelemetryConfigMapper.fillParams(
+        Json.fromJson(Json.parse(body.toString()), api.v2.models.TelemetryConfig.class), params);
+    persistTelemetryConfig(universe.getUniverseUUID(), params.getTelemetryConfig());
+
+    ExportTelemetryConfig saved =
+        DB.find(ExportTelemetryConfig.class)
+            .setUseCache(false)
+            .where()
+            .eq("universeUuid", universe.getUniverseUUID())
+            .findOne();
+    assertEquals(
+        Collections.emptyList(),
+        com.yugabyte.yw.common.export.TelemetryConfig.diff(
+            params.getTelemetryConfig(), saved.getTelemetryConfig()));
   }
 
   private JsonNode rawGet() {
