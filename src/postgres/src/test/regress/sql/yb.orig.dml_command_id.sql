@@ -1,0 +1,113 @@
+--
+-- A statement sees the transaction's own writes of earlier commands only,
+-- as PostgreSQL compares a tuple's cmin with the snapshot's curcid.
+--
+
+-- A data-modifying CTE's rows are invisible to the rest of its statement.
+CREATE TABLE cid_t (id int PRIMARY KEY, v int);
+INSERT INTO cid_t SELECT g, 0 FROM generate_series(1, 5) g;
+WITH i AS (INSERT INTO cid_t SELECT g, 0 FROM generate_series(101, 105) g RETURNING id)
+SELECT count(*) FROM cid_t JOIN i USING (id);
+WITH i AS (INSERT INTO cid_t VALUES (201, 0) RETURNING *)
+SELECT (SELECT count(*) FROM cid_t) AS scan, i.* FROM i;
+SELECT count(*) FROM cid_t;
+
+CREATE TABLE cid_t2 (id int PRIMARY KEY, v int);
+WITH i AS (INSERT INTO cid_t2 SELECT g, 0 FROM generate_series(1, 5) g RETURNING id)
+DELETE FROM cid_t2 WHERE id IN (SELECT id FROM i);
+SELECT count(*) FROM cid_t2;
+
+-- The first operation of the statement is a write.
+CREATE TABLE cid_no_pk (v int);
+WITH ins AS (INSERT INTO cid_no_pk VALUES (5) RETURNING *)
+SELECT * FROM cid_no_pk, ins;
+SELECT * FROM cid_no_pk;
+
+-- A STABLE function shares its caller's snapshot, and so does a subquery in
+-- RETURNING: neither sees the rows the statement writes.
+CREATE FUNCTION cid_zeros() RETURNS bigint LANGUAGE sql STABLE AS
+  $$ SELECT count(*) FROM cid_t WHERE id <= 5 AND v = 0 $$;
+WITH u AS (UPDATE cid_t SET v = cid_zeros() WHERE id <= 5 RETURNING id, v)
+SELECT * FROM u ORDER BY id;
+
+CREATE TABLE cid_t3 (id int PRIMARY KEY, c bigint);
+CREATE FUNCTION cid_count3() RETURNS bigint LANGUAGE sql STABLE AS
+  $$ SELECT count(*) FROM cid_t3 $$;
+INSERT INTO cid_t3 SELECT g, cid_count3() FROM generate_series(1, 5) g;
+SELECT * FROM cid_t3 ORDER BY id;
+INSERT INTO cid_t3 SELECT g, 0 FROM generate_series(11, 13) g
+  RETURNING id, (SELECT count(*) FROM cid_t3) AS sub;
+
+-- A VOLATILE function takes a new snapshot after the rows written so far.
+CREATE FUNCTION cid_count3_volatile() RETURNS bigint LANGUAGE sql VOLATILE AS
+  $$ SELECT count(*) FROM cid_t3 WHERE id > 20 $$;
+INSERT INTO cid_t3 SELECT g, cid_count3_volatile() FROM generate_series(21, 23) g;
+SELECT * FROM cid_t3 WHERE id > 20 ORDER BY id;
+
+-- A PL/pgSQL statement sees the rows that an earlier statement wrote, even
+-- when they are still buffered.
+CREATE TABLE cid_k (k int PRIMARY KEY, v int);
+CREATE TABLE cid_s (x int);
+INSERT INTO cid_s VALUES (-1);
+CREATE FUNCTION cid_f(n int) RETURNS bigint LANGUAGE plpgsql AS $$
+DECLARE c bigint;
+BEGIN
+  INSERT INTO cid_k SELECT g, g FROM generate_series(1, n) g;
+  UPDATE cid_k SET v = 1 WHERE v > (SELECT x FROM cid_s LIMIT 1);
+  GET DIAGNOSTICS c = ROW_COUNT;
+  RETURN c;
+END $$;
+BEGIN;
+SELECT cid_f(1);
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+SELECT cid_f(5);
+ROLLBACK;
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+SELECT cid_f(5);
+ROLLBACK;
+
+-- INSERT ... SELECT from the target table reads each row once, also under
+-- SERIALIZABLE, whose reads carry no in_txn_limit.
+CREATE TABLE cid_h (k int PRIMARY KEY);
+INSERT INTO cid_h SELECT g FROM generate_series(1, 100) g;
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+INSERT INTO cid_h SELECT k + 1000 FROM cid_h;
+SELECT count(*) FROM cid_h;
+ROLLBACK;
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO cid_h SELECT k + 1000 FROM cid_h;
+SELECT count(*) FROM cid_h;
+ROLLBACK;
+
+-- Under SERIALIZABLE, an UPDATE that moves rows to a later partition does not
+-- update them again there.
+CREATE TABLE cid_mvt (id int, k int, v int, PRIMARY KEY (id, k)) PARTITION BY RANGE (k);
+CREATE TABLE cid_mvt0 PARTITION OF cid_mvt FOR VALUES FROM (0) TO (100);
+CREATE TABLE cid_mvt1 PARTITION OF cid_mvt FOR VALUES FROM (100) TO (200);
+CREATE TABLE cid_mvt2 PARTITION OF cid_mvt FOR VALUES FROM (200) TO (300);
+INSERT INTO cid_mvt SELECT g, g % 100, 0 FROM generate_series(1, 30) g;
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+UPDATE cid_mvt SET k = (k + 100) % 300, v = v + 1;
+SELECT count(*), max(v), sum(v) FROM cid_mvt;
+ROLLBACK;
+
+-- A cursor keeps the snapshot it was opened with.
+BEGIN;
+DECLARE cid_c CURSOR FOR SELECT id FROM cid_t WHERE id > 1000 ORDER BY id;
+INSERT INTO cid_t VALUES (1001, 0);
+FETCH ALL FROM cid_c;
+SELECT id FROM cid_t WHERE id > 1000;
+COMMIT;
+
+-- Each statement of a transaction block sees the ones before it.
+BEGIN;
+INSERT INTO cid_t VALUES (2001, 0);
+UPDATE cid_t SET v = 7 WHERE id = 2001;
+SELECT * FROM cid_t WHERE id = 2001;
+DELETE FROM cid_t WHERE id = 2001;
+SELECT count(*) FROM cid_t WHERE id = 2001;
+ROLLBACK;
+
+DROP TABLE cid_t, cid_t2, cid_no_pk, cid_t3, cid_k, cid_s, cid_h, cid_mvt;
+DROP FUNCTION cid_zeros(), cid_count3(), cid_count3_volatile(), cid_f(int);

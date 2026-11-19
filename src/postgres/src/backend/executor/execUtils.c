@@ -191,9 +191,10 @@ CreateExecutorState(void)
 	 * other operations ensure that they don't read any value written past this
 	 * time.
 	 *
-	 * TODO(#16239): Each SQL statement can have multiple "EState"s. But we need
-	 * to ensure that only one in_txn_limit_ht is used for reads in one SQL
-	 * statement. Fix logic for such cases.
+	 * Each SQL statement can have multiple "EState"s, which can pick different
+	 * in_txn_limits.  This matters only without command ids: a read that sends
+	 * its snapshot's command id (see standard_ExecutorStart) decides the
+	 * visibility of its transaction's writes by it.
 	 */
 	estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads =
 		&estate->yb_es_in_txn_limit_ht_for_reads;
