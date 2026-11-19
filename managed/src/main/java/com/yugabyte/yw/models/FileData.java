@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Base64;
 import java.util.Date;
@@ -48,6 +47,7 @@ public class FileData extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(FileData.class);
   private static final String PUBLIC_KEY_EXTENSION = "pub";
+  private static final String PRIVATE_KEY_EXTENSION = "pem";
 
   private static final String UUID_PATTERN =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -173,16 +173,26 @@ public class FileData extends Model {
     byte[] fileContent = Base64.getDecoder().decode(fileData.getFileContent().getBytes());
     try {
       Files.write(absoluteFilePath, fileContent);
-      Set<PosixFilePermission> permissions =
-          PosixFilePermissions.fromString(AccessManager.PEM_PERMISSIONS);
-      if (fileData.getFile().fileExtension.equals(PUBLIC_KEY_EXTENSION)) {
-        permissions = PosixFilePermissions.fromString(AccessManager.PUB_PERMISSIONS);
-      }
-      Files.setPosixFilePermissions(absoluteFilePath, permissions);
+      Files.setPosixFilePermissions(
+          absoluteFilePath,
+          PosixFilePermissions.fromString(getRestorePermissions(relativeFilePath)));
     } catch (IOException e) {
       throw new RuntimeException("Could not write to file: " + fileData.getRelativePath(), e);
     }
     return;
+  }
+
+  // Only SSH private keys stay read-only. Everything else (credentials.json, kubeconfigs, certs)
+  // is rewritten in place on provider/cert edits, so it must remain owner-writable.
+  static String getRestorePermissions(String filePath) {
+    String extension = FilenameUtils.getExtension(filePath);
+    if (PRIVATE_KEY_EXTENSION.equals(extension)) {
+      return AccessManager.PEM_PERMISSIONS;
+    }
+    if (PUBLIC_KEY_EXTENSION.equals(extension)) {
+      return AccessManager.PUB_PERMISSIONS;
+    }
+    return AccessManager.OWNER_RW_PERMISSIONS;
   }
 
   public static void deleteFiles(String dirPath, Boolean deleteDiskDirectory) {

@@ -52,6 +52,17 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
     this.backupHelper = backupHelper;
   }
 
+  private static void requireActive(CustomerConfig customerConfig) {
+    if (!customerConfig.isActive()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Storage config %s is %s; only an active storage config can be used for continuous"
+                  + " backup.",
+              customerConfig.getConfigUUID(), customerConfig.getState()));
+    }
+  }
+
   /**
    * Validates that a backup directory name is safe for cloud storage. Checks for: - Path traversal
    * attempts (..) - Directory separators (/) - Special characters - Empty or null values
@@ -106,6 +117,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can only use storage config for continuous backup.");
     }
+    requireActive(customerConfig);
     // Rejected now rather than failing every scheduled run.
     backupHelper.requireYbaFederatedIdentity(customerConfig, customerConfig.getDataObject());
 
@@ -175,6 +187,7 @@ public class ContinuousBackupHandler extends ApiControllerUtils {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can only set storage config for continuous backup.");
     }
+    requireActive(customerConfig);
     // Rejected now rather than failing every scheduled run.
     backupHelper.requireYbaFederatedIdentity(customerConfig, customerConfig.getDataObject());
 

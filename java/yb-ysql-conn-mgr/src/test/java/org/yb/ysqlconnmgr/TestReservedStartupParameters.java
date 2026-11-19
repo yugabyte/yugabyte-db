@@ -13,11 +13,17 @@
 
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
+import com.google.gson.JsonObject;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Collections;
 import java.util.Map;
 
 import org.junit.Test;
@@ -49,6 +55,8 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
     {"yb_ycm_internal_future_parameter", "1"},
     {"yb_ycm_internal_client_addr", "192.168.1.1"},
     {"yb_ycm_internal_client_port", "9432"},
+    // A second end marker, after the connection manager's own.
+    {"yb_ycm_internal_end", "1"},
     {"yb_conn_mgr_client_hostname", "example.com"},
   };
 
@@ -77,7 +85,8 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
 
   /*
    * Below test validates startup parameters passed via "options" flag to database
-   * are rejected.
+   * are rejected. In auth passthrough this fails only the logical connection; the shared
+   * control backend stays up.
    */
   @Test
   public void testRejectsConnectionManagerStartupParameters() throws Exception {
@@ -92,17 +101,68 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
             errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
       }
     }
+
+    assertControlBackendUp();
+  }
+
+  /*
+   * Reserved parameters in "options" are rejected wherever they appear in the string, in both
+   * auth passthrough and auth backend modes.
+   */
+  @Test
+  public void testRejectsReservedParametersAfterOtherSwitch() throws Exception {
+    assertReservedParametersAfterOtherSwitchRejected();
+
+    restartClusterWithAdditionalFlags(Collections.emptyMap(),
+        Collections.singletonMap("ysql_conn_mgr_use_auth_backend", "true"));
+    // Later tests expect auth passthrough.
+    markClusterNeedsRecreation();
+    assertReservedParametersAfterOtherSwitchRejected();
+  }
+
+  private void assertReservedParametersAfterOtherSwitchRejected() throws Exception {
+    String[][] legacyParameters = {
+      {"yb_is_client_ysqlconnmgr", "1"},
+      {"yb_use_tserver_key_auth", "1"},
+    };
+    for (String[][] parameters : new String[][][] {RESERVED_PARAMETERS, legacyParameters}) {
+      for (String[] parameter : parameters) {
+        try (Connection connection = getConnectionBuilder()
+                 .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                 .withOptions("-e -c " + parameter[0] + "=" + parameter[1])
+                 .connect()) {
+          fail("Reserved startup parameter accepted: " + parameter[0]);
+        } catch (SQLException error) {
+          assertTrue("Unexpected error for startup parameter " + parameter[0] + ": " + error,
+              errorContains(error, "startup parameter \"" + parameter[0] + "\" is reserved"));
+        }
+      }
+    }
+
+    // Other switches in "options" still work.
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withOptions("-e -c work_mem=8MB")
+             .connect();
+         Statement stmt = connection.createStatement()) {
+      ResultSet rs = stmt.executeQuery("SHOW work_mem");
+      assertTrue(rs.next());
+      assertTrue("work_mem not applied: " + rs.getString(1), rs.getString(1).equals("8MB"));
+    }
   }
 
   /*
    * Below test validates startup parameters passed directy as key value pair in connection string
-   * gets rejected by connection manager.
+   * gets rejected by connection manager. In auth passthrough this fails only the logical
+   * connection; the shared control backend stays up.
    */
   @Test
   public void testRejectsRawConnectionManagerStartupParameters() throws Exception {
     for (String[] parameter : RESERVED_PARAMETERS) {
       assertReservedParameterRejected(parameter[0], parameter[1]);
     }
+
+    assertControlBackendUp();
   }
 
   // Send a NON-SSL request to connection manager by explictly setting the startup
@@ -110,6 +170,15 @@ public class TestReservedStartupParameters extends BaseYsqlConnMgr {
   @Test
   public void testCannotOverrideLogicalConnectionType() throws Exception {
     assertReservedParameterRejected("yb_ycm_internal_logical_conn_type", "E");
+  }
+
+  private void assertControlBackendUp() throws Exception {
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1_000);
+    JsonObject pool = getPool("control_connection", "control_connection");
+    assertNotNull("Expected a control_connection pool", pool);
+    assertEquals("Control backend should stay up after rejecting reserved parameters", 1,
+        pool.get("active_physical_connections").getAsInt()
+            + pool.get("idle_physical_connections").getAsInt());
   }
 
   private void assertReservedParameterRejected(String name, String value) throws Exception {

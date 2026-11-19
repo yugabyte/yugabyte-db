@@ -2500,6 +2500,48 @@ Status disable_dynamic_table_addition_on_change_data_stream_action(
   return Status::OK();
 }
 
+const auto set_replication_slot_catalog_barrier_args = "<replication_slot_name>";
+Status set_replication_slot_catalog_barrier_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->SetReplicationSlotCatalogBarrier(args[0]),
+      Format("Failed to set the catalog barrier of replication slot $0", args[0]));
+  return Status::OK();
+}
+
+const auto pause_replication_slot_args = "<replication_slot_name> [<timeout_secs> (default 1800)]";
+Status pause_replication_slot_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1 && args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  auto timeout = MonoDelta::FromMinutes(30);
+  if (args.size() == 2) {
+    const auto timeout_secs = VERIFY_RESULT(CheckedStoi(args[1]));
+    SCHECK_GT(timeout_secs, 0, InvalidArgument, "Timeout must be positive");
+    timeout = MonoDelta::FromSeconds(timeout_secs);
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->PauseReplicationSlot(args[0], timeout),
+      Format("Failed to pause replication slot $0", args[0]));
+  return Status::OK();
+}
+
+const auto release_replication_slot_args = "<replication_slot_name>";
+Status release_replication_slot_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  RETURN_NOT_OK_PREPEND(
+      client->ReleaseReplicationSlot(args[0]),
+      Format("Failed to release replication slot $0", args[0]));
+  return Status::OK();
+}
+
 const auto remove_user_table_from_change_data_stream_args = "<stream_id> <table_id>";
 Status remove_user_table_from_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -3630,6 +3672,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(get_change_data_stream_info);
   REGISTER_COMMAND(prepare_replication_slots_for_transactional_ddl);
   REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
+  REGISTER_COMMAND(set_replication_slot_catalog_barrier);
+  REGISTER_COMMAND(pause_replication_slot);
+  REGISTER_COMMAND(release_replication_slot);
   REGISTER_COMMAND(remove_user_table_from_change_data_stream);
   REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
   REGISTER_COMMAND(cleanup_stale_cdc_streams);

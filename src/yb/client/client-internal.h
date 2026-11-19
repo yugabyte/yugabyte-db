@@ -495,8 +495,7 @@ class YBClient::Data {
 
   // Provide the status of the transaction to YB-Master.
   Status ReportYsqlDdlTxnStatus(
-      const TransactionMetadata& txn, bool is_committed, HybridTime propagated_hybrid_time,
-      const CoarseTimePoint& deadline);
+      const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline);
 
   Status IsYsqlDdlVerificationInProgress(
     const TransactionMetadata& txn,

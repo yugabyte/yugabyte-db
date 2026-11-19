@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.HostCloudDetector;
 import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider;
 import com.yugabyte.yw.common.IAMTemporaryCredentialsProvider.IAMCredentialSource;
+import com.yugabyte.yw.common.NodeCloudDetector;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -73,7 +74,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
@@ -141,6 +141,7 @@ public class BackupHelper {
   private StorageUtilFactory storageUtilFactory;
   private ValidateReplicationInfo validateReplicationInfo;
   private NodeUniverseManager nodeUniverseManager;
+  private NodeCloudDetector nodeCloudDetector;
   private YbcBackupUtil ybcBackupUtil;
   private SoftwareUpgradeHelper softwareUpgradeHelper;
   // The cloud YBA runs on: YBA needs no federation to reach a bucket there.
@@ -162,6 +163,7 @@ public class BackupHelper {
       YbcBackupUtil ybcBackupUtil,
       SoftwareUpgradeHelper softwareUpgradeHelper,
       HostCloudDetector hostCloudDetector,
+      NodeCloudDetector nodeCloudDetector,
       PlatformExecutorFactory executorFactory,
       CoordinatedShutdown coordinatedShutdown) {
     this.ybcManager = ybcManager;
@@ -171,6 +173,7 @@ public class BackupHelper {
     this.storageUtilFactory = storageUtilFactory;
     this.validateReplicationInfo = validateReplicationInfo;
     this.nodeUniverseManager = nodeUniverseManager;
+    this.nodeCloudDetector = nodeCloudDetector;
     this.ybcBackupUtil = ybcBackupUtil;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
     this.commissioner = commissioner;
@@ -259,7 +262,7 @@ public class BackupHelper {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
 
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
@@ -321,7 +324,7 @@ public class BackupHelper {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
 
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
@@ -401,7 +404,7 @@ public class BackupHelper {
 
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot restore backup as config is queued for deletion.");
     }
@@ -1247,7 +1250,7 @@ public class BackupHelper {
     }
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
-    precheckStorageConfig(storageConfig, universe);
+    precheckStorageConfig(storageConfig, universe, true /* forRestore */, true /* probeNodes */);
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     CustomerConfigData configData = storageConfig.getDataObject();
     Map<String, String> configLocationMap = storageUtil.getRegionLocationsMap(configData);
@@ -1273,7 +1276,15 @@ public class BackupHelper {
     }
   }
 
-  private void precheckStorageConfig(CustomerConfig storageConfig, Universe universe) {
+  /**
+   * @param forRestore whether the read replicas' tservers are checked too. A restore reaches the
+   *     bucket from the tservers of every cluster, a backup only from the primary cluster's.
+   * @param probeNodes whether an on-prem node whose cloud is not recorded may be probed. A request
+   *     thread passes false: a probe is a few commands on each node in turn, and the task that
+   *     follows the request runs this precheck again and probes there.
+   */
+  private void precheckStorageConfig(
+      CustomerConfig storageConfig, Universe universe, boolean forRestore, boolean probeNodes) {
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
     if (storageUtil.isIamEnabled(storageConfig)
         && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
@@ -1282,6 +1293,135 @@ public class BackupHelper {
     if (storageUtil.isImmutableStorageEnabled(storageConfig)) {
       validateIfYbdbInbuiltYbcHasImmutableStorage(universe);
     }
+    validateCrossCloudFederationConfigured(storageConfig, universe, forRestore, probeNodes);
+  }
+
+  /**
+   * Fails fast when cross-cloud federated IAM is not enabled on the universe but one of its nodes
+   * needs it to reach this bucket, for example because federated IAM was enabled on the provider
+   * after the universe was created. That node has no credentials for the bucket, so the YBC check
+   * on it would otherwise wait about 15 minutes and then fail with no error.
+   */
+  private void validateCrossCloudFederationConfigured(
+      CustomerConfig storageConfig, Universe universe, boolean forRestore, boolean probeNodes) {
+    CustomerConfigData data = storageConfig.getDataObject();
+    CloudType bucketCloud;
+    if (data instanceof CustomerConfigStorageS3Data
+        && AWSUtil.isCrossCloudFederationConfig((CustomerConfigStorageS3Data) data)) {
+      bucketCloud = CloudType.aws;
+    } else if (data instanceof CustomerConfigStorageGCSData
+        && ((CustomerConfigStorageGCSData) data).useGcpIam) {
+      bucketCloud = CloudType.gcp;
+    } else {
+      // Federation on a node covers only these configs, so enabling it cannot help any other.
+      return;
+    }
+    Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    // The API that enables federation on a universe refuses a universe whose primary cluster is
+    // multicloud or whose primary cluster's provider has no federation targets, so there is nothing
+    // to point such a universe at.
+    if (primaryCluster == null
+        || primaryCluster.userIntent.isMulticloudSupport()
+        || isSkipConfigBasedPreflightValidation(universe)
+        || CloudInfoInterface.getCrossCloudFederationTargets(
+                Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider)))
+            .isEmpty()) {
+      return;
+    }
+    if (primaryCluster.userIntent.isFederationConfigured()) {
+      // Enabled on the universe. EditUniverse, AddNodeToUniverse and ReplaceNodeInUniverse then
+      // configure it on the nodes of every cluster they touch by this flag alone, and do not set a
+      // read replica's own, so a read replica's flag does not tell whether its nodes have it. A
+      // read replica added after it was enabled has none (ReadOnlyClusterCreate does not configure
+      // it), but cannot be told apart, so it is left to the YBC check.
+      return;
+    }
+    // Once the API accepts a universe, it configures every cluster, read replicas included, each
+    // from its own provider.
+    List<Cluster> clusters =
+        forRestore
+            ? universe.getUniverseDetails().clusters
+            : Collections.singletonList(primaryCluster);
+    for (Cluster cluster : clusters) {
+      // A multicloud read replica has no single provider to read the target from.
+      if (cluster.userIntent.isFederationConfigured() || cluster.userIntent.isMulticloudSupport()) {
+        continue;
+      }
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      if (CloudInfoInterface.getCrossCloudFederationTarget(provider, bucketCloud) == null) {
+        // The provider does not federate to this cloud, so the nodes use their own identity.
+        continue;
+      }
+      for (NodeDetails node : universe.getRunningTserversinCluster(cluster.uuid)) {
+        CloudType nodeCloud = nodeCloud(universe, cluster, node, probeNodes);
+        // Only a VM on the other cloud can be federated; a node on the bucket's cloud reaches it
+        // natively, and one whose cloud is unknown is left to the YBC check.
+        if ((nodeCloud == CloudType.aws || nodeCloud == CloudType.gcp)
+            && nodeCloud != bucketCloud) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Universe %s cannot reach this %s bucket: node %s runs on %s and needs"
+                      + " cross-cloud federated IAM, which provider %s has enabled but which is"
+                      + " not enabled on this universe. Enable it with POST"
+                      + " /api/v2/customers/%s/universes/%s/cross-cloud-federation and body"
+                      + " {\"enabled\": true}, then retry.",
+                  universe.getName(),
+                  storageConfig.getName(),
+                  node.nodeName,
+                  nodeCloud,
+                  provider.getName(),
+                  storageConfig.getCustomerUUID(),
+                  universe.getUniverseUUID()));
+        }
+      }
+    }
+  }
+
+  /**
+   * The cloud a node runs on, or null when it cannot be told. An on-prem node's cloud is recorded
+   * when federation is configured on it; until then it is probed here. An AWS or GCP answer is
+   * recorded the same way, so later prechecks do not probe that node again. Any other answer is
+   * not: a metadata service that was only slow to answer looks the same as a physical machine. For
+   * the same reason a recorded {@code onprem} is not trusted and the node is probed again: {@code
+   * ManageCloudFederation} records whatever its probe answered. Without {@code probe}, a node that
+   * would need a probe is unknown.
+   */
+  @Nullable
+  private CloudType nodeCloud(Universe universe, Cluster cluster, NodeDetails node, boolean probe) {
+    CloudType providerCloud = cluster.getProviderCloudType(node);
+    if (providerCloud != CloudType.onprem) {
+      return providerCloud;
+    }
+    String physicalCloud = node.cloudInfo == null ? null : node.cloudInfo.physicalCloud;
+    if (CloudType.aws.name().equals(physicalCloud) || CloudType.gcp.name().equals(physicalCloud)) {
+      return CloudType.valueOf(physicalCloud);
+    }
+    if (!probe) {
+      return null;
+    }
+    CloudType detected =
+        nodeCloudDetector.detect(
+            universe,
+            node,
+            confGetter.getConfForScope(universe, UniverseConfKeys.nodeCloudDetectionTimeout));
+    if (detected == CloudType.aws || detected == CloudType.gcp) {
+      String nodeName = node.nodeName;
+      String probedIp = node.cloudInfo.private_ip;
+      Universe.saveDetails(
+          universe.getUniverseUUID(),
+          u -> {
+            NodeDetails n = u.getNode(nodeName);
+            // Skip a node that moved to another machine while it was probed.
+            if (n != null
+                && n.cloudInfo != null
+                && Objects.equals(n.cloudInfo.private_ip, probedIp)) {
+              n.cloudInfo.physicalCloud = detected.name();
+            }
+          },
+          false /* incrementVersion */);
+    }
+    return detected;
   }
 
   // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
@@ -1817,7 +1957,9 @@ public class BackupHelper {
   public Map<String, YbcBackupResponse> getYbcSuccessMarker(
       CustomerConfig storageConfig, Set<String> storageLocationList, UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    precheckStorageConfig(storageConfig, universe);
+    // The restore preflight API reaches this on a request thread. RestorePreflightValidate also
+    // does, between its own prechecks, which probe.
+    precheckStorageConfig(storageConfig, universe, true /* forRestore */, false /* probeNodes */);
     Map<String, String> successMarkerStrs = new HashMap<>();
     try {
       storageLocationList.stream()
@@ -1949,7 +2091,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    precheckStorageConfig(config, universe);
+    precheckStorageConfig(config, universe, false /* forRestore */, true /* probeNodes */);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (NodeDetails node : nodeDetailsList) {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
@@ -1991,7 +2133,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    precheckStorageConfig(config, universe);
+    precheckStorageConfig(config, universe, true /* forRestore */, true /* probeNodes */);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (String successMarkerLoc : successMarkerLocations) {
       CloudStoreSpec successMarkerCSSpec =

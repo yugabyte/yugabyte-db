@@ -33,6 +33,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -427,7 +428,20 @@ METRIC_DEFINE_event_stats(server, op_read_run_time,
 
 METRIC_DEFINE_event_stats(server, ts_bootstrap_time,
     "TServer Bootstrap Time", MetricUnit::kMicroseconds,
-    "Time (microseconds) that the tablet server takes to bootstrap all of its tablets.");
+    "Time (microseconds) spent running individual tablet bootstrap tasks.");
+
+METRIC_DEFINE_gauge_uint64(
+    server, ts_bootstrap_wall_clock_time_us, "TServer Bootstrap Wall Clock Time",
+    MetricUnit::kMicroseconds,
+    "Wall-clock time (microseconds) that the tablet server takes to bootstrap all of its tablets "
+    "during startup. Stays 0 while startup bootstrap is running and when there were no tablets "
+    "to bootstrap; see ts_startup_tablets_pending_bootstrap.");
+
+METRIC_DEFINE_gauge_uint64(
+    server, ts_startup_tablets_pending_bootstrap, "TServer Startup Tablets Pending Bootstrap",
+    MetricUnit::kUnits,
+    "Number of tablets found at tablet server startup that have not finished bootstrapping yet. "
+    "0 once startup bootstrap is done, including when there were no tablets to bootstrap.");
 
 METRIC_DEFINE_gauge_uint64(server, ts_open_metadata_time_us, "TServer Open Meta Time",
     MetricUnit::kMicroseconds,
@@ -742,6 +756,10 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(), GetNumSupportableTabletPeers());
   ts_open_metadata_time_us_ =
       METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
+  ts_bootstrap_wall_clock_time_us_ =
+      METRIC_ts_bootstrap_wall_clock_time_us.Instantiate(server_->metric_entity(), 0);
+  ts_startup_tablets_pending_bootstrap_ =
+      METRIC_ts_startup_tablets_pending_bootstrap.Instantiate(server_->metric_entity(), 0);
   ts_data_size_metrics_ = std::make_unique<TsDataSizeMetrics>(this);
   num_tablet_peers_undergoing_rbs_ = METRIC_num_tablet_peers_undergoing_rbs.Instantiate(
       server->metric_entity(), 0);
@@ -1034,6 +1052,29 @@ Status TSTabletManager::Init() {
   // Now submit the "Open" task for each.
   {
     std::lock_guard lock(metas.ready_metas_mutex);
+
+    // Only ready tablets are bootstrapped. Non-ready tablets below just roll forward a deletion or
+    // register a tombstone, so they are excluded from the bootstrap wall-clock time.
+    const auto num_startup_tablets = metas.ready_metas.size();
+    const auto startup_tablets_pending =
+        std::make_shared<std::atomic<size_t>>(num_startup_tablets);
+    // Set before the web server starts, so a scrape never sees 0 while tablets are still pending.
+    ts_startup_tablets_pending_bootstrap_->set_value(num_startup_tablets);
+    const auto bootstrap_start = MonoTime::Now();
+    // Also runs for a tablet whose bootstrap failed, so that both gauges still settle.
+    const auto mark_startup_tablet_finished =
+        [this, num_startup_tablets, startup_tablets_pending, bootstrap_start] {
+          if (startup_tablets_pending->fetch_sub(1) == 1) {
+            const auto elapsed = MonoTime::Now() - bootstrap_start;
+            ts_bootstrap_wall_clock_time_us_->set_value(elapsed.ToMicroseconds());
+            LOG_WITH_PREFIX(INFO) << "Finished bootstrap of " << num_startup_tablets
+                                  << " startup tablets in " << elapsed.ToMilliseconds() << " ms";
+          }
+          // Decrement after the wall-clock time is set, so the pending gauge reaching 0 means the
+          // wall-clock gauge is final.
+          ts_startup_tablets_pending_bootstrap_->Decrement();
+        };
+
     for (const RaftGroupMetadataPtr& meta : metas.ready_metas) {
       RegisterDataAndWalDir(
           fs_manager_, meta->table_id(), meta->raft_group_id(), meta->data_root_dir(),
@@ -1043,9 +1084,11 @@ Status TSTabletManager::Init() {
           meta->raft_group_id(), "opening tablet", &deleter));
 
       TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
-      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(std::bind(
-          &TSTabletManager::OpenTablet, this, meta, deleter,
-          CopyRetryableRequestsFromParent::kFalse)));
+      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
+          [this, meta, deleter, mark_startup_tablet_finished] {
+            OpenTablet(meta, deleter, CopyRetryableRequestsFromParent::kFalse);
+            mark_startup_tablet_finished();
+          }));
     }
   }
 
@@ -2902,10 +2945,9 @@ void TSTabletManager::OpenTablet(
   // The tablet peer is already started, so an applied snapshot restore could be replacing the
   // storages and resetting the key bounds that TriggerPostSplitCompactionIfNeeded reads (see
   // Tablet::CompleteShutdownStorages). Only that synchronous check needs the guard, the compaction
-  // it schedules takes its own scoped operation. The guard is not inside
-  // TriggerPostSplitCompactionIfNeeded because its other caller,
-  // TabletSnapshots::RestoreCheckpoint, runs with read/write operations paused and would never
-  // acquire the operation.
+  // it schedules takes its own scoped operation. TabletSnapshots::RestoreCheckpoint calls it
+  // unguarded after releasing its pause: it runs on the apply thread, the only one that replaces
+  // the storages, and TabletPeer shutdown waits for applies before resetting the key bounds.
   {
     auto scoped_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     if (scoped_op.ok()) {

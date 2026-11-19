@@ -180,7 +180,11 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_SUPPORTED_RELEASES_RESPONSE:
       return setPromiseResponse(state, 'supportedReleases', action);
     case RESET_UNIVERSE_INFO:
-      return { ...state, currentUniverse: getInitialState({}) };
+      return {
+        ...state,
+        currentUniverse: getInitialState({}),
+        universePaRegistrationStatus: getInitialState({})
+      };
     case FETCH_UNIVERSE_LIST:
       return setLoadingState(state, 'universeList', []);
     case FETCH_UNIVERSE_LIST_RESPONSE:

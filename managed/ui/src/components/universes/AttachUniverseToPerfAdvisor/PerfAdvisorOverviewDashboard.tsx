@@ -18,6 +18,11 @@ import { YBPanelItem } from '../../panels';
 
 import { usePerfAdvisorRuntimeConfigs } from './usePerfAdvisorRuntimeConfigs';
 import { getQueryIdFromUrl, getTroubleshootUuidFromUrl } from './perfAdvisorUrlHelpers';
+import {
+  getMonitoringBasePath,
+  getMonitoringItemPath,
+  getPerfAdvisorDefaultItem
+} from '../Monitoring/monitoringUrlHelpers';
 
 interface PerfAdvisorOverviewDashboardProps {
   universeUuid: string;
@@ -51,7 +56,13 @@ export const PerfAdvisorOverviewDashboard = ({
 
   // In-app (SPA) navigation without a full page reload.
   const onNavigateToUrl = (url: string) => {
-    browserHistory.push(url);
+    const [path, search] = url.split('?');
+    const perfAdvisorItem = getPerfAdvisorDefaultItem(registrationMode);
+    browserHistory.push(
+      path.replace(/\/+$/, '') === getMonitoringBasePath(universeUuid)
+        ? `${getMonitoringItemPath(universeUuid, perfAdvisorItem)}${search ? `?${search}` : ''}`
+        : url
+    );
   };
 
   const onSelectedIssue = (selectedIssueId: string | null) => {
@@ -63,7 +74,7 @@ export const PerfAdvisorOverviewDashboard = ({
     if (!selectedQueryId) {
       setQueryId(null);
       // Leave queryId in the URL: the library navigates next and, without it, drops the last path
-      // segment instead - which after a tab switch is the Performance tab itself.
+      // segment instead - which after a view switch is the Monitoring view itself.
       const cleanedPath = window.location.pathname.replace(/\/queries\/[^/]+$/, '');
       if (cleanedPath !== window.location.pathname) {
         browserHistory.replace(`${cleanedPath}${window.location.search}`);
