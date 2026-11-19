@@ -70,6 +70,10 @@ public class PauseUniverse extends UniverseTaskBase {
       throw new RuntimeException(msg);
     }
     super.createPrecheckTasks(universe);
+    // A retry only finishes stopping processes, which needs no key.
+    if (isFirstTry()) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
   }
 
   @Override

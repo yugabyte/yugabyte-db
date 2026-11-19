@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -17,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,14 +36,14 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -49,6 +51,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -77,7 +80,6 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   }
 
   private Universe defaultUniverse;
-  private KmsConfig testKMSConfig;
   private int expectedUniverseVersion = 2;
 
   @Before
@@ -96,12 +98,6 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    testKMSConfig =
-        KmsConfig.createKMSConfig(
-            defaultCustomer.getUuid(),
-            KeyProvider.AWS,
-            Json.newObject().put("test_key", "test_val"),
-            "some config name");
     when(mockNodeAgentClient.isClientEnabled(any(), any())).thenReturn(true);
   }
 
@@ -496,10 +492,8 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
   @Test
   public void testResumeUniverseWithEncyptionAtRestEnabled() {
     setupUniverse(false, 1);
-    EncryptionAtRestUtil.addKeyRef(
-        defaultUniverse.getUniverseUUID(),
-        testKMSConfig.getConfigUUID(),
-        "some_key_ref".getBytes());
+    EncryptionAtRestService<?> keyService =
+        setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), true /* kmsWorks */);
     int numRotations = EncryptionAtRestUtil.getNumUniverseKeys(defaultUniverse.getUniverseUUID());
     assertEquals(1, numRotations);
     ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
@@ -509,9 +503,50 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertTaskSequence(subTasksByPosition, RESUME_UNIVERSE_TASKS, ImmutableSet.of(2, 3));
+    List<Pair<TaskType, JsonNode>> expectedTasks = new ArrayList<>();
+    expectedTasks.add(new Pair<>(TaskType.CheckUniverseKeyInKms, Json.toJson(ImmutableMap.of())));
+    expectedTasks.addAll(RESUME_UNIVERSE_TASKS);
+    assertTaskSequence(subTasksByPosition, expectedTasks, ImmutableSet.of(3, 4));
     assertEquals(Success, taskInfo.getTaskState());
+    verify(keyService).retrieveKeyFromKms(any(), any(), any(), any());
     assertTrue(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
+  }
+
+  // Resume must fail before it starts any node when KMS cannot return the universe key.
+  @Test
+  public void testResumeUniverseFailsWhenKmsKeyUnavailable() {
+    setupUniverse(false, 1);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(
+                t ->
+                    t.getTaskType() == TaskType.ResumeServer
+                        || t.getTaskType() == TaskType.AnsibleClusterServerCtl));
+  }
+
+  // The runtime flag turns the KMS check off.
+  @Test
+  public void testResumeUniverseSkipsKmsCheckWhenDisabled() {
+    setupUniverse(false, 1);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue(UniverseConfKeys.kmsUniverseKeyPrecheckEnabled.getKey(), "false");
+    ResumeUniverse.Params taskParams = new ResumeUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
   }
 
   @Test

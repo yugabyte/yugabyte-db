@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc;
@@ -15,7 +16,9 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Universe;
+import java.util.Collections;
 
 @Abortable
 @Retryable
@@ -36,6 +39,13 @@ public class KubernetesToggleImmutableYbc extends KubernetesUpgradeTaskBase {
   @Override
   protected KubernetesToggleImmutableYbcParams taskParams() {
     return (KubernetesToggleImmutableYbcParams) taskParams;
+  }
+
+  // YBC runs only on tservers, so this task never restarts a master pod.
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return new MastersAndTservers(
+        Collections.emptyList(), fetchNodes(UpgradeOption.ROLLING_UPGRADE).tserversList);
   }
 
   @Override

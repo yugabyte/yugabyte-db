@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase.MastersAndTservers;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
@@ -14,9 +15,11 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.YbcGflagsTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +41,13 @@ public class UpgradeKubernetesYbcGFlags extends KubernetesUpgradeTaskBase {
   @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.UpdatingYbcGFlags;
+  }
+
+  // YBC runs only on tservers, so this task never restarts a master pod.
+  @Override
+  protected MastersAndTservers calculateNodesToBeRestarted() {
+    return new MastersAndTservers(
+        Collections.emptyList(), fetchNodes(UpgradeOption.ROLLING_UPGRADE).tserversList);
   }
 
   @Override

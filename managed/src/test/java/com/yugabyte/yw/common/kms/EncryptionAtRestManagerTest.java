@@ -96,6 +96,8 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
         .rotateKey(testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), keyConfig);
     when(mockEARService.retrieveKey(any(), any(), any(byte[].class), any(ObjectNode.class)))
         .thenCallRealMethod();
+    when(mockEARService.retrieveKeyFromKms(any(), any(), any(byte[].class), any()))
+        .thenCallRealMethod();
     doReturn(mockEARService).when(testManager2).getServiceInstance(anyString());
   }
 

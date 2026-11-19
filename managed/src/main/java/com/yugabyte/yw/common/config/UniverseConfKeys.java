@@ -1342,6 +1342,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
+  public static final ConfKeyInfo<Boolean> kmsUniverseKeyPrecheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.checks.kms_universe_key.enabled",
+          ScopeType.UNIVERSE,
+          "Check KMS universe key before master restarts",
+          "Before a task stops or restarts masters on an encrypted universe, check that YBA can"
+              + " get the active universe key from KMS, and fail the task if it cannot.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> enableComprehensivePrechecks =
       new ConfKeyInfo<>(
           "yb.checks.comprehensive_prechecks.enabled",
