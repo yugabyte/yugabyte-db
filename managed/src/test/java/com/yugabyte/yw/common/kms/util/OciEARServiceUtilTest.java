@@ -434,6 +434,62 @@ public class OciEARServiceUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCheckKeyExists_keyDeletedOrScheduledForDeletion_returnsFalse() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, fakeAuthConfig);
+    for (Key.LifecycleState state :
+        new Key.LifecycleState[] {
+          Key.LifecycleState.SchedulingDeletion,
+          Key.LifecycleState.PendingDeletion,
+          Key.LifecycleState.Deleting,
+          Key.LifecycleState.Deleted
+        }) {
+      stubKeyLifecycleState(state);
+      assertFalse(state.toString(), mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, keyOcid));
+    }
+  }
+
+  @Test
+  public void testCheckKeyExists_keyDisabledOrCancellingDeletion_returnsTrue() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(null, fakeAuthConfig);
+    for (Key.LifecycleState state :
+        new Key.LifecycleState[] {
+          Key.LifecycleState.Enabled,
+          Key.LifecycleState.Disabled,
+          Key.LifecycleState.CancellingDeletion
+        }) {
+      stubKeyLifecycleState(state);
+      assertTrue(state.toString(), mockOciEARServiceUtil.checkKeyExists(fakeAuthConfig, keyOcid));
+    }
+  }
+
+  @Test
+  public void testValidateKey_keyPendingDeletion_reportsMissingKey() {
+    doReturn(fakeKmsManagementClient)
+        .when(mockOciEARServiceUtil)
+        .getKmsManagementClient(any(), eq(fakeAuthConfig));
+    stubKeyLifecycleState(Key.LifecycleState.PendingDeletion);
+
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> mockOciEARServiceUtil.validateKey(fakeAuthConfig, keyOcid));
+    assertEquals(
+        "OCI key '" + keyOcid + "' does not exist or is scheduled for deletion.", e.getMessage());
+  }
+
+  private void stubKeyLifecycleState(Key.LifecycleState state) {
+    Key key = mock(Key.class);
+    when(key.getLifecycleState()).thenReturn(state);
+    GetKeyResponse response = mock(GetKeyResponse.class);
+    when(response.getKey()).thenReturn(key);
+    doReturn(response).when(fakeKmsManagementClient).getKey(any());
+  }
+
+  @Test
   public void testCheckKeyExists_403_errorMessageMentionsPermissions() {
     doReturn(fakeKmsManagementClient)
         .when(mockOciEARServiceUtil)

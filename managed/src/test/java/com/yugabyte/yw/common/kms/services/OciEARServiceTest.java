@@ -355,7 +355,9 @@ public class OciEARServiceTest extends FakeDBApplication {
         assertThrows(
             RuntimeException.class,
             () -> mockOciEARService.updateAuthConfig(configUUID, withKeyName(fakeAuthConfig)));
-    assertTrue(e.getMessage().contains("OCI key '" + keyOcid + "' does not exist."));
+    assertTrue(
+        e.getMessage()
+            .contains("OCI key '" + keyOcid + "' does not exist or is scheduled for deletion."));
     verify(mockOciEARServiceUtil, never()).validateKeySettings(any(), any());
   }
 

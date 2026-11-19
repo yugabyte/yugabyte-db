@@ -29,8 +29,10 @@ import com.yugabyte.yw.cloud.oci.OCIErrorFormatter;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
@@ -39,6 +41,13 @@ import org.slf4j.LoggerFactory;
 
 public class OciEARServiceUtil {
   private static final Logger LOG = LoggerFactory.getLogger(OciEARServiceUtil.class);
+
+  private static final Set<Key.LifecycleState> DELETION_STATES =
+      EnumSet.of(
+          Key.LifecycleState.SchedulingDeletion,
+          Key.LifecycleState.PendingDeletion,
+          Key.LifecycleState.Deleting,
+          Key.LifecycleState.Deleted);
 
   /**
    * The OCI KMS config, or the OCI key it names, is invalid and the user has to fix it. Refresh
@@ -336,11 +345,12 @@ public class OciEARServiceUtil {
   }
 
   /**
-   * Returns true if the key exists (HTTP 200), false if it does not (HTTP 404 or blank OCID).
+   * Returns true if the key exists, false if it does not (HTTP 404 or blank OCID) or is deleted or
+   * scheduled for deletion. OCI keeps answering GetKey with HTTP 200 for a key in those states.
    *
    * <p>Throws a descriptive RuntimeException for HTTP 403 (insufficient permissions) or any other
-   * unexpected API error, so callers are not silently misled. Lifecycle state and algorithm
-   * validation are left to {@link #validateKeySettings}.
+   * unexpected API error, so callers are not silently misled. The remaining lifecycle states and
+   * algorithm validation are left to {@link #validateKeySettings}.
    */
   public boolean checkKeyExists(ObjectNode authConfig, String keyOcid) {
     if (StringUtils.isBlank(keyOcid)) {
@@ -351,7 +361,8 @@ public class OciEARServiceUtil {
 
     try {
       GetKeyResponse response = client.getKey(GetKeyRequest.builder().keyId(keyOcid).build());
-      return response.getKey() != null;
+      Key key = response.getKey();
+      return key != null && !DELETION_STATES.contains(key.getLifecycleState());
     } catch (BmcException e) {
       if (e.getStatusCode() == 404) {
         return false;
@@ -587,13 +598,14 @@ public class OciEARServiceUtil {
 
   /**
    * Checks that the key exists, is Enabled and uses AES. Existence is checked first because {@link
-   * #validateKeySettings} answers false for any error, which would report a deleted key or an
-   * access failure as invalid settings; {@link #checkKeyExists} rethrows access errors with their
-   * cause.
+   * #validateKeySettings} answers false for any error or non-Enabled state, which would report a
+   * deleted key, a key scheduled for deletion or an access failure as invalid settings; {@link
+   * #checkKeyExists} rethrows access errors with their cause.
    */
   public void validateKey(ObjectNode authConfig, String keyOcid) {
     if (!checkKeyExists(authConfig, keyOcid)) {
-      throw new InvalidOciKmsConfigException("OCI key '" + keyOcid + "' does not exist.");
+      throw new InvalidOciKmsConfigException(
+          "OCI key '" + keyOcid + "' does not exist or is scheduled for deletion.");
     }
     if (!validateKeySettings(authConfig, keyOcid)) {
       throw new InvalidOciKmsConfigException(
