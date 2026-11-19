@@ -1092,6 +1092,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation(boolean usePubRefresh)
       throws Exception {
+    final boolean txnDdl = !usePubRefresh && isTransactionalDdlEnabled();
     String slotName = "test_dynamic_table_addition_slot_before_stream_creation";
     assumeFalse("Transactional DDL only works with implicit pub refresh streams",
         usePubRefresh && isTransactionalDdlEnabled());
@@ -1193,7 +1194,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     // Txn 2.
     expectedResult.add(
-        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/F" : "0/B"), txnDdl ? 5 : 3));
     if (!usePubRefresh) {
       expectedResult.add(relT1);
     }
@@ -1215,11 +1217,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
           new PgOutputMessageTupleColumnValue("wxyz")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+        LogSequenceNumber.valueOf(txnDdl ? "0/F" : "0/B"),
+        LogSequenceNumber.valueOf(txnDdl ? "0/10" : "0/C")));
 
     // Txn 3.
     expectedResult.add(
-        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 4));
+        PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/17" : "0/F"), txnDdl ? 8 : 4));
     if (!usePubRefresh) {
       expectedResult.add(relT3);
     }
@@ -1233,7 +1237,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("9"),
           new PgOutputMessageTupleColumnValue("rstu")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+        LogSequenceNumber.valueOf(txnDdl ? "0/17" : "0/F"),
+        LogSequenceNumber.valueOf(txnDdl ? "0/18" : "0/10")));
 
     assertEquals(expectedResult, result);
 
