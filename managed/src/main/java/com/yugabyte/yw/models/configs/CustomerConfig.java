@@ -515,6 +515,22 @@ public class CustomerConfig extends Model {
     }
   }
 
+  /**
+   * The data as {@link #getDataObject} parses it, but read with the shared mapper, which ignores
+   * unknown properties: data saved by an older YBA may carry a field that was removed since.
+   */
+  @JsonIgnore
+  public CustomerConfigData getDataObjectLenient() {
+    Class<? extends CustomerConfigData> dataClass = getDataClass(getType(), getName());
+    if (dataClass == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Unknown data type in configuration data. Type %s, name %s.", getType(), getName()));
+    }
+    return Json.fromJson(getData(), dataClass);
+  }
+
   // TODO: Should be removed later if we remove "ObjectNode data" and use
   // @JsonSubTypes.
   public static Class<? extends CustomerConfigData> getDataClass(ConfigType type, String name) {

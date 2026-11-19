@@ -857,6 +857,68 @@ public class StorageConfigApiTest extends FakeDBApplication {
     assertEquals(fresh, edit(fresh, nfsSpec("fresh-1", "/mnt/b"), etag).getResourceUuid());
   }
 
+  /** The edited config the last EditStorageConfig task was given. */
+  private CustomerConfig submittedEditedConfig(int submits) {
+    return app.injector()
+        .instanceOf(UnsavedStorageConfigs.class)
+        .get(submittedEdit(submits).editKey);
+  }
+
+  @Test
+  public void editKeepsV1FieldsTheSpecDoesNotModel() throws ApiException {
+    // Written by v1, with the deprecated S3 proxy.
+    CustomerConfig s3 = ModelFactory.createS3StorageConfig(customer, "s3-proxy");
+    s3.getData()
+        .putObject("PROXY_SETTINGS")
+        .put("PROXY_HOST", "proxy.example.test")
+        .put("PROXY_PORT", 3128);
+    s3.update();
+    StorageConfigSpec s3Edit =
+        new StorageConfigSpec()
+            .name("s3-proxy")
+            .storage(
+                new StorageSpec(
+                    new S3StorageSpec()
+                        .storageType(StorageType.StorageTypeS3)
+                        .backupLocation("s3://foo")
+                        .hostBase("s3.example.test")
+                        .credentials(
+                            new S3Credentials(
+                                new S3AccessKeyCredentials()
+                                    .credentialType(S3CredentialType.S3CredentialAccessKey)))));
+    edit(s3.getConfigUUID(), s3Edit, null);
+    CustomerConfig editedS3 = submittedEditedConfig(1);
+    assertEquals(
+        "proxy.example.test", editedS3.getData().get("PROXY_SETTINGS").get("PROXY_HOST").asText());
+    assertEquals("s3.example.test", editedS3.getData().get("AWS_HOST_BASE").asText());
+    assertEquals("A-KEY", editedS3.getData().get("AWS_ACCESS_KEY_ID").asText());
+
+    CustomerConfig gcs = ModelFactory.createGcsStorageConfig(customer, "gcs-external");
+    gcs.getData().put("EXTERNAL_ACCOUNT_CONFIG", "{\"type\": \"external_account\"}");
+    gcs.getData().put("USE_IMDSV2", true);
+    gcs.update();
+    StorageConfigSpec gcsEdit =
+        new StorageConfigSpec()
+            .name("gcs-renamed")
+            .storage(
+                new StorageSpec(
+                    new GcsStorageSpec()
+                        .storageType(StorageType.StorageTypeGCS)
+                        .backupLocation("gs://foo")
+                        .credentials(
+                            new GcsCredentials(
+                                new GcsServiceAccountKeyCredentials()
+                                    .credentialType(
+                                        GcsCredentialType.GcsCredentialServiceAccountKey)))));
+    edit(gcs.getConfigUUID(), gcsEdit, null);
+    CustomerConfig editedGcs = submittedEditedConfig(2);
+    assertEquals(
+        "{\"type\": \"external_account\"}",
+        editedGcs.getData().get("EXTERNAL_ACCOUNT_CONFIG").asText());
+    assertTrue(editedGcs.getData().get("USE_IMDSV2").asBoolean());
+    assertEquals("G-CREDS", editedGcs.getData().get("GCS_CREDENTIALS_JSON").asText());
+  }
+
   private static String etag(ApiResponse<StorageConfig> response) {
     return response.getHeaders().entrySet().stream()
         .filter(header -> header.getKey().equalsIgnoreCase("ETag"))

@@ -46,6 +46,9 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -342,7 +345,7 @@ public class StorageConfigHandler {
       throw badRequest(
           "storage.storage_type can't change: the configuration is " + stored.getName());
     }
-    StorageConfigSecrets.keepStored(storage, stored.getDataObject());
+    StorageConfigSecrets.keepStored(storage, stored.getDataObjectLenient());
     checkSpec(storage);
     String name = spec.getName().trim();
     if (name.isEmpty()) {
@@ -358,6 +361,7 @@ public class StorageConfigHandler {
     if (!StringUtils.equals(backupLocation(edited), backupLocation(stored))) {
       throw badRequest("storage.backup_location can't change");
     }
+    keepUnmodelledFields(edited, stored);
     edited.setConfigName(name);
     try {
       configValidator.validateConfigData(edited);
@@ -380,6 +384,29 @@ public class StorageConfigHandler {
       return CustomerConfigConsts.NAME_OCI;
     }
     throw new IllegalArgumentException("Unknown storage spec: " + storage.getClass());
+  }
+
+  /**
+   * Keeps the stored config's v1 data fields that the v2 spec doesn't model, which the edited data,
+   * built from the spec, would otherwise drop: the S3 proxy (deprecated, but still used by YBC and
+   * YBA's STS calls) and the GCS external account config and IMDSv2 flag.
+   */
+  private static void keepUnmodelledFields(CustomerConfig edited, CustomerConfig stored) {
+    CustomerConfigData editedData = edited.getDataObject();
+    CustomerConfigData storedData = stored.getDataObjectLenient();
+    if (editedData instanceof CustomerConfigStorageS3Data
+        && storedData instanceof CustomerConfigStorageS3Data) {
+      ((CustomerConfigStorageS3Data) editedData).proxySetting =
+          ((CustomerConfigStorageS3Data) storedData).proxySetting;
+    } else if (editedData instanceof CustomerConfigStorageGCSData
+        && storedData instanceof CustomerConfigStorageGCSData) {
+      CustomerConfigStorageGCSData gcs = (CustomerConfigStorageGCSData) editedData;
+      gcs.externalAccountConfig = ((CustomerConfigStorageGCSData) storedData).externalAccountConfig;
+      gcs.useImdsv2 = ((CustomerConfigStorageGCSData) storedData).useImdsv2;
+    } else {
+      return;
+    }
+    edited.setData((ObjectNode) StorageConfigMapper.DATA_MAPPER.valueToTree(editedData));
   }
 
   private static String backupLocation(CustomerConfig config) {

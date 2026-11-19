@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import api.v2.handlers.StorageConfigHandler;
+import api.v2.mappers.StorageConfigMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -83,7 +85,7 @@ public class EditStorageConfig extends AbstractTaskBase {
       }
       CustomerConfig stored = CustomerConfig.get(params().customerUUID, params().configUUID);
       checkUnchanged(stored);
-      if (edited.getData().equals(stored.getData())) {
+      if (normalized(edited).equals(normalized(stored))) {
         log.info(
             "Storage config {}: only the name changed, skipping its storage check",
             params().configUUID);
@@ -122,6 +124,14 @@ public class EditStorageConfig extends AbstractTaskBase {
               StorageConfigHandler.NAME_CONFLICT, edited.getConfigName()));
     }
     log.info("Applied the edit of storage config {}", params().configUUID);
+  }
+
+  /**
+   * The config's data as the v2 edit writes it: the stored JSON can differ from it in the fields'
+   * order, defaults and fields this YBA no longer has, none of which is a storage change.
+   */
+  private static JsonNode normalized(CustomerConfig config) {
+    return StorageConfigMapper.DATA_MAPPER.valueToTree(config.getDataObjectLenient());
   }
 
   private void checkUnchanged(@Nullable CustomerConfig config) {

@@ -11,6 +11,10 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 
+import api.v2.mappers.StorageConfigMapper;
+import api.v2.models.NfsStorageSpec;
+import api.v2.models.StorageConfigSpec;
+import api.v2.models.StorageType;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -111,6 +115,32 @@ public class EditStorageConfigTest extends FakeDBApplication {
     assertEquals(ConfigState.Active, after.getState());
     assertTrue(after.getUpdateTime().getTime() >= before);
     assertNull(unsavedConfigs.get(params.editKey));
+  }
+
+  @Test
+  public void renameOfAV1WrittenConfigSkipsTheStorageCheck() {
+    // The v2 edit rebuilds the data from the spec, as the handler does: its JSON can differ from
+    // what v1 stored (defaults, field order) without changing the storage.
+    ObjectNode rebuilt =
+        StorageConfigMapper.INSTANCE
+            .toV1CustomerConfig(
+                customer.getUuid(),
+                new StorageConfigSpec()
+                    .name("renamed")
+                    .storage(
+                        new NfsStorageSpec()
+                            .storageType(StorageType.StorageTypeNFS)
+                            .backupLocation("/mnt/nfs")
+                            .bucket("yugabyte_backup")))
+            .getData();
+
+    // A field an older YBA wrote and this one no longer has.
+    stored.getData().put("REMOVED_FIELD", "x");
+    stored.update();
+
+    task(failingValidator(), params(edit("renamed", rebuilt))).run();
+
+    assertEquals("renamed", reloaded().getConfigName());
   }
 
   @Test
