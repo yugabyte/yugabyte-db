@@ -29,6 +29,10 @@
 #define YB_OSC_STATUS_FINISHED			"finished"
 #define YB_OSC_STATUS_ABORTED			"aborted"
 
+/* Values the lifecycle functions store in origin and cutover_mode. */
+#define YB_OSC_ORIGIN_MANUAL			"manual"
+#define YB_OSC_CUTOVER_MODE_RENAME		"rename"
+
 #define YB_OSC_TRIGGER_NAME_PREFIX	"yb_osc_"
 #define YB_OSC_OLD_TABLE_PREFIX		"yb_osc_old_"
 

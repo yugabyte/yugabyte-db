@@ -22,6 +22,11 @@
  *	  done or failed is always read from the master, and the
  *	  yb_online_schema_change view shows it.
  *
+ *	  "origin" says who started the job and "cutover_mode" what finish does.
+ *	  The SQL lifecycle functions record "manual" and "rename": finish swaps
+ *	  the tables' names.  ALTER TABLE ... CONCURRENTLY records "alter_table"
+ *	  and "swap", with its statement text in "alter_cmds".
+ *
  *-------------------------------------------------------------------------
  */
 #ifndef PG_YB_ONLINE_SCHEMA_CHANGE_H
@@ -46,6 +51,9 @@ CATALOG(pg_yb_online_schema_change,8124,YbOnlineSchemaChangeRelationId) BKI_ROWT
 	timestamptz	created_at;		/* when the job began */
 	timestamptz	updated_at;		/* last status change */
 	text		status BKI_FORCE_NOT_NULL;	/* see NOTES above */
+	text		origin BKI_FORCE_NOT_NULL;	/* who started the job; see NOTES */
+	text		cutover_mode BKI_FORCE_NOT_NULL;	/* rename | swap; see NOTES */
+	text		alter_cmds BKI_FORCE_NULL BKI_DEFAULT(_null_);	/* ALTER TABLE ... CONCURRENTLY text */
 #endif
 } FormData_pg_yb_online_schema_change;
 
