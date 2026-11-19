@@ -194,6 +194,10 @@ AlterObjectRename_internal(Relation rel, Oid objectId, const char *new_name)
 		elog(ERROR, "cache lookup failed for object %u of catalog \"%s\"",
 			 objectId, RelationGetRelationName(rel));
 
+	/* YB: an online schema change transform is frozen while in use. */
+	if (classId == ProcedureRelationId)
+		YbOscCheckTransformChange(objectId, "rename");
+
 	datum = heap_getattr(oldtup, Anum_name,
 						 RelationGetDescr(rel), &isnull);
 	Assert(!isnull);
@@ -729,6 +733,10 @@ AlterObjectNamespace_internal(Relation rel, Oid objid, Oid nspOid)
 		elog(ERROR, "cache lookup failed for object %u of catalog \"%s\"",
 			 objid, RelationGetRelationName(rel));
 
+	/* YB: an online schema change transform is frozen while in use. */
+	if (classId == ProcedureRelationId)
+		YbOscCheckTransformChange(objid, "set the schema of");
+
 	name = heap_getattr(tup, Anum_name, RelationGetDescr(rel), &isnull);
 	Assert(!isnull);
 	namespace = heap_getattr(tup, Anum_namespace, RelationGetDescr(rel),
@@ -997,6 +1005,13 @@ AlterObjectOwner_internal(Relation rel, Oid objectId, Oid new_ownerId)
 		Datum	   *values;
 		bool	   *nulls;
 		bool	   *replaces;
+
+		/*
+		 * YB: an online schema change transform is frozen while in use; the
+		 * copy runs it as its owner.
+		 */
+		if (classId == ProcedureRelationId)
+			YbOscCheckTransformChange(objectId, "change the owner of");
 
 		/* Superusers can bypass permission checks */
 		if (!superuser())

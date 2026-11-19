@@ -94,3 +94,52 @@ CREATE VIEW yb_pg_stat_plans_insights AS
 		   min_avg_est_cost = avg_est_cost) THEN 'Yes' ELSE 'No' END AS plan_require_evaluation, 
 		   CASE WHEN avg_exec_time = min_avg_exec_time THEN 'Yes' ELSE 'No' END AS plan_min_exec_time 
 		FROM cte ORDER BY queryid, planid, last_used;
+
+CREATE VIEW yb_online_schema_change AS
+    SELECT
+        m.job_id,
+        m.source_table_oid::regclass        AS source_table,
+        m.target_table_oid::regclass        AS target_table,
+        m.transform_fn_oid::regprocedure    AS transform_function,
+        COALESCE(p.status, m.status)        AS status,
+        p.rows_done,
+        NULLIF(p.tablets_total, 0)          AS tablets_total,
+        p.tablets_done,
+        CASE WHEN p.tablets_total > 0
+             THEN round((100.0 * p.tablets_done / p.tablets_total)::numeric, 1)
+        END                                 AS progress_pct,
+        p.error_message,
+        m.created_at,
+        m.updated_at
+    FROM pg_catalog.pg_yb_online_schema_change m,
+         -- The master reports an active job's copy. The function is strict, so a
+         -- NULL id skips the call for a job that has ended.
+         LATERAL pg_catalog.yb_online_schema_change_progress(
+             CASE WHEN m.status = 'active' THEN m.job_id END) p
+    -- Active jobs first: a failed copy keeps its trigger on the source until it is aborted.
+    ORDER BY m.status <> 'active', m.created_at DESC, m.job_id DESC;
+
+COMMENT ON VIEW yb_online_schema_change IS
+    'Online schema change jobs, with table and function names, and the progress of the copy of each active job. Active jobs are listed first, then finished and aborted ones, newest first within each.';
+COMMENT ON COLUMN yb_online_schema_change.job_id IS 'Online schema change job identifier, which the lifecycle functions take.';
+COMMENT ON COLUMN yb_online_schema_change.source_table IS 'Table being changed (source).';
+COMMENT ON COLUMN yb_online_schema_change.target_table IS 'Table the source is copied into (target).';
+COMMENT ON COLUMN yb_online_schema_change.transform_function IS 'Function that turns a source row into a target row.';
+COMMENT ON COLUMN yb_online_schema_change.status IS 'For an active job, the state of its copy: backfilling, ready or failed (active if the master cannot be reached). Otherwise finished or aborted.';
+COMMENT ON COLUMN yb_online_schema_change.rows_done IS 'Rows copied into the target so far, while the job is active.';
+COMMENT ON COLUMN yb_online_schema_change.tablets_total IS 'Source tablets to copy, while the job is active (NULL until known).';
+COMMENT ON COLUMN yb_online_schema_change.tablets_done IS 'Source tablets fully copied, while the job is active.';
+COMMENT ON COLUMN yb_online_schema_change.progress_pct IS 'Copy completion percentage, by tablet.';
+COMMENT ON COLUMN yb_online_schema_change.error_message IS 'Why the copy failed, shown only to a role that may ALTER the source.';
+COMMENT ON COLUMN yb_online_schema_change.created_at IS 'When the job began.';
+COMMENT ON COLUMN yb_online_schema_change.updated_at IS 'When the job last changed status.';
+
+COMMENT ON TABLE pg_catalog.pg_yb_online_schema_change IS
+    'Online schema change jobs, one row per job. The yb_online_schema_change view adds names and the progress of the copy.';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.job_id IS 'Online schema change job identifier.';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.source_table_oid IS 'OID of the table being changed (source).';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.target_table_oid IS 'OID of the table the source is copied into (target).';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.transform_fn_oid IS 'OID of the function that turns a source row into a target row.';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.created_at IS 'When the job began.';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.updated_at IS 'When the job last changed status.';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.status IS 'active, finished or aborted.';

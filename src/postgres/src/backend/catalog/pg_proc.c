@@ -46,6 +46,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 
 typedef struct
 {
@@ -378,6 +381,9 @@ ProcedureCreate(const char *procedureName,
 		if (!pg_proc_ownercheck(oldproc->oid, proowner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_FUNCTION,
 						   procedureName);
+
+		/* YB: an online schema change transform is frozen while in use. */
+		YbOscCheckTransformChange(oldproc->oid, "replace");
 
 		/* Not okay to change routine kind */
 		if (oldproc->prokind != prokind)
