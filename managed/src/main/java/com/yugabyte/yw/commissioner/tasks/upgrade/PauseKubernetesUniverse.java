@@ -59,6 +59,10 @@ public class PauseKubernetesUniverse extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    // A retry only finishes stopping pods, which needs no key.
+    if (isFirstTry()) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
   }
 
   @Override

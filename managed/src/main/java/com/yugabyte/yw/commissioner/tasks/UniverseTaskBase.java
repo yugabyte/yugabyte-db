@@ -1196,6 +1196,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Adds a precheck that fails the task if YBA cannot get the active universe key from KMS. Use it
+   * in tasks that stop or restart masters, so they do not leave masters without the key.
+   */
+  protected void createCheckUniverseKeyInKmsTask(Universe universe) {
+    if (EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) == 0
+        || !confGetter.getConfForScope(universe, UniverseConfKeys.kmsUniverseKeyPrecheckEnabled)) {
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckUniverseKeyInKms",
+        subTaskGroup -> {
+          CheckUniverseKeyInKms.Params params = new CheckUniverseKeyInKms.Params();
+          params.setUniverseUUID(universe.getUniverseUUID());
+          CheckUniverseKeyInKms task = createTask(CheckUniverseKeyInKms.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
+  }
+
   public SubTaskGroup createDestroyEncryptionAtRestTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("DestroyEncryptionAtRest");
     DestroyEncryptionAtRest task = createTask(DestroyEncryptionAtRest.class);

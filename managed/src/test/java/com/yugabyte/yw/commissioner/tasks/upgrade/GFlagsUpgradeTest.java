@@ -1688,4 +1688,21 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         .findFirst()
         .get();
   }
+
+  // A non-restart upgrade stops no master, so a KMS failure must not block it.
+  @Test
+  public void testGFlagsNonRestartSkipsKmsCheck() {
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1111"), ImmutableMap.of("tserver-flag", "t1111"));
+    taskParams.upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+  }
 }

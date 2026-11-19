@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -35,5 +36,20 @@ public class RestartUniverseKubernetesUpgradeTest extends KubernetesUpgradeTaskT
             new RestartTaskParams(), TaskType.RestartUniverseKubernetesUpgrade, commissioner);
     assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
     assertTrue(isNodeExporterHttpsRecorded());
+  }
+
+  // The restart must fail before it touches any pod when KMS cannot return the universe key.
+  @Test
+  public void testRestartFailsBeforePodRestartWhenKmsKeyUnavailable() {
+    setupUniverseSingleAZ(true /* setMasters */, false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    TaskInfo taskInfo =
+        submitTask(
+            new RestartTaskParams(), TaskType.RestartUniverseKubernetesUpgrade, commissioner);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.KubernetesCommandExecutor));
   }
 }

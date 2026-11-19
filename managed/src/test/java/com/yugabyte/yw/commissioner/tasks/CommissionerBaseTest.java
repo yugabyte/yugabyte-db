@@ -99,6 +99,9 @@ import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Replica;
@@ -119,6 +122,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -1701,5 +1705,38 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     .setCode(MasterErrorPB.Code.UNKNOWN_ERROR)
                     .build())
             .build());
+  }
+
+  /** Gives the universe an active EAR key and makes KMS return it, or fail if kmsWorks is false. */
+  protected EncryptionAtRestService<?> setUpUniverseKeyInKms(UUID universeUUID, boolean kmsWorks) {
+    KmsConfig kmsConfig =
+        KmsConfig.createKMSConfig(
+            defaultCustomer.getUuid(), KeyProvider.AWS, Json.newObject(), "test-kms-config");
+    byte[] keyRef = "some_key_ref".getBytes();
+    EncryptionAtRestUtil.addKeyRef(universeUUID, kmsConfig.getConfigUUID(), keyRef);
+    EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfig.getConfigUUID(), keyRef);
+    EncryptionAtRestService<?> keyService = mock(EncryptionAtRestService.class);
+    lenient().doReturn(keyService).when(mockEARManager).getServiceInstance(anyString());
+    if (kmsWorks) {
+      lenient()
+          .when(keyService.retrieveKeyFromKms(any(), any(), any(), any()))
+          .thenReturn("some_key_val".getBytes());
+    } else {
+      lenient()
+          .when(keyService.retrieveKeyFromKms(any(), any(), any(), any()))
+          .thenThrow(new RuntimeException("KMS key disabled"));
+    }
+    return keyService;
+  }
+
+  /** Asserts that the KMS precheck ran and failed with the KMS error. */
+  protected void assertKmsCheckFailed(TaskInfo taskInfo) {
+    TaskInfo check =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("CheckUniverseKeyInKms did not run"));
+    assertEquals(TaskInfo.State.Failure, check.getTaskState());
+    assertTrue(check.getErrorMessage(), check.getErrorMessage().contains("KMS key disabled"));
   }
 }

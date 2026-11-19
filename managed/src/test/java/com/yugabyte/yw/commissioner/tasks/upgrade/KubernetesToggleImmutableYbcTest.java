@@ -366,4 +366,27 @@ public class KubernetesToggleImmutableYbcTest extends KubernetesUpgradeTaskTest 
     taskParams.setUseYbdbInbuiltYbc(false);
     taskParams.verifyParams(defaultUniverse, true);
   }
+
+  // YBC runs only on tservers, so a KMS failure must not block this task.
+  @Test
+  public void testToggleImmutableYbcSkipsKmsCheck() {
+    setupUniverseSingleAZ(true /* setMasters */, false);
+    UniverseUpdater updater =
+        u -> {
+          UniverseDefinitionTaskParams params = u.getUniverseDetails();
+          params.setEnableYbc(true);
+          params.setYbcInstalled(true);
+          params.setYbcSoftwareVersion("2.0.0.0-b0");
+        };
+    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater, false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    kubernetesToggleImmutableYbc.setUserTaskUUID(UUID.randomUUID());
+    KubernetesToggleImmutableYbcParams taskParams = new KubernetesToggleImmutableYbcParams();
+    taskParams.setUseYbdbInbuiltYbc(true);
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.CheckUniverseKeyInKms));
+  }
 }

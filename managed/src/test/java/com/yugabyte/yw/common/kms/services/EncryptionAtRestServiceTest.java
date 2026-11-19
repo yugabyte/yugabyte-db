@@ -10,15 +10,18 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
@@ -151,5 +154,49 @@ public class EncryptionAtRestServiceTest extends FakeDBApplication {
     assertNotNull(key);
     assertNotNull(key.getKeyBytes());
     assertEquals("some_key_id", new String(key.getKeyBytes()));
+  }
+
+  // A cached key must not hide a KMS failure from retrieveKeyFromKms.
+  @Test
+  public void testRetrieveKeyFromKmsSkipsCache() {
+    UUID universeUUID = UUID.randomUUID();
+    UUID configUUID = UUID.randomUUID();
+    byte[] keyRef = "some_key_ref".getBytes();
+    EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, "cached".getBytes());
+    TestEncryptionAtRestService service =
+        new TestEncryptionAtRestService(null, KeyProvider.AWS, mockEARManager) {
+          @Override
+          public byte[] retrieveKeyWithService(
+              UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
+            throw new RuntimeException("KMS key disabled");
+          }
+        };
+    assertArrayEquals(
+        "cached".getBytes(), service.retrieveKey(universeUUID, configUUID, keyRef, null));
+    RuntimeException e =
+        assertThrows(
+            RuntimeException.class,
+            () -> service.retrieveKeyFromKms(universeUUID, configUUID, keyRef, null));
+    assertEquals("KMS key disabled", e.getMessage());
+  }
+
+  @Test
+  public void testRetrieveKeyFromKmsRefreshesCache() {
+    UUID universeUUID = UUID.randomUUID();
+    byte[] keyRef = "some_key_ref".getBytes();
+    EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, "stale".getBytes());
+    TestEncryptionAtRestService service =
+        new TestEncryptionAtRestService(null, KeyProvider.AWS, mockEARManager) {
+          @Override
+          public byte[] retrieveKeyWithService(
+              UUID configUUID, byte[] keyRef, ObjectNode encryptionContext) {
+            return "fresh".getBytes();
+          }
+        };
+    assertArrayEquals(
+        "fresh".getBytes(),
+        service.retrieveKeyFromKms(universeUUID, UUID.randomUUID(), keyRef, null));
+    assertArrayEquals(
+        "fresh".getBytes(), EncryptionAtRestUtil.getUniverseKeyCacheEntry(universeUUID, keyRef));
   }
 }

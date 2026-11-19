@@ -1404,6 +1404,8 @@ public enum TaskType {
   CheckNodeCommandExecution(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeCommandExecution.class),
 
+  CheckUniverseKeyInKms(com.yugabyte.yw.commissioner.tasks.subtasks.CheckUniverseKeyInKms.class),
+
   CheckNodeDataDirDiskSpace(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace.class),
 

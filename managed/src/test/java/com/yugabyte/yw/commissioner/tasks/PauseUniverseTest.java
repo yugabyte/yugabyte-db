@@ -240,4 +240,20 @@ public class PauseUniverseTest extends CommissionerBaseTest {
         TaskType.PauseUniverse,
         taskParams);
   }
+
+  // Pause must fail before it stops any process when KMS cannot return the universe key.
+  @Test
+  public void testPauseUniverseFailsWhenKmsKeyUnavailable() {
+    setupUniverse(false);
+    setUpUniverseKeyInKms(defaultUniverse.getUniverseUUID(), false /* kmsWorks */);
+    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertKmsCheckFailed(taskInfo);
+    assertTrue(
+        taskInfo.getSubTasks().stream()
+            .noneMatch(t -> t.getTaskType() == TaskType.AnsibleClusterServerCtl));
+  }
 }

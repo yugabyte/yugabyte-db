@@ -170,10 +170,21 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     super(baseTaskDependencies);
   }
 
+  /** True if the upgrade stops or restarts at least one master process. */
+  public static boolean restartsMasters(
+      UpgradeOption upgradeOption, @Nullable MastersAndTservers nodesToBeRestarted) {
+    return upgradeOption != UpgradeOption.NON_RESTART_UPGRADE
+        && nodesToBeRestarted != null
+        && !nodesToBeRestarted.mastersList.isEmpty();
+  }
+
   @Override
   protected void createPrecheckTasks(Universe universe) {
     MastersAndTservers nodesToBeRestarted = getNodesToBeRestarted();
     log.debug("Nodes to be restarted {}", nodesToBeRestarted);
+    if (restartsMasters(taskParams().upgradeOption, nodesToBeRestarted)) {
+      createCheckUniverseKeyInKmsTask(universe);
+    }
     if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
         && nodesToBeRestarted != null
         && !nodesToBeRestarted.isEmpty()
