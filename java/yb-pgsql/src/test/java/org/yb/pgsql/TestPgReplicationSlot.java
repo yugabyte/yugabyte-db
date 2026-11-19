@@ -8071,7 +8071,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   // The master leaves the yb_xcluster_ddl_replication tables out of every CDC stream, so a slot
   // that covers all tables streams only once its walsender leaves them out of its table list too.
   @Test
-  public void allTablesSlotsSkipXClusterDdlReplicationTables() throws Exception {
+  public void slotSkipsXClusterDdlReplicationTablesCreatedBeforeIt() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE EXTENSION yb_xcluster_ddl_replication");
       stmt.execute("CREATE TABLE t1 (id int primary key)");
@@ -8138,8 +8138,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   // Adding a database to xCluster creates the extension while its slots stream.
   @Test
-  public void allTablesSlotKeepsStreamingWhenXClusterDdlReplicationExtensionIsCreated()
-      throws Exception {
+  public void slotSkipsXClusterDdlReplicationTablesCreatedWhileStreaming() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE t1 (id int primary key)");
     }
