@@ -274,7 +274,8 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
       // The collector sidecar can only scrape pod-local endpoints on K8s; there is no node-agent in
       // the DB pods, so reject its target up front instead of silently exporting nothing for it.
       // NODE_EXPORT is accepted: pods that run the node_exporter sidecar export its metrics, and
-      // pods without it export none (as the only target, its scrape job is kept with a down target).
+      // pods without it export none. As the only target, its scrape job is kept with a down
+      // target.
       Set<ScrapeConfigTargetType> unsupportedTargets =
           OtelCollectorUtil.getUnsupportedK8sScrapeTargets(getMetricsExportConfig());
       if (!unsupportedTargets.isEmpty()) {
