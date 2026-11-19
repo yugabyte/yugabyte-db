@@ -729,6 +729,48 @@ def stack_layer_prepared(layer: str, full_commit: str, parent: str) -> bool:
     return f"Original commit: {full_commit}" in body
 
 
+def merge_conflicts_section(full_commit: str, layer: str, branch: str) -> str:
+    """The `## Merge conflicts` section for a layer's PR body.
+
+    Reviewers should not have to diff a backport against its original commit
+    to find out whether it needed a manual step. Re-merging the original
+    commit onto the layer's parent tells, without any state from the run that
+    built the layer, whether its cherry-pick conflicted and in which files.
+    """
+    parent = git("rev-parse", f"{layer}^")
+    proc = run(["git", "merge-tree", "--write-tree", "--name-only",
+                f"--merge-base={full_commit}^", parent, full_commit], check=False)
+    lines = [f"## Merge conflicts", "", f"### master --> {branch}"]
+    if proc.returncode == 0:
+        lines.append("No conflicts.")
+        return "\n".join(lines)
+    # Output: tree OID, the conflicted paths, a blank line, then messages.
+    paths = []
+    for line in proc.stdout.splitlines()[1:]:
+        if not line.strip():
+            break
+        paths.append(line.strip())
+    for path in paths:
+        lines.append(f"- `{path}` -- conflicted; resolved by hand")
+    warn(f"{layer}: describe each resolution under '## Merge conflicts' in its PR body.")
+    return "\n".join(lines)
+
+
+def insert_before_trailers(body: str, section: str) -> str:
+    """Add $section to the end of $body, but above a trailing trailer paragraph.
+
+    Git reads trailers only from the last paragraph, so a section after
+    `Co-authored-by:` would drop that co-author from the squash commit.
+    """
+    lines = body.rstrip().splitlines()
+    if ends_with_trailers(lines):
+        blanks = [i for i, line in enumerate(lines) if not line.strip()]
+        cut = blanks[-1] if blanks else 0
+        head, tail = lines[:cut], lines[cut:]
+        return "\n".join(head).rstrip() + "\n\n" + section + "\n" + "\n".join(tail) + "\n"
+    return "\n".join(lines) + "\n\n" + section + "\n"
+
+
 def open_stack_pr(gh_repo: str, layer: str, base: str, title: str, body: str,
                   draft: bool) -> int:
     proc = run(
@@ -852,24 +894,28 @@ def run_stack(args, *, gh_repo: str, workspace: Path, upstream_remote: str,
             print(f"    {git('log', '-n1', '--format=%s', layer)}")
         return 0
 
-    # 2. Track the layers as a local gh stack and push them.
+    # 2. Track the layers as a local gh stack and push them. `gh stack view`
+    # shows the stack of the checked-out branch, and a rerun that adds commits
+    # has new layers on top of a tracked stack, so look from the bottom layer.
+    names = [layer for layer, _, _, _ in layers]
+    run(["git", "checkout", names[0]])
     view = run(["gh", "stack", "view", "--json"], check=False)
     tracked = []
     if view.returncode == 0:
         data = json.loads(view.stdout)
-        if data.get("trunk") == branch:
-            tracked = [b["name"] for b in data.get("branches", [])]
-    names = [layer for layer, _, _, _ in layers]
-    if tracked != names[:len(tracked)] or not tracked:
+        tracked = [b["name"] for b in data.get("branches", [])]
+        if tracked and (data.get("trunk") != branch
+                        or tracked != names[:len(tracked)]):
+            fail(f"the local gh stack holds {tracked} on {data.get('trunk')}, "
+                 f"which does not match {names} on {branch}. Fix it with the "
+                 f"stack-prs skill, then re-run.")
+    if tracked != names:
         if tracked:
-            fail(f"the local gh stack holds {tracked}, which does not match "
-                 f"{names}. Fix it with the stack-prs skill, then re-run.")
+            # init adopts existing branches but refuses ones already tracked;
+            # this drops only the local tracking, not the GitHub stack.
+            run(["gh", "stack", "unstack", "--local"])
         run(["gh", "stack", "init", "--base", branch] + names)
-    elif len(tracked) < len(names):
-        run(["git", "checkout", tracked[-1]])
-        for name in names[len(tracked):]:
-            run(["gh", "stack", "add", name])
-        run(["git", "checkout", top])
+    run(["git", "checkout", top])
     push = SCRIPT_REPO_ROOT / ".agents" / "scripts" / "git-push.sh"
     info(f"Pushing the stack with {push}")
     proc = run([str(push), "-b", branch], check=False)
@@ -890,7 +936,8 @@ def run_stack(args, *, gh_repo: str, workspace: Path, upstream_remote: str,
             continue
         base = branch if i == 0 else layers[i - 1][0]
         title = git("log", "-n1", "--format=%s", layer)
-        body = git("log", "-n1", "--format=%b", layer)
+        body = insert_before_trailers(git("log", "-n1", "--format=%b", layer),
+                                      merge_conflicts_section(full_commit, layer, branch))
         number = open_stack_pr(gh_repo, layer, base, title, body, draft=bool(numbers))
         print(f"https://github.com/{gh_repo}/pull/{number}")
         if reviewers:
