@@ -641,14 +641,9 @@ Status CDCStateTable::WriteEntries(
     const std::vector<std::string>& keys_to_delete) {
   // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
   Synchronizer sync;
-  auto status = WriteEntriesAsync<CDCEntry>(
+  RETURN_NOT_OK(WriteEntriesAsync<CDCEntry>(
       entries, statement_type, sync.AsStdStatusCallback(), condition_op, replace_full_map,
-      keys_to_delete);
-  if (!status.ok()) {
-    // WriteEntriesAsync fails only before it calls the callback, and the Synchronizer must not be
-    // destroyed before its callback runs.
-    sync.StatusCB(status);
-  }
+      keys_to_delete));
   return sync.Wait();
 }
 
@@ -663,8 +658,10 @@ Status CDCStateTable::InsertEntriesAsync(
 Status CDCStateTable::InsertEntries(
     const std::vector<CDCStateTableEntry>& entries) {
   VLOG_WITH_FUNC(1) << yb::ToString(entries);
-  return WriteEntries(
-      entries, QLWriteRequestPB::QL_STMT_INSERT, QL_OP_NOT_EXISTS, /*replace_full_map=*/true);
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  Synchronizer sync;
+  RETURN_NOT_OK(InsertEntriesAsync(entries, sync.AsStdStatusCallback()));
+  return sync.Wait();
 }
 
 Status CDCStateTable::UpdateEntries(
