@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include <algorithm>
 #include <future>
 
 #include "yb/docdb/doc_vector_index.h"

@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <algorithm>
-
 #include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"

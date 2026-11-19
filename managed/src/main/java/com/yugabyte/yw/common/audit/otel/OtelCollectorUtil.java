@@ -284,6 +284,19 @@ public class OtelCollectorUtil {
     return uuids;
   }
 
+  /** Exporters the VM config renders, including paused audit exporters. */
+  public static Set<UUID> getVmConfigExporterUuids(TelemetryConfig tc) {
+    Set<UUID> uuids = getActiveExporterUuids(tc);
+    if (tc != null
+        && tc.getAuditLogConfig() != null
+        && tc.getAuditLogConfig().getUniverseLogsExporterConfig() != null) {
+      tc.getAuditLogConfig()
+          .getUniverseLogsExporterConfig()
+          .forEach(c -> uuids.add(c.getExporterUuid()));
+    }
+    return uuids;
+  }
+
   /**
    * The universe's current full telemetry config. The ExportTelemetryConfig table is the source of
    * truth, but audit/query/metrics are also mirrored into the primary cluster userIntent by paths

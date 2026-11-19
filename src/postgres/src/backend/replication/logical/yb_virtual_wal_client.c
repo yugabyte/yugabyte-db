@@ -330,7 +330,8 @@ YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables)
 		yb_publications =
 			YBGetPublicationsByNames(publication_names, false /* missing_ok */ );
 
-		tables = yb_pg_get_publications_tables(yb_publications, yb_is_pub_all_tables);
+		tables = yb_pg_get_publications_tables(yb_publications, yb_is_pub_all_tables,
+											   true /* yb_expand_all_tables_pub */ );
 		list_free(yb_publications);
 	}
 	else

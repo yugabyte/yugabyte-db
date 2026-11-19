@@ -11,14 +11,14 @@
 // under the License.
 //
 
-#include <algorithm>
-
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 
 #include "yb/docdb/doc_vector_index.h"
 
 #include "yb/dockv/doc_key.h"
+
+#include "yb/gutil/strings/util.h"
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
@@ -61,9 +61,10 @@ DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_include_into_post_split_compaction);
-DECLARE_bool(vector_index_delete_list_after_rows);
+DECLARE_bool(vector_index_delete_list_with_subtransaction);
 DECLARE_bool(vector_index_skip_filter_check);
 DECLARE_bool(vector_index_store_payload);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_payloads);
 DECLARE_bool(TEST_vector_index_corrupt_inserted_vectors);
 DECLARE_bool(TEST_vector_index_duplicate_inserted_vectors);
@@ -73,6 +74,8 @@ DECLARE_bool(TEST_vector_index_skip_reverse_mapping_write);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 DECLARE_uint64(vector_index_backfill_single_chunk_size_bytes);
 DECLARE_int64(db_block_size_bytes);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
@@ -117,8 +120,13 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
     return PackingMode::kV1;
   }
 
+  static constexpr int64_t kUnappliedInsertRowId = 100;
+
   void TestFastPathVectorDeletion(const std::string& statement);
   void TestUnappliedVectorUpdates();
+  void TestCompactionDropsDeletedPayloadVectors(Split split);
+  void TestReverseMappingPostSplitCompactionUnappliedInsert(
+      const std::string& statement, int num_row_entries);
   void TestBackfillBatches(uint64_t single_chunk_size_bytes);
 };
 
@@ -522,7 +530,7 @@ TEST_F(PgVectorIndexUtilTest, SameTxnDeletedVector) {
 }
 
 // A tablet that restarts with an uncommitted transaction in its intents DB scans the reverse index
-// of that transaction backwards for its last strong intent. The delete-list record of a DELETE sits
+// of that transaction backwards for its last strong intent. The delete list record of a DELETE sits
 // between the strong and the weak intents of its batch. An UPDATE also takes a row lock, a strong
 // intent written after the delete list.
 TEST_F(PgVectorIndexUtilTest, LoadTransactionWithDeleteList) {
@@ -536,8 +544,8 @@ TEST_F(PgVectorIndexUtilTest, LoadTransactionWithDeleteList) {
   ASSERT_FALSE(decode_failure_log.IsEventOccurred());
 }
 
-// A transaction that spans the promotion of vector_index_delete_list_after_rows has delete lists
-// with both key encodings.
+// A transaction that spans the promotion of the delete list AutoFlags has delete list records of
+// both encodings.
 TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   constexpr int64_t kNumRows = 20;
   constexpr auto kQueryC = "[0, 0, -500]";
@@ -546,10 +554,10 @@ TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   // A committed row updated twice in one transaction: the old key tombstones the committed vector,
   // the new key tombstones the vector of the first update.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (2000, '$0')", kQueryC));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  SetDeleteListEncoding(/* new_encoding= */ false);
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.ExecuteFormat("UPDATE test SET embedding = '$0' WHERE id = 2000", kQueryB));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  SetDeleteListEncoding(/* new_encoding= */ true);
   ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[100, -100, 100]' WHERE id = 2000"));
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
@@ -561,16 +569,63 @@ TEST_F(PgVectorIndexUtilTest, DeleteListsWithBothEncodings) {
   }
 
   // A pending transaction with both encodings, loaded by a restarted tablet.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = false;
+  SetDeleteListEncoding(/* new_encoding= */ false);
   ASSERT_OK(conn.Execute("BEGIN"));
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = true;
+  SetDeleteListEncoding(/* new_encoding= */ true);
   ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
   ASSERT_OK(cluster_->FlushTablets());
 
   StringWaiterLogSink decode_failure_log("Failed to decode intent while loading transaction");
   ASSERT_OK(RestartAndWaitTransactionsLoaded());
   ASSERT_FALSE(decode_failure_log.IsEventOccurred());
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/36288.
+TEST_F(PgVectorIndexUtilTest, RolledBackSubtransactionKeepsVectors) {
+  constexpr int64_t kNumRows = 20;
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  // Written without the subtransaction id, so a delete list without one is applied too.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = false;
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 19"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT a"));
+  ASSERT_EQ(ASSERT_RESULT(DeleteListRecordTypes()), "W");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = true;
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 20"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  ASSERT_OK(conn.Execute("SAVEPOINT c"));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[0, 0, 500]' WHERE id = 1"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT c"));
+  ASSERT_OK(conn.Execute("SAVEPOINT d"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT d"));
+  // A row of the transaction, deleted in a savepoint released inside the rolled back one.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test VALUES (1000, '$0')", kQueryA));
+  ASSERT_OK(conn.Execute("SAVEPOINT e"));
+  ASSERT_OK(conn.Execute("SAVEPOINT f"));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 1000"));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT f"));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT e"));
+  // A PL/pgSQL block rolls back its statements when it handles an exception.
+  ASSERT_OK(conn.Execute(
+      "DO $$ BEGIN DELETE FROM test WHERE id = 3; RAISE EXCEPTION 'rollback'; "
+      "EXCEPTION WHEN OTHERS THEN NULL; END $$"));
+  ASSERT_EQ(ASSERT_RESULT(DeleteListRecordTypes()), "WYYYYY");
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  using Ids = std::vector<int64_t>;
+  for (const auto& [query, expected] :
+           {std::pair(kQueryA, Ids{1000, 20, 18}), std::pair(kQueryB, Ids{1, 3, 4})}) {
+    auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(
+        "SELECT id FROM test" + IndexQuerySuffix(query, expected.size())));
+    EXPECT_EQ(ids, expected) << "Query: " << query;
+  }
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/30262.
@@ -696,6 +751,86 @@ TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompaction) {
           ybctid_2_vector_1 -> DEL
       )#",
       with_row2_dump);
+}
+
+// Covers https://github.com/yugabyte/yugabyte-db/issues/38070. The statement removes the vector of
+// a row, while the insert of the row is committed but not applied. num_row_entries is the number of
+// reverse mapping entries of the row which the statement writes.
+void PgVectorIndexUtilTest::TestReverseMappingPostSplitCompactionUnappliedInsert(
+    const std::string& statement, int num_row_entries) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+      std::numeric_limits<int32>::max();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_post_split_compaction_input_size_threshold_bytes) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_fail_on_seq_scan_with_vector_indexes) = false;
+  // The held apply reaches the children when its resend to the parent fails with a split error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  // The statement has to be applied before the held apply is resent.
+  constexpr int64_t kResendIntervalSec = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) =
+      kResendIntervalSec * kTimeMultiplier * MonoTime::kMicrosecondsPerSecond;
+
+  constexpr size_t kNumRows = 10;
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  const auto parent_tablet_id = peers.front()->tablet_id();
+
+  // The insert is committed, but not applied. Its vector is the nearest to the origin.
+  google::SetVLOGLevel("transaction_participant", 2);
+  StringWaiterLogSink rejected_apply_log("TEST: Rejected apply");
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[0.5, 0.5, 0.5]')", kUnappliedInsertRowId));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(rejected_apply_log.WaitFor(10s * kTimeMultiplier));
+
+  // The statement reads the row from the intents. Its apply writes the reverse mapping tombstone.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(conn.Execute(statement));
+  std::string dump;
+  ASSERT_OK(WaitFor([this, &dump]() -> Result<bool> {
+    dump = VERIFY_RESULT(DumpSingleTabletReverseMapping());
+    return dump.find("-> DEL") != std::string::npos;
+  }, 10s * kTimeMultiplier, "Reverse mapping tombstone"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
+  const auto row_entry = Format(" -> ybctid_$0\n", kUnappliedInsertRowId);
+  dump += '\n';
+  ASSERT_EQ(CountSubstring(dump, row_entry), num_row_entries) << "The insert is applied: " << dump;
+
+  ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 0.0;
+  ASSERT_OK(WaitForAllIntentsApplied(
+      cluster_.get(), MonoDelta::FromSeconds(kResendIntervalSec + 30) * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+
+  // The row has a far vector now (a deleted row is inserted back), so the vector of its old version
+  // would come first.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test VALUES ($0, '[100, 100, 100]') ON CONFLICT DO NOTHING",
+      kUnappliedInsertRowId));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_EQ(ASSERT_RESULT(NearestIds(conn, 5)), "[1, 2, 3, 4, 5]");
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionDeleteOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format("DELETE FROM test WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 0);
+}
+
+TEST_F(PgVectorIndexUtilTest, ReverseMappingPostSplitCompactionUpdateOfUnappliedInsert) {
+  TestReverseMappingPostSplitCompactionUnappliedInsert(
+      Format(
+          "UPDATE test SET embedding = '[100, 100, 100]' WHERE id = $0", kUnappliedInsertRowId),
+      /* num_row_entries= */ 1);
 }
 
 // Covers https://github.com/yugabyte/yugabyte-db/issues/35923.
@@ -885,8 +1020,9 @@ TEST_F(PgVectorIndexUtilTest, IndexCheck) {
   ASSERT_STR_CONTAINS(output, "not checked: Not found");
 }
 
-// An index which stores payloads has no reverse mapping, so deleted and replaced vectors are
-// invisible rather than inconsistent, and only the vectors of the rows are checked.
+// A table created with vector_index_store_payload writes no reverse mapping, so deleted and
+// replaced vectors of its index are invisible rather than inconsistent, and only the vectors of the
+// rows are checked.
 TEST_F(PgVectorIndexUtilTest, IndexCheckStoredPayload) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
 
@@ -944,9 +1080,9 @@ TEST_F(PgVectorIndexUtilTest, StoredYbctidFixedForTable) {
   ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
 }
 
-// An index which stores payloads has no reverse mapping entries, so compaction cannot detect
-// deleted vectors and keeps them in the index. Search skips them anyway, because the rows their
-// stored ybctids point to are gone.
+// A table created with vector_index_store_payload writes no reverse mapping, so compaction cannot
+// detect deleted vectors of its index and keeps them. Search skips them anyway, because the rows
+// their stored ybctids point to are gone.
 TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
   // The range DELETE below is planned as a seq scan.
@@ -968,7 +1104,7 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
 
   // TODO(vector_index): the deleted vectors are expected to be removed by compaction once
-  // deletions are delivered to the vector index, see VectorMergeFilter::Filter.
+  // deletions are delivered to the vector index, see VectorMergeFilter::DoFilter.
   ASSERT_OK(index.Compact());
   ASSERT_OK(index.WaitForCompaction());
   ASSERT_EQ(ASSERT_RESULT(index.TotalEntries()), kNumRows);
@@ -979,6 +1115,103 @@ TEST_F(PgVectorIndexUtilTest, SearchSkipsDeletedVectorsWithStoredYbctid) {
   auto rows = ASSERT_RESULT(conn.FetchRows<int64_t>(query));
   std::ranges::sort(rows);
   ASSERT_EQ(AsString(rows), "[6, 7, 8, 9, 10]");
+}
+
+// An index which stores payloads on a table which writes the reverse mapping drops deleted vectors
+// on compaction, as an index without payloads does. See #37974. After a split each child also
+// drops the vectors of its sibling by the key bounds, before it checks the reverse mapping.
+void PgVectorIndexUtilTest::TestCompactionDropsDeletedPayloadVectors(Split split) {
+  // Lets regular compaction remove the reverse mapping entries of deleted vectors.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+  // Keep the chunks inherited from the parent, so the children hold the vectors of the sibling.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_include_into_post_split_compaction) = false;
+
+  constexpr size_t kNumRows = 10;
+  constexpr size_t kNumBackfilledRows = kNumRows / 2;
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumBackfilledRows));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+  ASSERT_OK(InsertRows(conn, kNumBackfilledRows + 1, kNumRows));
+
+  auto peers = ASSERT_RESULT(
+      ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+  ASSERT_EQ(peers.size(), 1);
+  if (split) {
+    ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+    ASSERT_OK(cluster_->FlushTablets());
+    const auto parent_tablet_id = peers.front()->tablet_id();
+    ASSERT_OK(InvokeSplitTabletRpcAndWaitForDataCompacted(cluster_.get(), parent_tablet_id));
+    peers = ASSERT_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+    std::erase_if(peers, [&parent_tablet_id](const auto& peer) {
+      return peer->tablet_id() == parent_tablet_id;
+    });
+    ASSERT_EQ(peers.size(), 2);
+  }
+
+  // Delete a backfilled and an inserted row, and replace the vectors of two others the same way.
+  for (auto id : {size_t{1}, kNumRows}) {
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM test WHERE id = $0", id));
+  }
+  for (auto id : {size_t{2}, kNumRows - 1}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "UPDATE test SET embedding = '[100, 100, 100]' WHERE id = $0", id));
+  }
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kTrue, 30s * kTimeMultiplier));
+
+  std::vector<docdb::DocVectorIndexPtr> indexes;
+  for (const auto& peer : peers) {
+    auto tablet = ASSERT_RESULT(peer->shared_tablet());
+    auto tablet_indexes = tablet->vector_indexes().List();
+    ASSERT_TRUE(tablet_indexes);
+    ASSERT_EQ(tablet_indexes->size(), 1);
+    auto& index = *tablet_indexes->front();
+    ASSERT_TRUE(index.StoresPayload());
+    if (split) {
+      // Each child still holds every vector of the parent.
+      ASSERT_GE(ASSERT_RESULT(index.TotalEntries()), kNumRows);
+    }
+    ASSERT_OK(index.Flush());
+    ASSERT_OK(index.WaitForFlush());
+    indexes.push_back(tablet_indexes->front());
+  }
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+  size_t num_entries = 0;
+  for (const auto& index : indexes) {
+    ASSERT_OK(index->Compact());
+    ASSERT_OK(index->WaitForCompaction());
+    num_entries += ASSERT_RESULT(index->TotalEntries());
+  }
+
+  ASSERT_EQ(ASSERT_RESULT(VectorIndexInconsistencies()), "");
+  ASSERT_EQ(num_entries, kNumRows - 2);
+}
+
+TEST_F(PgVectorIndexUtilTest, CompactionDropsDeletedPayloadVectors) {
+  TestCompactionDropsDeletedPayloadVectors(Split::kFalse);
+}
+
+TEST_F(PgVectorIndexUtilTest, CompactionDropsDeletedPayloadVectorsAfterSplit) {
+  TestCompactionDropsDeletedPayloadVectors(Split::kTrue);
+}
+
+// Compaction relies on the reverse mapping to drop deleted vectors of an index which stores
+// payloads, while a table which does not own the reverse mapping writes no entries for the vectors
+// backfilled into such an index. So such an index cannot be created on that table.
+TEST_F(PgVectorIndexUtilTest, NoPayloadIndexWithoutTableOwnedReverseMapping) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = true;
+  ASSERT_NOK_STR_CONTAINS(CreateIndex(conn), "cannot store payloads");
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = false;
+  ASSERT_OK(CreateIndex(conn));
 }
 
 // Master caps the tenant components of a new index below the hash group and range components of

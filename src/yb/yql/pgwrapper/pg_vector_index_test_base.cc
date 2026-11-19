@@ -13,7 +13,6 @@
 
 #include "yb/yql/pgwrapper/pg_vector_index_test_base.h"
 
-#include <algorithm>
 #include <future>
 
 #include "yb/client/client_error.h"
@@ -27,6 +26,7 @@
 #include "yb/docdb/doc_vector_index.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 
@@ -34,6 +34,7 @@
 
 #include "yb/master/master_ddl.pb.h"
 
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/sst_dump_tool.h"
 
@@ -58,6 +59,8 @@ METRIC_DECLARE_event_stats(vector_index_partitions_queried);
 
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);
+DECLARE_bool(vector_index_delete_list_after_rows);
+DECLARE_bool(vector_index_delete_list_with_subtransaction);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_packed_row);
@@ -79,10 +82,6 @@ extern bool TEST_fail_on_seq_scan_with_vector_indexes;
 } // namespace yb::tablet
 
 namespace yb::pgwrapper {
-
-const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
-  return pointer_cast<const unum::usearch::byte_t*>(vector.data());
-}
 
 std::vector<tablet::TabletPeerPtr> ListTabletPeersWithVectorIndexes(
     MiniCluster* cluster, ListPeersFilter filter) {
@@ -595,6 +594,30 @@ Status PgVectorIndexTestBase::RestartAndWaitTransactionsLoaded() {
     }
     return true;
   }, 10s * kTimeMultiplier, "Transactions loaded");
+}
+
+void PgVectorIndexTestBase::SetDeleteListEncoding(bool new_encoding) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_after_rows) = new_encoding;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_delete_list_with_subtransaction) = new_encoding;
+}
+
+Result<std::string> PgVectorIndexTestBase::DeleteListRecordTypes() {
+  auto peers = VERIFY_RESULT(ListTabletPeersForTableName(
+      cluster_.get(), "test", ListPeersFilter::kLeaders));
+  SCHECK_EQ(peers.size(), 1U, IllegalState, "Expected one tablet");
+  auto tablet = VERIFY_RESULT(peers.front()->shared_tablet());
+  std::unique_ptr<rocksdb::Iterator> iter(
+      tablet->intents_db()->NewIterator(rocksdb::ReadOptions()));
+  std::string result;
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (iter->key().starts_with(dockv::KeyEntryTypeAsChar::kTransactionId) &&
+        dockv::IsVectorIndexRecord(iter->value())) {
+      result.push_back(iter->value()[0]);
+    }
+  }
+  RETURN_NOT_OK(iter->status());
+  std::ranges::sort(result);
+  return result;
 }
 
 Result<std::string> PgVectorIndexTestBase::NearestIds(PGConn& conn, size_t limit) {

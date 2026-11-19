@@ -78,6 +78,11 @@ public class TelemetryProviderConfig {
     return Collections.emptyList();
   }
 
+  /** Removes line breaks that a paste adds to a single-line credential. */
+  public static String removeLineBreaks(String value) {
+    return StringUtils.replaceChars(value, "\r\n", "");
+  }
+
   protected static List<String> nonEmpty(String... values) {
     return Arrays.stream(values).filter(StringUtils::isNotEmpty).collect(Collectors.toList());
   }

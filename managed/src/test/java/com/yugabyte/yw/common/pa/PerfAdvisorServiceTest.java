@@ -23,16 +23,34 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
+import java.math.BigInteger;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
 import junitparams.JUnitParamsRunner;
 import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
+import org.bouncycastle.cert.X509v3CertificateBuilder;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -168,6 +186,21 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateOverTlsWithCertificateForAnotherHost() throws Exception {
+    // As yba-installer: PA at localhost, serving a certificate issued for the YBA host.
+    try (MockWebServer server = new MockWebServer()) {
+      server.useHttps(sslContextFor("yba.example.com").getSocketFactory(), false);
+      server.start();
+      PACollector platform = createTestPlatform("https://localhost:" + server.getPort());
+      server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(platform)));
+
+      perfAdvisorService.save(platform, false);
+
+      assertThat(server.takeRequest().getMethod(), equalTo("PUT"));
+    }
+  }
+
+  @Test
   public void testDelete() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
@@ -247,6 +280,39 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
         .put("customer_uuid", defaultCustomerUuid.toString())
         .put("active_table_metrics_enabled", activeTableMetricsEnabled);
     return Json.stringify(universeJson);
+  }
+
+  private static SSLContext sslContextFor(String host) throws Exception {
+    KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+    generator.initialize(2048);
+    KeyPair keyPair = generator.generateKeyPair();
+    long now = System.currentTimeMillis();
+    X509v3CertificateBuilder builder =
+        new JcaX509v3CertificateBuilder(
+            new X500Name("CN=" + host),
+            BigInteger.valueOf(now),
+            new Date(now - TimeUnit.HOURS.toMillis(1)),
+            new Date(now + TimeUnit.DAYS.toMillis(1)),
+            new X500Name("CN=" + host),
+            keyPair.getPublic());
+    builder.addExtension(
+        Extension.subjectAlternativeName,
+        false,
+        new GeneralNames(new GeneralName(GeneralName.dNSName, host)));
+    X509Certificate cert =
+        new JcaX509CertificateConverter()
+            .getCertificate(
+                builder.build(
+                    new JcaContentSignerBuilder("SHA256withRSA").build(keyPair.getPrivate())));
+    KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+    keyStore.load(null, null);
+    keyStore.setKeyEntry("server", keyPair.getPrivate(), new char[0], new Certificate[] {cert});
+    KeyManagerFactory keyManagers =
+        KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+    keyManagers.init(keyStore, new char[0]);
+    SSLContext context = SSLContext.getInstance("TLS");
+    context.init(keyManagers.getKeyManagers(), null, null);
+    return context;
   }
 
   private PACollector createTestPlatform(String name) {

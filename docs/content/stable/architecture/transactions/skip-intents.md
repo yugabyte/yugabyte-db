@@ -71,7 +71,7 @@ Two session settings control the feature. Any user can change them; superuser pr
 
 Both have cluster-wide equivalents you can set as flags: `--ysql_yb_enable_new_relation_fastpath_write` and `--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks`.
 
-Change these at the start of a session. Neither can be changed once a transaction block is open, or after the first query of a transaction has run.
+You can set them with `SET`, per role or per database (`ALTER ROLE ... SET`, `ALTER DATABASE ... SET`), or as connection options. Setting a value with `SET` is refused once the first query of a transaction has run, and in a function's `SET` clause. A transaction keeps the values it had when it first uses the optimization; a later change, for example by `RESET` or `SET ... TO DEFAULT`, takes effect from the next transaction.
 
 To turn the optimization off for a session:
 

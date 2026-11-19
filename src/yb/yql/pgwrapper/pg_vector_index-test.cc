@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <algorithm>
-
 #include "yb/consensus/consensus.h"
 
 #include "yb/docdb/doc_read_context.h"
@@ -839,8 +837,8 @@ void PgVectorIndexTest::TestRandom() {
         [&metric, &query_vector, &vectors = vectors_](size_t li, size_t ri) {
       const auto& lhs = vectors[li];
       const auto& rhs = vectors[ri];
-      return metric(VectorToBytePtr(query_vector), VectorToBytePtr(lhs)) <
-             metric(VectorToBytePtr(query_vector), VectorToBytePtr(rhs));
+      return vector_index::MetricDistance(metric, query_vector.data(), lhs.data()) <
+             vector_index::MetricDistance(metric, query_vector.data(), rhs.data());
     });
     size_t ep = 0;
     for (int64_t id : rows) {

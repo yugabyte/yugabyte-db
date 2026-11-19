@@ -48,6 +48,7 @@ YB_STRONGLY_TYPED_BOOL(Backfill);
 YB_STRONGLY_TYPED_BOOL(CrashAfterRestoreReopen);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
 YB_STRONGLY_TYPED_BOOL(NullVectorBeforeSchemaChange);
+YB_STRONGLY_TYPED_BOOL(Split);
 YB_STRONGLY_TYPED_BOOL(StorePayload);
 YB_STRONGLY_TYPED_BOOL(UseSharedMemory);
 YB_STRONGLY_TYPED_BOOL(WaitForIntents);
@@ -62,8 +63,6 @@ inline const std::string kDefaultIndexBuildOptions = "ef_construction = 256, m =
 // Cheapest parameters the reloption bounds allow (m >= 5, ef_construction >= 50), for tests that
 // care about the number of indexes rather than recall.
 inline const std::string kCheapIndexBuildOptions = "ef_construction = 50, m = 5, m0 = 8";
-
-const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector);
 
 YB_DEFINE_ENUM(VectorIndexEngine, (kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
@@ -247,6 +246,13 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   // the intents DB.
   Status RestartAndWaitTransactionsLoaded();
 
+  // Sets the AutoFlags of the delete list record to their values after (true) or before (false) the
+  // upgrade.
+  static void SetDeleteListEncoding(bool new_encoding);
+
+  // The sorted value types of the delete list records in the intents DB of the test tablet.
+  Result<std::string> DeleteListRecordTypes();
+
   // Ids of the rows nearest to the origin.
   Result<std::string> NearestIds(PGConn& conn, size_t limit);
 
@@ -326,11 +332,10 @@ Result<size_t> PgVectorIndexTestBase::FetchAndVerifyOrder(
 
   std::vector<typename unum::usearch::metric_punned_t::result_t> distances;
   distances.reserve(result.size());
-  const auto* query_byte_vector = VectorToBytePtr(query_vector);
   for (auto key : result) {
     size_t idx = VERIFY_RESULT(extractor(key));
-    const auto* byte_vector = VectorToBytePtr(vectors_[idx]);
-    distances.push_back(metric(query_byte_vector, byte_vector));
+    distances.push_back(
+        vector_index::MetricDistance(metric, query_vector.data(), vectors_[idx].data()));
   }
 
   LOG_WITH_FUNC(INFO) << "Requested: " << limit << ", found: " << result.size();
