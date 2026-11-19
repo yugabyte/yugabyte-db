@@ -147,3 +147,4 @@ Output a single summary listing, per branch:
 - If a backport PR from the fork's `backport-<id>-<branch>` branch already exists, the script logs and skips it. Treat that as a no-op success for that branch.
 - Do **not** bypass the script's dirty-workspace check by stashing or `git checkout -- .` without confirming with the user — those changes may be the user's in-progress work.
 - Do **not** pass `-n` (preview mode) unless the user explicitly asks for a dry run; the command is meant to actually publish PRs.
+- For a security fix (`src/AGENTS.md` § Security and customer-sensitive changes), run the backports as soon as the master PR is approved so every branch can merge the same day, and keep the original's plain wording: never add which releases still lack the fix.

@@ -162,6 +162,12 @@ Inversions to flag at HIGH:
 - Several objects of one kind locked without sorting by id.
 - A COW write lock committed while the same thread still holds a write lock acquired after it, for example a table committed before its tablets.
 
+## Review comments are public
+
+A review comment on a PR is as public as the code. Don't write in one how a defect could be used against YugabyteDB, or which releases, branches, images or components lack a fix. If a finding needs that context, state the code-level problem and ask the author to continue in the linked JIRA ticket.
+
+This matters most for security fixes, whose descriptions are plain on purpose (`src/AGENTS.md` § Security and customer-sensitive changes). Don't ask the author to add the motivation or the impact to such a PR.
+
 ## What to ignore entirely
 
 - Narrative prose under `architecture/` and `docs/` — content review is welcome but skip code-style suggestions for the prose. Code samples embedded in docs should be reviewed.

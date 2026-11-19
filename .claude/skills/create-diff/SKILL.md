@@ -66,6 +66,11 @@ only.
 ask the user.** See `src/AGENTS.md` section on Confidentiality for the
 canonical list.
 
+A security fix or a customer-driven change also has a disclosure tier that
+sets how much the title, summary and test plan may say. See `src/AGENTS.md`,
+"Security and customer-sensitive changes": for these, the motivation goes in
+the JIRA ticket, not the diff.
+
 This rule applies at every step below: Step 1 (commit message), Steps
 3-3.5 (issue body if auto-creating), Step 4 (title), and Step 6 (summary
 / test plan).

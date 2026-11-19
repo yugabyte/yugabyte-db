@@ -82,6 +82,11 @@ part can be scrubbed or replaced with a placeholder, it isn't sensitive. Then:
   - Sensitive → **JIRA ticket** in `DB`, with the sensitive-information field
     set to `Yes` (Step 3b).
 - YBA / platform code (`managed/`) → **JIRA ticket**.
+- A security vulnerability, in any part of the repo → **JIRA ticket** of type
+  `Vulnerability`, never `Task` or `Bug` and never a GitHub issue. Give it the CVE
+  IDs if there are any, the affected package and its location, a severity, and
+  the Target Version. Don't set Fix Version; automation fills it in when the fix
+  lands. See `src/AGENTS.md` § Security and customer-sensitive changes.
 
 If the user has already named a tracker or project, honor it, except for core
 DB code, where the routing above applies whichever tracker the user named:

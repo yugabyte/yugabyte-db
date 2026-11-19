@@ -50,6 +50,26 @@ Before running `create-pr.sh`, `arc diff --create`, `gh pr comment`, `gh issue c
 
 **If you're unsure whether a string is sensitive, don't write it down — ask the user.** A leaked customer name in a public PR can't be unsent; a clarifying question costs nothing.
 
+### Security and customer-sensitive changes
+
+Every fix here is public the moment it is pushed, usually before the release branches have it and always before patched builds ship. What the PR, the commits and the review say decides how much that window gives away. Pick a tier, and keep the rest in the JIRA ticket.
+
+| Tier | Applies to | Public PR, commits, branch | JIRA only |
+|---|---|---|---|
+| `public-cve` | A published CVE in a dependency we bundle or link (Postgres, JRE, Go modules, base images) | Component, old and new version, CVE IDs | Scan reports, affected images and releases, what stays unfixed and why |
+| `embargoed` | A defect in our own code, or a finding that is not public yet | What the code does ("validate the length before the copy"); no CVE ID, no impact, nothing that marks it as a security fix | Everything, including the wording to publish later |
+| `customer` | A change that exists because of one customer | What the code does; no customer | The customer and the case |
+
+For every tier:
+
+- **The JIRA key in the title is the link.** A security fix is tracked in a JIRA ticket of type Vulnerability, never a GitHub issue. The ticket holds the CVE IDs, the affected and target releases and the analysis, and JIRA links the PRs to it by key, so the internal answer to "what fixed this, and where" does not depend on anything written on GitHub.
+- **Never say in a public artifact what is still exposed**: which releases, branches, images or components lack the fix, or how the defect could be used against YugabyteDB. This holds for PR descriptions, review comments, replies and closing comments.
+- **The merged commit message stays as plain as the PR.** Fuller wording goes into the release notes and the disclosure page after fixed builds ship.
+- **Open release-branch PRs together with the master PR** so they can merge the same day. A fix that sits on master alone shows what the released branches lack.
+- **Review discussion that needs the sensitive context goes in the ticket**, with a pointer from the PR.
+
+`create-pr.sh -s <tier>` checks the title, body, commit messages and branch name against the tier before it pushes. The `/sensitive-change` skill walks through the whole flow.
+
 ## Git workflow on branches with an open PR
 
 This repo **squash-merges** every PR, so the per-commit history of a branch is purely a review aid — reviewers read each commit independently to follow the change. Optimize for that:
