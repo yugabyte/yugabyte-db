@@ -1659,13 +1659,17 @@ TEST_F(SkipIntentsMetricTest, TestRetryReasonPrefersStatementOverSkippedIntents)
   auto grant_conn = ASSERT_RESULT(Connect());
   auto index_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(grant_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  ASSERT_OK(index_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(index_conn.Execute("SET default_transaction_isolation TO 'repeatable read'"));
   ASSERT_OK(grant_conn.Execute("GRANT DELETE ON TABLE retry_reason_tb TO retry_reason_role"));
 
-  // The index is a relation this transaction created, so its backfill takes the fastpath and sets
-  // the skipped-intents state before the catalog update conflicts.
+  // The index is a relation this transaction created and the statement is a top-level one, so its
+  // backfill takes the fastpath and sets the skipped-intents state before the catalog update
+  // conflicts. Inside a transaction block the build of an index on a table that existed before
+  // the transaction would not take the fastpath.
+  const auto writes_before = ASSERT_RESULT(GetSkipIntentsCount());
   auto result = index_conn.Execute(
       "CREATE INDEX NONCONCURRENTLY retry_reason_idx ON retry_reason_tb(v)");
+  ASSERT_GT(ASSERT_RESULT(GetSkipIntentsCount()), writes_before);
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.ToString(), "could not serialize access due to concurrent update");
   ASSERT_STR_CONTAINS(result.ToString(), "retry of CREATE INDEX has not been validated");

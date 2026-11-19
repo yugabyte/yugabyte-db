@@ -11031,6 +11031,8 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	 * Otherwise the rows of an index built on a table that existed before the transaction
 	 * would be above the read time of the transaction's later statements. A top-level
 	 * statement has no later statements.
+	 *
+	 * TODO(#38494): decide every read of an index from the index relation too, and drop this.
 	 */
 	if (rel->rd_rel->relkind == RELKIND_INDEX && !YbIsSkipIntentsTopLevel() &&
 		!YbIsIndexedTableNewInTxn(rel))
