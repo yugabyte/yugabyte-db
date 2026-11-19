@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -88,6 +89,8 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
             case GCS:
             case AZ:
             case OCI:
+              // YBA's way to the bucket apart from a universe is the same for every backup here.
+              BackupHelper.ConfigIdentity configIdentity = new BackupHelper.ConfigIdentity();
               for (Backup backup : backupList) {
                 boolean success = true;
                 try {
@@ -98,7 +101,8 @@ public class DeleteCustomerConfig extends UniverseTaskBase {
                   // and without the identity YBA cannot reach the bucket to remove the objects.
                   CustomerConfigStorageData configData =
                       (CustomerConfigStorageData) customerConfig.getDataObject();
-                  backupHelper.applyCrossCloudFederationFromBackup(configData, backup);
+                  backupHelper.applyCrossCloudFederationFromBackup(
+                      configData, backup, configIdentity);
                   success =
                       success
                           && cloudUtil.deleteKeyIfExists(

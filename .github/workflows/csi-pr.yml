@@ -1,0 +1,50 @@
+name: "csi-pr"
+
+on:
+  pull_request:
+    types: [opened]
+    # This PR only needs CSI information if it touches DB files, so this list should match bld-db.yml,
+    # but this is informational only, so path ignore list is not critical.
+    paths-ignore:
+      - '.agents/**'
+      - '.arc*'
+      - '.claude/**'
+      - '.cursor/**'
+      - '.git/**'
+      - '.github/**'
+      - '.gitignore'
+      - 'architecture/**'
+      - 'arcanist/**'
+      - CONTRIBUTORS.md
+      - 'cloud/**'
+      - code_style
+      - 'community/**'
+      - java/yb-client
+      - 'docs/**'
+      - LICENSE.md
+      - 'license/**'
+      - 'managed/**'
+      - '!managed/src/main/resources/ybc_version.conf'
+      - NOTICE.txt
+      - '**/*.md'
+      - '**/README*'
+      - 'sample/**'
+      - 'src/lint/**'
+
+
+jobs:
+  # Creating an artifact, but a PR from a fork has no permission to write a comment,
+  # so there is a separate job in the main repo (csi-comment) to safely post the CSI link.
+  csi-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CSI-PR
+        run: |
+          mkdir -p csi
+          echo "${{ github.event.pull_request.number }}" > csi/pr.txt
+      - name: Upload CSI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: csi-pr
+          path: csi/pr.txt
+          archive: false

@@ -21,9 +21,15 @@
 // VERSIONING: this library is built OUTSIDE the YugabyteDB tree and upgraded BEFORE the tserver, so
 // a given build must keep working against an OLDER one. On the wire, only rely on request fields,
 // RPCs and semantics the OLDEST supported tserver understands, and tolerate responses missing
-// fields a newer server would set. The ABI below is likewise stable -- changes must be ADDITIVE
-// (new functions; fields appended to the END of structs; enum values appended at the END). Never
-// renumber an enum value, reorder or remove a struct field, or change a signature in place.
+// fields a newer server would set.
+//
+// The ABI below carries no such promise while the library has a single caller: it may change
+// between shim releases, a signature included. The library and its header are released together,
+// and that caller pins a release and ships this library in the same image as the binaries built
+// against it, so the two never differ at run time. A second caller that cannot move in lockstep
+// would need this policy revisited. A caller that declares these functions by hand (an FFI
+// binding) must update its declarations with the header: a stale declaration of a changed
+// signature still links.
 //
 // Ownership: every out-pointer the library fills is owned by it and freed with the matching _free
 // or _destroy call below. Input arrays and strings are borrowed for the duration of the call only.
@@ -193,7 +199,7 @@ typedef struct {
 
 // One read op in a batch; a batch may mix tables. `paging_state_in`==NULL (len 0) starts this op's
 // scan, a prior page's paging_state continues it. The read snapshot is a batch property
-// (ybthin_read_async's read_time_ht), NOT part of the spec.
+// (ybthin_read_options.read_time_ht), NOT part of the spec.
 typedef struct {
   ybthin_table* table;
   ybthin_read_spec spec;
@@ -247,19 +253,48 @@ typedef void (*ybthin_read_cb)(void* ctx, ybthin_status status,
                                ybthin_read_result* result);
 typedef void (*ybthin_write_cb)(void* ctx, ybthin_status status);
 
+// Batch-level options for ybthin_read_async. A zeroed struct (or NULL) is a leader read at a
+// snapshot the server picks.
+typedef struct {
+  // Pins the batch snapshot; 0 => the server picks one. Pass a prior batch's `used_read_time_ht`
+  // only to force a NEW batch onto an existing snapshot.
+  uint64_t read_time_ht;
+  // bool. Serve the batch's reads from the closest replica, a follower included, at a snapshot
+  // the tserver computes as its own clock minus `follower_read_staleness_ms` (see below, unless
+  // read_time_ht is set). When the replica the tserver picked is behind that
+  // snapshot, the tserver retries the read on another replica of the tablet, on another tserver,
+  // still as one Perform -- but not for free: the tserver's client marks the first replica
+  // failed in its shared meta cache until its next refresh (--lookup_cache_refresh_secs, 60 s by
+  // default), so every follower read of that tablet through that tserver goes to a remote
+  // replica for up to that long. YSQL follower reads behave the same way. A scan keeps the
+  // choice of its first page (it travels inside paging_state): the pages of a scan started this
+  // way stay on followers at the first page's snapshot, and those of a scan started at the
+  // leader stay at the leader. This field and the staleness are ignored for every op of a batch
+  // that holds a continuation, fresh ops included: one Perform carries one read time and one
+  // replica choice, so a fresh op runs at the continuation's snapshot and on its scan's replica
+  // choice. With NULL options next to a follower scan's continuation, a fresh op is a follower
+  // read at that scan's snapshot.
+  int read_from_followers;
+  // Only read with read_from_followers and read_time_ht == 0; ignored otherwise. It must then be
+  // > 0 (0 is YBTHIN_INVALID) and at least 2 * the cluster's --max_clock_skew_usec (1000 ms by
+  // default), as YSQL requires; the tserver refuses a smaller one as YBTHIN_INVALID. Needs a
+  // tserver that understands it; an older one serves the batch at the leader, unpinned.
+  uint32_t follower_read_staleness_ms;
+} ybthin_read_options;
+
 // Run a batch of read ops as the ops of ONE Perform: one RPC, one read session, one snapshot.
-// `read_time_ht` pins the batch snapshot (0 => the server picks one); pass a prior batch's
-// `used_read_time_ht` only to force a NEW batch onto an existing snapshot. An op with
-// `paging_state_in` set continues that op's scan and stays on the scan's original snapshot
-// automatically -- the time the first page was served at travels inside `paging_state`, so the
-// server keeps no read state -- and paging with `read_time_ht` left 0 throughout is still
-// consistent: no rows are dropped mid-scan.
+// `options` is batch-level; NULL means all zero. An op with `paging_state_in` set continues that
+// op's scan; the read time it was served at travels inside `paging_state`, so the server keeps no
+// read state and no rows are dropped mid-scan. A scan started with `read_time_ht` set, or as a
+// follower read, stays on its first page's snapshot across tablets. A scan started with neither
+// keeps its snapshot only within a tablet: a page that ends at a tablet boundary carries no read
+// time, so the next tablet is read at a newer snapshot and may see rows written since (#38112).
 // Continuation ops in one batch must all share the paging session that issued
 // them; if that session was dropped or reopened, e.g. on another endpoint, the batch fails with
 // YBTHIN_READ_RESTART. Status is batch-level: any op failure fails the whole call with no partial
 // results; on YBTHIN_READ_RESTART re-issue the scan from a fresh page.
 void ybthin_read_async(ybthin_client*, const ybthin_read_op* ops, size_t n_ops,
-                       uint64_t read_time_ht, ybthin_read_cb cb, void* ctx);
+                       const ybthin_read_options* options, ybthin_read_cb cb, void* ctx);
 
 // Apply N upserts as the ops of ONE Perform, on one write session. Each row names its own table, so
 // the batch may span tables. Every per-row response status is verified; any failure surfaces via

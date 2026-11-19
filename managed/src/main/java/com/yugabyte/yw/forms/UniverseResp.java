@@ -383,12 +383,7 @@ public class UniverseResp {
     this.rollMaxBatchSize = rollMaxBatchSize;
     this.platformVersion = platformVersion;
     this.nodeExporterSidecarScraped =
-        confGetter != null
-            && Util.isKubernetesBasedUniverse(entity)
-            && KubernetesUtil.isNodeExporterSidecarEnabled(
-                entity.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-                entity,
-                confGetter);
+        confGetter != null && KubernetesUtil.isNodeExporterSidecarEnabled(entity, confGetter);
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources

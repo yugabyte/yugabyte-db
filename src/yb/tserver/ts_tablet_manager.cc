@@ -116,6 +116,7 @@
 #include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -588,6 +589,37 @@ void TSTabletManager::CleanupOldMetrics() {
   metric_registry_->RetireOldMetrics();
 }
 
+TSTabletManager::ClearRocksDBCacheResult TSTabletManager::ClearRocksDBCache() {
+  ClearRocksDBCacheResult result;
+
+  // The order is not significant for correctness: a table reader holds no block cache handles,
+  // only iterators do, so each cache can be cleared independently.
+  TabletPtrs tablets;
+  GetTabletPeers(&tablets);
+  for (const auto& tablet : tablets) {
+    auto evicted = tablet->EvictTableReaders();
+    if (!evicted.ok()) {
+      // A tablet that is shutting down has nothing left worth evicting.
+      LOG(INFO) << "Skipped evicting table readers of tablet " << tablet->tablet_id() << ": "
+                << evicted.status();
+      continue;
+    }
+    result.table_readers_evicted += *evicted;
+  }
+
+  const auto& cache = tablet_options_.block_cache;
+  if (cache) {
+    result.block_cache_evicted_bytes = cache->EvictAll();
+  }
+
+  LOG(INFO) << "Cleared RocksDB cache on admin request: closed " << result.table_readers_evicted
+            << " table readers, "
+            << (result.block_cache_evicted_bytes
+                    ? Format("evicted $0 bytes from block cache", *result.block_cache_evicted_bytes)
+                    : "block cache disabled");
+  return result;
+}
+
 void TSTabletManager::PollWaitingTxnRegistry() {
   DCHECK_NOTNULL(waiting_txn_registry_)->SendWaitForGraph();
 }
@@ -721,7 +753,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       server_->metric_entity(),
       [this](){ return GetTabletPeers(); });
 
-  full_compaction_manager_ = std::make_unique<FullCompactionManager>(this);
+  full_compaction_manager_ = std::make_unique<FullCompactionManager>(
+      [this] { return GetTabletPeers(); }, server::ClockPtr(server_->clock()));
 
   tier_migration_reconciler_ = std::make_unique<TierMigrationReconciler>(this);
 
@@ -1699,6 +1732,7 @@ Status TSTabletManager::ApplyTabletSplit(
     RETURN_NOT_OK(cmeta->Flush());
 
     const auto& dest_wal_dir = tcmeta.raft_group_metadata->wal_dir();
+    // CopyTo requires a committed op; split_op_id is, because we only get here when applying it.
     RETURN_NOT_OK(raft_log->CopyTo(dest_wal_dir, split_op_id, new_tablet_id));
 
     MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_after_log_copied);
@@ -2868,10 +2902,9 @@ void TSTabletManager::OpenTablet(
   // The tablet peer is already started, so an applied snapshot restore could be replacing the
   // storages and resetting the key bounds that TriggerPostSplitCompactionIfNeeded reads (see
   // Tablet::CompleteShutdownStorages). Only that synchronous check needs the guard, the compaction
-  // it schedules takes its own scoped operation. The guard is not inside
-  // TriggerPostSplitCompactionIfNeeded because its other caller,
-  // TabletSnapshots::RestoreCheckpoint, runs with read/write operations paused and would never
-  // acquire the operation.
+  // it schedules takes its own scoped operation. TabletSnapshots::RestoreCheckpoint calls it
+  // unguarded after releasing its pause: it runs on the apply thread, the only one that replaces
+  // the storages, and TabletPeer shutdown waits for applies before resetting the key bounds.
   {
     auto scoped_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     if (scoped_op.ok()) {
@@ -3887,8 +3920,8 @@ Result<uint32_t> TSTabletManager::SelectPathIdForTier(
   // These are the same directory strings used as keys in table_data_assignment_map_.
   const auto candidate_dirs = fs_manager_->GetDataRootDirsForTier(target_tier);
   if (candidate_dirs.empty()) {
-    return STATUS_FORMAT(
-        NotFound,
+    return STATUS_EC_FORMAT(
+        NotFound, TabletServerError(TabletServerErrorPB::STORAGE_TIER_NOT_AVAILABLE),
         "No data roots configured for tier '$0' on this node (tablet $1)",
         target_tier, meta.raft_group_id());
   }

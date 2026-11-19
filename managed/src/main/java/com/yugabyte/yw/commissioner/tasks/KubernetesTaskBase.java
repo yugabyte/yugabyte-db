@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -285,6 +286,22 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
 
     getRunnableTask().addSubTaskGroup(pauseGroup);
+  }
+
+  /**
+   * Records whether the node_exporter sidecars serve TLS, as rendered for this DB version. Target
+   * writes scrape the sidecars by this record, so only a task whose pods all came back on a newly
+   * rendered template adds it.
+   */
+  protected void createRecordNodeExporterTlsTask(String softwareVersion) {
+    createUpdateUniverseFieldsTask(
+        u ->
+            u.updateConfig(
+                ImmutableMap.of(
+                    Universe.NODE_EXPORTER_HTTPS,
+                    String.valueOf(
+                        KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+                            softwareVersion, u, confGetter)))));
   }
 
   public void createResumeKubernetesUniverseTasks() {
@@ -2953,6 +2970,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           paramsDeviceCluster.userIntent.masterK8SNodeResourceSpec =
               taskDeviceCluster.userIntent.masterK8SNodeResourceSpec;
         }
+        // Every release renders the primary cluster's expose service setting.
+        params.universeDetails.getPrimaryCluster().userIntent.enableExposingService =
+            primaryCluster.userIntent.enableExposingService;
         if (useNewTserverDeviceInfo) {
           if (isReadOnlyCluster) {
             params.universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo =

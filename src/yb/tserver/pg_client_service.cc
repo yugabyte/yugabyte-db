@@ -842,15 +842,7 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
       return;
     }
     cdc_state_table_.reset();
-    auto schedulers = {
-        std::reference_wrapper(check_object_id_allocators_),
-        std::reference_wrapper(check_ysql_lease_)};
-    for (auto& task : schedulers) {
-      task.get().StartShutdown();
-    }
-    for (auto& task : schedulers) {
-      task.get().CompleteShutdown();
-    }
+    check_object_id_allocators_.Shutdown();
     if (exchange_thread_pool_) {
       exchange_thread_pool_->Shutdown();
     }
@@ -3174,7 +3166,6 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   std::unordered_map<uint32_t, OidPrefetchChunk> reserved_oids_map_ GUARDED_BY(mutex_);
 
   rpc::ScheduledTaskTracker check_object_id_allocators_;
-  rpc::ScheduledTaskTracker check_ysql_lease_;
 
   PgResponseCache response_cache_;
 
@@ -3194,8 +3185,9 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
 
   // Declared last of the members its sessions touch, because members are destroyed in reverse
   // declaration order and a session can outlive Shutdown() (see stopping_sessions_). As it dies a
-  // PgClientSession returns a shared memory segment to shared_mem_pool_ and reads session_context_,
-  // so the registry has to be destroyed before both.
+  // PgClientSession returns a shared memory segment to shared_mem_pool_, reads session_context_,
+  // and drops any catalog prefetch claim it still holds into response_cache_, whose Impl the
+  // claim names by raw pointer, so the registry has to be destroyed before all three.
   SessionRegistry<SessionInfo> session_registry_;
 
   std::optional<cdc::CDCStateTable> cdc_state_table_;

@@ -59,6 +59,8 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
   private static final String FOLLOWER_LAG_URL_FORMAT =
       "http://%s:%d/metrics?metrics=follower_lag_ms";
 
+  private static final Duration MIN_FAILOVER_SCHEDULE_DELAY = Duration.ofSeconds(10);
+
   @Builder
   @Getter
   @ToString
@@ -350,7 +352,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
         confGetter.getConfForScope(
             universe, UniverseConfKeys.autoMasterFailoverFollowerLagHardThreshold);
     Duration diff = hardThreshold.minus(followerLagMs, ChronoUnit.MILLIS);
-    return diff.isNegative() ? Duration.ofSeconds(10) : diff;
+    return diff.isNegative() ? MIN_FAILOVER_SCHEDULE_DELAY : diff;
   }
 
   /**
@@ -467,11 +469,18 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
           return Action.builder().actionType(ActionType.NONE).build();
         }
       }
+      // No master looks failed once the failed task has already removed the old master from the
+      // quorum, or the old master has come back. Only the retry releases the universe, so retry
+      // anyway.
+      Duration delay =
+          maybeFailedMaster == null
+              ? MIN_FAILOVER_SCHEDULE_DELAY
+              : getMasterFailoverScheduleDelay(universe, maybeFailedMaster.getValue());
       return Action.builder()
           .actionType(ActionType.RETRY)
           .taskType(TaskType.MasterFailover)
           .retryTaskUuid(universeDetails.placementModificationTaskUuid)
-          .delay(getMasterFailoverScheduleDelay(universe, maybeFailedMaster.getValue()))
+          .delay(delay)
           .build();
     }
     return Action.builder().actionType(ActionType.NONE).build();

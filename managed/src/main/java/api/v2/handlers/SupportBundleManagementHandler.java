@@ -2,9 +2,11 @@
 
 package api.v2.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.CONFLICT;
 import static play.mvc.Http.Status.NOT_FOUND;
 
+import api.v2.mappers.SupportBundleComponentSpecMapper;
 import api.v2.mappers.SupportBundleCreateSpecMapper;
 import api.v2.mappers.SupportBundleEnumMapper;
 import api.v2.mappers.SupportBundleMapper;
@@ -26,6 +28,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.supportbundlev2.SupportBundleScriptParamResolver;
+import com.yugabyte.yw.common.supportbundlev2.manifest.SupportBundleV2ManifestMerger;
 import com.yugabyte.yw.controllers.handlers.SupportBundleHandlerV2;
 import com.yugabyte.yw.forms.SupportBundleFormDataV2;
 import com.yugabyte.yw.models.Customer;
@@ -34,10 +38,16 @@ import com.yugabyte.yw.models.SupportBundleV2;
 import com.yugabyte.yw.models.SupportBundleV2StatusType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
+import com.yugabyte.yw.models.helpers.BundleDetails.YCQLComponentSpec;
+import com.yugabyte.yw.models.helpers.BundleDetails.YSQLComponentSpec;
+import com.yugabyte.yw.models.helpers.BundleDetails.YbAdminComponentSpec;
+import com.yugabyte.yw.models.helpers.ScriptTarComponentSpec;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.InputStream;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -51,6 +61,7 @@ public class SupportBundleManagementHandler extends ApiControllerUtils {
   private final SupportBundleUtil supportBundleUtil;
   private final SupportBundleHandlerV2 sbHandler;
   private final RuntimeConfGetter confGetter;
+  private final SupportBundleV2ManifestMerger manifestMerger;
 
   @Inject
   public SupportBundleManagementHandler(
@@ -58,12 +69,14 @@ public class SupportBundleManagementHandler extends ApiControllerUtils {
       Commissioner commissioner,
       SupportBundleUtil supportBundleUtil,
       SupportBundleHandlerV2 sbHandler,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      SupportBundleV2ManifestMerger manifestMerger) {
     super(auditService);
     this.commissioner = commissioner;
     this.supportBundleUtil = supportBundleUtil;
     this.sbHandler = sbHandler;
     this.confGetter = confGetter;
+    this.manifestMerger = manifestMerger;
   }
 
   public YBATask createSupportBundle(
@@ -79,8 +92,12 @@ public class SupportBundleManagementHandler extends ApiControllerUtils {
           universe.getName());
     }
 
-    SupportBundleFormDataV2 bundleData = toFormData(createSpec);
+    // The YBA-only entry points share toFormData but are left out on purpose: their validation
+    // requires components to hold YBAComponent alone.
+    SupportBundleCreateSpec request = manifestMerger.mergeIfNeeded(createSpec);
+    SupportBundleFormDataV2 bundleData = toFormData(request);
     sbHandler.bundleDataValidation(bundleData, universe);
+    useManifestOwnedValues(bundleData, request);
 
     SupportBundleV2 supportBundle = SupportBundleV2.create(bundleData, universe, confGetter);
     SupportBundleTaskParamsV2 taskParams =
@@ -108,6 +125,7 @@ public class SupportBundleManagementHandler extends ApiControllerUtils {
 
     SupportBundleFormDataV2 bundleData = toFormData(createSpec);
     sbHandler.bundleDataValidationYbaOnly(bundleData);
+    useManifestOwnedValues(bundleData, createSpec);
 
     SupportBundleV2 supportBundle = SupportBundleV2.createYbaOnly(bundleData, customer, confGetter);
     SupportBundleTaskParamsV2 taskParams =
@@ -212,8 +230,13 @@ public class SupportBundleManagementHandler extends ApiControllerUtils {
     Customer customer = Customer.getOrNotFound(customerUUID);
     Universe universe = Universe.getOrNotFound(universeUUID, customerUUID);
 
-    SupportBundleFormDataV2 bundleData = toFormData(createSpec);
+    // Same merge as createSupportBundle, so the estimate sizes what a create would actually
+    // collect. The size estimator dispatches on the v2 component buckets, which only exist once
+    // the manifest has filled in the spec lists.
+    SupportBundleCreateSpec request = manifestMerger.mergeIfNeeded(createSpec);
+    SupportBundleFormDataV2 bundleData = toFormData(request);
     sbHandler.bundleDataValidation(bundleData, universe);
+    useManifestOwnedValues(bundleData, request);
 
     return SupportBundleSizeEstimateMapper.INSTANCE.toApi(
         sbHandler.estimateBundleSize(customer, bundleData, universe));
@@ -225,6 +248,7 @@ public class SupportBundleManagementHandler extends ApiControllerUtils {
 
     SupportBundleFormDataV2 bundleData = toFormData(createSpec);
     sbHandler.bundleDataValidationYbaOnly(bundleData);
+    useManifestOwnedValues(bundleData, createSpec);
 
     return SupportBundleSizeEstimateMapper.INSTANCE.toApi(
         sbHandler.estimateBundleSizeYbaOnly(customer, bundleData));
@@ -248,6 +272,209 @@ public class SupportBundleManagementHandler extends ApiControllerUtils {
     SupportBundleV2 bundle = SupportBundleV2.getOrNotFound(bundleUUID);
     bundle.verifyCustomerScope(customerUUID);
     return bundle;
+  }
+
+  /** Runs after validation, so a spec that does not match the manifest is still a 400. */
+  private void useManifestOwnedValues(
+      SupportBundleFormDataV2 bundleData, SupportBundleCreateSpec request) {
+    useManifestParams(bundleData, request);
+    useManifestQueriesAndArgs(bundleData);
+    useManifestTimeouts(bundleData);
+    useManifestTarPaths(bundleData.filesComponentSpecs);
+    useManifestTarPaths(bundleData.bashComponentSpecs);
+    useManifestTarPaths(bundleData.ybaComponentSpecs);
+  }
+
+  /** The script writes its tar, and YBA copies and deletes it, only at the manifest's path. */
+  private void useManifestTarPaths(List<? extends ScriptTarComponentSpec> specs) {
+    if (specs == null) {
+      return;
+    }
+    for (ScriptTarComponentSpec spec : specs) {
+      String tarPath = manifestMerger.remoteTarPath(spec.getComponentName());
+      List<String> params = SupportBundleScriptParamResolver.withTarPath(spec.getParams(), tarPath);
+      if (!tarPath.equals(spec.getRemoteTarPath()) || !params.equals(spec.getParams())) {
+        log.warn(
+            "Component '{}' writes its tar to '{}' from YBA's manifest, not where the request said",
+            spec.getComponentName(),
+            tarPath);
+      }
+      spec.setRemoteTarPath(tarPath);
+      spec.setParams(params);
+    }
+  }
+
+  /**
+   * Files and Bash members run with the arguments in YBA's manifest, never the request's: those
+   * arguments choose which files a component reads. The request's own fields (filter_pg_audit_logs,
+   * the core limits) are applied to the manifest's spec, as the fill applies them.
+   */
+  private void useManifestParams(
+      SupportBundleFormDataV2 bundleData, SupportBundleCreateSpec request) {
+    useManifestParams(
+        bundleData.filesComponentSpecs,
+        name ->
+            SupportBundleComponentSpecMapper.INSTANCE
+                .toV1(
+                    manifestMerger.buildFilesComponentSpec(
+                        name, bundleData.startDate, bundleData.endDate, request))
+                .getParams());
+    useManifestParams(
+        bundleData.bashComponentSpecs,
+        name ->
+            SupportBundleComponentSpecMapper.INSTANCE
+                .toV1(
+                    manifestMerger.buildBashComponentSpec(
+                        name, bundleData.startDate, bundleData.endDate))
+                .getParams());
+  }
+
+  private void useManifestParams(
+      List<? extends ScriptTarComponentSpec> specs, Function<String, List<String>> manifestParams) {
+    if (specs == null) {
+      return;
+    }
+    for (ScriptTarComponentSpec spec : specs) {
+      List<String> params = manifestParams.apply(spec.getComponentName());
+      if (!Objects.equals(spec.getParams(), params)) {
+        log.warn(
+            "Component '{}' runs with the arguments in YBA's manifest {} rather than the"
+                + " request's {}",
+            spec.getComponentName(),
+            params,
+            spec.getParams());
+      }
+      spec.setParams(params);
+    }
+  }
+
+  /**
+   * YSQL and YCQL members run the queries in YBA's manifest, and yb-admin members its arguments,
+   * never the request's: ysqlsh connects as a superuser, so a query filter can't vouch for
+   * arbitrary SQL, and yb-admin reads a flag such as --master_addresses anywhere on its command
+   * line. A new member needs only a manifest entry.
+   */
+  private void useManifestQueriesAndArgs(SupportBundleFormDataV2 bundleData) {
+    if (bundleData.ysqlComponentSpecs != null) {
+      for (YSQLComponentSpec spec : bundleData.ysqlComponentSpecs) {
+        spec.setQueries(
+            manifestOwned(
+                "YSQL",
+                "queries",
+                spec.getComponentName(),
+                spec.getQueries(),
+                manifestMerger.ysqlQueries(spec.getComponentName())));
+      }
+    }
+    if (bundleData.ycqlComponentSpecs != null) {
+      for (YCQLComponentSpec spec : bundleData.ycqlComponentSpecs) {
+        spec.setQueries(
+            manifestOwned(
+                "YCQL",
+                "queries",
+                spec.getComponentName(),
+                spec.getQueries(),
+                manifestMerger.ycqlQueries(spec.getComponentName())));
+      }
+    }
+    if (bundleData.ybAdminComponentSpecs != null) {
+      for (YbAdminComponentSpec spec : bundleData.ybAdminComponentSpecs) {
+        spec.setYbAdminArgs(
+            manifestOwned(
+                "YbAdmin",
+                "arguments",
+                spec.getComponentName(),
+                spec.getYbAdminArgs(),
+                manifestMerger.ybAdminArgs(spec.getComponentName())));
+      }
+    }
+  }
+
+  /**
+   * Timeouts come from YBA's manifest too: nothing else bounds a node command, so a request's
+   * timeout could keep it, and the task waiting on it, running indefinitely.
+   */
+  private void useManifestTimeouts(SupportBundleFormDataV2 bundleData) {
+    useManifestScriptTimeouts(bundleData.filesComponentSpecs);
+    useManifestScriptTimeouts(bundleData.bashComponentSpecs);
+    useManifestScriptTimeouts(bundleData.ybaComponentSpecs);
+    if (bundleData.ysqlComponentSpecs != null) {
+      for (YSQLComponentSpec spec : bundleData.ysqlComponentSpecs) {
+        spec.setTimeoutSecs(
+            manifestTimeout(
+                spec.getComponentName(),
+                spec.getTimeoutSecs(),
+                manifestMerger.queryTimeoutSecs(spec.getComponentName())));
+      }
+    }
+    if (bundleData.ycqlComponentSpecs != null) {
+      for (YCQLComponentSpec spec : bundleData.ycqlComponentSpecs) {
+        spec.setTimeoutSecs(
+            manifestTimeout(
+                spec.getComponentName(),
+                spec.getTimeoutSecs(),
+                manifestMerger.queryTimeoutSecs(spec.getComponentName())));
+      }
+    }
+    if (bundleData.ybAdminComponentSpecs != null) {
+      for (YbAdminComponentSpec spec : bundleData.ybAdminComponentSpecs) {
+        spec.setTimeoutSecs(
+            manifestTimeout(
+                spec.getComponentName(),
+                spec.getTimeoutSecs(),
+                manifestMerger.queryTimeoutSecs(spec.getComponentName())));
+      }
+    }
+  }
+
+  private void useManifestScriptTimeouts(List<? extends ScriptTarComponentSpec> specs) {
+    if (specs == null) {
+      return;
+    }
+    for (ScriptTarComponentSpec spec : specs) {
+      spec.setTimeoutSecs(
+          manifestTimeout(
+              spec.getComponentName(),
+              spec.getTimeoutSecs(),
+              manifestMerger.scriptTimeoutSecs(spec.getComponentName())));
+    }
+  }
+
+  private static long manifestTimeout(String name, long requested, long manifest) {
+    if (requested > 0 && requested != manifest) {
+      log.warn(
+          "Component '{}' runs with the {} s timeout in YBA's manifest rather than the request's"
+              + " {} s",
+          name,
+          manifest,
+          requested);
+    }
+    return manifest;
+  }
+
+  private static List<String> manifestOwned(
+      String group,
+      String what,
+      String name,
+      List<String> requested,
+      Optional<List<String>> manifest) {
+    List<String> values =
+        manifest.orElseThrow(
+            () ->
+                new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "'%s' is not a %s component in the support bundle manifest.",
+                        name, group)));
+    if (!values.equals(requested == null ? List.of() : requested)) {
+      log.warn(
+          "Component '{}' runs the {} in YBA's manifest {} rather than the request's {}",
+          name,
+          what,
+          values,
+          requested);
+    }
+    return values;
   }
 
   private SupportBundleFormDataV2 toFormData(SupportBundleCreateSpec createSpec) {

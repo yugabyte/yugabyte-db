@@ -507,7 +507,8 @@ func validateOCIRegionAndZoneNames(
 		}
 	}
 	for _, regionString := range editRegions {
-		name := providerutil.BuildRegionMapFromString(regionString, "edit")["name"]
+		name := providerutil.BuildRegionMapFromStringAllowingClearInstanceTemplate(
+			regionString, "edit")["name"]
 		if findOCIRegion(name, providerRegions) == nil {
 			return regionNotFoundError(name)
 		}

@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.nimbusds.oauth2.sdk.util.MapUtils;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.CanRollback;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -34,6 +35,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Abortable
 @Retryable
+// Opts out of the rollback inherited from EditKubernetesUniverse: k8s cannot shrink a grown PVC.
+@CanRollback(enabled = false)
 public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
 
   private YbcManager ybcManager;

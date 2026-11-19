@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -17,8 +18,10 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -94,5 +97,30 @@ public class ReplaceNodeInUniverseTest extends UniverseModifyBaseTest {
         TaskType.ReplaceNodeInUniverse,
         taskParams);
     checkUniverseNodesStates(taskParams.getUniverseUUID());
+  }
+
+  @Test
+  public void testReplaceNodePersistsPlacementForRetry() throws InterruptedException {
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
+
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    NodeDetails nodeDetails = defaultUniverse.getNodes().iterator().next();
+    taskParams.nodeName = nodeDetails.getNodeName();
+    taskParams.creatingUser = defaultUser;
+    UUID taskUUID = commissioner.submit(TaskType.ReplaceNodeInUniverse, taskParams);
+    waitForTask(taskUUID);
+    // A retry rebuilds the params from the persisted ones, and resolves the cluster from them.
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    assertEquals(
+        nodeDetails.placementUuid.toString(),
+        taskInfo.getTaskParams().get("placementUuid").asText());
+    assertEquals(nodeDetails.azUuid.toString(), taskInfo.getTaskParams().get("azUuid").asText());
   }
 }

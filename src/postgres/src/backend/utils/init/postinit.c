@@ -1202,7 +1202,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
 										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
-										YbAuthPrefetchKind());
+										YbAuthPrefetchKind(), false, false);
 		}
 		else
 			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind());

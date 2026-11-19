@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.AutoMasterFailover.Action;
+import com.yugabyte.yw.commissioner.AutoMasterFailover.ActionType;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -33,6 +36,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,6 +45,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -181,6 +186,24 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     Map<String, Long> maybeFailedMasters =
         automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
     assertEquals(1, maybeFailedMasters.size());
+  }
+
+  @Test
+  public void testRetryFailedMasterFailoverWithNoFailedMaster() throws Exception {
+    UUID failedTaskUuid = buildTaskInfo(null, TaskType.MasterFailover);
+    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
+    details.placementModificationTaskUuid = failedTaskUuid;
+    defaultUniverse.setUniverseDetails(details);
+    when(mockYbClientService.getUniverseClient(defaultUniverse)).thenReturn(mockYbClient);
+    doNothing().when(automatedMasterFailover).checkClusterConsistency(any(), any(), any());
+    // All masters are healthy, as after the failed task removed the old master from the quorum.
+    Action action =
+        automatedMasterFailover.getAllowedMasterFailoverAction(
+            defaultCustomer, defaultUniverse, true /* submissionCheck */);
+    assertEquals(ActionType.RETRY, action.getActionType());
+    assertEquals(TaskType.MasterFailover, action.getTaskType());
+    assertEquals(failedTaskUuid, action.getRetryTaskUuid());
+    assertEquals(Duration.ofSeconds(10), action.getDelay());
   }
 
   // A dual-NIC universe (dualNetLegacy=false) whose masters and tservers run on their secondary

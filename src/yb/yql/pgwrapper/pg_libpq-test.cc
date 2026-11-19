@@ -1023,21 +1023,21 @@ Status PgLibPqTest::TestEmbeddedIndexScanOptimization(bool is_colocated_with_tab
   return Status::OK();
 }
 
-TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse) {
-  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
-}
-
-class PgLibPqColocatedTablesWithTablespacesTest : public PgLibPqTest {
+class PgLibPqColocatedTablesWithTablespacesOffTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    const auto flag = "--ysql_enable_colocated_tables_with_tablespaces=true"s;
+    const auto flag = "--ysql_yb_enable_colocated_tables_with_tablespaces=false"s;
     options->extra_master_flags.push_back(flag);
     options->extra_tserver_flags.push_back(flag);
   }
 };
 
 TEST_F_EX(PgLibPqTest,
-          EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue,
-          PgLibPqColocatedTablesWithTablespacesTest) {
+          EmbeddedIndexScanOptimizationColocatedWithTablespacesFalse,
+          PgLibPqColocatedTablesWithTablespacesOffTest) {
+  ASSERT_OK(TestEmbeddedIndexScanOptimization(false));
+}
+
+TEST_F(PgLibPqTest, EmbeddedIndexScanOptimizationColocatedWithTablespacesTrue) {
   ASSERT_OK(TestEmbeddedIndexScanOptimization(true));
 }
 
@@ -6163,6 +6163,78 @@ TEST_F(PgLibPqTest, RelfilenodeOidCollision) {
   std::string rm_cmd = Format("rm -f $0", tmpname);
   LOG(INFO) << "Executing " << rm_cmd;
   ASSERT_EQ(system(rm_cmd.c_str()), 0);
+}
+
+// pg_restore -d sends table definitions and the DATABASE PROPERTIES entry (ALTER DATABASE ... SET)
+// one statement at a time through the YB block in _printTocEntry, which leaked the SQL-splitting
+// buffer (#35009) and so failed pg_restore on ASAN builds.
+TEST_F(PgLibPqTest, RestoreToDb) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE restore_db"));
+  {
+    auto db_conn = ASSERT_RESULT(ConnectToDB("restore_db"));
+    ASSERT_OK(db_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v TEXT)"));
+    ASSERT_OK(db_conn.Execute("INSERT INTO t VALUES (1, 'one')"));
+  }
+  ASSERT_OK(conn.Execute("ALTER DATABASE restore_db SET statement_timeout = '1min'"));
+
+  const auto dump_path = GetTestPath("restore_db.dump");
+  const auto hostport = cluster_->ysql_hostport(0);
+  const auto ysql_dump_cmd = Format(
+      "$0 -Fc -U yugabyte -h $1 -p $2 --dbname restore_db --file $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+
+  ASSERT_OK(conn.Execute("DROP DATABASE restore_db"));
+
+  const auto pg_restore_cmd = Format(
+      "$0 -U yugabyte -h $1 -p $2 -d yugabyte -C $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("pg_restore")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << pg_restore_cmd;
+  ASSERT_EQ(system(pg_restore_cmd.c_str()), 0);
+
+  auto db_conn = ASSERT_RESULT(ConnectToDB("restore_db"));
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>("SELECT v FROM t WHERE k = 1")), "one");
+  ASSERT_EQ(ASSERT_RESULT(db_conn.FetchRow<std::string>("SHOW statement_timeout")), "1min");
+}
+
+// Restoring an --inserts dump sends TABLE DATA through ExecuteSimpleCommands, which leaves the
+// SQL-splitting buffer allocated but empty.  The YB per-statement block in _printTocEntry must
+// still accept the INDEX entry that follows instead of aborting.
+TEST_F(PgLibPqTest, RestoreInsertsDumpWithIndex) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE inserts_src"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE inserts_dst"));
+  {
+    auto src_conn = ASSERT_RESULT(ConnectToDB("inserts_src"));
+    ASSERT_OK(src_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(src_conn.Execute("CREATE INDEX t_v ON t (v)"));
+    ASSERT_OK(src_conn.Execute("INSERT INTO t VALUES (1, 10), (2, 20)"));
+  }
+
+  const auto dump_path = GetTestPath("inserts_src.dump");
+  const auto hostport = cluster_->ysql_hostport(0);
+  const auto ysql_dump_cmd = Format(
+      "$0 -Fc --inserts -U yugabyte -h $1 -p $2 --dbname inserts_src --file $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("ysql_dump")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << ysql_dump_cmd;
+  ASSERT_EQ(system(ysql_dump_cmd.c_str()), 0);
+
+  const auto pg_restore_cmd = Format(
+      "$0 -U yugabyte -h $1 -p $2 -d inserts_dst $3",
+      ASSERT_RESULT(path_utils::GetPgToolPath("pg_restore")), hostport.host(), hostport.port(),
+      dump_path);
+  LOG(INFO) << "Executing " << pg_restore_cmd;
+  ASSERT_EQ(system(pg_restore_cmd.c_str()), 0);
+
+  auto dst_conn = ASSERT_RESULT(ConnectToDB("inserts_dst"));
+  ASSERT_EQ(ASSERT_RESULT(dst_conn.FetchRow<PGUint64>("SELECT count(*) FROM t")), 2);
+  ASSERT_EQ(ASSERT_RESULT(dst_conn.FetchRow<PGUint64>(
+      "SELECT count(*) FROM pg_indexes WHERE indexname = 't_v'")), 1);
 }
 
 TEST_F(PgLibPqTest, TablePartitionByCollationTextColumn) {

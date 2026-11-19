@@ -22,7 +22,7 @@ The following tutorial describes how to connect a YugabyteDB Aeon cluster to a H
 
 ## Obtain your YugabyteDB cluster connection information
 
-Sign up for YugabyteDB Aeon and create a Sandbox cluster by following the steps in the [Quick Start](/stable/yugabyte-cloud/cloud-quickstart/).
+Sign up for YugabyteDB Aeon and create a cluster by following the steps in [Create a single-region cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/).
 
 The cluster has a default database called `yugabyte`. You'll use this along with your database credentials (username and password) in your connection with the Hasura project. To connect, you'll also need the connection string with the cluster's host address and port number.
 

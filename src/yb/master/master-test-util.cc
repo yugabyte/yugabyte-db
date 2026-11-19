@@ -21,10 +21,13 @@
 
 #include "yb/common/schema_pbutil.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_manager.h"
 
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
@@ -73,6 +76,40 @@ Status WaitForRunningTabletCount(MiniMaster* mini_master,
   // Unreachable.
   LOG(FATAL) << "Reached unreachable section";
   return STATUS(RuntimeError, "Unreachable statement"); // Suppress compiler warnings.
+}
+
+std::unordered_map<TabletServerId, int64_t> ExpectedReplicaLoad(MiniMaster* mini_master) {
+  std::unordered_map<TabletServerId, int64_t> result;
+  for (const auto& table : mini_master->catalog_manager().GetTables(
+           GetTablesMode::kAll, PrimaryTablesOnly::kTrue)) {
+    auto tablets = table->GetTablets();
+    if (!tablets.ok()) {
+      continue;
+    }
+    for (const auto& tablet : *tablets) {
+      if (tablet->LockForRead()->is_deleted()) {
+        continue;
+      }
+      for (const auto& [ts_uuid, _] : *tablet->GetReplicaLocations()) {
+        ++result[ts_uuid];
+      }
+    }
+  }
+  return result;
+}
+
+bool ReplicaLoadMatchesReplicaMaps(MiniMaster* mini_master) {
+  auto expected = ExpectedReplicaLoad(mini_master);
+  for (const auto& desc : mini_master->ts_manager().GetAllDescriptors()) {
+    auto it = expected.find(desc->permanent_uuid());
+    const int64_t want = it == expected.end() ? 0 : it->second;
+    if (desc->replica_load() != want) {
+      LOG(INFO) << desc->permanent_uuid() << " counts " << desc->replica_load() << " replicas, "
+                << "maps hold " << want;
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace master
