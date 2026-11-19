@@ -305,6 +305,7 @@ YbcOrderingMode
 YbcOtelNodeSpan
 YbcOtelSpanContext
 YbcPallocFn
+YbcPgAbortedSubtxnSet
 YbcPgAshConfig
 YbcPgAttrValueDescriptor
 YbcPgBoundType

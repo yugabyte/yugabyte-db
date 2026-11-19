@@ -20,7 +20,7 @@ var describeStorageConfigurationCmd = &cobra.Command{
 		storageconfigurationutil.DescribeStorageConfigurationValidation(cmd)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		storageconfigurationutil.DescribeStorageConfigurationUtil(cmd, "")
+		storageconfigurationutil.DescribeStorageConfigurationUtil(cmd, "", "")
 	},
 }
 

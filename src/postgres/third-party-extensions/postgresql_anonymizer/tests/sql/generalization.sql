@@ -41,6 +41,10 @@ SELECT anon.generalize_tsrange('19041107','decade');
 SELECT anon.generalize_tsrange('19041107','century');
 SELECT anon.generalize_tsrange('19041107','millennium');
 
+-- Define the timezone to avoid the LMT/PST issue
+-- https://gitlab.com/dalibo/postgresql_anonymizer/-/commit/199f0a392b37c59d92ae441fb8f037e094a11a52#note_2148017485
+SET TIME ZONE 'UTC';
+
 -- generalize_tstzrange
 SELECT anon.generalize_tstzrange('19041107');
 SELECT anon.generalize_tstzrange(NULL);

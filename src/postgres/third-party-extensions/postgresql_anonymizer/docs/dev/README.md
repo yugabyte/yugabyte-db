@@ -10,17 +10,17 @@ We use [jupyter] to write these notebooks. Most of them are probably outdated.
 Here's how you can install [jupyter]:
 
 ```bash
-$ pip3 install --upgrade pip
-$ pip3 install --r docs/dev/requirements
-$ export PATH=$PATH:~/.local/bin
+pip3 install --upgrade pip
+pip3 install --r docs/dev/requirements
+export PATH=$PATH:~/.local/bin
 ```
 
 And then launch [jupyter]:
 
 ```bash
-$ jupyter notebook
+jupyter notebook
 # or
-$ jupyter notebook --no-browser --port 9999
+jupyter notebook --no-browser --port 9999
 ```
 
 Or convert the notebooks

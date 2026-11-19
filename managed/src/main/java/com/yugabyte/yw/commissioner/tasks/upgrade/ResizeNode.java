@@ -358,6 +358,36 @@ public class ResizeNode extends UpgradeTaskBase {
                 justModifyDeviceNodes,
                 ServerType.EITHER,
                 DEFAULT_CONTEXT);
+            List<NodeDetails> untouchedNodesToSetLive =
+                untouchedNodesToSetLive(
+                    fetchNodesForCluster().stream()
+                        .filter(n -> n.isInPlacement(cluster.uuid))
+                        .filter(n -> !instanceChangingNodes.contains(n))
+                        .filter(n -> !justModifyDeviceNodes.contains(n))
+                        .filter(n -> !nodesToApply.mastersToUpgradeGFlags.contains(n))
+                        .filter(n -> !nodesToApply.tserversToUpgradeGFlags.contains(n))
+                        .collect(Collectors.toList()));
+            if (!untouchedNodesToSetLive.isEmpty()) {
+              // Nothing restarted these nodes, so check their servers are up before setting Live.
+              List<NodeDetails> masters =
+                  untouchedNodesToSetLive.stream()
+                      .filter(n -> n.isMaster)
+                      .collect(Collectors.toList());
+              if (!masters.isEmpty()) {
+                createWaitForServersTasks(masters, ServerType.MASTER)
+                    .setSubTaskGroupType(getTaskSubGroupType());
+              }
+              List<NodeDetails> tservers =
+                  untouchedNodesToSetLive.stream()
+                      .filter(n -> n.isTserver)
+                      .collect(Collectors.toList());
+              if (!tservers.isEmpty()) {
+                createWaitForServersTasks(tservers, ServerType.TSERVER)
+                    .setSubTaskGroupType(getTaskSubGroupType());
+              }
+              createSetNodeStateTasks(untouchedNodesToSetLive, NodeDetails.NodeState.Live)
+                  .setSubTaskGroupType(getTaskSubGroupType());
+            }
             // Persist changes in the universe.
             createPersistResizeNodeTask(userIntent, cluster.uuid)
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
@@ -618,6 +648,14 @@ public class ResizeNode extends UpgradeTaskBase {
   /** Whether to run ChangeInstanceType for the node even when its type already matches. */
   protected boolean mustRunChangeInstanceType(NodeDetails node) {
     return false;
+  }
+
+  /**
+   * Nodes that no flow of this task touches (instance change, disk update or gflags restart) but
+   * that must still be set Live, as they are.
+   */
+  protected List<NodeDetails> untouchedNodesToSetLive(List<NodeDetails> untouchedNodes) {
+    return Collections.emptyList();
   }
 
   /**
