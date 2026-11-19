@@ -209,7 +209,8 @@ Result<int64_t> OnlineSchemaChangeJobId(
       source_table, target_table));
 }
 
-// Waits for the copy with yb_wait_mirror_table.
+// Waits for the copy with yb_wait_mirror_table, which also adds the source's foreign keys to the
+// target.
 Status WaitForOnlineSchemaChange(
     PGConn* conn, const std::string& source_table, const std::string& target_table) {
   const auto job_id = VERIFY_RESULT(OnlineSchemaChangeJobId(conn, source_table, target_table));
@@ -1851,48 +1852,175 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCutoverRetriedAfterCommit
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>("SELECT v2 FROM t1 WHERE id = 1")), "a_x");
 }
 
-// Foreign keys are not supported yet: begin refuses a source or a target that has one, or a
-// source that one references. Nothing blocks DDL on the source while the job runs, so the cutover
-// checks the source again.
-TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeForeignKeysRejected) {
+// The table swapped in gets the source's foreign key, by name and validated, and the old source
+// keeps none.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeForeignKeyCarriedOver) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE parent (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1), (2), (3)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, pid INT REFERENCES parent(id), v TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 1, 'a'), (2, 2, 'b')"));
+
+  const auto conname = ASSERT_RESULT(conn.FetchRow<std::string>(
+      "SELECT conname FROM pg_constraint WHERE conrelid = 't1'::regclass AND contype = 'f'"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, pid INT, v TEXT, v2 TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.pid, src.v, src.v || '_x')::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  // During the copy, only the source has the foreign key.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_constraint "
+      "WHERE conrelid = 't2'::regclass AND contype = 'f'")), 0);
+  ASSERT_NOK(conn.Execute("INSERT INTO t1 VALUES (9, 99, 'bad')"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (3, 3, 'c')"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // The wait has added the foreign key to the target, under its name, and validated it.
+  const auto promoted = ASSERT_RESULT((conn.FetchRow<std::string, bool>(Format(
+      "SELECT conname, convalidated FROM pg_constraint "
+      "WHERE conrelid = 't2'::regclass AND contype = 'f' AND conname = '$0'", conname))));
+  ASSERT_EQ(promoted, (decltype(promoted){conname, true}));
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 3);
+
+  // t1 is now the former t2, and its foreign key is live.
+  ASSERT_NOK(conn.Execute("INSERT INTO t1 VALUES (10, 99, 'bad', 'bad_x')"));
+  ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (10, 1, 'ok', 'ok_x')"));
+
+  // The old source has no foreign keys left.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid "
+      "WHERE r.relname LIKE 'yb_osc_old_%' AND c.contype = 'f'")), 0);
+}
+
+// A cascading delete on the source during the copy reaches the target through the trigger, so the
+// copy cannot bring back a row that the cascade deleted.
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeForeignKeyCascadeDuringBackfill) {
+  constexpr int kNumRows = 200;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE parent (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO parent SELECT i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, "
+      "pid INT REFERENCES parent(id) ON DELETE CASCADE, v TEXT)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t1 SELECT i, i, 'val_' || i FROM generate_series(1, $0) AS i", kNumRows));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, pid INT, v TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.pid, src.v)::t2; END $$"));
+
+  ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+
+  // Cascade away a third of the rows while the copy is in flight.
+  ASSERT_OK(conn.Execute("DELETE FROM parent WHERE id % 3 = 0"));
+
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+
+  // No difference in either direction.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM ("
+      "(SELECT id, pid, v FROM t1 EXCEPT SELECT id, pid, v FROM t2) UNION ALL "
+      "(SELECT id, pid, v FROM t2 EXCEPT SELECT id, pid, v FROM t1)) d")), 0);
+  ASSERT_GT(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1")), 0);
+
+  ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeCutoverRequiresPromotedForeignKeys) {
   auto conn = ASSERT_RESULT(Connect());
 
   ASSERT_OK(conn.Execute("CREATE TABLE parent (id INT PRIMARY KEY)"));
   ASSERT_OK(conn.Execute("INSERT INTO parent VALUES (1)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE t1 (id INT PRIMARY KEY, pid INT REFERENCES parent(id))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, pid INT REFERENCES parent(id))"));
   ASSERT_OK(conn.Execute("INSERT INTO t1 VALUES (1, 1)"));
   ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, pid INT)"));
   ASSERT_OK(conn.Execute(
       "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
       "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.pid)::t2; END $$"));
 
-  ASSERT_NOK_STR_CONTAINS(
-      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
-      "source table \"t1\" of an online schema change must not have foreign keys");
-  ASSERT_OK(conn.Execute("ALTER TABLE t1 DROP CONSTRAINT t1_pid_fkey"));
-
-  ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD FOREIGN KEY (pid) REFERENCES parent(id)"));
-  ASSERT_NOK_STR_CONTAINS(
-      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
-      "target table \"t2\" of an online schema change must not have foreign keys");
-  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP CONSTRAINT t2_pid_fkey"));
-
-  ASSERT_OK(conn.Execute("CREATE TABLE child (id INT PRIMARY KEY, t1_id INT REFERENCES t1(id))"));
-  ASSERT_NOK_STR_CONTAINS(
-      BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"),
-      "must not be referenced by foreign keys");
-  ASSERT_OK(conn.Execute("DROP TABLE child"));
-  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
-      "SELECT count(*) FROM pg_catalog.pg_yb_online_schema_change")), 0);
-
   ASSERT_RESULT(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
   ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
-  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD FOREIGN KEY (pid) REFERENCES parent(id)"));
-  ASSERT_NOK_STR_CONTAINS(
-      FinishOnlineSchemaChange(&conn, "t1", "t2"), "must not have foreign keys");
-  ASSERT_OK(conn.Execute("ALTER TABLE t1 DROP CONSTRAINT t1_pid_fkey"));
+
+  // Finish refuses a target that lost one of the source's foreign keys.
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP CONSTRAINT t1_pid_fkey"));
+  auto status = FinishOnlineSchemaChange(&conn, "t1", "t2");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "is missing foreign key");
+
+  // The wait, which can be repeated, adds it back.
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
+  ASSERT_OK(WaitForOnlineSchemaChange(&conn, "t1", "t2"));
   ASSERT_OK(FinishOnlineSchemaChange(&conn, "t1", "t2"));
-  ASSERT_EQ(ASSERT_RESULT(LatestOnlineSchemaChangeJobStatus(&conn)), "finished");
+}
+
+TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeForeignKeyValidation) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE parent (id INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, pid INT REFERENCES parent(id))"));
+
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t2 (id INT PRIMARY KEY, pid INT REFERENCES parent(id))"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.pid)::t2; END $$"));
+  auto status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must not have foreign keys");
+
+  ASSERT_OK(conn.Execute("DROP FUNCTION t1_to_t2(t1)"));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, other TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, 'x'::text)::t2; END $$"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "missing foreign-key column");
+
+  ASSERT_OK(conn.Execute("DROP FUNCTION t1_to_t2(t1)"));
+  ASSERT_OK(conn.Execute("DROP TABLE t2"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (id INT PRIMARY KEY, pid INT)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION t1_to_t2(src t1) RETURNS t2 LANGUAGE plpgsql IMMUTABLE SET search_path "
+      "FROM CURRENT AS $$ BEGIN RETURN ROW(src.id, src.pid)::t2; END $$"));
+  // The foreign key would be added to the target under the name a CHECK already has.
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD CONSTRAINT t1_pid_fkey CHECK (pid > 0)"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "already has a constraint named \"t1_pid_fkey\"");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_catalog.pg_yb_online_schema_change")), 0);
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 DROP CONSTRAINT t1_pid_fkey"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE child (id INT PRIMARY KEY, t1_id INT REFERENCES t1(id))"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must not be referenced by foreign keys");
+
+  ASSERT_OK(conn.Execute("DROP TABLE child"));
+  ASSERT_OK(conn.Execute(
+      "ALTER TABLE t1 ADD FOREIGN KEY (pid) REFERENCES t1(id) "
+      "ON UPDATE CASCADE ON DELETE CASCADE"));
+  status = ResultToStatus(BeginOnlineSchemaChange(&conn, "t1", "t2", "t1_to_t2"));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "must not be referenced by foreign keys");
 }
 
 // The target's primary key adds a derived column to the source's. Distinct ids already keep the
