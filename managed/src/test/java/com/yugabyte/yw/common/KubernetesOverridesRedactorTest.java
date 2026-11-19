@@ -122,6 +122,35 @@ public class KubernetesOverridesRedactorTest {
   }
 
   @Test
+  public void redactCoversSecretNamesSpelledWithDashes() {
+    // The chart passes each key as --key=value, and gflags reads a dash as an underscore.
+    assertEquals(
+        "gflags:\n  tserver:\n    ycql-ldap-bind-passwd: REDACTED\n",
+        KubernetesOverridesRedactor.redact(
+            "gflags:\n  tserver:\n    ycql-ldap-bind-passwd: tserver-secret\n"));
+    String stored =
+        "gflags:\n"
+            + "  tserver:\n"
+            + "    ysql-hba-conf-csv: \"host all all 0.0.0.0/0 ldap ldapbindpasswd=hba-secret\"\n"
+            + "  master:\n"
+            + "    ycql_ldap-bind_passwd: master-secret\n";
+    String redacted = KubernetesOverridesRedactor.redact(stored);
+    assertNoSecrets(redacted);
+    assertEquals(
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=REDACTED",
+        at(redacted, "gflags", "tserver", "ysql-hba-conf-csv"));
+    assertEquals("REDACTED", at(redacted, "gflags", "master", "ycql_ldap-bind_passwd"));
+    assertEquals(
+        stored + "x: 1\n", KubernetesOverridesRedactor.restore(stored, redacted + "x: 1\n", "o"));
+    assertEquals(
+        "x: 1 # REDACTED\n",
+        KubernetesOverridesRedactor.redact("x: 1 # ycql-ldap-bind-passwd=tserver-secret\n"));
+    assertEquals(
+        "REDACTED",
+        KubernetesOverridesRedactor.redact("x: \"--ycql-ldap-bind-passwd=tserver-secret\"\n"));
+  }
+
+  @Test
   public void redactCoversFlowStyle() {
     String stored =
         "gflags: {tserver: {ycql_ldap_bind_passwd: tserver-secret, ysql_hba_conf_csv: \"host all"
