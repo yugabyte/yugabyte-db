@@ -117,7 +117,6 @@ static void ClosePipeFromProgram(CopyFromState cstate);
 static bool YbCopyIsTopLevelStatement(void);
 static void YbCopyFromStartNextBatch(CopyFromState cstate);
 static void YbCopyFromCommitBatch(CopyFromState cstate);
-static void YbCopyFromCheckTableUnchanged(Relation rel, TupleDesc old_desc);
 
 /*
  * error context callback for COPY FROM
@@ -1975,8 +1974,9 @@ ClosePipeFromProgram(CopyFromState cstate)
  * and the next batch sees what the DDL did.
  *
  * The COPY state lives in the portal and is kept across the commits: it holds
- * the input and what was derived from the table's columns.  If a column or a
- * default changed, the input no longer fits that state and the COPY stops.
+ * the input and what was derived from the table's columns.  If the table's
+ * row type, defaults or constraints changed between two batches, the COPY
+ * stops.
  */
 static void
 YbCopyFromStartNextBatch(CopyFromState cstate)
@@ -2001,7 +2001,12 @@ YbCopyFromStartNextBatch(CopyFromState cstate)
 				(errcode(ERRCODE_UNDEFINED_TABLE),
 				 errmsg("table \"%s\" was dropped during COPY",
 						cstate->cur_relname)));
-	YbCopyFromCheckTableUnchanged(cstate->rel, old_desc);
+	if (!equalTupleDescs(old_desc, RelationGetDescr(cstate->rel)))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("table \"%s\" changed during COPY",
+						RelationGetRelationName(cstate->rel)),
+				 errdetail("The rows of the batches already loaded are committed.")));
 	FreeTupleDesc(old_desc);
 	ExecCheckRTPerms(cstate->range_table, true);
 	cstate->cur_relname = RelationGetRelationName(cstate->rel);
@@ -2049,43 +2054,6 @@ YbCopyFromCommitBatch(CopyFromState cstate)
 
 	if (detached)
 		YbAttachAllocatedFile(file, is_pipe);
-}
-
-static void
-YbCopyFromCheckTableUnchanged(Relation rel, TupleDesc old_desc)
-{
-	TupleDesc	new_desc = RelationGetDescr(rel);
-	int			old_ndef = old_desc->constr ? old_desc->constr->num_defval : 0;
-	int			new_ndef = new_desc->constr ? new_desc->constr->num_defval : 0;
-	bool		unchanged = (old_desc->natts == new_desc->natts &&
-							 old_ndef == new_ndef);
-
-	for (int i = 0; unchanged && i < old_desc->natts; i++)
-	{
-		Form_pg_attribute old_att = TupleDescAttr(old_desc, i);
-		Form_pg_attribute new_att = TupleDescAttr(new_desc, i);
-
-		unchanged = (old_att->atttypid == new_att->atttypid &&
-					 old_att->atttypmod == new_att->atttypmod &&
-					 old_att->attisdropped == new_att->attisdropped &&
-					 old_att->attgenerated == new_att->attgenerated &&
-					 old_att->atthasdef == new_att->atthasdef &&
-					 strcmp(NameStr(old_att->attname),
-							NameStr(new_att->attname)) == 0);
-	}
-
-	for (int i = 0; unchanged && i < old_ndef; i++)
-		unchanged = (old_desc->constr->defval[i].adnum ==
-					 new_desc->constr->defval[i].adnum &&
-					 strcmp(old_desc->constr->defval[i].adbin,
-							new_desc->constr->defval[i].adbin) == 0);
-
-	if (!unchanged)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("columns of table \"%s\" changed during COPY",
-						RelationGetRelationName(rel)),
-				 errdetail("The rows of the batches already loaded are committed.")));
 }
 
 /*
