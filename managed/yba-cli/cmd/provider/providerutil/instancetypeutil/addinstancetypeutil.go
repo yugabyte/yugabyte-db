@@ -205,11 +205,11 @@ func lookupInstanceType(
 		return nil, nil, err
 	}
 	for i := range instanceTypes {
-		if instanceTypes[i].IdKey.InstanceTypeCode != instanceTypeName {
+		if instanceTypes[i].GetInstanceTypeCode() != instanceTypeName {
 			continue
 		}
 		for _, s := range stored {
-			if s.IdKey.InstanceTypeCode == instanceTypeName {
+			if s.InstanceTypeCode == instanceTypeName {
 				return &instanceTypes[i], s.cloudCodes(), nil
 			}
 		}
@@ -218,10 +218,10 @@ func lookupInstanceType(
 	return nil, nil, detailErr
 }
 
+// storedInstanceType is the part of an InstanceTypeResp the Go client doesn't model. The
+// response leaves out idKey and carries the code as a top-level instanceTypeCode.
 type storedInstanceType struct {
-	IdKey struct {
-		InstanceTypeCode string `json:"instanceTypeCode"`
-	} `json:"idKey"`
+	InstanceTypeCode    string `json:"instanceTypeCode"`
 	InstanceTypeDetails *struct {
 		CloudInstanceTypeCodes []string `json:"cloudInstanceTypeCodes"`
 	} `json:"instanceTypeDetails"`

@@ -34,14 +34,14 @@ func TestLookupInstanceType(t *testing.T) {
 		{
 			name:       "active type",
 			detail:     http.StatusOK,
-			detailBody: `{"idKey":{"instanceTypeCode":"` + shape + `"},"active":true,"numCores":2}`,
+			detailBody: `{"instanceTypeCode":"` + shape + `","active":true,"numCores":2}`,
 			wantFound:  true,
 			wantCores:  2,
 		},
 		{
 			name:   "active type with cloud instance type codes",
 			detail: http.StatusOK,
-			detailBody: `{"idKey":{"instanceTypeCode":"` + shape + `"},"active":true,"numCores":2,` +
+			detailBody: `{"instanceTypeCode":"` + shape + `","active":true,"numCores":2,` +
 				`"instanceTypeDetails":{"cloudInstanceTypeCodes":["Standard_D4s_v5"]}}`,
 			wantFound: true,
 			wantCores: 2,
@@ -50,7 +50,7 @@ func TestLookupInstanceType(t *testing.T) {
 		{
 			name:       "inactive type is new",
 			detail:     http.StatusOK,
-			detailBody: `{"idKey":{"instanceTypeCode":"` + shape + `"},"active":false,"numCores":2}`,
+			detailBody: `{"instanceTypeCode":"` + shape + `","active":false,"numCores":2}`,
 		},
 		{
 			name:       "missing type is new",
@@ -60,8 +60,8 @@ func TestLookupInstanceType(t *testing.T) {
 		{
 			name:   "detail error falls back to the list",
 			detail: http.StatusInternalServerError,
-			listBody: `[{"idKey":{"instanceTypeCode":"other"},"numCores":8},` +
-				`{"idKey":{"instanceTypeCode":"` + shape + `"},"active":true,"numCores":2,` +
+			listBody: `[{"instanceTypeCode":"other","numCores":8},` +
+				`{"instanceTypeCode":"` + shape + `","active":true,"numCores":2,` +
 				`"instanceTypeDetails":null}]`,
 			wantFound: true,
 			wantCores: 2,
@@ -69,7 +69,7 @@ func TestLookupInstanceType(t *testing.T) {
 		{
 			name:   "list fallback reads cloud instance type codes",
 			detail: http.StatusInternalServerError,
-			listBody: `[{"idKey":{"instanceTypeCode":"` + shape + `"},"active":true,"numCores":2,` +
+			listBody: `[{"instanceTypeCode":"` + shape + `","active":true,"numCores":2,` +
 				`"instanceTypeDetails":{"cloudInstanceTypeCodes":["Standard_D4s_v5"]}}]`,
 			wantFound: true,
 			wantCores: 2,
@@ -78,7 +78,7 @@ func TestLookupInstanceType(t *testing.T) {
 		{
 			name:     "detail error and type not in the list fails",
 			detail:   http.StatusInternalServerError,
-			listBody: `[{"idKey":{"instanceTypeCode":"other"},"numCores":8}]`,
+			listBody: `[{"instanceTypeCode":"other","numCores":8}]`,
 			wantErr:  true,
 		},
 		{
@@ -91,7 +91,7 @@ func TestLookupInstanceType(t *testing.T) {
 			name:         "detail error on aws fails without the list",
 			providerType: util.AWSProviderType,
 			detail:       http.StatusInternalServerError,
-			listBody:     `[{"idKey":{"instanceTypeCode":"` + shape + `"},"active":true,"numCores":2}]`,
+			listBody:     `[{"instanceTypeCode":"` + shape + `","active":true,"numCores":2}]`,
 			wantErr:      true,
 		},
 		{
