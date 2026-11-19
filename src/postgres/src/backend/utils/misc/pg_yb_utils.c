@@ -10997,6 +10997,32 @@ YBHasSkippedIntentsWrite()
 }
 
 /*
+ * Whether the relation is new in this transaction:
+ * 1. rd_createSubid: The logical table was created in this txn.
+ * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
+ * in this txn (typical for ALTER TABLE / REINDEX).
+ */
+static bool
+YbIsRelationNewInTxn(Relation rel)
+{
+	return rel->rd_createSubid != InvalidSubTransactionId ||
+		rel->rd_newRelfilenodeSubid != InvalidSubTransactionId;
+}
+
+static bool
+YbIsIndexedTableNewInTxn(Relation index)
+{
+	Relation	table = RelationIdGetRelation(index->rd_index->indrelid);
+	bool		result;
+
+	if (!RelationIsValid(table))
+		return false;
+	result = YbIsRelationNewInTxn(table);
+	RelationClose(table);
+	return result;
+}
+
+/*
  * Decides both halves of the skip intents optimization for one operation on rel. See
  * YbcPgSkipIntentsOptimizationInfo: the relation-static checks below decide
  * read_at_in_txn_limit and hold for the whole transaction, while the transaction-state checks
@@ -11008,13 +11034,7 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 {
 	YbcPgSkipIntentsOptimizationInfo info = {0};
 
-	/*
-	 * 1. rd_createSubid: The logical table was created in this txn.
-	 * 2. rd_newRelfilenodeSubid: The physical storage was swapped/created
-	 * in this txn (typical for ALTER TABLE / REINDEX).
-	 */
-	if (rel->rd_createSubid == InvalidSubTransactionId &&
-		rel->rd_newRelfilenodeSubid == InvalidSubTransactionId)
+	if (!YbIsRelationNewInTxn(rel))
 	{
 		elog(DEBUG3, "Skip intents not applicable: relation %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
@@ -11043,6 +11063,20 @@ YbGetSkipIntentsOptimizationInfo(Relation rel, bool is_write)
 	if (YbGetTableDistribution(rel) == YB_COLOCATED)
 	{
 		elog(DEBUG2, "Skip intents not applicable: relation %u is colocated", rel->rd_id);
+		return info;
+	}
+
+	/*
+	 * A read through an index takes its decision from the table (see YbNewSelect), so an index
+	 * must not be written past the intents db unless its table is read at in_txn_limit too.
+	 * Otherwise the rows of an index built on a table that existed before the transaction
+	 * would be above the read time of the transaction's later statements.
+	 *
+	 * TODO(#38494): decide every read of an index from the index relation too, and drop this.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_INDEX && !YbIsIndexedTableNewInTxn(rel))
+	{
+		elog(DEBUG2, "Skip intents not applicable: the table of index %u was neither created nor swapped in this txn", rel->rd_id);
 		return info;
 	}
 
