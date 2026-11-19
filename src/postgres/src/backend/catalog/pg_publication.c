@@ -1413,9 +1413,9 @@ yb_is_internal_table_to_be_excluded_from_cdc(Oid relid)
 	char	   *nspname = get_namespace_name(get_rel_namespace(relid));
 
 	return relname != NULL && nspname != NULL &&
-		strcmp(nspname, "yb_xcluster_ddl_replication") == 0 &&
-		(strcmp(relname, "ddl_queue") == 0 ||
-		 strcmp(relname, "replicated_ddls") == 0);
+		strcmp(nspname, YB_XCLUSTER_DDL_REPLICATION_NAME) == 0 &&
+		(strcmp(relname, YB_XCLUSTER_DDL_QUEUE_TABLE_NAME) == 0 ||
+		 strcmp(relname, YB_XCLUSTER_REPLICATED_DDLS_TABLE_NAME) == 0);
 }
 
 /*
