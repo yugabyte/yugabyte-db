@@ -3368,8 +3368,9 @@ ybMergeSortTargetAttno(YbOpaque ybScan, AttrNumber indexattno)
 
 	/*
 	 * A table row has no value for an expression index column, so the planner
-	 * keeps such columns out of the merge sort columns of a primary key or
-	 * embedded index (see yb_finalize_merge_scan_info).
+	 * keeps such columns out of the merge sort columns of an embedded index
+	 * (see yb_finalize_merge_scan_info).  A primary key has no expression
+	 * columns.
 	 */
 	attno = ybScan->index->rd_index->indkey.values[indexattno - 1];
 	if (attno == InvalidAttrNumber)
