@@ -207,6 +207,7 @@ YbRegisterOuterMatchFn_t
 YbRelationAttrsProcessingState
 YbRemovedAclKind
 YbResetBatchFn_t
+YbRetryKind
 YbRowBounds
 YbRunWithPrefetcherContext
 YbSample

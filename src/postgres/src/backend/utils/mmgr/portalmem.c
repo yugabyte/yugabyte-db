@@ -1319,3 +1319,47 @@ ForgetPortalSnapshots(void)
 		elog(ERROR, "portal snapshots (%d) did not account for all active snapshots (%d)",
 			 numPortalSnaps, numActiveSnaps);
 }
+
+/*
+ * YB: Function to determine whether a portal could still be run and would
+ * be dropped by AtAbort_Portals/AtCleanup_Portals.
+ */
+bool
+YbHasOpenPortal(const char *exclude_portal)
+{
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+
+	Assert(exclude_portal);
+	hash_seq_init(&status, PortalHashTable);
+
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	{
+		Portal		portal = hentry->portal;
+
+		if (strcmp(portal->name, exclude_portal) == 0)
+			continue;
+
+		/*
+		 * Skip over cursors from previous transactions or auto-held ones.
+		 * See HoldPinnedPortals() for an explanation of auto-held portals.
+		 * The rows held in such portals are already materialized and they do
+		 * not own any resources belonging to the current transaction.
+		 */
+		if (portal->createSubid == InvalidSubTransactionId || portal->autoHeld)
+			continue;
+
+		/*
+		 * Portals in the terminal state cannot be run again, so exclude them.
+		 * Clients can only close them, and closing a portal that no longer
+		 * exists is a no-op.
+		 */
+		if (portal->status == PORTAL_DONE || portal->status == PORTAL_FAILED)
+			continue;
+
+		hash_seq_term(&status);
+		return true;
+	}
+
+	return false;
+}

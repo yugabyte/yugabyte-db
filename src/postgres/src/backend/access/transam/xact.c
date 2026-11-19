@@ -2575,7 +2575,7 @@ YBCRestartWriteTransaction()
 		/*
 		 * Child owners of the old TopTransactionResourceOwner were deleted
 		 * with it, but the transaction is not aborted, so no xact callback
-		 * fires to tell modules that cached them, update themselves.
+		 * fires to tell modules that cached them, to update themselves.
 		 */
 		for (YbTxnRestartCallbackItem *item = yb_txn_restart_callbacks; item; item = item->next)
 			item->callback(item->arg);
@@ -7315,9 +7315,9 @@ decrement_sticky_object_count()
 }
 
 /*
- * Register a callback invoked by YBCRestartWriteTransaction after it replaces
- * TopTransactionResourceOwner. Modules that cache TopTransactionResourceOwner
- * or one of its children across statements must drop that pointer here.
+ * Register a callback invoked on transaction restarts.
+ * Modules that cache TopTransactionResourceOwner or its children across
+ * statements must drop their pointers here.
  *
  * Intended for use by dynamically loaded modules, like RegisterXactCallback.
  */
