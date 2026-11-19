@@ -33,6 +33,7 @@ namespace yb {
 namespace cdc {
 
 YB_DEFINE_ENUM(SchemaChangeBelowSafeTime, (kRenameColumn)(kRolledBackAddColumn));
+YB_STRONGLY_TYPED_BOOL(TransactionalDdl);
 
 class CDCSDKConsistentStreamTest : public CDCSDKYsqlTest {
  public:
@@ -41,7 +42,7 @@ class CDCSDKConsistentStreamTest : public CDCSDKYsqlTest {
   void TestCDCSDKMultipleAlter(CDCCheckpointType checkpoint_type);
 
   void TestSchemaChangeBelowRequestSafeTime(
-      SchemaChangeBelowSafeTime change, bool transactional_ddl);
+      SchemaChangeBelowSafeTime change, TransactionalDdl transactional_ddl);
 };
 
 TEST_F(CDCSDKConsistentStreamTest,
@@ -1303,9 +1304,9 @@ TEST_F(CDCSDKConsistentStreamTest, TestGetChangesDuringLoadTxn) {
 // and the next call must still apply the op to the cached schema. Followers that reject appends
 // but ack heartbeats hold the op uncommitted while the leader keeps its lease.
 void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
-    SchemaChangeBelowSafeTime change, bool transactional_ddl) {
+    SchemaChangeBelowSafeTime change, TransactionalDdl transactional_ddl) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_slot_transactional_ddl) =
-      transactional_ddl;
+      transactional_ddl.get();
   ToggleDDLMode(/* use_legacy = */ !transactional_ddl);
   // A leader move would let the old leader's followers commit the op without the window.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
@@ -1362,8 +1363,8 @@ void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
     });
   };
   tablet::TabletPeerPtr leader_peer;
-  std::shared_ptr<consensus::RaftConsensus> leader_consensus;
-  std::vector<std::shared_ptr<consensus::RaftConsensus>> follower_consensuses;
+  consensus::RaftConsensusPtr leader_consensus;
+  std::vector<consensus::RaftConsensusPtr> follower_consensuses;
   auto set_followers_reject_mode = [&follower_consensuses](consensus::RejectMode mode) {
     for (const auto& follower : follower_consensuses) {
       follower->TEST_RejectMode(mode);
@@ -1509,22 +1510,22 @@ void CDCSDKConsistentStreamTest::TestSchemaChangeBelowRequestSafeTime(
 
 TEST_F(CDCSDKConsistentStreamTest, TestRenameColumnBelowRequestSafeTimeLegacyDdl) {
   TestSchemaChangeBelowRequestSafeTime(
-      SchemaChangeBelowSafeTime::kRenameColumn, /* transactional_ddl = */ false);
+      SchemaChangeBelowSafeTime::kRenameColumn, TransactionalDdl::kFalse);
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestRenameColumnBelowRequestSafeTimeTransactionalDdl) {
   TestSchemaChangeBelowRequestSafeTime(
-      SchemaChangeBelowSafeTime::kRenameColumn, /* transactional_ddl = */ true);
+      SchemaChangeBelowSafeTime::kRenameColumn, TransactionalDdl::kTrue);
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestRolledBackAddColumnBelowRequestSafeTimeLegacyDdl) {
   TestSchemaChangeBelowRequestSafeTime(
-      SchemaChangeBelowSafeTime::kRolledBackAddColumn, /* transactional_ddl = */ false);
+      SchemaChangeBelowSafeTime::kRolledBackAddColumn, TransactionalDdl::kFalse);
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestRolledBackAddColumnBelowRequestSafeTimeTransactionalDdl) {
   TestSchemaChangeBelowRequestSafeTime(
-      SchemaChangeBelowSafeTime::kRolledBackAddColumn, /* transactional_ddl = */ true);
+      SchemaChangeBelowSafeTime::kRolledBackAddColumn, TransactionalDdl::kTrue);
 }
 
 TEST_F(CDCSDKConsistentStreamTest, TestPartialTxnResumeWithOutOfOrderApply) {

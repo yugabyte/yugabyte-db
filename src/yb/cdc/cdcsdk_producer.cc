@@ -110,6 +110,12 @@ DEFINE_NON_RUNTIME_bool(cdc_enable_intra_transactional_before_image,
                         true,
                         "If 'true', before image is populated for the intra-transactional DMLs.");
 
+DEFINE_RUNTIME_bool(cdc_process_change_metadata_op_below_request_safe_time, true,
+                    "If 'true', GetChanges processes a CHANGE_METADATA_OP at or below the request "
+                    "safe time, but above the consistent snapshot time, instead of skipping it as "
+                    "already streamed. Such an op can still be uncommitted when an earlier "
+                    "response's safe time passes it, and skipping it leaves a stale cached schema.");
+
 DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "If 'true', CDC streaming will filter out intents from aborted "
                     "subtransactions (rolled-back savepoints). This prevents CDC consumers "
@@ -3083,10 +3089,11 @@ Status GetChangesForCDCSDK(
         // In case of a connector failure we may get a wal_segment_index that is obsolete.
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
-        // safe_hybrid_time_req, and CHANGE_METADATA_OP messages above the consistent snapshot time:
-        // they are not MVCC-tracked, so a previous response's safe time can pass one that was not
-        // yet committed. Skipping it would leave a stale schema in cached_schema_details.
-        // Processing one again only resends its DDL record.
+        // safe_hybrid_time_req, and CHANGE_METADATA_OP messages above the consistent snapshot time
+        // (all of them if the stream has no consistent snapshot time): they are not MVCC-tracked,
+        // so a previous response's safe time can pass one that was not yet committed. Skipping it
+        // would leave a stale schema in cached_schema_details. Processing one again only resends
+        // its DDL record.
         uint64_t commit_time_threshold =
             GetCommitTimeThreshold(consistent_snapshot_time, safe_hybrid_time_req);
         const auto commit_time = GetTransactionCommitTime(msg);
@@ -3096,6 +3103,7 @@ Status GetChangesForCDCSDK(
         if (FLAGS_cdc_enable_consistent_records && commit_time <= commit_time_threshold &&
             msg->op_type() != yb::consensus::OperationType::SPLIT_OP &&
             (msg->op_type() != yb::consensus::OperationType::CHANGE_METADATA_OP ||
+             !FLAGS_cdc_process_change_metadata_op_below_request_safe_time ||
              (consistent_snapshot_time && commit_time <= *consistent_snapshot_time))) {
           VLOG_WITH_FUNC(2)
               << "Received a message in wal_segment with commit_time <= request safe time."
