@@ -41,6 +41,10 @@ void YQLRowwiseIteratorIf::SeekToDocKeyPrefix(Slice doc_key_prefix) {
   LOG(DFATAL) << "This iterator cannot seek to doc key prefix";
 }
 
+void YQLRowwiseIteratorIf::SetUpperBound(Slice upper_bound) {
+  LOG(DFATAL) << "This iterator cannot set upper bound";
+}
+
 
 HybridTime YQLRowwiseIteratorIf::TEST_MaxSeenHt() {
   return HybridTime::kInvalid;

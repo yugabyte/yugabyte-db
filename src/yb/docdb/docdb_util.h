@@ -37,6 +37,7 @@ namespace yb::docdb {
 
 extern const std::string kIntentsDirName;
 extern const std::string kSnapshotsDirName;
+extern const std::string kVectorIndexDirPrefix;
 
 Status SetValueFromQLBinaryWrapper(
     const QLValuePB& ql_value, int pg_data_type,

@@ -6,12 +6,10 @@ package main
 
 import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/cmd"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 )
 
 func main() {
-	common.VerifyFipsMode()
-
+	// FIPS mode is applied once the config is loaded, see initAfterFlagsParsed.
 	cmd.Execute()
 
 }

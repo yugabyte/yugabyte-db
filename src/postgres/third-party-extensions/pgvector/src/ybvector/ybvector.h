@@ -83,7 +83,8 @@ extern bool ybvectorinsert(Relation rel, Datum *values, bool *isnull,
 						struct IndexInfo *indexInfo, bool shared_insert);
 extern void ybvectordelete(Relation rel, Datum *values, bool *isnull,
 						Datum ybctid, Relation heapRel,
-						struct IndexInfo *indexInfo);
+						struct IndexInfo *indexInfo,
+						bool persist_missing_row);
 extern void ybvectorinupdate(Relation index, Datum *values, bool *isnull,
 						  Datum oldYbctid, Datum newYbctid, Relation heap,
 						  struct IndexInfo *indexInfo);
@@ -103,7 +104,7 @@ extern bool ybvectorcopartitionedinsert(Relation rel, Datum *values,
 
 extern void ybvectorcopartitioneddelete(Relation rel, Datum *values,
 	bool *isnull, Datum ybctid, Relation heapRel,
-	struct IndexInfo *indexInfo);
+	struct IndexInfo *indexInfo, bool persist_missing_row);
 
 extern IndexBuildResult *ybvectorcopartitionedbuild(Relation heap,
 	Relation index, struct IndexInfo *indexInfo);

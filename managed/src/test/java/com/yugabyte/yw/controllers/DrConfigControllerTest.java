@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -53,6 +54,7 @@ import com.yugabyte.yw.forms.DrConfigSetTablesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -1025,6 +1027,49 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
+  public void testReplicaReplacementWithDifferentFipsMode() {
+    Universe newReplica = createUniverse("new replication target");
+    Universe.saveDetails(
+        newReplica.getUniverseUUID(), u -> u.getUniverseDetails().fipsEnabled = true);
+    DrConfig drConfig =
+        DrConfig.create(
+            "test",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            new BootstrapBackupParams(),
+            new PitrParams(),
+            Set.of("sourceNamespace"),
+            false);
+    drConfig.setState(State.Replicating);
+    drConfig.update();
+
+    DrConfigReplaceReplicaForm form = new DrConfigReplaceReplicaForm();
+    form.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    form.drReplicaUniverseUuid = newReplica.getUniverseUUID();
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST",
+                    String.format(
+                        "/api/customers/%s/dr_configs/%s/replace_replica",
+                        defaultCustomer.getUuid(), drConfig.getUuid()),
+                    authToken,
+                    Json.toJson(form)));
+
+    assertBadRequest(
+        result,
+        String.format(
+            "Cannot configure XCluster/DR config between universes '%s' and '%s': one is"
+                + " FIPS-enabled and the other is not.",
+            sourceUniverse.getName(), newReplica.getName()));
+    verify(mockCommissioner, never()).submit(any(), any());
+    drConfig.refresh();
+    assertEquals(1, drConfig.getXClusterConfigs().size());
+  }
+
+  @Test
   public void testDbScopedReplicaReplacementWhenUpgradeIsInProgress() {
     targetUniverse =
         Universe.saveDetails(
@@ -1432,23 +1477,49 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
             XClusterConfigTaskBase.getTableIds(
                 XClusterConfigTaskBase.getTableInfoList(mockYBClientService, sourceUniverse)));
     assertTrue(setTablesForm.tables.contains(matviewTableId(namespaceIds.get(0))));
+    // The set-tables computation and its validations are deferred to the SetTablesDrConfig task,
+    // so the API accepts the request; the materialized view is rejected when the task computes the
+    // set-tables params.
+    UUID setTablesTaskUUID = buildTaskInfo(null, TaskType.SetTablesDrConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(setTablesTaskUUID);
     Result setTablesResult =
-        assertPlatformException(
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/"
+                + defaultCustomer.getUuid()
+                + "/dr_configs/"
+                + drConfig.getUuid()
+                + "/set_tables",
+            authToken,
+            Json.toJson(setTablesForm));
+    assertOk(setTablesResult);
+
+    // Pass bootstrapParams as DrConfigController.setTables does; without them a DR config fails
+    // the bootstrapParams check before the materialized view check runs.
+    BootstrapParams bootstrapParams =
+        app.injector()
+            .instanceOf(DrConfigHelper.class)
+            .getBootstrapParamsFromRestartBootstrapParams(
+                drConfig.getBootstrapBackupParams(), setTablesForm.tables);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
             () ->
-                doRequestWithAuthTokenAndBody(
-                    "POST",
-                    "/api/customers/"
-                        + defaultCustomer.getUuid()
-                        + "/dr_configs/"
-                        + drConfig.getUuid()
-                        + "/set_tables",
-                    authToken,
-                    Json.toJson(setTablesForm)));
-    assertBadRequest(
-        setTablesResult,
+                XClusterConfigController.getSetTablesTaskParams(
+                    mockYBClientService,
+                    xClusterConfig,
+                    sourceUniverse,
+                    targetUniverse,
+                    setTablesForm.tables,
+                    bootstrapParams,
+                    false /* autoIncludeIndexTables */,
+                    true /* dryRun */,
+                    true /* validateRequestedChange */));
+    assertEquals(
         "Materialized views can be part of replication only for xCluster/DR configs in automatic"
             + " DDL mode; the following requested tables are materialized views: ["
             + matviewTableId(namespaceIds.get(0))
-            + "]");
+            + "]",
+        exception.getMessage());
   }
 }

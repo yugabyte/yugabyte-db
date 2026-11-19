@@ -14,6 +14,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/tablespace_parser.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_tablespace_util.h"
@@ -694,6 +695,54 @@ TEST_F(PgTablespacesTest, TestWildcardLeaderPreference) {
         return CheckLeaderPlacement(kTableName, leader_placement_blocks);
       },
       kWaitLeaderDistributionTimeout, "Leaders placed in preferred wildcard zone"));
+}
+
+// CREATE TABLE records which tablespace case applies, so the master can still place a table
+// once its pg_class row is gone. A tablegroup's parent table is created from a request that
+// carries an empty tablespace id, which must be stored as "no custom tablespace", not as "".
+TEST_F(PgTablespacesTest, CreateTablePersistsTablespace) {
+  auto conn = ASSERT_RESULT(Connect());
+  const Tablespace ts("ts", 1, {PlacementBlock(1, 1)});
+  ASSERT_OK(conn.Execute(ts.CreateCmd()));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_default (k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_custom (k INT PRIMARY KEY) TABLESPACE ts"));
+  ASSERT_OK(conn.Execute("CREATE TABLEGROUP tg"));
+  const auto ts_id = GetPgsqlTablespaceId(ASSERT_RESULT(GetTablespaceOid("ts")));
+
+  // The periodic tablespace refresh writes these same values. If it runs before the checks below,
+  // it can mask a wrong value from CREATE on that run; it can never cause a spurious failure.
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto find_table = [&](const std::string& name) -> Result<master::TableInfoPtr> {
+    for (const auto& table : VERIFY_RESULT(client_->ListTables(name))) {
+      if (table.table_name() == name) {
+        auto info = catalog_manager.GetTableInfo(table.table_id());
+        SCHECK(info, NotFound, Format("No TableInfo for $0", name));
+        return info;
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Table $0 not found", name);
+  };
+
+  const auto t_default = ASSERT_RESULT(find_table("t_default"));
+  ASSERT_TRUE(t_default->LockForRead()->pb.has_no_custom_tablespace());
+
+  const auto t_custom = ASSERT_RESULT(find_table("t_custom"));
+  {
+    auto l = t_custom->LockForRead();
+    ASSERT_TRUE(l->pb.has_tablespace_id());
+    ASSERT_EQ(l->pb.tablespace_id(), ts_id);
+  }
+
+  size_t num_tablegroup_parents = 0;
+  for (const auto& table : catalog_manager.GetTables(master::GetTablesMode::kAll)) {
+    if (!table->IsTablegroupParentTable() ||
+        table->namespace_id() != t_default->namespace_id()) {
+      continue;
+    }
+    ++num_tablegroup_parents;
+    ASSERT_TRUE(table->LockForRead()->pb.has_no_custom_tablespace()) << table->id();
+  }
+  ASSERT_EQ(num_tablegroup_parents, 1);
 }
 
 } // namespace client

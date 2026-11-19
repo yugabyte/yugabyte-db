@@ -143,7 +143,9 @@
       if (activeGroups.indexOf('C0003') > -1) {
         browserCookieUtils.setCookie('leftMenuShowHide', 'hide', {
           timeToLive: 3,
-          unit: 'month'
+          unit: 'month',
+          sameSite: 'Strict',
+          secure: true,
         });
       }
       ybSideNavVisibility('hide');
@@ -152,7 +154,9 @@
       if (activeGroups.indexOf('C0003') > -1) {
         browserCookieUtils.setCookie('leftMenuShowHide', 'show', {
           timeToLive: 3,
-          unit: 'month'
+          unit: 'month',
+          sameSite: 'Strict',
+          secure: true,
         });
       }
       ybSideNavVisibility('show');

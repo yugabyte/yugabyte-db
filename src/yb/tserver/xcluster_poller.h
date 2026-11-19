@@ -194,8 +194,17 @@ class XClusterPoller : public XClusterAsyncExecutor {
 
   std::atomic<bool> shutdown_ = false;
   std::atomic<bool> shutdown_completed_ = false;
-  // Number of live DDLQueueHandlerCallScope, used when shutting down a ddl_queue handler.
+
+  // Number of live DDLQueueHandlerCallScope objects.
+  // Used in the shutdown path: CompleteShutdown does not wait while this is nonzero, and the last
+  // scope to exit completes the shutdown instead.
+  // Also used for IsStuck, which skips the stuck check while this is nonzero (since a handler could
+  // be running a long DDL).
+  //
+  // Store last_task_schedule_time_ before changing this, and load this before
+  // last_task_schedule_time_, so that IsStuck does not count a finished call's duration.
   std::atomic<int32_t> active_ddl_queue_handler_calls_ = 0;
+
   // In failed state we do not poll for changes and are awaiting shutdown.
   std::atomic<bool> is_failed_ = false;
   std::mutex shutdown_mutex_;

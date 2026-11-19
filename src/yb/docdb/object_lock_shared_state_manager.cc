@@ -23,6 +23,7 @@
 #include "yb/docdb/object_lock_shared_state.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_pg_acquires,
@@ -82,6 +83,14 @@ class ObjectLockOwnerRegistry::Impl {
     owners_.erase(i);
   }
 
+  void UpdateRegistrationStatusTablet(const RegistrationGuard& guard, const TabletId& tablet_id) {
+    std::lock_guard l1(mutex_);
+    const auto i = owners_.find(guard.txn_id());
+    DCHECK(i != owners_.end());
+    std::lock_guard l2((*i)->status_tablet_mutex);
+    (*i)->status_tablet = tablet_id;
+  }
+
   [[nodiscard]] std::shared_ptr<OwnerInfo> GetOwnerInfo(TransactionId id) const {
     std::lock_guard lock(mutex_);
     const auto i = owners_.find(id);
@@ -130,6 +139,11 @@ ObjectLockOwnerRegistry::~ObjectLockOwnerRegistry() = default;
 ObjectLockOwnerRegistry::RegistrationGuard ObjectLockOwnerRegistry::Register(
     ObjectLockSharedState& shared, TransactionId id, const TabletId& status_tablet) {
   return impl_->Register(shared, id, status_tablet);
+}
+
+void ObjectLockOwnerRegistry::UpdateRegistrationStatusTablet(
+    const RegistrationGuard& guard, const TabletId& tablet_id) {
+  impl_->UpdateRegistrationStatusTablet(guard, tablet_id);
 }
 
 std::shared_ptr<ObjectLockOwnerRegistry::OwnerInfo>
@@ -201,7 +215,9 @@ Status ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& a
 
 Result<ObjectLockSharedStateHolder> ObjectLockSharedStateManager::AllocateShared() {
   UniqueLock lock(mutex_);
-  WaitOnConditionVariable(&start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_; });
+  WaitOnConditionVariable(
+      &start_cond_, &lock, [this] REQUIRES(mutex_) { return !stopped_ || shutdown_; });
+  SCHECK(!shutdown_, ShutdownInProgress, "ObjectLockSharedStateManager is shut down");
   auto state = VERIFY_RESULT(DCHECK_NOTNULL(allocator_)->MakeUnique<ObjectLockSharedState>(
       *allocator_, exclusive_intents_));
   auto* ptr = state.get();
@@ -252,6 +268,14 @@ void ObjectLockSharedStateManager::Stop() {
     write_locks_.clear();
     VLOG(1) << "Stopped ObjectLockSharedStateManager";
   }
+}
+
+void ObjectLockSharedStateManager::Shutdown() {
+  {
+    std::lock_guard lock(mutex_);
+    shutdown_ = true;
+  }
+  start_cond_.notify_all();
 }
 
 void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
@@ -372,7 +396,12 @@ template<typename ConsumeMethod>
 void ObjectLockSharedStateManager::CallWithRequestConsumer(
     ObjectLockSharedState& shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {
   auto owner_info = registry_.GetOwnerInfo(shared);
-  auto consume_fastpath_request = [this, &owner_info, &consume](ObjectLockFastpathRequest request) {
+  std::optional<std::lock_guard<std::mutex>> lock;
+  if (owner_info) {
+    lock.emplace(owner_info->status_tablet_mutex);
+  }
+  auto consume_fastpath_request = [this, &owner_info, &consume](ObjectLockFastpathRequest request)
+      NO_THREAD_SAFETY_ANALYSIS {
     if (!owner_info) {
       return;
     }

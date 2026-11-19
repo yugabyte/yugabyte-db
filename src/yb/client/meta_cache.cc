@@ -578,6 +578,14 @@ RemoteTabletServer* RemoteTablet::LeaderTServer() const {
   return nullptr;
 }
 
+RemoteTabletServer* RemoteTablet::LeaderTServer(MarkStaleOnFailure mark_stale_on_failure) {
+  auto* result = LeaderTServer();
+  if (!result && mark_stale_on_failure) {
+    MarkStale();
+  }
+  return result;
+}
+
 bool RemoteTablet::HasLeader() const {
   return LeaderTServer() != nullptr;
 }
@@ -2385,6 +2393,11 @@ void MetaCache::LookupAllTablets(const std::shared_ptr<YBTable>& table,
         });
     return;
   }
+
+  // The fast path below returns the cached tablets without checking the partition list version.
+  // A freshly opened table may already have a newer partition list (e.g. after a split), so drop
+  // the outdated cache entry first. No-op if the cache is not older than the table.
+  InvalidateTableCache(*table);
 
   // We first want to check the cache in read-only mode, and only if we can't find anything
   // do a lookup in write mode.

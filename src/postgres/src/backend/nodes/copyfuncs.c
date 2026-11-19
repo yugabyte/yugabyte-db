@@ -248,6 +248,7 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(yb_skip_entities);
 	COPY_NODE_FIELD(yb_update_affected_entities);
 	COPY_SCALAR_FIELD(no_row_trigger);
+	COPY_SCALAR_FIELD(ybInsertOnConflictPushdownPossible);
 
 	return newnode;
 }
@@ -442,6 +443,7 @@ CopyScanFields(const Scan *from, Scan *newnode)
 
 	/* YB */
 	COPY_STRING_FIELD(ybScannedObjectName);
+	COPY_NODE_FIELD(ybOptions);
 }
 
 /*

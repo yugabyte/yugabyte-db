@@ -198,6 +198,7 @@ Status QLRocksDBStorage::GetIterator(
     const ReadOperationData& read_operation_data,
     const DocKey& start_doc_key,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
+    SkipSeek skip_seek,
     YQLRowwiseIteratorIf::UniPtr* iter) const {
   const auto& schema = doc_read_context.get().schema();
   // Populate dockey from QL key columns.
@@ -258,7 +259,7 @@ Status QLRocksDBStorage::GetIterator(
           lower_doc_key,
           upper_doc_key,
           request.prefix_length()),
-      SkipSeek(request.has_index_request())));
+      skip_seek));
 
   *iter = std::move(doc_iter);
   return Status::OK();

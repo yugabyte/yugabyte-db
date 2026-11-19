@@ -1,0 +1,30 @@
+title: CertificateSpec
+description: 'A certificate to add to the customer. Give cert_content and key_content to upload a CA, or omit both to have YBA generate the CA and its key. Part of CertificateCreateReq.'
+type: object
+required:
+  - label
+  - cert_type
+properties:
+  label:
+    description: 'Name of the certificate, unique within the customer. A generated CA also uses it as its subject CN.'
+    type: string
+    minLength: 1
+  cert_type:
+    $ref: "./CertificateType.yaml"
+  cert_content:
+    description: 'PEM-encoded CA certificate, optionally followed by the rest of its chain. Omit, together with key_content, to have YBA generate the CA.'
+    type: string
+    minLength: 1
+  key_content:
+    description: 'PEM-encoded private key of the CA certificate. Omit, together with cert_content, to have YBA generate the CA.'
+    type: string
+    minLength: 1
+    writeOnly: true
+  lifetime_years:
+    description: 'Validity of a CA that YBA generates, in years. Defaults to yb.tlsCertificate.root.expiryInYears. Only for a generated CA.'
+    type: integer
+    format: int32
+    maximum: 100
+    minimum: 1
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

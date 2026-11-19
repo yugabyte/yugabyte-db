@@ -81,12 +81,20 @@ static inline void yb_stats_shmem_cleanup(od_instance_t *instance)
 	       "Deleted the shared memory segment with id %d", shmid);
 }
 
+/*
+ * YB: Shutdown is ungraceful. Worker threads keep running until the process
+ * exits, so freeing anything they may use here would race with them. We rely
+ * on process exit to reclaim all resources.
+ */
 od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 						od_instance_t *instance)
 {
+	/* YB: Worker pool cleanup is disabled */
+#ifdef OD_SYSTEM_SHUTDOWN_CLEANUP
 	od_worker_pool_t *worker_pool;
 
 	worker_pool = system->global->worker_pool;
+#endif
 #ifdef YB_SUPPORT_FOUND
 	// Connection manager process shuts down gracefully on receiving
 	// SIGINT signal, but logging it makes some tests fail.
@@ -103,10 +111,25 @@ od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 	// YB: Cleanup shmem after cron thread has stopped
 	yb_stats_shmem_cleanup(instance);
 
+	/*
+	 * YB: Workers are deliberately not stopped, since stopping
+	 * them unmaps coroutine stacks that may still be linked as
+	 * channel readers
+	 */
+#ifdef OD_SYSTEM_SHUTDOWN_CLEANUP
 	od_worker_pool_stop(worker_pool);
 
-	/* Prevent OpenSSL usage during deinitialization */
 	od_worker_pool_wait();
+#endif
+
+	char *yb_shutdown_delay_ms =
+		getenv("YB_YSQL_CONN_MGR_TEST_SHUTDOWN_DELAY_MS");
+	if (yb_shutdown_delay_ms != NULL) {
+		unsigned long delay_ms =
+			strtoul(yb_shutdown_delay_ms, NULL, 10);
+		machine_sleep(delay_ms > UINT32_MAX ? UINT32_MAX :
+						      (uint32_t)delay_ms);
+	}
 
 #ifdef OD_SYSTEM_SHUTDOWN_CLEANUP
 	od_router_free(system->global->router);
@@ -118,7 +141,17 @@ od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 	/* stop machinaruim and free */
 	od_instance_free(instance);
 #endif
-	exit(0);
+	/* YB: Give the logger thread a chance to flush queued log lines */
+	machine_sleep(1);
+
+	/*
+	 * YB: Call _exit instead of exit(0) to avoid running atexit handlers.
+	 * This is because cleanup of OpenSSL races against new client conns
+	 * undergoing TLS handshake. Since the memory is anyway reclaimed by the
+	 * OS and we're doing ungraceful shutdown, it's okay to skip the atexit
+	 * handlers.
+	 */
+	_exit(0);
 }
 
 void od_system_signal_handler(void *arg)

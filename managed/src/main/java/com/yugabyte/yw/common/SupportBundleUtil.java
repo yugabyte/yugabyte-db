@@ -64,6 +64,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -107,6 +108,14 @@ public class SupportBundleUtil {
     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
     Date dateToday = sdf.parse(sdf.format(new Date()));
     return dateToday;
+  }
+
+  /**
+   * Truncates a date to midnight local time. Needed when comparing a caller-supplied instant
+   * against dates parsed out of log file names, which carry no time of day.
+   */
+  public Date getDateWithoutTime(Date date) {
+    return new DateTime(date).withTimeAtStartOfDay().toDate();
   }
 
   public Date getDateFromBundleFileName(String fileName) throws ParseException {
@@ -474,7 +483,8 @@ public class SupportBundleUtil {
 
     String fileErrorMessage =
         errorMessage + System.lineSeparator() + ExceptionUtils.getStackTrace(e);
-    writeStringToFile(fileErrorMessage, localFilePath);
+    // The exception message can quote the failed command's output.
+    writeKubectlOutputToFile(fileErrorMessage, localFilePath);
   }
 
   public enum KubernetesResourceType {
@@ -574,15 +584,19 @@ public class SupportBundleUtil {
     }
   }
 
+  /**
+   * For the metadata JSON, which the tree redaction has already handled; it can still carry the
+   * telemetry exporter credentials (PLAT-22613). Raw kubectl/helm output goes through
+   * writeKubectlOutputToFile instead, which also redacts the gflags.
+   */
   public boolean writeStringToFile(String message, String localFilePath, boolean append) {
+    return write(RedactingService.redactTelemetryCredentials(message), localFilePath, append);
+  }
+
+  private boolean write(String content, String localFilePath, boolean append) {
     try {
-      // Bundle files hold raw kubectl/helm output -- "helm get values" and the pod specs both
-      // inline the telemetry exporter credentials (PLAT-22613).
       FileUtils.writeStringToFile(
-          new File(localFilePath),
-          RedactingService.redactTelemetryCredentials(message),
-          Charset.forName("UTF-8"),
-          append);
+          new File(localFilePath), content, Charset.forName("UTF-8"), append);
       return true;
     } catch (IOException e) {
       log.error("Failed writing output string to file: ", e);
@@ -592,6 +606,31 @@ public class SupportBundleUtil {
 
   public boolean writeStringToFile(String message, String localFilePath) {
     return writeStringToFile(message, localFilePath, false);
+  }
+
+  /**
+   * Writes raw kubectl/helm output, which carries the universe gflags ("helm get values" always,
+   * and the pod specs as container args with charts before PLAT-13974) and the telemetry
+   * credentials. The gflags are redacted as KubernetesManager redacts kubectl output for the log,
+   * with the passes that can run past an unclosed value one line at a time. That redaction cuts an
+   * HBA line from ldapbindpasswd to its end, so it is not for the metadata JSON, which the tree
+   * redaction has already handled.
+   */
+  public boolean writeKubectlOutputToFile(String output, String localFilePath) {
+    String redacted;
+    try {
+      // NativeKubernetesManager returns null for these commands; the file is left empty.
+      redacted =
+          RedactingService.redactTelemetryCredentials(
+              RedactingService.redactShellOutput(
+                  Objects.toString(output, ""), RedactionTarget.LOGS));
+    } catch (RuntimeException e) {
+      log.error(
+          "Failed to redact the output for {}; leaving it out of the bundle.", localFilePath, e);
+      write("Output withheld: redaction failed, see the YBA log.\n", localFilePath, false);
+      return false;
+    }
+    return write(redacted, localFilePath, false);
   }
 
   /**
@@ -658,7 +697,7 @@ public class SupportBundleUtil {
 
         String resourceOutput =
             kubernetesManager.getServiceAccountPermissions(config, roleData, kubectlOutputFormat);
-        writeStringToFile(resourceOutput, localFilePath);
+        writeKubectlOutputToFile(resourceOutput, localFilePath);
       } catch (Exception e) {
         logK8sError(
             String.format(

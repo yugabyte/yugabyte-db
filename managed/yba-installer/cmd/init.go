@@ -17,10 +17,10 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight/checks"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
 var (
-	PostgresVersion     string = ""
 	PrometheusVersion   string = ""
 	PerfAdvisorVersion  string = ""
 	NodeExporterVersion string = ""
@@ -52,6 +52,8 @@ func initAfterFlagsParsed(cmdName string) {
 
 	// Load the config after confirming config file
 	common.InitViper()
+	// Before anything uses TLS. The state file covers an install whose yba-ctl.yml was edited.
+	common.ApplyFipsMode(viper.GetBool("fips.enabled") || ybactlstate.StoredFipsEnabled())
 
 	// Replicated migration handles config and root checks on its own.
 	// License does not need any config, so skip for now
@@ -100,7 +102,7 @@ func ensureInstallerConfFile() {
 
 func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
-	serviceManager.RegisterService(NewPostgres(PostgresVersion))
+	serviceManager.RegisterService(NewPostgres(common.PostgresVersion))
 	serviceManager.RegisterService(NewPrometheus(PrometheusVersion))
 	serviceManager.RegisterService(NewPlatform(ybactl.Version))
 	serviceManager.RegisterService(NewPerfAdvisor(PerfAdvisorVersion))
@@ -153,7 +155,7 @@ func handleRootCheck(cmdName string) {
 }
 
 func init() {
-	if PostgresVersion == "" {
+	if common.PostgresVersion == "" {
 		panic("PostgresVersion not set during build")
 	}
 	if PrometheusVersion == "" {

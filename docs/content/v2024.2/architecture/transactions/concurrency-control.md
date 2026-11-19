@@ -28,7 +28,7 @@ If a conflict occurs, a transaction with the lower priority is aborted. There ar
 - **Wound:** If T1 has a higher priority than all the other conflicting transactions, T1 will abort them and make progress.
 - **Die:** If any other conflicting transaction has an equal or higher priority than T1, T1 will abort itself.
 
-Suppose you have a table with some data in it. The following examples describe the wound and die approaches when a conflict occurs.
+Suppose you have a table with some data in it. The following examples describe the wound and die approaches when a conflict occurs. To run them, set the YB-TServer flag `enable_wait_queues=false`; with the default (`true`), YSQL uses [Wait-on-Conflict](#wait-on-conflict) and the transactions wait instead.
 
 ```sql
 create table test (k int primary key, v int);
@@ -315,7 +315,7 @@ In this mode, transactions are not assigned priorities. If a conflict occurs whe
 1. Make progress if the conflicting transactions didn't commit any permanent modifications that conflict with T1.
 2. Abort otherwise.
 
-`Wait-on-Conflict` behavior can be enabled by setting the YB-TServer flag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the flag to take effect. Without this flag set, transactions operate in the priority based `Fail-on-Conflict` mode by default.
+`Wait-on-Conflict` behavior is controlled by the YB-TServer flag [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues), which is `true` by default and enables in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. To use the priority-based `Fail-on-Conflict` policy instead, set `enable_wait_queues=false`. A rolling restart is needed for the flag to take effect.
 
 Because T1 can make progress only if the conflicting transactions didn't commit any conflicting permanent modifications, there are some intricacies in the behaviour. The list of exhaustive cases possible are detailed below in the Examples section.
 
@@ -331,7 +331,7 @@ After a transaction T1 (that was waiting for other transactions) unblocks, it co
 
 The following examples describe different use cases detailing the Wait-on-Conflict behavior. To run the examples, you need to do the following:
 
-1. Set the YB-TServer flag `enable_wait_queues=true`.
+1. Make sure the YB-TServer flag `enable_wait_queues` is `true` (the default).
 1. Set the per-session `yb_max_query_layer_retries=0` YSQL configuration parameter to disable internal query layer retries on conflict. This is done to illustrate the `Wait-on-Conflict` concurrency control semantics separately without query layer retries. It is not recommended to disable these retries in production. To set it at the cluster level, use the `ysql_pg_conf_csv` YB-TServer flag.
 
 A restart is necessary for the flags to take effect.

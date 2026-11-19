@@ -69,7 +69,7 @@ func SaveCerts(
 			content = []byte(src.responseValue)
 		}
 		fileFilepath := filepath.Join(certsDir, src.localFilename)
-		err = os.WriteFile(fileFilepath, content, 0644)
+		err = os.WriteFile(fileFilepath, content, 0600)
 		if err != nil {
 			FileLogger().Errorf(ctx, "Error while saving %s to %s", src.localFilename, fileFilepath)
 			return err

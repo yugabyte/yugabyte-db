@@ -289,6 +289,9 @@ export const LDAPAuthNew = () => {
   const fetchSeq = useRef(0);
   // True while the user has edits that a background refetch must not discard.
   const isDirtyRef = useRef(false);
+  // After save we already reset(form) to the submitted values. A refetch can briefly
+  // return the previous bind value (runtime-config cache race); do not re-apply it.
+  const skipApplyAfterSaveRef = useRef(false);
 
   useEffect(() => {
     isDirtyRef.current = isDirty;
@@ -309,7 +312,11 @@ export const LDAPAuthNew = () => {
     },
     {
       onSuccess({ data, seq }) {
-        if (seq !== fetchSeq.current || isDirtyRef.current) {
+        const skipAfterSave = skipApplyAfterSaveRef.current;
+        if (skipAfterSave) {
+          skipApplyAfterSaveRef.current = false;
+        }
+        if (seq !== fetchSeq.current || isDirtyRef.current || skipAfterSave) {
           return;
         }
         applyFetchedConfig(data.configEntries);
@@ -741,6 +748,8 @@ export const LDAPAuthNew = () => {
                   reset(savedValues);
                   setInitialData(savedValues);
                   ++fetchSeq.current;
+                  // Refetch may still return the prior bind value briefly; keep form as saved.
+                  skipApplyAfterSaveRef.current = true;
                   queryClient.invalidateQueries(LDAP_RUNTIME_CONFIGS_QUERY_KEY);
                   toast.success(t('messages.ldapSaveSuccess'), TOAST_OPTIONS);
                 });

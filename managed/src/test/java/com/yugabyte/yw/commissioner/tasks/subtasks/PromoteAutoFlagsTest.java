@@ -122,6 +122,50 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testPromoteAutoFlagAlreadyPresentSucceeds() throws Exception {
+    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
+    params.ignoreErrors = false;
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(
+                ErrorCode.ALREADY_PRESENT, "No new AutoFlags eligible to promote"));
+    PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
+  public void testPromoteAutoFlagManagementDisabledSucceeds() throws Exception {
+    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
+    params.ignoreErrors = false;
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(
+                ErrorCode.NOT_SUPPORTED, "AutoFlags management is disabled."));
+    PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
+  public void testPromoteAutoFlagIgnoreErrorsSwallowsMasterRefusal() throws Exception {
+    PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;
+    params.ignoreErrors = true;
+    when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+        .thenReturn(
+            promoteAutoFlagsErrorResponse(ErrorCode.ILLEGAL_STATE, TSERVERS_NOT_UPGRADED_MESSAGE));
+    PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
+    task.initialize(params);
+    task.run();
+  }
+
+  @Test
   public void testPromoteAutoFlagSuccess() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
     params.maxClass = AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME;

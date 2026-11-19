@@ -14,6 +14,7 @@ import {
   createUniverse,
   filterFormDataByClusterType,
   getAsyncCluster,
+  getDevUserTags,
   getPrimaryCluster,
   getPrimaryInheritedValues,
   getUserIntent
@@ -202,16 +203,15 @@ export const CreateUniverse: FC = () => {
 
   // Retrieve userTags when running local dev environment
   if (globalRuntimeConfigQuery.isSuccess && globalRuntimeConfigQuery.data) {
-    const isTagsEnforcedObject = globalRuntimeConfigQuery?.data?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_TAGS_ENFORCED
+    const getConfigValue = (key: string) =>
+      globalRuntimeConfigQuery.data.configEntries?.find((c: RunTimeConfigEntry) => c.key === key)
+        ?.value;
+    const devTags = getDevUserTags(
+      getConfigValue(RuntimeConfigKey.IS_TAGS_ENFORCED),
+      getConfigValue(RuntimeConfigKey.DEFAULT_DEV_TAGS)
     );
-    const isTagsEnforced = isTagsEnforcedObject?.value === 'true';
-    const defaultDevTags = globalRuntimeConfigQuery?.data?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.DEFAULT_DEV_TAGS
-    )?.value;
-
-    if (isTagsEnforced && defaultDevTags) {
-      DEFAULT_FORM_DATA_COPY.instanceTags = JSON.parse(defaultDevTags);
+    if (devTags.length) {
+      DEFAULT_FORM_DATA_COPY.instanceTags = devTags;
     }
   }
 

@@ -6,11 +6,12 @@ import atexit
 from dataclasses import dataclass
 import json
 import logging
-import multiprocessing
 import os
 import re
 import resource
+import select
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -30,14 +31,12 @@ from threading import Thread, Event
 # Version-dependent imports
 PY_VERSION = sys.version_info[0]
 if PY_VERSION < 3:
-    import Queue as queue
     from urllib2 import Request, urlopen, URLError, HTTPError
     from urllib import urlencode
     from random import SystemRandom
     _sysrand = SystemRandom()
     PASSWORD_GENNERATOR = _sysrand.choice
 else:
-    import queue
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
     from urllib.parse import urlencode, urlparse
@@ -71,6 +70,7 @@ OS_NAME = OS_DETAILS[0]
 
 # Script constants.
 SCRIPT_NAME = os.path.basename(__file__)
+SCRIPT_PATH = os.path.abspath(__file__)
 YUGABYTE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 YUGABYTE_JENKINS_BUILD_DIR = os.getenv("BUILD_ROOT",
                                        os.path.dirname(
@@ -78,6 +78,9 @@ YUGABYTE_JENKINS_BUILD_DIR = os.getenv("BUILD_ROOT",
 TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
+# Set for the daemon by ControlScript.daemonize(): the descriptor of the write end of the
+# DaemonStatusPipe through which the daemon reports to the process that launched it.
+DAEMON_STATUS_FD_ENV = "YUGABYTED_DAEMON_STATUS_FD"
 FAULT_TOLERANCE_CHOICES = ["zone", "region", "cloud"]
 START_FAULT_TOLERANCE_CHOICES = ["none", "zone", "region", "cloud"]
 SLACK_LINK = "https://www.yugabyte.com/slack"
@@ -727,6 +730,23 @@ def is_phc_configured():
     out, _, retcode = run_process(cmd, timeout=1, log_cmd=True)
     return retcode == 0 and 'PHC' in out
 
+# Kernels 6.19.0 through 7.0.13 break TCMalloc's own rseq registration and crash it
+# (google/tcmalloc#292): broken by 39a167560a61 in 6.19, fixed for x86 in 7.0.10 and
+# for arm64 in 7.0.14.
+def kernel_breaks_tcmalloc_rseq():
+    release = os.uname().release
+    # Ubuntu's release (e.g. 7.0.0-14-generic) hides the upstream patch level, which is the
+    # last field of /proc/version_signature (only Ubuntu kernels have this file).
+    try:
+        with open("/proc/version_signature") as f:
+            release = f.readline().split()[-1]
+    except (OSError, IndexError):
+        pass
+    match = re.match(r"(\d+)\.(\d+)\.(\d+)", release)
+    if not match:
+        return False
+    return (6, 19, 0) <= tuple(int(v) for v in match.groups()) <= (7, 0, 13)
+
 # Check if ip is ipv6
 def is_ipv6(ip):
     try:
@@ -760,13 +780,18 @@ class ControlScript(object):
             Output.print_out("{} is already running!".format(SCRIPT_NAME))
             sys.exit(1)
 
-        Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
+        if self.script.daemon_status.in_daemon:
+            # This process is the daemon that daemonize() exec()ed.  The paths that validation
+            # makes absolute have been resolved in the launcher's directory, so the daemon can
+            # leave that directory now.
+            os.chdir(YUGABYTE_DIR)
+            Output.log("Daemon process begins execution.")
+        else:
+            Output.print_and_log("Starting {}...".format(SCRIPT_NAME))
         self.set_env_vars()
 
-        if self.configs.temp_data.get("background"):
-            # In daemon mode, self.daemonize() forks. The child process then executes
-            # normal control flow. The parent process waits for the child process until
-            # a status message can be printed to the terminal and then exits within daemonize.
+        if self.configs.temp_data.get("background") and not self.script.daemon_status.in_daemon:
+            # Runs this command again as the daemon, waits for its status and exits.
             self.daemonize()
         self.script.write_pid(os.getpid())
 
@@ -3407,12 +3432,24 @@ class ControlScript(object):
                 continue
         return (None, False)
 
+    # TCMalloc cannot use per-CPU caches if glibc has already registered rseq
+    # (glibc 2.35+, RHEL 9's 2.34), and silently falls back to per-thread caches.
+    # On kernels where TCMalloc's own registration crashes, keep glibc's instead.
+    def set_glibc_tunables(self):
+        tunables = os.environ.get("GLIBC_TUNABLES", "")
+        if "glibc.pthread.rseq=" not in tunables:
+            rseq = "glibc.pthread.rseq={}".format(1 if kernel_breaks_tcmalloc_rseq() else 0)
+            os.environ["GLIBC_TUNABLES"] = ":".join(t for t in (tunables, rseq) if t)
+
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
         prereqs_warn = set()
         prereqs_failed_flag = False
         prereqs_warn_flag = False
+
+        # Before the Docker early return: containers need the tunable too.
+        self.set_glibc_tunables()
 
         if os.path.exists("/.dockerenv"):
             Output.log("Running in a Docker container. Skipping pre-requisite checks.")
@@ -3752,7 +3789,7 @@ class ControlScript(object):
             Output.log("Received signal: {}".format(signum), logging.DEBUG)
         Output.print_and_log("Shutting down...")
         Output.console_access = False
-        self.script.daemon_success.put(-1)
+        self.script.daemon_status.report(-1)
 
         # Shutdown all callhome threads gracefully
         self.shutdown_callhome_thread(timeout=5)
@@ -4144,7 +4181,7 @@ class ControlScript(object):
                 if self.configs.temp_data.get("background"):
                     # Let original process know daemon was successful so it can exit.
                     # This is to display the initial status message.
-                    self.script.daemon_success.put(1)
+                    self.script.daemon_status.report(1)
                     # Ignore any console output as important information will be logged.
                     with open('/dev/null', 'r+') as dev_null:
                         Output.console_access = False
@@ -4407,7 +4444,7 @@ class ControlScript(object):
                 if self.configs.temp_data.get("background"):
                     # Let original process know daemon was successful so it can exit.
                     # This is to display the initial status message.
-                    self.script.daemon_success.put(1)
+                    self.script.daemon_status.report(1)
                     # Ignore any console output as important information will be logged.
                     with open('/dev/null', 'r+') as dev_null:
                         Output.console_access = False
@@ -4975,6 +5012,12 @@ class ControlScript(object):
 
     # Pushes yugabyted script to background as a daemon. The process is not tied to a shell, but
     # it will not survive between machine restarts.
+    #
+    # The grandchild exec()s this command again rather than carrying on as a forked copy of the
+    # launcher, because system libraries need not work in a process that has forked without
+    # exec().  The daemon validates the same command line in the launcher's directory, so the
+    # paths that validation makes absolute resolve as they did here; the daemon leaves the
+    # directory in start().
     def daemonize(self):
         def remove_handlers():
             if PY_VERSION < 3:
@@ -4984,9 +5027,14 @@ class ControlScript(object):
             else:
                 atexit.unregister(self.kill_children)
 
+        self.script.daemon_status.create()
+        # Buffered output would be written again by each child that exits with a copy of it.
+        sys.stdout.flush()
+        sys.stderr.flush()
         if os.fork():
             # Delete any custom exit handlers so daemon has full control.
             remove_handlers()
+            self.script.daemon_status.close_write_end()
 
             # If parent is interrupted, kill the children as well. Note there is potentially a
             # window where the daemon hasn't created its pidfile yet and this will error out before
@@ -4994,20 +5042,28 @@ class ControlScript(object):
             self.set_signals(self.stop)
 
             # Keep the parent process alive until the daemon confirms yugabyted started properly.
-            try:
-                self.script.daemon_success.get(timeout=600)
-            except queue.Empty as e:
+            status = self.script.daemon_status.wait(timeout=600)
+            if status is None:
                 Output.print_and_log(
                     "Timed out trying to start {} daemon.".format(SCRIPT_NAME), logging.ERROR)
                 self.stop()
+            elif status == DaemonStatusPipe.EXITED:
+                # The daemon has exited, so a live pid in the pidfile belongs to another start on
+                # this base_dir, whose servers stop() would kill.
+                Output.log_error_and_exit(
+                    "{} daemon exited before reporting its status.".format(SCRIPT_NAME))
             sys.exit()
-        os.chdir(YUGABYTE_DIR)
         os.setsid()
         os.umask(0)
         if os.fork():
             remove_handlers()
             sys.exit()
-        Output.log("Daemon grandchild process begins execution.")
+        # The daemon gets the launcher's interpreter options through the helper that
+        # multiprocessing uses for a spawned process.
+        os.execve(sys.executable,
+                  [sys.executable] + subprocess._args_from_interpreter_flags() +
+                  [SCRIPT_PATH] + sys.argv[1:],
+                  self.script.daemon_status.daemon_environment())
 
     # Sets env variables needed for yugabyted start.
     def set_env_vars(self):
@@ -10410,6 +10466,10 @@ class ControlScript(object):
             return
 
         args = parser.parse_args()
+        if DAEMON_STATUS_FD_ENV in os.environ:
+            # This process is the daemon that daemonize() exec()ed.  The launcher has shown the
+            # output of validating this command line, so the daemon validates it silently.
+            Output.console_access = False
         self.validate_and_set_parent_configs(args)
         self.diagnostics = Diagnostics(self.configs)
         # Yugabyted command currently being processed is required for
@@ -10456,6 +10516,9 @@ class ControlScript(object):
 
         YBTableServerCLIProxy.set_certs_dir(self.configs.saved_data.get("master_flags"), \
             self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
+
+        if self.script.daemon_status.in_daemon:
+            Output.console_access = True
 
         try:
             args.func()
@@ -10907,14 +10970,71 @@ class ProcessManager(object):
         return ProcessManager(name, cmd="", log_dir="", data_dir=pid_dir).get_pid() is not None
 
 
+# Carries the daemon's startup report to the yugabyted process that launched it, the launcher.
+# The launcher holds the read end of a pipe; the daemon inherits the write end across the exec()
+# in ControlScript.daemonize() and finds its descriptor number in DAEMON_STATUS_FD_ENV.
+class DaemonStatusPipe(object):
+    # wait() returns this when the daemon closed the pipe without reporting, i.e. it exited.
+    EXITED = 0
+
+    def __init__(self):
+        self.read_fd = None
+        self.write_fd = None
+        fd = os.environ.pop(DAEMON_STATUS_FD_ENV, None)
+        self.in_daemon = fd is not None
+        if self.in_daemon:
+            self.write_fd = int(fd)
+            # Only the daemon reports; the processes it starts must not hold the pipe open.
+            os.set_inheritable(self.write_fd, False)
+
+    # Launcher: creates the pipe before forking the daemon.
+    def create(self):
+        self.read_fd, self.write_fd = os.pipe()
+
+    # Launcher: gives up the write end once the daemon has it, so that the daemon exiting closes
+    # the pipe.
+    def close_write_end(self):
+        os.close(self.write_fd)
+        self.write_fd = None
+
+    # The environment for the daemon's exec(): this one plus the write end's descriptor number.
+    def daemon_environment(self):
+        os.close(self.read_fd)
+        os.set_inheritable(self.write_fd, True)
+        env = dict(os.environ)
+        env[DAEMON_STATUS_FD_ENV] = str(self.write_fd)
+        return env
+
+    # Daemon: reports its status, 1 once started and -1 when shutting down, to the launcher.
+    # A foreground start has no launcher to report to.
+    def report(self, status):
+        if self.write_fd is None:
+            return
+        try:
+            os.write(self.write_fd, struct.pack("b", status))
+        except OSError:
+            # The launcher has exited.
+            pass
+
+    # Launcher: waits up to timeout seconds for the daemon's report.  Returns the status, EXITED
+    # when the daemon exited without reporting, or None on timeout.
+    def wait(self, timeout):
+        ready, _, _ = select.select([self.read_fd], [], [], timeout)
+        if not ready:
+            return None
+        data = os.read(self.read_fd, 1)
+        if not data:
+            return DaemonStatusPipe.EXITED
+        return struct.unpack("b", data)[0]
+
+
 # Class for managing yugabyted process components - e.g. pidfiles and lockfiles.
 # Maybe this class can take over the ControlScript.start_processes functionality?
 class ScriptProcessManager(ProcessManager):
     def __init__(self, log_dir, data_dir):
         super(ScriptProcessManager, self).__init__(SCRIPT_NAME, "", log_dir, data_dir)
-        # Used to retrieve status of daemon process. When daemon successfully initializes,
-        # it will put a value here which can be checked on.
-        self.daemon_success = multiprocessing.Queue()
+        # The daemon's startup report to the process that launched it.
+        self.daemon_status = DaemonStatusPipe()
 
     def start(self):
         return

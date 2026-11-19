@@ -47,10 +47,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.collections4.CollectionUtils;
@@ -644,6 +646,10 @@ public class GCPCloudImpl implements CloudAPI {
    * groups. GCP cannot change the ports of a forwarding rule, so a rule that misses a port is
    * replaced; the reserved address keeps the IP.
    *
+   * <p>A taken-over load balancer has no address under this name, and its rules are the user's,
+   * even one that shares the name. They are reused so the address stays; if they miss a port, this
+   * fails rather than add an address.
+   *
    * @return the internal IP of the load balancer.
    */
   @Override
@@ -671,9 +677,18 @@ public class GCPCloudImpl implements CloudAPI {
     GCPProjectApiClient apiClient = getApiClient(provider);
 
     BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
+    Address address = apiClient.getRegionalAddressIfExists(regionCode, name);
     String backendServiceUrl;
     if (backendService != null) {
       backendServiceUrl = backendService.getSelfLink();
+      if (address == null) {
+        String userAddress =
+            ensureUserForwardingRules(apiClient, regionCode, backendServiceUrl, ports, tags);
+        if (userAddress != null) {
+          log.info("Load balancer {} in {} has address {}", name, regionCode, userAddress);
+          return userAddress;
+        }
+      }
     } else {
       // GCP requires a health check. ensureHealthChecks finds this one by name.
       String healthCheckName = getHealthCheckName(name, Protocol.TCP);
@@ -686,7 +701,6 @@ public class GCPCloudImpl implements CloudAPI {
       backendServiceUrl =
           apiClient.createInternalBackendService(regionCode, name, networkUrl, healthCheckUrl);
     }
-    Address address = apiClient.getRegionalAddressIfExists(regionCode, name);
     if (address == null) {
       address = apiClient.createInternalAddress(regionCode, name, subnetworkUrl);
     }
@@ -719,7 +733,7 @@ public class GCPCloudImpl implements CloudAPI {
   }
 
   /**
-   * Deletes the forwarding rule, the backend service, its health checks and instance groups, then
+   * Deletes the forwarding rules, the backend service, its health checks and instance groups, then
    * the address: GCP refuses to delete a resource that another still references. The fixed names
    * find the checks and groups of a run that deleted the backend service and then failed; the
    * backend service references also find ones under other names.
@@ -732,6 +746,14 @@ public class GCPCloudImpl implements CloudAPI {
     SetMultimap<String, String> instanceGroupsByZone = LinkedHashMultimap.create();
     BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
     if (backendService != null) {
+      // A taken-over load balancer's user rules; GCP won't delete a backend service they reference.
+      // Their reserved address stays: YBA doesn't know its name.
+      for (ForwardingRule rule :
+          CollectionUtils.emptyIfNull(
+              apiClient.getRegionalForwardingRulesForBackend(
+                  regionCode, backendService.getSelfLink()))) {
+        apiClient.deleteRegionalForwardingRule(regionCode, rule.getName());
+      }
       for (String url : CollectionUtils.emptyIfNull(backendService.getHealthChecks())) {
         healthCheckNames.add(CloudAPI.getResourceNameFromResourceUrl(url));
       }
@@ -755,6 +777,75 @@ public class GCPCloudImpl implements CloudAPI {
     instanceGroupsByZone.forEach(apiClient::deleteInstanceGroup);
     apiClient.deleteRegionalAddress(regionCode, name);
     log.info("Deleted load balancer {} in {}", name, regionCode);
+  }
+
+  @Override
+  public void validateManagedLoadBalancerPorts(
+      Provider provider, String regionCode, String name, List<Integer> ports) {
+    GCPProjectApiClient apiClient = getApiClient(provider);
+    BackendService backendService = apiClient.getRegionalBackendServiceIfExists(regionCode, name);
+    if (backendService != null && apiClient.getRegionalAddressIfExists(regionCode, name) == null) {
+      findUserForwardingRules(apiClient, regionCode, backendService.getSelfLink(), ports);
+    }
+  }
+
+  // Address of the user's rules that forward every port; null if no rule targets the backend
+  // service; throws if rules miss a port.
+  @Nullable
+  private static String ensureUserForwardingRules(
+      GCPProjectApiClient apiClient,
+      String region,
+      String backendServiceUrl,
+      List<Integer> ports,
+      Map<String, String> tags) {
+    List<ForwardingRule> rules =
+        findUserForwardingRules(apiClient, region, backendServiceUrl, ports);
+    if (rules == null) {
+      return null;
+    }
+    Map<String, String> labels = toLabels(tags);
+    try {
+      for (ForwardingRule rule : rules) {
+        if (!labels.isEmpty()) {
+          apiClient.setForwardingRuleLabels(
+              region,
+              rule.getName(),
+              rule.getLabelFingerprint(),
+              withLabels(rule.getLabels(), labels));
+        }
+      }
+    } catch (RuntimeException e) {
+      log.warn("Could not update the labels of forwarding rules {}: {}", rules, e.getMessage());
+    }
+    return rules.get(0).getIPAddress();
+  }
+
+  @Nullable
+  private static List<ForwardingRule> findUserForwardingRules(
+      GCPProjectApiClient apiClient, String region, String backendServiceUrl, List<Integer> ports) {
+    Map<String, List<ForwardingRule>> rulesByAddress =
+        CollectionUtils.emptyIfNull(
+                apiClient.getRegionalForwardingRulesForBackend(region, backendServiceUrl))
+            .stream()
+            .filter(rule -> rule.getIPAddress() != null)
+            .collect(
+                Collectors.groupingBy(
+                    ForwardingRule::getIPAddress, TreeMap::new, Collectors.toList()));
+    for (List<ForwardingRule> rules : rulesByAddress.values()) {
+      if (ports.stream()
+          .allMatch(port -> rules.stream().anyMatch(r -> forwardsPorts(r, List.of(port))))) {
+        return rules;
+      }
+    }
+    if (rulesByAddress.isEmpty()) {
+      return null;
+    }
+    throw new PlatformServiceException(
+        BAD_REQUEST,
+        String.format(
+            "The forwarding rules of backend service %s do not forward ports %s at one address."
+                + " Add the missing ports to them.",
+            CloudAPI.getResourceNameFromResourceUrl(backendServiceUrl), ports));
   }
 
   private static boolean forwardsPorts(ForwardingRule rule, List<Integer> ports) {

@@ -1,0 +1,27 @@
+LOAD 'pg_hint_plan';
+CREATE TABLE ja (a int);
+CREATE TABLE jb (b int);
+-- Leading hint on a join that is proven empty
+EXPLAIN (COSTS OFF) SELECT * FROM ja, jb WHERE false;
+        QUERY PLAN        
+--------------------------
+ Result
+   One-Time Filter: false
+(2 rows)
+
+/*+ Leading(ja jb) */ SELECT * FROM ja, jb WHERE false;
+ a | b 
+---+---
+(0 rows)
+
+/*+ Leading(ja jb) */ SELECT * FROM ja JOIN jb ON a = b WHERE a = 1 AND a = 2;
+ a | b 
+---+---
+(0 rows)
+
+/*+ Leading(ja jb) */ SELECT * FROM ja JOIN jb ON a = b;
+ a | b 
+---+---
+(0 rows)
+
+DROP TABLE ja, jb;

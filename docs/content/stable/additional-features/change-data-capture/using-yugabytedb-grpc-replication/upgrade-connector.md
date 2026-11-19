@@ -22,11 +22,14 @@ Check [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.co
 
 Upgrade the connector:
 
-- _Before upgrading YugabyteDB_ to a release series later than the one your connector was built for. The connector is backward compatible only; running it against a later database release is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _Before upgrading YugabyteDB_ to a release series later than the one your connector was built for. The connector is backward compatible only; running it against a later release series is unsupported and can disrupt streaming. See [Choose a connector version](#choose-a-connector-version).
+- _Before upgrading YugabyteDB to v2026.1.2.0 or later_, including from an earlier v2026.1 release, if your connector is `dz.1.9.5.yb.grpc.2026.1.1` or earlier. Those versions fail to start against v2026.1.2.0 and later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
+- _On YugabyteDB v2024.2_, if your connector is earlier than `dz.1.9.5.yb.grpc.2024.2.3`, which v2024.2 requires. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 - _When a release fixes a bug or security issue_ that affects your deployment.
+- _When a release adds a feature or improvement_ that you need.
 - _To run on Kafka Connect 4.x_, use connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2) or later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 
-As a best practice, run the latest stable connector release regardless of your YugabyteDB version.
+Otherwise, you don't need to upgrade the connector, including when you upgrade YugabyteDB within the same release series.
 
 ## Choose a connector version
 
@@ -41,7 +44,6 @@ When you pick a target connector version:
 - Validate the target version in a staging environment that mirrors production before you upgrade production.
 - Use the _latest stable_ release (recommended). Connectors are backward compatible with YugabyteDB releases, so you don't need to match the connector to the database release.
 - Never run a `*.SNAPSHOT.*` build in production; those are pre-releases.
-- If no newer release is available, use the last published stable release; don't stay on an older one.
 - Read the release notes for the target (and any versions you skip) for breaking changes before you upgrade.
 
 ## Standard upgrade in place
@@ -56,7 +58,7 @@ Expect a small number of duplicate events around the restart; Debezium events ar
 
 ### Before you begin
 
-- Upgrade the connector first, then YugabyteDB. The connector is backward compatible with earlier database releases but not newer ones, so if a database upgrade is what's driving this, complete the connector upgrade before you upgrade YugabyteDB. See [When to upgrade](#when-to-upgrade).
+- Upgrade the connector first, then YugabyteDB. Your current connector might not support the YugabyteDB release you're upgrading to, so if a database upgrade is what's driving this, complete the connector upgrade before you upgrade YugabyteDB. See [When to upgrade](#when-to-upgrade).
 
 - In Kafka Connect distributed mode, connector configuration, offsets, and status live in Kafka topics, so the connector recovers cleanly when workers restart. Plan to restart workers one at a time (rolling), and finish with every worker on the same connector version. Don't run mixed versions beyond the rollout window.
 

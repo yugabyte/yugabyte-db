@@ -124,8 +124,7 @@ class ConsensusFrontier : public storage::UserFrontier {
   bool UpdateCoTableId(const Uuid& cotable_id, const Uuid& new_cotable_id);
 
   // Merge current frontier with provided map, preferring min values.
-  void MakeExternalSchemaVersionsAtMost(
-      std::unordered_map<Uuid, SchemaVersion>* min_schema_versions) const;
+  void MakeExternalSchemaVersionsAtMost(CotableSchemaVersionMap* min_schema_versions) const;
 
   HybridTime max_value_level_ttl_expiration_time() const {
     return max_value_level_ttl_expiration_time_;
@@ -180,7 +179,7 @@ class ConsensusFrontier : public storage::UserFrontier {
   HybridTime max_value_level_ttl_expiration_time_;
 
   std::optional<SchemaVersion> primary_schema_version_;
-  std::unordered_map<Uuid, SchemaVersion> cotable_schema_versions_;
+  CotableSchemaVersionMap cotable_schema_versions_;
 
   // Serialized filter that is set only for the largest frontier of sst files
   // during restore. There are two types of filter - a global filter

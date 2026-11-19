@@ -12,8 +12,11 @@
 
 #include <atomic>
 #include <cmath>
+#include <future>
 #include <map>
+#include <mutex>
 #include <optional>
+#include <regex>
 #include <set>
 #include <span>
 #include <string>
@@ -23,16 +26,22 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/ddl_mode-test-util.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/integration-tests/backfill-test-util.h"
+#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
@@ -42,6 +51,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
@@ -119,6 +129,99 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
   }
 
  protected:
+  // Arbitrary time in the past (2023-11-14) to pin CREATE INDEX's origination time to.
+  static constexpr MicrosTime kPinnedOriginationTime = 1'700'000'000'000'000;
+  static constexpr MicrosTime kSecondPinnedOriginationTime = kPinnedOriginationTime + 1'000'000;
+
+  static Status PinOriginationTime(PGConn& conn, MicrosTime time) {
+    return conn.ExecuteFormat("SET yb_origination_time_override = $0", time);
+  }
+
+  using IndexOriginations = std::set<std::pair<TableId, MicrosTime>>;
+
+  // Collects the (index, origination time) pairs that daemons log as they run backfill chunks.
+  // Needs vmodule tablet=1 on those daemons.  Each daemon has at most one log listener, so this
+  // replaces any LogWaiter on them.
+  class BackfillOriginationCollector : public ExternalDaemon::StringListener {
+   public:
+    explicit BackfillOriginationCollector(std::vector<ExternalTabletServer*> daemons)
+        : daemons_(std::move(daemons)) {
+      for (auto* daemon : daemons_) {
+        daemon->SetLogListener(this);
+      }
+    }
+
+    ~BackfillOriginationCollector() {
+      for (auto* daemon : daemons_) {
+        daemon->RemoveLogListener(this);
+      }
+    }
+
+    IndexOriginations originations() const {
+      std::lock_guard lock(mutex_);
+      return originations_;
+    }
+
+   private:
+    void Handle(const GStringPiece& s) override {
+      static const std::regex kPattern(R"(Backfilling index (\S+) with origination time (\d+))");
+      std::cmatch match;
+      if (!std::regex_search(s.data(), s.data() + s.size(), match, kPattern)) {
+        return;
+      }
+      std::lock_guard lock(mutex_);
+      originations_.emplace(match[1].str(), std::stoull(match[2].str()));
+    }
+
+    const std::vector<ExternalTabletServer*> daemons_;
+    mutable std::mutex mutex_;
+    IndexOriginations originations_ GUARDED_BY(mutex_);
+  };
+
+  // Waits until every index in expected has been backfilled, then checks that the backfills
+  // carried exactly these (index name, origination time) pairs.
+  Status CheckBackfillOriginations(
+      const BackfillOriginationCollector& collector,
+      const std::map<std::string, MicrosTime>& expected) {
+    auto client = VERIFY_RESULT(cluster_->CreateClient());
+    std::map<TableId, std::string> name_by_id;
+    for (const auto& [name, _] : expected) {
+      name_by_id[VERIFY_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, name))] = name;
+    }
+    const auto get_originations_by_name = [&] {
+      std::set<std::pair<std::string, MicrosTime>> result;
+      for (const auto& [index_id, time] : collector.originations()) {
+        const auto it = name_by_id.find(index_id);
+        result.emplace(it == name_by_id.end() ? index_id : it->second, time);
+      }
+      return result;
+    };
+
+    // Master may backfill the indexes one at a time, so some may not have started yet.
+    RETURN_NOT_OK(WaitFor(
+        [&] {
+          std::set<std::string> backfilled;
+          for (const auto& [name, _] : get_originations_by_name()) {
+            backfilled.insert(name);
+          }
+          for (const auto& [name, _] : expected) {
+            if (!backfilled.contains(name)) {
+              return false;
+            }
+          }
+          return true;
+        },
+        MonoDelta::FromSeconds(kTimeMultiplier * 60), "every index backfilled"));
+
+    const auto actual = get_originations_by_name();
+    const std::set<std::pair<std::string, MicrosTime>> expected_set(
+        expected.begin(), expected.end());
+    SCHECK(
+        actual == expected_set, IllegalState,
+        Format("Backfill origination times: got $0, expected $1", actual, expected_set));
+    return Status::OK();
+  }
+
   Result<bool> IsAtTargetIndexStateFlags(
       const std::string& index_name,
       const IndexStateFlags& target_index_state_flags) {
@@ -2242,6 +2345,83 @@ TEST_P(PgIndexBackfillClientDeadline, DropAfterFail) {
   }
 }
 
+class PgIndexBackfillClientDeadlineNoTableLocks : public PgIndexBackfillClientDeadline {};
+
+// With object locking, DROP INDEX waits on the table lock CREATE INDEX holds, so the drop in
+// DropBeforeBackfillRequest cannot interleave and the scenario needs
+// enable_object_locking_for_table_locks off.
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillClientDeadlineNoTableLocks, ::testing::Values(false));
+
+// A DROP INDEX between the index's creation and its BackfillIndex request removes the index from
+// the indexed table's list while the index table is still being deleted.  The request must fail
+// fast, not wait out the client deadline polling for a permission that never comes.  Simulate the
+// following:
+//   Session A                                    Session B
+//   --------------------------                   ----------------------
+//   CREATE INDEX
+//   - indislive
+//   - indisready
+//   - backfill (blocked before the request)
+//                                                DROP INDEX
+//   - BackfillIndex request
+TEST_P(PgIndexBackfillClientDeadlineNoTableLocks, DropBeforeBackfillRequest) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  // The drop removes the index from the indexed table's list when its transaction commits and
+  // leaves the index table DELETING, where the master still finds it, until every tablet replica
+  // reports its deletion.  A request that no longer finds the table fails with NotFound instead of
+  // reaching the permission check.  Have every tserver refuse its DeleteTablet RPCs, so the
+  // master's delete tasks keep retrying and the table stays DELETING, as it does while a tserver
+  // holding a replica is down.  The table then never reaches DELETED, so the post-commit DDL
+  // verification wait in DROP INDEX would run to its deadline.  Turn the wait off so the drop
+  // returns at commit.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_rpc_delete_tablet_fail", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "ysql_ddl_transaction_wait_for_ddl_verification", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  // Runs before the holder joins the create thread, so an assertion that fires while the thread
+  // is blocked fails the test instead of hanging it.
+  auto unblock = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"), "unblock pg");
+  });
+  std::vector<ExternalDaemon*> tablet_servers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    tablet_servers.push_back(cluster_->tablet_server(i));
+  }
+  LogWaiter log_waiter(tablet_servers, "blocking concurrent index backfill");
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    // We don't want the DROP INDEX to face a serialization error when acquiring the FOR UPDATE lock
+    // on the catalog version row.
+    ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
+    Status status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
+    ASSERT_NOK(status);
+    ASSERT_FALSE(HasClientTimedOut(status)) << status;
+    ASSERT_STR_CONTAINS(status.ToString(), "is not an index of");
+  });
+  ASSERT_OK(log_waiter.WaitFor(60s * kTimeMultiplier));
+
+  LOG(INFO) << "Drop index";
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  const auto table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kDatabaseName, kTableName));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto info = std::make_shared<client::YBTableInfo>();
+    Synchronizer sync;
+    RETURN_NOT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
+    RETURN_NOT_OK(sync.Wait());
+    return info->index_map.empty();
+  }, 60s * kTimeMultiplier, "Wait for the index to leave the indexed table"));
+
+  // Unblock CREATE INDEX to send the request.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  thread_holder_.JoinAll();
+}
+
 // Override to have a 30s BackfillIndex client timeout.
 class PgIndexBackfillFastClientTimeout : public PgIndexBackfillBlockDoBackfill {
  public:
@@ -2333,9 +2513,9 @@ class PgIndexBackfillMultiMaster : public PgIndexBackfillFastClientTimeout {
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillMultiMaster, ::testing::Bool());
 
-// Master leader failover at each block point of an online index build: block CREATE INDEX, step
-// down the master leader, check the build is still blocked at the same point, unblock, and require
-// the build to complete with a consistent index.
+// Master leader failover at each block point of an online index build: block CREATE INDEX, fail the
+// master leader over, check the build is still blocked at the same point, unblock, and require the
+// build to complete with a consistent index.  The block points are in postgres and master.
 TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
   constexpr int kNumRows = 10;
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -2347,9 +2527,22 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
     tablet_servers.push_back(cluster_->tablet_server(i));
   }
 
+  enum class Block {
+    // ysql_yb_test_block_index_phase, in postgres.
+    kPgPhase,
+    // TEST_slowdown_alter_table_rpcs_ms on the leader, in the master's BackfillIndex after it
+    // persisted DO_BACKFILL and before it responds.  The new leader resumes the backfill after the
+    // failover, so TEST_block_do_backfill is set as well and the resumed backfill blocks in the
+    // master's DoBackfill like the kMasterBackfill row's does.
+    kBackfillRequest,
+    // TEST_block_do_backfill, in the master after it has chosen the backfill read time.
+    kMasterBackfill,
+  };
+  enum class Failover { kStepDown, kKill };
   struct Phase {
     std::string name;
-    // Postgres side block: the tserver log line to wait for.  Empty for the master side block.
+    Block block;
+    Failover failover;
     std::string log_msg;
     // What other sessions see in pg_index while blocked.  nullopt: the transaction that creates the
     // index has not committed, so they do not see it at all.
@@ -2357,26 +2550,39 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
   };
   const IndexStateFlags kLiveAndReady{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady};
   const std::vector<Phase> phases = {
-      {"indislive", "blocking index state change indislive=true", std::nullopt},
-      {"indisready", "blocking index state change indisready=true",
-       IndexStateFlags{IndexStateFlag::kIndIsLive}},
+      {"indislive", Block::kPgPhase, Failover::kStepDown,
+       "blocking index state change indislive=true", std::nullopt},
+      {"indisready", Block::kPgPhase, Failover::kStepDown,
+       "blocking index state change indisready=true", IndexStateFlags{IndexStateFlag::kIndIsLive}},
       // Blocked before the BackfillIndex request is sent.
-      {"backfill", "blocking concurrent index backfill", kLiveAndReady},
-      // TEST_block_do_backfill blocks the master after it has chosen the backfill read time.
-      {"master backfill", "", kLiveAndReady},
-      {"postbackfill", "blocking operations after concurrent index backfill", kLiveAndReady},
-      {"indisvalid", "blocking index state change indisvalid=true", kLiveAndReady},
+      {"backfill", Block::kPgPhase, Failover::kStepDown, "blocking concurrent index backfill",
+       kLiveAndReady},
+      {"backfill request", Block::kBackfillRequest, Failover::kStepDown,
+       "blocking concurrent index backfill", kLiveAndReady},
+      // Unlike stepdown, killing the leader loses the BackfillIndex RPC response, so the client
+      // resends the request to the new leader, which finds the index at DO_BACKFILL.
+      {"resent backfill request", Block::kBackfillRequest, Failover::kKill,
+       "blocking concurrent index backfill", kLiveAndReady},
+      {"master backfill", Block::kMasterBackfill, Failover::kStepDown, "", kLiveAndReady},
+      {"postbackfill", Block::kPgPhase, Failover::kStepDown,
+       "blocking operations after concurrent index backfill", kLiveAndReady},
+      {"indisvalid", Block::kPgPhase, Failover::kStepDown,
+       "blocking index state change indisvalid=true", kLiveAndReady},
   };
   int index_suffix = 0;
   for (const auto& phase : phases) {
-    const bool master_side = phase.log_msg.empty();
     const std::string index_name = Format("$0_$1", kIndexName, index_suffix++);
     LOG(INFO) << "Testing master failover while blocked at " << phase.name;
-    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", master_side ? "true" : "false"));
-    ASSERT_OK(cluster_->SetFlagOnTServers(
-        "ysql_yb_test_block_index_phase", master_side ? "none" : phase.name));
+    ASSERT_OK(cluster_->SetFlagOnMasters(
+        "TEST_block_do_backfill", phase.block == Block::kPgPhase ? "false" : "true"));
+    // kBackfillRequest is held at backfill first, so the slowdown set below catches only the
+    // request's alter and not the one that adds the index.
+    const std::string pg_phase =
+        phase.block == Block::kPgPhase ? phase.name
+        : phase.block == Block::kBackfillRequest ? "backfill" : "none";
+    ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", pg_phase));
     std::optional<LogWaiter> log_waiter;
-    if (!master_side) {
+    if (!phase.log_msg.empty()) {
       log_waiter.emplace(tablet_servers, phase.log_msg);
     }
 
@@ -2387,6 +2593,8 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
       WARN_NOT_OK(
           cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"), "unblock master");
       WARN_NOT_OK(
+          cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"), "unblock alter");
+      WARN_NOT_OK(
           cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"), "unblock pg");
     });
     thread_holder.AddThreadFunctor([this, &index_name] {
@@ -2395,15 +2603,85 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
       ASSERT_OK(create_conn.ExecuteFormat(
           "CREATE INDEX $0 ON $1 (i ASC)", index_name, kTableName));
     });
-    if (master_side) {
-      ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
-    } else {
-      ASSERT_OK(log_waiter->WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+    ExternalMaster* request_leader = nullptr;
+    switch (phase.block) {
+      case Block::kPgPhase:
+        ASSERT_OK(log_waiter->WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+        break;
+      case Block::kBackfillRequest: {
+        ASSERT_OK(log_waiter->WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+        // The leader logs the slowed alter after persisting DO_BACKFILL and before responding.  A
+        // client permission read cannot find this window: GetTableSchema reports the fully applied
+        // index map while the alter is in progress.  The slowdown only has to outlast the wait and
+        // failover below, and it counts against the fixture's 30 s client timeout on the whole
+        // BackfillIndex call, so it does not scale with kTimeMultiplier.
+        request_leader = cluster_->GetLeaderMaster();
+        ASSERT_OK(cluster_->SetFlag(request_leader, "TEST_slowdown_alter_table_rpcs_ms", "10000"));
+        LogWaiter alter_waiter(request_leader, "before sending async alter table request");
+        ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+        ASSERT_OK(alter_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+        break;
+      }
+      case Block::kMasterBackfill:
+        ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+        break;
     }
 
-    LOG(INFO) << "Doing master leader stepdown while blocked at " << phase.name;
-    tserver::TabletServerErrorPB::Code error_code;
-    ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+    switch (phase.failover) {
+      case Failover::kKill: {
+        LOG(INFO) << "Killing the master leader while blocked at " << phase.name;
+        ASSERT_NE(request_leader, nullptr);
+        request_leader->Shutdown();
+        // Left to themselves, the followers take seconds to notice the dead leader and elect a new
+        // one, long enough for a tserver's ysql operation lease to expire, which kills every
+        // postgres session, the one running CREATE INDEX included.  Force the election on a
+        // follower as soon as the leader is dead instead, and keep forcing it until a surviving
+        // master leads, since a forced election can still fail, for example when its RPC is lost.
+        // A follower whose log is behind the other's is denied the vote however often it asks, and
+        // no master appends an entry while none leads, so force the election on the follower whose
+        // log is ahead.
+        ExternalMaster* follower = nullptr;
+        OpId follower_opid;
+        for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+          ExternalMaster* candidate = cluster_->master(i);
+          if (candidate == request_leader) {
+            continue;
+          }
+          auto proxy = std::make_shared<consensus::ConsensusServiceProxy>(
+              &cluster_->proxy_cache(), candidate->bound_rpc_addr());
+          OpIdPB opid_pb;
+          ASSERT_OK(itest::GetLastOpIdForMasterReplica(
+              proxy, master::kSysCatalogTabletId, candidate->uuid(), consensus::RECEIVED_OPID,
+              10s * kTimeMultiplier, &opid_pb));
+          auto opid = OpId::FromPB(opid_pb);
+          LOG(INFO) << "Master " << i << " last received " << opid;
+          if (follower == nullptr || opid > follower_opid) {
+            follower = candidate;
+            follower_opid = opid;
+          }
+        }
+        ASSERT_NE(follower, nullptr);
+        ASSERT_OK(WaitFor(
+            [this, follower]() -> Result<bool> {
+              // Force an election before looking for a leader, since GetLeaderMasterIndex blocks
+              // until a master leader is ready or its 5 s deadline passes.
+              WARN_NOT_OK(cluster_->StartElection(follower), "Start election");
+              return cluster_->GetLeaderMasterIndex().ok();
+            },
+            60s * kTimeMultiplier, "Wait for a new master leader", 1s /* initial_delay */,
+            1.0 /* delay_multiplier */));
+        // Back as a follower with its startup flags.  The unblock below sets every flag on every
+        // master again.
+        ASSERT_OK(request_leader->Restart());
+        break;
+      }
+      case Failover::kStepDown: {
+        LOG(INFO) << "Doing master leader stepdown while blocked at " << phase.name;
+        tserver::TabletServerErrorPB::Code error_code;
+        ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
+        break;
+      }
+    }
     // The failover neither advanced nor aborted the build.
     if (phase.flags_while_blocked) {
       ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(index_name, *phase.flags_while_blocked)));
@@ -2414,6 +2692,7 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
     }
 
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"));
     ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
     thread_holder.JoinAll();
 
@@ -2438,6 +2717,8 @@ TEST_P(PgIndexBackfillMultiMaster, MasterFailoverAtEachIndexBuildPhase) {
 //                                                - new leader reports schema version
 //                                                master leader stepdown
 TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
+  // The leader balancer can move the tablet leader back right after the stepdown below.
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_load_balancing", "false"));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
   // 1. Create a single-tablet table and start CREATE INDEX on a separate thread.
@@ -2497,6 +2778,112 @@ TEST_P(PgIndexBackfillMultiMaster, BackfillResumesAfterMasterFailover) {
   const std::string query = Format("SELECT i FROM $0 WHERE i = 1", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
   ASSERT_EQ(ASSERT_RESULT(conn_->FetchRow<int32_t>(query)), 1);
+}
+
+// Checks that backfill chunks carry the CREATE INDEX statement's origination time even when the
+// master leader fails over after moving the index to DO_BACKFILL but before creating the backfill
+// job.
+TEST_P(PgIndexBackfillMultiMaster, BackfillCarriesOriginationAfterMasterFailoverBeforeLaunch) {
+  // The fixture starts every master with TEST_block_do_backfill set, so the backfill will be held
+  // until the test unblocks it.
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (i int, PRIMARY KEY (i)) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10)", kTableName));
+
+  // Slow master's alters to the tablets.  Master creates the backfill job only after the tablets
+  // apply the DO_BACKFILL alter, so this lets us fail over the leader after it writes DO_BACKFILL
+  // but before it creates the job.  The delay only has to outlast the waits and failover below, and
+  // master sleeps it inside the BackfillIndex call, which counts against the fixture's 30 s client
+  // timeout, so it does not scale with kTimeMultiplier.
+  const auto kAlterDelay = MonoDelta::FromSeconds(10);
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "TEST_slowdown_alter_table_rpcs_ms", AsString(kAlterDelay.ToMilliseconds())));
+
+  TestThreadHolder thread_holder;
+  auto backfill_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"), "unblock masters");
+  });
+  auto reset_alter_delay = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"), "reset alter delay");
+  });
+  auto* old_leader = cluster_->GetLeaderMaster();
+  constexpr auto kAlterSleepMessage = "before sending async alter table request";
+  LogWaiter index_added_waiter(old_leader, kAlterSleepMessage);
+  thread_holder.AddThreadFunctor([this] {
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(PinOriginationTime(create_conn, kPinnedOriginationTime));
+    ASSERT_OK(
+        create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+  });
+
+  // Wait for the old leader to move the index to DO_BACKFILL by waiting for it to start its second
+  // alter.  The first alter adds the index and the second, sent after the index state is moved on
+  // master, updates the tablet's copy of the index state.  The table has one tablet, so each alter
+  // logs the sleep once.
+  ASSERT_OK(index_added_waiter.WaitFor(kAlterDelay * 3 * kTimeMultiplier));
+  // A daemon has one log listener, so each LogWaiter on old_leader replaces the one before it.
+  LogWaiter do_backfill_written_waiter(old_leader, kAlterSleepMessage);
+  ASSERT_OK(do_backfill_written_waiter.WaitFor(kAlterDelay * 3 * kTimeMultiplier));
+
+  // Fail over while the old leader is still asleep (due to TEST_block_do_backfill) before sending
+  // that alter, so it has not created the backfill job and the new leader must;
+  // old_leader_started_backfill_waiter shows the old leader never starts one.
+  constexpr auto kStartBackfillMessage = "StartBackfillingData starting backfill";
+  LogWaiter old_leader_started_backfill_waiter(old_leader, kStartBackfillMessage);
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_slowdown_alter_table_rpcs_ms", "0"));
+  auto* new_leader = cluster_->GetLeaderMaster();
+
+  // Wait for backfill job to be created and saved.
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+  // Let only the new leader run the backfill, and check that it carries the pinned origination
+  // time.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(cluster_->SetFlag(new_leader, "TEST_block_do_backfill", "false"));
+  ASSERT_OK(CheckBackfillOriginations(collector, {{kIndexName, kPinnedOriginationTime}}));
+
+  thread_holder.JoinAll();
+  ASSERT_FALSE(old_leader_started_backfill_waiter.IsEventOccurred());
+}
+
+// Checks that backfill chunks carry the CREATE INDEX statement's origination time even when the
+// master leader fails over after creating the backfill job but before running it.
+TEST_P(PgIndexBackfillMultiMaster, BackfillCarriesOriginationAfterMasterFailover) {
+  // The fixture starts every master with TEST_block_do_backfill set, so the backfill is held
+  // until the test unblocks it.
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (i int, PRIMARY KEY (i)) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 SELECT generate_series(1, 10)", kTableName));
+
+  TestThreadHolder thread_holder;
+  auto backfill_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"), "unblock masters");
+  });
+  thread_holder.AddThreadFunctor([this] {
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(PinOriginationTime(create_conn, kPinnedOriginationTime));
+    ASSERT_OK(
+        create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
+  });
+
+  // The backfill job's read time is saved in the job, so waiting for it shows the job is saved.
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  auto* new_leader = cluster_->GetLeaderMaster();
+
+  // With the backfill held on every master, let only the new leader run it, and check that it
+  // carries the pinned origination time.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(cluster_->SetFlag(new_leader, "TEST_block_do_backfill", "false"));
+  ASSERT_OK(CheckBackfillOriginations(collector, {{kIndexName, kPinnedOriginationTime}}));
+  thread_holder.JoinAll();
 }
 
 // Override the index backfill test class to use colocated tables.
@@ -4480,6 +4867,115 @@ TEST_P(
     }
   }
   ASSERT_TRUE(found_index_scan) << "Expected index scan using test_v1 in EXPLAIN output";
+}
+
+// Checks that when a CREATE INDEX picks up an index left behind by a killed CREATE INDEX, the
+// left-behind index is backfilled with the killed statement's origination time and the new index
+// with the new statement's.
+TEST_P(PgIndexBackfillCancellationTest,
+    YB_DISABLE_TEST_IN_TSAN(BackfillAfterLeftoverIndexCarriesOrigination)) {
+  auto* tserver = cluster_->tablet_server(0);
+
+  auto conn1 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver));
+  auto conn2 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver));
+  auto conn_admin = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver));
+
+  ASSERT_OK(conn1.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT, v1 INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test SELECT i,i,i from generate_series(1, 100) as i"));
+
+  // Leave an index behind: start a CREATE INDEX with its origination time pinned, hold it just
+  // before its backfill, then kill its backend.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  auto conn1_pid = ASSERT_RESULT(conn1.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+  ASSERT_OK(PinOriginationTime(conn1, kPinnedOriginationTime));
+  LogWaiter blocked_before_backfill_waiter(tserver, "blocking concurrent index backfill");
+  // Declared before the guard, so that the guard unblocks CREATE INDEX before the future's
+  // destructor waits for it.
+  std::future<Status> create_test_v_future;
+  auto phase_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "unblock CREATE INDEX");
+  });
+  create_test_v_future = std::async(std::launch::async, [&]() -> Status {
+    return conn1.Execute("CREATE INDEX test_v ON test(v)");
+  });
+  ASSERT_OK(blocked_before_backfill_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+  ASSERT_EQ(
+      ASSERT_RESULT(
+          conn_admin.FetchRowAsString(yb::Format("SELECT pg_terminate_backend($0)", conn1_pid))),
+      "1");
+  ASSERT_NOK(create_test_v_future.get());
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  if (EnableTableLocks()) {
+    // Wait for session expiry so that the locks are released.
+    SleepFor(kPgClientSessionExpiration * kTimeMultiplier * 2);
+  }
+
+  // Run a second CREATE INDEX, pinned to a different time.  Its BackfillIndex request moves both
+  // test_v and test_v1 to DO_BACKFILL.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(PinOriginationTime(conn2, kSecondPinnedOriginationTime));
+  ASSERT_OK(conn2.Execute("CREATE INDEX test_v1 ON test(v1)"));
+
+  ASSERT_OK(CheckBackfillOriginations(
+      collector, {{"test_v", kPinnedOriginationTime}, {"test_v1", kSecondPinnedOriginationTime}}));
+}
+
+// Checks that when one BackfillIndex request moves the indexes of two overlapping CREATE INDEX
+// statements on one table to DO_BACKFILL, each index is backfilled with its own statement's
+// origination time.
+TEST_P(PgIndexBackfillTest, OverlappingCreateIndexesCarryOwnOrigination) {
+  if (EnableTableLocks()) {
+    GTEST_SKIP() << "Object locking serializes CREATE INDEX statements on one table";
+  }
+  auto* tserver_a = cluster_->tablet_server(0);
+  auto* tserver_b = cluster_->tablet_server(1);
+  // On different TServers, so that the two statements' local Postgres locks on the table do not
+  // conflict.
+  auto conn_a = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver_a));
+  auto conn_b = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*tserver_b));
+
+  ASSERT_OK(conn_a.Execute("CREATE TABLE test(k INT PRIMARY KEY, v INT, v1 INT)"));
+  ASSERT_OK(conn_a.Execute("INSERT INTO test SELECT i, i, i FROM generate_series(1, 100) AS i"));
+
+  // Start a CREATE INDEX on each connection, pinned to different times, and hold both just before
+  // their BackfillIndex requests, with their indexes ready.
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+  ASSERT_OK(PinOriginationTime(conn_a, kPinnedOriginationTime));
+  ASSERT_OK(PinOriginationTime(conn_b, kSecondPinnedOriginationTime));
+  // After each catalog version bump B's CREATE INDEX makes, it would otherwise wait for every
+  // backend, including A's, to reach that version, and A's backend cannot while A's CREATE INDEX
+  // is held.
+  ASSERT_OK(conn_b.Execute("SET yb_disable_wait_for_backends_catalog_version = true"));
+  LogWaiter a_blocked_waiter(tserver_a, "blocking concurrent index backfill");
+  LogWaiter b_blocked_waiter(tserver_b, "blocking concurrent index backfill");
+  // Declared before the guard, so that the guard unblocks CREATE INDEX before the futures'
+  // destructors wait for it.
+  std::future<Status> create_a_future, create_b_future;
+  auto phase_unblocker_guard = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "unblock CREATE INDEX");
+  });
+  create_a_future = std::async(std::launch::async, [&]() -> Status {
+    return conn_a.Execute("CREATE INDEX test_v ON test(v)");
+  });
+  ASSERT_OK(a_blocked_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+  create_b_future = std::async(std::launch::async, [&]() -> Status {
+    return conn_b.Execute("CREATE INDEX test_v1 ON test(v1)");
+  });
+  ASSERT_OK(b_blocked_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 30)));
+
+  // Release both statements' BackfillIndex requests, and check that each index is backfilled with
+  // its own statement's origination time.  The first request to reach master moves both indexes to
+  // DO_BACKFILL.
+  ASSERT_OK(cluster_->SetFlagOnTServers("vmodule", "tablet=1"));
+  BackfillOriginationCollector collector(cluster_->tserver_daemons());
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(CheckBackfillOriginations(
+      collector, {{"test_v", kPinnedOriginationTime}, {"test_v1", kSecondPinnedOriginationTime}}));
 }
 
 // Negative-regression test: demonstrates the pre-fix bug.

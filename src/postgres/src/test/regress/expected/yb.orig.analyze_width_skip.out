@@ -88,11 +88,27 @@ CREATE TABLE width_skip_row (id int PRIMARY KEY, w text);
 CREATE FUNCTION width_skip_row_key(width_skip_row) RETURNS text IMMUTABLE STRICT LANGUAGE sql AS
   'SELECT md5($1.w)';
 CREATE INDEX width_skip_row_ix ON width_skip_row (width_skip_row_key(width_skip_row));
-INSERT INTO width_skip_row SELECT i, wide_text('row' || i, 47) FROM generate_series(1, 100) i;
+INSERT INTO width_skip_row SELECT i, wide_text('row' || i, 70) FROM generate_series(1, 100) i;
 CREATE TABLE width_skip_part (id int PRIMARY KEY, w text) PARTITION BY RANGE (id);
 CREATE TABLE width_skip_part1 PARTITION OF width_skip_part FOR VALUES FROM (1) TO (1000);
 CREATE STATISTICS width_skip_part_ext (ndistinct) ON id, w FROM width_skip_part;
-INSERT INTO width_skip_part SELECT i, wide_text('part' || i, 47) FROM generate_series(1, 100) i;
+INSERT INTO width_skip_part SELECT i, wide_text('part' || i, 70) FROM generate_series(1, 100) i;
+-- a partition created after its parent dropped a column: its columns are
+-- numbered one lower than the parent's, so the parent's statistics must
+-- match each column to the partition's by name, not by position
+CREATE TABLE width_skip_dropped (id int PRIMARY KEY, old_col text, kept text,
+                                 data_skipped text, j_wide json, arr text[])
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_dropped DROP COLUMN old_col;
+CREATE TABLE width_skip_dropped1 PARTITION OF width_skip_dropped
+  FOR VALUES FROM (1) TO (1000);
+CREATE STATISTICS width_skip_dropped_ext (ndistinct) ON id, kept FROM width_skip_dropped;
+INSERT INTO width_skip_dropped
+SELECT i, wide_text('kept' || i, 70),                -- 2240 B hex, i.e. '24562f8b.....424f'
+       wide_text('data_skipped' || i, 70),           -- 2240 B hex, i.e. '35cf4823.....b75b'
+       ('{"k":"' || wide_text('j' || i, 44) || '"}')::json,  -- 1416 B json, i.e. '{"k":"1d.....2c"}'
+       ARRAY[wide_text('arr' || i, 47)]              -- one 1504 B element, i.e. '{3178c29.....bac}'
+FROM generate_series(1, 100) i;
 -- a column list: columns outside it are stood in, unless an
 -- extended-statistics expression reads them
 CREATE TABLE width_skip_cols (id int PRIMARY KEY, analyzed text,
@@ -130,6 +146,250 @@ CREATE TABLE width_skip_small_row (id int PRIMARY KEY, wide text);
 INSERT INTO width_skip_small_row
 SELECT i, wide_text('smallrow' || i, 47)                -- 1504 B hex, i.e. 'ef537c10.....29f0'
 FROM generate_series(1, 100) i;
+-- The tables above again, as a partitioned table (_part) and as an
+-- inheritance parent (_inh).  ANALYZE builds the parent's statistics from its
+-- children's rows, sampled in each child's own column numbering, so the
+-- parent's statistics must match each column to the child's by name:
+-- - every parent drops a column, so a partition created after that
+--   (_part1) numbers its columns one lower than the parent;
+-- - the other child (_part2, _inh1) is created on its own, with its columns
+--   in reverse order and a dropped column, then attached or inherited;
+-- - an inheritance child also has a wide column (extra) the parent does not
+--   have.
+-- width_skip_t on every 5th row, to keep the data small
+CREATE TABLE width_skip_t_part (old_col text, LIKE width_skip_t, PRIMARY KEY (id))
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_t_part DROP COLUMN old_col;
+CREATE TABLE width_skip_t_part1 PARTITION OF width_skip_t_part FOR VALUES FROM (1) TO (26);
+CREATE TABLE width_skip_t_part2 (
+  t_deps text, t_mcv text, t_extexpr text, t_ext text, t_partix text, t_exprix text,
+  mrng int4multirange, rng textrange, tsv tsvector, gone text, j_arr json[],
+  arr_wide text[], arr text[], x_wide xml, j_wide json, j_small json, dom wide_dom,
+  nullable text, straddle text, over_cap text, at_cap text, wide text, small text,
+  id int PRIMARY KEY);
+ALTER TABLE width_skip_t_part2 DROP COLUMN gone;
+ALTER TABLE width_skip_t_part ATTACH PARTITION width_skip_t_part2 FOR VALUES FROM (26) TO (1000);
+CREATE INDEX width_skip_t_part_exprix ON width_skip_t_part (md5(t_exprix));
+CREATE INDEX width_skip_t_part_partix ON width_skip_t_part (id) WHERE length(t_partix) > 10;
+CREATE STATISTICS width_skip_t_part_ext (ndistinct) ON id, t_ext FROM width_skip_t_part;
+CREATE STATISTICS width_skip_t_part_extexpr ON (length(t_extexpr)) FROM width_skip_t_part;
+CREATE STATISTICS width_skip_t_part_mcv (mcv) ON small, t_mcv FROM width_skip_t_part;
+CREATE STATISTICS width_skip_t_part_deps (dependencies) ON small, t_deps FROM width_skip_t_part;
+-- a partition's own statistics: its own ANALYZE reads wide in full
+CREATE STATISTICS width_skip_t_part2_ext (ndistinct) ON id, wide FROM width_skip_t_part2;
+INSERT INTO width_skip_t_part SELECT * FROM width_skip_t WHERE id % 5 = 0;
+CREATE TABLE width_skip_t_inh (old_col text, LIKE width_skip_t, PRIMARY KEY (id));
+ALTER TABLE width_skip_t_inh DROP COLUMN old_col;
+CREATE INDEX width_skip_t_inh_exprix ON width_skip_t_inh (md5(t_exprix));
+CREATE INDEX width_skip_t_inh_partix ON width_skip_t_inh (id) WHERE length(t_partix) > 10;
+CREATE STATISTICS width_skip_t_inh_ext (ndistinct) ON id, t_ext FROM width_skip_t_inh;
+CREATE STATISTICS width_skip_t_inh_extexpr ON (length(t_extexpr)) FROM width_skip_t_inh;
+CREATE STATISTICS width_skip_t_inh_mcv (mcv) ON small, t_mcv FROM width_skip_t_inh;
+CREATE STATISTICS width_skip_t_inh_deps (dependencies) ON small, t_deps FROM width_skip_t_inh;
+CREATE TABLE width_skip_t_inh1 (
+  extra text, t_deps text, t_mcv text, t_extexpr text, t_ext text, t_partix text,
+  t_exprix text, mrng int4multirange, rng textrange, tsv tsvector, gone text,
+  j_arr json[], arr_wide text[], arr text[], x_wide xml, j_wide json, j_small json,
+  dom wide_dom, nullable text, straddle text, over_cap text, at_cap text, wide text,
+  small text, id int PRIMARY KEY);
+ALTER TABLE width_skip_t_inh1 DROP COLUMN gone;
+ALTER TABLE width_skip_t_inh1 INHERIT width_skip_t_inh;
+-- a child's own statistics: its own ANALYZE reads extra in full, while the
+-- parent's statistics never read extra, so the parent's ANALYZE stands it in
+CREATE STATISTICS width_skip_t_inh1_ext (ndistinct) ON id, extra FROM width_skip_t_inh1;
+INSERT INTO width_skip_t_inh SELECT * FROM width_skip_t WHERE id % 5 = 0 AND id < 26;
+INSERT INTO width_skip_t_inh1 (id, small, wide, at_cap, over_cap, straddle, nullable,
+  dom, j_small, j_wide, x_wide, arr, arr_wide, j_arr, tsv, rng, mrng, t_exprix,
+  t_partix, t_ext, t_extexpr, t_mcv, t_deps, extra)
+SELECT *, wide_text('extra' || id, 70)                  -- 2240 B hex, i.e. 'cb86b12b.....b0d2'
+FROM width_skip_t WHERE id % 5 = 0 AND id >= 26;
+-- width_skip_t on every 5th row again, as a partition of partitions: ANALYZE
+-- builds statistics from the leaf partitions' rows both for the top table and
+-- for its partitioned partition (_part_of_part1), and the levels number their
+-- columns differently:
+-- - _part_of_part1 is created on its own, with its columns in reverse order
+--   and a dropped column, then attached;
+-- - _part_of_part1a is created after that, so it numbers _part_of_part1's
+--   columns without the gap;
+-- - _part_of_part1b is created on its own, in the top table's layout, then
+--   attached.
+CREATE TABLE width_skip_t_part_of_part (old_col text, LIKE width_skip_t, PRIMARY KEY (id))
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_t_part_of_part DROP COLUMN old_col;
+CREATE TABLE width_skip_t_part_of_part1 (
+  t_deps text, t_mcv text, t_extexpr text, t_ext text, t_partix text, t_exprix text,
+  mrng int4multirange, rng textrange, tsv tsvector, gone text, j_arr json[],
+  arr_wide text[], arr text[], x_wide xml, j_wide json, j_small json, dom wide_dom,
+  nullable text, straddle text, over_cap text, at_cap text, wide text, small text,
+  id int PRIMARY KEY)
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_t_part_of_part1 DROP COLUMN gone;
+CREATE TABLE width_skip_t_part_of_part1a PARTITION OF width_skip_t_part_of_part1
+  FOR VALUES FROM (1) TO (26);
+CREATE TABLE width_skip_t_part_of_part1b (old_col text, LIKE width_skip_t, PRIMARY KEY (id));
+ALTER TABLE width_skip_t_part_of_part1b DROP COLUMN old_col;
+ALTER TABLE width_skip_t_part_of_part1 ATTACH PARTITION width_skip_t_part_of_part1b
+  FOR VALUES FROM (26) TO (1000);
+ALTER TABLE width_skip_t_part_of_part ATTACH PARTITION width_skip_t_part_of_part1
+  FOR VALUES FROM (1) TO (1000);
+CREATE INDEX width_skip_t_part_of_part_exprix ON width_skip_t_part_of_part (md5(t_exprix));
+CREATE INDEX width_skip_t_part_of_part_partix ON width_skip_t_part_of_part (id)
+  WHERE length(t_partix) > 10;
+CREATE STATISTICS width_skip_t_part_of_part_ext (ndistinct) ON id, t_ext
+  FROM width_skip_t_part_of_part;
+CREATE STATISTICS width_skip_t_part_of_part_extexpr ON (length(t_extexpr))
+  FROM width_skip_t_part_of_part;
+CREATE STATISTICS width_skip_t_part_of_part_mcv (mcv) ON small, t_mcv
+  FROM width_skip_t_part_of_part;
+CREATE STATISTICS width_skip_t_part_of_part_deps (dependencies) ON small, t_deps
+  FROM width_skip_t_part_of_part;
+-- the partitioned partition's own statistics: its ANALYZE reads wide in full,
+-- while the top table's ANALYZE stands it in
+CREATE STATISTICS width_skip_t_part_of_part1_ext (ndistinct) ON id, wide
+  FROM width_skip_t_part_of_part1;
+INSERT INTO width_skip_t_part_of_part SELECT * FROM width_skip_t WHERE id % 5 = 0;
+-- width_skip_row: an index on a partitioned table cannot have a whole-row
+-- reference once its partitions number their columns differently, so each
+-- partition gets its own
+CREATE TABLE width_skip_row_part (old_col text, LIKE width_skip_row, PRIMARY KEY (id))
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_row_part DROP COLUMN old_col;
+CREATE TABLE width_skip_row_part1 PARTITION OF width_skip_row_part FOR VALUES FROM (1) TO (51);
+CREATE TABLE width_skip_row_part2 (w text, gone text, id int PRIMARY KEY);
+ALTER TABLE width_skip_row_part2 DROP COLUMN gone;
+ALTER TABLE width_skip_row_part ATTACH PARTITION width_skip_row_part2 FOR VALUES FROM (51) TO (1000);
+CREATE FUNCTION width_skip_row_part1_key(width_skip_row_part1) RETURNS text IMMUTABLE STRICT
+  LANGUAGE sql AS 'SELECT md5($1.w)';
+CREATE INDEX width_skip_row_part1_ix ON width_skip_row_part1
+  (width_skip_row_part1_key(width_skip_row_part1));
+CREATE FUNCTION width_skip_row_part2_key(width_skip_row_part2) RETURNS text IMMUTABLE STRICT
+  LANGUAGE sql AS 'SELECT md5($1.w)';
+CREATE INDEX width_skip_row_part2_ix ON width_skip_row_part2
+  (width_skip_row_part2_key(width_skip_row_part2));
+INSERT INTO width_skip_row_part SELECT * FROM width_skip_row;
+CREATE TABLE width_skip_row_inh (old_col text, LIKE width_skip_row, PRIMARY KEY (id));
+ALTER TABLE width_skip_row_inh DROP COLUMN old_col;
+CREATE FUNCTION width_skip_row_inh_key(width_skip_row_inh) RETURNS text IMMUTABLE STRICT
+  LANGUAGE sql AS 'SELECT md5($1.w)';
+CREATE INDEX width_skip_row_inh_ix ON width_skip_row_inh
+  (width_skip_row_inh_key(width_skip_row_inh));
+CREATE TABLE width_skip_row_inh1 (extra text, w text, gone text, id int PRIMARY KEY);
+ALTER TABLE width_skip_row_inh1 DROP COLUMN gone;
+ALTER TABLE width_skip_row_inh1 INHERIT width_skip_row_inh;
+CREATE FUNCTION width_skip_row_inh1_key(width_skip_row_inh1) RETURNS text IMMUTABLE STRICT
+  LANGUAGE sql AS 'SELECT md5($1.w)';
+CREATE INDEX width_skip_row_inh1_ix ON width_skip_row_inh1
+  (width_skip_row_inh1_key(width_skip_row_inh1));
+INSERT INTO width_skip_row_inh SELECT * FROM width_skip_row WHERE id <= 50;
+INSERT INTO width_skip_row_inh1 (id, w, extra)
+SELECT *, wide_text('extra' || id, 70)                  -- 2240 B hex, i.e. 'cb86b12b.....b0d2'
+FROM width_skip_row WHERE id > 50;
+-- width_skip_cols
+CREATE TABLE width_skip_cols_part (old_col text, LIKE width_skip_cols, PRIMARY KEY (id))
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_cols_part DROP COLUMN old_col;
+CREATE TABLE width_skip_cols_part1 PARTITION OF width_skip_cols_part FOR VALUES FROM (1) TO (51);
+CREATE TABLE width_skip_cols_part2 (expr_input text, data_skipped text, gone text,
+                                    analyzed text, id int PRIMARY KEY);
+ALTER TABLE width_skip_cols_part2 DROP COLUMN gone;
+ALTER TABLE width_skip_cols_part ATTACH PARTITION width_skip_cols_part2 FOR VALUES FROM (51) TO (1000);
+CREATE STATISTICS width_skip_cols_part_expr ON (length(expr_input)) FROM width_skip_cols_part;
+INSERT INTO width_skip_cols_part SELECT * FROM width_skip_cols;
+CREATE TABLE width_skip_cols_inh (old_col text, LIKE width_skip_cols, PRIMARY KEY (id));
+ALTER TABLE width_skip_cols_inh DROP COLUMN old_col;
+CREATE STATISTICS width_skip_cols_inh_expr ON (length(expr_input)) FROM width_skip_cols_inh;
+CREATE TABLE width_skip_cols_inh1 (extra text, expr_input text, data_skipped text, gone text,
+                                   analyzed text, id int PRIMARY KEY);
+ALTER TABLE width_skip_cols_inh1 DROP COLUMN gone;
+ALTER TABLE width_skip_cols_inh1 INHERIT width_skip_cols_inh;
+INSERT INTO width_skip_cols_inh SELECT * FROM width_skip_cols WHERE id <= 50;
+INSERT INTO width_skip_cols_inh1 (id, analyzed, data_skipped, expr_input, extra)
+SELECT *, wide_text('extra' || id, 70)                  -- 2240 B hex, i.e. 'cb86b12b.....b0d2'
+FROM width_skip_cols WHERE id > 50;
+-- width_skip_set_statistics_0: SET STATISTICS on a parent also sets it on
+-- the children it has at that point
+CREATE TABLE width_skip_set_statistics_0_part (old_col text, LIKE width_skip_set_statistics_0,
+                                               PRIMARY KEY (id))
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_set_statistics_0_part DROP COLUMN old_col;
+CREATE TABLE width_skip_set_statistics_0_part1 PARTITION OF width_skip_set_statistics_0_part
+  FOR VALUES FROM (1) TO (51);
+CREATE TABLE width_skip_set_statistics_0_part2 (index_input text, gone text,
+                                                data_skipped text, id int PRIMARY KEY);
+ALTER TABLE width_skip_set_statistics_0_part2 DROP COLUMN gone;
+ALTER TABLE width_skip_set_statistics_0_part ATTACH PARTITION width_skip_set_statistics_0_part2
+  FOR VALUES FROM (51) TO (1000);
+ALTER TABLE width_skip_set_statistics_0_part ALTER COLUMN data_skipped SET STATISTICS 0;
+ALTER TABLE width_skip_set_statistics_0_part ALTER COLUMN index_input SET STATISTICS 0;
+CREATE INDEX width_skip_set_statistics_0_part_ix ON width_skip_set_statistics_0_part
+  (length(index_input));
+INSERT INTO width_skip_set_statistics_0_part SELECT * FROM width_skip_set_statistics_0;
+CREATE TABLE width_skip_set_statistics_0_inh (old_col text, LIKE width_skip_set_statistics_0,
+                                              PRIMARY KEY (id));
+ALTER TABLE width_skip_set_statistics_0_inh DROP COLUMN old_col;
+CREATE INDEX width_skip_set_statistics_0_inh_ix ON width_skip_set_statistics_0_inh
+  (length(index_input));
+CREATE TABLE width_skip_set_statistics_0_inh1 (extra text, index_input text, gone text,
+                                               data_skipped text, id int PRIMARY KEY);
+ALTER TABLE width_skip_set_statistics_0_inh1 DROP COLUMN gone;
+ALTER TABLE width_skip_set_statistics_0_inh1 INHERIT width_skip_set_statistics_0_inh;
+ALTER TABLE width_skip_set_statistics_0_inh ALTER COLUMN data_skipped SET STATISTICS 0;
+ALTER TABLE width_skip_set_statistics_0_inh ALTER COLUMN index_input SET STATISTICS 0;
+INSERT INTO width_skip_set_statistics_0_inh SELECT * FROM width_skip_set_statistics_0 WHERE id <= 50;
+INSERT INTO width_skip_set_statistics_0_inh1 (id, data_skipped, index_input, extra)
+SELECT *, wide_text('extra' || id, 70)                  -- 2240 B hex, i.e. 'cb86b12b.....b0d2'
+FROM width_skip_set_statistics_0 WHERE id > 50;
+-- width_skip_mcv_with_expr
+CREATE TABLE width_skip_mcv_with_expr_part (old_col text, LIKE width_skip_mcv_with_expr,
+                                            PRIMARY KEY (id))
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_mcv_with_expr_part DROP COLUMN old_col;
+CREATE TABLE width_skip_mcv_with_expr_part1 PARTITION OF width_skip_mcv_with_expr_part
+  FOR VALUES FROM (1) TO (51);
+CREATE TABLE width_skip_mcv_with_expr_part2 (expr_input text, gone text, data_skipped text,
+                                             id int PRIMARY KEY);
+ALTER TABLE width_skip_mcv_with_expr_part2 DROP COLUMN gone;
+ALTER TABLE width_skip_mcv_with_expr_part ATTACH PARTITION width_skip_mcv_with_expr_part2
+  FOR VALUES FROM (51) TO (1000);
+CREATE STATISTICS width_skip_mcv_with_expr_part_s (mcv)
+  ON data_skipped, (length(expr_input)) FROM width_skip_mcv_with_expr_part;
+INSERT INTO width_skip_mcv_with_expr_part SELECT * FROM width_skip_mcv_with_expr;
+CREATE TABLE width_skip_mcv_with_expr_inh (old_col text, LIKE width_skip_mcv_with_expr,
+                                           PRIMARY KEY (id));
+ALTER TABLE width_skip_mcv_with_expr_inh DROP COLUMN old_col;
+CREATE STATISTICS width_skip_mcv_with_expr_inh_s (mcv)
+  ON data_skipped, (length(expr_input)) FROM width_skip_mcv_with_expr_inh;
+CREATE TABLE width_skip_mcv_with_expr_inh1 (extra text, expr_input text, gone text,
+                                            data_skipped text, id int PRIMARY KEY);
+ALTER TABLE width_skip_mcv_with_expr_inh1 DROP COLUMN gone;
+ALTER TABLE width_skip_mcv_with_expr_inh1 INHERIT width_skip_mcv_with_expr_inh;
+INSERT INTO width_skip_mcv_with_expr_inh SELECT * FROM width_skip_mcv_with_expr WHERE id <= 50;
+INSERT INTO width_skip_mcv_with_expr_inh1 (id, data_skipped, expr_input, extra)
+SELECT *, wide_text('extra' || id, 70)                  -- 2240 B hex, i.e. 'cb86b12b.....b0d2'
+FROM width_skip_mcv_with_expr WHERE id > 50;
+-- width_skip_small_row: the child's extra column is short, so its rows stay
+-- under 2 KB too
+CREATE TABLE width_skip_small_row_part (old_col text, LIKE width_skip_small_row,
+                                        PRIMARY KEY (id))
+  PARTITION BY RANGE (id);
+ALTER TABLE width_skip_small_row_part DROP COLUMN old_col;
+CREATE TABLE width_skip_small_row_part1 PARTITION OF width_skip_small_row_part
+  FOR VALUES FROM (1) TO (51);
+CREATE TABLE width_skip_small_row_part2 (wide text, gone text, id int PRIMARY KEY);
+ALTER TABLE width_skip_small_row_part2 DROP COLUMN gone;
+ALTER TABLE width_skip_small_row_part ATTACH PARTITION width_skip_small_row_part2
+  FOR VALUES FROM (51) TO (1000);
+INSERT INTO width_skip_small_row_part SELECT * FROM width_skip_small_row;
+CREATE TABLE width_skip_small_row_inh (old_col text, LIKE width_skip_small_row,
+                                       PRIMARY KEY (id));
+ALTER TABLE width_skip_small_row_inh DROP COLUMN old_col;
+CREATE TABLE width_skip_small_row_inh1 (extra text, wide text, gone text, id int PRIMARY KEY);
+ALTER TABLE width_skip_small_row_inh1 DROP COLUMN gone;
+ALTER TABLE width_skip_small_row_inh1 INHERIT width_skip_small_row_inh;
+INSERT INTO width_skip_small_row_inh SELECT * FROM width_skip_small_row WHERE id <= 50;
+INSERT INTO width_skip_small_row_inh1 (id, wide, extra)
+SELECT *, 'e' || id                                     -- 2-4 B text, i.e. 'e52'
+FROM width_skip_small_row WHERE id > 50;
 -- every statistic, one hash per pg_stats row
 CREATE VIEW width_skip_stats AS
 SELECT tablename, attname, inherited, avg_width,
@@ -153,49 +413,103 @@ SHOW yb_enable_analyze_width_skip;
 (1 row)
 
 ANALYZE width_skip_t;
+ANALYZE width_skip_t_part;
+ANALYZE width_skip_t_inh;
+ANALYZE width_skip_t_inh1;
+ANALYZE width_skip_t_part_of_part;
 ANALYZE width_skip_row;
+ANALYZE width_skip_row_part;
+ANALYZE width_skip_row_inh;
+ANALYZE width_skip_row_inh1;
 ANALYZE width_skip_part;
 ANALYZE width_skip_part1;
+ANALYZE width_skip_dropped;
 ANALYZE width_skip_cols (analyzed);
+ANALYZE width_skip_cols_part (analyzed);
+ANALYZE width_skip_cols_inh (analyzed);
+ANALYZE width_skip_cols_inh1 (analyzed);
 ANALYZE width_skip_set_statistics_0;
+ANALYZE width_skip_set_statistics_0_part;
+ANALYZE width_skip_set_statistics_0_inh;
+ANALYZE width_skip_set_statistics_0_inh1;
 ANALYZE width_skip_mcv_with_expr;
+ANALYZE width_skip_mcv_with_expr_part;
+ANALYZE width_skip_mcv_with_expr_inh;
+ANALYZE width_skip_mcv_with_expr_inh1;
 ANALYZE width_skip_small_row;
+ANALYZE width_skip_small_row_part;
+ANALYZE width_skip_small_row_inh;
+ANALYZE width_skip_small_row_inh1;
 CREATE TEMP TABLE ws_on AS SELECT * FROM width_skip_stats;
 CREATE TEMP TABLE ws_ext_on AS SELECT * FROM width_skip_ext;
 CREATE TEMP TABLE ws_ext_exprs_on AS SELECT * FROM width_skip_ext_exprs;
 -- substitution off: values are kept as fetched
 SET yb_enable_analyze_width_skip = off;
 ANALYZE width_skip_t;
+ANALYZE width_skip_t_part;
+ANALYZE width_skip_t_inh;
+ANALYZE width_skip_t_inh1;
+ANALYZE width_skip_t_part_of_part;
 ANALYZE width_skip_row;
+ANALYZE width_skip_row_part;
+ANALYZE width_skip_row_inh;
+ANALYZE width_skip_row_inh1;
 ANALYZE width_skip_part;
 ANALYZE width_skip_part1;
+ANALYZE width_skip_dropped;
 ANALYZE width_skip_cols (analyzed);
+ANALYZE width_skip_cols_part (analyzed);
+ANALYZE width_skip_cols_inh (analyzed);
+ANALYZE width_skip_cols_inh1 (analyzed);
 ANALYZE width_skip_set_statistics_0;
+ANALYZE width_skip_set_statistics_0_part;
+ANALYZE width_skip_set_statistics_0_inh;
+ANALYZE width_skip_set_statistics_0_inh1;
 ANALYZE width_skip_mcv_with_expr;
+ANALYZE width_skip_mcv_with_expr_part;
+ANALYZE width_skip_mcv_with_expr_inh;
+ANALYZE width_skip_mcv_with_expr_inh1;
 ANALYZE width_skip_small_row;
+ANALYZE width_skip_small_row_part;
+ANALYZE width_skip_small_row_inh;
+ANALYZE width_skip_small_row_inh1;
 CREATE TEMP TABLE ws_off AS SELECT * FROM width_skip_stats;
 CREATE TEMP TABLE ws_ext_off AS SELECT * FROM width_skip_ext;
 CREATE TEMP TABLE ws_ext_exprs_off AS SELECT * FROM width_skip_ext_exprs;
 RESET yb_enable_analyze_width_skip;
 -- the widths a reader can check by eye: on and off must agree everywhere
+-- (the _part and _inh copies are left out here; the checks below compare
+-- all of their statistics)
 SELECT tablename, attname, inherited,
        o.avg_width AS avg_width_on, f.avg_width AS avg_width_off,
        n_distinct, null_frac
 FROM ws_on o JOIN ws_off f USING (tablename, attname, inherited)
      JOIN pg_stats s USING (tablename, attname, inherited)
+WHERE tablename NOT LIKE 'width\_skip\_%\_part%'
+  AND tablename NOT LIKE 'width\_skip\_%\_inh%'
 ORDER BY tablename, attname, inherited;
            tablename            |      attname       | inherited | avg_width_on | avg_width_off | n_distinct | null_frac 
 --------------------------------+--------------------+-----------+--------------+---------------+------------+-----------
  width_skip_cols                | analyzed           | f         |            3 |             3 |          7 |         0
+ width_skip_dropped             | arr                | t         |         1532 |          1532 |         -1 |         0
+ width_skip_dropped             | data_skipped       | t         |         2244 |          2244 |         -1 |         0
+ width_skip_dropped             | id                 | t         |            4 |             4 |         -1 |         0
+ width_skip_dropped             | j_wide             | t         |         1420 |          1420 |          0 |         0
+ width_skip_dropped             | kept               | t         |         2244 |          2244 |         -1 |         0
+ width_skip_dropped1            | arr                | f         |         1532 |          1532 |         -1 |         0
+ width_skip_dropped1            | data_skipped       | f         |         2244 |          2244 |         -1 |         0
+ width_skip_dropped1            | id                 | f         |            4 |             4 |         -1 |         0
+ width_skip_dropped1            | j_wide             | f         |         1420 |          1420 |          0 |         0
+ width_skip_dropped1            | kept               | f         |         2244 |          2244 |         -1 |         0
  width_skip_mcv_with_expr       | data_skipped       | f         |         1123 |          1123 |      -0.55 |         0
  width_skip_mcv_with_expr       | expr_input         | f         |         2276 |          2276 |         -1 |         0
  width_skip_mcv_with_expr       | id                 | f         |            4 |             4 |         -1 |         0
  width_skip_part                | id                 | t         |            4 |             4 |         -1 |         0
- width_skip_part                | w                  | t         |         1508 |          1508 |         -1 |         0
+ width_skip_part                | w                  | t         |         2244 |          2244 |         -1 |         0
  width_skip_part1               | id                 | f         |            4 |             4 |         -1 |         0
- width_skip_part1               | w                  | f         |         1508 |          1508 |         -1 |         0
+ width_skip_part1               | w                  | f         |         2244 |          2244 |         -1 |         0
  width_skip_row                 | id                 | f         |            4 |             4 |         -1 |         0
- width_skip_row                 | w                  | f         |         1508 |          1508 |         -1 |         0
+ width_skip_row                 | w                  | f         |         2244 |          2244 |         -1 |         0
  width_skip_row_ix              | width_skip_row_key | f         |           36 |            36 |         -1 |         0
  width_skip_set_statistics_0    | id                 | f         |            4 |             4 |         -1 |         0
  width_skip_set_statistics_0_ix | length             | f         |            4 |             4 |          1 |         0
@@ -225,7 +539,7 @@ ORDER BY tablename, attname, inherited;
  width_skip_t                   | wide               | f         |         1508 |          1508 |         -1 |         0
  width_skip_t                   | x_wide             | f         |         1515 |          1515 |          0 |         0
  width_skip_t_exprix            | md5                | f         |           36 |            36 |         -1 |         0
-(39 rows)
+(49 rows)
 
 SELECT attname, most_common_vals, most_common_freqs
 FROM pg_stats WHERE tablename = 'width_skip_t' AND attname IN ('small', 'straddle', 't_mcv')
@@ -241,13 +555,13 @@ ORDER BY attname;
 SELECT count(*) AS rows_on FROM ws_on;
  rows_on 
 ---------
-      39
+     350
 (1 row)
 
 SELECT count(*) AS rows_off FROM ws_off;
  rows_off 
 ----------
-       39
+      350
 (1 row)
 
 (SELECT tablename, attname, inherited, stats_md5 FROM ws_on
@@ -263,7 +577,7 @@ ORDER BY 1, 2, 3;
 SELECT count(*) AS ext_rows_on FROM ws_ext_on;
  ext_rows_on 
 -------------
-           7
+          33
 (1 row)
 
 (SELECT * FROM ws_ext_on EXCEPT SELECT * FROM ws_ext_off)
@@ -277,7 +591,7 @@ ORDER BY 1, 2, 3;
 SELECT count(*) AS ext_expr_rows_on FROM ws_ext_exprs_on;
  ext_expr_rows_on 
 ------------------
-                3
+               13
 (1 row)
 
 (SELECT * FROM ws_ext_exprs_on EXCEPT SELECT * FROM ws_ext_exprs_off)
@@ -292,9 +606,26 @@ DROP VIEW width_skip_stats;
 DROP VIEW width_skip_ext;
 DROP VIEW width_skip_ext_exprs;
 DROP INDEX width_skip_row_ix;
-DROP FUNCTION width_skip_row_key(width_skip_row);
-DROP TABLE width_skip_t, width_skip_row, width_skip_part, width_skip_cols,
-  width_skip_set_statistics_0, width_skip_mcv_with_expr, width_skip_small_row;
+DROP INDEX width_skip_row_part1_ix;
+DROP INDEX width_skip_row_part2_ix;
+DROP INDEX width_skip_row_inh_ix;
+DROP INDEX width_skip_row_inh1_ix;
+DROP FUNCTION width_skip_row_key(width_skip_row),
+  width_skip_row_part1_key(width_skip_row_part1),
+  width_skip_row_part2_key(width_skip_row_part2),
+  width_skip_row_inh_key(width_skip_row_inh),
+  width_skip_row_inh1_key(width_skip_row_inh1);
+DROP TABLE width_skip_t, width_skip_row, width_skip_part, width_skip_dropped,
+  width_skip_cols, width_skip_set_statistics_0, width_skip_mcv_with_expr,
+  width_skip_small_row;
+DROP TABLE width_skip_t_part, width_skip_t_inh, width_skip_t_inh1, width_skip_t_part_of_part,
+  width_skip_row_part, width_skip_row_inh, width_skip_row_inh1,
+  width_skip_cols_part, width_skip_cols_inh, width_skip_cols_inh1,
+  width_skip_set_statistics_0_part, width_skip_set_statistics_0_inh,
+  width_skip_set_statistics_0_inh1,
+  width_skip_mcv_with_expr_part, width_skip_mcv_with_expr_inh,
+  width_skip_mcv_with_expr_inh1,
+  width_skip_small_row_part, width_skip_small_row_inh, width_skip_small_row_inh1;
 DROP TYPE textrange;
 DROP DOMAIN wide_dom;
 DROP FUNCTION wide_text(text, int);

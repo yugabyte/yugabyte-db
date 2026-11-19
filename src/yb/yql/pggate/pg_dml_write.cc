@@ -153,6 +153,7 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
 
     // Save the number of rows affected by the op.
     rows_affected_count_ = VERIFY_RESULT(doc_op_->GetRowsAffectedCount());
+    on_conflict_outcome_ = VERIFY_RESULT(doc_op_->GetOnConflictOutcome());
   }
 
   return Status::OK();

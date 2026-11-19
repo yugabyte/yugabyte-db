@@ -104,7 +104,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 		uint64_t elapsed_us = yb_monotonic_time_us() - start_us;
 		if (elapsed_us >= timeout_ms * 1000llu) {
 			od_debug(&instance->logger, "backend-drain", NULL,
-				 server, "drain timed out after %llu us",
+				 server, "drain timed out after %" PRIu64 " us",
 				 elapsed_us);
 			rc = -1;
 			break;
@@ -113,7 +113,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 		rc = machine_read_raw(io->io, buf, sizeof(buf));
 		if (rc == 0) {
 			od_debug(&instance->logger, "backend-drain", NULL,
-				 server, "drain complete (EOF) after %llu us",
+				 server, "drain complete (EOF) after %" PRIu64 " us",
 				 yb_monotonic_time_us() - start_us);
 			break;
 		}
@@ -130,7 +130,7 @@ static inline void yb_od_backend_drain_until_eof(od_server_t *server)
 			 */
 			od_debug(&instance->logger, "backend-drain", NULL,
 				 server,
-				 "drain ended with errno=%d after %llu us",
+				 "drain ended with errno=%d after %" PRIu64 " us",
 				 errno_, yb_monotonic_time_us() - start_us);
 			break;
 		}
@@ -540,13 +540,60 @@ char *yb_encode_client_cert(od_client_t *client, int *arg_len)
 	return encoded;
 }
 
+/*
+ * YB: Base64 encode the tls-server-end-point hash of the certificate conn mgr
+ * presented to client, for the YB_YCM_SERVER_CERT_HASH startup parameter.
+ * Returns NULL when there is none, e.g. the logical connection is not TLS;
+ * Postgres then does not offer SCRAM-SHA-256-PLUS. The caller frees the
+ * result.
+ */
+char *yb_encode_server_cert_hash(od_client_t *client, int *encoded_cert_len)
+{
+	unsigned char hash[YB_SERVER_CERT_HASH_MAX_LEN];
+	int hash_len = 0;
+
+	*encoded_cert_len = 0;
+
+	if (client == NULL || !client->startup.yb_ssl_established)
+		return NULL;
+
+	od_instance_t *instance = client->global->instance;
+
+	int rc = yb_machine_io_get_server_cert_hash(client->io.io, hash,
+						    &hash_len);
+	if (rc == -1 || hash_len <= 0) {
+		od_log(&instance->logger, "server cert hash", client, NULL,
+		       "WARNING: could not compute server certificate hash; "
+		       "SCRAM-SHA-256-PLUS will not be offered");
+		return NULL;
+	}
+	if (rc == 1)
+		od_error(&instance->logger, "server cert hash", client, NULL,
+		         "WARNING: server certificate hash not cached for this TLS "
+		         "context, computed from the session certificate");
+
+	int dst_len = pg_b64_enc_len(hash_len) + 1;
+	char *encoded = malloc(dst_len);
+	if (encoded == NULL)
+		return NULL;
+
+	int encoded_len = pg_b64_encode((char *)hash, hash_len, encoded,
+					dst_len);
+	if (encoded_len < 0) {
+		free(encoded);
+		return NULL;
+	}
+	encoded[encoded_len] = '\0';
+
+	*encoded_cert_len = encoded_len + 1;
+	return encoded;
+}
+
 void od_backend_error(od_server_t *server, char *context, char *data,
 		      uint32_t size)
 {
 	od_instance_t *instance = server->global->instance;
 	kiwi_fe_error_t error;
-	int detail_len = 0;
-	int hint_len = 0;
 
 	od_client_t *yb_server_client = server->client;
 	od_client_t *yb_external_client = (yb_server_client->yb_is_authenticating) ?
@@ -567,7 +614,6 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	if (error.detail) {
 		od_error(&instance->logger, context, yb_external_client, server,
 			 "DETAIL: %s", error.detail);
-		detail_len = strlen(error.detail);
 	}
 
 	/* catch and store error to be forwarded later if we are in deploy phase */
@@ -580,54 +626,17 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 	if (error.hint) {
 		od_error(&instance->logger, context, yb_external_client, server,
 			 "HINT: %s", error.hint);
-		hint_len = strlen(error.hint);
-
-		if (strcmp(error.hint, "Database may have been dropped and recreated") == 0)
-		{
-			/* Reset the route and close the client */
-			yb_mark_routes_inactive(server->global->router,
-							  ((od_route_t*)server->route)->id.yb_db_oid, -1);
-
-			if (yb_external_client != NULL &&
-			    ((od_client_t *)yb_external_client)->type ==
-				    OD_POOL_CLIENT_EXTERNAL)
-			{
-				machine_msg_t *msg;
-				msg = kiwi_be_write_error_as(NULL, error.severity, error.code,
-				     error.detail, detail_len, error.hint,
-				     hint_len, error.message, strlen(error.message));
-				/* YB: best-effort forward to client, already handling error */
-				if (msg == NULL)
-					return;
-				od_write(&yb_external_client->io, &msg);
-			}
-		}
 	}
-
-	if (strstr(error.message, "invalid role OID")) {
-		/* Reset the route and close the client */
-		yb_mark_routes_inactive(server->global->router, -1,
-						  ((od_route_t*)server->route)->id.yb_user_oid);
-
-		if (yb_external_client != NULL &&
-			((od_client_t *)yb_external_client)->type == OD_POOL_CLIENT_EXTERNAL)
-			{
-				machine_msg_t *msg;
-				msg = kiwi_be_write_error_as(NULL, error.severity, error.code,
-				     error.detail, detail_len, error.hint,
-				     hint_len, error.message, strlen(error.message));
-				/* YB: best-effort forward to client, already handling error */
-				if (msg == NULL)
-					return;
-				od_write(&yb_external_client->io, &msg);
-			}	
-		}
 }
 
 int od_backend_ready(od_server_t *server, char *data, uint32_t size)
 {
 	int status;
 	int rc;
+
+	/* YB: Mark the role's routes inactive if YbObjectDropped was received. */
+	yb_apply_dropped_object(server);
+
 	rc = kiwi_fe_read_ready(data, size, &status);
 	if (rc == -1)
 		return -1;
@@ -809,11 +818,13 @@ static inline int od_backend_startup(od_server_t *server,
 
 	od_client_t *external_client = client->yb_external_client;
 	int argc = 0;
-	const int max_default_args = 20;
+	const int max_default_args = 28;
 	int num_startup_args =
 		external_client ? external_client->yb_startup_settings.size : 0;
 	char *yb_client_cert = NULL;
 	int yb_client_cert_len = 0;
+	char *yb_server_cert_hash = NULL;
+	int yb_server_cert_hash_len = 0;
 
 	kiwi_fe_arg_t *argv = malloc(sizeof(kiwi_fe_arg_t) *
 				     (max_default_args + 2 * num_startup_args));
@@ -873,7 +884,41 @@ static inline int od_backend_startup(od_server_t *server,
 			yb_kiwi_set_fe_arg(&argv[argc++], yb_client_cert,
 					   yb_client_cert_len);
 		}
+
+		/* Forward the server certificate hash for SCRAM channel binding. */
+		yb_server_cert_hash = yb_encode_server_cert_hash(
+			external_client, &yb_server_cert_hash_len);
+		if (yb_server_cert_hash != NULL) {
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_SERVER_CERT_HASH));
+			yb_kiwi_set_fe_arg(&argv[argc++], yb_server_cert_hash,
+					   yb_server_cert_hash_len);
+		}
+
+		/* send the logical client's addr/port to the auth backend. */
+		if (external_client->yb_ycm_client_addr[0] != '\0') {
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_ADDR));
+			yb_kiwi_set_fe_arg(
+				&argv[argc++], external_client->yb_ycm_client_addr,
+				strlen(external_client->yb_ycm_client_addr) + 1);
+			yb_kiwi_set_fe_arg(
+				&argv[argc++],
+				YB_NAME_AND_SIZEOF(YB_YCM_CLIENT_PORT));
+			yb_kiwi_set_fe_arg(
+				&argv[argc++], external_client->yb_ycm_client_port,
+				strlen(external_client->yb_ycm_client_port) + 1);
+		}
 	}
+
+	/*
+	 * Must follow every reserved parameter: Postgres rejects reserved names
+	 * after it, which is where the logical client's settings go.
+	 */
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF(YB_YCM_INTERNAL_END));
+	yb_kiwi_set_fe_arg(&argv[argc++], "", 1);
 
 	/* We only allocated max_default_args spaces for these variables, so assert that */
 	assert(argc <= max_default_args);
@@ -898,6 +943,8 @@ static inline int od_backend_startup(od_server_t *server,
 	free(argv);
 	if (yb_client_cert != NULL)
 		free(yb_client_cert);
+	if (yb_server_cert_hash != NULL)
+		free(yb_server_cert_hash);
 	if (msg == NULL)
 		return -1;
 	int rc;
@@ -1159,6 +1206,14 @@ static inline int od_backend_startup(od_server_t *server,
 			if (rc == -1)
 				return -1;
 			if (yb_is_route_invalid(route))
+				return -1;
+			break;
+		case YB_KIWI_BE_OBJECT_DROPPED:
+			rc = yb_handle_object_dropped_pkt(server,
+							  machine_msg_data(msg),
+							  machine_msg_size(msg));
+			machine_msg_free(msg);
+			if (rc == -1)
 				return -1;
 			break;
 		default:
@@ -1692,6 +1747,14 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 					 machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
+		} else if (type == YB_KIWI_BE_OBJECT_DROPPED) {
+			int rc = yb_handle_object_dropped_pkt(
+				server, machine_msg_data(msg),
+				machine_msg_size(msg));
+			machine_msg_free(msg);
+			if (rc == -1)
+				return -1;
+			continue;
 		} else if (type == YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) {
 			od_backend_evict_server_hashmap(server, context,
 				machine_msg_data(msg), machine_msg_size(msg));
@@ -1711,6 +1774,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 			machine_msg_free(msg);
 			continue;
 		} else if (type == YB_BE_YB_QUERY_ACK) {
+			yb_od_parse_queue_entry_t entry;
+			if (yb_od_parse_queue_peek(&server->parse_queue,
+						   &entry) == 0 &&
+			    entry.kind == YB_PARSE_QUEUE_QUERY)
+				yb_backend_handle_query_ack(server, context);
 			machine_msg_free(msg);
 			continue;
 		} else if (type == KIWI_BE_PARSE_COMPLETE) {

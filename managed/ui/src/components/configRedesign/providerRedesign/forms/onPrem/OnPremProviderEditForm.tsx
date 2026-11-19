@@ -59,7 +59,7 @@ import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
 import { SshPrivateKeyFormField } from '../../components/SshPrivateKeyField';
 import {
-  buildFederationTargets,
+  buildFederationPayload,
   federationFormValuesFromProvider,
   CrossCloudFederatedIamFields,
   FEDERATED_IAM_VALIDATION
@@ -108,7 +108,7 @@ export interface OnPremProviderEditFormFieldValues {
   ybHomeDir?: string;
 
   // See CrossCloudFederatedIamFields: one opt-in per storage cloud, never a "direction".
-  enableFederatedIam?: boolean;
+  federationGcsCredentialFile?: File;
   federationGcsEnabled?: boolean;
   federationGcsAudience?: string;
   federationS3Enabled?: boolean;
@@ -494,10 +494,6 @@ export const OnPremProviderEditForm = ({
                   )}
                 />
               </FormField>
-              <CrossCloudFederatedIamFields
-                control={formMethods.control}
-                isFormDisabled={isFormDisabled}
-              />
               <FormField>
                 <FieldLabel>Install Node Exporter</FieldLabel>
                 <YBToggleField
@@ -555,6 +551,10 @@ export const OnPremProviderEditForm = ({
                 />
               </FormField>
             </FieldGroup>
+            <CrossCloudFederatedIamFields
+              control={formMethods.control}
+              isFormDisabled={isFormDisabled}
+            />
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
               <Box display="flex" gridGap="5px" marginLeft="auto">
                 <CircularProgress size={16} color="primary" thickness={5} />
@@ -701,10 +701,7 @@ const constructProviderPayload = async (
         [ProviderCode.ON_PREM]: {
           ...unexposedProviderCloudInfoFields,
           ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir }),
-          ...(formValues.enableFederatedIam && {
-            enableFederatedIam: true,
-            crossCloudFederationTargets: buildFederationTargets(formValues)
-          })
+          ...buildFederationPayload(formValues)
         }
       },
       installNodeExporter: formValues.installNodeExporter,

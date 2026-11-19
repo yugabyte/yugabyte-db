@@ -13,6 +13,8 @@
 
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
@@ -27,11 +29,21 @@ public class TestPgRegressPgStat extends BasePgRegressTest {
     return 1800;
   }
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    // yb.orig.pg_stat_backend_1.out lists idle pooled backends left by
+    // yb.orig.pg_stat, so conn mgr must not expire them during the schedule.
+    flagMap.put("ysql_conn_mgr_idle_time", "3600");
+    return flagMap;
+  }
+
   @Test
-  // Bypassing conn-mgr builds the cluster with no connection manager, ensuring the
-  // pg_stat_activity table is not affected by conn-mgr worker/backend connections.
-  @BypassConnMgr(reason = BasePgSQLTest.DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY)
   public void testPgStat() throws Exception {
+    // Without warmup, each pool keeps a single backend, so the backend rows in
+    // yb.orig.pg_stat_backend are deterministic. The conn mgr output is in
+    // yb.orig.pg_stat_backend_1.out.
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.NONE);
     runPgRegressTest("yb_pg_stat_schedule");
   }
 }

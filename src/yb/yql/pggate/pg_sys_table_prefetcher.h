@@ -37,7 +37,8 @@ namespace yb::pggate {
 class PgSession;
 
 YB_DEFINE_ENUM(PrefetchingCacheMode,
-               (TRUST_CACHE_AUTH)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD));
+               (TRUST_CACHE_AUTH)(TRUST_CACHE)(RENEW_CACHE_SOFT)(RENEW_CACHE_HARD)
+               (TRUST_CACHE_LOOKUP_ONLY));
 
 using PrefetchedDataHolder =
     std::shared_ptr<const boost::container::small_vector<rpc::SidecarHolder, 8>>;
@@ -58,6 +59,13 @@ struct PrefetcherOptions {
     VersionInfo version_info;
     PgOid db_oid;
     PrefetchingCacheMode mode;
+    // Whether a fill already under way in this prefetch's database should send the caller away
+    // rather than queue it behind that fill. Set only on an attempt that has an older version
+    // to fall back to, and never on the attempt that follows one.
+    bool send_away_if_fill_in_flight;
+    // Whether this prefetch is a connection start's, which makes the tserver treat the database
+    // as busy for its whole duration. See CachingInfoPB.part_of_connection_prefetch.
+    bool part_of_connection_prefetch;
 
     std::string ToString() const;
   };
@@ -84,7 +92,7 @@ class PgSysTablePrefetcher {
       bool fetch_ybctid);
 
   // Load registered tables
-  Status Prefetch(PgSession* session);
+  Status Prefetch(PgSession* session, bool completes_connection_prefetch);
 
   // GetData of previously registered table.
   [[nodiscard]] PrefetchedDataInfo GetData(

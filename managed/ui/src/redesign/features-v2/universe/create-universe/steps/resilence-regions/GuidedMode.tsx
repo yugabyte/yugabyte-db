@@ -10,6 +10,11 @@ import { FAULT_TOLERANCE_TYPE, RESILIENCE_FACTOR } from '../../fields/FieldNames
 import { ResilienceRequirementCard } from './ResilienceRequirementCard';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { CloudType } from '@app/redesign/helpers/dtos';
+import {
+  ENABLE_MULTI_PROVIDER_CREATE,
+  getPrimaryProvider,
+  isMultiProvider
+} from '../../helpers/providerConfigurations';
 
 const { Box, styled, Typography } = mui;
 
@@ -120,20 +125,21 @@ export const GuidedMode = () => {
   ) as unknown as CreateUniverseContextMethods;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
-    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
+  const multiProvider = ENABLE_MULTI_PROVIDER_CREATE && isMultiProvider(generalSettings);
   const resilienceFactor = watch(RESILIENCE_FACTOR);
   const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
   const isNone = faultToleranceType === FaultToleranceType.NONE;
 
   return (
     <Root>
-      <ResilienceHeader>{t('header')}</ResilienceHeader>
+      {!multiProvider && <ResilienceHeader>{t('header')}</ResilienceHeader>}
       <Typography
         variant="body2"
         sx={(theme) => ({ fontWeight: 500, lineHeight: '16px', color: theme.palette.grey[900] })}
       >
         <Trans
-          i18nKey="helpText"
+          i18nKey={multiProvider ? 'helpTextMulti' : 'helpText'}
           t={t}
           components={{
             a: (
@@ -176,6 +182,7 @@ export const GuidedMode = () => {
             label=""
             t={t}
             isK8s={isK8s}
+            disableNodeAndNone={multiProvider}
             sx={{ width: '200px', minWidth: '200px', flexShrink: 0 }}
           />
           {!isNone && <> {pluralize(t('resilienceOutageWord'), resilienceFactor)}.</>}

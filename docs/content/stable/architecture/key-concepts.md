@@ -57,18 +57,18 @@ The fault tolerance determines how resilient the cluster is to domain (that is, 
 
 Normally, only the [tablet leader](#tablet-leader) can process user-facing write and read requests. Follower reads allow you to lower read latencies by serving reads from the tablet followers. This is similar to reading from a cache, which can provide more read IOPS with low latency. The data might be slightly stale, but is timeline-consistent, meaning no out of order data is possible.
 
-Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link dest="../../explore/going-beyond-sql/follower-reads-ysql/">}}
+Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link dest="../../additional-features/follower-reads/">}}
 
 ## Hybrid time
 
-Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link dest="../transactions/transactions-overview#hybrid-logical-clocks">}}
+Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link dest="../transactions/transactions-overview/#hybrid-logical-clocks">}}
 
 ## Isolation levels
 
-[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../../explore/transactions/isolation-levels/">}}
+[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../transactions/isolation-levels/">}}
 
 {{<tip>}}
-YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/stable/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
+YugabyteDB offers 3 isolation levels - [Serializable](../transactions/isolation-levels/), [Snapshot](../transactions/isolation-levels/) and [Read committed](../transactions/read-committed/) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](/stable/develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
 {{</tip>}}
 
 ## Leader balancing
@@ -78,6 +78,8 @@ YugabyteDB tries to keep the number of leaders evenly distributed across the [no
 ## Leader election
 
 Raft elects one replica as leader in each replica group. For user [tablets](#tablet), that replica is the [tablet leader](#tablet-leader). For the [sys catalog](#sys-catalog), it is the [sys catalog leader](#sys-catalog-leader) (the active [master](#master-server)). {{<link dest="../docdb-replication/raft/#leader-election">}}
+
+A slow leader keeps committing writes while it still has a quorum and can persist them. Followers start an election only when heartbeats are missed. A leader that keeps heartbeating while its WAL is stalled keeps leadership, including when local storage writes are failing. {{<link dest="../../explore/fault-tolerance/handling-gray-failures/">}}
 
 ## Leader affinity
 
@@ -119,7 +121,7 @@ In a distributed database, a network partition can interrupt heartbeats, replica
 
 A partial network partition is a less clear-cut form in which communication fails only on some paths, intermittently, or in one direction. Partial network partitions are a common type of [gray failure](../../explore/fault-tolerance/handling-gray-failures/).
 
-In YugabyteDB, Raft consensus handles network partitions by requiring a majority of replicas to elect a leader and commit writes. This prevents split brain and preserves consistency.
+In YugabyteDB, Raft consensus handles network partitions by requiring a majority of replicas to elect a leader and commit writes. This prevents split brain and preserves consistency. A leader that can still reach a majority and persist writes keeps committing them.
 
 ## Node
 
@@ -143,7 +145,7 @@ You can rank multiple regions so that if the first fails, leaders move to the ne
 
 Follower copies stay in the other regions. Ranking chooses the leader among replicas that already exist; it does not add, remove, or move copies. See [Tablet leader](#tablet-leader).
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. If the cluster has [read replicas](#read-replica-cluster) and a client connects to a replica, reads are served from the replica; writes continue to go to the preferred region's tablet leaders. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. If the cluster has [read replicas](#read-replica-cluster) and a client connects to a replica, the replica serves the read when follower reads are on; writes continue to go to the preferred region's tablet leaders. With follower reads off, the read goes to the tablet leader in the primary cluster. {{<link dest="/stable/develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 

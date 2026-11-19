@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <regex>
 #include <string>
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -21,6 +22,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
@@ -42,6 +44,7 @@
 #include "yb/util/stol_utils.h"
 
 DECLARE_bool(docdb_enable_sst_stats_collector);
+DECLARE_bool(TEST_use_custom_varz);
 
 namespace yb::integration_tests {
 
@@ -212,6 +215,81 @@ TEST_F(TServerPathHandlersItest, TestSnapshotsEndpoint) {
   ASSERT_FALSE(rows[1][2].empty()); // cumulative size
   ASSERT_FALSE(rows[1][3].empty()); // exclusive size
   ASSERT_EQ(rows[1][4], schedule_id.ToString()); // schedule id
+}
+
+// The on-disk size cell is a multi-line list, which the page's sort script can only compare as
+// text, so the cell carries the table's size in bytes as a numeric sort key.
+TEST_F(TServerPathHandlersItest, TablesPageOnDiskSizeSortKey) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  client::YBSchema schema;
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("key")->Type(DataType::INT32)->HashPrimaryKey()->NotNull();
+  ASSERT_OK(builder.Build(&schema));
+
+  const client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "sort_key_table");
+  ASSERT_OK(client->CreateNamespaceIfNotExists(
+      table_name.namespace_name(), table_name.namespace_type()));
+  client::TableHandle table;
+  ASSERT_OK(table.Create(table_name, /* num_tablets = */ 1, schema, client.get()));
+
+  auto session = client->NewSession(30s);
+  for (int32_t key = 0; key != 100; ++key) {
+    auto insert = table.NewInsertOp(session->arena());
+    QLAddInt32HashValue(insert->mutable_request(), key);
+    session->Apply(insert);
+  }
+  ASSERT_OK(session->TEST_Flush());
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // The size cell in the table's row, capturing its sort key.
+  const std::regex size_cell_regex(
+      table->id() + "[^\n]*?<td[^>]* data-sort=(\\d+)><ul><li>Total");
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        const auto page = VERIFY_RESULT(FetchURL("/tables"));
+        std::smatch match;
+        if (!std::regex_search(page, match, size_cell_regex)) {
+          return false;
+        }
+        return VERIFY_RESULT(CheckedStoull(match[1].str())) > 0;
+      },
+      30s, "Wait for the tables page to carry the table's size as its sort key"));
+}
+
+class TServerCustomVarzItest : public TServerPathHandlersItest {
+ public:
+  void SetUp() override {
+    // Read when the tablet server options are created, so it has to be set before the cluster
+    // starts.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
+    TServerPathHandlersItest::SetUp();
+  }
+
+ protected:
+  Status CheckRpcBindAddressesInVarz() {
+    for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts = cluster_->mini_tablet_server(i);
+      faststring varz;
+      RETURN_NOT_OK(path_handlers_util::GetUrl(
+          Format("http://$0/varz?raw=1", AsString(ts->bound_http_addr())), &varz));
+      const auto expected = Format("--rpc_bind_addresses=$0\n", AsString(ts->bound_rpc_addr()));
+      SCHECK_NE(
+          varz.ToString().find(expected), std::string::npos, IllegalState,
+          Format("ts-$0 /varz does not contain $1: $2", i + 1, expected, varz.ToString()));
+    }
+    return Status::OK();
+  }
+};
+
+// yb-controller reads the RPC address of its tablet server from /varz, so with custom varz each
+// tablet server has to show its own bind address, not the process-wide flag.
+TEST_F(TServerCustomVarzItest, ShowsOwnRpcBindAddress) {
+  ASSERT_OK(CheckRpcBindAddressesInVarz());
+
+  auto* ts = cluster_->mini_tablet_server(0);
+  ts->Shutdown();
+  ASSERT_OK(ts->Start());
+  ASSERT_OK(CheckRpcBindAddressesInVarz());
 }
 
 class TServerSstStatsPathHandlerItest : public TServerPathHandlersItest {

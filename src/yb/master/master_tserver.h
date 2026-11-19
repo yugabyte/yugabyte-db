@@ -80,6 +80,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
       uint32_t db_oid, bool is_breaking_change, uint64_t new_catalog_version,
       const std::optional<std::string>& message_list) override;
 
+  // The master serves sys catalog reads but holds no sys table prefetch cache for a backend to
+  // read back, so there is nothing to record.
+  void SetYsqlDbLastPrefetchedCatalogVersion(uint32_t, uint64_t) override {}
+
   void TriggerRelcacheInitConnection(
       const tserver::TriggerRelcacheInitConnectionRequestPB& req,
       StdStatusCallback callback) override;
@@ -138,6 +142,11 @@ class MasterTabletServer : public tserver::TabletServerIf,
   virtual Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
+
+  Status SetActiveTableIdsForMetrics(
+      std::unordered_set<std::string> /* table_ids */, uint32_t /* list_version */) override {
+    return STATUS(NotSupported, "SetActiveTableIdsForMetrics is not supported on masters");
+  }
 
   bool SkipCatalogVersionChecks() override;
 

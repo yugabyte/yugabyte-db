@@ -7,12 +7,23 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import play.libs.Json;
 
 /** Utility class for evaluating deltas between two JsonNode objects. */
@@ -22,6 +33,9 @@ public final class DeltaEvaluator {
 
   private static final ArrayElementComparator DEFAULT_ARRAY_ELEMENT_COMPARATOR =
       (path, node1, node2) -> node1.hashCode() - node2.hashCode();
+
+  private static final Predicate<Class<?>> PLATFORM_BEAN_PREDICATE =
+      c -> c.getName().startsWith("com.yugabyte.") && !c.isEnum();
 
   /** Enum representing the type of delta operation. */
   enum DeltaType {
@@ -39,6 +53,14 @@ public final class DeltaEvaluator {
       return UNKNOWN;
     }
   }
+
+  /**
+   * Marks a field whose latest value must be kept when the value restored from a delta is applied,
+   * e.g. a field written by other tasks while the task that recorded the delta waits.
+   */
+  @Retention(RetentionPolicy.RUNTIME)
+  @Target(ElementType.FIELD)
+  public @interface DeltaRetainLatest {}
 
   /** Class representing a delta node in the delta JSON tree. */
   static class DeltaNode {
@@ -77,6 +99,28 @@ public final class DeltaEvaluator {
         return DeltaType.UNKNOWN;
       }
       return DeltaType.fromString(node.get("$deltaType").asText());
+    }
+  }
+
+  /** Class representing an ordered delta node with its original index and delta type. */
+  static class OrderedDeltaNode {
+    private final int originalIndex;
+    private final DeltaType deltaType;
+    private final JsonNode node;
+
+    public OrderedDeltaNode(int originalIndex, DeltaType deltaType, JsonNode node) {
+      this.originalIndex = originalIndex;
+      this.deltaType = deltaType;
+      this.node = node;
+    }
+
+    public static Comparator<OrderedDeltaNode> getComparator() {
+      return (a, b) -> {
+        if (a.originalIndex != b.originalIndex) {
+          return Integer.compare(a.originalIndex, b.originalIndex);
+        }
+        return a.deltaType == DeltaType.DELETE ? -1 : 1;
+      };
     }
   }
 
@@ -154,6 +198,36 @@ public final class DeltaEvaluator {
   }
 
   /**
+   * Updates the target in place by setting the fields annotated with {@link DeltaRetainLatest}, in
+   * it and in the platform beans nested in it, to their values in latest. The target is typically
+   * an instance generated from a delta. Collection elements are matched with latest's by the
+   * comparator; an element with no match keeps its own values. Maps are not descended into. A
+   * nested value is left alone if either side is null or their classes differ.
+   *
+   * @param target the instance to update in place.
+   * @param latest the latest instance of the same class to take the values from.
+   * @param arrayElementComparator the comparator the delta was built with, to match the collection
+   *     elements with latest's.
+   * @throws IllegalArgumentException if target or latest is null, or their classes differ.
+   */
+  public static <T> void mergeWithLatest(
+      T target, T latest, ArrayElementComparator arrayElementComparator) {
+    if (target == null || latest == null || target.getClass() != latest.getClass()) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Cannot merge %s with latest %s",
+              target == null ? null : target.getClass().getName(),
+              latest == null ? null : latest.getClass().getName()));
+    }
+    retainLatest(
+        null,
+        target,
+        latest,
+        arrayElementComparator,
+        Collections.newSetFromMap(new IdentityHashMap<>()));
+  }
+
+  /**
    * Builds a delta JSON tree representing the differences between the current and new data.
    *
    * @param currentData the current data as a JsonNode or any object convertible to JsonNode.
@@ -223,6 +297,95 @@ public final class DeltaEvaluator {
     return node;
   }
 
+  /**
+   * Sets the fields annotated with {@link DeltaRetainLatest} in the instance, and in the platform
+   * beans nested in it, to their values in latest. Collection elements are matched with latest's by
+   * the comparator on their JSON, at the collection's path; an element with no match keeps its own
+   * values. Maps are not descended into. Nothing is done if either side is null or their classes
+   * differ.
+   *
+   * @param path the JSON path of the instance with dots separating the levels, null for the root.
+   * @param instance the instance to update in place.
+   * @param latest the latest instance of the same class to take the values from.
+   * @param arrayElementComparator the comparator to match the collection elements.
+   * @param visited the instances already processed, compared by identity, to stop reference cycles.
+   */
+  private static void retainLatest(
+      String path,
+      Object instance,
+      Object latest,
+      ArrayElementComparator arrayElementComparator,
+      Set<Object> visited) {
+    if (instance == null || latest == null || instance.getClass() != latest.getClass()) {
+      return;
+    }
+    // Only the platform's own beans carry the annotation, and the JDK's fields are not accessible.
+    if (!PLATFORM_BEAN_PREDICATE.test(instance.getClass()) || !visited.add(instance)) {
+      return;
+    }
+    // Stop at the first JDK superclass, e.g. of an exception, as its fields are not accessible.
+    for (Class<?> clazz = instance.getClass();
+        clazz != null && PLATFORM_BEAN_PREDICATE.test(clazz);
+        clazz = clazz.getSuperclass()) {
+      for (Field field : clazz.getDeclaredFields()) {
+        if (Modifier.isStatic(field.getModifiers()) || field.isSynthetic()) {
+          continue;
+        }
+        try {
+          field.setAccessible(true);
+          Object latestValue = field.get(latest);
+          if (field.isAnnotationPresent(DeltaRetainLatest.class)) {
+            field.set(instance, latestValue);
+            continue;
+          }
+          Object fieldValue = field.get(instance);
+          String nextPath = path == null ? jsonName(field) : path + "." + jsonName(field);
+          if (fieldValue instanceof Collection && latestValue instanceof Collection) {
+            List<Object> latestElements = new ArrayList<>((Collection<?>) latestValue);
+            // Serialized lazily, as collections of non-bean elements are never matched.
+            List<JsonNode> latestElementJsons = null;
+            for (Object element : (Collection<?>) fieldValue) {
+              if (element == null || !PLATFORM_BEAN_PREDICATE.test(element.getClass())) {
+                continue;
+              }
+              if (latestElementJsons == null) {
+                // Do this once when this is hit.
+                latestElementJsons = new ArrayList<>();
+                for (Object latestElement : latestElements) {
+                  latestElementJsons.add(
+                      latestElement == null ? null : MAPPER.valueToTree(latestElement));
+                }
+              }
+              JsonNode elementJson = MAPPER.valueToTree(element);
+              // Find the matching element in the latest elements.
+              for (int idx = 0; idx < latestElements.size(); idx++) {
+                // Get the corresponding JsonNode using the same index.
+                JsonNode latestElementJson = latestElementJsons.get(idx);
+                if (latestElementJson != null
+                    && arrayElementComparator.compare(nextPath, latestElementJson, elementJson)
+                        == 0) {
+                  retainLatest(
+                      nextPath, element, latestElements.get(idx), arrayElementComparator, visited);
+                  break;
+                }
+              }
+            }
+          } else {
+            retainLatest(nextPath, fieldValue, latestValue, arrayElementComparator, visited);
+          }
+        } catch (IllegalAccessException e) {
+          throw new RuntimeException("Failed to retain the latest value of " + field, e);
+        }
+      }
+    }
+  }
+
+  // The comparator is given the JSON paths, which use the property names.
+  private static String jsonName(Field field) {
+    JsonProperty property = field.getAnnotation(JsonProperty.class);
+    return property == null || property.value().isEmpty() ? field.getName() : property.value();
+  }
+
   // This method recursively builds a delta JSON tree representing the differences between the
   // current and new data. The comparator allows deeper check into the array elements. Without it,
   // the whole element is generated as 'REPLACE'.
@@ -248,61 +411,71 @@ public final class DeltaEvaluator {
       if (!newData.isArray()) {
         return DeltaNode.createReplaceJsonNode(currentData, newData);
       }
-
-      List<JsonNode> currentList = new ArrayList<>();
-      for (JsonNode element : currentData) {
-        currentList.add(element);
-      }
-      Collections.sort(currentList, (a, b) -> arrayElementComparator.compare(path, a, b));
-      List<JsonNode> newList = new ArrayList<>();
-      for (JsonNode element : newData) {
-        newList.add(element);
-      }
-      // Original order is not preserved.
-      Collections.sort(newList, (a, b) -> arrayElementComparator.compare(path, a, b));
-
-      ArrayNode deltaArray = MAPPER.createArrayNode();
+      // Sort the original indices based on the comparator on the elements.
+      Integer[] currentDataOrder = sortedIndices(path, currentData, arrayElementComparator);
+      Integer[] newDataOrder = sortedIndices(path, newData, arrayElementComparator);
+      List<OrderedDeltaNode> orderedDeltaNodes = new ArrayList<>();
       boolean hasChanges = false;
       int i = 0;
       int j = 0;
-      while (i < currentList.size() && j < newList.size()) {
-        int cmp = arrayElementComparator.compare(path, currentList.get(i), newList.get(j));
-        if (cmp < 0) {
-          deltaArray.add(MAPPER.valueToTree(DeltaNode.createDeleteJsonNode(currentList.get(i))));
-          hasChanges = true;
-          i++;
-        } else if (cmp > 0) {
-          deltaArray.add(MAPPER.valueToTree(DeltaNode.createAddJsonNode(newList.get(j))));
-          hasChanges = true;
-          j++;
+      while (i < currentDataOrder.length || j < newDataOrder.length) {
+        int cmp;
+        if (i >= currentDataOrder.length) {
+          // Newly element.
+          cmp = 1;
+        } else if (j >= newDataOrder.length) {
+          // Deleted element.
+          cmp = -1;
         } else {
-          JsonNode oldElement = currentList.get(i);
-          JsonNode newElement = newList.get(j);
+          cmp =
+              arrayElementComparator.compare(
+                  path, currentData.get(currentDataOrder[i]), newData.get(newDataOrder[j]));
+        }
+        if (cmp < 0) {
+          // Deleted case.
+          int currentOriginalIdx = currentDataOrder[i++];
+          JsonNode deltaNode =
+              MAPPER.valueToTree(
+                  DeltaNode.createDeleteJsonNode(currentData.get(currentOriginalIdx)));
+          orderedDeltaNodes.add(
+              new OrderedDeltaNode(currentOriginalIdx, DeltaType.DELETE, deltaNode));
+          hasChanges = true;
+        } else if (cmp > 0) {
+          // Added case.
+          int newOriginalIdx = newDataOrder[j++];
+          JsonNode deltaNode =
+              MAPPER.valueToTree(DeltaNode.createAddJsonNode(newData.get(newOriginalIdx)));
+          orderedDeltaNodes.add(new OrderedDeltaNode(newOriginalIdx, DeltaType.ADD, deltaNode));
+          hasChanges = true;
+        } else {
+          // Matched case - check if they are equal or need a nested delta.
+          int currentOriginalIdx = currentDataOrder[i++];
+          int newOriginalIdx = newDataOrder[j++];
+          JsonNode oldElement = currentData.get(currentOriginalIdx);
+          JsonNode newElement = newData.get(newOriginalIdx);
           if (!oldElement.equals(newElement)) {
-            JsonNode result =
+            JsonNode deltaNode =
                 buildDeltaJsonTree(path, oldElement, newElement, arrayElementComparator);
-
-            deltaArray.add(result);
+            orderedDeltaNodes.add(
+                new OrderedDeltaNode(newOriginalIdx, DeltaType.REPLACE, deltaNode));
             hasChanges = true;
           } else {
-            deltaArray.add(newElement);
+            orderedDeltaNodes.add(
+                new OrderedDeltaNode(newOriginalIdx, DeltaType.REPLACE, newElement));
           }
-          i++;
-          j++;
         }
       }
-      // Process the remaining elements in both.
-      while (i < currentList.size()) {
-        deltaArray.add(MAPPER.valueToTree(DeltaNode.createDeleteJsonNode(currentList.get(i))));
-        hasChanges = true;
-        i++;
+      if (hasChanges) {
+        ArrayNode deltaArray = MAPPER.createArrayNode();
+        // Sort back to the original order of the elements, with deletes first if there are multiple
+        // changes at the same index.
+        orderedDeltaNodes.sort(OrderedDeltaNode.getComparator());
+        for (OrderedDeltaNode delta : orderedDeltaNodes) {
+          deltaArray.add(delta.node);
+        }
+        return deltaArray;
       }
-      while (j < newList.size()) {
-        deltaArray.add(MAPPER.valueToTree(DeltaNode.createAddJsonNode(newList.get(j))));
-        hasChanges = true;
-        j++;
-      }
-      return hasChanges ? deltaArray : newData;
+      return newData;
     }
     if (currentData.isObject()) {
       if (currentData.equals(newData)) {
@@ -331,5 +504,17 @@ public final class DeltaEvaluator {
       return newData;
     }
     return DeltaNode.createReplaceJsonNode(currentData, newData);
+  }
+
+  private static Integer[] sortedIndices(
+      String path, JsonNode array, ArrayElementComparator arrayElementComparator) {
+    // Record the original indices of the elements first.
+    Integer[] indices = new Integer[array.size()];
+    for (int idx = 0; idx < array.size(); idx++) {
+      indices[idx] = idx;
+    }
+    Arrays.sort(
+        indices, (i, j) -> arrayElementComparator.compare(path, array.get(i), array.get(j)));
+    return indices;
   }
 }

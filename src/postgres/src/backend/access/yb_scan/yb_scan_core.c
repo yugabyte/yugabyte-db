@@ -1133,169 +1133,6 @@ ybcSetupScanKeys(YbOpaque ybScan, YbScanPlan scan_plan)
 	}
 }
 
-/* Return true if typid is one of the Object Identifier Types */
-static bool
-YbIsOidType(Oid typid)
-{
-	switch (typid)
-	{
-		case OIDOID:
-		case REGPROCOID:
-		case REGPROCEDUREOID:
-		case REGOPEROID:
-		case REGOPERATOROID:
-		case REGCLASSOID:
-		case REGTYPEOID:
-		case REGROLEOID:
-		case REGNAMESPACEOID:
-		case REGCONFIGOID:
-		case REGDICTIONARYOID:
-			return true;
-		default:
-			return false;
-	}
-}
-
-static int64
-YbDatumGetInt64(Datum value, Oid value_typid)
-{
-	switch (value_typid)
-	{
-		case INT2OID:
-			return DatumGetInt16(value);
-		case INT4OID:
-			return DatumGetInt32(value);
-		case INT8OID:
-			return DatumGetInt64(value);
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("not an integer type")));
-	}
-}
-
-static bool
-YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max)
-{
-	int64		val = YbDatumGetInt64(value, value_typid);
-
-	return val >= min && val <= max;
-}
-
-/*
- * Determine whether an equality between two types needs further recheck.  For
- * now, this only flags cases where the storage column type is smaller than the
- * value type.  Through YbIsValueOutOfRange, the same pairs also decide whether
- * YbIsScanCompatible binds a scalar key of any strategy, whether an IN list
- * element or tuple is dropped, and whether an equality makes the scan
- * unsatisfiable.
- *
- * TODO(jason): check if any other type combos need checking.  float4 and
- * float8 look suspicious.
- *
- * SELECT a.typname, b.typname
- *   FROM pg_operator
- *   JOIN pg_type a ON oprleft = a.oid
- *   JOIN pg_type b ON oprright = b.oid
- *  WHERE oprname = '=' AND oprleft != oprright;
- *    typname   |   typname
- * -------------+-------------
- *  name        | text
- *  int8        | int2
- *  int8        | int4
- *  int2        | int8
- *  int2        | int4
- *  int4        | int8
- *  int4        | int2
- *  text        | name
- *  xid         | int4
- *  float4      | float8
- *  float8      | float4
- *  date        | timestamp
- *  date        | timestamptz
- *  timestamp   | date
- *  timestamp   | timestamptz
- *  timestamptz | date
- *  timestamptz | timestamp
- * (17 rows)
- */
-static bool
-YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
-{
-	switch (column_typid)
-	{
-		case INT2OID:
-			if (value_typid == INT4OID)
-				return true;
-			yb_switch_fallthrough();
-		case INT4OID:
-			if (value_typid == INT8OID)
-				return true;
-			break;
-		default:
-			break;
-	}
-
-	return false;
-}
-
-static bool
-YbIsValueOutOfRange(Oid col_typid, Oid val_typid, Datum val)
-{
-	return (YbShouldRecheckEquality(col_typid, val_typid) &&
-			!YbIsIntegerInRange(val, val_typid,
-								col_typid == INT2OID ? SHRT_MIN : INT_MIN,
-								col_typid == INT2OID ? SHRT_MAX : INT_MAX));
-}
-
-/*
- * Return true if a scan key column type is compatible with value type.
- */
-static bool
-YbIsScanCompatible(Oid column_typid,
-				   Oid value_typid,
-				   bool is_value_scalar,
-				   Datum value)
-{
-	if (column_typid == value_typid)
-		return true;
-
-	switch (column_typid)
-	{
-		case INT2OID:
-		case INT4OID:
-		case INT8OID:
-
-			/*
-			 * A narrower integer column cannot hold every value of a wider
-			 * type, and binding an out-of-range value would truncate it, so
-			 * that "c0 < 65539" on an int2 column would bind as "c0 < 3".  So
-			 * bind a scalar value only when the column type can hold it, and
-			 * leave an out-of-range one unbound for recheck.  A plain equality
-			 * to such a value makes the scan unsatisfiable before binding
-			 * (ybHasOutOfRangeEquality).  A non-scalar value, an IN list,
-			 * binds, and YbCullArray drops its out-of-range elements.
-			 */
-			if (value_typid != INT2OID && value_typid != INT4OID &&
-				value_typid != INT8OID)
-				return false;
-			return (!is_value_scalar ||
-					!YbIsValueOutOfRange(column_typid, value_typid, value));
-
-		case TEXTOID:
-		case BPCHAROID:
-		case VARCHAROID:
-			return (value_typid == TEXTOID || value_typid == BPCHAROID ||
-					value_typid == VARCHAROID);
-
-		default:
-			if (YbIsOidType(column_typid) && YbIsOidType(value_typid))
-				return true;
-			/* Conservatively return false. */
-			return false;
-	}
-}
-
 static bool
 YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
 					  int key_length, AttrNumber bind_key_attnums[])
@@ -2284,6 +2121,22 @@ ybMergeScanStreamColAttnum(Relation index,
 }
 
 /*
+ * The merge scan info of a scan, or NULL if there is no scan or it is not a
+ * merge scan.
+ */
+static YbMergeScanInfo *
+ybGetMergeScanInfo(Scan *scan)
+{
+	if (!scan)
+		return NULL;
+	if (IsA(scan, IndexScan))
+		return ((IndexScan *) scan)->yb_merge_scan_info;
+	if (IsA(scan, IndexOnlyScan))
+		return ((IndexOnlyScan *) scan)->yb_merge_scan_info;
+	return NULL;
+}
+
+/*
  * Verify that every index column the planner declared in
  * yb_merge_scan_info->stream_cols got a usable bound condition: a single
  * equality value or a plain scalar IN list.  The merge scan would silently
@@ -2389,15 +2242,7 @@ ybBindOrdinaryScanKeys(YbOpaque ybScan, YbScanPlan scan_plan, Scan *scan,
 
 	memset(is_column_eq_or_in_bound, 0, sizeof(bool) * max_idx);
 
-	YbMergeScanInfo *yb_merge_scan_info = NULL;
-
-	if (scan)
-	{
-		if (IsA(scan, IndexScan))
-			yb_merge_scan_info = ((IndexScan *) scan)->yb_merge_scan_info;
-		else if (IsA(scan, IndexOnlyScan))
-			yb_merge_scan_info = ((IndexOnlyScan *) scan)->yb_merge_scan_info;
-	}
+	YbMergeScanInfo *yb_merge_scan_info = ybGetMergeScanInfo(scan);
 
 	if (yb_enable_advanced_index_cond_fold && !is_for_precheck)
 	{
@@ -3357,7 +3202,7 @@ ybcReplacePkReqWithBasectid(IndexOnlyScan *ios_plan,
 
 		while ((bms_idx = bms_next_member(result->bms, bms_idx)) >= 0)
 		{
-			bms_del_member(result->bms, bms_idx);
+			result->bms = bms_del_member(result->bms, bms_idx);
 			removed = true;
 		}
 		if (removed)
@@ -3486,6 +3331,70 @@ ybcBuildRequiredAttrs(YbOpaque yb_scan, YbScanPlan scan_plan,
 	return result;
 }
 
+/*
+ * For a merge scan, whether the scan has a separate index request, so that the
+ * merge sort happens between the index and table requests.  This is the case
+ * for a plain index scan of a secondary index that is not embedded in its
+ * table.
+ *
+ * TODO(#38296): share this rule with the other places that decide which
+ * relations a scan reads.
+ */
+static bool
+ybHasSeparateIndexRequest(YbOpaque ybScan)
+{
+	Assert(ybScan->index);
+	return !(ybScan->prepare_params.index_only_scan ||
+			 ybScan->index->rd_index->indisprimary ||
+			 ybScan->prepare_params.embedded_idx);
+}
+
+/*
+ * YbAddSortTarget - add specified attribute to the secondary index scan as a target
+ *
+ * Typically the only target on the secondary index scan is the base table ybctid.
+ * However, if the secondary index scan performs merge sort of multiple streams,
+ * it also needs to fetch and parse values of the sort keys, hence they are added
+ * as the targets.
+ *
+ * TODO(#38312): append through the same path as the scan's other targets.
+ */
+static void
+YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
+{
+	Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
+	YbcPgTypeAttrs type_attrs = {attr->atttypmod};
+	Oid			attcollation = YBEncodingCollation(stmt, attno,
+												   ybc_get_attcollation(tupdesc, attno));
+	YbcPgExpr	colref = YBCNewColumnRef(stmt, attno, attr->atttypid, attcollation, &type_attrs);
+
+	HandleYBStatus(YBCPgDmlAppendTarget(stmt, colref, true /* is_for_secondary_index */ ));
+}
+
+/*
+ * If a merge scan has a separate index request, sets up its merge sort columns
+ * as targets of that request, since the merge runs on that request's rows.
+ * The merge compares every merge sort column, so the request must read each
+ * one.
+ *
+ * TODO(#38147): read the merge sort columns in the main request too, when the
+ * merge runs on its rows.
+ */
+static void
+ybSetupMergeSortTargets(YbOpaque ybScan, Scan *scan)
+{
+	YbMergeScanInfo *merge_scan_info = ybGetMergeScanInfo(scan);
+	YbSortInfo *sort_info;
+
+	if (!merge_scan_info || !ybHasSeparateIndexRequest(ybScan))
+		return;
+
+	sort_info = merge_scan_info->sort_cols;
+	for (int i = 0; i < sort_info->numCols; i++)
+		YbAddSortTarget(ybScan->handle, RelationGetDescr(ybScan->index),
+						sort_info->sortColIdx[i]);
+}
+
 static void
 ybcSetupTargets(YbOpaque yb_scan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 {
@@ -3523,26 +3432,6 @@ yb_sort_comparator_adapter(uint64_t datum1, bool isnull1,
 }
 
 /*
- * YbAddSortTarget - add specified attribute to the secondary index scan as a target
- *
- * Typically the only target on the secondary index scan is the base table ybctid.
- * However, if the secondary index scan performs merge sort of multiple streams,
- * it also needs to fetch and parse values of the sort keys, hence they are added
- * as the targets.
- */
-static void
-YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
-{
-	Form_pg_attribute attr = TupleDescAttr(tupdesc, attno - 1);
-	YbcPgTypeAttrs type_attrs = {attr->atttypmod};
-	Oid			attcollation = YBEncodingCollation(stmt, attno,
-												   ybc_get_attcollation(tupdesc, attno));
-	YbcPgExpr	colref = YBCNewColumnRef(stmt, attno, attr->atttypid, attcollation, &type_attrs);
-
-	HandleYBStatus(YBCPgDmlAppendTarget(stmt, colref, true /* is_for_secondary_index */ ));
-}
-
-/*
  * YbApplyMergeSortKeys - set up planned merge sort in PgGate
  *
  * Apply merge sort info to the scan. merge stream conditions are expected to be applied separately.
@@ -3552,49 +3441,33 @@ YbAddSortTarget(YbcPgStatement stmt, TupleDesc tupdesc, AttrNumber attno)
 static void
 YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 {
-	YbSortInfo *sort_info = NULL;
-	bool		reverse = false;
-	bool		yb_add_sort_targets = false;
+	YbMergeScanInfo *merge_scan_info = ybGetMergeScanInfo(pg_scan_plan);
+	YbSortInfo *sort_info;
+	ScanDirection indexorderdir;
+	bool		reverse;
 	int16	   *indkey_values = NULL;
 
-	if (IsA(pg_scan_plan, IndexScan))
-	{
-		IndexScan  *plan = (IndexScan *) pg_scan_plan;
-
-		if (plan->yb_merge_scan_info)
-		{
-			sort_info = plan->yb_merge_scan_info->sort_cols;
-			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
-			reverse = ScanDirectionIsBackward(plan->indexorderdir);
-			/*
-			 * Key columns of a primary or embedded index may have different attribute numbers than
-			 * the respective columns of the base table. So we need to provide their positions in
-			 * the DocDB tuple. On the other hand, when we make separate request to the secondary
-			 * index, we need to set up key column data retrieval, in addition to the ybctid.
-			 */
-			if (ybScan->index->rd_index->indisprimary || ybScan->prepare_params.embedded_idx)
-			{
-				indkey_values = ybScan->index->rd_index->indkey.values;
-			}
-			else
-			{
-				yb_add_sort_targets = true;
-			}
-		}
-	}
-	else if (IsA(pg_scan_plan, IndexOnlyScan))
-	{
-		IndexOnlyScan *plan = (IndexOnlyScan *) pg_scan_plan;
-
-		if (plan->yb_merge_scan_info)
-		{
-			sort_info = plan->yb_merge_scan_info->sort_cols;
-			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
-			reverse = ScanDirectionIsBackward(plan->indexorderdir);
-		}
-	}
-	if (!sort_info)
+	if (!merge_scan_info)
 		return;
+	Assert(IsA(pg_scan_plan, IndexOnlyScan) ==
+		   ybScan->prepare_params.index_only_scan);
+	sort_info = merge_scan_info->sort_cols;
+	indexorderdir = (IsA(pg_scan_plan, IndexScan) ?
+					 ((IndexScan *) pg_scan_plan)->indexorderdir :
+					 ((IndexOnlyScan *) pg_scan_plan)->indexorderdir);
+	Assert(!ScanDirectionIsNoMovement(indexorderdir));
+	reverse = ScanDirectionIsBackward(indexorderdir);
+
+	/*
+	 * Key columns of a primary or embedded index may have different attribute numbers than
+	 * the respective columns of the base table. So we need to provide their positions in
+	 * the DocDB tuple.
+	 *
+	 * TODO(#38296): share this mapping with ybcSetupScanPlan.
+	 */
+	if (!ybScan->prepare_params.index_only_scan &&
+		!ybHasSeparateIndexRequest(ybScan))
+		indkey_values = ybScan->index->rd_index->indkey.values;
 
 	/* Create and apply sort keys */
 	YbcPgStatement stmt = ybScan->handle;
@@ -3616,8 +3489,6 @@ YbApplyMergeSortKeys(YbOpaque ybScan, Scan *pg_scan_plan)
 		sort_support->ssup_reverse = reverse;
 		sort_support->abbreviate = false;
 		PrepareSortSupportFromOrderingOp(sort_info->sortOperators[i], sort_support);
-		if (yb_add_sort_targets)
-			YbAddSortTarget(stmt, RelationGetDescr(ybScan->index), sort_info->sortColIdx[i]);
 	}
 	HandleYBStatus(YBCPgDmlSetMergeSortKeys(stmt, sort_info->numCols, yb_sort_keys));
 }
@@ -3763,12 +3634,16 @@ YbBeginScan(Relation table,
 	 * - not aggregate pushdown
 	 * This ought to be reworked once aggregate pushdown supports a mix of
 	 * non-aggregate and aggregate targets.
+	 *
+	 * Either way, ybSetupMergeSortTargets then adds the merge sort columns to
+	 * a separate index request, if the scan has one.
 	 */
 	if (aggrefs != NIL)
 		YbDmlAppendTargetsAggregate(aggrefs, pg_scan_plan, ybScan->target_desc,
 									index, xs_want_itup, ybScan->handle);
 	else
 		ybcSetupTargets(ybScan, &scan_plan, pg_scan_plan);
+	ybSetupMergeSortTargets(ybScan, pg_scan_plan);
 
 	YbApplyPrimaryPushdown(ybScan->handle, rel_pushdown);
 	YbApplySecondaryIndexPushdown(ybScan->handle, idx_pushdown);
@@ -3795,8 +3670,7 @@ YbBeginScan(Relation table,
 	if (distinct_prefixlen > 0)
 		YBCPgSetDistinctPrefixLength(ybScan->handle, distinct_prefixlen);
 
-	if (pg_scan_plan)
-		YbApplyMergeSortKeys(ybScan, pg_scan_plan);
+	YbApplyMergeSortKeys(ybScan, pg_scan_plan);
 
 	bms_free(scan_plan.hash_key_cols);
 	bms_free(scan_plan.key_cols);
@@ -4152,9 +4026,8 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 }
 
 /*
- * TODO: move ybc_heap_beginscan into heapam.c so that yb_scan_core.c
- * does not need to depend on yb_table_scan_options.h.  Requires
- * reworking several references to scan-core internals first.
+ * TODO(#37429): move the ybc_heap_* functions out of this file, so that
+ * yb_scan_core.c does not depend on yb_table_scan_options.h.
  */
 TableScanDesc
 ybc_heap_beginscan(Relation relation,

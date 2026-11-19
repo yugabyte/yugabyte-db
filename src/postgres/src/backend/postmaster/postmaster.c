@@ -143,6 +143,7 @@
 #include "access/xact.h"
 #include "arpa/inet.h"
 #include "commands/async.h"
+#include "common/base64.h"
 #include "common/pg_yb_common.h"
 #include "common/pg_yb_conn_mgr_protocol.h"
 #include "pg_yb_utils.h"
@@ -2150,10 +2151,14 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
 	char	   *yb_client_cert = NULL;
+	char	   *yb_server_cert_hash_b64 = NULL;
 	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
 	bool		yb_is_control_conn = false;
+	bool		yb_ycm_internal_end_seen = false;
+	char	   *yb_ycm_reserved_startup_setting = NULL;
 
+retry:
 	pq_startmsgread();
 
 	/*
@@ -2283,7 +2288,16 @@ retry1:
 		 * another SSL negotiation request, and a GSS request should only
 		 * follow if SSL was rejected (client may negotiate in either order)
 		 */
-		return ProcessStartupPacket(port, true, SSLok == 'S');
+		ssl_done = true;
+		if (SSLok == 'S')
+		{
+			/*
+			 * We are done with SSL and negotiated correctly, so consider the
+			 * same for GSS.
+			 */
+			gss_done = true;
+		}
+		goto retry;
 	}
 	else if (proto == NEGOTIATE_GSS_CODE && !gss_done)
 	{
@@ -2327,7 +2341,16 @@ retry1:
 		 * another GSS negotiation request, and an SSL request should only
 		 * follow if GSS was rejected (client may negotiate in either order)
 		 */
-		return ProcessStartupPacket(port, GSSok == 'G', true);
+		gss_done = true;
+		if (GSSok == 'G')
+		{
+			/*
+			 * We are done with GSS and negotiated correctly, so consider the
+			 * same for SSL.
+			 */
+			ssl_done = true;
+		}
+		goto retry;
 	}
 
 	/* Could add additional special packet types here */
@@ -2393,6 +2416,33 @@ retry1:
 			if (valoffset >= len)
 				break;			/* missing value, will complain below */
 			valptr = buf + valoffset;
+
+			/*
+			 * YB: The connection manager writes its reserved parameters,
+			 * then the end marker, then the logical client's parameters.
+			 * A reserved name after the marker came from the client.
+			 * Check the env var rather than IsYugaByteEnabled(), which is
+			 * false on a backend's first startup packet, as pggate isn't
+			 * initialized until after that packet is processed.
+			 */
+			if (YBIsEnabledInPostgresEnvVar() &&
+				YbIsConnMgrReservedStartupParameter(nameptr))
+			{
+				if (yb_ycm_internal_end_seen)
+				{
+					/* Reported once the whole packet is read, see below. */
+					if (yb_ycm_reserved_startup_setting == NULL)
+						yb_ycm_reserved_startup_setting = pstrdup(nameptr);
+					offset = valoffset + strlen(valptr) + 1;
+					continue;
+				}
+				else if (strcmp(nameptr, YB_YCM_INTERNAL_END) == 0)
+				{
+					yb_ycm_internal_end_seen = true;
+					offset = valoffset + strlen(valptr) + 1;
+					continue;
+				}
+			}
 
 			if (strcmp(nameptr, "database") == 0)
 				port->database_name = pstrdup(valptr);
@@ -2483,6 +2533,9 @@ retry1:
 					 && strcmp(nameptr, YB_YCM_CLIENT_CERT) == 0)
 				yb_client_cert = pstrdup(valptr);
 			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, YB_YCM_SERVER_CERT_HASH) == 0)
+				yb_server_cert_hash_b64 = pstrdup(valptr);
+			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
 			{
 				yb_internal_conn_kind = YbLookupInternalConnKindByName(valptr);
@@ -2567,6 +2620,39 @@ retry1:
 		port->yb_is_auth_passthrough_req;
 
 	/*
+	 * YB: Packets that carry the logical client's parameters must have the
+	 * end marker, otherwise those parameters can't be told apart from the
+	 * connection manager's.  A reserved name after the marker came from the
+	 * logical client.
+	 *
+	 * In auth passthrough, fail only the logical connection, as a failed auth
+	 * does, so the shared control backend stays up.  Reserved names in
+	 * "options" are checked when it's applied, in process_postgres_switches().
+	 */
+	if ((yb_is_auth_via_conn_mgr && !yb_ycm_internal_end_seen) ||
+		yb_ycm_reserved_startup_setting != NULL)
+	{
+		bool		yb_auth_passthrough = YbIsAuthPassthroughInProgress(port);
+
+		if (yb_auth_passthrough)
+		{
+			YbSendFatalForLogicalConnectionPacket();
+			port->yb_has_auth_passthrough_finished = true;
+		}
+		if (!yb_ycm_internal_end_seen)
+			ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("startup packet from the connection manager has "
+							"no \"%s\" marker", YB_YCM_INTERNAL_END)));
+		else
+			ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("startup parameter \"%s\" is reserved for the "
+							"connection manager",
+							yb_ycm_reserved_startup_setting)));
+	}
+
+	/*
 	 * YB: Connection Manager's auth-passthrough control backends are long-lived
 	 * pooled backends that authenticate external clients via the 'A' packet
 	 * flow. Both CM auth backends and CM auth-passthrough control backends use
@@ -2623,6 +2709,39 @@ retry1:
 
 			port->yb_is_ssl_enabled_in_logical_conn =
 				yb_logical_conn_type == 'E';
+		}
+
+		if (yb_server_cert_hash_b64 != NULL)
+		{
+			int			b64len = strlen(yb_server_cert_hash_b64);
+			int			hashlen;
+			char	   *decoded;
+
+			/*
+			 * Like the client certificate, only the connection manager may
+			 * state which certificate it presented to the logical client;
+			 * SCRAM channel binding is checked against it.
+			 */
+			if (!yb_is_auth_via_conn_mgr)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("%s must only be provided when the client is "
+								"the connection manager",
+								YB_YCM_SERVER_CERT_HASH)));
+
+			decoded = palloc(pg_b64_dec_len(b64len));
+			hashlen = pg_b64_decode(yb_server_cert_hash_b64, b64len, decoded,
+									pg_b64_dec_len(b64len));
+			if (hashlen <= 0 || hashlen > YB_SERVER_CERT_HASH_MAX_LEN)
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid value for parameter \"%s\"",
+								YB_YCM_SERVER_CERT_HASH)));
+
+			memcpy(port->yb_logical_conn_server_cert_hash, decoded, hashlen);
+			port->yb_logical_conn_server_cert_hash_len = hashlen;
+			pfree(decoded);
+			pfree(yb_server_cert_hash_b64);
 		}
 
 		if (yb_client_cert != NULL)
@@ -4996,6 +5115,7 @@ BackendInitialize(Port *port)
 	port->yb_is_tserver_auth_method = false;
 	port->yb_is_ssl_enabled_in_logical_conn = false;
 	port->yb_forwarded_cert_parse_failed = false;
+	port->yb_logical_conn_server_cert_hash_len = 0;
 
 	/*
 	 * Initialize libpq and enable reporting of ereport errors to the client.

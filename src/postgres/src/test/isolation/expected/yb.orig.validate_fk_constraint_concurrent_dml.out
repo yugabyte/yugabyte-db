@@ -1,0 +1,240 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_validate s2_commit s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_validate: ALTER TABLE child VALIDATE CONSTRAINT child_fk;
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk', 'noaction_fk')
+    ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+  SELECT * FROM noaction ORDER BY id;
+
+conname    |convalidated
+-----------+------------
+child_fk   |t           
+noaction_fk|f           
+orphan_fk  |f           
+(3 rows)
+
+id|pid
+--+---
+ 1|  1
+(1 row)
+
+id|pid
+--+---
+ 1|  3
+(1 row)
+
+
+starting permutation: s2_begin s2_delete s1_begin_rr s1_validate s2_commit s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rr: BEGIN ISOLATION LEVEL REPEATABLE READ;
+step s1_validate: ALTER TABLE child VALIDATE CONSTRAINT child_fk;
+step s2_commit: COMMIT;
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk', 'noaction_fk')
+    ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+  SELECT * FROM noaction ORDER BY id;
+
+conname    |convalidated
+-----------+------------
+child_fk   |t           
+noaction_fk|f           
+orphan_fk  |f           
+(3 rows)
+
+id|pid
+--+---
+ 1|  1
+(1 row)
+
+id|pid
+--+---
+ 1|  3
+(1 row)
+
+
+starting permutation: s2_begin s2_delete s1_begin_rc s1_validate s2_rollback s1_commit s1_check
+step s2_begin: BEGIN;
+step s2_delete: DELETE FROM parent WHERE id = 2;
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_validate: ALTER TABLE child VALIDATE CONSTRAINT child_fk;
+step s2_rollback: ROLLBACK;
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk', 'noaction_fk')
+    ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+  SELECT * FROM noaction ORDER BY id;
+
+conname    |convalidated
+-----------+------------
+child_fk   |t           
+noaction_fk|f           
+orphan_fk  |f           
+(3 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+
+id|pid
+--+---
+ 1|  3
+(1 row)
+
+
+starting permutation: s1_begin_rc s1_validate_orphan s1_commit s1_check
+step s1_begin_rc: BEGIN ISOLATION LEVEL READ COMMITTED;
+step s1_validate_orphan: ALTER TABLE orphan VALIDATE CONSTRAINT orphan_fk;
+ERROR:  insert or update on table "orphan" violates foreign key constraint "orphan_fk"
+step s1_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk', 'noaction_fk')
+    ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+  SELECT * FROM noaction ORDER BY id;
+
+conname    |convalidated
+-----------+------------
+child_fk   |f           
+noaction_fk|f           
+orphan_fk  |f           
+(3 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+
+id|pid
+--+---
+ 1|  3
+(1 row)
+
+
+starting permutation: s2_begin s2_ins_noaction s1_begin s1_validate_noaction s2_ins_noaction_bad s1_commit s2_commit s1_check
+step s2_begin: BEGIN;
+step s2_ins_noaction: INSERT INTO noaction VALUES (100, 3);
+step s1_begin: BEGIN;
+step s1_validate_noaction: 
+  ALTER TABLE noaction VALIDATE CONSTRAINT noaction_fk;
+
+step s2_ins_noaction_bad: INSERT INTO noaction VALUES (101, 99);
+ERROR:  insert or update on table "noaction" violates foreign key constraint "noaction_fk"
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk', 'noaction_fk')
+    ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+  SELECT * FROM noaction ORDER BY id;
+
+conname    |convalidated
+-----------+------------
+child_fk   |f           
+noaction_fk|t           
+orphan_fk  |f           
+(3 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+
+id|pid
+--+---
+ 1|  3
+(1 row)
+
+
+starting permutation: s2_begin s1_begin s1_validate_noaction s2_del_referenced s1_commit s2_commit s1_check
+step s2_begin: BEGIN;
+step s1_begin: BEGIN;
+step s1_validate_noaction: 
+  ALTER TABLE noaction VALIDATE CONSTRAINT noaction_fk;
+
+step s2_del_referenced: DELETE FROM parent WHERE id = 3;
+ERROR:  update or delete on table "parent" violates foreign key constraint "noaction_fk" on table "noaction"
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk', 'noaction_fk')
+    ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+  SELECT * FROM noaction ORDER BY id;
+
+conname    |convalidated
+-----------+------------
+child_fk   |f           
+noaction_fk|t           
+orphan_fk  |f           
+(3 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+
+id|pid
+--+---
+ 1|  3
+(1 row)
+
+
+starting permutation: s2_begin s1_begin s1_no_bnl s1_validate_noaction s2_del_referenced s1_commit s2_commit s1_check
+step s2_begin: BEGIN;
+step s1_begin: BEGIN;
+step s1_no_bnl: SET LOCAL yb_enable_batchednl = off;
+step s1_validate_noaction: 
+  ALTER TABLE noaction VALIDATE CONSTRAINT noaction_fk;
+
+step s2_del_referenced: DELETE FROM parent WHERE id = 3; <waiting ...>
+step s1_commit: COMMIT;
+step s2_del_referenced: <... completed>
+ERROR:  update or delete on table "parent" violates foreign key constraint "noaction_fk" on table "noaction"
+step s2_commit: COMMIT;
+step s1_check: 
+  SELECT conname, convalidated FROM pg_constraint
+    WHERE conname IN ('child_fk', 'orphan_fk', 'noaction_fk')
+    ORDER BY conname;
+  SELECT * FROM child ORDER BY id;
+  SELECT * FROM noaction ORDER BY id;
+
+conname    |convalidated
+-----------+------------
+child_fk   |f           
+noaction_fk|t           
+orphan_fk  |f           
+(3 rows)
+
+id|pid
+--+---
+ 1|  1
+ 2|  2
+(2 rows)
+
+id|pid
+--+---
+ 1|  3
+(1 row)
+

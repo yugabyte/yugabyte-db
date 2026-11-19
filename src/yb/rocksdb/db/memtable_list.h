@@ -204,7 +204,8 @@ class MemTableList {
 
   // Returns the earliest memtables that needs to be flushed. The returned
   // memtables are guaranteed to be in the ascending order of created time.
-  void PickMemtablesToFlush(autovector<MemTable*>* mems,
+  // On filter failure, rolls back all selections and returns the error with mems empty.
+  Status PickMemtablesToFlush(autovector<MemTable*>* mems,
                             const MemTableFilter& filter = MemTableFilter(),
                             const MutableCFOptions* mutable_cf_options = nullptr);
 

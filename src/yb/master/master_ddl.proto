@@ -389,6 +389,21 @@ message GetBackfillStatusResponsePB {
   repeated IndexStatusPB index_status = 2;
 }
 
+message StartTableBackfillRequestPB {
+  optional TableIdentifierPB source_table = 1;
+  optional uint32 target_table_oid = 2;
+  optional uint32 transform_fn_oid = 3;
+  // Lower bound for the read time. The master reads at the max of this and the source tablets'
+  // safe times, because the client's clock cannot bound the commit times tablet leaders assign.
+  optional uint64 backfill_timestamp = 4;
+  optional int64 pg_job_id = 5;
+}
+
+message StartTableBackfillResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+
 // Delete table request (including index table).
 message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
@@ -921,6 +936,9 @@ service MasterDdl {
           returns (LaunchBackfillIndexForTableResponsePB);
   rpc GetBackfillJobs(GetBackfillJobsRequestPB) returns (GetBackfillJobsResponsePB);
   rpc GetBackfillStatus(GetBackfillStatusRequestPB) returns (GetBackfillStatusResponsePB);
+
+  rpc StartTableBackfill(StartTableBackfillRequestPB)
+      returns (StartTableBackfillResponsePB);
 
   rpc DeleteTable(DeleteTableRequestPB) returns (DeleteTableResponsePB);
   rpc IsDeleteTableDone(IsDeleteTableDoneRequestPB) returns (IsDeleteTableDoneResponsePB);

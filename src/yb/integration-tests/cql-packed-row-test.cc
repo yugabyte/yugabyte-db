@@ -102,6 +102,7 @@ TEST_F(CqlPackedRowTest, Collections) {
   value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT v1, v2, v3 FROM t WHERE key = 1"));
   ASSERT_EQ(value, "nine,[seven, eight],six");
 
+  ASSERT_OK(WaitAllPeersApplied(cluster_.get()));
   ASSERT_OK(cluster_->CompactTablets());
 
   value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT v1, v2, v3 FROM t WHERE key = 1"));

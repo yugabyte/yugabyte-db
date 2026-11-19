@@ -2584,7 +2584,12 @@ Status Executor::ProcessOpStatus(const PTDmlStmt* stmt,
   }
 
   // If we got an error we need to manually produce a result in the op.
-  if (stmt->IsWriteOp() && stmt->returns_status()) {
+  // For a single statement, schema version mismatch is not reported as status, so the statement
+  // is retried instead. Batches keep reporting it, since other ops of the batch may have been
+  // applied and retrying the whole batch would re-execute them.
+  if (stmt->IsWriteOp() && stmt->returns_status() &&
+      (IsReturnsStatusBatch() ||
+       resp.status() != QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH)) {
     std::vector<ColumnSchema> columns;
     const auto& schema = stmt->table()->schema();
     columns.reserve(stmt->table()->schema().num_columns() + 2);

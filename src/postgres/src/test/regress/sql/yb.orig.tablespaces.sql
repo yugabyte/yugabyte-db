@@ -35,6 +35,9 @@ CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_block
 -- Sum of min_num_replicas greater than num_replicas.
 CREATE TABLESPACE y WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":2}]}');
 
+-- max_num_replicas cannot be combined with a wildcard placement block.
+CREATE TABLESPACE x WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":2,"max_num_replicas":2},{"cloud":"cloud1","region":"r1","zone":"*","min_num_replicas":1}]}');
+
 -- Positive cases
 -- Tablespace without replica_placement option.
 CREATE TABLESPACE x LOCATION '/data';
@@ -53,6 +56,7 @@ CREATE TABLESPACE wildcard_region_ts WITH (replica_placement='{"num_replicas":3,
 
 -- wildcard zone
 CREATE TABLESPACE wildcard_zone_ts WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone": "*","min_num_replicas":3}]}');
+ALTER TABLESPACE wildcard_zone_ts SET (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone": "*","min_num_replicas":3,"max_num_replicas":3}]}');
 
 -- describe command
 \db
@@ -473,9 +477,10 @@ CREATE TABLESPACE storage_tier_ts WITH (replica_placement='{"num_replicas":1, "s
 CREATE TABLESPACE storage_tier_ts2 WITH (replica_placement='{"num_replicas":1, "storage_tier":"ssd", "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts';
 SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'storage_tier_ts2';
+-- Placement checks the tier. This cluster's data dirs are unlabeled, so every tserver is on ssd:
+-- a table in the hdd tablespace has no tserver to go to and is rejected, the ssd one is created.
 CREATE TABLE storage_tier_tab (i int) TABLESPACE storage_tier_ts;
 CREATE TABLE storage_tier_tab2 (i int) TABLESPACE storage_tier_ts2;
-DROP TABLE storage_tier_tab;
 DROP TABLE storage_tier_tab2;
 DROP TABLESPACE storage_tier_ts;
 DROP TABLESPACE storage_tier_ts2;

@@ -75,7 +75,7 @@ $body$;
 
 Notice the use of the _assert_ statement to self-test an alternative definition of the model that works only for the `=` comparison.
 
-Sanity-check the model by rewriting the code example in the [parent section](../../interval-arithmetic#the-interval-interval-overload-of-the-operator):
+Sanity-check the model by rewriting the code example in the [parent section](../../interval-arithmetic/#the-interval-interval-overload-of-the-operator):
 
 ```plpgsql
 select

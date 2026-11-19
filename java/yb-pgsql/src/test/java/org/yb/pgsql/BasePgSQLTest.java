@@ -206,16 +206,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "appear in stats or monitoring/observability methods. Since the client is unaware of " +
         "this statement, the test fails.";
 
-  protected static final String DIFF_BACKEND_TYPE_PG_STAT_ACTIVITY =
-      "Skipping this test with Connection Manager enabled. In pg_stat_activity table, the " +
-        "backend type column shows 'yb-conn-mgr worker connection' instead of 'client-backend'." +
-        "Additionally, there is no guarantee that each logical connection will create a unique " +
-        "backend with Connection Manager, so the expected number of rows in the table may not " +
-        "match the number of connections created. Furthermore, the query column in the table " +
-        "typically displays a RESET ALL statement if the backend is used to execute any query " +
-        "with Connection Manager. Since this test heavily relies on the output of " +
-        "pg_stat_activity, we are skipping it.";
-
   protected static final String INCORRECT_CONN_STATE_BEHAVIOR =
       "Skipping this test with Connection Manager enabled. The connections may not be in the " +
         "expected state due to the way physical connections are attached and detached from " +
@@ -245,11 +235,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     ROUND_ROBIN
   }
 
-  protected static ConnectionManagerWarmupMode warmupMode = ConnectionManagerWarmupMode.RANDOM;
+  private static final ConnectionManagerWarmupMode WARMUP_MODE_DEFAULT =
+      ConnectionManagerWarmupMode.RANDOM;
+  protected static ConnectionManagerWarmupMode warmupMode = WARMUP_MODE_DEFAULT;
 
   protected static final int CONN_MGR_WARMUP_BACKEND_COUNT = 3;
 
-  protected static boolean ysql_conn_mgr_superuser_sticky = false;
+  private static final boolean SUPERUSER_STICKY_DEFAULT = false;
+  protected static boolean ysql_conn_mgr_superuser_sticky = SUPERUSER_STICKY_DEFAULT;
 
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
@@ -612,6 +605,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   public void cleanUpAfter() throws Exception {
     LOG.info("Cleaning up after {}", getCurrentTestMethodName());
     markClusterNeedsRecreation();
+  }
+
+  /*
+   * The cluster recreated for the next test method is built from these statics, which the
+   * *AndRestartCluster helpers change. Kept apart from cleanUpAfter, which subclasses override.
+   */
+  @After
+  public void resetClusterCustomizations() {
+    warmupMode = WARMUP_MODE_DEFAULT;
+    ysql_conn_mgr_superuser_sticky = SUPERUSER_STICKY_DEFAULT;
   }
 
   public String formatPGId(String str) {
@@ -2296,7 +2299,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /** UUID of the first table with specified name. **/
-  private String getTableUUID(String tableName)  throws Exception {
+  protected String getTableUUID(String tableName)  throws Exception {
     for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table :
         miniCluster.getClient().getTablesList().getTableInfoList()) {
       if (table.getName().equals(tableName)) {

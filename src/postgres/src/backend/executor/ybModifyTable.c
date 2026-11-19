@@ -28,6 +28,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/yb_scan_plan.h"
 #include "access/yb_target.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -38,6 +39,7 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_db_role_setting_d.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_parameter_acl_d.h"
 #include "catalog/pg_replication_origin_d.h"
 #include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_subscription_d.h"
@@ -103,6 +105,10 @@ YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo)
 	return !has_indices && !has_triggers;
 }
 
+/*
+ * Returns whether the planned statement may use the single-shard transaction
+ * fast path.
+ */
 bool
 YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 {
@@ -111,10 +117,27 @@ YbIsSingleRowModifyTxnPlanned(PlannedStmt *pstmt, EState *estate)
 
 	Assert(ActivePortal);
 
-	return ActivePortal->stmts->length == 1 &&
-		YBCIsSingleRowModify(pstmt) &&
-		(pstmt->commandType == CMD_UPDATE ||
-		 YBCIsSingleRowTxnCapableRel((ResultRelInfo *) linitial(estate->es_opened_result_relations)));
+	if (ActivePortal->stmts->length != 1 || !YBCIsSingleRowModify(pstmt))
+		return false;
+	if (pstmt->commandType == CMD_UPDATE)
+		return true;
+
+	ResultRelInfo *resultRelInfo =
+		(ResultRelInfo *) linitial(estate->es_opened_result_relations);
+
+	if (!YBCIsSingleRowTxnCapableRel(resultRelInfo))
+		return false;
+
+	/*
+	 * The single-shard fast path requires the modification to be performed by
+	 * one write request.  Without IOC pushdown, ON CONFLICT performs a separate
+	 * conflict read, so it must use a distributed transaction instead.
+	 */
+	if (castNode(ModifyTable, pstmt->planTree)->onConflictAction == ONCONFLICT_NOTHING &&
+		!resultRelInfo->ri_ybUseIocPushdown)
+		return false;
+
+	return true;
 }
 
 /*
@@ -152,6 +175,9 @@ YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
  * Note that if the relation has a DocDB RowId attribute, this will generate a new RowId value
  * meaning the ybctid will be unique. Therefore you should only use this if the relation has
  * a primary key or you're doing an insert.
+ *
+ * Return 0 if a key value of a single row UPDATE or DELETE doesn't fit in its
+ * column's type: it matches no row, so the caller skips the write.
  */
 Datum
 YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
@@ -181,10 +207,38 @@ YBCComputeYBTupleIdFromSlot(Relation rel, TupleTableSlot *slot)
 		{
 			Oid			type_id = TupleDescAttr(slot->tts_tupleDescriptor,
 												attnum - 1)->atttypid;
+			Oid			col_type_id = TupleDescAttr(RelationGetDescr(rel),
+													attnum - 1)->atttypid;
+
+			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
+
+			/*
+			 * A key value of a single row UPDATE or DELETE can be an integer
+			 * of another width than its column (yb_single_row_key_value in
+			 * createplan.c):
+			 * (1) If the column's type can hold it, bind it with the column's
+			 *     type, as YbBindColumn does for scan keys: an integer has the
+			 *     same Datum at every width.
+			 * (2) Otherwise, it matches no row: return 0.
+			 * The planner checks YbIsScanCompatible too, but a value of another
+			 * type can still get here, such as through an expression index.
+			 */
+			if (type_id != col_type_id &&
+				YbIsScanCompatible(getBaseType(col_type_id), type_id,
+								   false /* is_value_scalar */ , (Datum) 0))
+			{
+				if (!next_attr->is_null &&
+					YbIsValueOutOfRange(getBaseType(col_type_id), type_id,
+										next_attr->datum))
+				{
+					pfree(descr);
+					return (Datum) 0;
+				}
+				type_id = col_type_id;
+			}
 
 			next_attr->type_entity = YbDataTypeFromOidMod(attnum, type_id);
 			next_attr->collation_id = ybc_get_attcollation(RelationGetDescr(rel), attnum);
-			next_attr->datum = slot_getattr(slot, attnum, &next_attr->is_null);
 		}
 		else if (attnum == YBRowIdAttributeNumber)
 		{
@@ -303,6 +357,9 @@ YBCExecWriteStmt(YbcPgStatement ybc_stmt,
 				   relid == SubscriptionRelationId ||
 				   relid == SubscriptionObjectIndexId ||
 				   relid == SubscriptionNameIndexId ||
+				   relid == ParameterAclRelationId ||
+				   relid == ParameterAclParnameIndexId ||
+				   relid == ParameterAclOidIndexId ||
 
 				   relid == DatabaseNameIndexId ||
 				   relid == SharedSecLabelRelationId ||
@@ -322,7 +379,8 @@ YBCApplyInsertRow(YbcPgStatement insert_stmt,
 				  TupleTableSlot *slot,
 				  OnConflictAction onConflictAction,
 				  Datum *ybctid,
-				  YbcPgTransactionSetting transaction_setting)
+				  YbcPgTransactionSetting transaction_setting,
+				  bool add_fk_reference_cache)
 {
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
 	AttrNumber	minattr = YBGetFirstLowInvalidAttributeNumber(rel);
@@ -407,8 +465,10 @@ YBCApplyInsertRow(YbcPgStatement insert_stmt,
 		HandleYBStatus(YBCPgInsertStmtSetUpsertMode(insert_stmt));
 	}
 
-	/* Add row into foreign key cache */
-	if (transaction_setting != YB_SINGLE_SHARD_TRANSACTION)
+	/*
+	 * Add row into foreign key cache.
+	 */
+	if (add_fk_reference_cache && transaction_setting != YB_SINGLE_SHARD_TRANSACTION)
 		YBCPgAddIntoForeignKeyReferenceCache(relfileNodeId,
 											 TABLETUPLE_YBCTID(slot));
 
@@ -425,11 +485,42 @@ YBCExecuteInsertInternal(Oid dboid,
 						 Datum *ybctid,
 						 YbcPgTransactionSetting transaction_setting)
 {
+	uint64_t backfill_time = yb_backfill_timestamp;
+
+	if (backfill_time != 0)
+		transaction_setting = YB_NON_TRANSACTIONAL;
+
 	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting);
 
-	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction, ybctid, transaction_setting);
+	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction, ybctid,
+					  transaction_setting, true /* add_fk_reference_cache */ );
+
+	if (backfill_time != 0)
+	{
+		HandleYBStatus(YBCPgInsertStmtSetIsBackfill(insert_stmt,
+													true /* is_backfill */ ));
+		HandleYBStatus(YBCPgInsertStmtSetWriteTime(insert_stmt, backfill_time));
+	}
 	/* Execute the insert */
 	YBCApplyWriteStmt(insert_stmt, rel);
+}
+
+static YbcPgOnConflictAction
+YbToPgsqlOnConflictAction(OnConflictAction action)
+{
+	switch (action)
+	{
+		case ONCONFLICT_NONE:
+			return YB_PG_ON_CONFLICT_NONE;
+		case ONCONFLICT_NOTHING:
+			return YB_PG_ON_CONFLICT_NOTHING;
+		case ONCONFLICT_UPDATE:
+			return YB_PG_ON_CONFLICT_UPDATE;
+		default:
+			break;
+	}
+	elog(ERROR, "Unexpected ON CONFLICT action for pushdown: %d", (int) action);
+	pg_unreachable();
 }
 
 void
@@ -463,6 +554,77 @@ YBCFixTransactionSetting(Relation rel,
 		!IsSystemRelation(rel) && yb_disable_transactional_writes)
 		return YB_NON_TRANSACTIONAL;
 	return transaction_setting;
+}
+
+/*
+ * YB: Execute a single INSERT ... ON CONFLICT DO NOTHING with conflict
+ * resolution pushed to DocDB.  Executes the op non-bufferably (required to read
+ * the response synchronously).  Returns true if DocDB inserted the row, and
+ * false if DocDB skipped it because a conflicting row already existed.
+ */
+bool
+YBCExecuteIocPushdown(Relation rel,
+					  TupleTableSlot *slot,
+					  EState *estate,
+					  OnConflictAction onConflictAction)
+{
+	Oid			dboid = YBCGetDatabaseOid(rel);
+
+	YbcPgTransactionSetting transaction_setting =
+		estate->yb_es_is_single_row_modify_txn ?
+		YB_SINGLE_SHARD_TRANSACTION :
+		YB_TRANSACTIONAL;
+
+	transaction_setting = YBCFixTransactionSetting(rel, transaction_setting);
+
+	Assert(!YBRelHasSecondaryIndices(rel));
+
+	if (onConflictAction != ONCONFLICT_NOTHING)
+		elog(ERROR, "unsupported ON CONFLICT action for pushdown: %d",
+			 (int) onConflictAction);
+
+	MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting);
+	int			rows_affected_count = 0;
+	YbcPgOnConflictOutcome outcome = YB_PG_ON_CONFLICT_OUTCOME_UNKNOWN;
+
+
+	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction,
+					  NULL /* ybctid */ , transaction_setting,
+					  false /* add_fk_reference_cache */ );
+
+	HandleYBStatus(YBCPgInsertStmtSetOnConflictAction(insert_stmt,
+													  YbToPgsqlOnConflictAction(onConflictAction)));
+
+	/*
+	 * Passing a non-NULL rows_affected_count forces the op non-bufferable
+	 * (see PgApiImpl::DmlExecWriteOp), so the response is available here.
+	 * DocDB reports 1 for an insert and 0 for a skipped duplicate.
+	 */
+	YBCExecWriteStmt(insert_stmt, rel, &rows_affected_count);
+	HandleYBStatus(YBCPgDmlGetOnConflictOutcome(insert_stmt, &outcome));
+	YBCPgDeleteStatement(insert_stmt);
+
+	MemoryContextSwitchTo(oldContext);
+
+	switch (outcome)
+	{
+		case YB_PG_ON_CONFLICT_OUTCOME_INSERTED:
+			/*
+			 * TODO: Add the row to the foreign key reference cache when tables
+			 * referenced by foreign keys become eligible for pushdown.
+			 */
+			return true;
+		case YB_PG_ON_CONFLICT_OUTCOME_SKIPPED:
+			return false;
+		case YB_PG_ON_CONFLICT_OUTCOME_UPDATED:
+			elog(ERROR, "unexpected ON CONFLICT DO UPDATE outcome from pushdown");
+			break;
+		case YB_PG_ON_CONFLICT_OUTCOME_UNKNOWN:
+			elog(ERROR, "no ON CONFLICT outcome in pushed-down insert response");
+			break;
+	}
+	pg_unreachable();
 }
 
 void
@@ -548,7 +710,8 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 		YBCApplyInsertRow(blockInsertStmt, resultRelationDesc, slot,
 						  onConflictAction, NULL /* ybctid */ ,
 						  YBCFixTransactionSetting(resultRelationDesc,
-												   transaction_setting));
+												   transaction_setting),
+						  true /* add_fk_reference_cache */ );
 		return;
 	}
 
@@ -565,13 +728,73 @@ YBCHeapInsert(ResultRelInfo *resultRelInfo,
 						  NULL /* ybctid */ , transaction_setting);
 }
 
+/*
+ * Complete the IOC pushdown eligibility check in the executor, where metadata
+ * for the opened target relation is available.
+ *
+ * Restricting the arbiter to the primary key and disallowing secondary indexes
+ * ensures that DocDB can resolve the conflict in the insert write without
+ * requiring separate index maintenance by the executor.
+ */
+static bool
+YbIsIocPushdownCapableRel(ResultRelInfo *resultRelInfo, ModifyTable *node)
+{
+	Relation rel = resultRelInfo->ri_RelationDesc;
+	Oid pk_oid;
+
+	if (!IsYBRelation(rel) ||
+		IsCatalogRelation(rel) ||
+		rel->rd_rel->relkind != RELKIND_RELATION ||
+		YBRelHasSecondaryIndices(rel) ||
+		(resultRelInfo->ri_TrigDesc &&
+		 resultRelInfo->ri_TrigDesc->numtriggers > 0))
+		return false;
+
+	pk_oid = RelationGetPrimaryKeyIndex(rel);
+	if (!OidIsValid(pk_oid))
+		return false;
+
+	return (node->arbiterIndexes == NIL ||
+			(list_length(node->arbiterIndexes) == 1 &&
+			 linitial_oid(node->arbiterIndexes) == pk_oid));
+}
+
+/*
+ * Resolve the planner hint into an execution strategy for this result
+ * relation.  Pushdown replaces the PostgreSQL-side conflict check, so read
+ * batching and index-only conflict reads apply only when pushdown is not used.
+ * On that fallback path, batching and index-only reads are independent.
+ */
+void
+YbInitIocStrategy(ResultRelInfo *resultRelInfo, ModifyTable *node,
+				  int batch_size)
+{
+	Assert(node->operation == CMD_INSERT);
+
+	if (node->ybInsertOnConflictPushdownPossible &&
+		YbIsIocPushdownEnabled(node->onConflictAction) &&
+		YbIsIocPushdownCapableRel(resultRelInfo, node))
+	{
+		resultRelInfo->ri_ybUseIocPushdown = true;
+		return;
+	}
+
+	if (YbIsInsertOnConflictReadBatchingPossible(resultRelInfo, batch_size))
+		resultRelInfo->ri_ybIocBatchingPossible = true;
+
+	if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+		node->onConflictAction == ONCONFLICT_NOTHING)
+		resultRelInfo->ri_ybUseIndexOnlyScanForIocRead = true;
+}
+
 bool
-YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo)
+YbIsInsertOnConflictReadBatchingPossible(ResultRelInfo *resultRelInfo,
+										 int batch_size)
 {
 	/*
 	 * TODO(jason): figure out how to enable triggers.
 	 */
-	if (yb_insert_on_conflict_read_batch_size == 0 ||
+	if (batch_size == 0 ||
 		!IsYBRelation(resultRelInfo->ri_RelationDesc) ||
 		IsCatalogRelation(resultRelInfo->ri_RelationDesc) ||
 		(resultRelInfo->ri_TrigDesc &&
@@ -765,6 +988,18 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
 
+	/*
+	 * YB: During an online schema change backfill, an insert into a user index
+	 * must be a backfill write at the backfill time like the base-table
+	 * insert: one batch cannot mix transactional and non-transactional
+	 * ops.  This covers every index access method that reaches here.
+	 */
+	uint64_t	osc_backfill_time = yb_backfill_timestamp;
+
+	if (backfill_write_time == NULL && osc_backfill_time != 0 &&
+		!IsSystemRelation(index))
+		backfill_write_time = &osc_backfill_time;
+
 	const bool	is_backfill = (backfill_write_time != NULL);
 	const bool	is_non_distributed_txn_write = (is_backfill ||
 												(!IsSystemRelation(index) &&
@@ -809,6 +1044,7 @@ YBCExecuteDelete(Relation rel,
 				 bool target_tuple_fetched,
 				 YbcPgTransactionSetting transaction_setting,
 				 bool changingPart,
+				 bool persist_missing_row,
 				 EState *estate)
 {
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
@@ -819,6 +1055,9 @@ YBCExecuteDelete(Relation rel,
 
 	YbcPgStatement delete_stmt = YbNewDelete(rel, transaction_setting);
 
+	if (persist_missing_row)
+		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt, true));
+
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
 	 *
@@ -828,7 +1067,16 @@ YBCExecuteDelete(Relation rel,
 	if (target_tuple_fetched)
 		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
+	{
 		ybctid = YBCComputeYBTupleIdFromSlot(rel, planSlot);
+
+		/* A key value too wide for its column matches no row. */
+		if (ybctid == 0)
+		{
+			YBCPgDeleteStatement(delete_stmt);
+			return false;
+		}
+	}
 
 	if (ybctid == 0)
 	{
@@ -913,9 +1161,15 @@ YBCExecuteDelete(Relation rel,
 		}
 	}
 
+	/*
+	 * Asking for the affected-row count makes the write non-bufferable.  A
+	 * blind tombstone is written whether or not the row exists, so the count
+	 * is meaningless for it.
+	 */
 	YBCExecWriteStmt(delete_stmt,
 					 rel,
-					 target_tuple_fetched ? NULL : &rows_affected_count);
+					 (target_tuple_fetched || persist_missing_row) ?
+					 NULL : &rows_affected_count);
 
 	/*
 	 * Fetch values of the columns required to evaluate returning clause
@@ -975,6 +1229,7 @@ YBCExecuteDeleteIndex(Relation index,
 					  Datum *values,
 					  bool *isnull,
 					  Datum ybctid,
+					  bool persist_missing_row,
 					  yb_bind_for_write_function callback,
 					  void *indexstate)
 {
@@ -997,11 +1252,88 @@ YBCExecuteDeleteIndex(Relation index,
 	 * deletes when indisready is false.
 	 * TODO(jason): consider how this will unnecessarily cause deletes to be
 	 * persisted when online dropping an index (issue #4936).
+	 *
+	 * persist_missing_row forces the same for a valid index: the capture
+	 * trigger's tombstone must hide a backfill write of the entry at an
+	 * earlier hybrid time that has not landed yet.
 	 */
-	if (!*YBCGetGFlags()->ysql_disable_index_backfill && !index->rd_index->indisvalid)
+	if (persist_missing_row ||
+		(!*YBCGetGFlags()->ysql_disable_index_backfill && !index->rd_index->indisvalid))
 		HandleYBStatus(YBCPgDeleteStmtSetIsPersistNeeded(delete_stmt, true));
 
 	YBCApplyWriteStmt(delete_stmt, index);
+}
+
+/*
+ * YbExecInsertRow -- insert one row into a table and its indexes.
+ *
+ * Checks NOT NULL and CHECK constraints, like ExecInsert, but without a
+ * ModifyTable node: no RETURNING, ON CONFLICT, partition routing or row
+ * triggers.  Stored generated columns are not computed; the slot must already
+ * hold their values.  Primary key and unique index violations are raised by
+ * DocDB when the buffered writes are flushed, not by this call.
+ */
+void
+YbExecInsertRow(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
+				EState *estate)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	if (RelationGetDescr(rel)->constr)
+		ExecConstraints(resultRelInfo, slot, estate, NULL /* mtstate */ );
+
+	YBCExecuteInsert(rel, slot, ONCONFLICT_NONE);
+
+	if (resultRelInfo->ri_NumIndices > 0)
+		ExecInsertIndexTuples(resultRelInfo, slot, estate,
+							  false /* update */ ,
+							  false /* noDupErr */ ,
+							  NULL /* specConflict */ ,
+							  NIL /* arbiterIndexes */ );
+}
+
+/*
+ * YbExecBlindDeleteRow -- write tombstones for one row of a table and its
+ * index entries, whether or not the row exists.
+ *
+ * The base ybctid and the index keys are computed from the slot's values, not
+ * read by a scan, so this requires a table with a primary key.  The tombstones
+ * are persisted even for a missing row, so that they hide a backfill write of
+ * the row at an earlier hybrid time that has not landed yet.
+ */
+void
+YbExecBlindDeleteRow(ResultRelInfo *resultRelInfo, TupleTableSlot *slot,
+					 EState *estate)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	Assert(OidIsValid(RelationGetPrimaryKeyIndex(rel)));
+
+	slot_getallattrs(slot);
+
+	/*
+	 * Always transactional, so the tombstones commit atomically with the
+	 * statement that caused them.  YBCExecuteDelete stores the computed
+	 * ybctid back on the slot.
+	 */
+	YBCExecuteDelete(rel, slot, NIL /* returning_columns */ ,
+					 false /* target_tuple_fetched */ ,
+					 YB_TRANSACTIONAL,
+					 false /* changingPart */ ,
+					 true /* persist_missing_row */ , estate);
+
+	if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+	{
+		Datum		ybctid = YBCGetYBTupleIdFromSlot(slot);
+		bool		shouldFree;
+		HeapTuple	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
+
+		ExecDeleteIndexTuples(resultRelInfo, ybctid, tuple,
+							  true /* persist_missing_row */ , estate);
+
+		if (shouldFree)
+			pfree(tuple);
+	}
 }
 
 bool
@@ -1042,7 +1374,16 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	if (target_tuple_fetched)
 		ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 	else
+	{
 		ybctid = YBCComputeYBTupleIdFromSlot(rel, slot);
+
+		/* A key value too wide for its column matches no row. */
+		if (ybctid == 0)
+		{
+			YBCPgDeleteStatement(update_stmt);
+			return false;
+		}
+	}
 
 	if (ybctid == 0)
 		ereport(ERROR,
@@ -1376,6 +1717,7 @@ YBCExecuteUpdateReplace(Relation rel,
 					 true /* target_tuple_fetched */ ,
 					 YB_TRANSACTIONAL,
 					 false /* changingPart */ ,
+					 false /* persist_missing_row */ ,
 					 estate);
 
 	/* Update the tuple with table oid */
@@ -1501,6 +1843,58 @@ YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
 	return (resultRelInfo->ri_NumIndices > 1 ||
 			(resultRelInfo->ri_NumIndices == 1 &&
 			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary));
+}
+
+/*
+ * Returns whether inserts into this result relation may use upsert mode
+ * (blind writes).  Call it only for a statement that asked for upsert mode,
+ * because when the relation is unsafe it also warns or errors (see below).
+ *
+ * is_copy_replace says how the statement asked for it: true for COPY ...
+ * WITH (REPLACE), false for the yb_enable_upsert_mode setting (COPY or
+ * INSERT).  It decides what happens when the relation is unsafe, i.e. has
+ * secondary indexes, triggers, or rules (see YBIsUpsertUnsafeOnRel()): true
+ * raises an error; false emits a warning, and the caller falls back to a
+ * normal insert.
+ *
+ * A partitioned target routes each row to a leaf partition, which can have
+ * its own indexes or triggers, so callers must ask about each partition that
+ * rows are routed to, not only about the target.  The answer is cached in the
+ * ResultRelInfo, so each relation is checked, and warned about, once per
+ * statement.
+ */
+bool
+YbCanUseUpsertMode(ResultRelInfo *resultRelInfo, bool is_copy_replace)
+{
+	Relation	rel = resultRelInfo->ri_RelationDesc;
+
+	if (resultRelInfo->ri_ybUpsertModeChecked)
+		return resultRelInfo->ri_ybUpsertModeAllowed;
+
+	resultRelInfo->ri_ybUpsertModeChecked = true;
+	resultRelInfo->ri_ybUpsertModeAllowed = !YBIsUpsertUnsafeOnRel(rel);
+
+	if (!resultRelInfo->ri_ybUpsertModeAllowed)
+	{
+		if (is_copy_replace)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY with REPLACE is not supported on "
+							"table \"%s\" because it has secondary "
+							"indexes, triggers, or foreign key "
+							"constraints", RelationGetRelationName(rel)),
+					 errhint("Consider using INSERT ... ON CONFLICT "
+							 "for true upsert semantics instead.")));
+		ereport(WARNING,
+				(errmsg("upsert mode disabled for table \"%s\" "
+						"because it has secondary indexes, "
+						"triggers, or foreign key constraints",
+						RelationGetRelationName(rel)),
+				 errhint("Consider using INSERT ... ON CONFLICT "
+						 "for true upsert semantics instead.")));
+	}
+
+	return resultRelInfo->ri_ybUpsertModeAllowed;
 }
 
 int

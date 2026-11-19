@@ -1005,7 +1005,11 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
   workload.WaitInserted(100);
   workload.StopAndJoin();
 
-  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+  // The leader is paused next, so every follower must already know the last batch is committed:
+  // the final CONSISTENT_PREFIX row count may be served by any of them.
+  ASSERT_OK(WaitForServersToAgree(
+      timeout, ts_map_, tablet_id, workload.batches_completed(), /* actual_index = */ nullptr,
+      itest::MustBeCommitted::kTrue));
 
   // Pause the leader and increment the term on the follower by starting an
   // election on the follower. The election will fail asynchronously but we
@@ -1041,7 +1045,9 @@ void RemoteBootstrapITest::RemoteBootstrapFollowerWithHigherTerm(YBTableType tab
                                                  tablet::TABLET_DATA_READY, timeout));
 
   // Wait for the follower to come back up.
-  ASSERT_OK(WaitForServersToAgree(timeout, ts_map_, tablet_id, workload.batches_completed()));
+  ASSERT_OK(WaitForServersToAgree(
+      timeout, ts_map_, tablet_id, workload.batches_completed(), /* actual_index = */ nullptr,
+      itest::MustBeCommitted::kTrue));
 
   ClusterVerifier cluster_verifier(cluster_.get());
   // During this test we disable leader failure detection.
@@ -2271,8 +2277,26 @@ void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables) {
   ASSERT_EQ(user_tablet_ids.size(), 1);
   string tablet_id = user_tablet_ids[0];
 
-  // Delete tablet and shutdown one tserver.
+  // Move leadership off the tserver to tombstone. Otherwise the other peers only notice the leader
+  // is gone after the failure detection timeout, which under TSAN delays RBS past the wait below.
   auto* const ts_to_bootstrap = cluster_->tablet_server(ts_idx_to_bootstrap);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto leader = cluster_->GetTabletLeaderIndex(tablet_id, /* require_lease = */ true);
+        if (!leader.ok()) {
+          return false;
+        }
+        if (*leader != ts_idx_to_bootstrap) {
+          return true;
+        }
+        WARN_NOT_OK(
+            itest::LeaderStepDown(ts, tablet_id, /* new_leader = */ nullptr, timeout),
+            "Leader step down failed");
+        return false;
+      },
+      timeout, "Waiting for leader to move off ts_idx_to_bootstrap"));
+
+  // Delete tablet and shutdown one tserver.
   ASSERT_OK(WaitFor(
       [&tablet_id, ts, timeout]() -> Result<bool> {
         const auto s = itest::DeleteTablet(

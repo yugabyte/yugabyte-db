@@ -101,6 +101,7 @@ class MasterTabletServiceImpl : public tserver::TabletServiceImpl {
   Master *const master_;
   scoped_refptr<AtomicGauge<int64_t>> ysql_catalog_prefetches_in_progress_;
   scoped_refptr<Counter> ysql_catalog_prefetch_rejections_;
+  scoped_refptr<Counter> ysql_catalog_prefetch_new_admissions_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);
 };
 

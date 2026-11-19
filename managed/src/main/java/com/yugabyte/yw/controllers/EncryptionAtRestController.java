@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.oci.OCIErrorFormatter;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -142,7 +143,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
                   + formData.path(OciKmsAuthConfigField.ociKeyName.fieldName).asText());
         } catch (Exception e) {
           LOG.warn("Could not finish validating OCI provider config form data.");
-          throw new PlatformServiceException(BAD_REQUEST, e.toString());
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              OCIErrorFormatter.isOciError(e) ? OCIErrorFormatter.logAndShorten(e) : e.toString());
         }
         break;
       case AWS:

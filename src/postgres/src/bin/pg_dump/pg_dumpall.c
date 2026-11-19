@@ -602,6 +602,13 @@ main(int argc, char *argv[])
 	if (quote_all_identifiers)
 		executeCommand(conn, "SET quote_all_identifiers = true");
 
+	/*
+	 * YB: ysql_dumpall writes rolvaliduntil as text. ISO makes that
+	 * timestamp portable, so restore stores the same calendar date.
+	 * ysql_dump does this in setup_connection().
+	 */
+	executeCommand(conn, "SET DATESTYLE = ISO");
+
 	fprintf(OPF, "--\n-- YSQL database cluster dump\n--\n\n");
 	if (verbose)
 		dumpTimestamp("Started on");
@@ -625,6 +632,15 @@ main(int argc, char *argv[])
 
 	/* Restore will need to write to the target cluster */
 	fprintf(OPF, "SET default_transaction_read_only = off;\n\n");
+
+	/*
+	 * YB: backup restore replays hashed role passwords. yb_binary_restore is
+	 * what lets AlterRole accept a verifier while yb_allow_prehashed_passwords
+	 * is off. Binary upgrade does not use this flag; that backend is already
+	 * in binary-upgrade mode, and setting this would skip authid OID preservation.
+	 */
+	if (include_yb_metadata)
+		fprintf(OPF, "SET yb_binary_restore = true;\n\n");
 
 	/* Replicate encoding and std_strings in output */
 	fprintf(OPF, "SET client_encoding = '%s';\n",

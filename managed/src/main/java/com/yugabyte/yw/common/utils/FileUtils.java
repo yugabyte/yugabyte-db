@@ -310,6 +310,48 @@ public class FileUtils {
   }
 
   /**
+   * Like {@link #unTar}, but skips any entry that would land outside {@code outputDir}, such as
+   * {@code ../x}. For archives built on another host, which could write anywhere YBA can.
+   */
+  public static List<File> unTarWithinDir(final File inputFile, final File outputDir)
+      throws IOException, ArchiveException {
+    final Path root = outputDir.toPath().toAbsolutePath().normalize();
+    final List<File> untaredFiles = new LinkedList<>();
+    try (InputStream is = new FileInputStream(inputFile);
+        TarArchiveInputStream tarIn =
+            (TarArchiveInputStream)
+                new ArchiveStreamFactory().createArchiveInputStream("tar", is)) {
+      TarArchiveEntry entry;
+      while ((entry = (TarArchiveEntry) tarIn.getNextEntry()) != null) {
+        // new File, as unTar does, keeps an absolute name under outputDir.
+        final File outputFile = new File(outputDir, entry.getName());
+        if (!outputFile.toPath().toAbsolutePath().normalize().startsWith(root)) {
+          log.error(
+              "Skipping entry '{}' of {}: it resolves outside {}",
+              entry.getName(),
+              inputFile.getAbsolutePath(),
+              root);
+          continue;
+        }
+        if (entry.isDirectory()) {
+          if (!outputFile.exists() && !outputFile.mkdirs()) {
+            throw new IllegalStateException(
+                String.format("Couldn't create directory %s.", outputFile.getAbsolutePath()));
+          }
+        } else {
+          File parent = outputFile.getParentFile();
+          if (!parent.exists()) parent.mkdirs();
+          try (OutputStream outputFileStream = new FileOutputStream(outputFile)) {
+            IOUtils.copy(tarIn, outputFileStream);
+          }
+        }
+        untaredFiles.add(outputFile);
+      }
+    }
+    return untaredFiles;
+  }
+
+  /**
    * Ungzip an input file into an output file.
    *
    * <p>The output file is created in the output folder, having the same name as the input file,

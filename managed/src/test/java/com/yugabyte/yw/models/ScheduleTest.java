@@ -324,4 +324,25 @@ public class ScheduleTest extends FakeDBApplication {
     assertTrue(schedule.isBacklogStatus());
     assertTrue(schedule.isIncrementBacklogStatus());
   }
+
+  @Test
+  public void testGetOrCreateScheduleUsesGivenCustomer() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    BackupRequestParams params = new BackupRequestParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.storageConfigUUID = s3StorageConfig.getConfigUUID();
+    params.scheduleName = "schedule-no-customer-in-params";
+    params.cronExpression = "0 */2 * * *";
+    // The request body may leave customerUUID out; the caller's customer is the one to use.
+    params.customerUUID = null;
+    Schedule schedule = Schedule.getOrCreateSchedule(defaultCustomer.getUuid(), params);
+    assertEquals(defaultCustomer.getUuid(), schedule.getCustomerUUID());
+    // Each scheduled backup runs with the saved params, so they must carry the customer too.
+    assertEquals(
+        defaultCustomer.getUuid().toString(),
+        schedule.getTaskParams().get("customerUUID").asText());
+    assertEquals(
+        schedule.getScheduleUUID(),
+        Schedule.getOrCreateSchedule(defaultCustomer.getUuid(), params).getScheduleUUID());
+  }
 }

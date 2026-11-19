@@ -77,7 +77,7 @@ SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
 SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = 'my_grpc_slot';
 ```
 
-Alternatively, use [yb-admin](../../../admin/yb-admin#change-data-capture-cdc-commands) to create a stream ID:
+Alternatively, use [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) to create a stream ID:
 
 ```sh
 ./bin/yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte

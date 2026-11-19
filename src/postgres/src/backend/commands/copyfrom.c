@@ -561,6 +561,10 @@ CopyFrom(CopyFromState cstate)
 	bool		useNonTxnInsert = false;
 	bool		has_more_tuples;
 	bool		set_txn_batch_size_explicitly = true;
+	/* true if upsert was requested with WITH (REPLACE) */
+	bool		yb_is_copy_replace = false;
+	/* on_conflict_action for the relation or partition being inserted into */
+	OnConflictAction yb_on_conflict_action = ONCONFLICT_NONE;
 
 	Assert(cstate->rel);
 	Assert(list_length(cstate->range_table) == 1);
@@ -751,12 +755,16 @@ CopyFrom(CopyFromState cstate)
 	 *    inconsistencies.
 	 * 2. When rules or trigger are defined. Both rules and trigger may write
 	 *    data in separate buffer, leading to inconsistencies.
+	 * 3. When the target is a partitioned table. The checks here only see the
+	 *    partitioned table itself, but each partition can have its own foreign
+	 *    keys, triggers, indexes and colocation.
 	 */
 	bool		has_rule_or_trigger = resultRelInfo->ri_RelationDesc->rd_rel->relhastriggers ||
 		resultRelInfo->ri_RelationDesc->rd_rel->relhasrules;
 
 	if (yb_fast_path_for_colocated_copy &&
 		!set_txn_batch_size_explicitly && IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+		resultRelInfo->ri_RelationDesc->rd_rel->relkind != RELKIND_PARTITIONED_TABLE &&
 		YbGetTableProperties(resultRelInfo->ri_RelationDesc)->is_colocated &&
 		!has_rule_or_trigger && !IsTransactionBlock())
 	{
@@ -929,39 +937,30 @@ CopyFrom(CopyFromState cstate)
 		 * on tables with secondary indexes, triggers, or foreign key
 		 * constraints. For COPY REPLACE: error out since the user explicitly
 		 * requested replace semantics. For the GUC on an unsafe table: warn
-		 * once and leave on_conflict_action alone so we fall back to a
-		 * normal insert. For the GUC on a safe table: promote
+		 * once and keep on_conflict_action at ONCONFLICT_NONE so we fall back
+		 * to a normal insert. For the GUC on a safe table: promote
 		 * on_conflict_action to ONCONFLICT_YB_REPLACE so the per-row insert
 		 * path enables DocDB upsert mode just like COPY REPLACE.
+		 *
+		 * A partitioned target is checked here, and each partition again
+		 * when the row loop routes its first row to it.
 		 */
-		if (YBIsUpsertUnsafeOnRel(resultRelInfo->ri_RelationDesc))
-		{
-			const char *relname =
-				RelationGetRelationName(resultRelInfo->ri_RelationDesc);
-
-			if (cstate->opts.on_conflict_action == ONCONFLICT_YB_REPLACE)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("COPY with REPLACE is not supported on "
-								"table \"%s\" because it has secondary "
-								"indexes, triggers, or foreign key "
-								"constraints", relname),
-						 errhint("Consider using INSERT ... ON CONFLICT "
-								 "for true upsert semantics instead.")));
-			else if (yb_enable_upsert_mode)
-				ereport(WARNING,
-						(errmsg("upsert mode disabled for table \"%s\" "
-								"because it has secondary indexes, "
-								"triggers, or foreign key constraints",
-								relname),
-						 errhint("Consider using INSERT ... ON CONFLICT "
-								 "for true upsert semantics instead.")));
-		}
+		/*
+		 * Was upsert requested, by WITH (REPLACE) or by
+		 * yb_enable_upsert_mode?
+		 */
+		if (cstate->opts.on_conflict_action == ONCONFLICT_YB_REPLACE)
+			yb_is_copy_replace = true;
 		else if (yb_enable_upsert_mode &&
 				 cstate->opts.on_conflict_action == ONCONFLICT_NONE)
-		{
 			cstate->opts.on_conflict_action = ONCONFLICT_YB_REPLACE;
-		}
+
+		/* If upsert was requested, drop it when the target is unsafe for it. */
+		if (cstate->opts.on_conflict_action == ONCONFLICT_YB_REPLACE &&
+			!YbCanUseUpsertMode(resultRelInfo, yb_is_copy_replace))
+			cstate->opts.on_conflict_action = ONCONFLICT_NONE;
+
+		yb_on_conflict_action = cstate->opts.on_conflict_action;
 	}
 
 	/*
@@ -1033,22 +1032,16 @@ yb_process_more_batches:
 	 */
 	for (int i = 0; cstate->opts.batch_size == 0 || i < cstate->opts.batch_size; i++)
 	{
-		if (IsYBRelation(resultRelInfo->ri_RelationDesc))
-			MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-
 		TupleTableSlot *myslot;
 		bool		skip_tuple;
 
 		CHECK_FOR_INTERRUPTS();
 
-		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
-		{
-			/*
-			 * Reset the per-tuple exprcontext. We do this after every tuple, to
-			 * clean-up after expression evaluations etc.
-			 */
-			ResetPerTupleExprContext(estate);
-		}
+		/*
+		 * Reset the per-tuple exprcontext. We do this after every tuple, to
+		 * clean-up after expression evaluations etc.
+		 */
+		ResetPerTupleExprContext(estate);
 
 		/* select slot to (initially) load row into */
 		if (insertMethod == CIM_SINGLE || proute)
@@ -1069,8 +1062,7 @@ yb_process_more_batches:
 		 * Switch to per-tuple context before calling NextCopyFrom, which does
 		 * evaluate default expressions etc. and requires per-tuple context.
 		 */
-		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
-			MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+		MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 		ExecClearTuple(myslot);
 
@@ -1090,8 +1082,7 @@ yb_process_more_batches:
 		myslot->tts_tableOid = RelationGetRelid(target_resultRelInfo->ri_RelationDesc);
 
 		/* Triggers and stuff need to be invoked in query context. */
-		if (!IsYBRelation(resultRelInfo->ri_RelationDesc))
-			MemoryContextSwitchTo(oldcontext);
+		MemoryContextSwitchTo(oldcontext);
 
 		if (cstate->whereClause)
 		{
@@ -1160,6 +1151,15 @@ yb_process_more_batches:
 				if (bistate != NULL)
 					ReleaseBulkInsertStatePin(bistate);
 				prevResultRelInfo = resultRelInfo;
+
+				/*
+				 * YB: the partition can have its own secondary indexes or
+				 * triggers, so check whether upsert mode is safe on it too.
+				 */
+				yb_on_conflict_action = cstate->opts.on_conflict_action;
+				if (yb_on_conflict_action == ONCONFLICT_YB_REPLACE &&
+					!YbCanUseUpsertMode(resultRelInfo, yb_is_copy_replace))
+					yb_on_conflict_action = ONCONFLICT_NONE;
 			}
 
 			/*
@@ -1219,14 +1219,6 @@ yb_process_more_batches:
 					myslot = batchslot;
 				}
 			}
-
-			/*
-			 * Tuple memory will be allocated to per row memory context
-			 * which will be cleaned up after every row gets processed.
-			 * Thus there is no need to clean the tuple memory.
-			 */
-			if (IsYBRelation(resultRelInfo->ri_RelationDesc))
-				myslot->tts_flags &= ~TTS_FLAG_SHOULDFREE;
 
 			/* ensure that triggers etc see the right relation  */
 			myslot->tts_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
@@ -1307,6 +1299,14 @@ yb_process_more_batches:
 					/* OK, store the tuple */
 					if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 					{
+						/*
+						 * YB: the insert path allocates per-row temporaries
+						 * (e.g. the ybctid) in the current context; run it in
+						 * the per-tuple context so they are freed every row.
+						 */
+						MemoryContext yb_saved_cxt =
+							MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
 						/* Update the tuple with table oid */
 						myslot->tts_tableOid =
 							RelationGetRelid(resultRelInfo->ri_RelationDesc);
@@ -1314,13 +1314,13 @@ yb_process_more_batches:
 						{
 							YBCExecuteNonTxnInsert(resultRelInfo->ri_RelationDesc,
 												   myslot,
-												   cstate->opts.on_conflict_action);
+												   yb_on_conflict_action);
 						}
 						else
 						{
 							YBCExecuteInsert(resultRelInfo->ri_RelationDesc,
 											 myslot,
-											 cstate->opts.on_conflict_action);
+											 yb_on_conflict_action);
 						}
 
 						/* And create index entries for it */
@@ -1332,18 +1332,15 @@ yb_process_more_batches:
 																   false,
 																   NULL,
 																   NIL);
+						MemoryContextSwitchTo(yb_saved_cxt);
 					}
 					else if (resultRelInfo->ri_FdwRoutine != NULL)
 					{
-						MemoryContext saved_context;
-
-						saved_context = MemoryContextSwitchTo(estate->es_query_cxt);
 						myslot = resultRelInfo->ri_FdwRoutine->ExecForeignInsert(estate,
 																				 resultRelInfo,
 																				 myslot,
 																				 NULL);
 
-						MemoryContextSwitchTo(saved_context);
 						if (myslot == NULL) /* "do nothing" */
 							continue;	/* next tuple please */
 
@@ -1386,16 +1383,18 @@ yb_process_more_batches:
 			 */
 			++processed;
 		}
-
-		/*
-		 * Free context per row.
-		 */
-		if (IsYBRelation(cstate->rel))
-			ResetPerTupleExprContext(estate);
 	}
 
 	if (cstate->opts.batch_size > 0)
 	{
+		/*
+		 * YB: Fire AFTER triggers in the query context, as upstream does
+		 * before AfterTriggerEndQuery() at the end of CopyFrom(). The last
+		 * batch gets here in the per-tuple context, from the break after
+		 * NextCopyFrom().
+		 */
+		MemoryContextSwitchTo(oldcontext);
+
 		/*
 		 * Handle queued AFTER triggers before committing. If there are errors,
 		 * do not commit the current batch.

@@ -13,15 +13,19 @@
 package org.yb.cql;
 
 import com.datastax.driver.core.BatchStatement;
+import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.policies.RoundRobinPolicy;
+import com.datastax.driver.core.policies.WhiteListPolicy;
 
 import org.junit.Test;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
+import java.net.InetSocketAddress;
 import java.util.*;
 
 import org.yb.YBTestRunner;
@@ -261,6 +265,55 @@ public class TestReturnsClause extends BaseCQLTest {
 
     // Ensure main table write did not get applied due to the index failure.
     assertNoRow("SELECT * FROM test_rs_trans_pk where h = 2 AND r = 1");
+  }
+
+  @Test
+  public void testReturnsStatusWithStaleSchema() throws Exception {
+    session.execute("CREATE TABLE test_rs_stale(h int, r bigint, v int, primary key (h, r))");
+
+    // One session per CQL node.
+    List<ClusterAndSession> nodeSessions = new ArrayList<>();
+    try {
+      for (InetSocketAddress contactPoint : miniCluster.getCQLContactPoints()) {
+        Cluster nodeCluster = getDefaultClusterBuilder()
+            .withLoadBalancingPolicy(new WhiteListPolicy(
+                new RoundRobinPolicy(), Collections.singletonList(contactPoint)))
+            .build();
+        nodeSessions.add(new ClusterAndSession(nodeCluster));
+      }
+
+      // Make every node cache the current table schema.
+      int h = 0;
+      for (ClusterAndSession nodeSession : nodeSessions) {
+        nodeSession.execute("USE " + DEFAULT_TEST_KEYSPACE);
+        assertReturnsStatusApplied(nodeSession.execute(
+            "INSERT INTO test_rs_stale(h, r, v) VALUES (" + h++ + ", 1, 1) RETURNS STATUS AS ROW"));
+      }
+
+      // Bump the schema version, leaving the cached schema stale on the other nodes.
+      session.execute("ALTER TABLE test_rs_stale ADD v2 int");
+
+      // Schema version mismatch must be retried, not reported as status.
+      h = 0;
+      for (ClusterAndSession nodeSession : nodeSessions) {
+        assertReturnsStatusApplied(nodeSession.execute(
+            "INSERT INTO test_rs_stale(h, r, v) VALUES (" + h++ + ", 2, 2) IF NOT EXISTS " +
+            "RETURNS STATUS AS ROW"));
+      }
+    } finally {
+      for (ClusterAndSession nodeSession : nodeSessions) {
+        nodeSession.close();
+      }
+    }
+
+    assertEquals(2 * nodeSessions.size(),
+                 session.execute("SELECT * FROM test_rs_stale").all().size());
+  }
+
+  private void assertReturnsStatusApplied(ResultSet rs) {
+    Row row = rs.one();
+    assertTrue("Not applied: " + row, row.getBool("[applied]"));
+    assertTrue("Unexpected message: " + row, row.isNull("[message]"));
   }
 
   @Test

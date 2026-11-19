@@ -19,7 +19,7 @@ import {
 import {
   DatabaseSettings,
   GeneralSettings,
-  InstanceSettings,
+  InstanceSettingsStep,
   NodesAvailability,
   ResilienceAndRegions,
   SecuritySettings,
@@ -30,6 +30,8 @@ import {
 import { hasNecessaryPerm } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 import { ResilienceType } from './steps/resilence-regions/dtos';
+import { CloudType } from '@app/redesign/helpers/dtos';
+import { getPrimaryProvider } from './helpers/providerConfigurations';
 
 /**
  * @param resilieceType - The resilience type of the universe
@@ -38,25 +40,31 @@ import { ResilienceType } from './steps/resilence-regions/dtos';
  */
 function getStepsMappings(
   resilieceType: ResilienceType,
+  isK8s: boolean,
   currentComponentRef: React.RefObject<StepsRef>
 ) {
-  // If the resilience type is single node, we need to adjust the steps by 1
-  // because the single node does not have the nodes availability step
+  // Single node has no nodes-availability step. Kubernetes has no proxy step.
+  // Later steps shift so Next/Back stay on the visible stepper entries.
   const adjust = resilieceType === ResilienceType.SINGLE_NODE ? 1 : 0;
-  const mappings = {
+  const afterProxy = adjust + (isK8s ? 1 : 0);
+  const mappings: Record<number, JSX.Element> = {
     [CreateUniverseSteps.GENERAL_SETTINGS]: <GeneralSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.RESILIENCE_AND_REGIONS]: (
       <ResilienceAndRegions ref={currentComponentRef} />
     ),
-    [CreateUniverseSteps.INSTANCE - adjust]: <InstanceSettings ref={currentComponentRef} />,
+    [CreateUniverseSteps.INSTANCE - adjust]: <InstanceSettingsStep ref={currentComponentRef} />,
     [CreateUniverseSteps.DATABASE - adjust]: <DatabaseSettings ref={currentComponentRef} />,
     [CreateUniverseSteps.SECURITY - adjust]: <SecuritySettings ref={currentComponentRef} />,
-    [CreateUniverseSteps.ADVANCED_PROXY - adjust]: <ProxySettings ref={currentComponentRef} />,
-    [CreateUniverseSteps.ADVANCED_OTHER - adjust]: (
+    [CreateUniverseSteps.ADVANCED_OTHER - afterProxy]: (
       <OtherAdvancedSettings ref={currentComponentRef} />
     ),
-    [CreateUniverseSteps.REVIEW - adjust]: <ReviewAndSummary ref={currentComponentRef} />
+    [CreateUniverseSteps.REVIEW - afterProxy]: <ReviewAndSummary ref={currentComponentRef} />
   };
+  if (!isK8s) {
+    mappings[CreateUniverseSteps.ADVANCED_PROXY - adjust] = (
+      <ProxySettings ref={currentComponentRef} />
+    );
+  }
   if (adjust === 0) {
     mappings[CreateUniverseSteps.NODES_AVAILABILITY] = (
       <NodesAvailability ref={currentComponentRef} />
@@ -66,13 +74,16 @@ function getStepsMappings(
 }
 
 const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
-  const [{ activeStep, resilienceType }] = (useContext(
+  const [{ activeStep, resilienceType, generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    getPrimaryProvider(generalSettings)?.code === CloudType.kubernetes;
 
   const currentComponentRef = useRef<StepsRef>(null);
   const [, { get, setAll }] = useMap<Record<number, JSX.Element>>(
-    getStepsMappings(resilienceType!, currentComponentRef)
+    getStepsMappings(resilienceType!, isK8s, currentComponentRef)
   );
   useImperativeHandle(forwardRef, () => currentComponentRef.current, [
     currentComponentRef.current,
@@ -89,9 +100,9 @@ const SwitchCreateUniverseSteps = forwardRef((_props, forwardRef) => {
 
   useEffect(() => {
     if (activeStep === CreateUniverseSteps.RESILIENCE_AND_REGIONS) {
-      setAll(getStepsMappings(resilienceType!, currentComponentRef));
+      setAll(getStepsMappings(resilienceType!, isK8s, currentComponentRef));
     }
-  }, [resilienceType, activeStep]);
+  }, [resilienceType, isK8s, activeStep]);
 
   const getCurrentComponent = () => {
     return get(activeStep);

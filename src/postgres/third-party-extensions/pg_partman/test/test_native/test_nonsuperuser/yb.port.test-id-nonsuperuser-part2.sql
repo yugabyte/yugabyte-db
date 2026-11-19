@@ -7,11 +7,15 @@
 -- NOTE: THIS FILE MUST BE RUN AS partman_owner AND CONNECT TO THE DATABASE THAT RAN PART 1 TO EFFECTIVLELY TEST AS NONSUPERUSER
 --      Ex  pg_prove -ovf -U partman_owner -d mydb test/test_native/test_nonsuperuser/test-id-nonsuperuser-part2.sql
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
 
@@ -22,7 +26,11 @@ IF current_setting('server_version_num')::int < 110000 THEN
 END IF;
 END $pg11_check$;
 
+\if :yb_use_txn_ddl_and_locks
+SELECT plan(58);
+\else \\ -- YB
 SELECT plan(40); -- YB: decreased number of tests
+\endif \\ -- YB
 
 CREATE TABLE partman_test.fk_test_reference (col2 text unique not null);
 INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
@@ -113,7 +121,8 @@ SELECT col_is_fk('partman_test', 'id_taptest_table_p60', 'col2', 'Check that for
 SELECT col_is_fk('partman_test', 'id_taptest_table_p70', 'col2', 'Check that foreign key was inherited to id_taptest_table_p70');
 
 
-/* YB: partition_data_id not supported
+-- YB: partition_data_id needs the default partition.
+\if :yb_use_txn_ddl_and_locks
 -- Requires default table option
 INSERT INTO partman_test.id_taptest_table (col1, col4) VALUES (generate_series(200,210), 'stuff'||generate_series(200,210));
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARRAY[49], 'Check that data outside child scope is visible from parent');
@@ -123,12 +132,12 @@ SELECT partition_data_id('partman_test.id_taptest_table', 10);
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_default', 'Check data was removed from default');
 SELECT has_table('partman_test', 'id_taptest_table_p200', 'Check id_taptest_table_p200 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p210', 'Check id_taptest_table_p210 exists');
-*/ -- YB
+\endif \\ -- YB
 SELECT run_maintenance();
 
 
 
-/* YB: undo_partition not supported
+\if :yb_use_txn_ddl_and_locks
 -- Test keeping the rest of the tables
 SELECT undo_partition('partman_test.id_taptest_table', 20, p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.undo_taptest', ARRAY[49], 'Check count from undo target table after undo');
@@ -147,7 +156,9 @@ SELECT hasnt_table('partman_test', 'id_taptest_table_p210', 'Check id_taptest_ta
 
 SELECT hasnt_table('partman_test', 'template_id_taptest_table', 'Check that template table was dropped');
 SELECT hasnt_table('partman_test', 'id_taptest_table_default', 'Check that default table was dropped');
-*/ -- YB
+\endif \\ -- YB
 
 SELECT * FROM finish();
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB

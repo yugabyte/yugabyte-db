@@ -51,7 +51,7 @@ public class OCIInitializer extends AbstractInitializer {
 
   /**
    * Entry point to initialize OCI. Loads instance types (YAML + live shapes) and upserts bundled
-   * compute/block meter PriceComponents per region.
+   * compute/NVMe/block meter PriceComponents per region.
    */
   @Override
   public void initialize(UUID customerUUID, UUID providerUUID) {
@@ -151,6 +151,15 @@ public class OCIInitializer extends AbstractInitializer {
             OCIPriceUtil.memoryComponentCode(family),
             rates.path("memoryGbPerHour").asDouble(0.0),
             now);
+
+        if (rates.has("nvmeTbPerHour")) {
+          upsertHourlyMeter(
+              provider.getUuid(),
+              region.getCode(),
+              OCIPriceUtil.nvmeComponentCode(family),
+              rates.path("nvmeTbPerHour").asDouble(0.0),
+              now);
+        }
       }
 
       double storageHourly =

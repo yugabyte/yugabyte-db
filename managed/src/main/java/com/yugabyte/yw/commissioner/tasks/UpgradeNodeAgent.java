@@ -92,8 +92,10 @@ public class UpgradeNodeAgent extends UniverseDefinitionTaskBase {
           && certificateInfo.getCertType() != CertConfigType.SelfSigned) {
         throw new PlatformServiceException(
             BAD_REQUEST,
-            "Only CustomCertHostPath or SelfSigned type certificate is supported for node"
-                + " agent upgrade");
+            String.format(
+                "Certificate %s is of type %s, but only CustomCertHostPath or SelfSigned type"
+                    + " certificate is supported for node agent upgrade",
+                certificateInfo.getLabel(), certificateInfo.getCertType()));
       }
     }
     return certificateInfo;
@@ -179,7 +181,9 @@ public class UpgradeNodeAgent extends UniverseDefinitionTaskBase {
                 // Fail only if the ping fails for the targeted nodes.
                 if (!pendingTargetNodeNames.isEmpty()) {
                   throw new RuntimeException(
-                      String.format("Nodes %s did not respond to ping", pendingTargetNodeNames));
+                      String.format(
+                          "Node agents on %s did not respond to ping. Check their service status",
+                          pendingTargetNodeNames));
                 }
               });
       createMarkUniverseUpdateSuccessTasks()

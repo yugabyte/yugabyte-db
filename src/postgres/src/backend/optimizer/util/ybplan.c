@@ -23,7 +23,6 @@
 
 #include "access/htup_details.h"
 #include "access/relation.h"
-#include "catalog/catalog.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
@@ -37,6 +36,7 @@
 #include "nodes/primnodes.h"
 #include "nodes/print.h"
 #include "optimizer/ybplan.h"
+#include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "utils/array.h"
 #include "utils/datum.h"
@@ -94,7 +94,8 @@ static void YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
  *
  * Full list of the conditions we check here:
  *  - there is only one target table;
- *  - there is no ON CONFLICT clause;
+ *  - ON CONFLICT is not used, except for DO NOTHING when IOC pushdown is
+ *    possible;
  *  - there is no init plan;
  *  - there is only one source plan, which is a simple form of Result;
  *  - all expressions in the Result's target list and in the returning list are
@@ -104,7 +105,8 @@ static void YbUpdateComputeForeignKeyColumnReferences(const Relation rel,
  *  - not in transaction block;
  *  - is a single-plan execution;
  *  - target table has no triggers to fire;
- *  - target table has no indexes to update.
+ *  - target table has no indexes to update;
+ *  - ON CONFLICT DO NOTHING uses IOC pushdown.
  * And if all are true we will execute this op as a single-row transaction
  * rather than a distributed transaction.
  */
@@ -122,7 +124,9 @@ ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 		return false;
 
 	/* ON CONFLICT clause may require another write request */
-	if (modifyTable->onConflictAction != ONCONFLICT_NONE)
+	if (modifyTable->onConflictAction != ONCONFLICT_NONE &&
+		!(modifyTable->onConflictAction == ONCONFLICT_NOTHING &&
+		  modifyTable->ybInsertOnConflictPushdownPossible))
 		return false;
 
 	/* Init plan execution would require request(s) to DocDB */
@@ -158,6 +162,96 @@ YBCIsSingleRowModify(PlannedStmt *pstmt)
 		ModifyTable *node = castNode(ModifyTable, pstmt->planTree);
 
 		return ModifyTableIsSingleRowWrite(node);
+	}
+
+	return false;
+}
+
+/*
+ * The plan carries one statement-level IOC pushdown hint, so plans with
+ * multiple target relations are excluded.  The executor makes the final
+ * eligibility decision for the sole target relation.
+ */
+static RangeTblEntry *
+YbGetSingleModifytableTargetRte(PlannerInfo *root, ModifyTable *node)
+{
+	Index		rti;
+	RangeTblEntry *rte;
+
+	if (list_length(node->resultRelations) != 1)
+		return NULL;
+
+	rti = linitial_int(node->resultRelations);
+	rte = planner_rt_fetch(rti, root);
+	Assert(rte != NULL && rte->rtekind == RTE_RELATION);
+
+	return rte;
+}
+
+/*
+ * A Result without an outer plan produces at most one row without reading from
+ * DocDB.  At plan time, only validate the shape of the arbiter list; the
+ * executor verifies that an explicitly specified arbiter is the target
+ * relation's primary key.
+ */
+static bool
+YbIocDoNothingPushdownPossible(ModifyTable *node)
+{
+	Plan	   *source = outerPlan(&node->plan);
+
+	if (!IsA(source, Result) || outerPlan(source))
+		return false;
+
+	return (node->arbiterIndexes == NIL ||
+			list_length(node->arbiterIndexes) == 1);
+}
+
+/*
+ * Check the requirements specific to DO UPDATE pushdown.  This action is not
+ * supported yet.
+ */
+static bool
+YbIocDoUpdatePushdownPossible(ModifyTable *node)
+{
+	return false;
+}
+
+/*
+ * Produce a plan-time hint based on the action's pushdown setting and the
+ * statement and plan shape.  The executor combines this hint with checks that
+ * require the opened target relation, such as its primary key, secondary
+ * indexes, and triggers, before selecting pushdown.
+ *
+ * Partitioned targets are excluded for now because their relation-specific
+ * eligibility can only be decided after tuple routing identifies the leaf
+ * partition.
+ *
+ * The executor also rechecks YbIsIocPushdownEnabled() so that execution
+ * honors the current setting even when reusing a cached plan.
+ */
+bool
+YbIocPushdownPossible(PlannerInfo *root, ModifyTable *node)
+{
+	if (node->operation != CMD_INSERT ||
+		!YbIsIocPushdownEnabled(node->onConflictAction))
+		return false;
+
+	RangeTblEntry *rte = YbGetSingleModifytableTargetRte(root, node);
+
+	if (rte == NULL)
+		return false;
+
+	if (rte->relkind != RELKIND_RELATION)
+		return false;
+
+	switch (node->onConflictAction)
+	{
+		case ONCONFLICT_NOTHING:
+			return YbIocDoNothingPushdownPossible(node);
+		case ONCONFLICT_UPDATE:
+			return YbIocDoUpdatePushdownPossible(node);
+		default:
+			return false;
 	}
 
 	return false;

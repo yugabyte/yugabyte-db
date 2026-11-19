@@ -18,9 +18,9 @@ type: docs
   {{< page-finder/list icon="/icons/cloud-hover.svg" text="YugabyteDB Aeon" url="/stable/yugabyte-cloud/cloud-clusters/managed-read-replica/" >}}
 {{< /page-finder/head >}}
 
-In a YugabyteDB deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. Optionally, you can create a read replica cluster that asynchronously replicates data from the primary cluster and guarantees timeline consistency (with bounded staleness). A synchronously replicated primary cluster can accept writes to the system. Using a read replica cluster allows applications to serve low latency reads in remote regions.
+In a YugabyteDB deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. Optionally, you can create a read replica cluster that asynchronously replicates data from the primary cluster and guarantees timeline consistency (with bounded staleness). A synchronously replicated primary cluster can accept writes to the system. Applications serve low-latency reads from that replica in a remote region when those reads use [follower reads](../../../additional-features/follower-reads/).
 
-In a read replica cluster, read replicas are *observer nodes* that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster.
+In a read replica cluster, read replicas are *observer nodes* that do not participate in writes, but get a timeline-consistent copy of the data through asynchronous replication from the primary cluster. With follower reads off, the read goes to the tablet leader in the primary cluster. In YSQL, set [yb_read_from_followers](../../../reference/configuration/yb-tserver/#yb-read-from-followers) and mark the transaction read only. In YCQL, set the consistency level to [ONE](../../../additional-features/follower-reads/#ycql) and set the application's local data center to the replica's region so the read is routed there. The [YSQL](../../../explore/multi-region-deployments/read-replicas-ysql/) and [YCQL](../../../explore/multi-region-deployments/read-replicas-ycql/) examples show a client reading from the replica.
 
 ## Deploy a read replica cluster
 

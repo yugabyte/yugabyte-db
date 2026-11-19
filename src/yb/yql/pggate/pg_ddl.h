@@ -23,6 +23,9 @@
 
 namespace yb::pggate {
 
+// Deadline for a single DDL RPC to the master, from FLAGS_ysql_ddl_rpc_timeout_sec.
+CoarseTimePoint DdlDeadline();
+
 class PgDdl : public PgStatement {
  protected:
   explicit PgDdl(const PgSessionPtr& pg_session) : PgStatement(pg_session) {}
@@ -302,7 +305,9 @@ class PgCreateReplicationSlot final : public PgStatementLeafBase<
   PgCreateReplicationSlot(
       const PgSessionPtr& pg_session, const char* slot_name, const char* plugin_name,
       PgOid database_oid, YbcPgReplicationSlotSnapshotAction snapshot_action,
-      YbcLsnType lsn_type, YbcOrderingMode yb_ordering_mode);
+      YbcLsnType lsn_type, YbcOrderingMode yb_ordering_mode, const char* yb_publication_name,
+      const PgOid* yb_publication_relfilenodes, size_t yb_num_publication_tables,
+      bool yb_publication_all_tables);
 
   Result<tserver::PgCreateReplicationSlotResponsePB> Exec();
 

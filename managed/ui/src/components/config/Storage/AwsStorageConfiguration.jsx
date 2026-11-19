@@ -5,6 +5,7 @@ import { Row, Col } from 'react-bootstrap';
 import { YBToggle, YBTextInputWithLabel, YBPassword } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
+import { getS3IamOptions } from './iamOptionsByHost';
 import './StorageConfiguration.scss';
 
 const required = (value) => {
@@ -60,10 +61,12 @@ class AwsStorageConfiguration extends Component {
       enablePathStyleAccess,
       enableChunkedEncoding,
       enableSigningRegion,
-      enableS3BackupProxy
+      enableS3BackupProxy,
+      ybaHost
     } = this.props;
     // Either kind of role-based access means no access keys are entered or stored.
     const credentialsDisabled = iamRoleEnabled || federatedIamEnabled;
+    const hostOptions = getS3IamOptions(ybaHost, isEdited, iamRoleEnabled, showFederatedIam);
     return (
       <Row className="config-section-header">
         <Col lg={9}>
@@ -87,6 +90,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
+          {hostOptions.showIamRole && (
           <Row className="config-provider-row">
             <Col lg={2}>
               <div className="form-item-custom-label">IAM Role</div>
@@ -100,6 +104,7 @@ class AwsStorageConfiguration extends Component {
               />
             </Col>
           </Row>
+          )}
           {showFederatedIam && (
           <Row className="config-provider-row">
             <Col lg={2}>

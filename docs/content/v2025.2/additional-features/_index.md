@@ -2,8 +2,8 @@
 title: Advanced capabilities
 headerTitle: Advanced capabilities
 linkTitle: Advanced capabilities
-description: How to deploy advanced capabilities for your YugabyteDB deployment.
-headcontent: Deploy and manage advanced capabilities for your YugabyteDB universe
+description: Enable and configure YugabyteDB capabilities such as connection pooling, change data capture, colocation, and parallel queries.
+headcontent: Enable and configure capabilities that extend your YugabyteDB universe
 menu:
   v2025.2:
     identifier: additional-features
@@ -37,6 +37,12 @@ type: indexpage
     body="Leverage multiple CPUs to answer queries faster."
     href="parallel-query/"
     icon="fa-thin fa-grip-lines-vertical">}}
+
+  {{<index/item
+    title="Follower reads"
+    body="Serve reads from a closer replica when staleness is acceptable."
+    href="follower-reads/"
+    icon="fa-thin fa-clock">}}
 
   {{<index/item
     title="PostgreSQL extensions"

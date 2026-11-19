@@ -4,13 +4,21 @@
     -- Tests that foreign keys and normal indexes for PG10 use the template and for PG11 they use the parent. Also since this is id partitioning, we can use the partition key for primary key, so that should work from parent on PG11 as well.
     -- TODO Uncomment default child tests when PG10 support is dropped
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(99); -- YB: decreased number of tests
+\if :yb_use_txn_ddl_and_locks
+SELECT plan(111); -- YB: decreased number of tests
+\else \\ -- YB
+SELECT plan(98); -- YB: decreased number of tests
+\endif \\ -- YB
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -62,7 +70,7 @@ SELECT has_table('partman_test', 'id_taptest_table_p3000000010', 'Check id_tapte
 SELECT has_table('partman_test', 'id_taptest_table_p3000000020', 'Check id_taptest_table_p3000000020 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000030', 'Check id_taptest_table_p3000000030 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p3000000040', 'Check id_taptest_table_p3000000040 exists');
-SELECT hasnt_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default exists'); -- YB: disable default partition creation
+--SELECT has_table('partman_test', 'id_taptest_table_default', 'Check id_taptest_table_default exists');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000050', 'Check id_taptest_table_p3000000050 doesn''t exists yet');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000000', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000000');
 SELECT col_is_pk('partman_test', 'id_taptest_table_p3000000010', ARRAY['col1'], 'Check for primary key in id_taptest_table_p3000000010');
@@ -219,7 +227,7 @@ SELECT drop_partition_id('partman_test.id_taptest_table', p_retention_schema := 
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000010', 'Check id_taptest_table_p3000000010 doesn''t exists anymore');
 SELECT has_table('partman_retention_test', 'id_taptest_table_p3000000010', 'Check id_taptest_table_p3000000010 got moved to new schema');
 
-/* YB: undo_partition not supported
+\if :yb_use_txn_ddl_and_locks
 SELECT undo_partition('partman_test.id_taptest_table', p_target_table := 'partman_test.undo_taptest', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'id_taptest_table_p3000000020', 'Check id_taptest_table_p3000000020 does not exist');
 
@@ -238,7 +246,9 @@ SELECT has_table('partman_test', 'id_taptest_table_p3000000070', 'Check id_tapte
 SELECT is_empty('SELECT * FROM partman_test.id_taptest_table_p3000000070', 'Check child table had its data removed id_taptest_table_p3000000070');
 
 SELECT hasnt_table('partman_test', 'template_id_taptest_table', 'Check that template table was dropped');
-*/ -- YB
+\endif \\ -- YB
 
 SELECT * FROM finish();
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB

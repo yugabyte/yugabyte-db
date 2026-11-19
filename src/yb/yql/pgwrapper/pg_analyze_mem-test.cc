@@ -116,27 +116,80 @@ TEST_F(PgAnalyzeMemTest, YB_DISABLE_TEST_ON_MACOS(WidthSkipSavesMemory)) {
        "CREATE INDEX ON t (v)"},
   };
 
+  // A parent t gets its own statistics from its children's rows, which ANALYZE samples in
+  // each child's own column numbering; that pass must skip too.
+  struct Shape {
+    const char* name;
+    std::vector<const char*> ddl;  // $0 is the type of v
+    const char* rows_into;
+  };
+  const Shape kShapes[] = {
+      {"plain table", {"CREATE TABLE t (k int PRIMARY KEY, v $0)"}, "t"},
+      {"partitioned table",
+       {"CREATE TABLE t (k int PRIMARY KEY, v $0) PARTITION BY RANGE (k)",
+        "CREATE TABLE t_child PARTITION OF t DEFAULT"},
+       "t"},
+      {"partitioned table, partition attached with its columns in another order",
+       {"CREATE TABLE t (gone int, k int PRIMARY KEY, v $0) PARTITION BY RANGE (k)",
+        "ALTER TABLE t DROP COLUMN gone",
+        "CREATE TABLE t_child (v $0, gone int, k int PRIMARY KEY)",
+        "ALTER TABLE t_child DROP COLUMN gone",
+        "ALTER TABLE t ATTACH PARTITION t_child DEFAULT"},
+       "t"},
+      {"inheritance parent, child with its columns in another order",
+       {"CREATE TABLE t (gone int, k int PRIMARY KEY, v $0)",
+        "ALTER TABLE t DROP COLUMN gone",
+        "CREATE TABLE t_child (v $0, gone int, k int PRIMARY KEY)",
+        "ALTER TABLE t_child DROP COLUMN gone",
+        "ALTER TABLE t_child INHERIT t"},
+       "t_child"},
+  };
+
   auto conn = ASSERT_RESULT(Connect());
-  for (const auto& c : kCases) {
-    SCOPED_TRACE(c.name);
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t (k int PRIMARY KEY, v $0)", c.type));
-    if (c.ddl) {
-      ASSERT_OK(conn.Execute(c.ddl));
+  for (const auto& shape : kShapes) {
+    for (const auto& c : kCases) {
+      const auto name = Format("$0, $1", c.name, shape.name);
+      SCOPED_TRACE(name);
+      for (const auto* ddl : shape.ddl) {
+        ASSERT_OK(conn.ExecuteFormat(ddl, c.type));
+      }
+      if (c.ddl) {
+        ASSERT_OK(conn.Execute(c.ddl));
+      }
+      ASSERT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0 (k, v) SELECT g, $1 FROM generate_series(1, $2) g",
+          shape.rows_into, c.value, c.rows));
+      const auto data_mb = ASSERT_RESULT(conn.FetchRow<int64_t>(
+          "SELECT sum(pg_column_size(v)) / (1024 * 1024) FROM t"));
+      const auto off_mb = ASSERT_RESULT(AnalyzeGrowthMb(false));
+      const auto on_mb = ASSERT_RESULT(AnalyzeGrowthMb(true));
+      LOG(INFO) << name << ": ANALYZE of " << data_mb << " MB of values grew peak RSS by "
+                << off_mb << " MB with width skipping off, " << on_mb << " MB with it on";
+      // Skipping must save more than half the values' size. On ~38 MB of values,
+      // measured growth is ~50 MB with width skipping off and ~12 MB on: ~38 MB
+      // saved against a ~19 MB bar.
+      EXPECT_GT(off_mb - on_mb, data_mb / 2) << "ANALYZE kept wide values it should skip";
+      ASSERT_OK(conn.Execute("DROP TABLE t CASCADE"));
     }
-    ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO t SELECT g, $0 FROM generate_series(1, $1) g", c.value, c.rows));
-    const auto data_mb = ASSERT_RESULT(conn.FetchRow<int64_t>(
-        "SELECT sum(pg_column_size(v)) / (1024 * 1024) FROM t"));
-    const auto off_mb = ASSERT_RESULT(AnalyzeGrowthMb(false));
-    const auto on_mb = ASSERT_RESULT(AnalyzeGrowthMb(true));
-    LOG(INFO) << c.name << ": ANALYZE of " << data_mb << " MB of values grew peak RSS by "
-              << off_mb << " MB with width skipping off, " << on_mb << " MB with it on";
-    // Skipping must save more than half the values' size. On ~38 MB of values,
-    // measured growth is ~50 MB with width skipping off and ~12 MB on: ~38 MB
-    // saved against a ~19 MB bar.
-    EXPECT_GT(off_mb - on_mb, data_mb / 2) << "ANALYZE kept wide values it should skip";
-    ASSERT_OK(conn.Execute("DROP TABLE t"));
   }
+}
+
+// An inheritance child's column that the parent does not have is never read for the
+// parent's statistics, so the parent's ANALYZE keeps only the size of its wide values.
+TEST_F(PgAnalyzeMemTest, YB_DISABLE_TEST_ON_MACOS(WidthSkipSavesMemoryOnChildOnlyColumn)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k int PRIMARY KEY, v text)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t_child (extra text) INHERITS (t)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t_child SELECT g, 'v' || g, repeat('x', 4000) || g "
+      "FROM generate_series(1, 10000) g"));
+  const auto data_mb = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT sum(pg_column_size(extra)) / (1024 * 1024) FROM t_child"));
+  const auto off_mb = ASSERT_RESULT(AnalyzeGrowthMb(false));
+  const auto on_mb = ASSERT_RESULT(AnalyzeGrowthMb(true));
+  LOG(INFO) << "ANALYZE of " << data_mb << " MB of child-only values grew peak RSS by "
+            << off_mb << " MB with width skipping off, " << on_mb << " MB with it on";
+  EXPECT_GT(off_mb - on_mb, data_mb / 2) << "ANALYZE kept wide values it should skip";
 }
 
 }  // namespace yb::pgwrapper

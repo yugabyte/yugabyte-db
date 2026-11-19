@@ -115,6 +115,13 @@ public class CustomerTaskTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCrossCloudFederationTaskName() {
+    assertEquals(
+        "Update Cross-Cloud Federated Access",
+        CustomerTask.TaskType.ManageCrossCloudFederation.getFriendlyName());
+  }
+
+  @Test
   public void testMarkTaskComplete() {
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();

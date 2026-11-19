@@ -360,3 +360,50 @@ SELECT process_work3();
 -- Check the final state of the table
 SELECT * FROM audit_log3 ORDER BY id;
 SELECT COUNT(*) FROM users3;
+
+-- #34485: a function replaced after a savepoint must run its old definition
+-- after ROLLBACK TO.
+BEGIN;
+CREATE OR REPLACE FUNCTION f_34485_a() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 401; END $$;
+SELECT f_34485_a();
+SAVEPOINT sp1;
+CREATE OR REPLACE FUNCTION f_34485_a() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 402; END $$;
+SELECT f_34485_a();
+ROLLBACK TO SAVEPOINT sp1;
+SELECT f_34485_a();
+ROLLBACK;
+
+-- Same, with the function created before the transaction.
+CREATE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 401; END $$;
+CREATE FUNCTION f_34485_b_other() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 1; END $$;
+SELECT f_34485_b();
+BEGIN;
+SAVEPOINT sp1;
+CREATE OR REPLACE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 402; END $$;
+CREATE OR REPLACE FUNCTION f_34485_b_other() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 2; END $$;
+SELECT f_34485_b();
+ROLLBACK TO SAVEPOINT sp1;
+SELECT f_34485_b();
+ROLLBACK;
+SELECT f_34485_b();
+
+-- Same, with the replacement undone by an exception block instead of
+-- ROLLBACK TO.
+BEGIN;
+DO $d$
+BEGIN
+  CREATE OR REPLACE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 403; END $$;
+  RAISE NOTICE 'inside block: %', f_34485_b();
+  RAISE EXCEPTION 'undo';
+EXCEPTION WHEN raise_exception THEN
+  RAISE NOTICE 'after block: %', f_34485_b();
+END $d$;
+SELECT f_34485_b();
+ROLLBACK;
+
+-- Same, with the replacement undone by aborting the whole transaction.
+BEGIN;
+CREATE OR REPLACE FUNCTION f_34485_b() RETURNS int LANGUAGE plpgsql AS $$ BEGIN RETURN 404; END $$;
+SELECT f_34485_b();
+ROLLBACK;
+SELECT f_34485_b();

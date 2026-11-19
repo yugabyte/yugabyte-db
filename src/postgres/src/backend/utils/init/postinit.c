@@ -1202,10 +1202,10 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YBCStartSysTablePrefetching(Template1DbOid,
 										catalog_version,
 										YB_YQL_PREFETCHER_TRUST_CACHE_AUTH,
-										YB_YQL_PREFETCH_KIND_CONNECTION_START);
+										YbAuthPrefetchKind(), false, false);
 		}
 		else
-			YBCStartSysTablePrefetchingNoCache(YB_YQL_PREFETCH_KIND_CONNECTION_START);
+			YBCStartSysTablePrefetchingNoCache(YbAuthPrefetchKind());
 		YbRegisterSysTableForPrefetching(AuthIdRelationId); /* pg_authid */
 		YbRegisterSysTableForPrefetching(DatabaseRelationId);	/* pg_database */
 
@@ -1222,7 +1222,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 */
 		YbTryRegisterLogicalClientVersionTableForPrefetching();
 
-		HandleYBStatus(YBCPrefetchRegisteredSysTables());
+		/* Not a connection start's large set, so this records no catalog version. */
+		HandleYBStatus(YBCPrefetchRegisteredSysTables(false /* completes_connection_prefetch */ ));
 		/*
 		 * If per database catalog version mode is enabled, this will load the
 		 * catalog version of template1. It is fine because at this time we
@@ -1665,6 +1666,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	RelationCacheInitializePhase3();
 
+	/* Before anything below reads the catalog for a decision that lasts the session. */
+	YbFinishStaleCatalogPrefetch();
+
 	/*
 	 * YB: Also cache whether the database is colocated for optimization
 	 * purposes.
@@ -1962,7 +1966,16 @@ YbAuthPassthroughSetupGUCAndReport(Oid dboid)
 	 * to do here since this is what sets the GUC values sent to the client.
 	 */
 	if (MyProcPort != NULL)
+	{
 		process_startup_options(MyProcPort, superuser_arg(GetSessionUserId()));
+
+		/*
+		 * A reserved name in "options" has failed this logical connection,
+		 * see process_postgres_switches().
+		 */
+		if (MyProcPort->yb_has_auth_passthrough_finished)
+			return;
+	}
 
 	if (YBIsDBLogicalClientVersionMode())
 	{

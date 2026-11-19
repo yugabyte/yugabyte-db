@@ -137,7 +137,8 @@ class XClusterPersistenceBlockMapTest : public PgMiniTestBase {
   Status CheckTServersHaveMasterMap() {
     const auto expected = VERIFY_RESULT(GetMasterMap()).ShortDebugString();
     for (const auto& tserver : cluster_->mini_tablet_servers()) {
-      auto map = VERIFY_RESULT(tserver->server()->GetXClusterContext().GetPersistenceBlockMap());
+      auto map =
+          VERIFY_RESULT(tserver->server()->GetXClusterContext().TEST_GetPersistenceBlockMap());
       SCHECK_EQ(
           map->ShortDebugString(), expected, IllegalState,
           Format("TServer $0 has a different map", tserver->server()->permanent_uuid()));
@@ -298,7 +299,7 @@ TEST_F(XClusterPersistenceBlockMapTest, TServerWithoutLeaseCatchesUp) {
 
   for (const auto& tserver : cluster_->mini_tablet_servers()) {
     ASSERT_NOK_STR_CONTAINS(
-        tserver->server()->GetXClusterContext().GetPersistenceBlockMap(),
+        tserver->server()->GetXClusterContext().TEST_GetPersistenceBlockMap(),
         "persistence block map is unavailable");
   }
 
@@ -308,8 +309,8 @@ TEST_F(XClusterPersistenceBlockMapTest, TServerWithoutLeaseCatchesUp) {
   ASSERT_OK(WaitFor(
       [this]() -> Result<bool> { return CheckTServersHaveMasterMap().ok(); }, 30s * kTimeMultiplier,
       "Wait for TServers to catch up"));
-  auto map = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->GetXClusterContext().GetPersistenceBlockMap());
+  auto& xcluster_context = cluster_->mini_tablet_server(0)->server()->GetXClusterContext();
+  auto map = ASSERT_RESULT(xcluster_context.TEST_GetPersistenceBlockMap());
   ASSERT_EQ(GetBlockedThroughHt(*map, oid), HybridTime::kMax);
 }
 

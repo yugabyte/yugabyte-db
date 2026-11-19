@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.KubernetesPartitions;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -31,7 +33,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -100,9 +101,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   protected TelemetryConfig getDesiredTelemetryConfig() {
-    return ExportTelemetryConfig.getForUniverse(taskParams().getUniverseUUID())
-        .map(ExportTelemetryConfig::getTelemetryConfig)
-        .orElse(null);
+    return OtelCollectorUtil.getPersistedTelemetryConfig(taskParams().getUniverseUUID());
+  }
+
+  /**
+   * A read-replica-only edit carries no primary cluster, and the primary is not edited by it. Adds
+   * a copy of the pre-edit primary to {@code target} when it has none.
+   */
+  protected static void addPrimaryClusterIfMissing(
+      UniverseDefinitionTaskParams target, UniverseDefinitionTaskParams before) {
+    Cluster beforePrimary = before.getPrimaryCluster();
+    if (target.getPrimaryCluster() == null && beforePrimary != null) {
+      target.clusters.add(Json.fromJson(Json.toJson(beforePrimary), Cluster.class));
+    }
   }
 
   public static class KubernetesPlacement {
@@ -273,6 +284,22 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
 
     getRunnableTask().addSubTaskGroup(pauseGroup);
+  }
+
+  /**
+   * Records whether the node_exporter sidecars serve TLS, as rendered for this DB version. Target
+   * writes scrape the sidecars by this record, so only a task whose pods all came back on a newly
+   * rendered template adds it.
+   */
+  protected void createRecordNodeExporterTlsTask(String softwareVersion) {
+    createUpdateUniverseFieldsTask(
+        u ->
+            u.updateConfig(
+                ImmutableMap.of(
+                    Universe.NODE_EXPORTER_HTTPS,
+                    String.valueOf(
+                        KubernetesUtil.isNodeExporterSidecarTlsEnabled(
+                            softwareVersion, u, confGetter)))));
   }
 
   public void createResumeKubernetesUniverseTasks() {
@@ -2941,6 +2968,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           paramsDeviceCluster.userIntent.masterK8SNodeResourceSpec =
               taskDeviceCluster.userIntent.masterK8SNodeResourceSpec;
         }
+        // Every release renders the primary cluster's expose service setting.
+        params.universeDetails.getPrimaryCluster().userIntent.enableExposingService =
+            primaryCluster.userIntent.enableExposingService;
         if (useNewTserverDeviceInfo) {
           if (isReadOnlyCluster) {
             params.universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo =

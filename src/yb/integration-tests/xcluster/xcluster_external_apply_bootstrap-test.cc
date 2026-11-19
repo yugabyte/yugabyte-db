@@ -331,7 +331,7 @@ class XClusterExternalApplyBootstrapTest : public YBMiniClusterTestBase<MiniClus
     const auto value_column_id = GetValueColumnId(*tablet);
     const DocKey row_doc_key(0, MakeKeyEntryValues("row1"));
 
-    const auto baseline = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    const auto baseline = ASSERT_RESULT(tablet->GetPersistentState(false));
 
     // One-shot rendezvous at the sync point inside the two-DB write window. Only a non-empty
     // intents batch reaches it, i.e. only W1 on this fresh cluster - but gate anyway and assert
@@ -395,11 +395,11 @@ class XClusterExternalApplyBootstrapTest : public YBMiniClusterTestBase<MiniClus
     ASSERT_OK(tablet->Flush(
         tablet::FlushMode::kSync, tablet::FlushFlags::kRegular, rocksdb::FlushReason::kTestOnly));
 
-    auto flushed = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    auto flushed = ASSERT_RESULT(tablet->GetPersistentState(false));
     ASSERT_GT(flushed.regular.index, baseline.regular.index);
     ASSERT_LT(flushed.intents.index, flushed.regular.index);
 
-    const auto flushed_in_window = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    const auto flushed_in_window = ASSERT_RESULT(tablet->GetPersistentState(false));
     LOG(INFO) << "In-window flushed OpIds: regular=" << flushed_in_window.regular
               << " intents=" << flushed_in_window.intents;
 
@@ -412,7 +412,7 @@ class XClusterExternalApplyBootstrapTest : public YBMiniClusterTestBase<MiniClus
     // must still not cover them - the state the crash below turns on.
     ASSERT_GT(ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents)), 0);
     if (advance_frontier) {
-      auto flushed = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+      auto flushed = ASSERT_RESULT(tablet->GetPersistentState(false));
       ASSERT_EQ(flushed.intents.index, flushed_in_window.intents.index);
     }
 
@@ -443,7 +443,7 @@ class XClusterExternalApplyBootstrapTest : public YBMiniClusterTestBase<MiniClus
 
     peer = ASSERT_RESULT(FindLeaderPeer());
     tablet = ASSERT_RESULT(peer->shared_tablet());
-    const auto flushed_after = ASSERT_RESULT(tablet->MaxPersistentOpId(false));
+    const auto flushed_after = ASSERT_RESULT(tablet->GetPersistentState(false));
     const auto intents_count_after_bootstrap =
         ASSERT_RESULT(tablet->TEST_CountDBRecords(docdb::StorageDbType::kIntents));
     const auto dump_after = tablet->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
@@ -580,7 +580,7 @@ TEST_F(XClusterExternalApplyBootstrapTest, ExternalApplyReplayedAfterRestartShad
 
   // Confirm the frontier setup that drives the bug: intents flushed OpId lags W1, regular does not.
   {
-    auto flushed = ASSERT_RESULT(tablet->MaxPersistentOpId(/* invalid_if_no_new_data= */ false));
+    auto flushed = ASSERT_RESULT(tablet->GetPersistentState(/* invalid_if_no_new_data= */ false));
     LOG(INFO) << "Before restart, flushed OpIds: regular=" << flushed.regular
               << " intents=" << flushed.intents;
     ASSERT_LT(flushed.intents.index, flushed.regular.index)

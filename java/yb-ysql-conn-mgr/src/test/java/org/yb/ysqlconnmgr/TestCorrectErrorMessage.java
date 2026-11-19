@@ -113,4 +113,23 @@ public class TestCorrectErrorMessage extends BaseYsqlConnMgr {
 
     checkBrokenControlConnection();
   }
+
+  // Logs in as a role that does not exist, with %08x and %% in its name.
+  // The FATAL message shows the name as it was sent.
+  @Test
+  public void testFormatCharsInLoginErrMsg() throws Exception {
+    final String user = "no_user_%08x.%08x.%08x.%08x_%%";
+    try (Connection connection =
+        getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                              .withUser(user)
+                              .withPassword("yugabyte")
+                              .connect()) {
+      fail("Did not expect to login with a wrong username");
+    } catch (Exception e) {
+      assertTrue("Got wrong error message: " + e.getMessage(),
+                 e.getMessage().contains("role \"" + user + "\" does not exist"));
+    }
+
+    checkBrokenControlConnection();
+  }
 }

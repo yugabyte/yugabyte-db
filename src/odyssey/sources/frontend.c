@@ -166,81 +166,6 @@ yb_frontend_error_is_role_does_not_exist(od_client_t *client)
 	return strcmp(error.code, KIWI_INVALID_AUTHORIZATION_SPECIFICATION) == 0;
 }
 
-/*
- * Startup parameters starting with YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX 
- * name as prefix are reserved to be used by conn mgr. External clients are
- * not allowed to supply them because Postgres uses them to decide whether 
- * authentication metadata came from a trusted connection manager.
- */
-static inline bool
-yb_is_conn_mgr_reserved_startup_parameter(const char *name)
-{
-	/*
-	 * YB: The legacy guc names as well as reserved prefix names can't
-	 * be set by external clients.
-	 */
-	return strncasecmp(name, YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX,
-			   sizeof(YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX) - 1) == 0 ||
-		   strcasecmp(name, "yb_is_client_ysqlconnmgr") == 0 ||
-		   strcasecmp(name, "yb_use_tserver_key_auth") == 0;
-}
-
-static inline int
-yb_frontend_validate_startup_parameters(od_client_t *client)
-{
-	kiwi_vars_t *startup_settings = &client->yb_startup_settings;
-
-	for (int i = 0; i < startup_settings->size; ++i) {
-		kiwi_var_t *startup_parameter = &startup_settings->vars[i];
-		const char *name = startup_parameter->name;
-
-		if (yb_is_conn_mgr_reserved_startup_parameter(name)) {
-			od_frontend_fatal(client, KIWI_PROTOCOL_VIOLATION,
-					  "startup parameter \"%s\" is reserved for "
-					  "the connection manager",
-					  name);
-			return -1;
-		}
-
-		/*
-		 * YB: The options could also contain startup parameters that are
-		 * reserved for the connection manager. So parse --options string
-		 * and validate the startup parameters.
-		 */
-		if (strcmp(name, "options") == 0) {
-			char *options = malloc(startup_parameter->value_len);
-			kiwi_vars_t option_vars;
-
-			if (options == NULL)
-				return -1;
-			memcpy(options, startup_parameter->value,
-			       startup_parameter->value_len);
-			kiwi_vars_init(&option_vars, false);
-			kiwi_parse_options_and_update_vars(
-				&option_vars, options, startup_parameter->value_len);
-			free(options);
-
-			for (int j = 0; j < option_vars.size; ++j) {
-				name = option_vars.vars[j].name;
-				if (yb_is_conn_mgr_reserved_startup_parameter(
-					    name)) {
-					od_frontend_fatal(
-						client, KIWI_PROTOCOL_VIOLATION,
-						"startup parameter \"%s\" is "
-						"reserved for the connection "
-						"manager",
-						name);
-					yb_kiwi_vars_free(&option_vars);
-					return -1;
-				}
-			}
-			yb_kiwi_vars_free(&option_vars);
-		}
-	}
-
-	return 0;
-}
-
 static int od_frontend_startup(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
@@ -259,8 +184,6 @@ static int od_frontend_startup(od_client_t *client)
 			&client->startup, &client->yb_startup_settings);
 		machine_msg_free(msg);
 		if (rc == -1)
-			goto error;
-		if (yb_frontend_validate_startup_parameters(client) == -1)
 			goto error;
 
 		if (!client->startup.unsupported_request)
@@ -309,8 +232,6 @@ static int od_frontend_startup(od_client_t *client)
 	machine_msg_free(msg);
 	if (rc == -1)
 		goto error;
-	if (yb_frontend_validate_startup_parameters(client) == -1)
-		goto error;
 
 	rc = od_compression_frontend_setup(client, client->config_listen,
 					   &instance->logger);
@@ -338,9 +259,6 @@ od_frontend_attach(od_client_t *client, char *context,
 
 	bool wait_for_idle = false;
 	for (;;) {
-		if (yb_is_route_invalid(route))
-			return OD_EATTACH;
-
 		od_router_status_t status;
 		status = od_router_attach(router, client, wait_for_idle, client);
 		if (status != OD_ROUTER_OK) {
@@ -354,11 +272,25 @@ od_frontend_attach(od_client_t *client, char *context,
 		}
 
 		od_server_t *server = client->server;
-		if (server->io.io && !machine_connected(server->io.io)) {
-			od_log(&instance->logger, context, client, server,
-			       "server disconnected, close connection and retry attach");
-			od_router_close(router, client);
-			continue;
+		if (server->io.io &&
+		    ((od_route_t *)server->route)->rule->pool->attach_check) {
+			int rc = od_io_poll(&server->io);
+			if (rc != 0) {
+				od_error(&instance->logger, context, client,
+					 server,
+					 "server fd poll failed, errno=%d (%s)",
+					 machine_errno(),
+					 strerror(machine_errno()));
+			}
+
+			if (!machine_connected(server->io.io)) {
+				od_log(&instance->logger, context, client,
+				       server,
+				       "server disconnected (%s), close connection and retry attach",
+				       od_io_error(&server->io));
+				od_router_close(router, client);
+				continue;
+			}
 		}
 		od_debug(&instance->logger, context, client, server,
 			 "client %s%.*s attached to %s%.*s",
@@ -370,7 +302,7 @@ od_frontend_attach(od_client_t *client, char *context,
 		/* connect to server, if necessary */
 		if (server->io.io) {
 			od_debug(&instance->logger, "frontend-attach", client,
-				 server, "updating client lcv from %d to %d",
+				 server, "updating client lcv from %" PRId64 " to %" PRId64,
 				 client->yb_logical_client_version,
 				 server->yb_logical_client_version);
 			client->yb_logical_client_version =
@@ -421,8 +353,8 @@ od_frontend_attach(od_client_t *client, char *context,
 		    client->yb_logical_client_version <
 			    server->yb_logical_client_version) {
 			od_log(&instance->logger, context, client, server,
-			       "no matching server version found for client as client's logical version = %d "
-			       "and server's logical version = %d",
+			       "no matching server version found for client as client's logical version = %" PRId64 " "
+			       "and server's logical version = %" PRId64,
 			       client->yb_logical_client_version,
 			       server->yb_logical_client_version);
 			return OD_ESERVER_CONNECT;
@@ -431,7 +363,7 @@ od_frontend_attach(od_client_t *client, char *context,
 		if (client->yb_logical_client_version !=
 		    server->yb_logical_client_version) {
 			od_debug(&instance->logger, "frontend-attach", client,
-				 server, "updating client lcv from %d to %d",
+				 server, "updating client lcv from %" PRId64 " to %" PRId64,
 				 client->yb_logical_client_version,
 				 server->yb_logical_client_version);
 		}
@@ -505,7 +437,7 @@ static inline od_frontend_status_t od_frontend_setup(od_client_t *client)
 	if (instance->config.log_session) {
 		client->time_setup = machine_time_us();
 		yb_od_session(&instance->logger, "setup", client, NULL,
-		       "login time: %d microseconds",
+		       "login time: %" PRIu64 " microseconds",
 		       (client->time_setup - client->time_accept));
 		yb_od_session(&instance->logger, "setup", client, NULL,
 		       "client connection from %s to route %s.%s accepted",
@@ -585,14 +517,14 @@ static inline bool od_eject_conn_with_rate(od_client_t *client,
 	{
 		if (info->last_conn_drop_ts + /* 1 sec */ 1 > tv.tv_sec) {
 			od_log(&instance->logger, "shutdown", client, server,
-			       "delay drop client connection on restart, last drop was too recent (wid %d, last drop %d, curr time %d)",
+			       "delay drop client connection on restart, last drop was too recent (wid %d, last drop %d, curr time %ld)",
 			       (*gl)->wid, info->last_conn_drop_ts, tv.tv_sec);
 		} else {
 			info->last_conn_drop_ts = tv.tv_sec;
 			res = true;
 
 			od_log(&instance->logger, "shutdown", client, server,
-			       "drop client connection on restart (wid %d, last eject %d, curr time %d)",
+			       "drop client connection on restart (wid %d, last eject %d, curr time %ld)",
 			       (*gl)->wid, info->last_conn_drop_ts, tv.tv_sec);
 		}
 	}
@@ -607,7 +539,9 @@ static inline bool od_eject_conn_with_timeout(od_client_t *client,
 					      uint64_t timeout)
 {
 	assert(server != NULL);
-	od_dbg_printf_on_dvl_lvl(1, "current time %lld, drop horizon %lld\n",
+	od_dbg_printf_on_dvl_lvl(1,
+				 "current time %" PRIu64 ", drop horizon %" PRIu64
+				 "\n",
 				 machine_time_us(),
 				 client->time_last_active + timeout);
 
@@ -641,7 +575,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 						    ->client_idle_timeout)) {
 					od_log(&instance->logger, "shutdown",
 					       client, server,
-					       "drop idle client connection on due timeout %d sec",
+					       "drop idle client connection on due timeout %" PRIu64 " sec",
 					       client->rule->pool
 						       ->client_idle_timeout);
 
@@ -662,7 +596,7 @@ static inline bool od_should_drop_connection(od_client_t *client,
 						    ->idle_in_transaction_timeout)) {
 					od_log(&instance->logger, "shutdown",
 					       client, server,
-					       "drop idle in transaction connection on due timeout %d sec",
+					       "drop idle in transaction connection on due timeout %" PRIu64 " sec",
 					       client->rule->pool
 						       ->idle_in_transaction_timeout);
 
@@ -851,9 +785,20 @@ static void yb_undo_parse_queue_entry(od_server_t *server,
 				  &value_ptr);
 		break;
 	}
+	case YB_PARSE_QUEUE_QUERY:
+		if (server->sync_request > server->sync_reply) {
+			server->sync_request--;
+		} else {
+			od_instance_t *instance = server->global->instance;
+			od_error(&instance->logger, "parse queue cleanup",
+				 client, server,
+				 "discarded Query with no pending sync request");
+		}
+		server->yb_unnamed_prep_stmt_client_id =
+			entry->prev_unnamed_client_id;
+		break;
 	case YB_PARSE_QUEUE_UNNAMED_PARSE:
 	case YB_PARSE_QUEUE_UNNAMED_CLOSE:
-	case YB_PARSE_QUEUE_QUERY:
 		server->yb_unnamed_prep_stmt_client_id =
 			entry->prev_unnamed_client_id;
 		break;
@@ -1115,6 +1060,11 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		skip_forward_to_client = true;
 		if (!is_deploy)
 			yb_backend_handle_query_ack(server, "yb query ack");
+		break;
+	case YB_KIWI_BE_OBJECT_DROPPED:
+		skip_forward_to_client = true;
+		if (yb_handle_object_dropped_pkt(server, data, size) == -1)
+			return relay->error_read;
 		break;
 #ifndef YB_SUPPORT_FOUND
 	case KIWI_BE_PARSE_COMPLETE:
@@ -1383,6 +1333,7 @@ char *yb_prepare_server_key(char *stmt_name, int stmt_name_len, char *query_stri
 	return server_key;
 }
 
+__attribute__((format(printf, 5, 6)))
 static od_frontend_status_t
 yb_frontend_throw_error(od_relay_t *relay, od_client_t *client,
 			od_server_t *server, char *sqlstate, char *fmt, ...)
@@ -1431,11 +1382,11 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	if (type == KIWI_FE_TERMINATE)
 		return OD_STOP;
 
-	/* YB: ConnMgr's own packet, never legitimate from a client. */
-	if (type == YB_KIWI_FE_YB_THROW_ERROR) {
+	if (yb_kiwi_fe_is_internal_type(type)) {
 		od_error(&instance->logger, "remote client", client,
 			 client->server,
-			 "unexpected YbThrowError packet from client");
+			 "unexpected internal packet type '%c' from client",
+			 type);
 		return OD_ECLIENT_READ;
 	}
 
@@ -1597,7 +1548,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				od_debug(
 					&instance->logger, "remote client",
 					client, server,
-					"%.*s (len %d) (%u) operator was not prepared by this client",
+					"%.*s (len %d) (%" PRIu64 ") operator was not prepared by this client",
 					operator_name_len, operator_name,
 					operator_name_len, keyhash);
 				retstatus = yb_frontend_throw_error(
@@ -1625,7 +1576,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_debug(&instance->logger, "rewrite describe", client,
 				 server, "statement: %.*s, hash: %016" PRIx64,
-				 desc->len, desc->data, yb_stmt_hash);
+				 (int)desc->len, (char *)desc->data, yb_stmt_hash);
 
 			char opname[YB_OD_HASH_64_LEN];
 			od_snprintf(opname, YB_OD_HASH_64_LEN, "%016" PRIx64,
@@ -1641,8 +1592,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					 server,
 					 "deploy %.*s operator hash %016" PRIx64
 					 " to server",
-					 server_key_desc.len,
-					 server_key_desc.data, keyhash);
+					 (int)server_key_desc.len,
+					 (char *)server_key_desc.data, keyhash);
 				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
@@ -1760,7 +1711,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				desc.operator_name, desc.operator_name_len);
 			od_debug(&instance->logger, "parse", client, server,
 				 "saving %.*s operator hash %016" PRIx64,
-				 desc.operator_name_len, desc.operator_name,
+				 (int)desc.operator_name_len, desc.operator_name,
 				 keyhash);
 
 			od_hashmap_elt_t key;
@@ -1993,7 +1944,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "rewrite parse", NULL, server,
-						 "out of memory",
+						 "out of memory: %s",
 						 od_io_error(&server->io));
 					return OD_ESERVER_WRITE;
 				}
@@ -2021,7 +1972,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 				od_debug(
 					&instance->logger, "remote client",
 					client, server,
-					"%.*s (%u) operator was not prepared by this client",
+					"%.*s (%" PRIu64 ") operator was not prepared by this client",
 					operator_name_len, operator_name,
 					keyhash);
 				retstatus = yb_frontend_throw_error(
@@ -2049,7 +2000,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			od_debug(&instance->logger, "rewrite bind", client,
 				 server, "statement: %.*s, hash: %016" PRIx64,
-				 desc->len, desc->data, yb_stmt_hash);
+				 (int)desc->len, (char *)desc->data, yb_stmt_hash);
 
 			char opname[YB_OD_HASH_64_LEN];
 			od_snprintf(opname, YB_OD_HASH_64_LEN, "%016" PRIx64,
@@ -2064,7 +2015,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 					"rewrite parse before bind", client,
 					server,
 					"deploy %.*s operator hash %016" PRIx64 " to server",
-					server_key_desc.len, server_key_desc.data, keyhash);
+					(int)server_key_desc.len, (char *)server_key_desc.data, keyhash);
 				free(server_key_desc.data);
 				// rewrite msg
 				// allocate prepered statement under name equal to yb_stmt_hash
@@ -2769,7 +2720,8 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 		od_error(&instance->logger, context, client, server,
 				"deploy error: %s, status %s", client->deploy_err->message,
 				od_frontend_status_to_str(status));
-		od_frontend_fatal(client, client->deploy_err->code, client->deploy_err->message);
+		od_frontend_fatal(client, client->deploy_err->code, "%s",
+				  client->deploy_err->message);
 		/* close backend connection */
 		od_router_close(router, client);
 		break;
@@ -2810,6 +2762,9 @@ static void od_application_name_add_host(od_client_t *client)
 	int length =
 		od_snprintf(app_name_with_host, KIWI_MAX_VAR_SIZE, "%.*s - %s",
 			    app_name_len, app_name, peer_name);
+	if (length >= KIWI_MAX_VAR_SIZE) {
+		length = KIWI_MAX_VAR_SIZE - 1;
+	}
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_vars_update(&client->yb_vars_session, "application_name", 17,
 			 app_name_with_host, length + 1); // return code ignored
@@ -2989,26 +2944,17 @@ void od_frontend(void *arg)
 	 * Client hostname GUC is updated by doing DNS lookup on the client ip addr in postgres
 	 * during authentication and parameter status is returned to cache it client struct as
 	 * done for any other startup guc.
+	 * They are reserved parameters, so they are written before the
+	 * YB_YCM_INTERNAL_END marker and not mixed with the client's own settings.
 	 */
 	if (client_ip[0] != '\0' && client_ip[0] != '<') {
-		char client_port[8];
-		od_getpeername(client->io.io, client_port,
-			       sizeof(client_port), 0, 1);
-
-		kiwi_vars_update(&client->yb_startup_settings,
-				 YB_YCM_CLIENT_ADDR,
-				 sizeof(YB_YCM_CLIENT_ADDR),
-				 client_ip,
-				 strlen(client_ip) + 1);
-
-		kiwi_vars_update(&client->yb_startup_settings,
-				 YB_YCM_CLIENT_PORT,
-				 sizeof(YB_YCM_CLIENT_PORT),
-				 client_port,
-				 strlen(client_port) + 1);
+		snprintf(client->yb_ycm_client_addr,
+			 sizeof(client->yb_ycm_client_addr), "%s", client_ip);
+		od_getpeername(client->io.io, client->yb_ycm_client_port,
+			       sizeof(client->yb_ycm_client_port), 0, 1);
 		od_debug(&instance->logger, "startup", client, NULL,
-				 "injected " YB_YCM_CLIENT_ADDR " = %s, " YB_YCM_CLIENT_PORT " = %s",
-				 client_ip, client_port);
+				 "client " YB_YCM_CLIENT_ADDR " = %s, " YB_YCM_CLIENT_PORT " = %s",
+				 client->yb_ycm_client_addr, client->yb_ycm_client_port);
 	}
 
 	/* client authentication */
@@ -3505,7 +3451,7 @@ int yb_auth_via_auth_backend(od_client_t *client)
 							control_conn_client);
 	/*Store the client's logical_client_version as auth backend's logical_client_version*/
 	od_debug(&instance->logger, "auth backend", client, server,
-		 "setting client's logical client version to %d",
+		 "setting client's logical client version to %" PRId64,
 		 server->yb_logical_client_version);
 	client->yb_logical_client_version = server->yb_logical_client_version;
 

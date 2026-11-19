@@ -11,6 +11,7 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.NOT_FOUND;
 
+import com.oracle.bmc.ServiceDetails;
 import com.oracle.bmc.core.ComputeClient;
 import com.oracle.bmc.core.model.Image;
 import com.oracle.bmc.core.requests.GetImageRequest;
@@ -168,8 +169,17 @@ public class OCICloudImplTest extends FakeDBApplication {
 
   @Test
   public void testGetImageOrBadRequestWrapsNotFound() {
-    BmcException notFound = mock(BmcException.class);
-    when(notFound.getStatusCode()).thenReturn(NOT_FOUND);
+    BmcException notFound =
+        new BmcException(
+            NOT_FOUND,
+            "NotAuthorizedOrNotFound",
+            "Authorization failed or requested resource not found.",
+            "req-id",
+            new ServiceDetails(
+                "Compute",
+                "GetImage",
+                "https://iaas.us-ashburn-1.oraclecloud.com/20160918/images/" + IMAGE_ID,
+                null));
     when(mockComputeClient().getImage(any(GetImageRequest.class))).thenThrow(notFound);
 
     PlatformServiceException e =
@@ -177,7 +187,12 @@ public class OCICloudImplTest extends FakeDBApplication {
             PlatformServiceException.class,
             () -> ociCloudImpl.getImageOrBadRequest(defaultProvider, REGION, IMAGE_ID));
     assertEquals(NOT_FOUND, e.getHttpStatus());
-    assertEquals("Image not found: " + IMAGE_ID, e.getMessage());
+    assertEquals(
+        "Image not found: "
+            + IMAGE_ID
+            + ": OCI Compute GetImage failed: Authorization failed or requested resource not"
+            + " found. (404 NotAuthorizedOrNotFound, endpoint: iaas.us-ashburn-1.oraclecloud.com)",
+        e.getMessage());
   }
 
   @Test

@@ -19,7 +19,9 @@ import (
 
 const (
 	defaultFullUniverseGeneral = "table {{.Name}}\t{{.UUID}}\t{{.Version}}\t{{.State}}"
-	universeGeneral1           = "table {{.ProviderCode}}\t{{.RF}}" +
+	universeUpgrade            = "table {{.SoftwareUpgradeState}}\t{{.RollbackAllowed}}" +
+		"\t{{.PrevVersion}}"
+	universeGeneral1 = "table {{.ProviderCode}}\t{{.RF}}" +
 		"\t{{.NumMasters}}\t{{.NumTservers}}\t{{.LiveNodes}}"
 	universeDetails1 = "table  {{.ProviderUUID}}\t{{.AccessKey}}\t{{.PricePerDay}}" +
 		"\t{{.CPUArchitecture}}"
@@ -91,6 +93,22 @@ func (fu *FullUniverseContext) Write() error {
 	}
 	fu.PostFormat(tmpl, NewUniverseContext())
 	fu.Output.Write([]byte("\n"))
+
+	// Software upgrade state, for finalize and rollback. Older YBA versions do not send it.
+	upgradeDetails := fu.u.GetUniverseDetails()
+	if upgradeDetails.GetSoftwareUpgradeState() != "" {
+		tmpl, err = fu.startSubsection(universeUpgrade)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fu.ContextFormat(tmpl, fuc.Universe); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fu.PostFormat(tmpl, NewUniverseContext())
+		fu.Output.Write([]byte("\n"))
+	}
 
 	// Provider information
 	tmpl, err = fu.startSubsection(universeGeneral1)
@@ -184,7 +202,7 @@ func (fu *FullUniverseContext) Write() error {
 	fu.Output.Write([]byte("\n"))
 
 	details := fu.u.GetUniverseDetails()
-	primaryCluster := details.GetClusters()[0]
+	primaryCluster, _ := util.FindClusterByType(details.GetClusters(), util.PrimaryClusterType)
 	userIntent := primaryCluster.GetUserIntent()
 	if userIntent.GetProviderType() == util.K8sProviderType {
 		// Section 5: Overrides for kubernetes

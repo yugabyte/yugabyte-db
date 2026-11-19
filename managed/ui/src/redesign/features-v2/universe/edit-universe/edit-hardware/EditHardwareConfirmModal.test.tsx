@@ -349,6 +349,58 @@ describe('EditHardwareConfirmModal payloads', () => {
     expect(mockState.resizeMutate).not.toHaveBeenCalled();
   });
 
+  it('omits IOPS/throughput from dedicated master when keepMasterTserverSame and tserver switched to GP2', async () => {
+    // masterDeviceInfo still holds stale GP3 metrics; keep-same must use cleared tserver deviceInfo.
+    mockState.settings = vmSettings({
+      instanceType: 'c5.xlarge',
+      keepMasterTserverSame: true,
+      deviceInfo: {
+        ...vmSettings().deviceInfo!,
+        storageType: 'GP2',
+        diskIops: null,
+        throughput: null
+      },
+      masterDeviceInfo: {
+        ...vmSettings().masterDeviceInfo!,
+        storageType: 'GP3',
+        diskIops: 3000,
+        throughput: 125
+      }
+    });
+    mockState.resizeOptions = [ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'migrate';
+
+    renderModal(makeNonGeoUniverseWithDedicatedNodeDetails(), { mode: 'master' });
+    await submitAndConfirm();
+
+    const nodeSpec = getFirstEditPayload().node_spec;
+    expect(nodeSpec.master.storage_spec.storage_type).toBe('GP2');
+    expect(nodeSpec.master.storage_spec).not.toHaveProperty('disk_iops');
+    expect(nodeSpec.master.storage_spec).not.toHaveProperty('throughput');
+  });
+
+  it('omits stale throughput on IO1 even when form left the old GP3 number', async () => {
+    mockState.settings = vmSettings({
+      instanceType: 'c5.xlarge',
+      deviceInfo: {
+        ...vmSettings().deviceInfo!,
+        storageType: 'IO1',
+        diskIops: 1000,
+        throughput: 125
+      }
+    });
+    mockState.resizeOptions = [ResizeUpdateOption.FULL_MOVE];
+    mockState.strategy = 'migrate';
+
+    renderModal(makeNonGeoUniverse());
+    await submitAndConfirm();
+
+    const storageSpec = getFirstEditPayload().node_spec.storage_spec;
+    expect(storageSpec.storage_type).toBe('IO1');
+    expect(storageSpec.disk_iops).toBe(1000);
+    expect(storageSpec).not.toHaveProperty('throughput');
+  });
+
   it('routes migrate strategy to edit-universe when both options are available', async () => {
     mockState.strategy = 'migrate';
     renderModal(makeNonGeoUniverse());

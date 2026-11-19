@@ -372,7 +372,12 @@ Status ReadQuery::DoPerform() {
 #endif
   }
 
-  const auto serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+  const auto force_snapshot_read = req_->force_snapshot_read();
+  if (force_snapshot_read && !req_->has_read_time()) {
+    return STATUS(IllegalState, "Forced snapshot read requires a read time");
+  }
+  const auto serializable_isolation =
+      isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && !force_snapshot_read;
 
   // Get the most restrictive row mark present in the batch of PostgreSQL requests.
   // TODO: rather handle individual row marks once we start batching read requests (issue #2495)
@@ -389,6 +394,9 @@ Status ReadQuery::DoPerform() {
     }
   }
   const auto has_row_mark = IsValidRowMarkType(batch_row_mark);
+  if (force_snapshot_read && has_row_mark) {
+    return STATUS(IllegalState, "Forced snapshot read can't take row locks");
+  }
 
   const auto has_pending_async_writes = !req_->pending_async_write_op_ids().empty() ||
                                         req_->has_deprecated_pending_async_write_op_id();

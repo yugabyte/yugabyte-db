@@ -75,10 +75,10 @@ v_top_parent_schema             text := split_part(p_parent_table, '.', 1);
 v_top_parent_table              text := split_part(p_parent_table, '.', 2);
 v_unlogged                      char;
 yb_v_parent_table_default       regclass;
-yb_v_enable_default_partition   boolean := false;
 yb_v_is_colocated_table         boolean := false;
 yb_v_schema_name                text;
 yb_v_table_name                 text;
+yb_v_use_native_txn_ddl_and_locks boolean := pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks();
 
 BEGIN
 /*
@@ -274,9 +274,10 @@ IF p_jobmon THEN
 END IF;
 EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_new_search_path, 'false');
 
-/* YB: ACCESS EXCLUSIVE not supported yet
+-- YB: ACCESS EXCLUSIVE mode needs table level object locking.
+IF yb_v_use_native_txn_ddl_and_locks THEN
 EXECUTE format('LOCK TABLE %I.%I IN ACCESS EXCLUSIVE MODE', v_parent_schema, v_parent_tablename);
-*/
+END IF; -- yb_v_use_native_txn_ddl_and_locks
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN SETUP PARENT: %s', p_parent_table));
@@ -746,10 +747,10 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
 
 END IF; -- End IF id
 
-/* YB: Disable default partition creation.
- * TODO(#3109): Re-enable it after transactional DDL support.
- */
-IF yb_v_enable_default_partition AND p_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
+-- YB: A default partition is only useful with transactional DDL.  Without it, run_maintenance skips
+-- sets that have one and partition_data_* cannot move rows out of it.
+IF yb_v_use_native_txn_ddl_and_locks THEN
+IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
     -- Add default partition to native sets in PG11+
 
     v_default_partition := @extschema@.check_name_length(v_parent_tablename, '_default', FALSE);
@@ -764,11 +765,17 @@ IF yb_v_enable_default_partition AND p_type = 'native' AND current_setting('serv
     */
 
     -- Same INCLUDING list is used in create_partition_*(). INDEXES is handled when partition is attached if it's supported.
+    -- YB: The default can already exist and be attached when create_partition_* re-attach an
+    -- existing child and call create_parent on it, so don't create or attach it again (#23163).
     v_sql := v_sql || format(' TABLE IF NOT EXISTS %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
         , v_parent_schema, v_default_partition, v_parent_schema, v_parent_tablename);
     IF current_setting('server_version_num')::int >= 120000 THEN
         v_sql := v_sql || ' INCLUDING GENERATED ';
     END IF;
+    -- YB: INCLUDING INDEXES so that ATTACH does not have to add the parent's primary key, if any,
+    -- which is a table rewrite in YB.  In PG, the attach would create the same indexes, so the
+    -- resulting table is the same.
+    v_sql := v_sql || ' INCLUDING INDEXES ';
     v_sql := v_sql || ')';
     EXECUTE v_sql;
     v_sql := format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I DEFAULT'
@@ -780,11 +787,6 @@ IF yb_v_enable_default_partition AND p_type = 'native' AND current_setting('serv
         EXECUTE v_sql;
     END IF;
 
-    IF p_publications IS NOT NULL THEN
-        -- NOTE: Native publication inheritance is only supported on PG14+
-        PERFORM @extschema@.apply_publications(p_parent_table, v_parent_schema, v_default_partition);
-    END IF;
-
 
     IF current_setting('server_version_num')::int >= 120000 AND v_parent_tablespace IS NOT NULL THEN
         -- Tablespace managed via inherit_template_properties() call below if PG11 or earliser
@@ -794,7 +796,16 @@ IF yb_v_enable_default_partition AND p_type = 'native' AND current_setting('serv
     -- Manage template inherited properies
     PERFORM @extschema@.inherit_template_properties(p_parent_table, v_parent_schema, v_default_partition);
 
+    -- YB: Publish the default after it gets the template's primary key, as create_partition_* do
+    -- for children. YB refuses to publish a table without a primary key while
+    -- yb_cdcsdk_stream_tables_without_primary_key is off, and adding one later rewrites the table.
+    IF p_publications IS NOT NULL THEN
+        -- NOTE: Native publication inheritance is only supported on PG14+
+        PERFORM @extschema@.apply_publications(p_parent_table, v_parent_schema, v_default_partition);
+    END IF;
+
 END IF;
+END IF; -- yb_v_use_native_txn_ddl_and_locks
 
 IF p_type <> 'native' THEN
     IF v_jobmon_schema IS NOT NULL  THEN

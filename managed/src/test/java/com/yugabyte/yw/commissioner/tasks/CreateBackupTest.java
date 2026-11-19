@@ -15,7 +15,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -502,8 +501,7 @@ public class CreateBackupTest extends CommissionerBaseTest {
 
     // Setup YBC mocks
     when(mockYbcManager.getYbcClient(eq(defaultUniverse), any())).thenReturn(mockYbcClient);
-    when(mockYbcManager.ybcPingCheck(anyString(), nullable(String.class), anyInt()))
-        .thenReturn(true);
+    when(mockYbcManager.ybcPingCheck(anyString(), any(), anyInt())).thenReturn(true);
     Mockito.doNothing().when(mockYbcManager).deleteYbcBackupTask(any(), any());
     Mockito.doNothing().when(mockYbcManager).validateCloudConfigWithClient(any(), any(), any());
     when(mockYbcBackupUtil.createCloudStoreConfigForNode(any(), any(), any(), any()))

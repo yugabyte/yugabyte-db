@@ -1377,6 +1377,88 @@ TABLE multidx;
  1 | 2
 (1 row)
 
+--- Single-row DO NOTHING on a PK-only table
+-- This shape is eligible for conflict-resolution pushdown; the results must be
+-- identical on the pushdown, batched, and non-batched paths.
+CREATE TABLE pk_only (i int PRIMARY KEY, j int NOT NULL CHECK (j > 0));
+INSERT INTO pk_only VALUES (1, 10);
+-- RETURNING emits inserted rows but not rows skipped due to a conflict.
+INSERT INTO pk_only VALUES (2, 20) ON CONFLICT (i) DO NOTHING RETURNING i, j, i + j AS sum;
+ i | j  | sum 
+---+----+-----
+ 2 | 20 |  22
+(1 row)
+
+INSERT INTO pk_only VALUES (1, 99) ON CONFLICT (i) DO NOTHING RETURNING i, j;
+ i | j 
+---+---
+(0 rows)
+
+INSERT INTO pk_only VALUES (3, 30) ON CONFLICT (i) DO NOTHING RETURNING i, j, i + j AS sum;
+ i | j  | sum 
+---+----+-----
+ 3 | 30 |  33
+(1 row)
+
+-- Constraints are checked before conflict resolution, including for a
+-- conflicting row.
+INSERT INTO pk_only VALUES (4, 0) ON CONFLICT (i) DO NOTHING;
+ERROR:  new row for relation "pk_only" violates check constraint "pk_only_j_check"
+DETAIL:  Failing row contains (4, 0).
+INSERT INTO pk_only VALUES (4, NULL) ON CONFLICT (i) DO NOTHING;
+ERROR:  null value in column "j" of relation "pk_only" violates not-null constraint
+DETAIL:  Failing row contains (4, null).
+INSERT INTO pk_only VALUES (1, 0) ON CONFLICT (i) DO NOTHING;
+ERROR:  new row for relation "pk_only" violates check constraint "pk_only_j_check"
+DETAIL:  Failing row contains (1, 0).
+-- A newly inserted row is rolled back with its transaction.
+BEGIN;
+INSERT INTO pk_only VALUES (5, 50) ON CONFLICT (i) DO NOTHING;
+ROLLBACK;
+-- Skipping a conflicting row does not abort the transaction.
+BEGIN;
+INSERT INTO pk_only VALUES (1, 99) ON CONFLICT (i) DO NOTHING;
+INSERT INTO pk_only VALUES (6, 60) ON CONFLICT (i) DO NOTHING;
+COMMIT;
+-- Conflict with an earlier uncommitted insert.
+BEGIN;
+INSERT INTO pk_only VALUES (7, 70);
+INSERT INTO pk_only VALUES (7, 99) ON CONFLICT (i) DO NOTHING;
+COMMIT;
+-- An earlier uncommitted delete frees the key.
+BEGIN;
+DELETE FROM pk_only WHERE i = 7;
+INSERT INTO pk_only VALUES (7, 71) ON CONFLICT (i) DO NOTHING;
+COMMIT;
+-- Rolling back to a savepoint frees the key.
+BEGIN;
+SAVEPOINT sp;
+INSERT INTO pk_only VALUES (8, 80) ON CONFLICT (i) DO NOTHING;
+ROLLBACK TO SAVEPOINT sp;
+INSERT INTO pk_only VALUES (8, 81) ON CONFLICT (i) DO NOTHING;
+COMMIT;
+-- Conflict handling under stronger isolation levels.
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+INSERT INTO pk_only VALUES (1, 99) ON CONFLICT (i) DO NOTHING;
+INSERT INTO pk_only VALUES (9, 90) ON CONFLICT (i) DO NOTHING;
+COMMIT;
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+INSERT INTO pk_only VALUES (1, 99) ON CONFLICT (i) DO NOTHING;
+INSERT INTO pk_only VALUES (10, 100) ON CONFLICT (i) DO NOTHING;
+COMMIT;
+SELECT * FROM pk_only ORDER BY i;
+ i  |  j  
+----+-----
+  1 |  10
+  2 |  20
+  3 |  30
+  6 |  60
+  7 |  71
+  8 |  81
+  9 |  90
+ 10 | 100
+(8 rows)
+
 --- GH-25836
 CREATE TABLE it (i int2 PRIMARY KEY, t text);
 WITH w AS (

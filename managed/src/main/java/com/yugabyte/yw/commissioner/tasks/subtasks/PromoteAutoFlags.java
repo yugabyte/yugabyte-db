@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClientApi;
 import org.yb.master.MasterTypes.MasterErrorPB;
@@ -57,8 +58,10 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
               confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlagsForceFully));
       if (resp.hasError()) {
         MasterErrorPB error = resp.getError();
-        // Ignore error with code 6 as there was no new flags to promote.
-        if (error.getStatus().getCode().getNumber() == 6) {
+        // ALREADY_PRESENT: no new flags to promote. NOT_SUPPORTED: the master runs with
+        // disable_auto_flags_management, so there is nothing YBA can promote.
+        ErrorCode code = error.getStatus().getCode();
+        if (code == ErrorCode.ALREADY_PRESENT || code == ErrorCode.NOT_SUPPORTED) {
           log.warn(error.toString());
         } else {
           log.error(error.toString());

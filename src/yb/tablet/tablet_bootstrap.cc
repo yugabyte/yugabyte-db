@@ -215,9 +215,9 @@ using OpIndexToEntryMap = std::map<int64_t, Entry>;
 // State kept during replay.
 struct ReplayState {
   ReplayState(
-      const DocDbOpIds& op_ids_,
+      const DocDbPersistentState& persistent_state_,
       const std::string& log_prefix_)
-      : stored_op_ids(op_ids_),
+      : persistent_state(persistent_state_),
         log_prefix(log_prefix_) {
   }
 
@@ -266,7 +266,10 @@ struct ReplayState {
 
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables (not transaction status table)
-  DocDbOpIds stored_op_ids;
+  DocDbPersistentState persistent_state;
+
+  // Op id of the quiescent marker, which persistent_state was raised to. Empty without a marker.
+  OpId quiescent_marker_op_id;
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
@@ -281,12 +284,12 @@ struct ReplayState {
 };
 
 void ReplayState::UpdateCommittedFromStored() {
-  if (stored_op_ids.regular > committed_op_id) {
-    committed_op_id = stored_op_ids.regular;
+  if (persistent_state.regular > committed_op_id) {
+    committed_op_id = persistent_state.regular;
   }
 
-  if (stored_op_ids.intents > committed_op_id) {
-    committed_op_id = stored_op_ids.intents;
+  if (persistent_state.intents > committed_op_id) {
+    committed_op_id = persistent_state.intents;
   }
 }
 
@@ -370,9 +373,9 @@ void ReplayState::DumpReplayStateToStrings(
       prev_op_id,
       committed_op_id,
       pending_replicates.size(),
-      stored_op_ids.regular,
-      stored_op_ids.intents,
-      stored_op_ids.vector_indexes));
+      persistent_state.regular,
+      persistent_state.intents,
+      persistent_state.vector_indexes));
   if (num_entries_applied_to_rocksdb > 0) {
     strings->push_back(Format("Log entries applied to RocksDB: $0",
                               num_entries_applied_to_rocksdb));
@@ -389,20 +392,21 @@ bool ReplayState::CanApply(const log::LWLogEntryPB& entry) {
 
 OpId ReplayState::GetLowestOpIdToReplay(bool has_intents_db, const char* extra_log_prefix) const {
   auto op_id_replay_lowest =
-      has_intents_db ? std::min(stored_op_ids.regular, stored_op_ids.intents)
-                     : stored_op_ids.regular;
+      has_intents_db ? std::min(persistent_state.regular, persistent_state.intents)
+                     : persistent_state.regular;
   // A vector index flushes independently of the regular and intents DBs, and the intents flushed
-  // OpId may be advanced to match the regular one without waiting for vector indexes, so it
-  // could lag behind both of them. Replay from the lowest storage.
-  for (const auto& op_id : stored_op_ids.vector_indexes) {
-    op_id_replay_lowest = std::min(op_id_replay_lowest, op_id);
+  // OpId may be advanced to match the regular one past a vector index that holds nothing unflushed,
+  // so it could lag behind both of them. Replay from the lowest storage.
+  for (const auto& vector_index : persistent_state.vector_indexes) {
+    op_id_replay_lowest = std::min(op_id_replay_lowest, vector_index.op_id);
   }
   LOG_WITH_PREFIX(INFO)
       << extra_log_prefix
       << "op_id_replay_lowest=" << op_id_replay_lowest
-      << " (regular_op_id=" << stored_op_ids.regular
-      << ", intents_op_id=" << stored_op_ids.intents
-      << ", vector_indexes_op_ids=" << AsString(stored_op_ids.vector_indexes)
+      << " (regular_op_id=" << persistent_state.regular
+      << ", intents_op_id=" << persistent_state.intents
+      << ", vector_indexes=" << AsString(persistent_state.vector_indexes)
+      << ", quiescent_marker_op_id=" << quiescent_marker_op_id
       << ", has_intents_db=" << has_intents_db << ")";
   return op_id_replay_lowest;
 }
@@ -561,7 +565,15 @@ class TabletBootstrap {
       tablet_->TEST_DocDBDumpToLog(docdb::IncludeIntents::kTrue);
     }
 
-    const auto needs_recovery = VERIFY_RESULT(PrepareToReplay());
+    // skip_wal_rewrite=false rewrites the WAL into a new dir and deletes the old one, together with
+    // the quiescent marker. So a tablet with a marker replays its WAL in place whatever the flag.
+    const bool has_marker = GetEnv()->FileExists(Log::QuiescentMarkerPath(meta_->wal_dir()));
+    if (has_marker && !skip_wal_rewrite_) {
+      LOG_WITH_PREFIX(INFO) << "Quiescent marker found, not rewriting WAL";
+      skip_wal_rewrite_ = log::SkipWalWrite::kTrue;
+    }
+
+    const bool needs_recovery = VERIFY_RESULT(PrepareToReplay()) || has_marker;
     if (needs_recovery && !skip_wal_rewrite_) {
       RETURN_NOT_OK(OpenLogReader());
     }
@@ -1016,13 +1028,13 @@ class TabletBootstrap {
         return PlayWriteRequest(replicate, apply_to_storages);
 
       case consensus::CHANGE_METADATA_OP:
-        return RefreshVectorIndexOpIds(PlayChangeMetadataRequest(replicate));
+        return RefreshVectorIndexStates(PlayChangeMetadataRequest(replicate));
 
       case consensus::CHANGE_CONFIG_OP:
         return PlayChangeConfigRequest(replicate);
 
       case consensus::TRUNCATE_OP:
-        return RefreshVectorIndexOpIds(PlayTruncateRequest(replicate));
+        return RefreshVectorIndexStates(PlayTruncateRequest(replicate));
 
       case consensus::NO_OP:
         return Status::OK();  // This is why it is a no-op!
@@ -1031,7 +1043,7 @@ class TabletBootstrap {
         return PlayUpdateTransactionRequest(replicate, apply_to_storages);
 
       case consensus::SNAPSHOT_OP:
-        return RefreshVectorIndexOpIds(PlayTabletSnapshotRequest(replicate));
+        return RefreshVectorIndexStates(PlayTabletSnapshotRequest(replicate));
 
       case consensus::HISTORY_CUTOFF_OP:
         return PlayHistoryCutoffRequest(replicate);
@@ -1144,17 +1156,23 @@ class TabletBootstrap {
   // Computes which storages a replayed write must (re-)materialize into: the regular DB when this
   // op is not yet flushed there, plus each vector index that is likewise behind.
   //
+  // An op at or below the hybrid time of a vector index precedes the index, so the live path did
+  // not apply it to the index either, and its schema packing could be GCed (GH#35124). The op
+  // hybrid time is compared, not the write one: on an xCluster target the latter is the source's,
+  // and a write applied after the index was added can be below the index hybrid time (GH#34697).
+  //
   // TODO(vector_index): The vector index bits are positions in the current vector index list,
   // so the result must be consumed before the list changes. See the TODO in docdb::StorageSet.
   static docdb::StorageSet ComputeApplyToStorages(
-      int64_t index, const DocDbOpIds& flushed_op_ids) {
+      int64_t index, HybridTime hybrid_time, const DocDbPersistentState& persistent_state) {
     docdb::StorageSet apply_to_storages;
-    apply_to_storages.Resize(flushed_op_ids.vector_indexes.size());
-    if (index > flushed_op_ids.regular.index) {
+    apply_to_storages.Resize(persistent_state.vector_indexes.size());
+    if (index > persistent_state.regular.index) {
       apply_to_storages.SetRegularDB();
     }
-    for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
-      if (index > flushed_op_ids.vector_indexes[idx].index) {
+    for (size_t idx = 0; idx != persistent_state.vector_indexes.size(); ++idx) {
+      const auto& vector_index = persistent_state.vector_indexes[idx];
+      if (index > vector_index.op_id.index && hybrid_time > vector_index.hybrid_time) {
         apply_to_storages.SetVectorIndex(idx);
       }
     }
@@ -1164,7 +1182,8 @@ class TabletBootstrap {
   ReplayDecision ShouldReplayOperation(
       consensus::OperationType op_type,
       const int64_t index,
-      const DocDbOpIds& flushed_op_ids,
+      HybridTime hybrid_time,
+      const DocDbPersistentState& persistent_state,
       const int64_t metadata_flushed_index,
       TransactionStatus txn_status,
       bool write_op_has_transaction) {
@@ -1176,23 +1195,23 @@ class TabletBootstrap {
         // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
         // a temporary change. The long term change is to track write and apply operations
         // separately instead of a tracking a single "intents_flushed_index".
-        auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+        auto apply_to_storages = ComputeApplyToStorages(index, hybrid_time, persistent_state);
         VLOG_WITH_PREFIX_AND_FUNC(3)
-            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+            << "index: " << index << " persistent_state: " << persistent_state.ToString()
             << ", apply_to_storages: " << apply_to_storages.ToString();
         return {true, apply_to_storages};
       }
       // We need promotions to persist to intents RocksDB before we can skip it.
       if (txn_status == TransactionStatus::PROMOTING) {
         VLOG_WITH_PREFIX_AND_FUNC(3)
-            << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-        return {index > flushed_op_ids.intents.index};
+            << "index: " << index << " persistent_state: " << persistent_state.ToString();
+        return {index > persistent_state.intents.index};
       }
       // For other types of transaction updates, we ignore them if they have been flushed to the
       // regular RocksDB.
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-      return {index > flushed_op_ids.regular.index};
+          << "index: " << index << " persistent_state: " << persistent_state.ToString();
+      return {index > persistent_state.regular.index};
     }
 
     if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
@@ -1208,20 +1227,20 @@ class TabletBootstrap {
       // exactly the storages that have not flushed it yet. Gating on the regular DB alone lost
       // vectors after an ungraceful restart once the regular DB flushed past the op while a vector
       // index had not (GH#32797).
-      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+      auto apply_to_storages = ComputeApplyToStorages(index, hybrid_time, persistent_state);
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << "index: " << index << " persistent_state: " << persistent_state.ToString()
           << ", apply_to_storages: " << apply_to_storages.ToString();
       return {apply_to_storages.Any(), apply_to_storages};
     }
 
     // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
     // trying to be resilient to violations of that assumption.
-    if (index <= std::min(flushed_op_ids.regular.index, flushed_op_ids.intents.index)) {
+    if (index <= std::min(persistent_state.regular.index, persistent_state.intents.index)) {
       // Never replay anything that is flushed to both regular and intents RocksDBs in a
       // transactional table.
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
+          << "index: " << index << " persistent_state: " << persistent_state.ToString();
       return {false};
     }
 
@@ -1237,16 +1256,16 @@ class TabletBootstrap {
       // update (GH#31899); in a vector index, where it duplicates an already-present
       // entry. The long-term "track write and apply separately" fix in the APPLYING branch's TODO
       // above would subsume this.
-      auto apply_to_storages = ComputeApplyToStorages(index, flushed_op_ids);
+      auto apply_to_storages = ComputeApplyToStorages(index, hybrid_time, persistent_state);
       VLOG_WITH_PREFIX_AND_FUNC(3)
-          << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString()
+          << "index: " << index << " persistent_state: " << persistent_state.ToString()
           << ", apply_to_storages: " << apply_to_storages.ToString();
-      return {index > flushed_op_ids.intents.index, apply_to_storages};
+      return {index > persistent_state.intents.index, apply_to_storages};
     }
 
     VLOG_WITH_PREFIX_AND_FUNC(3)
-        << "index: " << index << " flushed_op_ids: " << flushed_op_ids.ToString();
-    return {index > flushed_op_ids.regular.index};
+        << "index: " << index << " persistent_state: " << persistent_state.ToString();
+    return {index > persistent_state.regular.index};
   }
 
   // Performs various checks based on the OpId, and decides whether to replay the given operation.
@@ -1259,7 +1278,8 @@ class TabletBootstrap {
     const auto decision = ShouldReplayOperation(
         op_type,
         replicate.id().index(),
-        replay_state_->stored_op_ids,
+        HybridTime(replicate.hybrid_time()),
+        replay_state_->persistent_state,
         meta_->LastFlushedChangeMetadataOperationOpId().index,
         // txn_status
         replicate.has_transaction_state()
@@ -1293,35 +1313,36 @@ class TabletBootstrap {
     }
   }
 
-  Result<DocDbOpIds> GetFlushedOpIds() {
-    const auto flushed_op_ids = VERIFY_RESULT(tablet_->MaxPersistentOpId());
+  Result<DocDbPersistentState> LoadPersistentState() {
+    const auto persistent_state = VERIFY_RESULT(tablet_->GetPersistentState());
 
     if (FLAGS_force_recover_flushed_frontier) {
       // This is used very rarely to replay all log entries and recover RocksDB flushed OpId
       // metadata.
       LOG_WITH_PREFIX(WARNING)
           << "--force_recover_flushed_frontier specified, ignoring existing flushed frontiers "
-          << "from RocksDB metadata (will replay all log records): " << flushed_op_ids.ToString();
+          << "from RocksDB metadata (will replay all log records): " << persistent_state.ToString();
       // Keep one reset entry per vector index. An empty list reads as "this tablet has no vector
       // indexes" in ComputeApplyToStorages, which would replay every operation into the regular
       // DB only and leave the indexes without the data this flag exists to recover.
-      DocDbOpIds result;
-      result.vector_indexes.assign(flushed_op_ids.vector_indexes.size(), OpId());
+      DocDbPersistentState result;
+      result.vector_indexes.assign(
+          persistent_state.vector_indexes.size(), VectorIndexPersistentState());
       return result;
     }
 
     if (test_hooks_) {
-      const auto docdb_flushed_op_ids_override = test_hooks_->GetFlushedOpIdsOverride();
-      if (docdb_flushed_op_ids_override.has_value()) {
-        LOG_WITH_PREFIX(INFO) << "Using test values of flushed DocDB OpIds: "
-                              << docdb_flushed_op_ids_override->ToString();
-        return *docdb_flushed_op_ids_override;
+      const auto persistent_state_override = test_hooks_->GetPersistentStateOverride();
+      if (persistent_state_override.has_value()) {
+        LOG_WITH_PREFIX(INFO) << "Using test DocDB persistent state: "
+                              << persistent_state_override->ToString();
+        return *persistent_state_override;
       }
     }
 
     // Production codepath.
-    LOG_WITH_PREFIX(INFO) << "Flushed DocDB OpIds: " << flushed_op_ids.ToString();
-    return flushed_op_ids;
+    LOG_WITH_PREFIX(INFO) << "DocDB persistent state: " << persistent_state.ToString();
+    return persistent_state;
   }
 
   // Determines the first segment to replay based two criteria:
@@ -1331,6 +1352,8 @@ class TabletBootstrap {
   //   tables, and just the regular RocksDB's flushed OpId for non-transactional tables. Note that
   //   in practice the flushed OpId of the intents RocksDB should also be less than or equal to the
   //   flushed OpId of the regular RocksDB or this would be an invariant violation.
+  //   With a quiescent marker at L, the flushed OpIds were raised to L (ApplyQuiescentMarker), and
+  //   the segments with ops up to L may be absent.
   //
   // - The first OpId of the segment is less than or equal to persisted retryable requests
   //   file's last_flushed_op_id_ or the "restart safe time" of the first operation in the segment
@@ -1578,7 +1601,7 @@ class TabletBootstrap {
   // The resulting log can be continued later on when then tablet is rebuilt and starts accepting
   // writes from clients.
   Status PlaySegments(ConsensusBootstrapInfo* consensus_info) {
-    const auto flushed_op_ids = VERIFY_RESULT(GetFlushedOpIds());
+    const auto persistent_state = VERIFY_RESULT(LoadPersistentState());
 
     if (tablet_->snapshot_coordinator()) {
       // We should load transaction aware snapshots before replaying logs, because we need them
@@ -1586,7 +1609,7 @@ class TabletBootstrap {
       RETURN_NOT_OK(tablet_->snapshot_coordinator()->Load(tablet_.get()));
     }
 
-    replay_state_ = std::make_unique<ReplayState>(flushed_op_ids, LogPrefix());
+    replay_state_ = std::make_unique<ReplayState>(persistent_state, LogPrefix());
 
     // Use only the regular DB frontier for safe time. The intents DB may contain hybrid times
     // from async writes that have not yet been Raft committed.
@@ -1606,9 +1629,9 @@ class TabletBootstrap {
     } else {
       LOG_WITH_PREFIX(INFO) << "Max persistent index in RocksDB's SSTables before bootstrap: "
                             << "regular RocksDB: "
-                            << replay_state_->stored_op_ids.regular << "; "
+                            << replay_state_->persistent_state.regular << "; "
                             << "intents RocksDB: "
-                            << replay_state_->stored_op_ids.intents;
+                            << replay_state_->persistent_state.intents;
     }
 
     // Open the log.
@@ -1620,8 +1643,17 @@ class TabletBootstrap {
     // If skip_wal_rewrite is false, create a new segment and append each replayed entry to this
     // new log.
     RETURN_NOT_OK_PREPEND(
-        OpenLog(log::CreateNewSegment(!FLAGS_skip_wal_rewrite)),
+        OpenLog(log::CreateNewSegment(!skip_wal_rewrite_)),
           "Failed to open new log");
+
+    // Ops up to the quiescent marker are durable in all storages, and segments with them may be
+    // absent.
+    const auto marker = log_->quiescent_marker();
+    RestartSafeCoarseTimePoint last_entry_time;
+    if (marker) {
+      ApplyQuiescentMarker(*marker);
+      last_entry_time = RestartSafeCoarseTimePoint::FromUInt64(marker->entry_time());
+    }
 
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
@@ -1649,7 +1681,6 @@ class TabletBootstrap {
         data_.bootstrap_retryable_requests && data_.retryable_requests
             ? data_.retryable_requests->GetMaxReplicatedOpId()
             : OpId::Min();
-    RestartSafeCoarseTimePoint last_entry_time;
 
     // If the segment is the first one to replay, start replaying from the last flushed op id
     // instead of very beginning of the segment.
@@ -1736,6 +1767,12 @@ class TabletBootstrap {
     replay_state_->UpdateCommittedFromStored();
     RETURN_NOT_OK(ApplyCommittedPendingReplicates());
 
+    if (marker) {
+      // The marker op is the last op unless ops after it were replayed.
+      replay_state_->prev_op_id =
+          std::max(replay_state_->prev_op_id, OpId::FromPB(marker->op_id()));
+    }
+
     if (last_committed_op_id.index > replay_state_->committed_op_id.index) {
       auto it = replay_state_->pending_replicates.find(last_committed_op_id.index);
       if (it != replay_state_->pending_replicates.end()) {
@@ -1809,6 +1846,25 @@ class TabletBootstrap {
     }
 
     return Status::OK();
+  }
+
+  // Uses the quiescent marker as the lower bound of what replay would derive from the segments it
+  // replaced.
+  void ApplyQuiescentMarker(const log::QuiescentMarkerPB& marker) {
+    const auto marker_op_id = OpId::FromPB(marker.op_id());
+    LOG_WITH_PREFIX(INFO) << "Using quiescent marker: " << marker.ShortDebugString();
+    replay_state_->quiescent_marker_op_id = marker_op_id;
+    auto& persistent_state = replay_state_->persistent_state;
+    persistent_state.regular = std::max(persistent_state.regular, marker_op_id);
+    persistent_state.intents = std::max(persistent_state.intents, marker_op_id);
+    for (auto& vector_index : persistent_state.vector_indexes) {
+      vector_index.op_id = std::max(vector_index.op_id, marker_op_id);
+    }
+    replay_state_->UpdateCommittedOpId(marker_op_id);
+    const HybridTime hybrid_time(marker.hybrid_time());
+    replay_state_->max_committed_hybrid_time.MakeAtLeast(hybrid_time);
+    UpdateClock(hybrid_time.ToUint64());
+    tablet_->UpdateMonotonicCounter(marker.monotonic_counter());
   }
 
   Status PlayWriteRequest(
@@ -1915,18 +1971,18 @@ class TabletBootstrap {
     return s;
   }
 
-  // ComputeApplyToStorages maps the stored vector index OpIds onto the index list positionally, so
-  // they are refreshed after every op that can add an index, or reopen the storages and rebuild
-  // the list: a metadata change, a truncate or a snapshot restore. A test override of the flushed
-  // OpIds stays in effect, and --force_recover_flushed_frontier keeps replaying every op into
-  // every index, as in GetFlushedOpIds.
-  Status RefreshVectorIndexOpIds(const Status& play_status) {
-    auto& op_ids = replay_state_->stored_op_ids.vector_indexes;
+  // ComputeApplyToStorages maps the stored vector index states onto the index list positionally,
+  // so they are refreshed after every op that can add an index, or reopen the storages and rebuild
+  // the list: a metadata change, a truncate or a snapshot restore. A test override of the
+  // persistent state stays in effect, and --force_recover_flushed_frontier keeps replaying every op
+  // into every index, as in LoadPersistentState.
+  Status RefreshVectorIndexStates(const Status& play_status) {
+    auto& vector_indexes = replay_state_->persistent_state.vector_indexes;
     if (FLAGS_force_recover_flushed_frontier) {
-      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
-      std::fill(op_ids.begin(), op_ids.end(), OpId());
-    } else if (!test_hooks_ || !test_hooks_->GetFlushedOpIdsOverride()) {
-      tablet_->vector_indexes().FillMaxPersistentOpIds(op_ids, false);
+      tablet_->vector_indexes().FillPersistentStates(vector_indexes, false);
+      std::fill(vector_indexes.begin(), vector_indexes.end(), VectorIndexPersistentState());
+    } else if (!test_hooks_ || !test_hooks_->GetPersistentStateOverride()) {
+      tablet_->vector_indexes().FillPersistentStates(vector_indexes, false);
     }
     return play_status;
   }
@@ -2133,9 +2189,6 @@ class TabletBootstrap {
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;
 
   log::SkipWalWrite skip_wal_rewrite_;
-
-  // A way to inject flushed OpIds for regular and intents RocksDBs.
-  std::optional<DocDbOpIds> TEST_docdb_flushed_op_ids_;
 
   // This is populated if TEST_collect_replayed_op_ids is true.
   std::vector<OpId> TEST_replayed_op_ids_;

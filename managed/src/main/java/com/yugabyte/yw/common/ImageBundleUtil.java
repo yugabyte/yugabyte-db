@@ -1,5 +1,6 @@
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.NOT_FOUND;
 
@@ -77,10 +78,20 @@ public class ImageBundleUtil {
                 info.setIsImageMarketplaceBased(stored.getIsImageMarketplaceBased());
                 return;
               }
-              Image image =
-                  ociCloudImpl.getImageOrBadRequest(provider, regionCode, info.getYbImage());
-              info.setIsImageMarketplaceBased(isMarketplaceBased(provider, regionCode, image));
+              info.setIsImageMarketplaceBased(
+                  lookUpImageMarketplaceBased(provider, regionCode, info.getYbImage()));
             });
+  }
+
+  /**
+   * Asks OCI whether an image is a Marketplace image or a custom image built from one. Returns null
+   * when a base image can no longer be read, so the origin is unknown. Throws when the image itself
+   * cannot be looked up.
+   */
+  @Nullable
+  public Boolean lookUpImageMarketplaceBased(Provider provider, String regionCode, String imageId) {
+    Image image = ociCloudImpl.getImageOrBadRequest(provider, regionCode, imageId);
+    return isMarketplaceBased(provider, regionCode, image);
   }
 
   @Nullable
@@ -260,6 +271,22 @@ public class ImageBundleUtil {
     }
 
     return defaultBundle;
+  }
+
+  /**
+   * Refuses a bundle whose architecture differs from the universe's, as its images cannot boot on
+   * the universe's instance types. A universe whose architecture is unknown is not checked.
+   */
+  public static void checkArchMatchesUniverse(Universe universe, ImageBundle bundle) {
+    Architecture universeArch = universe.getUniverseDetails().arch;
+    Architecture bundleArch = bundle.getDetails().getArch();
+    if (universeArch != null && bundleArch != universeArch) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Image bundle %s is for %s, but universe %s runs on %s.",
+              bundle.getName(), bundleArch, universe.getName(), universeArch));
+    }
   }
 
   public void migrateImageBundlesForProviders(Provider provider) {

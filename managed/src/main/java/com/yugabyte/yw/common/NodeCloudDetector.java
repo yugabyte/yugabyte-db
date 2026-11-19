@@ -2,6 +2,15 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.AWS_IMDSV2_TOKEN_PATH;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.AWS_IMDSV2_TOKEN_TTL_HEADER;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.AWS_INSTANCE_ID_PATH;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.GCP_INSTANCE_ID_PATH;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.GCP_METADATA_FLAVOR;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.GCP_METADATA_FLAVOR_HEADER;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.GCP_METADATA_HOST;
+import static com.yugabyte.yw.common.CloudMetadataEndpoints.METADATA_IP;
+
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.models.Universe;
@@ -29,28 +38,24 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 public class NodeCloudDetector {
 
-  // The metadata endpoints, headers and timeout mirror the ones ybops already uses - see
-  // devops/opscli/ybops/cloud/gcp/utils.py (GcpMetadata) and
-  // devops/opscli/ybops/cloud/aws/cloud.py (get_and_append_imdsv2_token_header).
+  // The timeout mirrors the one ybops uses.
   private static final String PROBE_TIMEOUT_SECS = "2";
-  private static final String METADATA_IP = "169.254.169.254";
-  private static final String GCP_METADATA_PATH = "/computeMetadata/v1/instance/id";
-  private static final String AWS_INSTANCE_ID_URL =
-      "http://" + METADATA_IP + "/latest/meta-data/instance-id";
-  private static final String AWS_IMDSV2_TOKEN_URL = "http://" + METADATA_IP + "/latest/api/token";
+  private static final String AWS_INSTANCE_ID_URL = "http://" + METADATA_IP + AWS_INSTANCE_ID_PATH;
+  private static final String AWS_IMDSV2_TOKEN_URL =
+      "http://" + METADATA_IP + AWS_IMDSV2_TOKEN_PATH;
 
   // GCE resolves metadata.google.internal; the link-local IP is the fallback for a node that
   // cannot resolve it.
   private static final List<String> GCP_PROBE_URLS =
       ImmutableList.of(
-          "http://metadata.google.internal" + GCP_METADATA_PATH,
-          "http://" + METADATA_IP + GCP_METADATA_PATH);
+          "http://" + GCP_METADATA_HOST + GCP_INSTANCE_ID_PATH,
+          "http://" + METADATA_IP + GCP_INSTANCE_ID_PATH);
 
   // The metadata services are link-local and must be reached directly. A node may well have a
   // proxy configured (YBA has ProxyConfig, and YNP exports NO_PROXY into the shell), so tell curl
   // explicitly rather than relying on the node's environment listing these hosts. An explicit list
   // is used instead of "*" because the bash wrapper would glob-expand that.
-  private static final String NO_PROXY_HOSTS = METADATA_IP + ",metadata.google.internal";
+  private static final String NO_PROXY_HOSTS = METADATA_IP + "," + GCP_METADATA_HOST;
 
   // Shell exit code for a command that is not installed. curl is missing rather than the endpoint
   // being absent, so the probe told us nothing about the node's cloud.
@@ -67,7 +72,9 @@ public class NodeCloudDetector {
    * Returns the cloud the node physically runs on:
    *
    * <ul>
-   *   <li>{@link CloudType#aws} or {@link CloudType#gcp} - that metadata service answered.
+   *   <li>{@link CloudType#aws} or {@link CloudType#gcp} - that metadata service answered. On AWS
+   *       an issued IMDSv2 token is enough: GCP has already been ruled out, and the token endpoint
+   *       is AWS-specific.
    *   <li>{@link CloudType#onprem} - every probe ran and none answered, so the node is not an AWS
    *       or GCP VM.
    *   <li>{@code null} - at least one probe could not be run (the node was unreachable, or {@code
@@ -88,7 +95,11 @@ public class NodeCloudDetector {
 
     for (String url : GCP_PROBE_URLS) {
       ShellResponse response =
-          runProbe(universe, node, context, curl("-H", "Metadata-Flavor:Google", url));
+          runProbe(
+              universe,
+              node,
+              context,
+              curl("-H", GCP_METADATA_FLAVOR_HEADER + ":" + GCP_METADATA_FLAVOR, url));
       if (response == null) {
         allProbesRan = false;
       } else if (response.isSuccess()) {
@@ -102,15 +113,10 @@ public class NodeCloudDetector {
             universe,
             node,
             context,
-            curl(
-                "-X",
-                "PUT",
-                AWS_IMDSV2_TOKEN_URL,
-                "-H",
-                "X-aws-ec2-metadata-token-ttl-seconds:60"));
+            curl("-X", "PUT", AWS_IMDSV2_TOKEN_URL, "-H", AWS_IMDSV2_TOKEN_TTL_HEADER + ":60"));
     if (tokenResponse == null) {
       allProbesRan = false;
-    } else {
+    } else if (tokenResponse.isSuccess()) {
       String token = extractImdsV2Token(tokenResponse);
       if (token != null) {
         ShellResponse response =
@@ -119,12 +125,17 @@ public class NodeCloudDetector {
                 node,
                 context,
                 curl("-H", "X-aws-ec2-metadata-token:" + token, AWS_INSTANCE_ID_URL));
-        if (response == null) {
-          allProbesRan = false;
-        } else if (response.isSuccess()) {
+        if (response != null && response.isSuccess()) {
           return CloudType.aws;
         }
       }
+      // Only AWS issues this token, so the node is on AWS even though the token did not get its
+      // instance ID. Federation needs only the cloud, and calling the node onprem would silently
+      // skip it.
+      log.warn(
+          "Node's AWS metadata service issued a token, but the instance ID could not be read with"
+              + " it; detecting the node as AWS anyway");
+      return CloudType.aws;
     }
 
     ShellResponse imdsV1Response = runProbe(universe, node, context, curl(AWS_INSTANCE_ID_URL));
@@ -147,7 +158,11 @@ public class NodeCloudDetector {
     if (!response.isSuccess() || StringUtils.isBlank(response.message)) {
       return null;
     }
-    String token = response.message.trim();
+    // A successful response starts with the "Command output:" prefix, which is not part of it.
+    String token = response.extractRunCommandOutput();
+    if (token.isEmpty()) {
+      return null;
+    }
     // The token is opaque, so refuse anything that would not survive being passed back as a single
     // shell argument instead of risking a malformed command.
     if (StringUtils.containsWhitespace(token)) {

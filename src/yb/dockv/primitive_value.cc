@@ -64,6 +64,7 @@ using yb::util::DecodeDoubleFromKey;
     case ValueEntryType::kJsonb: [[fallthrough]]; \
     case ValueEntryType::kObject: [[fallthrough]]; \
     case ValueEntryType::kDeleteVectorIds: [[fallthrough]]; \
+    case ValueEntryType::kVectorIndexRecord: [[fallthrough]]; \
     case ValueEntryType::kPackedRowV1: [[fallthrough]]; \
     case ValueEntryType::kPackedRowV2: [[fallthrough]]; \
     case ValueEntryType::kRedisList: [[fallthrough]]; \
@@ -709,6 +710,8 @@ std::string PrimitiveValue::ValueToString() const {
       return DocVectorIdToString(uuid_val_);
     case ValueEntryType::kDeleteVectorIds:
       return "<DELETE VECTOR ID>";
+    case ValueEntryType::kVectorIndexRecord:
+      return "<VECTOR INDEX RECORD>";
     case ValueEntryType::kRowLock:
       return "l";
     case ValueEntryType::kArrayIndex:
@@ -774,6 +777,7 @@ std::string PrimitiveValue::ValueToString() const {
     case KeyEntryType::kMaxByte: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kCdrMetadata: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kTtl: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kUserTimestamp: \
       break
@@ -1899,6 +1903,7 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
 
     case ValueEntryType::kInvalid: [[fallthrough]];
     case ValueEntryType::kDeleteVectorIds: [[fallthrough]];
+    case ValueEntryType::kVectorIndexRecord: [[fallthrough]];
     case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kMaxByte:
@@ -2144,6 +2149,7 @@ Status PrimitiveValue::DecodeToQLValuePB(
 
     case ValueEntryType::kInvalid: [[fallthrough]];
     case ValueEntryType::kDeleteVectorIds: [[fallthrough]];
+    case ValueEntryType::kVectorIndexRecord: [[fallthrough]];
     case ValueEntryType::kPackedRowV1: [[fallthrough]];
     case ValueEntryType::kPackedRowV2: [[fallthrough]];
     case ValueEntryType::kRowLock: [[fallthrough]];
@@ -3360,6 +3366,7 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
     case KeyEntryType::kGroupEndDescending: FALLTHROUGH_INTENDED;
     case KeyEntryType::kTtl: FALLTHROUGH_INTENDED;
     case KeyEntryType::kUserTimestamp: FALLTHROUGH_INTENDED;
+    case KeyEntryType::kCdrMetadata: FALLTHROUGH_INTENDED;
     case KeyEntryType::kObsoleteIntentPrefix: FALLTHROUGH_INTENDED;
     case KeyEntryType::kExternalIntents: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGreaterThanIntentType:

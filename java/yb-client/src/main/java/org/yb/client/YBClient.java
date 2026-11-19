@@ -702,8 +702,13 @@ public class YBClient implements YBClientApi {
       if (clientForHostAndPort == null) {
         String message = "Couldn't resolve this master's host/port " + hostAndPort.toString();
         LOG.warn(message);
+        continue;
       }
       clients.put(hostAndPort, clientForHostAndPort);
+    }
+    if (clients.isEmpty()) {
+      LOG.error("Couldn't resolve any master's host/port.");
+      return null;
     }
 
     CountDownLatch finished = new CountDownLatch(1);

@@ -517,15 +517,16 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   reactor->QueueOutboundCall(std::move(call));
 }
 
+void Messenger::HandleLocal(LocalYBInboundCallPtr call, Queue queue) {
+  local_call_tracker_.Enqueue(call);
+  Handle(std::move(call), queue);
+}
+
 void Messenger::Handle(InboundCallPtr call, Queue queue) {
   ScopedRWOperation op(&rpc_services_counter_, CoarseTimePoint::min());
   if (!op.ok()) {
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, MoveStatus(op));
     return;
-  }
-
-  if (call->IsLocalCall()) {
-    local_call_tracker_.Enqueue(call);
   }
 
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
@@ -608,6 +609,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       metric_entity_(bld.metric_entity_),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size, bld.system_high_cgroup_),
       scheduler_(&io_thread_pool_.io_service()),
+      local_call_tracker_(scheduler_),
       thread_pool_workers_limit_(bld.workers_limit_),
       normal_thread_pools_(new TaggedThreadPools(
           [this](TaggedThreadPools::Tag tag) { return MakeNormalThreadPoolOptions(tag); })),

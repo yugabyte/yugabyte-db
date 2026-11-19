@@ -1317,10 +1317,14 @@ Status ExternalMiniCluster::StartMasters() {
   // TEST_master_min_live_tservers_before_initdb does not deadlock against tservers that
   // haven't been started yet. See the comment block in Start() for details.
 
-  // Trigger an election to avoid an unnecessary 3s wait on every cluster startup.
+  // Trigger an election to avoid an unnecessary 3s wait on every cluster startup. Masters that
+  // already elected a leader on their own (quick_leader_election_on_create) skip it, so it does
+  // not depose that leader.
   if (!masters_.empty()) {
     WARN_NOT_OK(WaitForMastersToCommitUpTo(0), "Masters did not commit opid 0 in time");
-    WARN_NOT_OK(StartElection(RandomElement(masters_).get()), "Could not start election");
+    WARN_NOT_OK(
+        StartElection(RandomElement(masters_).get(), /* initial_election = */ true),
+        "Could not start election");
   }
 
   return Status::OK();
@@ -1444,7 +1448,8 @@ string ExternalMiniCluster::GetBindIpForTabletServer(size_t index) const {
     return Format("127.0.0.$0", index + 1); // Use default 127.0.0.x IPs.
 #else
     const pid_t p = getpid();
-    return Format("127.$0.$1.$2", (p >> 8) & 0xff, p & 0xff, index);
+    // Start the last octet at 1: 127.0.0.0 is unusable and is produced when pid % 65536 == 0.
+    return Format("127.$0.$1.$2", (p >> 8) & 0xff, p & 0xff, index + 1);
 #endif
   } else {
     return "127.0.0.1";
@@ -2296,13 +2301,14 @@ uint16_t ExternalMiniCluster::AllocateFreePort() {
   return GetFreePort(&free_port_file_locks_.back());
 }
 
-Status ExternalMiniCluster::StartElection(ExternalMaster* master) {
+Status ExternalMiniCluster::StartElection(ExternalMaster* master, bool initial_election) {
   auto master_sock = master->bound_rpc_addr();
   auto master_proxy = std::make_shared<ConsensusServiceProxy>(proxy_cache_.get(), master_sock);
 
   RunLeaderElectionRequestPB req;
   req.set_dest_uuid(master->uuid());
   req.set_tablet_id(yb::master::kSysCatalogTabletId);
+  req.set_initial_election(initial_election);
   RunLeaderElectionResponsePB resp;
   RpcController rpc;
   rpc.set_timeout(opts_.timeout);

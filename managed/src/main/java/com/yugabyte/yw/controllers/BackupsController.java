@@ -45,7 +45,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.BackupFilter;
@@ -365,6 +364,8 @@ public class BackupsController extends AuthenticatedController {
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
             request, BackupScheduleTaskParams.class, universe.getUniverseUUID(), runtimeConfGetter);
     taskParams.setCustomerUUID(customer.getUuid());
+    // Later steps of the task read the customer from the schedule params; take it from the URL.
+    requestParams.customerUUID = customer.getUuid();
     taskParams.setScheduleParams(requestParams);
     UUID taskUUID =
         scheduleTaskHelper.createCreateScheduledBackupTask(taskParams, customer, universe);
@@ -454,7 +455,7 @@ public class BackupsController extends AuthenticatedController {
 
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(customerUUID, taskParams.storageConfigUUID);
-    if (!customerConfig.getState().equals(ConfigState.Active)) {
+    if (!customerConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
     }
@@ -903,7 +904,7 @@ public class BackupsController extends AuthenticatedController {
       UUID customerUUID, UUID backupUUID, EditBackupParams taskParams) {
     Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
     CustomerConfig existingConfig = CustomerConfig.get(customerUUID, backup.getStorageConfigUUID());
-    if (existingConfig != null && existingConfig.getState().equals(ConfigState.Active)) {
+    if (existingConfig != null && existingConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Active storage config is already assigned to the backup");
     }
@@ -915,7 +916,7 @@ public class BackupsController extends AuthenticatedController {
           "Cannot assign " + newConfig.getType() + " type config in place of Storage Config");
     }
 
-    if (!newConfig.getState().equals(ConfigState.Active)) {
+    if (!newConfig.isActive()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot assign storage config which is not in Active state");
     }

@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
+
 #include "yb/master/master_ysql_lease.pb.h"
 
 #include "yb/rpc/messenger.h"
@@ -56,6 +58,7 @@ class YSQLLeaseManager::Impl {
       EXCLUDES(lease_toggle_lock_, lock_);
 
   Status StartYSQLLeaseRefresher();
+  void TriggerLeaseRefresh();
   void StartTSLocalLockManager() EXCLUDES(lock_);
 
   void UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses);
@@ -182,6 +185,8 @@ Status YSQLLeaseManager::Impl::ProcessLeaseUpdate(
 
 Status YSQLLeaseManager::Impl::StartYSQLLeaseRefresher() { return lease_client_.Start(); }
 
+void YSQLLeaseManager::Impl::TriggerLeaseRefresh() { lease_client_.TriggerASAP(); }
+
 void YSQLLeaseManager::Impl::StartTSLocalLockManager() {
   std::lock_guard l(lock_);
   StartTSLocalLockManagerUnlocked();
@@ -199,6 +204,7 @@ void YSQLLeaseManager::Impl::Shutdown() {
   if (lock_manager) {
     lock_manager->Shutdown();
   }
+  server_.object_lock_shared_state_manager()->Shutdown();
   lease_client_.Shutdown();
 }
 
@@ -315,6 +321,8 @@ YSQLLeaseManager::~YSQLLeaseManager() = default;
 YSQLLeaseInfo YSQLLeaseManager::GetYSQLLeaseInfo() const { return impl_->GetYSQLLeaseInfo(); }
 
 Status YSQLLeaseManager::StartYSQLLeaseRefresher() { return impl_->StartYSQLLeaseRefresher(); }
+
+void YSQLLeaseManager::TriggerLeaseRefresh() { impl_->TriggerLeaseRefresh(); }
 
 void YSQLLeaseManager::StartTSLocalLockManager() {
   return impl_->StartTSLocalLockManager();

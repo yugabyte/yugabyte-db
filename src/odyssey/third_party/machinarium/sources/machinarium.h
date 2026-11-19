@@ -193,6 +193,9 @@ MACHINE_API int yb_machine_tls_set_dh_params_file(machine_tls_t *, char *);
 
 MACHINE_API int yb_machine_tls_set_passphrase_command(machine_tls_t *, char *);
 
+MACHINE_API int yb_machine_tls_validate_server_context(machine_tls_t *, char *,
+						     int);
+
 /* io control */
 
 MACHINE_API machine_io_t *machine_io_create(void);
@@ -202,6 +205,8 @@ MACHINE_API void machine_io_free(machine_io_t *);
 MACHINE_API int machine_io_attach(machine_io_t *);
 
 MACHINE_API int machine_io_detach(machine_io_t *);
+
+MACHINE_API int machine_io_poll(machine_io_t *);
 
 MACHINE_API char *machine_error(machine_io_t *);
 
@@ -220,6 +225,9 @@ MACHINE_API int machine_io_verify(machine_io_t *, char *common_name);
 
 MACHINE_API int yb_machine_io_get_peer_cert_der(machine_io_t *, unsigned char **buf,
 					     int *len);
+
+MACHINE_API int yb_machine_io_get_server_cert_hash(machine_io_t *,
+						unsigned char *buf, int *len);
 
 MACHINE_API int yb_machine_io_is_socket_closed(machine_io_t *obj);
 
@@ -274,6 +282,12 @@ MACHINE_API int machine_read_start(machine_io_t *, machine_cond_t *);
 MACHINE_API int machine_read_stop(machine_io_t *);
 
 MACHINE_API ssize_t machine_read_raw(machine_io_t *, void *, size_t);
+
+/*
+ * YB: Returns 1 if TLS has buffered bytes that are ready to be read. Unlike
+ * unread socket bytes, these do not wake the poller.
+ */
+MACHINE_API int yb_machine_tls_read_pending(machine_io_t *);
 
 MACHINE_API machine_msg_t *machine_read(machine_io_t *, size_t,
 					uint32_t time_ms);

@@ -43,6 +43,7 @@ class PgWrapperContext {
   virtual void RegisterPgProcessRestarter(std::function<Status(void)> restarter) = 0;
   virtual void RegisterPgProcessKiller(std::function<Status(void)> killer) = 0;
   virtual void RegisterPgConfigGenerator(PgConfigGenerator generator) = 0;
+  virtual Status RestartPG() const = 0;
   virtual Status StartSharedMemoryNegotiation() = 0;
   virtual Status StopSharedMemoryNegotiation() = 0;
   virtual int SharedMemoryNegotiationFd() = 0;

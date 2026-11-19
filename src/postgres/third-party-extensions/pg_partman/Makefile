@@ -23,16 +23,17 @@ all: sql/$(EXTENSION)--$(EXTVERSION).sql
 # Only include scripts common to all version of PG in PG11+. 
 # Otherwise if less than PG11, include the old python scripts along with common.
 # Only include procedures in PG11+
+# YB: sql/yb/require_finalized_upgrade.sql goes first, so that it runs before anything is created.
 ifeq ($(PG11),yes)
 SCRIPTS = bin/common/*.py
 
-sql/$(EXTENSION)--$(EXTVERSION).sql: $(sort $(wildcard sql/types/*.sql)) $(sort $(wildcard sql/tables/*.sql)) $(sort $(wildcard sql/functions/*.sql)) $(sort $(wildcard sql/procedures/*.sql))
+sql/$(EXTENSION)--$(EXTVERSION).sql: sql/yb/require_finalized_upgrade.sql $(sort $(wildcard sql/types/*.sql)) $(sort $(wildcard sql/tables/*.sql)) $(sort $(wildcard sql/functions/*.sql)) $(sort $(wildcard sql/procedures/*.sql))
 	cat $^ > $@
 
 else
 SCRIPTS = bin/common/*.py bin/pg10/*.py
 
-sql/$(EXTENSION)--$(EXTVERSION).sql: $(sort $(wildcard sql/types/*.sql)) $(sort $(wildcard sql/tables/*.sql)) $(sort $(wildcard sql/functions/*.sql))
+sql/$(EXTENSION)--$(EXTVERSION).sql: sql/yb/require_finalized_upgrade.sql $(sort $(wildcard sql/types/*.sql)) $(sort $(wildcard sql/tables/*.sql)) $(sort $(wildcard sql/functions/*.sql))
 	cat $^ > $@
 	#
 # end PG11 if

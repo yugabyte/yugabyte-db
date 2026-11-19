@@ -28,6 +28,10 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
     write_req_->set_stmt_type(PgsqlWriteRequestPB::PGSQL_UPSERT);
   }
 
+  void SetOnConflictAction(PgsqlWriteRequestPB::PgsqlOnConflictAction action) {
+    write_req_->set_on_conflict_action(action);
+  }
+
   void SetIsBackfill(bool is_backfill) {
     write_req_->set_is_backfill(is_backfill);
   }

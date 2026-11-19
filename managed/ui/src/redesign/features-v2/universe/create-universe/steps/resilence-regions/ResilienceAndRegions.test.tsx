@@ -41,6 +41,12 @@ vi.mock('react-i18next', () => ({
   Trans: ({ children }: { children?: React.ReactNode }) => children ?? null
 }));
 
+// The flag is off in source; the multi-provider tests below need it on.
+vi.mock('../../helpers/providerConfigurations', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../helpers/providerConfigurations')>()),
+  ENABLE_MULTI_PROVIDER_CREATE: true
+}));
+
 vi.mock('@app/redesign/assets/map.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/map_selected.svg', () => ({ default: () => null }));
 vi.mock('@app/redesign/assets/flash_transparent.svg', () => ({ default: () => null }));
@@ -105,16 +111,21 @@ function getContextValue(overrides?: {
   resilienceFactor?: number;
   regions?: RegionLike[];
   resilienceFormMode?: ResilienceFormMode;
+  resilienceType?: ResilienceType;
+  generalSettings?: Record<string, unknown>;
   nodesAvailabilitySettings?: (typeof initialCreateUniverseFormState)['nodesAvailabilitySettings'];
 }) {
   const state = {
     ...initialCreateUniverseFormState,
-    generalSettings: { cloud: 'aws' } as any,
+    generalSettings: (overrides?.generalSettings ?? { cloud: 'aws' }) as any,
     resilienceAndRegionsSettings: {
       ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
       [FAULT_TOLERANCE_TYPE]: overrides?.faultToleranceType ?? FaultToleranceType.REGION_LEVEL,
       [RESILIENCE_FACTOR]: overrides?.resilienceFactor ?? 1,
       [RESILIENCE_FORM_MODE]: overrides?.resilienceFormMode ?? ResilienceFormMode.GUIDED,
+      [RESILIENCE_TYPE]:
+        overrides?.resilienceType ??
+        initialCreateUniverseFormState.resilienceAndRegionsSettings![RESILIENCE_TYPE],
       [REGIONS_FIELD]: overrides?.regions ?? []
     },
     nodesAvailabilitySettings:
@@ -355,6 +366,24 @@ describe('ResilienceAndRegions', () => {
       ).rejects.toMatchObject({
         inner: expect.arrayContaining([expect.objectContaining({ message: 'errMsg.nodeErr' })])
       });
+    });
+
+    it('schema rejects NODE_LEVEL and NONE when disallowNodeAndNone', async () => {
+      const schema = ResilienceAndRegionsSchema(((key: string) => key) as any, {
+        disallowNodeAndNone: true
+      });
+      const base = {
+        ...initialCreateUniverseFormState.resilienceAndRegionsSettings!,
+        [RESILIENCE_FACTOR]: 1,
+        [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
+        [REGIONS_FIELD]: makeRegions(3, 1)
+      };
+      await expect(
+        schema.validate({ ...base, [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL })
+      ).rejects.toMatchObject({ message: 'errMsg.multiProviderFtDisabled' });
+      await expect(
+        schema.validate({ ...base, [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NONE })
+      ).rejects.toMatchObject({ message: 'errMsg.multiProviderFtDisabled' });
     });
 
     it('shows no node error for NODE_LEVEL with 1 region', async () => {
@@ -714,6 +743,38 @@ describe('ResilienceAndRegions', () => {
       mockSaveNodesAvailabilitySettings.mockClear();
       mutate(ref.current!);
       await expectNodesCleared();
+    });
+  });
+
+  describe('Multi-provider resilience type', () => {
+    const multiProviderGeneralSettings = {
+      cloud: ['aws', 'gcp'],
+      spanAcrossProviders: true,
+      providerConfigurations: [
+        { uuid: 'prov-aws', code: 'aws', regions: [] },
+        { uuid: 'prov-gcp', code: 'gcp', regions: [] }
+      ]
+    };
+
+    it('hides Regular/Single-Node cards and coerces to Regular', async () => {
+      renderResilience(
+        getContextValue({
+          generalSettings: multiProviderGeneralSettings,
+          resilienceType: ResilienceType.SINGLE_NODE,
+          faultToleranceType: FaultToleranceType.AZ_LEVEL,
+          regions: []
+        })
+      );
+
+      expect(screen.queryByText('regular')).not.toBeInTheDocument();
+      expect(screen.queryByText('singleNode')).not.toBeInTheDocument();
+      expect(screen.queryByText('singleNode.caution')).not.toBeInTheDocument();
+      // Regular cluster UI (Guided/Expert) remains.
+      expect(screen.getByTestId('setup-mode-card')).toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(mockSetResilienceType).toHaveBeenCalledWith(ResilienceType.REGULAR);
+      });
     });
   });
 });

@@ -100,6 +100,9 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   Result<bool> IsTableDeleted(Cluster& cluster, const client::YBTableName& table_name);
 
+  // Splits every active tablet once and waits for the children.
+  Status SplitTabletsOnce(Cluster& cluster, const TableId& table_id);
+
   Status WaitForTableToFullyDelete(
       Cluster& cluster, const client::YBTableName& table_name, MonoDelta timeout);
 

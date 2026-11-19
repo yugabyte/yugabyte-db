@@ -22,6 +22,9 @@
  * ----------
  */
 
+#ifndef PG_YB_CONN_MGR_PROTOCOL_H
+#define PG_YB_CONN_MGR_PROTOCOL_H
+
 #define YB_PARAM_STATUS_REPORT_ENABLED					(1 << 0)
 #define YB_PARAM_STATUS_SOURCE_STARTUP					(1 << 1)
 #define YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION (1 << 2)
@@ -75,3 +78,26 @@ typedef enum YbParseType
 /* YB: Startup parameter carrying the base64 encoded client certificate */
 #define YB_YCM_CLIENT_CERT \
 	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "client_cert"
+
+/*
+ * YB: Startup parameter carrying the base64 encoded tls-server-end-point hash
+ * (RFC 5929) of the certificate the connection manager presented to the
+ * logical client, used for SCRAM-SHA-256-PLUS channel binding.
+ */
+#define YB_YCM_SERVER_CERT_HASH \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "server_cert_hash"
+
+/*
+ * YB: Marks the end of the reserved startup parameters in the startup packet
+ * and in the auth passthrough 'A' packet. The connection manager writes its
+ * own reserved parameters first, then this marker, then the parameters that
+ * came from the logical client. Postgres rejects any reserved parameter that
+ * appears after the marker, so a logical client can never supply one.
+ */
+#define YB_YCM_INTERNAL_END \
+	YB_YCM_INTERNAL_STARTUP_PARAMETER_PREFIX "end"
+
+/* YB: Upper bound on the size of a tls-server-end-point hash (SHA-512). */
+#define YB_SERVER_CERT_HASH_MAX_LEN 64
+
+#endif							/* PG_YB_CONN_MGR_PROTOCOL_H */

@@ -1,6 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { FC, useEffect, useState } from 'react';
+import { FC, useContext, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import {
@@ -13,8 +13,18 @@ import {
 import { getTabContent } from '../../../utils/GraphUtils';
 import { isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
 import { GraphFilter, MetricsQueryParams } from '../../../redesign/helpers/dtos';
-import { MetricMeasure, MetricConsts, MetricTypes, NodeType } from '../../metrics/constants';
+import {
+  MetricMeasure,
+  MetricConsts,
+  MetricTypes,
+  NodeType,
+  NODE_EXPORTER_CHECK_METRIC_KEY,
+  NODE_EXPORTER_COLLECTOR_METRIC_KEY
+} from '../../metrics/constants';
+import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { SplitType, NodeAggregation } from '../dtos';
+import { MetricsContainerWidthContext } from '../MetricsContainerWidthContext';
+import { MetricsCardLoaderContext } from '../MonitoringMetrics/MetricsCardContext';
 
 interface MetricsData {
   type: string;
@@ -40,6 +50,8 @@ export const GraphTab: FC<MetricsData> = ({
   printMode = false
 }) => {
   let tabContent = null;
+  const containerWidth = useContext(MetricsContainerWidthContext);
+  const cardLoader = useContext(MetricsCardLoaderContext);
   const { currentUser } = useSelector((state: any) => state.customer);
   const graph = useSelector((state: any) => state.graph);
   const {
@@ -84,6 +96,19 @@ export const GraphTab: FC<MetricsData> = ({
       }
       return settings;
     });
+    // The node_exporter sidecar's check results explain gaps in the panels it feeds.
+    if (
+      metricMeasure === MetricMeasure.OVERALL &&
+      (type === MetricTypes.SERVER || type === MetricTypes.DISK_IO) &&
+      selectedUniverse &&
+      getIsKubernetesUniverse(selectedUniverse) &&
+      !!selectedUniverse.nodeExporterSidecarScraped
+    ) {
+      metricsWithSettings.push(
+        { metric: NODE_EXPORTER_CHECK_METRIC_KEY },
+        { metric: NODE_EXPORTER_COLLECTOR_METRIC_KEY }
+      );
+    }
 
     const params: any = {
       metricsWithSettings: metricsWithSettings,
@@ -163,6 +188,7 @@ export const GraphTab: FC<MetricsData> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     nodeName,
+    currentSelectedNodeType,
     nodePrefix,
     startTimestamp,
     endTimestamp,
@@ -182,7 +208,9 @@ export const GraphTab: FC<MetricsData> = ({
     isGranularMetricsEnabled,
     isMetricsTimezoneEnabled,
     updateTimestamp,
-    printMode
+    printMode,
+    containerWidth,
+    cardLoader
   );
 
   return <>{tabContent}</>;

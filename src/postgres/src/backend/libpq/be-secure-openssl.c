@@ -1605,6 +1605,22 @@ be_tls_get_certificate_hash(Port *port, size_t *len)
 	int			algo_nid;
 
 	*len = 0;
+	/*
+	 * YB: Under Connection Manager the client's TLS session is terminated at
+	 * the connection manager, so the certificate the client saw is not on
+	 * this socket.  Use the hash of it that the connection manager forwarded.
+	 */
+	if (port->ssl == NULL && port->yb_is_ssl_enabled_in_logical_conn)
+	{
+		if (port->yb_logical_conn_server_cert_hash_len == 0)
+			return NULL;
+		cert_hash = palloc(port->yb_logical_conn_server_cert_hash_len);
+		memcpy(cert_hash, port->yb_logical_conn_server_cert_hash,
+			   port->yb_logical_conn_server_cert_hash_len);
+		*len = port->yb_logical_conn_server_cert_hash_len;
+		return cert_hash;
+	}
+
 	server_cert = SSL_get_certificate(port->ssl);
 	if (server_cert == NULL)
 		return NULL;

@@ -182,7 +182,8 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
 void Proxy::AsyncLocalCall(
     const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
     RpcController* controller, ResponseCallback callback,
-    const bool force_run_callback_on_reactor, bool send_metadata) {
+    const bool force_run_callback_on_reactor, bool send_metadata,
+    std::shared_ptr<void> buffers_holder) {
   controller->call_ = std::make_shared<LocalOutboundCall>(
       *method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
       std::move(callback),
@@ -204,9 +205,10 @@ void Proxy::AsyncLocalCall(
   // Otherwise, enqueue the call to be handled by the service's handler thread.
   const shared_ptr<LocalYBInboundCall>& local_call =
       static_cast<LocalOutboundCall*>(call)->CreateLocalInboundCall(
-          send_metadata ? context_->call_state_listener_factory() : nullptr);
+          send_metadata ? context_->call_state_listener_factory() : nullptr,
+          std::move(buffers_holder));
   Queue queue(!controller->allow_local_calls_in_curr_thread());
-  context_->Handle(local_call, queue);
+  context_->HandleLocal(local_call, queue);
 }
 
 void Proxy::AsyncRemoteCall(
@@ -242,10 +244,11 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
                            bool send_metadata) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
 
+  auto buffers_holder = std::move(controller->local_call_buffers_holder_);
   if (call_local_service_) {
     AsyncLocalCall(
         method, req, resp, controller, std::move(callback), force_run_callback_on_reactor,
-        send_metadata);
+        send_metadata, std::move(buffers_holder));
   } else {
     AsyncRemoteCall(
         method, std::move(method_metrics), req, resp, controller, std::move(callback),

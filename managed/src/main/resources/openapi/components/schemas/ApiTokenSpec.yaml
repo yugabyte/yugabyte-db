@@ -1,0 +1,10 @@
+title: ApiTokenSpec
+description: Optional condition for generating an API token. Part of ApiTokenReq.
+type: object
+properties:
+  api_token_version:
+    description: 'The caller''s current API token version. When set, a new token is generated only if it still matches, so that two concurrent rotations do not silently replace each other.'
+    type: integer
+    format: int64
+x-yba-api-since: 2026.2.0.0
+x-yba-api-visibility: preview

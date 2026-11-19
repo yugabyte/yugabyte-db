@@ -167,6 +167,10 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                       : null,
                   reconcilePgDataOwnership));
 
+          // Fail the rollback if any pod is still reporting the pre-rollback version.
+          createCheckSoftwareVersionTaskForPods(universe, targetVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
+
           if (ysqlMajorVersionUpgrade) {
             // Un-set the flag ysql_yb_major_version_upgrade_compatibility as major version upgrade
             // is
@@ -186,6 +190,8 @@ public class RollbackKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Update Software version
           createUpdateSoftwareVersionTask(targetVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape targets follow the DB version.
+          createSwamperTargetUpdateTask(false /* removeFile */);
 
           createUpdateUniverseSoftwareUpgradeStateTask(
               UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,

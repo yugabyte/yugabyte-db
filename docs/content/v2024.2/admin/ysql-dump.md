@@ -2,8 +2,8 @@
 title: ysql_dump
 headerTitle: ysql_dump
 linkTitle: ysql_dump
-description: Back up a specified YSQL database into plain-text, SQL script file.
-headcontent: Extract a YugabyteDB database into a SQL script file.
+description: Back up a YSQL database into a SQL script file or an archive.
+headcontent: Extract a YugabyteDB database into a SQL script file or an archive
 menu:
   v2024.2:
     identifier: ysql-dump
@@ -14,11 +14,11 @@ type: docs
 
 ## Overview
 
-ysql_dump is a utility for backing up a YugabyteDB database into a plain-text, SQL script file. ysql_dump makes consistent backups, even if the database is being used concurrently. ysql_dump does not block other users accessing the database (readers or writers).
+ysql_dump is a utility for backing up a YugabyteDB database. By default, it writes a plain-text SQL script file. You can also write to custom, directory, or tar archive formats using the [-F|--format](#f-format-format-format) option. ysql_dump makes consistent backups, even if the database is being used concurrently. ysql_dump does not block other users accessing the database (readers or writers).
 
 ysql_dump only dumps a single database. To backup global objects that are common to all databases in a cluster, such as roles, use [ysql_dumpall](../ysql-dumpall/).
 
-Dumps are output in plain-text, SQL script files. Script dumps are plain-text files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [ysqlsh \i](../../api/ysqlsh-meta-commands/#i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
+Plain-text dumps are SQL script files containing the SQL statements required to reconstruct the database to the state it was in at the time it was saved. To restore from such a script, import it using the [ysqlsh \i](../../api/ysqlsh-meta-commands/#i-filename-include-filename) meta-command. Script files can be used to reconstruct the database even on other machines and other architectures; with some modifications, even on other SQL database products.
 
 While running ysql_dump, you should examine the output for any warnings (printed on standard error).
 
@@ -78,7 +78,30 @@ Create the dump in the specified character set encoding. By default, the dump is
 
 #### -f *file*, --file=*file*
 
-Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
+Send output to the specified file. For directory format (`-Fd`), this option is required and names the output directory. For the other formats, you can omit it and ysql_dump writes to standard output.
+
+#### -F *format*, --format=*format*
+
+Select the output format. *format* can be one of the following:
+
+| Format | Description | Restore using |
+| :--- | :--- | :--- |
+| `p` | Plain-text SQL script (default). | [ysqlsh](../../api/ysqlsh/) (for example, the `\i` meta-command) or by piping the script to `ysqlsh` |
+| `c` | Custom archive format. You can restore selected objects, and the archive can be compressed. | `pg_restore` |
+| `d` | Directory format. ysql_dump writes one file per table and other objects under the directory named by [`-f`](#f-file-file-file). Use this format to run more than one parallel job ([`-j`](#j-num-jobs-num)). | `pg_restore` |
+| `t` | tar archive format. | `pg_restore` |
+
+`pg_restore` ships in the server install, under `postgres/bin`. The [client package](/stable/releases/yugabyte-clients/) does not include `pg_restore`, so restoring a custom, directory, or tar archive needs a server install.
+
+For more on non-plain formats, see the [PostgreSQL pg_restore documentation](https://www.postgresql.org/docs/11/app-pgrestore.html).
+
+#### -j *num*, --jobs=*num*
+
+Run the dump using *num* concurrent jobs. The default is `1` (no parallelism).
+
+Parallel dumps are supported only with directory format (`-Fd`). Using `-j` greater than `1` with plain (`p`), custom (`c`), or tar (`t`) format causes ysql_dump to exit with an error.
+
+ysql_dump keeps a parallel dump consistent by exporting a snapshot on the main connection and importing it on each worker. YugabyteDB rejects that export in a serializable or deferrable transaction. ysql_dump opens a serializable-deferrable transaction unless you pass [`--no-serializable-deferrable`](#no-serializable-deferrable). Pass that option whenever `-j` is greater than `1`, and set the `ysql_enable_pg_export_snapshot` YB-TServer flag to true. See [Synchronize snapshots](../../explore/ysql-language-features/advanced-features/snapshot-synchronization/).
 
 #### -m *addresses*, --masters=*addresses*
 
@@ -239,6 +262,8 @@ If there are active read-write transactions, the maximum wait time until the sta
 #### --snapshot=*snapshotname*
 
 Use the specified synchronized snapshot when making a dump of the database. This option is helpful when needing to synchronize the dump with a logical replication slot or with a concurrent session. In the case of a parallel dump, the snapshot name defined by this option is used rather than taking a new snapshot.
+
+Pass [`--no-serializable-deferrable`](#no-serializable-deferrable) with `--snapshot`. ysql_dump otherwise opens a serializable-deferrable transaction, and YugabyteDB rejects the snapshot import. Snapshot export must be enabled, as described for [-j|--jobs](#j-num-jobs-num).
 
 #### --strict-names
 

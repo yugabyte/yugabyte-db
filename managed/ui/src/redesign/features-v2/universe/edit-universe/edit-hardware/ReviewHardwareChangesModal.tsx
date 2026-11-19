@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import {
   AlertVariant,
@@ -206,33 +206,52 @@ const getVolumeDisplay = (summary: HardwareReviewSummary) => {
   );
 };
 
+/** Which storage-spec sub-rows differ (and should be shown) between current and next. */
+export const getChangedStorageSpecFields = (
+  current: HardwareReviewSummary,
+  next: HardwareReviewSummary
+): Array<'storageType' | 'diskIops' | 'throughput'> => {
+  const fields: Array<'storageType' | 'diskIops' | 'throughput'> = [];
+  if (normStr(current.storageType) !== normStr(next.storageType)) fields.push('storageType');
+  if (normNum(current.diskIops) !== normNum(next.diskIops)) fields.push('diskIops');
+  if (normNum(current.throughput) !== normNum(next.throughput)) fields.push('throughput');
+  return fields;
+};
+
 const renderStorageSpec = (
   summary: HardwareReviewSummary,
+  visibleFields: Array<'storageType' | 'diskIops' | 'throughput'>,
   tHw: (k: string, o?: Record<string, unknown>) => string,
   isK8s: boolean,
   isAws: boolean
 ) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-    <Box>
-      <Label>{tHw(isAws ? 'ebsType' : 'storageType')}</Label>
-      <YBTag size="medium" customSx={storageValueTagSx}>
-        {summary.storageType ?? '-'}
-      </YBTag>
-    </Box>
-    <Box>
-      <Label>{tHw(isK8s ? 'iopsPod' : 'iops')}</Label>
-      <YBTag size="medium" customSx={storageValueTagSx}>
-        {summary.diskIops ?? '-'}
-      </YBTag>
-    </Box>
-    <Box>
-      <Label>{tHw(isK8s ? 'throughputPod' : 'throughput')}</Label>
-      <YBTag size="medium" customSx={storageValueTagSx}>
-        {summary.throughput === undefined || summary.throughput === null
-          ? '-'
-          : tHw('throughtputValue', { throughput: summary.throughput })}
-      </YBTag>
-    </Box>
+    {visibleFields.includes('storageType') ? (
+      <Box>
+        <Label>{tHw(isAws ? 'ebsType' : 'storageType')}</Label>
+        <YBTag size="medium" customSx={storageValueTagSx}>
+          {summary.storageType ?? '-'}
+        </YBTag>
+      </Box>
+    ) : null}
+    {visibleFields.includes('diskIops') ? (
+      <Box>
+        <Label>{tHw(isK8s ? 'iopsPod' : 'iops')}</Label>
+        <YBTag size="medium" customSx={storageValueTagSx}>
+          {summary.diskIops ?? '-'}
+        </YBTag>
+      </Box>
+    ) : null}
+    {visibleFields.includes('throughput') ? (
+      <Box>
+        <Label>{tHw(isK8s ? 'throughputPod' : 'throughput')}</Label>
+        <YBTag size="medium" customSx={storageValueTagSx}>
+          {summary.throughput === undefined || summary.throughput === null
+            ? '-'
+            : tHw('throughtputValue', { throughput: summary.throughput })}
+        </YBTag>
+      </Box>
+    ) : null}
   </Box>
 );
 
@@ -300,13 +319,15 @@ const storageFieldLabel = (
 const renderStorageCardContent = (
   key: ChangedHardwareStorageKey,
   summary: HardwareReviewSummary,
+  current: HardwareReviewSummary,
+  next: HardwareReviewSummary,
   tReview: (k: string) => string,
   tHw: (k: string, o?: Record<string, unknown>) => string,
   isK8s: boolean,
   isAws: boolean
 ) =>
   key === 'storageSpec' ? (
-    renderStorageSpec(summary, tHw, isK8s, isAws)
+    renderStorageSpec(summary, getChangedStorageSpecFields(current, next), tHw, isK8s, isAws)
   ) : (
     <>
       <Label>{storageFieldLabel(key, tReview, tHw, isK8s)}</Label>
@@ -448,7 +469,16 @@ export const ReviewHardwareChangesModal = ({
                         ) : null}
                         {changedStorageKeys.map((key) => (
                           <SummaryCard key={`c-${sectionIdx}-${key}`}>
-                            {renderStorageCardContent(key, section.current, t, tHw, isK8s, isAws)}
+                            {renderStorageCardContent(
+                              key,
+                              section.current,
+                              section.current,
+                              section.next,
+                              t,
+                              tHw,
+                              isK8s,
+                              isAws
+                            )}
                           </SummaryCard>
                         ))}
                       </SummaryColumn>
@@ -474,7 +504,16 @@ export const ReviewHardwareChangesModal = ({
                         ) : null}
                         {changedStorageKeys.map((key) => (
                           <SummaryCard key={`n-${sectionIdx}-${key}`}>
-                            {renderStorageCardContent(key, section.next, t, tHw, isK8s, isAws)}
+                            {renderStorageCardContent(
+                              key,
+                              section.next,
+                              section.current,
+                              section.next,
+                              t,
+                              tHw,
+                              isK8s,
+                              isAws
+                            )}
                           </SummaryCard>
                         ))}
                       </SummaryColumn>

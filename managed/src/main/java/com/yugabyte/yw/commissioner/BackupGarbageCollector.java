@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -156,6 +157,9 @@ public class BackupGarbageCollector {
 
       for (Customer customer : customersList) {
         int failedToDeleteBackupCount = 0;
+        // YBA's way to a storage config's bucket apart from a universe, worked out once per config
+        // for all the backups this run deletes.
+        Map<UUID, BackupHelper.ConfigIdentity> configIdentities = new ConcurrentHashMap<>();
         // Delete the backups associated with customer storage config which are in
         // QueuedForDeletion or QueuedForForcedDeletion state.
         List<CustomerConfig> configList =
@@ -170,7 +174,8 @@ public class BackupGarbageCollector {
             log.info("Deleting {} backups for customer config {}", backupList.size(), config);
             for (Backup backup : backupList) {
               try {
-                backupFutures.add(runDeleteBackup(customer, backup.getBackupUUID()));
+                backupFutures.add(
+                    runDeleteBackup(customer, backup.getBackupUUID(), configIdentities));
               } catch (RejectedExecutionException e) {
                 log.warn(
                     "threadpool for deleting backups is full, skipping until next garbage"
@@ -195,8 +200,17 @@ public class BackupGarbageCollector {
                 "Error occurred while deleting backups associated with {} storage config",
                 config.getConfigName());
           } finally {
-            config.delete();
-            log.info("Customer Storage config {} is deleted", config.getConfigName());
+            // A backup whose delete failed and was queued again, or was not reached this run, still
+            // needs the config: deleting it now would leave the backup's files behind.
+            if (Backup.findIfBackupsDeletingWithCustomerConfig(
+                customer.getUuid(), config.getConfigUUID())) {
+              log.info(
+                  "Customer Storage config {} is kept until its backups are deleted",
+                  config.getConfigName());
+            } else {
+              config.delete();
+              log.info("Customer Storage config {} is deleted", config.getConfigName());
+            }
           }
         }
         // Delete remaining backups queued for deletion.
@@ -206,7 +220,8 @@ public class BackupGarbageCollector {
           log.info("Deleting {} backups for customer {}", backupList.size(), customer.getUuid());
           for (Backup backup : backupList) {
             try {
-              backupFutures.add(runDeleteBackup(customer, backup.getBackupUUID()));
+              backupFutures.add(
+                  runDeleteBackup(customer, backup.getBackupUUID(), configIdentities));
             } catch (RejectedExecutionException e) {
               log.warn(
                   "threadpool for deleting backups is full, skipping the rest until next garbage"
@@ -356,14 +371,22 @@ public class BackupGarbageCollector {
    *
    * @param customer The customer for whom the backup is to be deleted.
    * @param backupUUID The unique identifier of the backup to be deleted.
+   * @param configIdentities YBA's identity for each storage config, shared by every deletion of
+   *     this run so it is worked out once per config.
    * @return A Future representing the result of the backup deletion operation.
    * @throws RejectedExecutionException If the task cannot be scheduled for execution.
    */
-  private Future<Boolean> runDeleteBackup(Customer customer, UUID backupUUID) {
-    return threadPool.submit(() -> deleteBackup(customer, backupUUID));
+  private Future<Boolean> runDeleteBackup(
+      Customer customer, UUID backupUUID, Map<UUID, BackupHelper.ConfigIdentity> configIdentities) {
+    return threadPool.submit(() -> deleteBackup(customer, backupUUID, configIdentities));
   }
 
   public boolean deleteBackup(Customer customer, UUID backupUUID) {
+    return deleteBackup(customer, backupUUID, new ConcurrentHashMap<>());
+  }
+
+  private boolean deleteBackup(
+      Customer customer, UUID backupUUID, Map<UUID, BackupHelper.ConfigIdentity> configIdentities) {
     Backup backup = Backup.maybeGet(customer.getUuid(), backupUUID).orElse(null);
     int backupDeleteRetryCount =
         confGetter.getConfForScope(customer, CustomerConfKeys.backupGcNumberOfRetries) - 1;
@@ -383,7 +406,6 @@ public class BackupGarbageCollector {
       BackupCategory category = backup.getCategory();
       CustomerConfigStorageData configData =
           (CustomerConfigStorageData) customerConfig.getDataObject();
-      backupHelper.applyCrossCloudFederationFromBackup(configData, backup);
       if (configData.immutableStorage) {
         log.info(
             "Skipping cloud backup deletion for backup {} as this is immutable storage, will only"
@@ -393,6 +415,12 @@ public class BackupGarbageCollector {
         log.info("Deleted YBA metadata for backup {}", backupUUID);
         deletedSuccessfully = true;
       } else if (isCredentialUsable(customerConfig, backup.getUniverseUUID(), category)) {
+        // Only here: YBA reaches the bucket, and immutable storage above never does.
+        backupHelper.applyCrossCloudFederationFromBackup(
+            configData,
+            backup,
+            configIdentities.computeIfAbsent(
+                storageConfigUUID, uuid -> new BackupHelper.ConfigIdentity()));
         Map<String, List<String>> backupLocationsMap = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
@@ -423,16 +451,7 @@ public class BackupGarbageCollector {
               backup.delete();
               log.info("Backup {} is successfully deleted", backupUUID);
             } else {
-              int retryCount = backup.getRetryCount();
-              if (retryCount < backupDeleteRetryCount) {
-                retryCount++;
-                backup.setRetryCount(retryCount);
-                backup.transitionState(Backup.BackupState.QueuedForDeletion);
-                log.info("Backup {} deletion failed on attempt {}", backupUUID, retryCount);
-              } else {
-                backup.transitionState(Backup.BackupState.FailedToDelete);
-                log.info("Backup {} deletion failed", backupUUID);
-              }
+              requeueOrFailDeletion(backup, backupDeleteRetryCount);
             }
             break;
           case NFS:
@@ -449,16 +468,7 @@ public class BackupGarbageCollector {
                 backup.delete();
                 log.info("Backup {} is successfully deleted", backupUUID);
               } else {
-                int retryCount = backup.getRetryCount();
-                if (retryCount < backupDeleteRetryCount) {
-                  retryCount++;
-                  backup.setRetryCount(retryCount);
-                  backup.transitionState(Backup.BackupState.QueuedForDeletion);
-                  log.info("Backup {} deletion failed on attempt {}", backupUUID, retryCount);
-                } else {
-                  backup.transitionState(Backup.BackupState.FailedToDelete);
-                  log.info("Backup {} deletion failed", backupUUID);
-                }
+                requeueOrFailDeletion(backup, backupDeleteRetryCount);
               }
             } else {
               deletedSuccessfully = true;
@@ -500,6 +510,26 @@ public class BackupGarbageCollector {
   private Boolean isUniversePresent(Backup backup) {
     Optional<Universe> universe = Universe.maybeGet(backup.getBackupInfo().getUniverseUUID());
     return universe.isPresent();
+  }
+
+  /**
+   * Queues a backup whose deletion failed for another attempt, or marks it FailedToDelete once its
+   * attempts are used up.
+   */
+  private void requeueOrFailDeletion(Backup backup, int backupDeleteRetryCount) {
+    UUID backupUUID = backup.getBackupUUID();
+    int retryCount = backup.getRetryCount();
+    if (retryCount < backupDeleteRetryCount) {
+      retryCount++;
+      backup.transitionState(Backup.BackupState.QueuedForDeletion);
+      // Set after the transition, which reloads the backup and would drop it.
+      backup.setRetryCount(retryCount);
+      backup.save();
+      log.info("Backup {} deletion failed on attempt {}", backupUUID, retryCount);
+    } else {
+      backup.transitionState(Backup.BackupState.FailedToDelete);
+      log.info("Backup {} deletion failed", backupUUID);
+    }
   }
 
   private boolean deleteScriptBackup(List<BackupTableParams> backupList) {

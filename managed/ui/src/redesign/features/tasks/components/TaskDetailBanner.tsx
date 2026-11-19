@@ -29,6 +29,7 @@ import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { getGetUniverseQueryKey, getUniverse } from '@app/v2/api/universe/universe';
 import { TaskInProgressBanner } from './bannerComp/TaskInProgressBanner';
 import { TaskSuccessBanner } from './bannerComp/TaskSuccessBanner';
+import { TaskAbortedBanner } from './bannerComp/TaskAbortedBanner';
 import { TaskFailedBanner } from './bannerComp/TaskFailedBanner';
 import { TaskFailedSoftwareUpgradeBanner } from './bannerComp/TaskFailedSoftwareUpgradeBanner';
 import {
@@ -48,7 +49,7 @@ import {
   patchTasksForCustomer,
   showTaskInDrawer
 } from '../../../../actions/tasks';
-import { Task, TaskState } from '../dtos';
+import { Task, TaskState, TaskType } from '../dtos';
 import { DbUpgradeFinalizeTaskBanner } from './clusterBanner/DbUpgradeFinalizeTaskBanner';
 import { DbUpgradePrecheckTaskBanner } from './clusterBanner/DbUpgradePrecheckTaskBanner';
 import { DbUpgradeRollbackTaskBanner } from './clusterBanner/DbUpgradeRollbackTaskBanner';
@@ -191,6 +192,8 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
 
   // Status-only banners for tasks without a dedicated banner component.
   const renderGenericTaskBanner = (bannerTask: Task) => {
+    // The federation modal polls this task and reports the result via toast instead.
+    if (bannerTask.type === TaskType.MANAGE_CROSS_CLOUD_FEDERATION) return null;
     switch (bannerTask.status) {
       case TaskState.RUNNING:
         return (
@@ -221,6 +224,17 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
             }}
             onClose={() => hideBanner(bannerTask.id)}
           />
+        );
+      case TaskState.ABORTED:
+        return (
+          <div className={classes.bannerContainer}>
+            <TaskAbortedBanner
+              currentTask={bannerTask}
+              viewDetails={() => {
+                toggleTaskDetailsDrawer(true, bannerTask.id);
+              }}
+            />
+          </div>
         );
       default:
         return null;
@@ -261,13 +275,15 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
       }
 
       if (getIsDbUpgradeTask(bannerTask)) {
+        if (isBannerDismissedForTask(bannerTask.id)) {
+          return null;
+        }
         return (
           <div className={classes.bannerContainer}>
             <DbUpgradeTaskBanner
               task={bannerTask}
               universeUuid={universeUUID}
-              isUpgradeCompletedBannerDismissed={isBannerDismissedForTask(bannerTask.id)}
-              onDismissUpgradeCompletedBanner={() => hideBanner(bannerTask.id)}
+              onDismissDbUpgradeTaskBanner={() => hideBanner(bannerTask.id)}
             />
           </div>
         );
@@ -289,11 +305,7 @@ export const TaskDetailBanner: FC<TaskDetailBannerProps> = ({ universeUUID }) =>
     if (getIsEditUniverseTask(bannerTask)) {
       return (
         <div className={classes.bannerContainer}>
-          <EditUniverseTaskBanner
-            task={bannerTask}
-            universeUuid={universeUUID}
-            onDismiss={() => hideBanner(bannerTask.id)}
-          />
+          <EditUniverseTaskBanner task={bannerTask} universeUuid={universeUUID} />
         </div>
       );
     }

@@ -1,0 +1,171 @@
+--
+-- See yb_merge_scan_schedule for details about the test.  Tests that
+-- dropped table columns do not mess up the merge and fetch,
+--
+SET yb_max_merge_scan_streams to 64;
+SET enable_sort to off;
+CREATE TABLE drop_col_range (
+    x1 int,
+    k1 int,
+    x2 int,
+    k2 int,
+    x3 int,
+    i1 int,
+    x4 int,
+    i2 int,
+    x5 int,
+    v text,
+    x6 int,
+    PRIMARY KEY (k1 ASC, k2 ASC));
+CREATE INDEX ON drop_col_range (i1 ASC, i2 ASC);
+ALTER TABLE drop_col_range DROP COLUMN x1, DROP COLUMN x2, DROP COLUMN x3, DROP COLUMN x4, DROP COLUMN x5, DROP COLUMN x6;
+CREATE TABLE drop_col_hash (
+    x1 int,
+    k1 int,
+    x2 int,
+    k2 int,
+    x3 int,
+    i1 int,
+    x4 int,
+    i2 int,
+    x5 int,
+    v text,
+    x6 int,
+    PRIMARY KEY (k1 HASH, k2 ASC));
+CREATE INDEX ON drop_col_hash (i1 HASH, i2 ASC);
+ALTER TABLE drop_col_hash DROP COLUMN x1, DROP COLUMN x2, DROP COLUMN x3, DROP COLUMN x4, DROP COLUMN x5, DROP COLUMN x6;
+INSERT INTO drop_col_range (k1, k2, i1, i2, v)
+  SELECT i % 4, 1000 - i, (i * 3 + 7) % 8, 2000 - (i * 7 + 3) % 450, 'Value ' || i::text FROM generate_series(1, 900) AS i;
+INSERT INTO drop_col_hash SELECT * FROM drop_col_range;
+EXPLAIN (COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM drop_col_range WHERE k1 IN (1, 2) ORDER BY k2 LIMIT 10;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Limit
+   ->  Index Scan using drop_col_range_pkey on drop_col_range
+         Index Cond: (k1 = ANY ('{1,2}'::integer[]))
+         Merge Sort Key: k2
+         Merge Stream Key: k1
+         Merge Streams: 2
+(6 rows)
+
+SELECT * FROM drop_col_range WHERE k1 IN (1, 2) ORDER BY k2 LIMIT 10;
+ k1 | k2  | i1 |  i2  |     v     
+----+-----+----+------+-----------
+  2 | 102 |  5 | 1561 | Value 898
+  1 | 103 |  2 | 1568 | Value 897
+  2 | 106 |  1 | 1589 | Value 894
+  1 | 107 |  6 | 1596 | Value 893
+  2 | 110 |  5 | 1617 | Value 890
+  1 | 111 |  2 | 1624 | Value 889
+  2 | 114 |  1 | 1645 | Value 886
+  1 | 115 |  6 | 1652 | Value 885
+  2 | 118 |  5 | 1673 | Value 882
+  1 | 119 |  2 | 1680 | Value 881
+(10 rows)
+
+EXPLAIN (COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM drop_col_range WHERE i1 IN (0, 3, 5, 7) ORDER BY i2 LIMIT 20;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Limit
+   ->  Index Scan using drop_col_range_i1_i2_idx on drop_col_range
+         Index Cond: (i1 = ANY ('{0,3,5,7}'::integer[]))
+         Merge Sort Key: i2
+         Merge Stream Key: i1
+         Merge Streams: 4
+(6 rows)
+
+SELECT * FROM drop_col_range WHERE i1 IN (0, 3, 5, 7) ORDER BY i2 LIMIT 20;
+ k1 | k2  | i1 |  i2  |     v     
+----+-----+----+------+-----------
+  2 | 422 |  5 | 1551 | Value 578
+  0 | 872 |  7 | 1551 | Value 128
+  3 | 165 |  0 | 1552 | Value 835
+  2 | 358 |  5 | 1553 | Value 642
+  0 | 808 |  7 | 1553 | Value 192
+  3 | 101 |  0 | 1554 | Value 899
+  2 | 294 |  5 | 1555 | Value 706
+  0 | 744 |  7 | 1555 | Value 256
+  2 | 230 |  5 | 1557 | Value 770
+  0 | 680 |  7 | 1557 | Value 320
+  2 | 166 |  5 | 1559 | Value 834
+  0 | 616 |  7 | 1559 | Value 384
+  2 | 102 |  5 | 1561 | Value 898
+  0 | 552 |  7 | 1561 | Value 448
+  0 | 488 |  7 | 1563 | Value 512
+  0 | 424 |  7 | 1565 | Value 576
+  0 | 360 |  7 | 1567 | Value 640
+  0 | 296 |  7 | 1569 | Value 704
+  0 | 232 |  7 | 1571 | Value 768
+  0 | 168 |  7 | 1573 | Value 832
+(20 rows)
+
+EXPLAIN (COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM drop_col_hash WHERE k1 IN (1, 2) ORDER BY k2 LIMIT 10;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Limit
+   ->  Index Scan using drop_col_hash_pkey on drop_col_hash
+         Index Cond: (k1 = ANY ('{1,2}'::integer[]))
+         Merge Sort Key: k2
+         Merge Stream Key: k1
+         Merge Streams: 2
+(6 rows)
+
+SELECT * FROM drop_col_hash WHERE k1 IN (1, 2) ORDER BY k2 LIMIT 10;
+ k1 | k2  | i1 |  i2  |     v     
+----+-----+----+------+-----------
+  2 | 102 |  5 | 1561 | Value 898
+  1 | 103 |  2 | 1568 | Value 897
+  2 | 106 |  1 | 1589 | Value 894
+  1 | 107 |  6 | 1596 | Value 893
+  2 | 110 |  5 | 1617 | Value 890
+  1 | 111 |  2 | 1624 | Value 889
+  2 | 114 |  1 | 1645 | Value 886
+  1 | 115 |  6 | 1652 | Value 885
+  2 | 118 |  5 | 1673 | Value 882
+  1 | 119 |  2 | 1680 | Value 881
+(10 rows)
+
+EXPLAIN (COSTS OFF, SUMMARY OFF, TIMING OFF)
+SELECT * FROM drop_col_hash WHERE i1 IN (0, 3, 5, 7) ORDER BY i2 LIMIT 20;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Limit
+   ->  Index Scan using drop_col_hash_i1_i2_idx on drop_col_hash
+         Index Cond: (i1 = ANY ('{0,3,5,7}'::integer[]))
+         Merge Sort Key: i2
+         Merge Stream Key: i1
+         Merge Streams: 4
+(6 rows)
+
+SELECT * FROM drop_col_hash WHERE i1 IN (0, 3, 5, 7) ORDER BY i2 LIMIT 20;
+ k1 | k2  | i1 |  i2  |     v     
+----+-----+----+------+-----------
+  2 | 422 |  5 | 1551 | Value 578
+  0 | 872 |  7 | 1551 | Value 128
+  3 | 165 |  0 | 1552 | Value 835
+  2 | 358 |  5 | 1553 | Value 642
+  0 | 808 |  7 | 1553 | Value 192
+  3 | 101 |  0 | 1554 | Value 899
+  2 | 294 |  5 | 1555 | Value 706
+  0 | 744 |  7 | 1555 | Value 256
+  2 | 230 |  5 | 1557 | Value 770
+  0 | 680 |  7 | 1557 | Value 320
+  2 | 166 |  5 | 1559 | Value 834
+  0 | 616 |  7 | 1559 | Value 384
+  2 | 102 |  5 | 1561 | Value 898
+  0 | 552 |  7 | 1561 | Value 448
+  0 | 488 |  7 | 1563 | Value 512
+  0 | 424 |  7 | 1565 | Value 576
+  0 | 360 |  7 | 1567 | Value 640
+  0 | 296 |  7 | 1569 | Value 704
+  0 | 232 |  7 | 1571 | Value 768
+  0 | 168 |  7 | 1573 | Value 832
+(20 rows)
+
+DROP TABLE drop_col_range;
+DROP TABLE drop_col_hash;
+RESET yb_max_merge_scan_streams;
+RESET enable_sort;

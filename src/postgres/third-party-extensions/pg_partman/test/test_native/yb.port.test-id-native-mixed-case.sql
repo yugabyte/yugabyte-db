@@ -3,13 +3,21 @@
     -- Test using a pre-created template table and passing to create_parent. Should allow indexes to be made for initial children.
     -- Tests that foreign keys and normal indexes for PG10 use the template and for PG11 they use the parent. Also since this is id partitioning, we can use the partition key for primary key, so that should work from parent on PG11 as well.
 
+-- YB: Gate the tests that need yb_pg_partman_check_native_txn_ddl_and_locks() to be true.
+SELECT pg_catalog.yb_pg_partman_check_native_txn_ddl_and_locks()::int AS yb_use_txn_ddl_and_locks \gset
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
--- BEGIN; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+BEGIN;
+\endif \\ -- YB
 SELECT set_config('search_path','partman, public',false);
 
+\if :yb_use_txn_ddl_and_locks
+SELECT plan(111); -- YB: decreased number of tests
+\else \\ -- YB
 SELECT plan(98); -- YB: decreased number of tests
+\endif \\ -- YB
 CREATE SCHEMA "Partman_Test";
 CREATE SCHEMA "Partman_Retention_Test";
 CREATE ROLE "Partman_Basic";
@@ -206,7 +214,7 @@ SELECT drop_partition_id('Partman_Test.ID_Taptest_Table', p_retention_schema := 
 SELECT hasnt_table('Partman_Test', 'ID_Taptest_Table_p3000000010', 'Check ID_Taptest_Table_p3000000010 doesn''t exists anymore');
 SELECT has_table('Partman_Retention_Test', 'ID_Taptest_Table_p3000000010', 'Check ID_Taptest_Table_p3000000010 got moved to new schema');
 
-/* YB: undo_partition not supported
+\if :yb_use_txn_ddl_and_locks
 SELECT undo_partition('Partman_Test.ID_Taptest_Table', p_target_table := 'Partman_Test.Undo_Taptest', p_keep_table := false);
 SELECT hasnt_table('Partman_Test', 'ID_Taptest_Table_p3000000020', 'Check ID_Taptest_Table_p3000000020 does not exist');
 
@@ -225,7 +233,9 @@ SELECT has_table('Partman_Test', 'ID_Taptest_Table_p3000000070', 'Check ID_Tapte
 SELECT is_empty('SELECT * FROM "Partman_Test"."ID_Taptest_Table_p3000000070"', 'Check child table had its data removed ID_Taptest_Table_p3000000070');
 
 SELECT hasnt_table('Partman_Test', 'template_id_taptest_table', 'Check that template table was dropped');
-*/ -- YB
+\endif \\ -- YB
 
 SELECT * FROM finish();
--- ROLLBACK; YB: Transactional DDL not supported
+\if :yb_use_txn_ddl_and_locks
+ROLLBACK;
+\endif \\ -- YB

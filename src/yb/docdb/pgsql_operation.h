@@ -249,6 +249,9 @@ class PgsqlReadOperation : public DocExprExecutor {
   boost::container::small_vector<dockv::PgWireEncoderEntry, 0x10> target_encoders_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
+  // Read restart data of the vector search intents scan, filter and reverse mapping reader, which
+  // table_iter_ does not cover.
+  ReadRestartData vector_search_read_restart_data_;
   // Rows read while processing this request, counted once each.  PgsqlRequestMetricsPB in
   // pgsql_protocol.proto defines what that means.
   uint64_t scanned_table_rows_ = 0;

@@ -38,6 +38,7 @@ class YsqlLeaseClient {
   void Shutdown();
   std::future<Status> RelinquishLease(MonoDelta timeout) const;
   void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
+  void TriggerASAP();
 
   ~YsqlLeaseClient();
 
