@@ -1,6 +1,7 @@
 package providerutil
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -83,6 +84,72 @@ func TestBuildRegionMapInstanceTemplate(t *testing.T) {
 			if ok != c.wantPresent || got != c.wantValue {
 				t.Fatalf("instance-template = %q (present=%v), want %q (present=%v)",
 					got, ok, c.wantValue, c.wantPresent)
+			}
+		})
+	}
+}
+
+func TestSSHPort(t *testing.T) {
+	for _, port := range []int{1, 22, 65535} {
+		if got, err := SSHPort(port); err != nil || got != int32(port) {
+			t.Errorf("SSHPort(%d) = (%d, %v), want %d", port, got, err, port)
+		}
+	}
+	for _, port := range []int{0, -1, 65536, 1 << 32} {
+		want := fmt.Sprintf("invalid ssh-port %d; provide a port between 1 and 65535", port)
+		if _, err := SSHPort(port); err == nil || err.Error() != want {
+			t.Errorf("SSHPort(%d) error = %v, want %q", port, err, want)
+		}
+	}
+}
+
+func TestImageBundleSSHPort(t *testing.T) {
+	tests := []struct {
+		name    string
+		bundle  map[string]string
+		want    int32
+		wantErr string
+	}{
+		{name: "omitted", bundle: map[string]string{"name": "b1"}, want: 22},
+		{name: "valid", bundle: map[string]string{"name": "b1", "ssh-port": "2222"}, want: 2222},
+		{name: "max", bundle: map[string]string{"name": "b1", "ssh-port": "65535"}, want: 65535},
+		{
+			name:    "zero",
+			bundle:  map[string]string{"name": "b1", "ssh-port": "0"},
+			wantErr: "invalid ssh-port 0 for image bundle b1; provide a port between 1 and 65535",
+		},
+		{
+			name:    "above max",
+			bundle:  map[string]string{"name": "b1", "ssh-port": "65536"},
+			wantErr: "invalid ssh-port 65536 for image bundle b1; provide a port between 1 and 65535",
+		},
+		{
+			name:    "not a number",
+			bundle:  map[string]string{"name": "b1", "ssh-port": "abc"},
+			wantErr: "invalid ssh-port abc for image bundle b1; provide a port between 1 and 65535",
+		},
+		{
+			name:    "negative",
+			bundle:  map[string]string{"name": "b1", "ssh-port": "-1"},
+			wantErr: "invalid ssh-port -1 for image bundle b1; provide a port between 1 and 65535",
+		},
+		{
+			name:    "edit identifies the bundle by uuid",
+			bundle:  map[string]string{"uuid": "u1", "ssh-port": "70000"},
+			wantErr: "invalid ssh-port 70000 for image bundle u1; provide a port between 1 and 65535",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ImageBundleSSHPort(tc.bundle)
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("got (%d, %v), want error %q", got, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("got (%d, %v), want %d", got, err, tc.want)
 			}
 		})
 	}
