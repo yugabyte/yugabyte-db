@@ -835,9 +835,9 @@ DROP TABLE gap_expr_tbl;
 -- compared gap without reading it would return the rows out of order.  The
 -- primary key scan reads gap from the table row, the index-only scan reads gap
 -- from the index row, and the plain index scan reads gap from the index row in
--- its separate index request, or from the table row when the index is embedded.
+-- its separate index request or from the table row when the index is embedded.
 SET TimeZone = 'UTC';
-CREATE TABLE gap_unread_tbl (ord2 int, gap timestamp, x timestamp, bkt int,
+CREATE TABLE gap_unread_tbl (gap timestamp, ord2 int, x timestamp, bkt int,
     ord1 timestamptz, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
 CREATE INDEX NONCONCURRENTLY gap_unread_tbl_idx ON gap_unread_tbl
     (bkt ASC, ord1 ASC, gap ASC, ord2 ASC) INCLUDE (x);
@@ -1258,9 +1258,9 @@ DROP TABLE gap_expr_tbl;
 -- compared gap without reading it would return the rows out of order.  The
 -- primary key scan reads gap from the table row, the index-only scan reads gap
 -- from the index row, and the plain index scan reads gap from the index row in
--- its separate index request, or from the table row when the index is embedded.
+-- its separate index request or from the table row when the index is embedded.
 SET TimeZone = 'UTC';
-CREATE TABLE gap_unread_tbl (ord2 int, gap timestamp, x timestamp, bkt int,
+CREATE TABLE gap_unread_tbl (gap timestamp, ord2 int, x timestamp, bkt int,
     ord1 timestamptz, PRIMARY KEY (bkt ASC, ord1 ASC, gap ASC, ord2 ASC));
 CREATE INDEX NONCONCURRENTLY gap_unread_tbl_idx ON gap_unread_tbl
     (bkt ASC, ord1 ASC, gap ASC, ord2 ASC) INCLUDE (x);
