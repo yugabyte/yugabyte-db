@@ -54,6 +54,8 @@ tags:
     description: CRUD operations for external Perf Advisor destinations
   - name: Session
     description: Session management
+  - name: Storage Config
+    description: Backup storage configuration management
   - name: Support Bundle
     description: Support bundle management for universes
   - name: Task

@@ -812,12 +812,13 @@ std::vector<OptionRange> HybridScanChoices::TEST_GetCurrentOptions() {
 // Method called when the scan target is done being used
 Result<bool> HybridScanChoices::DoneWithCurrentTarget(bool current_row_skipped, bool not_found) {
   bool result = false;
-  if (schema_num_keys_ == scan_options_.size() ||
-      (prefix_length_ > 0 && !current_row_skipped) ||
+  // A skipped (e.g. deleted) row may be followed by live rows with the same distinct prefix.
+  const auto skip_prefix = prefix_length_ > 0 && !current_row_skipped;
+  if (schema_num_keys_ == scan_options_.size() || skip_prefix ||
       (not_found && iterator_bound_scope_)) {
     auto incr_idx = not_found
         ? num_bloom_filter_cols_ - 1
-        : (prefix_length_ ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
+        : (skip_prefix ? prefix_length_ : current_scan_target_ranges_.size()) - 1;
     RETURN_NOT_OK(IncrementScanTargetAtOptionList(incr_idx));
     result = true;
   }

@@ -104,6 +104,8 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
+          // The node_exporter sidecar's scrape targets follow the DB version.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 }

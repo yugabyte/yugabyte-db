@@ -443,6 +443,7 @@ CopyScanFields(const Scan *from, Scan *newnode)
 
 	/* YB */
 	COPY_STRING_FIELD(ybScannedObjectName);
+	COPY_NODE_FIELD(ybOptions);
 }
 
 /*

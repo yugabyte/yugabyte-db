@@ -17,6 +17,9 @@ interface CheckPerfAdvisorRegistrationProps {
   timezone: string;
   apiUrl: string;
   paUuid: string;
+  // From UniverseDetail's redux registration status, which is per universe and refetched when a
+  // PA task completes. The react-query entry below can hold another universe's or a pre-task mode.
+  registrationMode?: PaRegistrationMode;
 }
 
 export const CheckPerfAdvisorRegistration = ({
@@ -24,18 +27,17 @@ export const CheckPerfAdvisorRegistration = ({
   appName,
   timezone,
   apiUrl,
-  paUuid
+  paUuid,
+  registrationMode
 }: CheckPerfAdvisorRegistrationProps) => {
   const { t } = useTranslation();
   const [registrationStatus, setRegistrationStatus] = useState<boolean>(false);
-  const [registrationMode, setRegistrationMode] = useState<PaRegistrationMode | undefined>();
   const getUniversePaRegistrationStatus = useQuery(
-    PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails,
+    [PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails, universeUuid],
     () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(universeUuid),
     {
       onSuccess: (data) => {
         setRegistrationStatus(data.success);
-        setRegistrationMode(data.mode);
       },
       onError: (error: any) => {
         error.request.status === 404 && setRegistrationStatus(false);

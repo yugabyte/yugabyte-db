@@ -147,6 +147,9 @@ class DocVectorIndexContext {
 
   // Bounds of the keys served by the tablet. Initialized only for a tablet created by a split.
   virtual const KeyBounds& key_bounds() const = 0;
+
+  // Blocks until the WAL entry with op_id is durable, see VectorLSMOptions::wait_frontier_durable.
+  virtual void WaitWalDurable(const OpId& op_id) const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
@@ -211,6 +214,8 @@ class DocVectorIndex {
   // Capacity of a new mutable chunk when the insert does not specify one.
   virtual size_t DefaultChunkCapacity() const = 0;
 
+  // Also returns the vectors tied in distance with the last of options.max_num_results vectors, up
+  // to vector_index_max_extra_tied_results of them.
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
       DocVectorIndexReverseMappingReader& reverse_mapping_reader) = 0;

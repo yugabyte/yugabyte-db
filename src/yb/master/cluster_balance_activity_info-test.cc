@@ -12,9 +12,39 @@
 
 #include "yb/master/cluster_balance_activity_info.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/test_util.h"
 
+DECLARE_bool(load_balancer_allow_global_balancing_with_warnings);
+
 namespace yb::master {
+
+namespace {
+
+class DummyAddServerTask : public RetryingRpcTask {
+ public:
+  explicit DummyAddServerTask(server::MonitoredTaskState state, Status status = Status::OK()):
+      RetryingRpcTask(nullptr, nullptr, nullptr) {
+    state_ = state;
+    final_status_ = status;
+  }
+  std::string type_name() const override { return "DummyAddServerTask"; }
+  std::string description() const override { return "DummyAddServerTask description"; }
+  void SetState(server::MonitoredTaskState state) { state_ = state; }
+
+ private:
+  // Dummy implementation.
+  Status status_;
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kAddServer;
+  }
+  bool SendRequest(int attempt) override { return true; }
+  void HandleResponse(int attempt) override {}
+  Status ResetProxies() override { return Status::OK(); }
+  void DoRpcCallback() override {}
+};
+
+}  // namespace
 
 TEST(TestClusterBalancerActivityInfo, WarningAggregation) {
   ClusterBalancerActivityInfo activity_info;
@@ -29,29 +59,6 @@ TEST(TestClusterBalancerActivityInfo, WarningAggregation) {
 }
 
 TEST(TestClusterBalancerActivityInfo, TaskAggregation) {
-  class DummyAddServerTask : public RetryingRpcTask {
-   public:
-    explicit DummyAddServerTask(server::MonitoredTaskState state, Status status = Status::OK()):
-        RetryingRpcTask(nullptr, nullptr, nullptr) {
-      state_ = state;
-      final_status_ = status;
-    }
-    std::string type_name() const override { return "DummyAddServerTask"; }
-    std::string description() const override { return "DummyAddServerTask description"; }
-    void SetState(server::MonitoredTaskState state) { state_ = state; }
-
-   private:
-    // Dummy implementation.
-    Status status_;
-    server::MonitoredTaskType type() const override {
-      return server::MonitoredTaskType::kAddServer;
-    }
-    bool SendRequest(int attempt) override { return true; }
-    void HandleResponse(int attempt) override {}
-    Status ResetProxies() override { return Status::OK(); }
-    void DoRpcCallback() override {}
-  };
-
   ClusterBalancerActivityInfo activity_info;
   ASSERT_TRUE(activity_info.IsIdle());
 
@@ -77,6 +84,38 @@ TEST(TestClusterBalancerActivityInfo, TaskAggregation) {
   ASSERT_EQ(failed_tasks.count, 1);
   ASSERT_STR_CONTAINS(failed_tasks.example_status, "Task failed");
   ASSERT_EQ(failed_tasks.example_description, "DummyAddServerTask description");
+}
+
+// The global balancing gate uses CanPerformGlobalMoves(): tasks and ongoing remote bootstraps block
+// it, while warnings alone do not unless load_balancer_allow_global_balancing_with_warnings is
+// false.
+TEST(TestClusterBalancerActivityInfo, CanPerformGlobalMoves) {
+  google::FlagSaver flag_saver;
+  ClusterBalancerActivityInfo activity_info;
+  ASSERT_TRUE(activity_info.IsIdle());
+  ASSERT_TRUE(activity_info.CanPerformGlobalMoves());
+
+  activity_info.CountWarning(
+      ClusterBalancerWarningType::kSkipTableLoadBalancing, "Example message");
+  ASSERT_FALSE(activity_info.IsIdle());
+  ASSERT_TRUE(activity_info.CanPerformGlobalMoves());
+
+  // With the flag off, a warning blocks it as it does IsIdle().
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_allow_global_balancing_with_warnings) = false;
+  ASSERT_FALSE(activity_info.CanPerformGlobalMoves());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_allow_global_balancing_with_warnings) = true;
+  ASSERT_TRUE(activity_info.CanPerformGlobalMoves());
+
+  activity_info.has_ongoing_remote_bootstraps_ = true;
+  ASSERT_FALSE(activity_info.CanPerformGlobalMoves());
+  activity_info.has_ongoing_remote_bootstraps_ = false;
+  ASSERT_TRUE(activity_info.CanPerformGlobalMoves());
+
+  // Any tracked task counts, whatever its state (a terminal state here, so the task can be
+  // destroyed).
+  activity_info.AddTask(
+      std::make_shared<DummyAddServerTask>(server::MonitoredTaskState::kComplete));
+  ASSERT_FALSE(activity_info.CanPerformGlobalMoves());
 }
 
 }  // namespace yb::master

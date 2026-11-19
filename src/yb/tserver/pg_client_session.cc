@@ -196,7 +196,6 @@ DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
-DECLARE_bool(ysql_yb_enable_object_locking_infra);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_string(ysql_sequence_cache_method);
@@ -229,13 +228,6 @@ namespace {
 YB_DEFINE_ENUM(PgClientSessionKind,
     (kPlain)(kAutonomousDdl)(kLegacyCatalog)(kSequence)(kPgSession)(kHistoricalRead));
 YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
-
-void SetFollowerReadTime(ConsistentReadPoint& read_point, uint32_t staleness_ms) {
-  read_point.SetReadTime(
-      ReadHybridTime::SingleTime(
-          read_point.Now().AddMilliseconds(-static_cast<int64_t>(staleness_ms))),
-      {});
-}
 
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
@@ -350,11 +342,16 @@ struct FetchedVector {
 struct VectorIndexQueryPartitionData {
   size_t number_of_vectors_returned_to_postgres = 0;
   size_t number_of_vectors_fetched_from_tablet = 0;
+  // Fetched vectors that were dropped as not farther than max_fetched_distance.
+  size_t number_of_vectors_dropped = 0;
+  std::optional<uint64_t> max_fetched_distance;
+  bool last_fetch_dropped = false;
   bool whether_all_vectors_was_fetched = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         number_of_vectors_returned_to_postgres, number_of_vectors_fetched_from_tablet,
+        number_of_vectors_dropped, max_fetched_distance, last_fetch_dropped,
         whether_all_vectors_was_fetched);
   }
 };
@@ -400,9 +397,7 @@ class VectorIndexQuery {
         partition_state.whether_all_vectors_was_fetched = true;
       }
       VLOG_WITH_FUNC(4) << partition_idx << ": " << partition_state.ToString();
-      if (!partition_state.whether_all_vectors_was_fetched &&
-          partition_state.number_of_vectors_returned_to_postgres + prefetch_size_
-              > partition_state.number_of_vectors_fetched_from_tablet) {
+      if (NeedsFetch(partition_state)) {
         auto new_read_req = arena->NewArenaObject<LWPgsqlReadRequestPB>(read_req);
         new_read_req->dup_partition_key(key);
         auto& vector_idx_options = *new_read_req->mutable_index_request()
@@ -474,7 +469,17 @@ class VectorIndexQuery {
     auto& out_resp = *responses.Add();
     auto& write_buffer = sidecars.Start();
 
+    // Rows are merged in order only while each partition that could have more has prefetch_size_
+    // rows buffered. A partition left short by dropped rows could have nearer rows than those
+    // buffered, so return nothing and requery it, which moves past the dropped rows. Other short
+    // pages are returned: their requery may repeat itself and stall the query. The gate applies to
+    // stale pages too: their buffered rows may be out of order as well.
     size_t response_size = std::min(prefetch_size_, vectors_.size());
+    if (std::ranges::any_of(partitions_, [this](const auto& partition) {
+      return partition.last_fetch_dropped && NeedsFetch(partition);
+    })) {
+      response_size = 0;
+    }
 
     pggate::PgWire::WriteInt64(response_size, &write_buffer);
     for (size_t i = 0; i != response_size; ++i) {
@@ -612,6 +617,13 @@ class VectorIndexQuery {
     return Status::OK();
   }
 
+  // Whether the partition could have more rows and has fewer than prefetch_size_ buffered.
+  bool NeedsFetch(const VectorIndexQueryPartitionData& partition) const {
+    return !partition.whether_all_vectors_was_fetched &&
+           partition.number_of_vectors_fetched_from_tablet - partition.number_of_vectors_dropped
+               - partition.number_of_vectors_returned_to_postgres < prefetch_size_;
+  }
+
   bool CouldFetchMore() const {
     if (!vectors_.empty()) {
       return true;
@@ -648,17 +660,35 @@ class VectorIndexQuery {
       }
       auto& distances = op_resp.vector_index_distances();
       auto& ends = op_resp.vector_index_ends();
+      auto& partition_state = partitions_[op.partition_idx];
+      // A later page re-runs the search and skips the rows fetched before by count. The new search
+      // may find rows the earlier one missed, so a skipped row may be returned again. Keep only
+      // the rows farther than all fetched before. Rows the re-run newly finds within that distance
+      // are lost, as approximate search allows, and so are ties past
+      // vector_index_max_extra_tied_results.
+      const auto skip_distances_up_to = partition_state.max_fetched_distance;
+      const auto dropped_before = partition_state.number_of_vectors_dropped;
       size_t sidecar_offset = 8;
       for (size_t index = 0; index != distances.size(); ++index) {
         auto new_offset = ends[index];
-        vectors_.push_back(FetchedVector {
-          .distance = distances[index],
-          .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
-          .partition_idx = op.partition_idx,
-        });
+        auto distance = distances[index];
+        if (!skip_distances_up_to || distance > *skip_distances_up_to) {
+          vectors_.push_back(FetchedVector {
+            .distance = distance,
+            .data = op_sidecars.SubSlice(sidecar_offset, new_offset),
+            .partition_idx = op.partition_idx,
+          });
+          partition_state.max_fetched_distance = std::max(
+              partition_state.max_fetched_distance.value_or(0), distance);
+        } else {
+          ++partition_state.number_of_vectors_dropped;
+        }
         sidecar_offset = new_offset;
       }
-      partitions_[op.partition_idx].number_of_vectors_fetched_from_tablet += distances.size();
+      partition_state.last_fetch_dropped =
+          partition_state.number_of_vectors_dropped != dropped_before;
+      // Counts the dropped rows too: the tablet skips them on the next page.
+      partition_state.number_of_vectors_fetched_from_tablet += distances.size();
       if (!op_resp.vector_index_could_have_more_data()) {
         partitions_[op.partition_idx].whether_all_vectors_was_fetched = true;
       }
@@ -1485,7 +1515,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
         index_table = std::move(*next_index_table++);
       }
       if (is_txn_using_table_locks) {
-        read.set_is_using_table_locks(true);
+        read.set_using_table_locks_globally(true);
       }
       if (read.index_request().has_vector_idx_options()) {
         if (req->ops_size() != 1) {
@@ -1522,7 +1552,7 @@ Result<std::pair<PgClientSessionOperations, VectorIndexQueryPtr>> PrepareOperati
       auto& write = *op.mutable_write();
       RETURN_NOT_OK(GetTable(write.table_id(), tables, &table));
       if (is_txn_using_table_locks) {
-        write.set_is_using_table_locks(true);
+        write.set_using_table_locks_globally(true);
       }
       auto write_op = std::make_shared<client::YBPgsqlWriteOp>(table, arena, *sidecars, &write);
       if (write_time) {
@@ -1835,7 +1865,7 @@ class PgClientSession::Impl {
         req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
+        IsTxnUsingTableLocks(req.options().using_table_locks_globally()), GetDeferReadPoint(req),
         req.options().origination_ht()));
     RETURN_NOT_OK(helper.Exec(
         &client_, metadata, req.options().active_sub_transaction_id(),
@@ -1875,7 +1905,8 @@ class PgClientSession::Impl {
         VERIFY_RESULT(GetDdlTransactionMetadata(
             req.use_transaction(), req.use_regular_transaction_block(),
             context->GetClientDeadline(),
-            IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
+            IsTxnUsingTableLocks(req.options().using_table_locks_globally()),
+            GetDeferReadPoint(req),
             req.options().origination_ht())),
         req.colocated(), context->GetClientDeadline(), yb_clone_info);
   }
@@ -1897,7 +1928,8 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
+        context->GetClientDeadline(),
+        IsTxnUsingTableLocks(req.options().using_table_locks_globally()),
         GetDeferReadPoint(req),
         req.options().origination_ht()));
     // If ddl rollback is enabled, the table will not be deleted now, so we cannot wait for the
@@ -1940,7 +1972,7 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto txn = VERIFY_RESULT(GetDdlTransactionMetadata(
         req.use_transaction(), req.use_regular_transaction_block(), context->GetClientDeadline(),
-        IsTxnUsingTableLocks(req.options().is_using_table_locks()), GetDeferReadPoint(req),
+        IsTxnUsingTableLocks(req.options().using_table_locks_globally()), GetDeferReadPoint(req),
         req.options().origination_ht()));
     if (txn) {
       alterer->part_of_transaction(txn);
@@ -2183,7 +2215,8 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
+        context->GetClientDeadline(),
+        IsTxnUsingTableLocks(req.options().using_table_locks_globally()),
         GetDeferReadPoint(req),
         req.options().origination_ht()));
     const auto s = client_.CreateTablegroup(
@@ -2210,7 +2243,8 @@ class PgClientSession::Impl {
       req.use_regular_transaction_block(), req.options(), context->GetClientDeadline()));
     const auto* metadata = VERIFY_RESULT(GetDdlTransactionMetadata(
         true /* use_transaction */, req.use_regular_transaction_block(),
-        context->GetClientDeadline(), IsTxnUsingTableLocks(req.options().is_using_table_locks()),
+        context->GetClientDeadline(),
+        IsTxnUsingTableLocks(req.options().using_table_locks_globally()),
         GetDeferReadPoint(req),
         req.options().origination_ht()));
     const auto status =
@@ -3056,8 +3090,6 @@ class PgClientSession::Impl {
         << " with lock type " << AsString(lock_type);
 
     RSTATUS_DCHECK(
-        options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
-    RSTATUS_DCHECK(
         options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
         IllegalState, "Object lock RPCs must not carry a read time serial no");
 
@@ -3693,8 +3725,7 @@ class PgClientSession::Impl {
       VLOG_WITH_PREFIX(3)
           << "Executing read from response cache for session " << data->req.session_id();
       data->cache_setter = VERIFY_RESULT(response_cache().Get(
-          options.mutable_caching_info(), deadline, data, data->req.session_id(),
-          &prefetch_fill_token_));
+          options.mutable_caching_info(), deadline, data, &prefetch_fill_token_));
       if (!data->cache_setter) {
         return Status::OK();
       }
@@ -3793,7 +3824,7 @@ class PgClientSession::Impl {
         make_lw_function([this, locality, deadline] {
           return NextObjectLockingTxnMeta(locality, deadline);
         }),
-        IsTxnUsingTableLocks(options.is_using_table_locks()),
+        IsTxnUsingTableLocks(options.using_table_locks_globally()),
         context_.metrics,
         MakeOriginationInfo(options.origination_ht())));
     // PrepareOperations has already applied the ops to the session. Failing out before the flush
@@ -4035,7 +4066,7 @@ class PgClientSession::Impl {
       EnsureSession(kind, deadline, arena);
       RETURN_NOT_OK(GetDdlTransactionMetadata(
           true /* use_transaction */, false /* use_regular_transaction_block */, deadline,
-          IsTxnUsingTableLocks(options.is_using_table_locks()),
+          IsTxnUsingTableLocks(options.using_table_locks_globally()),
           DeferReadPoint(options.read_time_options().defer_read_point()),
           options.origination_ht(), arena, options.priority(), options.pg_txn_start_us()));
     } else {
@@ -4317,7 +4348,7 @@ class PgClientSession::Impl {
     txn = transaction_provider_.Take<kSessionKind>(locality, deadline);
     txn->SetLogPrefixTag(kTxnLogPrefixTag, id_);
     RETURN_NOT_OK(txn->SetPgTxnStart(
-        options.pg_txn_start_us(), IsTxnUsingTableLocks(options.is_using_table_locks())));
+        options.pg_txn_start_us(), IsTxnUsingTableLocks(options.using_table_locks_globally())));
     StampTransaction(*txn, options.origination_ht());
     auto* read_point = session->read_point();
     if ((isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
@@ -4626,8 +4657,8 @@ class PgClientSession::Impl {
     } else if (in_req.ysql_catalog_version()) {
       out_req->set_ysql_catalog_version(in_req.ysql_catalog_version());
     }
-    if (in_req.is_using_table_locks()) {
-      out_req->set_is_using_table_locks(true);
+    if (in_req.using_table_locks_globally()) {
+      out_req->set_using_table_locks_globally(true);
     }
     return Status::OK();
   }
@@ -4775,11 +4806,11 @@ class PgClientSession::Impl {
       bool is_ddl = false,
       GlobalObjectLocksReleaseMode release_mode = GlobalObjectLocksReleaseMode::kAsync,
       std::optional<SubTransactionId> subtxn_id = std::nullopt) {
-    if (!IsObjectLockingEnabled()) {
+    // An autonomous DDL takes no object locks, so its separate DDL transaction has none to release.
+    if (!IsObjectLockingEnabled() || kind == PgClientSessionKind::kAutonomousDdl) {
       return Status::OK();
     }
     if (!txn && kind != PgClientSessionKind::kPlain) {
-      // kAutonomousDdl might not have a txn when this function is invoked on Shutdown.
       return Status::OK();
     }
 
@@ -4788,9 +4819,8 @@ class PgClientSession::Impl {
         ? MakeOptionalScopeExit([this] { transaction_provider_.ResetObjectLockRegistration(); })
         : std::nullopt;
 
-    const auto ddl_mode_used = kind == PgClientSessionKind::kAutonomousDdl || is_ddl;
     const auto use_global_release_path =
-        ddl_mode_used || plain_session_has_exclusive_object_locks_.load();
+        is_ddl || plain_session_has_exclusive_object_locks_.load();
     if (plain_session_has_exclusive_object_locks_.load() && !subtxn_id) {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
@@ -4868,10 +4898,11 @@ class PgClientSession::Impl {
         SharedField(SharedSessionFromThis(), &used_read_time), RenewSignature(used_read_time));
   }
 
+  // A transaction without global object locks takes local DML locks whatever the value of
+  // ysql_yb_enable_global_object_locking_infra (#36572), which can also change while it runs. So
+  // locks are released based on this alone.
   [[nodiscard]] bool IsObjectLockingEnabled() const {
-    return ts_lock_manager() != nullptr &&
-           FLAGS_enable_object_locking_for_table_locks &&
-           FLAGS_ysql_yb_enable_object_locking_infra;
+    return ts_lock_manager() != nullptr && FLAGS_enable_object_locking_for_table_locks;
   }
 
   Result<TransactionMetadata> NextObjectLockingTxnMeta(

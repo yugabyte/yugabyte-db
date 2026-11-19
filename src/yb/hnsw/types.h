@@ -80,10 +80,19 @@ struct Header {
   size_t vector_data_amount_per_block;
   std::vector<LayerInfo> layers;
 
+  // Vectors of different tenants are not linked. num_tenant_directory_blocks blocks, consecutive
+  // from tenant_directory_block, hold the entry vector of every tenant ordered by tenant, and
+  // tenant_directory_boundaries holds the first tenant of every such block except the first one.
+  // 0 blocks means vectors have no tenants.
+  size_t tenant_directory_block = 0;
+  size_t num_tenant_directory_blocks = 0;
+  std::vector<std::string> tenant_directory_boundaries;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         dimensions, vector_data_size, entry, max_level, config, max_block_size,
-        max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers);
+        max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers,
+        tenant_directory_block, num_tenant_directory_blocks, tenant_directory_boundaries);
   }
 };
 

@@ -629,7 +629,7 @@ CREATE TABLE text_types (
 ) ;
 ```
 
-Suggested changes to the schema is to remove the encoding as follows:
+Suggested change to the schema is to remove the encoding as follows:
 
 ```sql
 CREATE TABLE text_types (

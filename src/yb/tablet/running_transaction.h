@@ -150,6 +150,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
+  void SetProcessingApply(bool value);
 
   void UpdateTransactionPromoting(const TabletId& new_status_tablet);
 
@@ -231,7 +232,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   TransactionApplyData apply_data_;
   OpId apply_record_op_id_;
   docdb::ApplyTransactionState apply_state_;
-  // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
+  // Set from local commit until all intents are written to regular DB.
+  // Atomic to provide concurrent access to ProcessingApply.
   std::atomic<bool> processing_apply_{false};
   ApplyIntentsTask apply_intents_task_;
 

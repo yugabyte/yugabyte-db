@@ -35,7 +35,9 @@ public class SupportBundleV2LimitsExecTest {
             SupportBundleV2LimitsExec.SLICE);
     List<String> argv =
         SupportBundleV2LimitsExec.argv(
-            SCRIPT, limits, List.of("bash", "/tmp/node_utils.sh", "create_gflags_bundle"));
+            SCRIPT,
+            limits,
+            List.of("bash", "/tmp/support_bundle_utils.sh", "create_gflags_bundle"));
     assertEquals(
         List.of(
             "bash",
@@ -56,7 +58,7 @@ public class SupportBundleV2LimitsExecTest {
             "freeze",
             "--exec",
             "bash",
-            "/tmp/node_utils.sh",
+            "/tmp/support_bundle_utils.sh",
             "create_gflags_bundle"),
         argv);
   }

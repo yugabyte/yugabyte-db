@@ -31,7 +31,6 @@ extern "C" {
 
 typedef void (*YbcAshAcquireBufferLock)(bool);
 typedef YbcAshSample* (*YbcAshGetNextCircularBufferSlot)();
-typedef const YbcPgTypeEntity* (*YbcTypeEntityProvider)(int, YbcPgOid);
 typedef void (*YbcGetTableKeyRangesCallback)(void*, const char*, size_t);
 
 typedef void * YbcSliceVector;
@@ -160,6 +159,9 @@ YbcStatus YBCGetHeapConsumption(YbcTcmallocStats *desc);
 int64_t YBCGetTCMallocSamplingPeriod();
 void YBCSetTCMallocSamplingPeriod(int64_t sample_period_bytes);
 void YBCTCMallocReleaseFreeMemory(int64_t bytes);
+void YBCTCMallocReleaseMemoryToSystemWithLookbacks(
+    int64_t bytes, int64_t short_interval_ms, int64_t long_interval_ms);
+void YBCTCMallocDrainCpuCaches();
 YbcStatus YBCGetHeapSnapshot(YbcHeapSnapshotSample** snapshot,
                              int64_t* num_samples,
                              bool peak_heap);
@@ -827,15 +829,17 @@ YbcStatus YBCPgGetSelfActiveTransaction(YbcPgUuid *txn_id, bool *is_null);
 YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
+bool YBCPgUsingObjectLocksLocally();
 bool YBCCurrentTransactionUsesFastPath();
 bool YBCIsLegacyModeForCatalogOps();
+bool YBCUsingObjectLocksGloballyForCurrentTxn();
 
 // Whether DDLs run inside the enclosing transaction block.
 // ysql_yb_ddl_transaction_block_enabled is validated to be turned on and off together with
 // enable_object_locking_for_table_locks and ysql_enable_concurrent_ddl, so this is part of the
-// object locking feature. It therefore follows table locking for the current transaction, which
-// is off until the object locking infra auto flag is promoted and stays at the value latched when
-// the transaction began.
+// object locking feature. It therefore follows global object locks for the current transaction,
+// which are off until the object locking infra auto flag is promoted and stay at the value latched
+// when the transaction began.
 bool YBCIsDdlTransactionBlockEnabled();
 
 // Effective per-RPC response byte cap that pggate applies when the executor
@@ -1009,12 +1013,11 @@ YbcStatus YBCGetIndexBackfillProgress(YbcPgOid* index_oids, YbcPgOid* database_o
 void YBCStartSysTablePrefetchingNoCache(YbcPgSysTablePrefetchKind kind);
 
 // send_away_if_fill_in_flight asks the tserver to answer Incomplete rather than queue this
-// prefetch behind a fill already under way -- another connection's anywhere in the same database,
-// or any session's on the entry this round wants -- so the caller reads the older version this
-// node holds instead. The caller must have somewhere to try: whether that read will work is
-// settled by making it, not before. It must not set this on the attempt that follows one, or the
-// two would answer each other. It reaches the wire only on the prefetch's opening round; a round
-// after that has fetched data a send-away would throw away.
+// prefetch behind a fill already under way in the same database, so the caller reads the older
+// version this node holds instead. The caller must have somewhere to try: whether that read will
+// work is settled by making it, not before. It must not set this on the attempt that follows
+// one, or the two would answer each other. It reaches the wire only on the prefetch's opening
+// round; a round after that has fetched data a send-away would throw away.
 //
 // part_of_connection_prefetch says this prefetch is a connection start's, which keeps the tserver
 // counting the database as busy for the whole of it rather than only while one of its requests is
@@ -1105,8 +1108,12 @@ YbcStatus YBCPgUpdatePublicationTableList(
 YbcStatus YBCPgDestroyVirtualWalForCDC();
 
 YbcStatus YBCPgGetCDCConsistentChanges(const char *stream_id,
-                                       YbcPgChangeRecordBatch **record_batch,
-                                       YbcTypeEntityProvider type_entity_provider);
+                                       YbcPgChangeRecordBatch **record_batch);
+
+void YBCPgFreeCDCConsistentChangesResponse(void *response);
+
+YbcStatus YBCQLValueToDatum(const YbcPgTypeEntity *type_entity, const void *ql_value,
+                            uint64_t *datum, bool *is_null);
 
 YbcStatus YBCPgUpdateAndPersistLSN(
     const char* stream_id, YbcPgXLogRecPtr restart_lsn_hint, YbcPgXLogRecPtr confirmed_flush,

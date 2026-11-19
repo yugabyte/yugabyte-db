@@ -4711,6 +4711,44 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 									 errmsg("-c %s requires a value",
 											optarg)));
 					}
+
+					/*
+					 * YB: In connection manager auth, "options" always comes
+					 * from the logical client, so it must not set a parameter
+					 * reserved for the connection manager.  In auth
+					 * passthrough this runs on the shared control backend, so
+					 * fail only the logical connection, as a failed auth
+					 * does, and skip the parameter.
+					 * YbAuthPassthroughSetupGUCAndReport() then skips the
+					 * rest of the setup.
+					 */
+					if (YbIsPerformingConnMgrAuth() &&
+						YbIsConnMgrReservedStartupParameter(name))
+					{
+						bool		yb_auth_passthrough =
+							YbIsAuthPassthroughInProgress(MyProcPort);
+
+						/* In auth passthrough, report only the first one. */
+						if (!yb_auth_passthrough ||
+							!MyProcPort->yb_has_auth_passthrough_finished)
+						{
+							if (yb_auth_passthrough)
+							{
+								YbSendFatalForLogicalConnectionPacket();
+								MyProcPort->yb_has_auth_passthrough_finished = true;
+							}
+							ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
+									(errcode(ERRCODE_PROTOCOL_VIOLATION),
+									 errmsg("startup parameter \"%s\" is "
+											"reserved for the connection "
+											"manager", name)));
+						}
+						free(name);
+						if (value)
+							free(value);
+						break;
+					}
+
 					SetConfigOption(name, value, ctx, gucsource);
 					free(name);
 					if (value)
@@ -4843,6 +4881,12 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 
 	/* The reason that we need a full catalog cache refresh. */
 	int			reason = 0;
+
+	if (YbIsCatalogPinnedToReadTime())
+	{
+		yb_need_cache_refresh = false;
+		return false;
+	}
 
 	if (enable_inval_messages)
 	{
@@ -5167,8 +5211,12 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 
 		/* Refresh cache now so that the retry uses latest version. */
 		if (need_global_cache_refresh)
+		{
 			YBStopAuthPrefetcherAndRefreshCache(catalog_master_version,
 												true /* is_retry */ );
+			/* The refresh may have moved past the catalog read time. */
+			YbInvalidateCatalogSnapshot();
+		}
 
 		*need_retry = true;
 	}
@@ -6377,6 +6425,8 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 								  int attempt,
 								  bool *retry)
 {
+	int			pending_notifies_mark = YbPendingNotifiesMark();
+
 	elog(DEBUG2, "yb_exec_query_wrapper attempt %d for %s", attempt, retry_data->query.query_string);
 	YBSaveOutputBufferPosition(!yb_is_begin_transaction(retry_data->query.command_tag));
 	PG_TRY();
@@ -6395,6 +6445,7 @@ yb_exec_query_wrapper_one_attempt(MemoryContext exec_context,
 			YbClearParallelContexts();
 		YBResetOperationTracking();
 		yb_attempt_to_retry_on_error(attempt, retry_data, exec_context);
+		YbRollbackPendingNotifiesTo(pending_notifies_mark);
 	}
 	PG_END_TRY();
 }
@@ -7123,6 +7174,13 @@ PostgresMain(const char *dbname, const char *username)
 
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
+
+			/*
+			 * YB: ReadyForQuery flushed the reply, so the client does not
+			 * wait for the release.
+			 */
+			if (IsYugaByteEnabled())
+				YbReleaseTCMallocMemoryAfterStatement();
 
 			yb_refresh_stats_before_exec = true;
 
@@ -8050,6 +8108,12 @@ PostgresMain(const char *dbname, const char *username)
 					int			conn_salen = MyProcPort->raddr.salen;
 					List	   *guc_options = MyProcPort->guc_options;
 					char	   *cmdline_options = MyProcPort->cmdline_options;
+					char	   *app_name = MyProcPort->application_name;
+					char	   *hostname = MyProcPort->remote_hostname;
+					int			hostname_resolv =
+						MyProcPort->remote_hostname_resolv;
+					int			hostname_errcode =
+						MyProcPort->remote_hostname_errcode;
 
 					/*
 					 * Clear guc_options sent in startup packet for
@@ -8063,6 +8127,21 @@ PostgresMain(const char *dbname, const char *username)
 					 * NULL before that
 					 */
 					MyProcPort->authn_id = NULL;
+
+					/*
+					 * The startup packet sets application_name only if the
+					 * client sent one, and check_hostname() caches the
+					 * client's reverse-resolved name and its verdict.  Both
+					 * names are allocated in the transaction context below.
+					 * Clear them so that each client is logged with its own
+					 * application_name and its hostname-based pg_hba rules
+					 * are evaluated against its own address, not a previous
+					 * client's freed values.
+					 */
+					MyProcPort->application_name = NULL;
+					MyProcPort->remote_hostname = NULL;
+					MyProcPort->remote_hostname_resolv = 0;
+					MyProcPort->remote_hostname_errcode = 0;
 #ifdef USE_SSL
 					/*
 					 * YB: Reset the TLS connection state of the logical connection.
@@ -8129,7 +8208,13 @@ PostgresMain(const char *dbname, const char *username)
 						enable_timeout_after(STATEMENT_TIMEOUT,
 											 AuthenticationTimeout * 1000);
 
-						ClientAuthentication(MyProcPort);
+						/*
+						 * YB: The startup packet may already have failed this
+						 * logical connection (a reserved top-level parameter
+						 * or a missing end marker).
+						 */
+						if (!MyProcPort->yb_has_auth_passthrough_finished)
+							ClientAuthentication(MyProcPort);
 
 						/*
 						 * Done with authentication.  Disable the timeout, and
@@ -8190,6 +8275,10 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->raddr.salen = conn_salen;
 					MyProcPort->guc_options = guc_options;
 					MyProcPort->cmdline_options = cmdline_options;
+					MyProcPort->application_name = app_name;
+					MyProcPort->remote_hostname = hostname;
+					MyProcPort->remote_hostname_resolv = hostname_resolv;
+					MyProcPort->remote_hostname_errcode = hostname_errcode;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 
@@ -8789,4 +8878,14 @@ void
 YbIncrementHintCacheMisses()
 {
 	YbNumHintCacheMisses++;
+}
+
+/*
+ * YB: True from the moment start_xact_command starts a statement's
+ * transaction until finish_xact_command or error recovery ends it.
+ */
+bool
+YbIsStatementTransactionStarted(void)
+{
+	return xact_started;
 }

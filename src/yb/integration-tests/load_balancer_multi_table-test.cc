@@ -15,6 +15,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
@@ -548,6 +549,165 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLeaderBalancing) {
   // TODO: replace with AreLoadsAsExpected(per_ts_leader_loads) after
   // https://github.com/yugabyte/yugabyte-db/issues/10002 is fixed.
   ASSERT_GT(per_ts_leader_loads[new_ts], 0);
+}
+
+// A warning for a per-table move that stays impossible until a tserver is added or the placement
+// changes, so it repeats every run, must not block global leader balancing. The warning comes from
+// a single-tablet table whose placement wants a replica in a zone that has no tservers: every run
+// finds nowhere to add that replica and nowhere to move the replica that sits outside the
+// placement, and records both. The imbalance is one only global balancing can fix: every tablet has
+// a replica on every tserver, so after leader-blacklisting one tserver and clearing the blacklist,
+// per-table leader balancing stops at 2 2 1 leaders for each of the original tables, and only
+// global leader balancing evens out the totals.
+TEST_F(LoadBalancerMultiTableTest, GlobalLeaderBalancingWithPersistentWarning) {
+  const auto kWaitTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return client_->IsLoadBalancerIdle();
+  }, kWaitTimeout, "IsLoadBalancerIdle"));
+  SetFlagOnAllMasters("load_balancer_allow_global_balancing_with_warnings", "false");
+  SetFlagOnAllMasters("min_leader_stepdown_retry_interval_ms", "3000");
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    ASSERT_OK(external_mini_cluster_->SetFlag(
+        external_mini_cluster_->tablet_server(i), "after_stepdown_delay_election_multiplier", "1"));
+  }
+
+  const client::YBTableName stuck_table_name(
+      YQL_DATABASE_CQL, table_names_[0].namespace_name(), "stuck-table");
+  ASSERT_OK(client_->NewTableCreator()->table_name(stuck_table_name).schema(&schema_)
+                .num_tablets(1).Create());
+  ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
+      stuck_table_name, "c.r.z0:1,c.r.z1:1,c.r.zmissing:1", 3 /* replication_factor */,
+      "" /* optional_uuid */));
+  // From now on every run records a warning, so the balancer never reports idle.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return !VERIFY_RESULT(client_->IsLoadBalancerIdle());
+  }, kWaitTimeout, "warning keeps the balancer active"));
+
+  // Leaders of all tables, per tserver index. Global balancing counts the stuck table's leader
+  // too, so it must be included for the final spread to come out as the balancer sees it.
+  auto counted_tables = table_names_;
+  counted_tables.push_back(stuck_table_name);
+  const auto leader_counts = [&]() -> Result<std::vector<int>> {
+    std::vector<int> counts(num_tablet_servers(), 0);
+    for (const auto& tn : counted_tables) {
+      const auto table_counts = VERIFY_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+      for (size_t i = 0; i < num_tablet_servers(); ++i) {
+        const auto it = table_counts.find(external_mini_cluster()->tablet_server(i)->uuid());
+        if (it != table_counts.end()) {
+          counts[i] += it->second;
+        }
+      }
+    }
+    return counts;
+  };
+
+  // Drain the leaders off ts2, then let them come back.
+  ASSERT_OK(external_mini_cluster()->AddTServerToLeaderBlacklist(
+      external_mini_cluster()->master(), external_mini_cluster()->tablet_server(2)));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(leader_counts())[2] == 0;
+  }, kWaitTimeout, "leaders drained off ts2"));
+  ASSERT_OK(external_mini_cluster()->ClearBlacklist(external_mini_cluster()->master()));
+
+  // Per-table leader balancing gives ts2 one leader per original table and stops, as no table
+  // has a per-table variance of 2 left. The stuck table's single leader lands on one of the two
+  // other tservers, since ts2 had just been drained. While warnings block global balancing, that
+  // is final.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(leader_counts())[2] == kNumTables;
+  }, kWaitTimeout, "per-table leader balancing done"));
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(leader_counts())[2], kNumTables);
+
+  // Once warnings no longer block global balancing, the totals even out.
+  SetFlagOnAllMasters("load_balancer_allow_global_balancing_with_warnings", "true");
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    const auto counts = VERIFY_RESULT(leader_counts());
+    return *std::max_element(counts.begin(), counts.end()) -
+           *std::min_element(counts.begin(), counts.end()) <= 1;
+  }, kWaitTimeout, "global leader balancing"));
+  // The warning never went away.
+  ASSERT_FALSE(ASSERT_RESULT(client_->IsLoadBalancerIdle()));
+
+  ASSERT_OK(client_->DeleteTable(stuck_table_name));
+}
+
+// The same, with the warning from a table the balancer skips every run, as when its placement
+// cannot be looked up (here through TEST_load_balancer_skip_table_id). A skipped table's tablets
+// are missing from the global load counts. That widens the minimum variance for a global tablet
+// move but not for a global leader move, which is cheap to reverse, so global leader balancing
+// evens out the original tables from 6 6 3 to 5 5 5 as if nothing were skipped.
+TEST_F(LoadBalancerMultiTableTest, GlobalLeaderBalancingWithSkippedTable) {
+  const auto kWaitTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return client_->IsLoadBalancerIdle();
+  }, kWaitTimeout, "IsLoadBalancerIdle"));
+  SetFlagOnAllMasters("load_balancer_allow_global_balancing_with_warnings", "false");
+  SetFlagOnAllMasters("min_leader_stepdown_retry_interval_ms", "3000");
+  for (size_t i = 0; i < num_tablet_servers(); ++i) {
+    ASSERT_OK(external_mini_cluster_->SetFlag(
+        external_mini_cluster_->tablet_server(i), "after_stepdown_delay_election_multiplier", "1"));
+  }
+
+  const client::YBTableName skipped_table_name(
+      YQL_DATABASE_CQL, table_names_[0].namespace_name(), "skipped-table");
+  ASSERT_OK(client_->NewTableCreator()->table_name(skipped_table_name).schema(&schema_)
+                .num_tablets(1).Create());
+  std::shared_ptr<client::YBTable> skipped_table;
+  ASSERT_OK(client_->OpenTable(skipped_table_name, &skipped_table));
+  SetFlagOnAllMasters("TEST_load_balancer_skip_table_id", skipped_table->id());
+  // From now on every run records a warning, so the balancer never reports idle.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return !VERIFY_RESULT(client_->IsLoadBalancerIdle());
+  }, kWaitTimeout, "warning keeps the balancer active"));
+
+  // Leaders of the original tables, per tserver index. The skipped table is left out, as it is
+  // from the balancer's global counts; being skipped, its leader is never moved either.
+  const auto leader_counts = [&]() -> Result<std::vector<int>> {
+    std::vector<int> counts(num_tablet_servers(), 0);
+    for (const auto& tn : table_names_) {
+      const auto table_counts = VERIFY_RESULT(yb_admin_client_->GetLeaderCounts(tn));
+      for (size_t i = 0; i < num_tablet_servers(); ++i) {
+        const auto it = table_counts.find(external_mini_cluster()->tablet_server(i)->uuid());
+        if (it != table_counts.end()) {
+          counts[i] += it->second;
+        }
+      }
+    }
+    return counts;
+  };
+  const auto spread = [](const std::vector<int>& counts) {
+    return *std::max_element(counts.begin(), counts.end()) -
+           *std::min_element(counts.begin(), counts.end());
+  };
+
+  // Drain the leaders off ts2, then let them come back.
+  ASSERT_OK(external_mini_cluster()->AddTServerToLeaderBlacklist(
+      external_mini_cluster()->master(), external_mini_cluster()->tablet_server(2)));
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(leader_counts())[2] == 0;
+  }, kWaitTimeout, "leaders drained off ts2"));
+  ASSERT_OK(external_mini_cluster()->ClearBlacklist(external_mini_cluster()->master()));
+
+  // Per-table leader balancing gives ts2 one leader per table and stops: 6 6 3. While warnings
+  // block global balancing, that is final.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(leader_counts())[2] == kNumTables;
+  }, kWaitTimeout, "per-table leader balancing done"));
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+  ASSERT_EQ(ASSERT_RESULT(leader_counts())[2], kNumTables);
+
+  // Once warnings no longer block global balancing, the totals even out. The skipped tablet does
+  // not widen the bar for leader moves, so balancing does not stop at 5 6 4 with a spread of 2.
+  SetFlagOnAllMasters("load_balancer_allow_global_balancing_with_warnings", "true");
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return spread(VERIFY_RESULT(leader_counts())) <= 1;
+  }, kWaitTimeout, "global leader balancing"));
+  // The warning never went away.
+  ASSERT_FALSE(ASSERT_RESULT(client_->IsLoadBalancerIdle()));
+
+  SetFlagOnAllMasters("TEST_load_balancer_skip_table_id", "");
+  ASSERT_OK(client_->DeleteTable(skipped_table_name));
 }
 
 } // namespace integration_tests

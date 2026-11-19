@@ -1388,6 +1388,12 @@ Status PgsqlWriteOperation::Init(PgsqlResponseMsg* response) {
 }
 
 bool PgsqlWriteOperation::RequireReadSnapshot() const {
+  // A base-table backfill insert (online schema change) reads nothing. Its read time is the
+  // backfill time, so taking a snapshot would fail it with SnapshotTooOld once the job outlives
+  // history retention. Unique index backfill inserts do read, and still need one.
+  if (request_.is_backfill() && !doc_read_context_->is_index) {
+    return false;
+  }
   // For YSQL the the standard operations (INSERT/UPDATE/DELETE) will read/check the primary key.
   // We use UPSERT stmt type for specific requests when we can guarantee we can skip the read.
   return request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPSERT;
@@ -1652,7 +1658,15 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
                         << ", read_time: " << data.read_time()
                         << ", doc_key: " << doc_key_
                         << ", request: " << AsString(request_);
-      if (VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
+      // A base-table backfill insert (online schema change) writes blindly: an existing row at the
+      // same doc key is the same logical row, usually a newer version from the change-capture
+      // trigger, and MVCC keeps the newer one. This relies on distinct source rows never mapping to
+      // the same target key, which the job's key witness (YbOscGetKeyWitnessAttnums) ensures as
+      // long as the transform passes the witness columns through unchanged, which the job checks
+      // in the transform's body when it begins. Secondary unique indexes are checked by their own
+      // inserts; a witness on the target is such an index.
+      if (doc_read_context_->is_index &&
+          VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
         // Unique index value conflict found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
         response_->ref_error_message("Duplicate key found in unique index");
@@ -2025,7 +2039,8 @@ Status PgsqlWriteOperation::ApplyDelete(
     const bool is_persist_needed) {
   int num_deleted = 1;
   dockv::PgTableRow table_row(projection());
-  if (!VERIFY_RESULT(ReadRow(data, &table_row))) {
+  const bool row_found = VERIFY_RESULT(ReadRow(data, &table_row));
+  if (!row_found) {
     // Row not found.
     // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
     // nonexistent rows are expected to get written to the index when the index has the delete
@@ -2046,11 +2061,15 @@ Status PgsqlWriteOperation::ApplyDelete(
   RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(
       DocPath(encoded_doc_key_.as_slice()), data.read_operation_data));
 
-  if (doc_read_context_->schema().has_vectors()) {
+  // On the persist-missing-row path ReadRow found nothing, so table_row is unpopulated and there
+  // is no old vector id to remove.
+  if (row_found && doc_read_context_->schema().has_vectors()) {
     RETURN_NOT_OK(HandleDeletedVectorIds(data, table_row));
   }
 
-  RETURN_NOT_OK(PopulateResultSet(&table_row));
+  if (row_found) {
+    RETURN_NOT_OK(PopulateResultSet(&table_row));
+  }
 
   response_->set_rows_affected_count(num_deleted);
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);

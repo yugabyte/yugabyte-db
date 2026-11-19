@@ -12,6 +12,10 @@ import static org.junit.Assert.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -25,6 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 import junit.framework.TestCase;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
@@ -33,6 +38,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.LoggerFactory;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ShellProcessHandlerTest extends TestCase {
@@ -176,6 +182,52 @@ public class ShellProcessHandlerTest extends TestCase {
     assertFalse(
         "forked child " + childPid + " outlived the timed-out parent",
         ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false));
+  }
+
+  @Test
+  public void testLoggedOutputRedactsYamlValuesBelowTheirKey() throws IOException {
+    String yaml =
+        "gflags:\n"
+            + "  tserver:\n"
+            + "    ycql_ldap_bind_passwd: plainSecret\n"
+            + "      foldedSecret\n"
+            + "    ldapServiceAccountPassword: |\n"
+            + "      blockSecret\n"
+            + "  - ycql_ldap_bind_passwd:\n"
+            + "      nextLineSecret\n"
+            + "    ysql_hba_conf_csv: host all all 0.0.0.0/0 ldap ldapbindpasswd=\"hbaSecret\n"
+            + "      hbaFoldedSecret\"\n"
+            + "    webserver_port: 9100\n";
+    Path yamlFile = Files.write(Paths.get(TMP_STORAGE_PATH, "values.yaml"), yaml.getBytes());
+    Logger logger = (Logger) LoggerFactory.getLogger(ShellProcessHandler.class);
+    Level level = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.DEBUG);
+    try {
+      shellProcessHandler.run(
+          List.of("cat", yamlFile.toString()),
+          ShellProcessContext.builder().logCmdOutput(true).build());
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(level);
+    }
+    String logged =
+        appender.list.stream()
+            .map(ILoggingEvent::getFormattedMessage)
+            .collect(Collectors.joining("\n"));
+    assertThat(logged, containsString("    webserver_port: 9100"));
+    for (String secret :
+        List.of(
+            "plainSecret",
+            "foldedSecret",
+            "blockSecret",
+            "nextLineSecret",
+            "hbaSecret",
+            "hbaFoldedSecret")) {
+      assertFalse(logged, logged.contains(secret));
+    }
   }
 
   @Test

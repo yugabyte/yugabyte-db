@@ -30,6 +30,7 @@
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/expiration.h"
+#include "yb/dockv/intent.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 
@@ -861,8 +862,10 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
 
     // Intents alone are not the whole row, e.g. a column set to NULL reads as not found. So this
-    // mode returns every row with intents.
-    if (seek_filter_ == SeekFilter::kIntentsOnly) {
+    // mode returns every row with intents. Except the table's top level key: a transaction can
+    // take a strong intent on it, e.g. a serializable one in skip prefix locks mode, but it is not
+    // a row.
+    if (seek_filter_ == SeekFilter::kIntentsOnly && !dockv::IsTopLevelIntentKey(row_key_)) {
       RETURN_NOT_OK(FillRow(table_row));
       prev_doc_found_ = DocReaderResult::kFoundNotFinished;
       break;
