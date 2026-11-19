@@ -2266,7 +2266,11 @@ class PgClientSession::Impl {
     VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
     TEST_SYNC_POINT("PgClientSession::RestartTransactionForRetry");
     const auto& session = Session(PgClientSessionKind::kPlain);
-    if (session) {
+    // The limits are taken only from a read point with a pending restart, i.e. the one that faced
+    // it. If a request with another read time serial no switched the session's read point since,
+    // no limits are returned and the retry gets full uncertainty windows: capping at another
+    // point's limits, e.g. a clamped catalog read point, could close the retry's windows.
+    if (session && session->read_point()->IsRestartRequired()) {
       const auto& read_point = *session->read_point();
       if (const auto global_limit = read_point.GetReadTime().global_limit;
           global_limit.is_valid()) {
@@ -2278,11 +2282,9 @@ class PgClientSession::Impl {
       }
       // The retry reads at the current time, so it must already be past the restart time, which
       // the restarting read's response propagated to this clock.
-      if (read_point.IsRestartRequired()) {
-        const auto restart_read_ht = read_point.GetRestartReadHt();
-        LOG_IF_WITH_PREFIX(DFATAL, read_point.Now() <= restart_read_ht)
-            << "Clock is not past the restart time " << restart_read_ht;
-      }
+      const auto restart_read_ht = read_point.GetRestartReadHt();
+      LOG_IF_WITH_PREFIX(DFATAL, read_point.Now() <= restart_read_ht)
+          << "Clock is not past the restart time " << restart_read_ht;
     }
     switch (req.kind()) {
       case PgRestartTransactionForRetryRequestPB::FETCH_GLOBAL_LOCAL_LIMITS_ONLY:
@@ -2302,15 +2304,16 @@ class PgClientSession::Impl {
   // the replaced transaction's priority. The read point is reset so the new transaction does not
   // take the failed attempt's read time as its own (BeginTransactionIfNecessary keeps a read time
   // the session already has), whether the retry reads or writes first. A non-transactional session
-  // has nothing to replace: the retry's new read_time_serial_no resets its read point.
+  // only releases the failed attempt's object locks: the retry's new read_time_serial_no resets its
+  // read point.
   Status ReplacePlainTransaction(CoarseTimePoint deadline) {
     constexpr auto kKind = PgClientSessionKind::kPlain;
     auto& session_data = GetSessionData(kKind);
     auto& txn = session_data.transaction;
+    RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kKind, deadline));
     if (!txn) {
       return Status::OK();
     }
-    RETURN_NOT_OK(ReleaseObjectLocksIfNecessary(txn, kKind, deadline));
     saved_priority_ = txn->GetPriority();
     txn->Abort();
     session_data.session->SetTransaction(nullptr);

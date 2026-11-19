@@ -32,6 +32,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
@@ -53,6 +54,7 @@ DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(use_tablespace_based_transaction_placement);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
+DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
@@ -2731,6 +2733,8 @@ class PgObjectLocksRetryTest : public PgObjectLocksTestRF1,
   void BeforePgProcessStart() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_lock_fastpath) = GetParam();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+    // PgMiniTestBase turns online index backfill off; production has it on.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = false;
   }
 
   void SetUp() override {
@@ -2757,8 +2761,9 @@ class PgObjectLocksRetryTest : public PgObjectLocksTestRF1,
     PgObjectLocksTestRF1::DoTearDown();
   }
 
-  Result<PGConn> ConnectWriter() {
-    auto conn = VERIFY_RESULT(Connect());
+  Result<PGConn> ConnectWriter(bool simple_query_protocol = false) {
+    auto conn = VERIFY_RESULT(PGConnBuilder(MakeConnSettings()).Connect(simple_query_protocol));
+    RETURN_NOT_OK(SetupConnection(&conn));
     // QPM explains a newly seen plan at ExecutorEnd, which re-opens its tables with ACCESS SHARE
     // after the retry and would block the DDL on its own, hiding a lost ROW EXCLUSIVE lock.
     RETURN_NOT_OK(conn.Execute("SET yb_pg_stat_plans_track = 'none'"));
@@ -2888,9 +2893,11 @@ TEST_P(PgObjectLocksRetryTest, TableLocksSurviveReadRestartRetry) {
 TEST_P(PgObjectLocksRetryTest, ReadRestartRetryConvergesWithInjectionOn) {
   auto writer = ASSERT_RESULT(ConnectWriter());
   // An injected restart lands no later than the current time, so every retry is restarted again
-  // until its window closes: enough retries to outlast max_clock_skew, which a retry whose window
-  // is not capped never does.
-  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000"));
+  // until the clock passes the capped global limit, up to max_clock_skew after the first attempt.
+  // How many retries that takes depends on how fast each one is, so bound the statement by time
+  // instead: a retry whose window is not capped never converges and hits the timeout.
+  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000000"));
+  ASSERT_OK(writer.ExecuteFormat("SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
 
   std::atomic<int> restarts{0};
   SyncPoint::GetInstance()->SetCallBack(
@@ -2968,7 +2975,10 @@ TEST_P(PgObjectLocksRetryTest, ReadRestartRetryLimitsEndWithTheTransaction) {
       "COMMIT; SELECT COUNT(*) INTO n FROM leak; END $$"));
 
   auto writer = ASSERT_RESULT(ConnectWriter());
-  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000"));
+  // p_retried's first read converges only once the clock passes the capped global limit, so bound
+  // it by time rather than by a retry count that depends on how fast each retry is.
+  ASSERT_OK(writer.Execute("SET yb_max_query_layer_retries = 1000000"));
+  ASSERT_OK(writer.ExecuteFormat("SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
   ASSERT_OK(writer.Execute("SET default_transaction_isolation = 'read committed'"));
 
   std::atomic<int> retries{0};
@@ -2986,8 +2996,85 @@ TEST_P(PgObjectLocksRetryTest, ReadRestartRetryLimitsEndWithTheTransaction) {
   };
 
   // The post-commit read is restarted, and a restart after a COMMIT is not retried.
-  ASSERT_NOK(call_with_injection("p_control"));
-  ASSERT_NOK(call_with_injection("p_retried"));
+  for (const auto& proc : {"p_control", "p_retried"}) {
+    const auto status = call_with_injection(proc);
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.ToString(), "Restart read required");
+    ASSERT_STR_NOT_CONTAINS(status.ToString(), "exhausted");
+  }
+}
+
+// Two writers, one per query protocol, keep updating the same rows, each statement at a random
+// isolation level and in autocommit or a txn block at random, while another session creates, checks
+// and drops an index on the table. The writers' statements are retried after injected read
+// restarts and wait queue conflicts, and every index must stay consistent with the retried writes.
+TEST_P(PgObjectLocksRetryTest, IndexStaysConsistentUnderRetriedWrites) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE stress (k INT, v INT, PRIMARY KEY (k HASH)) SPLIT INTO 3 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO stress SELECT generate_series(1, 30), 0"));
+
+  std::atomic<int> retries{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "PgClientSession::RestartTransactionForRetry", [&retries](void*) { ++retries; });
+  SyncPoint::GetInstance()->EnableProcessing();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0.02;
+
+  constexpr std::array kIsolations = {"repeatable read", "read committed", "serializable"};
+  std::array<std::atomic<int>, kIsolations.size()> writes{};
+  std::array<std::atomic<int>, kIsolations.size()> aborts{};
+  TestThreadHolder thread_holder;
+  for (const auto simple_query_protocol : {true, false}) {
+    thread_holder.AddThreadFunctor(
+        [this, simple_query_protocol, &kIsolations, &writes, &aborts,
+         &stop = thread_holder.stop_flag()] {
+      auto writer = ASSERT_RESULT(ConnectWriter(simple_query_protocol));
+      while (!stop.load()) {
+        const auto i = RandomUniformInt<size_t>(0, kIsolations.size() - 1);
+        const auto in_txn_block = RandomUniformBool();
+        if (in_txn_block) {
+          ASSERT_OK(writer.ExecuteFormat("BEGIN ISOLATION LEVEL $0", kIsolations[i]));
+        } else {
+          ASSERT_OK(writer.ExecuteFormat(
+              "SET default_transaction_isolation = '$0'", kIsolations[i]));
+        }
+        // Scans every tablet, so the read time is picked by the client and an injected read
+        // restart reaches the query layer.
+        auto status = writer.Execute("UPDATE stress SET v = v + 1 WHERE k % 3 = 0");
+        if (status.ok() && in_txn_block) {
+          status = writer.Execute("COMMIT");
+        }
+        if (status.ok()) {
+          ++writes[i];
+          continue;
+        }
+        // Serialization failures (including schema version mismatches from the online index
+        // build) and deadlocks are left to the client, e.g. when they hit a statement that can't
+        // be retried.
+        const auto message = status.ToString();
+        ASSERT_TRUE(message.find("pgsql error 40001") != std::string::npos ||
+                    message.find("pgsql error 40P01") != std::string::npos) << message;
+        ++aborts[i];
+        if (in_txn_block) {
+          ASSERT_OK(writer.Execute("ROLLBACK"));
+        }
+      }
+    });
+  }
+
+  for (int i = 0; i < 10; ++i) {
+    ASSERT_OK(conn.Execute("CREATE INDEX stress_v ON stress (v)"));
+    ASSERT_OK(conn.Fetch("SELECT yb_index_check('stress_v'::regclass)"));
+    ASSERT_OK(conn.Execute("DROP INDEX stress_v"));
+  }
+  thread_holder.Stop();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_read_restart_with_probability) = 0;
+  for (size_t i = 0; i < kIsolations.size(); ++i) {
+    LOG(INFO) << kIsolations[i] << " writes: " << writes[i].load()
+              << ", aborts: " << aborts[i].load();
+  }
+  LOG(INFO) << "retries: " << retries.load();
+  ASSERT_GE(retries.load(), 1);
 }
 
 // After a read restart, the probe function reads only retry_reads: it reads the 3-tablet gate
