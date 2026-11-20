@@ -63,7 +63,14 @@ export const withDefaultClusterType = (
   if (!Array.isArray(clusters) || clusters.length === 0) {
     return taskDiff;
   }
-  const taken = clusters.map((c) => (isDeltaNode(c) ? undefined : c?.clusterType));
+  // An added cluster is in the target, so its type is taken; a deleted one is not.
+  const taken = clusters.map((c) =>
+    isDeltaNode(c)
+      ? c.$deltaType === 'ADD'
+        ? (c.$newValue as any)?.clusterType
+        : undefined
+      : c?.clusterType
+  );
   const available: string[] = (
     Array.isArray(payload?.clusters)
       ? payload.clusters.map((c: any) => c?.clusterType)
@@ -72,9 +79,9 @@ export const withDefaultClusterType = (
   const untyped = clusters.filter((c) => !isDeltaNode(c) && !c?.clusterType).length;
   // More payload types than untyped clusters (e.g. only the read replica changed, and the payload
   // has the primary too): the type cannot be told, so the cluster stays untyped.
-  // Several untyped clusters: the taskDiff order is the target's, not the request's, so which is
-  // which cannot be told from the payload either.
-  const decidable = !payload || (available.length <= untyped && untyped === 1);
+  const decidable = !payload || available.length <= untyped;
+  // The taskDiff follows the target's order, which is primary first, not the request's order.
+  available.sort((a, b) => Number(b === 'PRIMARY') - Number(a === 'PRIMARY'));
   return {
     ...taskDiff,
     clusters: clusters.map((cluster, i) => {
@@ -211,7 +218,13 @@ export const withUnchangedIntentFromPayload = (taskDiff: any, payload: any): any
       const source =
         payloadClusters.find((c) => c?.clusterType === cluster.clusterType) ?? payloadClusters[0];
       const restored = pick(source?.userIntent, ['dedicatedNodes', 'providerType']);
-      return { ...cluster, userIntent: { ...restored, ...userIntent } };
+      // The AZ overrides card names the AZs from placementInfo, which the delta drops when unchanged.
+      const placementInfo = cluster.placementInfo ?? source?.placementInfo;
+      return {
+        ...cluster,
+        ...(placementInfo ? { placementInfo } : {}),
+        userIntent: { ...restored, ...userIntent }
+      };
     })
   };
 };

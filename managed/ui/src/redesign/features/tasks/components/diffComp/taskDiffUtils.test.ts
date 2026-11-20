@@ -130,10 +130,19 @@ describe('withDefaultClusterType', () => {
     expect(rr.clusters[1].clusterType).toBe('ASYNC');
   });
 
-  it('leaves several untyped clusters untyped, as the request order is not the target order', () => {
+  it('types several untyped clusters in target order, primary first', () => {
     const payload = { clusters: [{ clusterType: 'ASYNC' }, { clusterType: 'PRIMARY' }] };
     const out = withDefaultClusterType({ clusters: [{ a: 1 }, { b: 2 }] }, payload);
-    expect(out.clusters.map((c: any) => c.clusterType)).toEqual([undefined, undefined]);
+    expect(out.clusters.map((c: any) => c.clusterType)).toEqual(['PRIMARY', 'ASYNC']);
+  });
+
+  it('counts the type of an added cluster as taken', () => {
+    const payload = { clusters: [{ clusterType: 'PRIMARY' }, { clusterType: 'ASYNC' }] };
+    const out = withDefaultClusterType(
+      { clusters: [{ a: 1 }, { $deltaType: 'ADD', $newValue: { clusterType: 'ASYNC' } }] },
+      payload
+    );
+    expect(out.clusters[0].clusterType).toBe('PRIMARY');
   });
 });
 
