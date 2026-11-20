@@ -132,7 +132,7 @@ foreach my $header (@ARGV)
 		$oidcounts{ $toast->{toast_oid} }++;
 		$oidcounts{ $toast->{toast_index_oid} }++;
 	}
-	# YB: count the OIDs of DECLARE_OID_DEFINING_MACRO too, so that the build
+	# Count the OIDs of DECLARE_OID_DEFINING_MACRO too, so that the build
 	# fails when a catalog entry reuses one of them.
 	foreach my $other (@{ $catalog->{other_oids} })
 	{
