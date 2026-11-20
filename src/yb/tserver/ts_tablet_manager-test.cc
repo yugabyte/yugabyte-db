@@ -93,6 +93,7 @@ using std::string;
 #define ASSERT_MONOTONIC_REPORT_SEQNO(report_seqno, tablet_report) \
   ASSERT_NO_FATALS(AssertMonotonicReportSeqno(report_seqno, tablet_report))
 
+DECLARE_bool(TEST_pause_after_set_bootstrapping);
 DECLARE_bool(TEST_pretend_memory_exceeded_enforce_flush);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
@@ -334,6 +335,38 @@ TEST_F(TsTabletManagerTest, TestCreateTablet) {
   // Ensure that the tablet got re-loaded and re-opened off disk.
   peer = ASSERT_RESULT(tablet_manager_->GetTablet(kTabletId));
   ASSERT_EQ(kTabletId, tablet->tablet_id());
+}
+
+TEST_F(TsTabletManagerTest, TestBootstrapWallClockTimeMetric) {
+  // The tserver started with no tablets: nothing is pending and the wall-clock time stays unset.
+  ASSERT_EQ(tablet_manager_->TEST_StartupTabletsPendingBootstrap(), 0);
+  ASSERT_EQ(tablet_manager_->TEST_BootstrapWallClockTimeUs(), 0);
+
+  constexpr int kNumTablets = 3;
+  TSTabletManager::TabletPeers peers;
+  ASSERT_OK(AddTabletPeers(&peers, kNumTablets));
+
+  // Restart with every startup tablet held in bootstrap, so that all of them are still pending.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_set_bootstrapping) = true;
+  mini_server_->Shutdown();
+  ASSERT_NO_FATAL_FAILURE(CreateMiniTabletServer());
+  ASSERT_OK(mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse));
+  tablet_manager_ = mini_server_->server()->tablet_manager();
+
+  const auto pending_while_paused = tablet_manager_->TEST_StartupTabletsPendingBootstrap();
+  const auto wall_clock_while_paused = tablet_manager_->TEST_BootstrapWallClockTimeUs();
+  // Resume before asserting, so that a failure does not leave the bootstrap threads paused.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_after_set_bootstrapping) = false;
+  ASSERT_EQ(pending_while_paused, kNumTablets);
+  ASSERT_EQ(wall_clock_while_paused, 0);
+
+  ASSERT_OK(WaitFor([this] {
+    return tablet_manager_->TEST_StartupTabletsPendingBootstrap() == 0;
+  }, MonoDelta::FromSeconds(60), "Waiting for startup tablet bootstrap to finish"));
+
+  ASSERT_GT(tablet_manager_->TEST_BootstrapWallClockTimeUs(), 0);
+  ASSERT_LT(tablet_manager_->TEST_BootstrapWallClockTimeUs(),
+            MonoDelta::FromSeconds(60).ToMicroseconds());
 }
 
 TEST_F(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered) {

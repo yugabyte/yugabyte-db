@@ -272,9 +272,11 @@ def create_suite(qid: str, suite_name: str, parent: str, method: str, planned: i
     return (varname, suite_uuid)
 
 
-def query_test(uniqueId: str, wait: bool) -> bool:
+# The item CSI has for this test in this launch, or None. An item holds every execution of the test
+# so far: 'status' is the latest one's, and 'retries' lists the ones before it.
+def query_test(uniqueId: str, wait: bool) -> Optional[Dict[str, Any]]:
     csi = csi_env()
-    found_prev = False
+    found_prev: Optional[Dict[str, Any]] = None
 
     # We are only waiting for a previous test to have started, but there may be a delay due to
     # asynchronous reporting.
@@ -293,7 +295,7 @@ def query_test(uniqueId: str, wait: bool) -> bool:
             results = response.json()['content']
             if len(results) > 0:
                 logging.info(f"CSI retry: Found previous test {results[0]['id']}")
-                found_prev = True
+                found_prev = results[0]
                 break
         if not wait:
             break
@@ -338,8 +340,9 @@ def classify_execution(rerun: bool, attempt: int, reps: str,
         return True, 'new_test_repetition', False
     if attempt > 0:
         # Spark re-tries happen only if there is some failure, so attempts are serial.
-        # The previous attempt died before reporting completion; the query must wait to
-        # find out whether it reported a start.
+        # The previous attempt of the task died. This test either had not finished in it, or,
+        # in a task of several tests, had finished and reported. The query must wait to find
+        # out whether it reported a start.
         return True, 'task_resubmit', True
     # Repetitions are the same test intentionally run multiple times, in parallel and
     # random order; only the first-indexed one may skip the wait.
@@ -363,12 +366,19 @@ def conn_mgr_enabled(test: TestDescriptor) -> bool:
 # For test re-try, though, if the prior attempt did not get reported, then the re-try report will
 # fail and then there is no record. So we need to query to check for the prior attempt and in the
 # case it might be in-process, wait for it, to be sure whether we shold report as a retry or not.
-def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool) -> str:
+#
+# Returns the id of the new item, and whether CSI already has a failed execution of this test from
+# an earlier attempt of its Spark task (task_resubmit). Spark drops the results of a task attempt
+# that did not finish, so when a task holds several tests (run_tests_on_spark.plan_spark_tasks) the
+# ones that had finished before the executor was lost run again, and what CSI recorded is all that
+# is left of their first outcome.
+def create_test(
+        test: TestDescriptor, time_sec: float, attempt: int, rerun: bool) -> Tuple[str, bool]:
     csi = csi_env()
     parent = os.getenv('YB_CSI_' + test.language, '')
 
     if not csi['launch'] or not parent or not configured():
-        return ''
+        return '', False
 
     full_name = test.descriptor_str_without_attempt_index
     pt = SimpleTestDescriptor.parse(full_name)
@@ -380,13 +390,20 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
     # either has to ask whether a previous item exists before calling itself a retry. A fail
     # repetition or a new-test repetition runs serially after the main pass, in which its first
     # attempt completed and reported, so neither asks: that would be one query per execution.
+    failed_in_earlier_task_attempt = False
     if retry and not rerun and not csi['new_test']:
         prev_test = query_test(full_name, wait)
-        if not prev_test:
+        if prev_test is None:
             # Found no previous test, so do not call this one a retry. The retry_kind
             # attribute is kept: the execution is still a repetition/resubmit, it just
             # happens to be the first one that reported.
             retry = False
+        elif retry_kind == 'task_resubmit' and csi['reps'] == '1':
+            # Not in a --num_repetitions run: there the item also holds the other repetitions of
+            # the test, which are not earlier attempts of this one.
+            failed_in_earlier_task_attempt = any(
+                execution.get('status') == 'FAILED'
+                for execution in [prev_test] + list(prev_test.get('retries') or []))
 
     # TestCase ID (used to compare across test runs) seems to depend on codeRef & parameters
     # instead we give uniqueId with fully-specified name.  uniqueID is not shown in web UI.
@@ -435,7 +452,7 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool
         if response.status_code != 201:
             logging.error(f"CSI Error({response.status_code}): Log of spark attempt failed: " +
                           response.text)
-    return test_id
+    return test_id, failed_in_earlier_task_attempt
 
 
 # finish test/suite

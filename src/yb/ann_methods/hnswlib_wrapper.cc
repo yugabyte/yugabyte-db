@@ -109,9 +109,8 @@ class YbSpace : public hnswlib::SpaceInterface<DistanceResult> {
 
  private:
   static DistanceResult DistFunc(const void* lhs, const void* rhs, const void* arg) {
-    auto& metric = *static_cast<const unum::usearch::metric_punned_t*>(arg);
-    return metric(pointer_cast<const unum::usearch::byte_t*>(lhs),
-                  pointer_cast<const unum::usearch::byte_t*>(rhs));
+    return vector_index::MetricDistance(
+        *static_cast<const unum::usearch::metric_punned_t*>(arg), lhs, rhs);
   }
 
   unum::usearch::metric_punned_t metric_;
