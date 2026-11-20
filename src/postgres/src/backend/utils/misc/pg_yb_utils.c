@@ -3902,19 +3902,19 @@ YBCommitTransactionContainingDDL()
 		yb_catalog_prefetch_wave_pending = true;
 
 		/*
-		 * Best effort: a DDL with global object locks learns of this DDL only
-		 * through the heartbeat, so hold the database lock of
+		 * Best effort: a DDL with global object locks on another node learns of
+		 * this DDL's invalidation messages only when its node's heartbeat brings
+		 * the new catalog version. So hold the database lock of
 		 * YbLockDatabaseForLegacyDdl for
-		 * ysql_separate_ddl_txn_lock_hold_heartbeats heartbeat intervals, which
-		 * lets a DDL that waits for it on another node usually see this DDL's
-		 * catalog changes. The flag is 0, no wait, by default. The statement's
-		 * transaction holds that lock when it takes local but not global object
-		 * locks.
+		 * ysql_separate_ddl_txn_inval_propagation_wait_ms milliseconds, to let
+		 * them propagate before such a DDL that waits for the lock goes on. The
+		 * flag is 0, no wait, by default. The statement's transaction holds that
+		 * lock when it takes local but not global object locks.
 		 */
-		if (*YBCGetGFlags()->ysql_separate_ddl_txn_lock_hold_heartbeats > 0 &&
+		if (*YBCGetGFlags()->ysql_separate_ddl_txn_inval_propagation_wait_ms > 0 &&
 			YbUsingObjectLocksLocally() && !YBCUsingObjectLocksGloballyForCurrentTxn())
-			pg_usleep((long) *YBCGetGFlags()->ysql_separate_ddl_txn_lock_hold_heartbeats *
-					  YBGetHeartbeatIntervalMs() * 1000L);
+			pg_usleep((long) *YBCGetGFlags()->ysql_separate_ddl_txn_inval_propagation_wait_ms *
+					  1000L);
 	}
 }
 

@@ -38,7 +38,7 @@ DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);
-DECLARE_int32(ysql_separate_ddl_txn_lock_hold_heartbeats);
+DECLARE_int32(ysql_separate_ddl_txn_inval_propagation_wait_ms);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
 DECLARE_bool(enable_qos);
 DECLARE_bool(is_yb_managed);
