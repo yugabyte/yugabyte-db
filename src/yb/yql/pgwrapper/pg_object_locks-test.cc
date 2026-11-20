@@ -4553,7 +4553,9 @@ YB_STRONGLY_TYPED_BOOL(Colocated);
 // (YbCatalogVersionLockOid). The first DDL waits after its bump and before it commits
 // (yb_test_delay_after_catalog_version_increment_ms), still holding those locks, while the second
 // DDL runs on another node. The second DDL commits while the first is held only when the two bump
-// the rows of different databases. Otherwise it waits, and its statement times out.
+// the rows of different databases. Otherwise it waits for the first to commit, then commits. The
+// wait is in the commit, where statement_timeout no longer applies (finish_xact_command), so the
+// test tells the two apart by whether the first DDL was still held when the second returned.
 struct CatalogVersionLockCase {
   std::string name;
   std::string first_db;
@@ -4602,7 +4604,6 @@ TEST_P(PgObjectLocksCatalogVersionLockTest, OnlyBumpsOfDifferentDatabasesOverlap
   }, 30s * kTimeMultiplier, "the first DDL to wait after its catalog version bump"));
 
   auto second_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsForDB(*ts2, param.second_db));
-  ASSERT_OK(second_conn.ExecuteFormat("SET statement_timeout = $0", 5000 * kTimeMultiplier));
   const auto second_status = second_conn.Execute(param.second_ddl);
   const bool second_ended_while_first_held =
       first_future.wait_for(0s) == std::future_status::timeout;
@@ -4611,14 +4612,8 @@ TEST_P(PgObjectLocksCatalogVersionLockTest, OnlyBumpsOfDifferentDatabasesOverlap
             << ", second ended while first held: " << second_ended_while_first_held;
 
   ASSERT_OK(first_status);
-  if (param.overlap) {
-    ASSERT_OK(second_status);
-    ASSERT_TRUE(second_ended_while_first_held);
-  } else {
-    ASSERT_NOK(second_status);
-    ASSERT_STR_CONTAINS(
-        second_status.ToString(), "canceling statement due to statement timeout");
-  }
+  ASSERT_OK(second_status);
+  ASSERT_EQ(second_ended_while_first_held, param.overlap);
 }
 
 INSTANTIATE_TEST_SUITE_P(
