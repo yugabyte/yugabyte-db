@@ -81,7 +81,8 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     // Set the differ based on the task type.
 
     if (
-      (currentTask.target === TargetType.UNIVERSE && currentTask.type === TaskType.EDIT) ||
+      ([TargetType.UNIVERSE, TargetType.CLUSTER].includes(currentTask.target as any) &&
+        currentTask.type === TaskType.EDIT) ||
       (currentTask.target === TargetType.UNIVERSE && currentTask.type === TaskType.RESIZE_NODE)
     ) {
       setDiffer(new UniverseDiff({ ...taskDiffDetails, task: currentTask }));

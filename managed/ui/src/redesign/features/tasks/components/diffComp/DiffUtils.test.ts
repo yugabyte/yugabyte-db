@@ -39,7 +39,7 @@ describe('getGFlagDiffs', () => {
 });
 
 describe('getGFlagDiffs with the gflags audit entries', () => {
-  it('does not list unchanged legacy flags as added', () => {
+  it('passes the audit entries through', () => {
     const after = {
       clusters: [
         {
@@ -60,5 +60,21 @@ describe('getGFlagDiffs without a delta', () => {
   it('lists the audit entries even when the taskDiff has no flag change', () => {
     const audit = { master: [{ name: 'x', old: '1', new: '2', default: 'd' }], tserver: [] };
     expect(getGFlagDiffs({}, {}, audit).master).toEqual(audit.master);
+  });
+});
+
+describe('getGFlagDiffs from the delta only', () => {
+  it('does not list a legacy flag that moved into specificGFlags with the same value', () => {
+    const cluster = (userIntent: unknown) => ({
+      clusters: [{ clusterType: 'PRIMARY', userIntent }]
+    });
+    const before = cluster({ masterGFlags: { a: '1' } });
+    const after = cluster({
+      masterGFlags: { a: '1' },
+      specificGFlags: { perProcessFlags: { value: { MASTER: { b: '2' } } } }
+    });
+    expect(getGFlagDiffs(before, after).master).toEqual([
+      { name: 'b', old: null, new: '2', default: '' }
+    ]);
   });
 });

@@ -253,16 +253,30 @@ describe('identity with task-internal fields', () => {
     expect(out.clusters[0].uuid).toBe('u1');
   });
 
-  it('picks the cluster with the most matching values when several match', () => {
+  it('breaks a cluster tie by the values the element changed from', () => {
     const diff = {
       clusters: [{ userIntent: { volume: { $deltaType: 'REPLACE', $oldValue: 1, $newValue: 5 } } }]
     };
-    const out = withIdentityFromPayload(diff, {
+    const payload = {
       clusters: [
-        { clusterType: 'PRIMARY', userIntent: { volume: 5 } },
-        { clusterType: 'ASYNC', userIntent: { volume: 5 } }
+        { clusterType: 'PRIMARY', uuid: 'p', userIntent: { volume: 5 } },
+        { clusterType: 'ASYNC', uuid: 'r', userIntent: { volume: 5 } }
       ]
-    });
-    expect(out.clusters[0].clusterType).toBe('PRIMARY');
+    };
+    const before = {
+      clusters: [
+        { uuid: 'p', userIntent: { volume: 5 } },
+        { uuid: 'r', userIntent: { volume: 1 } }
+      ]
+    };
+    expect(withIdentityFromPayload(diff, payload, before).clusters[0].clusterType).toBe('ASYNC');
+    // nothing settles the tie without the state before the task
+    expect(withIdentityFromPayload(diff, payload).clusters[0].clusterType).toBeUndefined();
+  });
+
+  it('leaves a single untyped cluster untyped when the payload has more cluster types', () => {
+    const payload = { clusters: [{ clusterType: 'PRIMARY' }, { clusterType: 'ASYNC' }] };
+    const out = withDefaultClusterType({ clusters: [{ a: 1 }] }, payload);
+    expect(out.clusters[0].clusterType).toBeUndefined();
   });
 });

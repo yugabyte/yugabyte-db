@@ -439,7 +439,7 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
             <Box pl={2}>
               {region.azList.map((az) => (
                 <Typography key={az.name} variant="body2">
-                  {az.name} - {az.numNodesInAZ} node
+                  {az.name} - {az.numNodesInAZ ?? '---'} node
                 </Typography>
               ))}
             </Box>

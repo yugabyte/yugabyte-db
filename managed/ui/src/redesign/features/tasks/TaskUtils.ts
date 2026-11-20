@@ -85,7 +85,8 @@ export const getOriginalTaskTypeColumnLabel = (
  */
 export const doesTaskSupportsDiffData = (task: Task): boolean => {
   if (task.type === TaskType.EDIT) {
-    return task.target === 'Universe';
+    // A read replica edit is a Cluster target task.
+    return task.target === 'Universe' || task.target === 'Cluster';
   }
   return [TaskType.GFlags_UPGRADE, TaskType.SOFTWARE_UPGRADE, TaskType.RESIZE_NODE].includes(
     task.type
@@ -109,7 +110,11 @@ export const mapAuditLogToTaskDiffApiResp = (
   if (isEmpty(auditLog.taskDiff)) return undefined;
   const taskDiff = withUnchangedIntentFromPayload(
     withDefaultClusterType(
-      withIdentityFromPayload(auditLog.taskDiff, auditLog.payload),
+      withIdentityFromPayload(
+        auditLog.taskDiff,
+        auditLog.payload,
+        (auditLog.additionalDetails as any)?.clusters ? auditLog.additionalDetails : undefined
+      ),
       auditLog.payload
     ),
     auditLog.payload
