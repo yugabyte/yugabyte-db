@@ -192,13 +192,14 @@ public class Poller implements DisposableBean {
       try {
         requestApi.postQueuedHttpRequestResponse(dispatch.requestId(), dispatch.responseSpec());
         return;
-      } catch (ApiException e) {
+      } catch (ApiException | RuntimeException e) {
+        int status = e instanceof ApiException apiException ? apiException.getCode() : 0;
         Duration remaining = Duration.between(OffsetDateTime.now(), deadline);
         if (remaining.isNegative() || remaining.isZero()) {
           log.error(
               "Failed to post response for {} (status {}); the request deadline has passed",
               dispatch.requestId(),
-              e.getCode(),
+              status,
               e);
           return;
         }
@@ -207,8 +208,8 @@ public class Poller implements DisposableBean {
         log.warn(
             "Failed to post response for {} (status {}): {}; retrying in {} ms",
             dispatch.requestId(),
-            e.getCode(),
-            e.getMessage(),
+            status,
+            e.toString(),
             delay.toMillis());
 
         try {
