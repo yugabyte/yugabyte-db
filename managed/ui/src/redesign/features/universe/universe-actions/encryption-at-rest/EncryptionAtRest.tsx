@@ -157,7 +157,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     ...ApiPermissionMap.SET_ENCRYPTION_KEY
   });
 
-  if (isKMSConfigsLoading || isKMSHistoryLoading) return <YBLoading />;
+  if (isKMSConfigsLoading || isKMSHistoryLoading) return open ? <YBLoading /> : null;
 
   return (
     <YBModal

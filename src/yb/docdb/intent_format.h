@@ -23,9 +23,13 @@
 
 #include "yb/dockv/intent.h"
 #include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value_type.h"
+
+#include "yb/gutil/endian.h"
 
 #include "yb/rocksdb/db.h"
 
+#include "yb/util/byte_buffer.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb::docdb {
@@ -108,6 +112,23 @@ class ExternalIntentsProvider {
 
   virtual ~ExternalIntentsProvider() = default;
 };
+
+// The subtransaction id as intent values store it: the kSubTransactionId marker followed by the big
+// endian id, empty for kMinSubTransactionId.
+inline auto EncodeSubTransactionId(SubTransactionId id) {
+  DCHECK_GE(id, kMinSubTransactionId);
+  // The encoding takes 1 + sizeof(SubTransactionId) bytes, while a ByteBuffer holds at least
+  // sizeof(void*) bytes inline.
+  constexpr size_t kBufferSize = 8;
+  static_assert(1 + sizeof(SubTransactionId) <= kBufferSize);
+  ByteBuffer<kBufferSize> result;
+  if (id > kMinSubTransactionId) {
+    auto big_endian_id = BigEndian::FromHost32(id);
+    result.AppendWithPrefix(
+        dockv::KeyEntryTypeAsChar::kSubTransactionId, Slice::FromPod(&big_endian_id));
+  }
+  return result;
+}
 
 // Combine external intents into single key value pair.
 void CombineExternalIntents(

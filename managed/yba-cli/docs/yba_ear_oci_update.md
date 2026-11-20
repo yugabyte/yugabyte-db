@@ -4,7 +4,7 @@ Update a YugabyteDB Anywhere OCI encryption at rest (EAR) configuration
 
 ### Synopsis
 
-Update an OCI encryption at rest (EAR) configuration in YugabyteDB Anywhere. API key credentials and compartment OCID can be updated. Auth type, vault, region, and key name cannot be changed.
+Update an OCI encryption at rest (EAR) configuration in YugabyteDB Anywhere. API key credentials and compartment OCID can be updated. API key credentials that are not given keep their stored values. Auth type, vault, region, and key name cannot be changed.
 
 ```
 yba ear oci update [flags]
@@ -13,6 +13,9 @@ yba ear oci update [flags]
 ### Examples
 
 ```
+yba ear oci update --name <config-name> \
+    --fingerprint <fingerprint> --private-key-file-path <path-to-pem>
+
 yba ear oci update --name <config-name> \
     --tenancy-id <tenancy-ocid> --user-id <user-ocid> --fingerprint <fingerprint> \
     --private-key-file-path <path-to-pem>
@@ -23,10 +26,10 @@ yba ear oci update --name <config-name> --compartment-id <compartment-ocid>
 ### Options
 
 ```
-      --tenancy-id string              [Optional] Update OCI tenancy OCID. Must be set with --user-id, --fingerprint, and --private-key-file-path.
-      --user-id string                 [Optional] Update OCI user OCID. Must be set with --tenancy-id, --fingerprint, and --private-key-file-path.
-      --fingerprint string             [Optional] Update API signing key fingerprint. Must be set with --tenancy-id, --user-id, and --private-key-file-path.
-      --private-key-file-path string   [Optional] Path to the updated API private key PEM file. Must be set with --tenancy-id, --user-id, and --fingerprint.
+      --tenancy-id string              [Optional] Update OCI tenancy OCID.
+      --user-id string                 [Optional] Update OCI user OCID.
+      --fingerprint string             [Optional] Update API signing key fingerprint. Must be set with --private-key-file-path.
+      --private-key-file-path string   [Optional] Path to the updated API private key PEM file. Must be set with --fingerprint.
       --compartment-id string          [Optional] Update OCI compartment OCID.
   -h, --help                           help for update
 ```

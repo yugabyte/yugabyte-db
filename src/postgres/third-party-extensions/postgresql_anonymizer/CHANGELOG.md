@@ -1,6 +1,380 @@
 CHANGELOG
 ===============================================================================
 
+<!-- git log --oneline $(git describe --tags --abbrev=0 @^)..@ -->
+
+20260629 : 3.1.3 - Missing ARM builds
+-------------------------------------------------------------------------------
+
+* [CI] Re-run the ARM build jobs
+* [meta] update the release process
+
+
+20260629 : 3.1.2 - Security Release
+-------------------------------------------------------------------------------
+
+* Make `hash(TEXT)` and `digest(TEXT, TEXT, TEXT)` `RESTRICTED`
+  (thanks to Sarath Kumar)
+* [CI] Introduce cargo audit
+* [doc] use rumdl instead of mdl
+* [CI] upgrade to rustc 1.96
+* [doc] overview of similar tools
+* [core] upgrade dependencies
+
+This release brings a fix for a potential brute-force attack on the hashing
+functions (CVE-2026-13455). All users should upgrade as soon as possible.
+See [issue 649] for more details.
+
+[issue 649]: https://gitlab.com/dalibo/postgresql_anonymizer/-/work_items/649
+
+If a quick upgrade is not possible, the threat can be blocked with:
+
+    SECURITY LABEL FOR anon ON FUNCTION anon.digest(TEXT, TEXT, TEXT)
+    IS 'RESTRICTED';
+
+    SECURITY LABEL FOR anon ON FUNCTION anon.hash(TEXT)
+    IS 'RESTRICTED';
+
+
+20260527 : 3.1.1 - Security Release
+-------------------------------------------------------------------------------
+
+* [impexp] remove conditional randomization (thanks to Mehmet Ince)
+* [CI] Adding CSV files on ARM packages
+* [lint] exclude_rule 'MD013'
+* [meta] uv is now strongly recommended
+
+This release brings a fix for a SQL Injection threat (CVE-2026-11945). All
+users should upgrade as soon as possible. See [issue 643] for more details.
+
+[issue 643]: https://gitlab.com/dalibo/postgresql_anonymizer/-/work_items/643
+
+
+
+20260527 : 3.1.0 - Local Differential Privacy
+-------------------------------------------------------------------------------
+
+* [k-anonymity] sanitize column names (see CVE-2026-9617) (thanks to Buut)
+* [noise] properly sanitize anon.add_noise_on_datetime_column
+* [core] Add a policy param to remove_all_masking_rules
+* [dump] Support weird column names (thanks to Zsolt2)
+* [docker] Bump to pg18
+* [docker] Fix bad version (thanks to MonsieurTain)
+* [dp] Add LDP GRRM integration for Local Differential Privacy (Adem Bencheikh Lehocine)
+* [random] Add a function to generate a random Point in a Box (benoit lobreau)
+* [noise] Add GPS coordinate anonymisation functions (benoit lobreau)
+* [core] Massive amount of clippy fixes
+* [core] Upgrade to Rust 2024
+* [core] Upgrade from pgrx 0.16.1 to 0.18.0
+
+
+20260220 : 3.0.13 - Simplified Continuous Delivery
+-------------------------------------------------------------------------------
+
+( tags from 3.0.6 to 3.0.12 were used for CI testing and are skipped )
+
+* [CD] Simplify the deploy task
+
+20260217 : 3.0.5 - Build on ARM64
+-------------------------------------------------------------------------------
+
+( tags 3.0.2, 3.0.3, 3.0.4 were used for CI testing and are skipped )
+
+* [CI] Build on ARM
+
+20260204 : 3.0.1 - Parallel Static Masking + JSON Import/Export
+-------------------------------------------------------------------------------
+
+* [core] Add functions to import and export to and from a nested json format
+* [docs] replica masking is GA
+* [replica] Remove triggers when a masking is removed
+* [replica] Make labels more random in replica masking trigger functions
+* [docs] available on...
+* [docs] tips are not displayed (Robin Portigliatti)
+* [docs] typo in the tutorial (Ludovic GILBON)
+* [docs] fixup ON UPDATE CASCADE (EFLUID)
+* [static] Parallel Static Masking (Pierre-Marie Petit)
+* [core] Adds 4 catalog views
+* [dynamic] Remove Legacy Dynamic Masking
+* [docs] Foreign Keys
+* [meta] Guidelines for AI content
+* [packaging] Build and Publish OCI image
+* [static] always defer all constraints
+* [static] Improve selective masking (EFLUID)
+* [docs] Links to Matrix and Discord
+* [core] Custom Values (EFLUID)
+* [core] Drop PostgreSQL 13
+* [sampling] remove unused function ( see CVE-2026-2361 )
+* [core] Protect operators against uncontrolled search_path elements
+  ( see CVE-2026-2360 )
+
+
+20251118 : 2.5.1 - Minor bug fixes
+-------------------------------------------------------------------------------
+
+* [static] FIX #589 : correctly handle policy in anonymize_database
+* [doc] update the release process
+
+20251117 : 2.5.0 - Maintenance release
+-------------------------------------------------------------------------------
+
+* [core] Refactor rule parsing functions
+* [backup masking] Remove pg_dump_anon ( was deprecated since version 2.0)
+* [pseudo] FIX #582 - allow special characters in database name
+* [static] FIX #581 - mask tables with only tablesample rules
+* Document how to anonymize with a ratio of NULL values (Benoit Lobréau)
+* Reset the search_path when anonymizing an SQL file (Hans Hübner)
+
+20250919 : 2.4.1 - Minor bug fixes
+-------------------------------------------------------------------------------
+
+* [static masking] Remove search_path spec in anonymize_database()
+* Fix #576 build on other architectures than x86_64 (pkhartsk)
+
+20250911 : 2.4.0 - PostgreSQL 18 (beta)
+-------------------------------------------------------------------------------
+
+* [core] Introduce Selective Masking (Beta)
+* [core] FIX #563 anon.replace binding incorrect (Alex Akeno)
+* [meta] remove binary .DS_Store files and add them to gitignore (pkhartsk)
+* [core] refactor tupleDescData loops
+* [core] Support PostgreSQL 18 (beta)
+* [lint] run cargo clippy
+* [core] upgrade to PGRX 0.16.0
+* [core] Hooks refactoring
+* [core] GUC refactoring
+* [tests] Fix parse_select_query on PG15+
+* [pseudo] Introduce new shift/xor functions
+* [pseudo] Prevent masked users from brute forcing the pseudonymizing functions
+* [doc] Install from source: fixed typo in PGVER variable (pkhartsk)
+* [tdm] FIX #553 - Respect the FROM ONLY clause for masked users
+  (thanks to MonsieurTain)
+* [doc] Add missing semicolon in quickstart (Marcus Olsson)
+* [doc] Corrects typo (mardub)
+
+20250702 : 2.3.0 - Parallel Static Masking
+-------------------------------------------------------------------------------
+
+* [docs] Various corrections on the tutorial (Robin Portigliatti)
+* [random] FIX #527 issue with negative numbers
+* [make] build on Mac OS X (Suhas Thalanki)
+* [doc] How to truncate a table for masked users
+* [replica] Introducing Replica Masking (ALPHA)
+* [tests] make ldm test more robust
+* [doc] hash and unescaped chars
+
+20250530 : 2.2.1 - packaging fixup
+-------------------------------------------------------------------------------
+
+* [CI] deploy packages on each tags
+
+20250528 : 2.2.0 - Masking Cursors
+-------------------------------------------------------------------------------
+
+* [core] Add anon.static_masking GUC param (Daniel Solsona)
+* [core] Masking cursors (Jukka Heiskanen)
+* [doc] typos and malformed syntaxes (Julien Acroute)
+* [core] bump to pgrx 0.14.3
+* [doc] Fix the edit on gitlab link
+* [doc] Link to the official Neon documentation (Philip Olson)
+* [pgxn] Drop publishing on PGXN for now
+
+
+20250418 : 2.1.1 - packaging fixup
+-------------------------------------------------------------------------------
+
+* Fixing a minor issue with packaging
+
+20250418 : 2.1.0 - Masking Images
+-------------------------------------------------------------------------------
+
+* [image] add blur image functions (pmpetit)
+* [doc] Install With PGXN is not possible currently
+* [doc] Remove Privacy By Default disclaimer
+* [doc] sha1 hashing is not available in v2 (Anthony DUMONTOIS)
+* [doc] Install with Ansible
+* [doc] Fix Anonymous Dump schema
+* [doc] Fix forgotten k_anonymity provider in docs
+* [doc] Typos and formatting (pmpetit)
+* [doc] Available on Alibabacloud
+* [doc] Uninstall best practices
+* [doc] Fix typo in docs/configure.md (Matthias van de Meent)
+* [install] Fix make install (@Krysztophe)
+* [make] Start the instance before installcheck
+* [core] Bump toPGRX 0.14
+* [faker] Bump to fake 4.3
+* [faker] Remove useless type `anon_fake_data_tables`
+* [generalization] test with timezone to UTC to avoid LMT/PST failures
+* [core] Activate rustfmt
+
+20250106 : 2.0.0 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* [doc] sampling with RLS
+* [doc] clarify deprecation note for pg_dump_anon (pmpetit)
+* [doc] explain a little more what is deprecated (pmpetit)
+* [tutorial] clarify the anonymous dump tutorial (pmpetit)
+* [doc] fix pg_dump_anon deprecated message, explain that user can use their
+  own exporter role to do the job (pmpetit)
+* [tutorial] wrong table name (pmpetit)
+* [doc] add tips about dummy and fake functions (pmpetit)
+
+20241218 : 2.0.0-rc.3 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* [doc] Improve examples
+* [make] reorder test files
+* [static] masking a quoted column
+* [tests] Add more unit tests
+* [random] remove random_date_after and random_date_before
+
+
+20241210 : 2.0.0-rc.2 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* [random] remove useless warning
+* [core] FIX #493 - Support CHAR(n) type in transparent dynamic masking
+  (Thanks to Ben Dempsey)
+* [tests] fix the dropped_columns test for PG15+
+* [tests] add tests on schema & column (Pierre-Marie Petit)
+* add gitignore for vscode (Pierre-Marie Petit)
+* [doc] Fix Typo (Pierre-Marie Petit)
+* [core] Fix #492: Error when a table has a dropped column
+  (Thanks to Danilo Lourenço Costa Oliveira)
+* [tests] Add more unit tests
+
+20241202 : 2.0.0-rc.1 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* Update years
+* [V1] Remove deprecated bash tests
+* [V1] Remove useless git modules config
+* [V1] Remove the shell code
+* [V1] remove ancient debian folder
+* [V1] Remove Python code
+* [V1] Remove C code
+* Remove useless files
+* [CI] move the job templates
+* [doc] update and merge the release process
+
+20241125 : 2.0.0-beta.4 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* Bump to PGRX 0.12.9
+* [core] restrict debug output to debug mode
+* [dump] use --exclude-extension
+* FIX #485 notice_if_not_init (LeoLong)
+* [tests] Minor fix in the COPY test
+* [core] ignore masking rules in the `anon` schema (Konrad Kucharski)
+* [core] fix minor warnings
+* [test] FIX minor problem in the test for privacy by default
+* [doc] Add tutorials
+* [doc] NEWS 2.0
+* [doc] Update README
+* [static] Support for identity columns
+* Masking Foreign Data Wrapper
+* Fix (unofficial) support for ARM64
+* Bump to 2.0.0-beta.4
+* [core] Drop Support for PostgreSQL 12
+* [core] FIX #479 Allow privacy by default for anonymous dumps (Konrad Kucharski)
+* [random] Generate a random but unique value with anon.random_id
+
+20241023 : 2.0.0-beta.3 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* [tests] Masking a view is supported
+* [tests] RLS policies are supported
+* [core] Upgrade to PGRX 0.12.6
+* [CI] Enable test coverage
+* [docker] Add code coverage tools to the PGRX image
+* [CI] track the lock file
+* [core] Support generated columns
+* [doc] Generalization sections become 'Masking Views'
+* [generalization] Fix timezone for the tests
+* [doc] Advanced Faking
+* [black_box] Using black box with pg_dump parameters
+* [pg_dump_anon] remove bats submodules
+* [CI] fix deb smoketest
+
+20240925 : 2.0.0-beta.2 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* Bump to fake-rs 2.10
+* [rpm] [deb] Improve packaging
+* [CI] remove cache
+* [docker] PGRX image is now based on Rocky 8
+* [docs] allow long lines in markdown tables
+* [docs] Update deb/rpm Install methods
+* [tests] Manual smoke tests to check the install process on various platforms
+
+
+
+20240918 : 2.0.0-beta.1 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* Revert Rust random date functions
+* Upgrade to PGRX 0.12.4
+* Add support for PostgreSQL 17
+* [tests] better error handling in the privacy_by_default test
+* [walker] support volatile functions with transparent dynamic masking
+* FIX #452 : use volatile functions in TDM
+* [doc] improve INSTALL procedure (Giampaolo Capelli)
+* [make] Add extension target
+* Use static regexp
+* Rewrite the static masking functions in Rust
+* Multiple Masking Policies
+* [core] Use TreeWalker for checking inputs
+* [doc] Database-level settings are visible only in future sessions
+* [dynamic] Disable permission check for the masking subquery
+* [random] random_string(0) must return an empty string (José Pedro Saraiva)
+* RawParseMode_RAW_PARSE_DEFAULT is deprecated
+* Build on ARM64 (José Pedro Saraiva)
+* Transparent Dynamic Masking
+
+
+20240704 : 2.0.0-alpha.2 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* [CI] Activate Rust cache
+* [CI] Add workflow rules to prevent double pipelines
+* [CI] Activate clippy
+* [core] Trust more pg_catalog functions (thanks to @nocive)
+* [core] Improve management and errors for TRUSTED functions
+* [CI] add a release job for DEB/RPM packages
+* [doc] How to add tests
+* [docker] use PostgreSQL version 16 by default in the Dockerfile (@madtibo)
+* [core] Split test fixtures and extern functions into modules
+* [tests] Add elevation tests
+* [core] split the hooks in a separate file
+* [CI] fix how-to generation
+* [doc] build the doc of a previous version
+* [TDM] issue error on `COPY (SELECT ...) TO ...` statements
+* [meta] Add codespell and markdownlint to pre-commit
+* [faker] New fake data generator
+* [doc] new install methods
+* [doc] Officially drop Windows support
+
+
+20240408 : 2.0.0-alpha.1 - Better, Faster, Safer
+-------------------------------------------------------------------------------
+
+* [core] Rewrite the core library in Rust
+
+
+20240321 : 1.3.2 - Fix pg_catalog bindings
+-------------------------------------------------------------------------------
+
+__Changes:__
+
+* [bindings] Add date functions
+* [doc] Now available on Neon
+* [bindings] Add replace function
+* [CI] release a tagged docker image for each COMMIT_TAG (Guillaume Risbourg)
+* [bindings] Fix multiple signature errors in the pg_catalog bindings (Austin Putman)
+* [docs] Fix wrong link on detection.md (Carlos Ruiz)
+* [bindings] Add anon.length bindings
+* [docs] fix "Black Box" shortcut command in INSTALL.md (Bojan Mihelac)
+
 
 20240304 : 1.3.1 - Minor release
 -------------------------------------------------------------------------------
@@ -37,7 +411,7 @@ __Changes:__
 -------------------------------------------------------------------------------
 
 <!-- https://gitlab.com/dalibo/postgresql_anonymizer/-/milestones/19 -->
-<!-- git log --oneline $(git describe --tags --abbrev=0 @^)..@ -->
+
 
 __Breaking Changes__:
 
@@ -105,7 +479,7 @@ __Changes:__
 * [pg_dump_anon] Consistent backups
 * [meta] Update copyright date (Gergő Rubint)
 * [blackbox] FIX Anon extension is not installed
-* [data] update the dictionnary of english identifiers
+* [data] update the dictionary of english identifiers
 * [doc] Updates on masking rules (Mahesh Moturu)
 * [doc] Fix howto: grant select on supplier (Christophe Courtois)
 * [doc] how to contribute to the detect
@@ -178,7 +552,7 @@ __Changes:__
 * [core] declaring masking rules with COMMENT is now deprecated
 * [core] Add parallel safety for each function
 * [dump] FIX #272: pg_dump_anon throws a stdout error when used with sudo
-* [doc] Quick notes about perfomance
+* [doc] Quick notes about performance
 * [dump] FIX #281 - Regression on pg_dump_anon -U
 * [docker] fix the entrypoint env vars
 * [dump] add --data-only option
@@ -202,7 +576,7 @@ __Changes:__
 * [noise] anon.noise my fail with an error 22003
 * [core] support CASE in masking rules
 * [doc] How To
-* [core] Remove depency to tsm_system_rows
+* [core] Remove dependency to tsm_system_rows
 * [doc] Multiple documentation improvements
 * [core] Add support for PostgreSQL 15
 * [dump] Many pg_dump_anon improvements
@@ -210,7 +584,8 @@ __Changes:__
 * [core] Simplify the main masking event trigger
 * [doc] Warning about backups consistency
 * [tests] noise tests can hit extreme values
-* [noise] Fix numeric_value_out_of_range and datetime_field_overflow errors (@sebastien-helbert)
+* [noise] Fix numeric_value_out_of_range and datetime_field_overflow errors
+  (@sebastien-helbert)
 * [docker] add postgresql faker
 * [pseudo] FIX #254: masked roles can use pseudo functions
 * [doc] missing URL for source install (@Krysztophe)
@@ -286,13 +661,13 @@ __Changes:__
 * [doc] FIX #168: how to alter a masked column (Rodrigo Otsuka)
 * [doc] FIX #174: How to anonymize 2 columns simultaneously (Nicolas Peltier)
 * [rules] FIX #181: handle all chars in MASKED WITH VALUES (Matthieu Larcher)
-* [in-place] Refactor anonymize_database to improve perfs  (Sébastien Helbert)
+* [in-place] Refactor anonymize_database to improve perfs (Sébastien Helbert)
 * [core] Add support of partitioned tables (Dmitry Fomin)
 * [core] Add support of foreign tables (Paul Bonaud)
 * [core] Add schemaname in `pg_masking_rules`
 * [doc] Explain the permission model
 * [docker] simplify the build process for different PG major versions
-* [core] FIX #198: bug in the `shuffle` mecanism
+* [core] FIX #198: bug in the `shuffle` mechanism
 * [doc] Documentation Improvements (Rushal Verma)
 * [core] Improve the random generator, deprecated use of `tms_system_rows`
 
@@ -341,7 +716,7 @@ __Changes:__
 * [random] new masking function: `anon.random_in(ARRAY['yes','no','maybe'])`
 * [in-place] defer all deferrable constraints
 * [doc] how to dump roles when using the black box method
-* [dump] FIX #146: export sequences data  (Joe Auty)
+* [dump] FIX #146: export sequences data (Joe Auty)
 * [doc] `anon.shuffle()` is not a masking function
 * [dump] FIX #129: `--file` option not working (Yann Robin)
 * [dump] use arrays for argument lists
@@ -405,9 +780,7 @@ __Changes:__
 
 * Introduce the Generalization method with 6 functions that transforms dates
   and numeric values into ranges of value.
-
 * Introduce a k-anonymity assessment function.
-
 * [faking] Add `anon.lorem_ipsum()` to generate classic lorem ipsum texts
 * [destruction] New syntax `MASKED WITH VALUE ...`
 * [doc] Install on Ubuntu 18.04 (many thanks to Jan Birk )
@@ -465,30 +838,30 @@ __Changes:__
 * Anonymous dumps : Export the entire anonymized database with
   the new `dump()` function. For instance:
 
-  ```console
-  psql -q -t -A -c 'SELECT anon.dump()' the_database
-  ```
+    ```console
+    psql -q -t -A -c 'SELECT anon.dump()' the_database
+    ```
 
 * Dynamic Masking : new functions `start_dynamic_masking()` and
   `stop_dynamic_masking()`
 
 * shuffle an entire column with the new function :
 
-  ```sql
-  SELECT anon.shuffle_column('employees','salary', 'id');
-  ```
+    ```sql
+    SELECT anon.shuffle_column('employees','salary', 'id');
+    ```
 
 * Add +/-33% of noise to a column with:
 
-  ```sql
-  SELECT anon.numeric_noise_on_column('employee','salary',0.33);
-  ```
+    ```sql
+    SELECT anon.numeric_noise_on_column('employee','salary',0.33);
+    ```
 
 * Add +/-10 years of noise to a date with :
 
-  ```sql
-  SELECT anon.datetime_noise_on_column('employee','birthday','10 years');
-  ```
+    ```sql
+    SELECT anon.datetime_noise_on_column('employee','birthday','10 years');
+    ```
 
 * Renamed faking functions for clarity
 
@@ -511,15 +884,15 @@ __Changes:__
 
 * Declare a masked column with:
 
-  ```sql
-  COMMENT ON COLUMN people.name IS 'MASKED WITH FUNCTION anon.random_last_name()';
-  ```
+    ```sql
+    COMMENT ON COLUMN people.name IS 'MASKED WITH FUNCTION anon.random_last_name()';
+    ```
 
 * Declare a masked role with :
 
-  ```sql
-  COMMENT ON ROLE untrusted_user IS 'MASKED';
-  ```
+    ```sql
+    COMMENT ON ROLE untrusted_user IS 'MASKED';
+    ```
 
 ### New functions for partial scrambling
 

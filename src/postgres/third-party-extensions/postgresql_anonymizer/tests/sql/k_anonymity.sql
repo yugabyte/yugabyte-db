@@ -70,6 +70,14 @@ FROM (
 ) AS k
 ;
 
+CREATE TABLE attack (id int, "id,(SELECT inject_here())" text);
 
+INSERT INTO attack VALUES(0,'whatever');
+
+SECURITY LABEL FOR k_anonymity ON COLUMN attack."id,(SELECT inject_here())"
+IS 'indirect identifier';
+
+-- executes: GROUP BY "id,(SELECT inject_here())"
+SELECT anon.k_anonymity('attack'::regclass) = 1 ;
 
 ROLLBACK;

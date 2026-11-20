@@ -3160,6 +3160,46 @@
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/fetch-universe-resources-per-provider':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: getUniverseResourcesPerProvider
+    summary: Get per-provider resource utilisation of a YugabyteDB Universe
+    description: Fetches an estimate of pricing and cpu/memory/storage resource utilisation for each provider in the Universe. This is meant to be used before creating the Universe.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCreateReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/UniverseResourcesPerProviderResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: READ
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}/gflags':
   parameters:
     - name: cUUID

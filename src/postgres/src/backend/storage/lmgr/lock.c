@@ -392,6 +392,62 @@ GetYbObjectLockId(const LOCKTAG *locktag)
 	};
 }
 
+/*
+ * Whether a lock tag has to be acquired as a YB object lock on the tserver,
+ * so that it conflicts with the same lock taken by other backends.
+ *
+ * - Relation and object locks are the table/object locks that DDLs and DMLs
+ *   synchronize on.
+ * - The database frozen-ids lock serializes VACUUMs updating the shared
+ *   pg_database.datfrozenxid (see vac_update_datfrozenxid).  VACUUM is
+ *   currently a no-op in YB, but should it ever get there, the lock must
+ *   conflict across backends.  It maps to {db_oid, 0, 0, 0}, which no
+ *   relation or object lock uses.
+ * - Tuple locks are only sent to the tserver under the
+ *   TEST_enable_obj_tuple_locks test flag; see LockTuple.
+ * - Advisory locks taken through the pg_advisory_* functions use YB's own
+ *   advisory lock path and never get here.  Extensions such as documentdb
+ *   take advisory locks by calling LockAcquire directly, and rely on them
+ *   conflicting across backends.
+ *   TODO(#38468): route those through YB's advisory lock path too.
+ * - User locks are reserved for the old contrib/userlock module and unused.
+ *   Like any lock nobody has shown to be backend-local, they are sent.
+ *
+ * The remaining tag types are either never acquired with object locking
+ * enabled (transaction, virtual transaction and speculative insertion locks),
+ * or protect PG-local storage, which only temp relations have and only their
+ * own backend can access (relation extension and page locks).  For those the
+ * local lock table is enough.
+ * Sending them would also be wrong, as GetYbObjectLockId drops the tag type:
+ * e.g. a relation extension lock would become an ExclusiveLock on the
+ * relation itself, held until commit.
+ *
+ * The switch deliberately has no default, so that a tag type added by a PG
+ * merge fails to compile (-Werror=switch) until it is classified here.
+ */
+static bool
+YbIsObjectLockTag(const LOCKTAG *locktag)
+{
+	switch ((LockTagType) locktag->locktag_type)
+	{
+		case LOCKTAG_RELATION:
+		case LOCKTAG_OBJECT:
+		case LOCKTAG_DATABASE_FROZEN_IDS:
+		case LOCKTAG_TUPLE:
+		case LOCKTAG_ADVISORY:
+		case LOCKTAG_USERLOCK:
+			return true;
+		case LOCKTAG_RELATION_EXTEND:
+		case LOCKTAG_PAGE:
+		case LOCKTAG_TRANSACTION:
+		case LOCKTAG_VIRTUALTRANSACTION:
+		case LOCKTAG_SPECULATIVE_TOKEN:
+			return false;
+	}
+	/* Not a valid tag type; keep the lock conflicting across backends. */
+	return true;
+}
+
 int
 YbNumSessionObjectLocks()
 {
@@ -979,6 +1035,19 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 * lock more than once but that case won't reach here.
 	 */
 	Assert(!IsRelationExtensionLockHeld);
+
+	/*
+	 * YB: Only the tags listed in YbIsObjectLockTag are locked on the tserver.
+	 * Keep any other transaction-scoped lock in the local lock table only.
+	 * Session locks are always sent to the tserver, whatever the tag, as
+	 * LockRelease forwards every session lock release there.
+	 */
+	if (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED && !sessionLock &&
+		!YbIsObjectLockTag(locktag))
+	{
+		GrantLockLocal(locallock, owner);
+		return LOCKACQUIRE_OK;
+	}
 
 	if (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED)
 	{
