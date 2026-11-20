@@ -34,6 +34,7 @@ import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -43,6 +44,9 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -103,6 +107,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private Commissioner commissioner;
   @Inject private YsqlQueryExecutor ysqlQueryExecutor;
   @Inject private MetricService metricService;
+  @Inject private GFlagsValidation gFlagsValidation;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -249,10 +254,23 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     v1Params.currentClusterType = ClusterType.ASYNC;
     // to construct the new v1 cluster, start with a copy of primary cluster
     Cluster primaryCluster = dbUniverse.getUniverseDetails().getPrimaryCluster();
+    // The read replica below shares the primary's UserIntent, and the add spec replaces its
+    // gflags, so keep the primary's for the restore.
+    SpecificGFlags primarySpecificGFlags = primaryCluster.userIntent.specificGFlags;
     Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent);
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
+    // The UI fills the read replica's gflags from the primary's GET response, which redacts the
+    // sensitive ones, so restore them from the primary the way a gflags upgrade does.
+    if (RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()) {
+      newReadReplica.userIntent.specificGFlags =
+          GFlagsUtil.mergeSensitiveSpecificGFlags(
+              primarySpecificGFlags,
+              newReadReplica.userIntent.specificGFlags,
+              gFlagsValidation,
+              primaryCluster.userIntent.ybSoftwareVersion);
+    }
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
