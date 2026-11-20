@@ -84,7 +84,17 @@ public class RemoveTabletServers extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = getUniverse();
-    Map<String, Set<String>> pendingIps = getNodeIps(universe);
+    Map<String, Set<String>> pendingIps;
+    try {
+      pendingIps = getNodeIps(universe);
+    } catch (Exception e) {
+      // A node whose cluster or provider can no longer be read.
+      log.warn(
+          "Failed to read the nodes {}; their tservers stay registered as dead: {}",
+          taskParams().nodes.stream().map(NodeDetails::getNodeName).collect(Collectors.toList()),
+          e.getMessage());
+      return;
+    }
     if (pendingIps.isEmpty()) {
       return;
     }

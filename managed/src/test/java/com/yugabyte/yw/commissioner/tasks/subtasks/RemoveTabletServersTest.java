@@ -244,6 +244,15 @@ public class RemoveTabletServersTest extends FakeDBApplication {
   }
 
   @Test
+  public void testNodeOfMissingClusterDoesNotFailTask() throws Exception {
+    node.placementUuid = UUID.randomUUID();
+
+    run(universe, node);
+
+    verify(mockClient, never()).listTabletServers();
+  }
+
+  @Test
   public void testListFailureDoesNotFailTask() throws Exception {
     setTimeout(Duration.ZERO);
     when(mockClient.listTabletServers()).thenThrow(new RuntimeException("no master leader"));

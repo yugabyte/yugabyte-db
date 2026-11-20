@@ -5739,9 +5739,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Removes tservers that were just deleted from the master's registry and from the server
-   * blacklist, after waiting {@code yb.edit.wait_before_blacklist_clear} (when set) so the master
-   * stops treating them as live first.
+   * Removes tservers that were just deleted from the server blacklist, after waiting {@code
+   * yb.edit.wait_before_blacklist_clear} (when set) so the master stops treating them as live
+   * first. Before the clear, also removes them from the master's registry when {@code
+   * yb.edit.remove_dead_tservers} is on and the DB version has the master RPC.
    */
   public void createClearTserverBlacklistTasks(
       Universe universe, Collection<NodeDetails> tservers) {
@@ -6120,9 +6121,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task list to wait for a minimum number of tservers to heartbeat to the master leader.
-   */
   /** Waits until the master leader reports every tserver of the universe as live. */
   public SubTaskGroup createWaitForTServerHeartBeatsTask() {
     return createWaitForTServerHeartBeatsTask(null);
