@@ -189,4 +189,49 @@ describe('CreateSupportBundlePage', () => {
     );
     expect(onCreated).not.toHaveBeenCalled();
   });
+
+  describe('customize', () => {
+    const selectCustomize = async () => {
+      renderPage();
+      await screen.findByText('≈ 7.1 GB');
+      fireEvent.click(screen.getByTestId('CreateSupportBundlePage-Customize-Select'));
+    };
+    const categoryCheckbox = (categoryId: string) =>
+      within(screen.getByTestId(`CustomizeCategory-${categoryId}`)).getAllByRole('checkbox')[0];
+
+    it('leaves out the categories and components the user unchecks', async () => {
+      await selectCustomize();
+
+      fireEvent.click(categoryCheckbox('platformLogs'));
+      fireEvent.click(screen.getByTestId('CustomizeCategory-clusterLogs-Expand'));
+      fireEvent.click(
+        within(screen.getByTestId('CustomizeComponent-GFlags')).getByRole('checkbox')
+      );
+
+      await waitFor(
+        () => {
+          const { components } = lastEstimateSpec();
+          expect(components).not.toContain('ApplicationLogs');
+          expect(components).not.toContain('GFlags');
+          expect(components).toContain('UniverseLogs');
+        },
+        { timeout: 2000 }
+      );
+    });
+
+    it('keeps customize selections while the recommended bundle is selected', async () => {
+      await selectCustomize();
+      fireEvent.click(categoryCheckbox('platformLogs'));
+
+      fireEvent.click(screen.getByTestId('CreateSupportBundlePage-Recommended-Select'));
+      await waitFor(() => expect(lastEstimateSpec().components).toContain('ApplicationLogs'), {
+        timeout: 2000
+      });
+
+      fireEvent.click(screen.getByTestId('CreateSupportBundlePage-Customize-Select'));
+      await waitFor(() => expect(lastEstimateSpec().components).not.toContain('ApplicationLogs'), {
+        timeout: 2000
+      });
+    });
+  });
 });
