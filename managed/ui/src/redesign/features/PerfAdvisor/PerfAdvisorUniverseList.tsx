@@ -120,9 +120,9 @@ export const PerfAdvisorUniverseList = ({
       return displayName;
     }
     // Online-mode universes have no local data behind the Perf Advisor view, so they link to the
-    // universe itself rather than a dashboard that would come up empty.
+    // universe itself. Basic and advanced both open the Performance tab.
     const path =
-      row.advancedObservability && isEmbeddedPAEnabled && row.mode !== PaRegistrationMode.ONLINE
+      isEmbeddedPAEnabled && row.mode !== PaRegistrationMode.ONLINE
         ? `/universes/${row.universeUuid}/perfAdvisor`
         : `/universes/${row.universeUuid}`;
     return <Link to={path}>{displayName}</Link>;
