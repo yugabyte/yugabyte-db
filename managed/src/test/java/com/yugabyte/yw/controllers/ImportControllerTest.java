@@ -74,7 +74,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
-    when(mockResponse.getTabletServersCount()).thenReturn(3);
     List<ServerInfo> mockTabletSIs = new ArrayList<>();
     ServerInfo si = new ServerInfo("UUID1", "127.0.0.1", 9100, false, "ALIVE");
     mockTabletSIs.add(si);
@@ -86,6 +85,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
+      mockLiveTabletServersFromUniverses(mockClient);
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
     } catch (Exception e) {
       fail();
