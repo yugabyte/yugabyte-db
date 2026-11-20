@@ -98,7 +98,6 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
   - `pg_wal_lsn_diff`
   - `IDENTIFY SYSTEM`
   - `txid_current`
-  - `pg_stat_replication`
 
   Additionally, the functions responsible for pulling changes instead of the server streaming it are unsupported as well. They are described in [Replication Functions](https://www.postgresql.org/docs/11/functions-admin.html#FUNCTIONS-REPLICATION) in the PostgreSQL documentation.
 
@@ -122,7 +121,7 @@ Because LSNs aren't comparable across replication slots, avoid re-using Kafka to
 
 - Support for tablet splitting with logical replication is disabled from v2024.2.1 and re-enabled from v2024.2.2.0. Tracked in issue {{<issue 24918>}}.
 
-- A replication slot should be consumed by at most one consumer at a time. However, there is currently no locking mechanism to enforce this. As a result, you should ensure that multiple consumers do not consume from a slot simultaneously. Tracked in issue {{<issue 20755>}}.
+- A replication slot should be consumed by at most one consumer at a time. However, there is currently no locking mechanism to enforce this. As a result, you should ensure that multiple consumers do not consume from a slot simultaneously. To see which consumer is attached, query [`pg_stat_replication`](./monitor/#pg_stat_replication) on each node. Tracked in issue {{<issue 20755>}}.
 
 - If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event unless the YB-TServer flag [cdc_enable_intra_transactional_before_image](../../../reference/configuration/yb-tserver/#cdc-enable-intra-transactional-before-image) is enabled (v2024.2.9.1+). With that flag enabled, CDC returns the row state immediately before each intra-transactional operation. If the replica identity is not CHANGE and a before image still cannot be found, CDC throws an error while processing the event.
 
