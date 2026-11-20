@@ -7903,6 +7903,29 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 */
 		if (!rawEnt->missingMode)
 			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+
+		/*
+		 * YB: Existing rows of a YB table come from DocDB, which never sees
+		 * attmissingval.  If PG stored a missing value but
+		 * YBCPrepareAlterTableCmd did not give DocDB one, those rows would
+		 * read NULL for the new column, and the NOT NULL check below would
+		 * be skipped.  Fill them by rewriting the table instead.  This only
+		 * guards against the PG and YB missing-value decisions drifting
+		 * apart.  If yb_enable_alter_table_rewrite is off, ATRewriteTables
+		 * fails the ALTER instead, which is still better than NULL rows.
+		 *
+		 * It does not apply when yb_enable_add_column_missing_default is off.
+		 * That AutoFlag is held back during an upgrade until external peers
+		 * such as xCluster targets have upgraded, and ADD COLUMN must keep its
+		 * legacy, rewrite-free behavior then.  In that mode existing rows
+		 * still read NULL for the new column, even if it is NOT NULL; see
+		 * #38681.
+		 */
+		if (IsYBRelation(rel) && yb_enable_add_column_missing_default &&
+			TupleDescAttr(rel->rd_att, attribute.attnum - 1)->atthasmissing &&
+			!YbAddColumnUsesDocdbMissingValue((Expr *) build_column_default(rel,
+																		  attribute.attnum)))
+			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
 	}
 
 	/*
