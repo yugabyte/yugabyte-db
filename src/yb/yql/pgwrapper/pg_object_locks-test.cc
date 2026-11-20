@@ -2217,7 +2217,7 @@ TEST_F(PgObjectLocksTestDdlOverlap, ConcurrentDdlSwitchedOff) {
     ts->Shutdown();
     ASSERT_OK(ts->Restart());
     ASSERT_OK(LoggedWaitFor(
-        [ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
+        [this, ts]() -> Result<bool> { return LibPqTestBase::ConnectToTs(*ts).ok(); },
         60s * kTimeMultiplier, "restarted tserver to accept connections"));
     ASSERT_EQ(ASSERT_RESULT(ts->GetFlag("ysql_enable_concurrent_ddl")), "false");
   }
