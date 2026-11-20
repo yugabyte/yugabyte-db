@@ -3928,6 +3928,8 @@ YBCommitTransactionContainingDDL()
 		 * flag is 0, no wait, by default. A DDL with global object locks needs no
 		 * such wait: the release of its global locks carries the new catalog
 		 * versions, and each tserver applies them before it unlocks.
+		 * statement_timeout can cut the wait short: its signal ends pg_usleep,
+		 * and the statement still succeeds, since its DDL has committed.
 		 */
 		if (*YBCGetGFlags()->ysql_separate_ddl_txn_inval_propagation_wait_ms > 0 &&
 			YbUsingObjectLocksLocally() && !YBCUsingObjectLocksGloballyForCurrentTxn())
