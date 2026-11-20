@@ -434,6 +434,18 @@ public class YBClient implements YBClientApi {
   }
 
   /**
+   * Remove a tablet server from the master's registry.
+   *
+   * @param permanentUuid the tablet server's permanent UUID
+   * @return the master's response
+   */
+  @Override
+  public RemoveTabletServerResponse removeTabletServer(String permanentUuid) throws Exception {
+    Deferred<RemoveTabletServerResponse> d = asyncClient.removeTabletServer(permanentUuid);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the list of all the masters.
    *
    * @return a list of masters
