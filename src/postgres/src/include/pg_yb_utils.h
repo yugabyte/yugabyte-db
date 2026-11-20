@@ -1200,6 +1200,7 @@ typedef enum YbDdlMode
 
 void		YBIncrementDdlNestingLevel(YbDdlMode mode);
 extern void YbAddDdlTxnStateWithoutDatabaseLock(YbDdlMode mode);
+extern void YbLockDatabaseForGlobalDdl(void);
 void		YBDecrementDdlNestingLevel();
 
 extern void YBAddDdlTxnState(YbDdlMode mode);

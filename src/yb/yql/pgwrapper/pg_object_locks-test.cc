@@ -2351,9 +2351,10 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitHoldsNoDatabaseLoc
 }
 
 // With ysql_enable_concurrent_ddl off, a DDL transaction holds the database DDL lock and then waits
-// on t, which a CREATE INDEX holds across its phases. The later phases take no database lock, so
-// the CREATE INDEX finishes and the DDL then goes on.
-TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexLaterPhasesDoNotWaitForDatabaseLock) {
+// on t, which a CREATE INDEX holds across its phases, while a later CREATE INDEX phase waits for
+// the database lock after its wait for lockers. The deadlock detector must end the cycle well
+// before the statement timeout.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlHolderDeadlockIsDetected) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
   {
@@ -2390,10 +2391,19 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexLaterPhasesDoNotWaitFo
     return waiting.ok() && *waiting > 0;
   }, 30s * kTimeMultiplier, "the ALTER to wait on t"));
 
+  std::vector<ExternalDaemon*> tservers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    tservers.push_back(cluster_->tablet_server(i));
+  }
+  LogWaiter deadlock_log(tservers, "aborted due to a deadlock");
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"));
-  ASSERT_OK(index_future.get());
-  ASSERT_OK(alter_future.get());
-  ASSERT_OK(ddl_conn.Execute("COMMIT"));
+  ASSERT_OK(deadlock_log.WaitFor(30s * kTimeMultiplier));
+  const auto index_status = index_future.get();
+  const auto alter_status = alter_future.get();
+  LOG(INFO) << "CREATE INDEX: " << index_status << ", ALTER TABLE t: " << alter_status;
+  // The detector aborts one of the two transactions, either one, and the other goes on.
+  ASSERT_NE(index_status.ok(), alter_status.ok());
+  ASSERT_OK(ddl_conn.Execute(alter_status.ok() ? "COMMIT" : "ROLLBACK"));
 }
 
 // With ysql_enable_concurrent_ddl off, a CREATE INDEX waits for a writer to t, and the writer's
