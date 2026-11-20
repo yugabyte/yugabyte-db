@@ -6341,7 +6341,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteDisallowedOnColoc
   }
 }
 
-// Test for DB-25620: Verifies that tables dropped during table rewrite 
+// Test for DB-25620: Verifies that tables dropped during table rewrite
 // before CDC background thread processes them are marked HIDDEN (not DELETED).
 // This prevents VWAL from hanging when trying to access catalog metadata for dropped tables.
 TEST_F(CDCSDKConsumptionConsistentChangesTest,
