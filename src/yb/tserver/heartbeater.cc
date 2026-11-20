@@ -400,6 +400,7 @@ Status HeartbeatPoller::TryHeartbeat() {
   }
 
   req.set_auto_flags_config_version(server_.GetAutoFlagConfigVersion());
+  req.set_tserver_list_version(server_.tserver_list_version());
 
   {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
@@ -622,7 +623,8 @@ Status HeartbeatPoller::TryHeartbeat() {
   server_.HandleMasterHeartbeatResponse(heartbeat_send_time, std::move(new_config));
 
   // Update the live tserver list.
-  return server_.PopulateLiveTServers(last_hb_response_);
+  server_.PopulateLiveTServers(last_hb_response_);
+  return Status::OK();
 }
 
 Status HeartbeatPoller::SetupRegistration(master::TSRegistrationPB* reg) {
