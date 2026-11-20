@@ -6341,7 +6341,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteDisallowedOnColoc
   }
 }
 
-// Test for DB-26002: Verifies that tables dropped during table rewrite (TRUNCATE/ALTER)
+// Test for DB-25620: Verifies that tables dropped during table rewrite 
 // before CDC background thread processes them are marked HIDDEN (not DELETED).
 // This prevents VWAL from hanging when trying to access catalog metadata for dropped tables.
 TEST_F(CDCSDKConsumptionConsistentChangesTest,
@@ -6363,13 +6363,18 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
   auto base_table = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "base_table"));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  // Initialize VWAL with base table
   ASSERT_OK(InitVirtualWAL(
       stream_id, {base_table.table_id()}, kVWALSessionId1));
 
-  // Stop the CDC bg thread from registering new tables, so side_table stays in the unprocessed
-  // map. Lengthening the bg task wait does not work: CREATE TABLE and DeleteTable wake the thread.
+  // Stop the CDC bg thread from registering new tables
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) = true;
+
+  // Count how often the deletion task defers a tablet of a table that is waiting to be added.
+  std::atomic<int> deferred_hits{0};
+  SyncPoint::GetInstance()->SetCallBack(
+      "DoProcessCDCSDKTabletDeletion::DeferredWaitingTable",
+      [&deferred_hits](void*) { ++deferred_hits; });
+  SyncPoint::GetInstance()->EnableProcessing();
 
   ASSERT_OK(conn.Execute("CREATE TABLE side_table (id INT PRIMARY KEY, value TEXT)"));
 
@@ -6382,8 +6387,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
 
   // TRUNCATE immediately (before CDC bg thread processes it)
   // This drops the old table and creates a new one
-  // WITHOUT FIX: Old table would be DELETED (not HIDDEN)
-  // WITH FIX Check 2: Old table should be HIDDEN (found in unprocessed map)
   ASSERT_OK(conn.Execute("TRUNCATE TABLE side_table"));
 
   // Get the new table ID after truncate
@@ -6407,10 +6410,15 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
     LOG(INFO) << "Confirmed: old table " << old_table_id << " is HIDDEN (not DELETED)";
   }
 
-  // KEY ASSERTION 2: Let the tablet deletion task (1s interval) run several times while the old
+  // KEY ASSERTION 2: The tablet deletion task (1s interval) must run several times while the old
   // table is still unregistered. GetCDCSDKStreamsForTable() is empty for it, so without the
   // deferral in DoProcessCDCSDKTabletDeletion the task releases the tablet and it is deleted.
-  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+  ASSERT_OK(WaitFor(
+      [&deferred_hits]() -> bool { return deferred_hits.load() >= 3; },
+      MonoDelta::FromSeconds(30 * kTimeMultiplier),
+      "Deletion task never deferred the tablet of the waiting table"));
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearAllCallBacks();
   {
     auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
     auto table_info = ASSERT_RESULT(cm.FindTableById(old_table_id));
@@ -6441,7 +6449,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
       MonoDelta::FromSeconds(60),
       "Timed out waiting for new table to be added to stream metadata"));
 
-  // THE KEY TEST: Call UpdatePublicationTableList with OLD table ID
+  // Call UpdatePublicationTableList with OLD table ID
   LOG(INFO) << "Testing UpdatePublicationTableList with old table ID: " << old_table_id;
 
   auto start_time = CoarseMonoClock::Now();
@@ -6457,6 +6465,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest,
 
   LOG(INFO) << "UpdatePublicationTableList completed in " << elapsed.ToSeconds() << " seconds";
   LOG(INFO) << "Status: " << update_status;
+  ASSERT_OK(update_status);
 
   // Now try with new table ID
   ASSERT_OK(UpdatePublicationTableList(

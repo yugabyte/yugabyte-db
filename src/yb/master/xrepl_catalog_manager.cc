@@ -490,17 +490,31 @@ void CatalogManager::ReseedCDCSDKUnprocessedMapForHiddenTables() {
     }
     const auto table_info = tablet->table();
     const auto& ns_id = table.namespace_id();
-    const auto hide_time = table.LockForRead()->hide_hybrid_time();
+    // A HIDING table has no hide time yet; it is only set when the table becomes HIDDEN.
+    std::optional<HybridTime> hide_time;
+    {
+      auto table_lock = table.LockForRead();
+      if (table_lock->is_hidden()) {
+        hide_time = table_lock->hide_hybrid_time();
+      }
+    }
 
     for (const auto& [stream_id, stream_info] : cdc_stream_map_) {
       if (stream_info->namespace_id() != ns_id || !IsCdcLogicalReplicationStream(*stream_info)) {
         continue;
       }
-      // A table hidden before the stream existed was never waiting to be added to it.
+      // A table hidden before the stream existed was never waiting to be added to it
       {
         auto stream_lock = stream_info->LockForRead();
-        if (stream_lock->pb.has_stream_creation_time() &&
-            hide_time < HybridTime(stream_lock->pb.stream_creation_time())) {
+        if (!stream_lock->pb.has_stream_creation_time()) {
+          VLOG(1) << "Not re-adding hidden table " << table.id() << " for stream " << stream_id
+                  << ": stream has no creation time";
+          continue;
+        }
+        // A HIDING table was dropped moments ago, so treat it as hidden after the stream was
+        // created.
+        if (hide_time &&
+            *hide_time < HybridTime::FromMicros(stream_lock->pb.stream_creation_time())) {
           continue;
         }
       }
@@ -2468,12 +2482,9 @@ bool CatalogManager::WillCDCSDKStreamAcceptTable(
     return false;
   }
 
-  if (takes_only_rewritten_tables) {
-    auto pg_table_oids = GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id());
-    auto pg_table_oid = table->GetPgTableOid();
-    if (!pg_table_oid.ok() || !pg_table_oids.contains(*pg_table_oid)) {
-      return false;
-    }
+  if (takes_only_rewritten_tables &&
+      !IsRewriteOfStreamTable(GetPgTableOidsOfCDCSDKStreamTables(ltm->table_id()), *table)) {
+    return false;
   }
 
   const auto& table_id = table->id();
@@ -7071,6 +7082,7 @@ Status CatalogManager::DoProcessCDCSDKTabletDeletion(
           IsTablePartOfCDCSDK(hidden_tablet.table_id_, true /* require_logical_replication */)) {
         VLOG(2) << "Tablet " << tablet_id << " belongs to table " << hidden_tablet.table_id_
                 << " which is waiting to be added to a stream. Deferring deletion.";
+        TEST_SYNC_POINT("DoProcessCDCSDKTabletDeletion::DeferredWaitingTable");
         continue;
       }
     }
