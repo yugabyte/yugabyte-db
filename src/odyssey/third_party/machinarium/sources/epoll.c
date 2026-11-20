@@ -209,12 +209,7 @@ static int mm_epoll_read_write(mm_poll_t *poll, mm_fd_t *fd,
 	return mm_epoll_modify(poll, fd, mask);
 }
 
-/*
- * YB: Watch the fd only for the peer's hangup, in place of a read. Data
- * waiting on the socket does not wake the reader, so a reader that cannot
- * take more data still learns at once that the peer went away, even with
- * unread data queued ahead of its FIN.
- */
+/* YB: watch the fd only for the peer's hangup, in place of a read */
 static int yb_mm_epoll_read_hangup(mm_poll_t *poll, mm_fd_t *fd,
 				   mm_fd_callback_t on_read, void *arg)
 {

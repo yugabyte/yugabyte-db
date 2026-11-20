@@ -92,8 +92,8 @@ MACHINE_API int machine_read_stop(machine_io_t *obj)
 }
 
 /*
- * YB: Stop reading the io but keep watching it for the peer's hangup, which
- * signals on_read. machine_read_start() and machine_read_stop() end the watch.
+ * YB: Stop reading the io but signal on_read if the peer hangs up.
+ * machine_read_start() and machine_read_stop() end the watch.
  */
 MACHINE_API int yb_machine_read_hangup_start(machine_io_t *obj,
 					     machine_cond_t *on_read)

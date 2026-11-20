@@ -2489,16 +2489,11 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			continue;
 		} else if (status == OD_WAIT_SYNC) {
 			/*
-			 * YB: Park the client read until the backend's
-			 * ReadyForQuery, so the coroutine isn't woken up for any
-			 * bytes the client pipelines after the Sync. Keep watching
-			 * the client for a hangup, as upstream Odyssey (EPOLLRDHUP)
-			 * and Postgres (client_connection_check_interval) do, so a
-			 * client that goes away is noticed at once, even with
-			 * unread bytes queued ahead of its FIN, and its cleanup
-			 * cancels the running statement. A client that half-closes
-			 * its socket but still reads is treated as gone, as a read
-			 * of its EOF already is.
+			 * YB: Stop reading the client until ReadyForQuery, but
+			 * watch it for a hangup, as upstream Odyssey and Postgres
+			 * do, so a client that goes away is noticed even with
+			 * unread bytes ahead of its FIN. A half-closed client is
+			 * treated as gone.
 			 */
 			int rc = yb_od_io_read_hangup_start(client->relay.src);
 			if (rc != 0) {
