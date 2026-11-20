@@ -15,6 +15,8 @@ Stack mode: given several commits (or `--stack <PR>`, which reads the merged
 layers of a GitHub PR stack), each release branch gets a stacked PR, one
 layer per commit, on `feature-stack/backport-<branch>-<feature>/<change>`
 branches in the upstream repo -- GitHub cannot stack PRs from fork branches.
+Every layer but the top gets `Jenkins: skip`: the top layer's build contains
+the whole stack, so its one Jenkins run covers every layer.
 
 Invoked via the bash shim `.agents/scripts/backport-commit.sh`.
 
@@ -837,6 +839,12 @@ def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
     stack member. Returns 0, or 6 if `gh stack link` failed.
     """
     new = [(i, layer, task) for i, (layer, task, pr) in enumerate(kept) if not pr]
+
+    def pr_body(i: int, task: str) -> str:
+        body = git("log", "-n1", "--format=%b", task)
+        if i < len(kept) - 1:
+            body = f"{body.rstrip()}\n\nJenkins: skip\n"
+        return body
     if preview:
         info("Preview Mode (no push, no PR)")
         print("Would have run:")
@@ -847,8 +855,9 @@ def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
             base = branch if i == 0 else kept[i - 1][1]
             subject = git("log", "-n1", "--format=%s", task)
             draft = " --draft" if i > 0 else ""
+            skip = " + Jenkins: skip" if i < len(kept) - 1 else ""
             print(f"  gh pr create -R {gh_repo} -B {base} -H {task}{draft} "
-                  f"-t {shlex.quote(subject)} -F -  (body: the commit body)")
+                  f"-t {shlex.quote(subject)} -F -  (body: the commit body{skip})")
             reviewers = (reviewers_override if reviewers_override is not None
                          else layer.reviewers)
             if reviewers:
@@ -871,7 +880,7 @@ def publish_stack(*, gh_repo: str, upstream_remote: str, branch: str,
             continue
         base = branch if i == 0 else kept[i - 1][1]
         subject = git("log", "-n1", "--format=%s", task)
-        body = git("log", "-n1", "--format=%b", task)
+        body = pr_body(i, task)
         info(f"Opening PR for {task} (base {base})")
         cmd = ["gh", "pr", "create", "-R", gh_repo, "-B", base, "-H", task,
                "-t", subject, "-F", "-"]

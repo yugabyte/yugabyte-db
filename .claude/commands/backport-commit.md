@@ -151,12 +151,14 @@ To backport several dependent commits, pass them all, bottom first, or pass `--s
 
 `--stack` takes the stack's merged layers in order and leaves out unmerged ones with a warning. On each release branch the script opens a **stacked PR**: one layer per commit, on `feature-stack/backport-<branch>-<feature>/<change>` branches pushed to `yugabyte/yugabyte-db` (stacks cannot use fork branches), linked with `gh stack link`. It reuses the original stack's `<feature>/<change>` names when they exist, else the short SHAs. It needs the `gh stack` extension (see the stack-prs skill), and it drops any layer whose commit the branch already contains.
 
+Only the top layer runs Jenkins. Every PR below it gets `Jenkins: skip` in its body, because the top layer's build contains the whole stack. So land the stack only as a whole, after Jenkins passes on the top PR.
+
 The steps above apply per layer, with these differences:
 
 - **Resuming.** On a conflict or lint failure, the script stops on that layer's task branch. Resolve and `git cherry-pick --continue --no-edit` as in Step 2 (or amend the lint fix), then re-run **the same command, without `-x`**. The script reuses every layer branch that already holds its one commit and every layer that already has a PR, and continues from there. Never rewrite a layer below the one being resolved: the layers above are built on its SHA.
 - **Chaining.** Each layer on the next branch is cherry-picked from the same layer on the previous branch, so a resolution carries forward.
 - **Annotating.** Step 4 applies per layer PR: annotate each PR whose layer you resolved, or that chained from a resolved layer.
-- **Reporting.** In Step 5, list every layer PR per branch, bottom first.
+- **Reporting.** In Step 5, list every layer PR per branch, bottom first, and name the top one as the PR whose Jenkins run covers the stack.
 
 After the PRs are open, the stack is an ordinary stack: update, sync, and land it with the stack-prs skill (`gh stack merge`, not `gh pr merge`).
 

@@ -92,7 +92,8 @@ layer's PR opens, since `gh stack link` needs at least two PRs.
 ## Backporting
 
 Backport a merged stack with `/backport-commit` and `--stack <pr>`.  It opens a stacked PR on each
-release branch, with that branch as the trunk, so everything below applies to it.
+release branch, with that branch as the trunk, so everything below applies to it.  Every layer but
+the top one has `Jenkins: skip`, so the top layer's Jenkins run covers the whole stack.
 
 
 ## Updating a layer
@@ -172,7 +173,9 @@ itself block a merge; GitHub's merge box decides.
 ## Landing
 
 1. **Check every layer up to the target**: open, not a draft, approved, and all checks green,
-   including Jenkins on its current head commit.  If any fails, stop and report it.
+   including Jenkins on its current head commit.  If any fails, stop and report it.  A layer with
+   `Jenkins: skip` (as in a backport stack) relies on the top layer's run: merge it only together
+   with the top layer, after that run passes.
 
 2. **Merge** the target and everything below it in one all-or-nothing operation:
 
