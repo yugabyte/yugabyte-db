@@ -20,10 +20,12 @@ grows, and on the three-node cluster measured below that plan ran 15 times
 slower than the serial plan.
 
 Catalog preloading replaces the per-relation delay with a fixed delay several
-times larger, which the model does not charge. For the one-table LIMIT query of
-#36851 the planner picks a 2-worker plan, and on the single-node cluster
-measured below, with preloading on, launching the two workers took 131 ms
-against 106 ms for the whole serial plan.
+times larger, which follows the catalog of the database and not the plan. The
+model charges it from the catalog rows that the planning backend preloaded.
+Without that charge the planner picks a 2-worker plan for the one-table LIMIT
+query of #36851, and on the single-node cluster measured below, with
+preloading on, launching the two workers took 131 ms against 106 ms for the
+whole serial plan.
 
 This document records what the model charges, the measurements behind the
 charge, where the model departs from the measurements, and how to redo them.
@@ -57,7 +59,39 @@ counted by `yb_count_scan_relations()` on the Gather's subpath:
   projection, project set, unique or subquery scan path counts what its input
   counts. Any other path type counts nothing.
 
-The charge does not depend on the worker count. The workers prime their caches
+Where a new backend preloads its catalog caches
+(`YbCatalogPreloadRequired()`), a worker repeats the preload and the relations
+of its plan are in its caches by then, so a preload term takes the place of
+the per-relation term:
+
+```
+startup_cost += parallel_setup_cost
+             +  (4200 + 0.77 * db_relations + 0.22 * db_attributes
+                 + 0.18 * db_statistics + 0.002 * proc_names^2 / 2)
+                * yb_parallel_setup_cost_per_relation / 60
+```
+
+- The four counts are the rows that the planning backend's own preload put in
+  its catalog caches: the rows of `pg_class`, `pg_attribute` and
+  `pg_statistic`, and the distinct function names of `pg_proc`.
+  `YbPreloadCatalogCache()` records them and
+  `YbGetCatalogCachePreloadedRows()` returns them. A table that the preload
+  settings leave out counts nothing, so the terms follow the gflags without
+  reading them.
+- The function names enter squared because the preload of `pg_proc` compares
+  each row's name with the names before it (Catalog preloading).
+- The charge uses counts and not the time the backend's preload took. A count
+  is the same in every backend of a database. The time is not: on the laptop
+  on 2026-11-18 a client backend preloaded in 213 to 265 ms and a worker in 62
+  to 71 ms, and a client backend's time differed from one connection to the
+  next.
+- The constants are in `cost.h` (`YB_PARALLEL_PRELOAD_COST_*`). They scale
+  with `yb_parallel_setup_cost_per_relation`, so setting it to 0 removes the
+  whole charge in either case.
+- A minimal preload (`YbUseMinimalCatalogCachesPreload()`) leaves user
+  relations out, so both the preload term and the per-relation term apply.
+
+Neither charge depends on the worker count. The workers prime their caches
 concurrently, so the delay before the first tuple grows less than in proportion
 to the worker count, and the part that does grow with the worker count is not
 charged (Where the model departs from the measurements).
@@ -307,6 +341,23 @@ delay was not profiled. At 14 ns the 4.5 million comparisons take 63 ms, and
 in the one-table database the list naming `pg_proc` took 62 to 64 ms longer
 than the list naming `pg_statistic`.
 
+The preload term of the model comes from these two tables. A database with no
+user objects has 391 `pg_class` rows, 3,712 `pg_attribute` rows and 2,747
+distinct function names, a two-column table with a primary key adds 2 and 10,
+and a 41-column table adds 2 and 49 (counted on master
+d1ca2bb434415fbddfd59c1476c40f866e505b78). The two table additions then give
+0.0061 ms for each relation and 0.0017 ms for each attribute, the statistics
+rows 0.0014 ms each, and the functions 14 to 17 ns for each pair of names,
+taken as 16. The list naming `pg_statistic` leaves 33 ms of its 42 ms over the
+launch without preloading as the fixed part. At 127 cost units per
+millisecond those are the 4,200, 0.77, 0.22, 0.18 and 0.002 of the model.
+
+On the laptop on 2026-11-19, with the boolean gflag and a build of this
+change, a one-table database was charged 12,867, which is the model's value
+for its 393 relations, 3,722 attributes and 2,747 names, and the launch at 2
+workers took 58 ms. 300 more two-column tables raised the charge by 1,122 and
+the launch by 5.5 ms. Each worker made 9 catalog reads.
+
 Both tables are at one worker. Repeat runs differed by up to 7 ms at one
 worker, 15 ms at four and 39 ms at eight, so the additions were not compared
 across worker counts. On the laptop, measured on 2026-11-14 with the boolean
@@ -367,13 +418,13 @@ the single-node cluster and 234 to 252 on the laptop. At 127 and 245 units per
 millisecond the launch is 3,500 to 4,500 units on the three-node cluster and
 3,600 to 5,900 on the laptop, against 4,200 charged for one relation.
 
-**With preloading on the launch is four to five times the charge.** 130 to
-175 ms on the single-node cluster is 16,700 to 22,600 units at 129 units per
-millisecond. On the laptop
-build the planner chose the serial plan with `parallel_setup_cost` at 14,124
-for 2 workers and at 18,729 for 8, and the parallel plan at 9,000 and 14,126,
-so charging the measured launch would give the serial plan at both worker
-counts.
+**With preloading on the launch is four to five times the flat charge.** 130
+to 175 ms on the single-node cluster is 16,700 to 22,600 units at 129 units
+per millisecond. On the laptop build, which had no preload term, the planner
+chose the serial plan with `parallel_setup_cost` at 14,124 for 2 workers and
+at 18,729 for 8, and the parallel plan at 9,000 and 14,126. The preload term
+is about 12,900 in a database of one table, which with the flat charge is
+about 17,000: in the measured range at 2 workers and below it at 8.
 
 **The cluster of #36851 shows the preloading count.** The EXPLAIN output in the
 issue has 47 catalog reads with 2 workers launched and 87 with 6, which is 10
@@ -427,12 +478,16 @@ of the figures shown.
   against 42 ms serial. At the ratio of the #36851 query's serial plan the
   flat part is about the launch of a one-relation plan (A one-relation plan
   under a LIMIT).
-- **With catalog preloading on, the shape is wrong.** The per-relation charge
-  is above the delay it prices. The flat part is a tenth of the fixed delay
-  measured in the sweep's database at 300 units per millisecond and a quarter
-  to a fifth of a one-relation launch at the #36851 query's ratio, and the
-  fixed delay grows with the tables in the database and, faster than linearly,
-  with the functions. The model reads neither preload gflag.
+- **The preload charge is calibrated at one worker and at 127 units per
+  millisecond.** With preloading on, the delay grew by about 12 ms for each
+  further worker, which is not charged. At 300 units per millisecond the
+  charge is 42% of the measured delay.
+- **The preload counts are those of the planning backend's last preload.**
+  Relations created since then are not counted until the backend preloads
+  again, in a new connection or at a full refresh of its caches.
+- **Only four catalog tables are counted.** The other tables that the preload
+  gflags name add to the fixed part: the boolean gflag's list took 4 to 5 ms
+  more than a list naming `pg_proc` alone.
 - **Partitions pruned at executor startup are counted.** The count is taken
   after plan-time pruning only, and a worker reads the catalog only for the
   partitions left after pruning at executor startup. A plan of 25 partitions
@@ -508,36 +563,14 @@ a worker the leader's relcache entries, or reusing warm workers across Gather
 launches, would remove the per-relation delay without the fixed delay that
 preloading adds.
 
-Until then, three additions would bring the model to the measured shape: a
-charge per worker, a charge per worker per relation, and a separate charge
-when catalog preloading is on. Each one changes plan choice broadly and needs
-its own validation.
+Until then, two additions would bring the model to the measured shape: a
+charge per worker and a charge per worker per relation. Each one changes plan
+choice broadly and needs its own validation.
 
-The charge for catalog preloading comes first, because it decides plans of any
-size: with preloading on, the launch of a one-relation plan took four to five
-times what the model charges, enough to change the plan of the #36851 query.
-Constants cannot make up that charge, because under preloading the fixed delay
-follows the tables and functions in the database and the catalog tables the
-gflags name. `YbCatalogPreloadRequired()` tells whether a new backend
-preloads, but the size of the delay has to be measured in the database.
-
-The planner is not the place to measure the delay. A prototype charged the
-time the planning backend's own preload had taken. The prototype gave the
-#36851 query its serial plan with preloading on and changed no cost with
-preloading off, but the planning backend's preload is not a worker's: on the
-laptop on 2026-11-18 a client backend preloaded in 213 to 265 ms and a worker
-in 62 to 71 ms. A client backend's preload time also differs from one
-connection to the next, so the same query got different costs in different
-sessions.
-
-The preload charge therefore needs one value for each database, the time a
-worker's preload takes there, supplied from outside the planner. How it is
-supplied is open. A setting can hold the value, as `parallel_setup_cost` can
-already be set for one database with `ALTER DATABASE ... SET`, or a step
-outside the planner can measure the value on launched workers and store it.
-
-The charges without preloading need no value from the cluster. At one worker a
-catalog read took 0.27 ms on the three-node cluster and 0.13 ms on the laptop,
-and the #36851 query's serial plan ran at 127 and 245 cost units per
-millisecond, so a read cost about 34 units on the one and about 32 on the
-other. A master leader in another zone or region was not measured.
+The charges need no value measured on the cluster. At one worker a catalog
+read took 0.27 ms on the three-node cluster and 0.13 ms on the laptop, and the
+#36851 query's serial plan ran at 127 and 245 cost units per millisecond, so a
+read cost about 34 units on the one and about 32 on the other. The preload
+delay carries over the same way: 136 ms on the three-node cluster and 79 ms on
+the laptop for a one-table database are about 17,300 and 19,400 units. A
+master leader in another zone or region was not measured.

@@ -284,6 +284,7 @@ static void yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 static Cardinality yb_first_fetch_limit(PlannerInfo *root, Path *path,
 										bool has_local_quals);
 static int	yb_count_scan_relations(Path *path);
+static Cost yb_parallel_catalog_setup_cost(Path *subpath);
 static int	yb_count_bitmap_indexes(Path *bitmapqual);
 
 
@@ -519,14 +520,8 @@ cost_gather(GatherPath *path, PlannerInfo *root,
 	/* Parallel setup and communication cost. */
 	startup_cost += parallel_setup_cost;
 
-	/*
-	 * YB: a worker starts with empty catalog caches and builds a relcache
-	 * entry for every table and index its plan opens, each a few round trips
-	 * to the master.  The workers prime concurrently, so the delay before the
-	 * first tuple grows with the relation count rather than the worker count.
-	 */
-	startup_cost += yb_parallel_setup_cost_per_relation *
-		yb_count_scan_relations(path->subpath);
+	/* YB: the workers load catalog data before their first fetch. */
+	startup_cost += yb_parallel_catalog_setup_cost(path->subpath);
 
 	run_cost += parallel_tuple_cost * path->path.rows;
 
@@ -596,9 +591,8 @@ cost_gather_merge(GatherMergePath *path, PlannerInfo *root,
 	 */
 	startup_cost += parallel_setup_cost;
 
-	/* YB: see the matching comment in cost_gather. */
-	startup_cost += yb_parallel_setup_cost_per_relation *
-		yb_count_scan_relations(path->subpath);
+	/* YB: the workers load catalog data before their first fetch. */
+	startup_cost += yb_parallel_catalog_setup_cost(path->subpath);
 
 	run_cost += parallel_tuple_cost * path->path.rows * 1.05;
 
@@ -11711,4 +11705,61 @@ yb_count_bitmap_indexes(Path *bitmapqual)
 		count = 1;
 
 	return count;
+}
+
+/*
+ * yb_parallel_catalog_setup_cost
+ *	  Startup cost of the catalog data the workers of a Gather or Gather
+ *	  Merge load before their first fetch.
+ *
+ * A worker is a new backend, so its catalog caches start empty.  Without
+ * catalog preloading, a worker builds a relcache entry for every table and
+ * index its plan opens, each a few round trips to the master, and the charge
+ * is per relation of the plan.
+ *
+ * Where a new backend preloads its caches (YbCatalogPreloadRequired), a
+ * worker repeats the preload this backend did, and its plan's relations are
+ * in the caches by then.  The delay follows what is preloaded: the relations,
+ * attributes and statistics rows of the database, and the function names
+ * when pg_proc is preloaded.  This backend's own preload counted them
+ * (YbGetCatalogCachePreloadedRows), and a count, unlike the time the preload
+ * took, is the same in every backend of the database.  A cache that was not
+ * preloaded counts nothing.  A minimal preload leaves user relations out, so
+ * both charges apply.
+ *
+ * The preload terms are scaled with yb_parallel_setup_cost_per_relation, so
+ * that setting it to 0 removes the whole charge.  The workers load
+ * concurrently, so the delay before the first tuple grows with the preload
+ * and the relation count rather than with the worker count.
+ */
+static Cost
+yb_parallel_catalog_setup_cost(Path *subpath)
+{
+	Cost		cost = 0;
+	bool		preload = IsYugaByteEnabled() && YbCatalogPreloadRequired();
+
+	if (preload)
+	{
+		double		relations = YbGetCatalogCachePreloadedRows(RELOID);
+		double		attributes = YbGetCatalogCachePreloadedRows(ATTNUM);
+		double		statistics = YbGetCatalogCachePreloadedRows(STATRELATTINH);
+		double		proc_names = YbGetCatalogCachePreloadedLists(PROCOID);
+		Cost		preload_cost;
+
+		preload_cost = YB_PARALLEL_PRELOAD_COST_BASE +
+			YB_PARALLEL_PRELOAD_COST_PER_RELATION * relations +
+			YB_PARALLEL_PRELOAD_COST_PER_ATTRIBUTE * attributes +
+			YB_PARALLEL_PRELOAD_COST_PER_STATISTIC * statistics +
+			YB_PARALLEL_PRELOAD_COST_PER_PROC_NAME_PAIR *
+			proc_names * proc_names / 2;
+
+		cost += preload_cost * yb_parallel_setup_cost_per_relation /
+			YB_DEFAULT_PARALLEL_SETUP_COST_PER_RELATION;
+	}
+
+	if (!preload || YbUseMinimalCatalogCachesPreload())
+		cost += yb_parallel_setup_cost_per_relation *
+			yb_count_scan_relations(subpath);
+
+	return cost;
 }

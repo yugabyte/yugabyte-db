@@ -1229,6 +1229,14 @@ static_assert(SysCacheSize ==
 
 static CatCache *SysCache[SysCacheSize];
 
+/*
+ * YB: the rows and the lists that this backend's last preload put in each
+ * catalog cache.  A cache and the index cache preloaded with it have the
+ * same counts.
+ */
+static long yb_preloaded_rows[SysCacheSize];
+static long yb_preloaded_lists[SysCacheSize];
+
 static bool CacheInitialized = false;
 
 /* Sorted array of OIDs of tables that have caches on them */
@@ -1538,6 +1546,14 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	systable_endscan(scandesc);
 
 	table_close(relation, AccessShareLock);
+
+	yb_preloaded_rows[cache_id] = scanned;
+	yb_preloaded_lists[cache_id] = list_length(list_of_lists);
+	if (idx_cache_id != -1)
+	{
+		yb_preloaded_rows[idx_cache_id] = scanned;
+		yb_preloaded_lists[idx_cache_id] = list_length(list_of_lists);
+	}
 
 	if (list_of_lists)
 	{
@@ -2468,4 +2484,26 @@ YbCheckCatalogCacheIds()
 				  "The cache ID " #name " has changed from " #id ". You need to increment YbSharedInvalCatcacheMsgVersion");
 	YB_CATCACHE_LIST
 #undef YB_CATCACHE_ENTRY
+}
+
+/*
+ * The number of rows that this backend's last preload put in the given
+ * catalog cache, 0 if the cache has not been preloaded.
+ */
+long
+YbGetCatalogCachePreloadedRows(int cache_id)
+{
+	Assert(cache_id >= 0 && cache_id < SysCacheSize);
+	return yb_preloaded_rows[cache_id];
+}
+
+/*
+ * The number of lists that this backend's last preload of the given catalog
+ * cache made.  For pg_proc that is the number of distinct function names.
+ */
+long
+YbGetCatalogCachePreloadedLists(int cache_id)
+{
+	Assert(cache_id >= 0 && cache_id < SysCacheSize);
+	return yb_preloaded_lists[cache_id];
 }
