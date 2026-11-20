@@ -1600,6 +1600,10 @@ message PgAcquireObjectLockRequestPB {
   reserved 5; // ASH metadata is now passed in RequestHeader PB
 
   bool is_session_lock = 6 [(yb.rpc.trace) = {enabled: true}];
+
+  // More objects to lock in lock_type with lock_oid, acquired as one request. Set only for
+  // transaction locks in a global mode.
+  repeated ObjectLockOid additional_lock_oids = 7;
 }
 
 message PgAcquireObjectLockResponsePB {

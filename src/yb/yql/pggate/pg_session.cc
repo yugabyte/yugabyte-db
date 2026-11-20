@@ -1478,10 +1478,35 @@ Status PgSession::AcquireObjectLock(
     return Status::OK();
   }
   VLOG(1) << "Lock acquisition via shared memory not available";
-  return pg_txn_manager_->AcquireObjectLock(
+  const std::optional<PgTablespaceOid> tablespace_oid =
+      tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid});
+  return pg_txn_manager_->AcquireObjectLocks(
       VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(lock_id))),
-      lock_id, mode, is_session_lock,
-      tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
+      std::span{&lock_id, 1}, mode, is_session_lock, std::span{&tablespace_oid, 1});
+}
+
+Status PgSession::AcquireObjectLocks(
+    std::span<const YbcObjectLockId> lock_ids, YbcObjectLockMode mode) {
+  if (lock_ids.empty()) {
+    return Status::OK();
+  }
+  // Locks that go through shared memory take no round trip, so only global modes are batched.
+  // AcquireObjectLock says why the rest of the cases send nothing.
+  if (lock_ids.size() == 1 || mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK ||
+      !pg_txn_manager_->UsingObjectLocksGloballyForCurrentTxn()) {
+    for (const auto& lock_id : lock_ids) {
+      RETURN_NOT_OK(AcquireObjectLock(lock_id, mode, /* is_session_lock= */ false));
+    }
+    return Status::OK();
+  }
+  std::vector<std::optional<PgTablespaceOid>> tablespace_oids;
+  tablespace_oids.reserve(lock_ids.size());
+  for (const auto& lock_id : lock_ids) {
+    tablespace_oids.push_back(tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
+  }
+  return pg_txn_manager_->AcquireObjectLocks(
+      VERIFY_RESULT(FlushBufferedEntities(PgFlushDebugContext::AcquireLock(lock_ids.front()))),
+      lock_ids, mode, /* is_session_lock= */ false, tablespace_oids);
 }
 
 Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {

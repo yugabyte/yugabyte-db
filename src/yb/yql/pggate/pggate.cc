@@ -2848,6 +2848,12 @@ Status PgApiImpl::AcquireObjectLock(
   return pg_session_->AcquireObjectLock(lock_id, mode, is_session_lock);
 }
 
+Status PgApiImpl::AcquireObjectLocks(
+    const YbcObjectLockId* lock_ids, int num_locks, YbcObjectLockMode mode) {
+  return pg_session_->AcquireObjectLocks(
+      std::span{lock_ids, static_cast<size_t>(num_locks)}, mode);
+}
+
 Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
   return pg_session_->ReleaseSessionObjectLock(lock_id, release_all);
 }

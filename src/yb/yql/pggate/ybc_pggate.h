@@ -1174,6 +1174,9 @@ void YBCPgClearExportedTxnSnapshots();
 
 YbcStatus YBCAcquireObjectLock(
     YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
+// Transaction locks in mode on every object in lock_ids, with one round trip when mode is global.
+YbcStatus YBCAcquireObjectLocks(
+    const YbcObjectLockId* lock_ids, int num_locks, YbcObjectLockMode mode);
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
 YbcStatus YBCWaitForLockersMultiple(

@@ -1451,3 +1451,57 @@ GetLockNameFromTagType(uint16 locktag_type)
 		return "???";
 	return LockTagTypeNames[locktag_type];
 }
+
+/*
+ *		YbLockRelationOids
+ *
+ * LockRelationOid on each of relids, in one round trip when lockmode is a
+ * global lock: one that YB acquires through the master on every tserver,
+ * which costs a round trip per lock.
+ */
+void
+YbLockRelationOids(const Oid *relids, int n, LOCKMODE lockmode)
+{
+	if (n <= 1 || lockmode < ShareUpdateExclusiveLock ||
+		YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
+	{
+		for (int i = 0; i < n; i++)
+			LockRelationOid(relids[i], lockmode);
+		return;
+	}
+
+	LOCKTAG    *tags = palloc(n * sizeof(LOCKTAG));
+	LOCALLOCK **locallocks = palloc(n * sizeof(LOCALLOCK *));
+	LockAcquireResult *results = palloc(n * sizeof(LockAcquireResult));
+	bool		anyAcquired = false;
+	bool		anyNotClear = false;
+
+	for (int i = 0; i < n; i++)
+		SetLocktagRelationOid(&tags[i], relids[i]);
+
+	YbLockAcquireMultiple(tags, n, lockmode, locallocks, results);
+
+	for (int i = 0; i < n; i++)
+	{
+		anyAcquired |= results[i] == LOCKACQUIRE_OK;
+		anyNotClear |= results[i] != LOCKACQUIRE_ALREADY_CLEAR;
+	}
+
+	/* As in LockRelationOid, once for the whole batch. */
+	if (anyNotClear)
+	{
+		AcceptInvalidationMessages();
+		for (int i = 0; i < n; i++)
+		{
+			if (results[i] != LOCKACQUIRE_ALREADY_CLEAR)
+				MarkLockClear(locallocks[i]);
+		}
+	}
+
+	if (anyAcquired && YBCUsingObjectLocksGloballyForCurrentTxn())
+		YBCPgSetClampUncertaintyWindow(true);
+
+	pfree(results);
+	pfree(locallocks);
+	pfree(tags);
+}

@@ -1287,11 +1287,11 @@ bool PgTxnManager::TryAcquireObjectLock(
   return true;
 }
 
-Status PgTxnManager::AcquireObjectLock(
+Status PgTxnManager::AcquireObjectLocks(
     SetupPerformOptionsAccessorTag tag,
-    const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+    std::span<const YbcObjectLockId> lock_ids, YbcObjectLockMode mode,
     bool is_session_lock,
-    std::optional<PgTablespaceOid> tablespace_oid) {
+    std::span<const std::optional<PgTablespaceOid>> tablespace_oids) {
   RETURN_NOT_OK(CalculateIsolation(
       false /* read_only, doesn't matter */,
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
@@ -1300,13 +1300,15 @@ Status PgTxnManager::AcquireObjectLock(
   RETURN_NOT_OK(SetupPerformOptions(
       tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
       SkipReadTimeOptions::kTrue));
-  RETURN_NOT_OK(client_->AcquireObjectLock(
-      &options, lock_id, mode, is_session_lock, tablespace_oid));
+  RETURN_NOT_OK(client_->AcquireObjectLocks(
+      &options, lock_ids, mode, is_session_lock, tablespace_oids));
   // Session locks are released individually, and locks of a separate DDL transaction are released
   // when that transaction ends, so only track transaction locks of the regular transaction.
   if (!is_session_lock && !(IsDdlMode() && !IsDdlModeWithRegularTransactionBlock())) {
     if (auto lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode))) {
-      RecordObjectLockHeld(lock_id, *lock_type);
+      for (const auto& lock_id : lock_ids) {
+        RecordObjectLockHeld(lock_id, *lock_type);
+      }
     }
   }
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());

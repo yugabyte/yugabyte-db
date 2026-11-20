@@ -1226,20 +1226,27 @@ class PgClient::Impl : public BigDataFetcher {
     return PrepareAndSend<PerformData>(method, req, &arena, std::move(operations), metrics);
   }
 
-  Status AcquireObjectLock(
-      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id,
-      YbcObjectLockMode mode, bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
+  Status AcquireObjectLocks(
+      tserver::PgPerformOptionsPB* options, std::span<const YbcObjectLockId> lock_ids,
+      YbcObjectLockMode mode, bool is_session_lock,
+      std::span<const std::optional<PgTablespaceOid>> tablespace_oids) {
+    RSTATUS_DCHECK(
+        !lock_ids.empty() && lock_ids.size() == tablespace_oids.size(), InvalidArgument,
+        "Expected one tablespace oid per lock");
     object_locks_arena_.Reset(ResetMode::kKeepLast);
     tserver::LWPgAcquireObjectLockRequestPB req(&object_locks_arena_);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
-    auto& lock_oid = *req.mutable_lock_oid();
-    lock_oid.set_database_oid(lock_id.db_oid);
-    lock_oid.set_relation_oid(lock_id.relation_oid);
-    lock_oid.set_object_oid(lock_id.object_oid);
-    lock_oid.set_object_sub_oid(lock_id.object_sub_oid);
-    if (tablespace_oid) {
-      lock_oid.set_tablespace_oid(*tablespace_oid);
+    for (size_t i = 0; i != lock_ids.size(); ++i) {
+      auto& lock_oid = i == 0 ? *req.mutable_lock_oid() : *req.add_additional_lock_oids();
+      const auto& lock_id = lock_ids[i];
+      lock_oid.set_database_oid(lock_id.db_oid);
+      lock_oid.set_relation_oid(lock_id.relation_oid);
+      lock_oid.set_object_oid(lock_id.object_oid);
+      lock_oid.set_object_sub_oid(lock_id.object_sub_oid);
+      if (tablespace_oids[i]) {
+        lock_oid.set_tablespace_oid(*tablespace_oids[i]);
+      }
     }
     const auto lock_type = static_cast<tserver::ObjectLockMode>(mode);
     req.set_lock_type(lock_type);
@@ -2476,10 +2483,11 @@ bool PgClient::IsObjectLockSharedStateEnabled() {
   return impl_->IsObjectLockSharedStateEnabled();
 }
 
-Status PgClient::AcquireObjectLock(
-    tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-    bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
-  return impl_->AcquireObjectLock(options, lock_id, mode, is_session_lock, tablespace_oid);
+Status PgClient::AcquireObjectLocks(
+    tserver::PgPerformOptionsPB* options, std::span<const YbcObjectLockId> lock_ids,
+    YbcObjectLockMode mode, bool is_session_lock,
+    std::span<const std::optional<PgTablespaceOid>> tablespace_oids) {
+  return impl_->AcquireObjectLocks(options, lock_ids, mode, is_session_lock, tablespace_oids);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

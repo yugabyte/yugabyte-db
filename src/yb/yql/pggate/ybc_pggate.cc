@@ -3603,6 +3603,11 @@ YbcStatus YBCAcquireObjectLock(
   return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode, is_session_lock));
 }
 
+YbcStatus YBCAcquireObjectLocks(
+    const YbcObjectLockId* lock_ids, int num_locks, YbcObjectLockMode mode) {
+  return ToYBCStatus(pgapi->AcquireObjectLocks(lock_ids, num_locks, mode));
+}
+
 YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all) {
   return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
 }

@@ -17,6 +17,7 @@
 #include <future>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -327,9 +328,12 @@ class PgClient {
   // Whether the session's object lock shared state is usable and enabled for a transaction.
   bool IsObjectLockSharedStateEnabled();
 
-  Status AcquireObjectLock(
-      tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
+  // Acquires mode on every lock in lock_ids with one request. tablespace_oids is parallel to
+  // lock_ids.
+  Status AcquireObjectLocks(
+      tserver::PgPerformOptionsPB* options, std::span<const YbcObjectLockId> lock_ids,
+      YbcObjectLockMode mode, bool is_session_lock,
+      std::span<const std::optional<PgTablespaceOid>> tablespace_oids);
 
   Result<bool> CheckIfPitrActive();
 

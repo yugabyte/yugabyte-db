@@ -5096,3 +5096,134 @@ YbGetNumTxnLocks()
 	return hash_get_num_entries(GetLockMethodLocalHash()) - YbNumSessionObjectLocks();
 }
 #endif
+
+/*
+ * The LOCALLOCK for locktag and lockmode, created if missing, with room for
+ * one more owner; as LockAcquireExtended does.
+ */
+static LOCALLOCK *
+YbFindOrCreateLocalLock(const LOCKTAG *locktag, LOCKMODE lockmode)
+{
+	LOCALLOCKTAG localtag;
+	LOCALLOCK  *locallock;
+	bool		found;
+
+	MemSet(&localtag, 0, sizeof(localtag));
+	localtag.lock = *locktag;
+	localtag.mode = lockmode;
+
+	locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
+										  (void *) &localtag,
+										  HASH_ENTER, &found);
+	if (!found)
+	{
+		locallock->lock = NULL;
+		locallock->proclock = NULL;
+		locallock->hashcode = LockTagHashCode(&(localtag.lock));
+		locallock->nLocks = 0;
+		locallock->holdsStrongLockCount = false;
+		locallock->lockCleared = false;
+		locallock->numLockOwners = 0;
+		locallock->maxLockOwners = 8;
+		locallock->lockOwners = NULL;
+		locallock->lockOwners = (LOCALLOCKOWNER *)
+			MemoryContextAlloc(TopMemoryContext,
+							   locallock->maxLockOwners * sizeof(LOCALLOCKOWNER));
+	}
+	else if (locallock->numLockOwners >= locallock->maxLockOwners)
+	{
+		int			newsize = locallock->maxLockOwners * 2;
+
+		locallock->lockOwners = (LOCALLOCKOWNER *)
+			repalloc(locallock->lockOwners, newsize * sizeof(LOCALLOCKOWNER));
+		locallock->maxLockOwners = newsize;
+	}
+	return locallock;
+}
+
+/*
+ * Acquire lockmode on each of the n locktags as transaction locks, the way
+ * LockAcquireExtended(locktag, lockmode, false, false, true, &locallock)
+ * does, but send the ones this transaction does not hold yet to the tserver
+ * in a single request, so that n global locks cost one round trip instead of
+ * n.  The tserver and the master sort the batch, so the locks are taken in a
+ * consistent order whatever the order of locktags.
+ *
+ * locallocks[i] and results[i] are what LockAcquireExtended would have
+ * returned for locktags[i].  If the request fails, none of its locks is
+ * granted locally; the LOCALLOCK entries it created hold no lock and are
+ * removed when the transaction aborts, as after a failed
+ * LockAcquireExtended.
+ */
+void
+YbLockAcquireMultiple(const LOCKTAG *locktags, int n, LOCKMODE lockmode,
+					  LOCALLOCK **locallocks, LockAcquireResult *results)
+{
+	LockMethod	lockMethodTable = LockMethods[DEFAULT_LOCKMETHOD];
+	ResourceOwner owner = CurrentResourceOwner;
+	YbcObjectLockId *lockIds = palloc(n * sizeof(YbcObjectLockId));
+	int			numToAcquire = 0;
+
+	Assert(YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED);
+	if (lockmode <= 0 || lockmode > lockMethodTable->numLockModes)
+		elog(ERROR, "unrecognized lock mode: %d", lockmode);
+
+	for (int i = 0; i < n; i++)
+	{
+		Assert(locktags[i].locktag_lockmethodid == DEFAULT_LOCKMETHOD);
+		LOCALLOCK  *locallock = YbFindOrCreateLocalLock(&locktags[i], lockmode);
+
+		locallocks[i] = locallock;
+
+		/*
+		 * Held already, unless only by a session lock: see
+		 * yb_force_tserver_lock_acquire in LockAcquireExtended.
+		 */
+		if (locallock->nLocks > 0 &&
+			!(locallock->numLockOwners == 1 &&
+			  locallock->lockOwners[0].owner == NULL))
+		{
+			GrantLockLocal(locallock, owner);
+			results[i] = locallock->lockCleared ? LOCKACQUIRE_ALREADY_CLEAR :
+				LOCKACQUIRE_ALREADY_HELD;
+			continue;
+		}
+		results[i] = LOCKACQUIRE_OK;
+		lockIds[numToAcquire++] = GetYbObjectLockId(&locktags[i]);
+	}
+
+	if (numToAcquire > 0)
+	{
+		/* The same lock timeout LockAcquireExtended arms; see there. */
+		int			lock_timeout_ms = LockTimeout;
+
+		if (lock_timeout_ms <= 0 && !IsBootstrapProcessingMode())
+		{
+			int			rpc_timeout_ms = YBCGetDefaultRpcTimeoutMs();
+
+			lock_timeout_ms = rpc_timeout_ms - Min(2000, rpc_timeout_ms / 2);
+		}
+
+		elog(DEBUG1, "LockAcquireMultiple start: %d locks mode: %s",
+			 numToAcquire, lockMethodTable->lockModeNames[lockmode]);
+
+		if (lock_timeout_ms > 0)
+			enable_timeout_after(LOCK_TIMEOUT, lock_timeout_ms);
+
+		HandleYBStatus(YBCAcquireObjectLocks(lockIds, numToAcquire,
+											 (YbcObjectLockMode) lockmode));
+
+		if (lock_timeout_ms > 0)
+			disable_timeout(LOCK_TIMEOUT, false);
+
+		CHECK_FOR_INTERRUPTS();
+
+		for (int i = 0; i < n; i++)
+		{
+			if (results[i] == LOCKACQUIRE_OK)
+				GrantLockLocal(locallocks[i], owner);
+		}
+	}
+
+	pfree(lockIds);
+}

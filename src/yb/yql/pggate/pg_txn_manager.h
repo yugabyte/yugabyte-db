@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <span>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -173,9 +174,10 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   [[nodiscard]] bool TryAcquireObjectLock(
       const YbcObjectLockId& lock_id, docdb::ObjectLockFastpathLockType lock_type);
 
-  Status AcquireObjectLock(
-      SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
+  Status AcquireObjectLocks(
+      SetupPerformOptionsAccessorTag tag, std::span<const YbcObjectLockId> lock_ids,
+      YbcObjectLockMode mode, bool is_session_lock,
+      std::span<const std::optional<PgTablespaceOid>> tablespace_oids);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;

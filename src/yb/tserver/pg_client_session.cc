@@ -1676,6 +1676,16 @@ Status MergeStatus(Status&& main, Status&& aux) {
 }
 
 template <typename Request>
+void AddObjectLock(Request& req, const auto& lock_oid, TableLockType lock_type) {
+  auto* lock = req.add_object_locks();
+  lock->set_database_oid(lock_oid.database_oid());
+  lock->set_relation_oid(lock_oid.relation_oid());
+  lock->set_object_oid(lock_oid.object_oid());
+  lock->set_object_sub_oid(lock_oid.object_sub_oid());
+  lock->set_lock_type(lock_type);
+}
+
+template <typename Request>
 Request AcquireRequestFor(
     const std::string& session_host_uuid, const TransactionId& txn_id, SubTransactionId subtxn_id,
     auto lock_oid, TableLockType lock_type, uint64_t lease_epoch, ClockBase* clock,
@@ -1692,12 +1702,7 @@ Request AcquireRequestFor(
   if (clock) {
     req.set_propagated_hybrid_time(now.ToUint64());
   }
-  auto* lock = req.add_object_locks();
-  lock->set_database_oid(lock_oid.database_oid());
-  lock->set_relation_oid(lock_oid.relation_oid());
-  lock->set_object_oid(lock_oid.object_oid());
-  lock->set_object_sub_oid(lock_oid.object_sub_oid());
-  lock->set_lock_type(lock_type);
+  AddObjectLock(req, lock_oid, lock_type);
   req.set_status_tablet(status_tablet);
   if (bg_txn_meta) {
     req.set_background_transaction_id(
@@ -3171,6 +3176,9 @@ class PgClientSession::Impl {
           instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
           data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
           deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
+      for (const auto& lock_oid : data->req.additional_lock_oids()) {
+        AddObjectLock(lock_req, lock_oid, lock_type);
+      }
       client_.AcquireObjectLocksGlobalAsync(
           lock_req, std::move(callback), deadline,
           [txn = primary_session_data->transaction]() -> Status {
@@ -3183,6 +3191,9 @@ class PgClientSession::Impl {
         instance_uuid(), txn_meta_res->transaction_id, active_subtxn_id,
         data->req.lock_oid().ToGoogleProtobuf(), lock_type, lease_epoch_, context_.clock.get(),
         deadline, txn_meta_res->status_tablet, opt_bg_txn_meta);
+    for (const auto& lock_oid : data->req.additional_lock_oids()) {
+      AddObjectLock(lock_req, lock_oid, lock_type);
+    }
     AcquireObjectLockLocallyWithRetries(
         ts_lock_manager(), std::move(lock_req), deadline, std::move(callback),
         [session_impl = this, txn = primary_session_data->transaction, locality]
@@ -3199,7 +3210,8 @@ class PgClientSession::Impl {
 
   bool TryAcquireObjectLockInSharedMemory(
       SubTransactionId subtxn_id, const PgAcquireObjectLockRequestMsg& req) {
-    if (FLAGS_enable_object_lock_fastpath && object_lock_shared_state_ && !req.is_session_lock()) {
+    if (FLAGS_enable_object_lock_fastpath && object_lock_shared_state_ && !req.is_session_lock() &&
+        req.additional_lock_oids().empty()) {
       if (auto fastpath_lock_type =
           docdb::MakeObjectLockFastpathLockType(TableLockType(req.lock_type()))) {
         ParentProcessGuard g;

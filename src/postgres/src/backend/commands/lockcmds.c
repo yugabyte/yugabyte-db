@@ -136,7 +136,27 @@ LockTableRecurse(Oid reloid, LOCKMODE lockmode, bool nowait)
 	List	   *children;
 	ListCell   *lc;
 
+	bool		yb_children_locked = false;
+
 	children = find_all_inheritors(reloid, NoLock, NULL);
+
+	/*
+	 * YB: A global lock costs a round trip to the master and every tserver,
+	 * so lock all the descendants in one.  The parent comes first in
+	 * children and is locked already.
+	 */
+	if (IsYugaByteEnabled() && !nowait && list_length(children) > 1)
+	{
+		int			n = list_length(children) - 1;
+		Oid		   *descendants = palloc(n * sizeof(Oid));
+
+		Assert(linitial_oid(children) == reloid);
+		for (int i = 0; i < n; i++)
+			descendants[i] = list_nth_oid(children, i + 1);
+		YbLockRelationOids(descendants, n, lockmode);
+		pfree(descendants);
+		yb_children_locked = true;
+	}
 
 	foreach(lc, children)
 	{
@@ -146,7 +166,9 @@ LockTableRecurse(Oid reloid, LOCKMODE lockmode, bool nowait)
 		if (childreloid == reloid)
 			continue;
 
-		if (!nowait)
+		if (yb_children_locked)
+			;					/* YB: locked above */
+		else if (!nowait)
 			LockRelationOid(childreloid, lockmode);
 		else if (!ConditionalLockRelationOid(childreloid, lockmode))
 		{

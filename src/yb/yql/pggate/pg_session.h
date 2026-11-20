@@ -226,6 +226,8 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
 
   Status AcquireObjectLock(
       const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
+  // Transaction locks on every object in lock_ids, in one request to the local tserver.
+  Status AcquireObjectLocks(std::span<const YbcObjectLockId> lock_ids, YbcObjectLockMode mode);
   Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
   Status WaitForLockersMultiple(
       const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks);

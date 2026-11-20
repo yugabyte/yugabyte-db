@@ -99,6 +99,8 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 				numoids,
 				i;
 
+	bool		yb_children_locked = false;
+
 	/*
 	 * Can skip the scan if pg_class shows the relation has never had a
 	 * subclass.
@@ -214,6 +216,16 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 		qsort(oidarr, numoids, sizeof(Oid), oid_cmp);
 
 	/*
+	 * YB: A global lock costs a round trip to the master and every tserver,
+	 * so lock all the children in one, rather than one per child below.
+	 */
+	if (IsYugaByteEnabled() && lockmode != NoLock)
+	{
+		YbLockRelationOids(oidarr, numoids, lockmode);
+		yb_children_locked = true;
+	}
+
+	/*
 	 * Acquire locks and build the result list.
 	 */
 	for (i = 0; i < numoids; i++)
@@ -223,7 +235,8 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 		if (lockmode != NoLock)
 		{
 			/* Get the lock to synchronize against concurrent drop */
-			LockRelationOid(inhrelid, lockmode);
+			if (!yb_children_locked)	/* YB: else locked above */
+				LockRelationOid(inhrelid, lockmode);
 
 			/*
 			 * Now that we have the lock, double-check to see if the relation

@@ -960,6 +960,8 @@ class PgApiImpl {
   //----------------------------------------------------------------------------------------------
   Status AcquireObjectLock(
       const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
+  Status AcquireObjectLocks(
+      const YbcObjectLockId* lock_ids, int num_locks, YbcObjectLockMode mode);
   Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
   Status WaitForLockersMultiple(
       const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks);
