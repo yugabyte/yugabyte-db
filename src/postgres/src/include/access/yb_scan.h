@@ -321,6 +321,8 @@ extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
 
 extern bool YbIsScanningEmbeddedIdx(Relation table, Relation index);
 
+extern bool YbCanBindSearchArray(StrategyNumber strategy);
+
 /*
  * Used in Agg node init phase to determine whether YB recheck or PG recheck
  * may be needed.

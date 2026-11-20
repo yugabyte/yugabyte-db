@@ -127,6 +127,10 @@
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 >= ALL (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
+-- IN/>ANY, sort...
+\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8) AND r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
+:explain2run2
+
 -- IN, sort, =, sort
 \set query 'SELECT r3, r2, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5) AND r3 = 2 ORDER BY r2, r4, n LIMIT 5'
 :explain2run2
