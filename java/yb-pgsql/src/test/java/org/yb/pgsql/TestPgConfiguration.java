@@ -542,6 +542,32 @@ public class TestPgConfiguration extends BasePgSQLTest {
     }
   }
 
+  /*
+   * yb_enable_cbo's assign hook sets four other GUCs. At startup it ran before some of them were
+   * initialized, which left them in guc_nondef_list marked as default; the next SET of one linked
+   * it a second time and cut the later entries off the list, so RESET ALL skipped them.
+   */
+  @Test
+  public void testResetAllAfterSettingCboDependent() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+             .connect();
+         Statement stmt = conn.createStatement()) {
+      stmt.execute("SET yb_transaction_priority_upper_bound = 0.6");
+      stmt.execute("SET yb_transaction_priority_lower_bound = 0.6");
+      stmt.execute("SET yb_enable_bitmapscan = on");
+      stmt.execute("RESET ALL");
+      for (String guc : Arrays.asList("yb_transaction_priority_lower_bound",
+                                      "yb_transaction_priority_upper_bound")) {
+        try (ResultSet rs = stmt.executeQuery(
+                 "SELECT setting = boot_val FROM pg_settings WHERE name = '" + guc + "'")) {
+          assertTrue(rs.next());
+          assertTrue(guc + " should be back at its default after RESET ALL", rs.getBoolean(1));
+        }
+      }
+    }
+  }
+
   @Test
   public void testShowAll() throws Exception {
     int tserver = spawnTServer();
