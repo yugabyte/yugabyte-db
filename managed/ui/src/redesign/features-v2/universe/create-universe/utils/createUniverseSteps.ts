@@ -7,8 +7,7 @@ export function getCreateUniverseSteps(
   isK8s = false,
   showOptional = true
 ) {
-  const withOptional = (key: string) =>
-    showOptional ? `${t(key)} ${t('optional')}` : t(key);
+  const withOptional = (key: string) => (showOptional ? `${t(key)} ${t('optional')}` : t(key));
 
   return [
     {
@@ -61,9 +60,14 @@ export function getCreateUniverseSteps(
     {
       groupTitle: t('advanced'),
       subSteps: [
-        {
-          title: withOptional('proxySettings')
-        },
+        // Kubernetes does not use the proxy step.
+        ...(!isK8s
+          ? [
+              {
+                title: withOptional('proxySettings')
+              }
+            ]
+          : []),
         {
           title: withOptional('otherAdvancedSettings')
         }

@@ -26,7 +26,6 @@ import {
   initialCreateUniverseFormState,
   StepsRef
 } from './CreateUniverseContext';
-import { ResilienceType } from './steps/resilence-regions/dtos';
 import { CloudType } from '@app/redesign/helpers/dtos';
 import {
   CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY,
@@ -79,9 +78,7 @@ const CreateHeader = styled('div')(() => ({
   minWidth: '1200px'
 }));
 
-function buildInitialFormState(
-  settings?: Record<string, unknown> | null
-): createUniverseFormProps {
+function buildInitialFormState(settings?: Record<string, unknown> | null): createUniverseFormProps {
   const resilienceFormMode = resolveCreateUniverseFormMode(settings);
   return {
     ...initialCreateUniverseFormState,
@@ -101,13 +98,7 @@ export function CreateUniverse() {
   const [initialFormState] = useState(() => buildInitialFormState(userSettings));
   const restoreContextData = useMethods(createUniverseFormMethods, initialFormState);
   const [
-    {
-      activeStep,
-      resilienceType,
-      generalSettings,
-      instanceByProvider,
-      nodesAvailabilitySettings
-    }
+    { activeStep, resilienceType, generalSettings, instanceByProvider, nodesAvailabilitySettings }
   ] = restoreContextData;
   const isK8s =
     generalSettings?.cloud === CloudType.kubernetes ||
@@ -121,11 +112,11 @@ export function CreateUniverse() {
       instanceByProvider,
       !!nodesAvailabilitySettings?.useDedicatedNodes
     );
-  const steps = useMemo(() => getCreateUniverseSteps(t, resilienceType, isK8s, false), [
-    t,
-    resilienceType,
-    isK8s
-  ]);
+  const steps = useMemo(
+    () => getCreateUniverseSteps(t, resilienceType, isK8s, false),
+    [t, resilienceType, isK8s]
+  );
+  const totalSteps = steps.reduce((count, group) => count + group.subSteps.length, 0);
   const currentStepRef = useRef<StepsRef>(null);
   // Sync lock prevents double-click from advancing activeStep twice before React re-renders.
   const isNavigatingRef = useRef(false);
@@ -150,13 +141,9 @@ export function CreateUniverse() {
   const { isLoading } = useQuery(CREATE_UNIVERSE_PROVIDERS_QUERY_KEY, fetchCreateUniverseProviders);
   useQuery(CREATE_UNIVERSE_DB_VERSIONS_QUERY_KEY, fetchCreateUniverseDbVersions);
 
-  const getButtonLabel = (resType: ResilienceType | undefined, actStep: number) => {
-    if (resType === ResilienceType.SINGLE_NODE) {
-      if (actStep === 8) return t('create', { keyPrefix: 'common' });
-      return t(actStep === 7 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
-    }
-    if (actStep === 9) return t('create', { keyPrefix: 'common' });
-    return t(actStep === 8 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
+  const getButtonLabel = (actStep: number) => {
+    if (actStep === totalSteps) return t('create', { keyPrefix: 'common' });
+    return t(actStep === totalSteps - 1 ? 'reviewAndCreate' : 'next', { keyPrefix: 'common' });
   };
 
   const runStepNavigation = async (action: () => void | Promise<boolean | void>) => {
@@ -282,7 +269,7 @@ export function CreateUniverse() {
                           size="large"
                           dataTestId="create-universe-next-button"
                         >
-                          {getButtonLabel(resilienceType, activeStep)}
+                          {getButtonLabel(activeStep)}
                         </YBButton>
                       </Grid>
                     </Grid>
