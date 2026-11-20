@@ -793,6 +793,7 @@ extern Datum Float8GetDatum(float8 X);
  * The logic is refactored from the LOGSTMT_DDL statement case of pgaudit extension.
  */
 extern const char *YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag);
+extern const char *YbRedactPasswordInCurrentQueryText(const char *queryStr);
 extern CommandTag YbParseCommandTag(const char *query_string);
 
 /*

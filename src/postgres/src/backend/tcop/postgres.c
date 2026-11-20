@@ -220,6 +220,9 @@ static bool yb_need_cache_refresh = false;
  */
 static bool yb_is_multi_statement_query = false;
 
+/* YB */
+static bool yb_query_may_carry_password = false;
+
 /*
  * YB: template1's shared catalog version at which, and the time when, this auth
  * passthrough control backend started its auth catalog table prefetcher.  The
@@ -278,6 +281,8 @@ static void yb_abort_xact_command(void);
 
 static YbTraceparentResult YbExtractTraceParentFromComment(const char *query, char *traceparent_out);
 static YbcOtelSpanContext yb_maybe_start_trace_root_span(const char *query_string, bool is_query_string_redacted, YbcOtelSpanContext comment_span_ctx, bool sample);
+static bool yb_command_tag_may_carry_password(CommandTag command_tag);
+static bool yb_parsetree_list_may_carry_password(List *parsetree_list);
 
 /* ----------------------------------------------------------------
  *		routines to obtain user input
@@ -1377,6 +1382,9 @@ exec_simple_query(const char *query_string, CommandTag yb_command_tag)
 	 */
 	debug_query_string = query_string;
 
+	/* YB */
+	yb_query_may_carry_password =
+		yb_command_tag_may_carry_password(yb_command_tag);
 	yb_redacted_query_string = YbRedactPasswordIfExists(query_string,
 														yb_command_tag);
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
@@ -1419,6 +1427,17 @@ exec_simple_query(const char *query_string, CommandTag yb_command_tag)
 	 * we are in aborted transaction state!)
 	 */
 	parsetree_list = pg_parse_query(query_string);
+
+	/* YB */
+	if (!yb_query_may_carry_password &&
+		yb_parsetree_list_may_carry_password(parsetree_list))
+	{
+		yb_query_may_carry_password = true;
+		yb_redacted_query_string = YbRedactPasswordIfExists(query_string,
+															CMDTAG_UNKNOWN);
+		if (yb_redacted_query_string != query_string)
+			pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
+	}
 
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement(parsetree_list))
@@ -1818,6 +1837,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 	/* Use YbParseCommandTag to suppress error warnings. */
 	yb_command_tag = YbParseCommandTag(query_string);
+	yb_query_may_carry_password =
+		yb_command_tag_may_carry_password(yb_command_tag);
 	yb_redacted_query_string = YbRedactPasswordIfExists(query_string,
 														yb_command_tag);
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
@@ -2128,6 +2149,9 @@ exec_bind_message(StringInfo input_message)
 	 */
 	debug_query_string = psrc->query_string;
 
+	/* YB: Redact query if it contains password */
+	yb_query_may_carry_password =
+		yb_command_tag_may_carry_password(psrc->commandTag);
 	yb_redacted_query_string = YbRedactPasswordIfExists(psrc->query_string,
 														psrc->commandTag);
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
@@ -2606,6 +2630,9 @@ exec_execute_message(const char *portal_name, long max_rows)
 	ErrorContextCallback params_errcxt;
 	ListCell   *lc;
 
+	/* YB */
+	const char *yb_redacted_source_text;
+
 	/* Adjust destination to tell printtup.c what to do */
 	dest = whereToSendOutput;
 	if (dest == DestRemote)
@@ -2649,7 +2676,12 @@ exec_execute_message(const char *portal_name, long max_rows)
 	 */
 	debug_query_string = sourceText;
 
-	pgstat_report_activity(STATE_RUNNING, sourceText);
+	/* YB */
+	yb_query_may_carry_password =
+		yb_command_tag_may_carry_password(portal->commandTag);
+	yb_redacted_source_text = YbRedactPasswordIfExists(sourceText,
+													   portal->commandTag);
+	pgstat_report_activity(STATE_RUNNING, yb_redacted_source_text);
 
 	foreach(lc, portal->stmts)
 	{
@@ -2706,7 +2738,8 @@ exec_execute_message(const char *portal_name, long max_rows)
 						prepStmtName,
 						*portal_name ? "/" : "",
 						*portal_name ? portal_name : "",
-						sourceText),
+						/* YB */
+						yb_redacted_source_text),
 				 errhidestmt(true),
 				 errdetail_params(portalParams)));
 		was_logged = true;
@@ -2834,7 +2867,8 @@ exec_execute_message(const char *portal_name, long max_rows)
 							prepStmtName,
 							*portal_name ? "/" : "",
 							*portal_name ? portal_name : "",
-							sourceText),
+							/* YB */
+							yb_redacted_source_text),
 					 errhidestmt(true),
 					 errdetail_params(portalParams)));
 			break;
@@ -7375,6 +7409,7 @@ PostgresMain(const char *dbname, const char *username)
 				yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
 				yb_catalog_version_type = CATALOG_VERSION_UNSET;
 			yb_is_multi_statement_query = false;
+			yb_query_may_carry_password = false;
 			/* New Query => Did not sent any data for the current query. */
 			YBMarkDataNotSentForCurrQuery();
 			/* Unclamp uncertainty window at the start of each new query. */
@@ -8796,13 +8831,7 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 	int			passwordPos;
 	int			strLen;
 
-	/*
-	 * We only redact password for CREATE USER / CREATE ROLE / ALTER USER /
-	 * ALTER ROLE queries or if the command tag is unknown.
-	 */
-	if (commandTag != CMDTAG_UNKNOWN &&
-		commandTag != CMDTAG_CREATE_ROLE &&
-		commandTag != CMDTAG_ALTER_ROLE)
+	if (!yb_command_tag_may_carry_password(commandTag))
 		return queryStr;
 
 	/* Find index of password token. */
@@ -8834,6 +8863,45 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 	redactedStr[strLen] = '\0';
 
 	return redactedStr;
+}
+
+const char *
+YbRedactPasswordInCurrentQueryText(const char *queryStr)
+{
+	if (!yb_query_may_carry_password || queryStr == NULL)
+		return queryStr;
+	return YbRedactPasswordIfExists(queryStr, CMDTAG_UNKNOWN);
+}
+
+/*
+ * CMDTAG_UNKNOWN means the query did not parse, so its statements are unknown.
+ * A DO block can run CREATE/ALTER ROLE ... PASSWORD.
+ */
+static bool
+yb_command_tag_may_carry_password(CommandTag command_tag)
+{
+	return (command_tag == CMDTAG_UNKNOWN ||
+			command_tag == CMDTAG_CREATE_ROLE ||
+			command_tag == CMDTAG_ALTER_ROLE ||
+			command_tag == CMDTAG_CREATE_USER_MAPPING ||
+			command_tag == CMDTAG_ALTER_USER_MAPPING ||
+			command_tag == CMDTAG_DO);
+}
+
+static bool
+yb_parsetree_list_may_carry_password(List *parsetree_list)
+{
+	ListCell   *lc;
+
+	foreach(lc, parsetree_list)
+	{
+		RawStmt    *raw_parse_tree = lfirst_node(RawStmt, lc);
+		CommandTag	tag = CreateCommandTag(raw_parse_tree->stmt);
+
+		if (yb_command_tag_may_carry_password(tag))
+			return true;
+	}
+	return false;
 }
 
 /*

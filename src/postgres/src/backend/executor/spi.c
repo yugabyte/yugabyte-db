@@ -3123,7 +3123,9 @@ _SPI_error_callback(void *arg)
 				errcontext("PL/pgSQL assignment \"%s\"", query);
 				break;
 			default:
-				errcontext("SQL statement \"%s\"", query);
+				/* YB */
+				errcontext("SQL statement \"%s\"",
+						   YbRedactPasswordInCurrentQueryText(query));
 				break;
 		}
 	}
