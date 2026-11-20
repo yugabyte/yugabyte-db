@@ -434,10 +434,13 @@ public class YBClient implements YBClientApi {
   }
 
   /**
-   * Remove a tablet server from the master's registry.
+   * Remove a tablet server from the master's registry. The master accepts it only for a tserver
+   * that is not live, is on the server blacklist and hosts no tablet replicas.
    *
    * @param permanentUuid the tablet server's permanent UUID
    * @return the master's response
+   * @throws MasterErrorException when the master refuses, including for a tablet server it does
+   *     not know (TABLET_SERVER_NOT_FOUND); its {@code error} field carries the master's error
    */
   @Override
   public RemoveTabletServerResponse removeTabletServer(String permanentUuid) throws Exception {

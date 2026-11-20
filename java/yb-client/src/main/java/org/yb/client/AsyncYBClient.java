@@ -1215,7 +1215,9 @@ public class AsyncYBClient implements AutoCloseable {
    * that is not live, is on the server blacklist and hosts no tablet replicas.
    *
    * @param permanentUuid the tablet server's permanent UUID
-   * @return a deferred object that yields the master's response
+   * @return a deferred object that yields the master's response. When the master refuses,
+   *     including for a tablet server it does not know (TABLET_SERVER_NOT_FOUND), it yields a
+   *     {@link MasterErrorException} whose {@code error} field carries the master's error.
    */
   public Deferred<RemoveTabletServerResponse> removeTabletServer(String permanentUuid) {
     checkIsClosed();

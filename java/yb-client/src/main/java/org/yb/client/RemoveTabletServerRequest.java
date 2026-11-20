@@ -51,13 +51,9 @@ class RemoveTabletServerRequest extends YRpc<RemoveTabletServerResponse> {
     final MasterClusterOuterClass.RemoveTabletServerResponsePB.Builder respBuilder =
         MasterClusterOuterClass.RemoveTabletServerResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    boolean hasErr = respBuilder.hasError();
     RemoveTabletServerResponse response =
-        new RemoveTabletServerResponse(
-            deadlineTracker.getElapsedMillis(),
-            masterUUID,
-            hasErr ? respBuilder.getErrorBuilder().build() : null);
+        new RemoveTabletServerResponse(deadlineTracker.getElapsedMillis(), masterUUID);
     return new Pair<RemoveTabletServerResponse, Object>(
-        response, hasErr ? respBuilder.getError() : null);
+        response, respBuilder.hasError() ? respBuilder.getError() : null);
   }
 }

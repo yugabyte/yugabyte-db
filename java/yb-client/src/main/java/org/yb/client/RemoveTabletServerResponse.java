@@ -14,30 +14,10 @@
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.MasterTypes;
 
 @InterfaceAudience.Public
 public class RemoveTabletServerResponse extends YRpcResponse {
-  private final MasterTypes.MasterErrorPB serverError;
-
-  public RemoveTabletServerResponse(
-      long elapsedMillis, String masterUUID, MasterTypes.MasterErrorPB error) {
+  public RemoveTabletServerResponse(long elapsedMillis, String masterUUID) {
     super(elapsedMillis, masterUUID);
-    serverError = error;
-  }
-
-  public MasterTypes.MasterErrorPB getError() {
-    return serverError;
-  }
-
-  public boolean hasError() {
-    return serverError != null;
-  }
-
-  public String errorMessage() {
-    if (serverError == null) {
-      return "";
-    }
-    return serverError.getStatus().getMessage();
   }
 }
