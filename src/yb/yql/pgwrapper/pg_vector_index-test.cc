@@ -8251,8 +8251,7 @@ void PgVectorIndexUtilTest::TestRestoreToTime(bool store_payload, bool separate_
   snapshot_util.SetCluster(cluster_.get());
 
   constexpr size_t kNumRows = 100;
-  const size_t num_rolled_back_rows =
-      getenv("YB_NUM_ROLLED_BACK_ROWS") ? std::stoul(getenv("YB_NUM_ROLLED_BACK_ROWS")) : 5000;
+  constexpr size_t kNumRolledBackRows = 5000;
   auto conn = ASSERT_RESULT(MakeIndex());
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
@@ -8268,7 +8267,7 @@ void PgVectorIndexUtilTest::TestRestoreToTime(bool store_payload, bool separate_
   ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
       "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
-      kNumRows + 1, kNumRows + num_rolled_back_rows));
+      kNumRows + 1, kNumRows + kNumRolledBackRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
   ASSERT_OK(cluster_->FlushTablets());
   ASSERT_OK(snapshot_util.WaitScheduleSnapshot(schedule_id, cluster_->mini_master(0)->Now()));
@@ -8306,13 +8305,12 @@ void PgVectorIndexUtilTest::TestRestoreToTime(bool store_payload, bool separate_
   }
   auto search_time = (MonoTime::Now() - start) / kNumSearches;
   auto data_blocks_per_search = (data_blocks() - start_blocks) / kNumSearches;
-  LOG(INFO) << "Rolled back rows: " << num_rolled_back_rows
+  LOG(INFO) << "Rolled back rows: " << kNumRolledBackRows
             << ", data blocks per search: " << data_blocks_per_search
             << ", time per search: " << search_time;
   // The rolled back vectors stay in the index, so a search checks each of them, reading about a
-  // block per check. Stepping over the rolled back entries took over ten blocks per check with
-  // 5000 of them.
-  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + num_rolled_back_rows));
+  // block per check. Stepping over the rolled back entries took over ten blocks per check.
+  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumRolledBackRows));
 }
 
 TEST_F(PgVectorIndexUtilTest, RestoreToTimeWithinFile) {
@@ -8338,8 +8336,7 @@ TEST_F(PgVectorIndexUtilTest, StoredPayloadRestoreToTimeSeparateFile) {
 void PgVectorIndexUtilTest::TestSearchAtOldReadTime(bool store_payload) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_store_payload) = store_payload;
   constexpr size_t kNumRows = 10;
-  const size_t num_newer_rows =
-      getenv("YB_NUM_NEWER_ROWS") ? std::stoul(getenv("YB_NUM_NEWER_ROWS")) : 5000;
+  constexpr size_t kNumNewerRows = 10000;
   auto conn = ASSERT_RESULT(MakeIndex());
   ASSERT_OK(InsertRows(conn, 1, kNumRows));
   // A replaced vector makes the search check its candidates.
@@ -8354,7 +8351,7 @@ void PgVectorIndexUtilTest::TestSearchAtOldReadTime(bool store_payload) {
   ASSERT_OK(writer.ExecuteFormat(
       "INSERT INTO test SELECT i, ('[' || v || ', ' || v || ', ' || v || ']')::vector "
       "FROM generate_series($0, $1) i, LATERAL (SELECT i * 0.0001 AS v) t",
-      kNumRows + 1, kNumRows + num_newer_rows));
+      kNumRows + 1, kNumRows + kNumNewerRows));
   ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
   ASSERT_OK(cluster_->FlushTablets());
 
@@ -8377,10 +8374,12 @@ void PgVectorIndexUtilTest::TestSearchAtOldReadTime(bool store_payload) {
   auto search_time = (MonoTime::Now() - start) / kNumSearches;
   auto data_blocks_per_search = (data_blocks() - start_blocks) / kNumSearches;
   ASSERT_OK(conn.Execute("COMMIT"));
-  LOG(INFO) << "Newer rows: " << num_newer_rows
+  LOG(INFO) << "Newer rows: " << kNumNewerRows
             << ", data blocks per search: " << data_blocks_per_search
             << ", time per search: " << search_time;
-  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + num_newer_rows));
+  // A search checks each newer vector, reading about a block per check. Stepping over the newer
+  // entries took over two blocks per check.
+  ASSERT_LT(data_blocks_per_search, 2 * (kNumRows + kNumNewerRows));
 }
 
 TEST_F(PgVectorIndexUtilTest, SearchAtOldReadTime) {
