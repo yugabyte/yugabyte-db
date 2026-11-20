@@ -15,12 +15,18 @@
 #include <sys/socket.h>
 
 #include <atomic>
+#include <cstdint>
+#include <mutex>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/ash/ash_fwd.h"
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/port.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -669,16 +675,40 @@ class ScopedWaitStatus {
   DISALLOW_COPY_AND_ASSIGN(ScopedWaitStatus);
 };
 
-// Used to track wait-states for Flush/Compaction and LocalInboundCalls.
+// One independently lockable group of tracked wait states. Cache-line aligned so that adjacent
+// shards of a WaitStateTracker, which are contended by different threads, do not false-share.
+struct WaitStateTrackerShard {
+  mutable std::mutex mutex;
+  std::unordered_set<yb::ash::WaitStateInfoPtr> entries GUARDED_BY(mutex);
+} CACHELINE_ALIGNED;
+
+// Bounds on the shard count the dynamic scheme will pick for a WaitStateTracker, and the
+// upper bound accepted for an explicit ash_pg_shared_memory_tracker_num_shards override. The cap
+// bounds both the per-tracker footprint (each shard is cache-line aligned) and the cost of the
+// lock-every-shard pass that GetWaitStates() does on every ASH sample.
+constexpr int32_t kMinWaitStateTrackerNumShards = 8;
+constexpr int32_t kMaxWaitStateTrackerNumShards = 128;
+
+// Used to track wait-states for Flush/Compaction and LocalInboundCalls. Entries are spread across
+// num_shards independently locked shards, keyed by a hash of the WaitStateInfo pointer, to reduce
+// Track/Untrack contention on hot trackers. With one shard (the default) this is a plain
+// single-mutex tracker.
 class WaitStateTracker {
  public:
-  void Track(const WaitStateInfoPtr&) EXCLUDES(mutex_);
-  void Untrack(const WaitStateInfoPtr&) EXCLUDES(mutex_);
-  std::vector<yb::ash::WaitStateInfoPtr> GetWaitStates() const EXCLUDES(mutex_);
+  explicit WaitStateTracker(size_t num_shards = 1);
+
+  void Track(const WaitStateInfoPtr&);
+  void Untrack(const WaitStateInfoPtr&);
+  std::vector<yb::ash::WaitStateInfoPtr> GetWaitStates() const;
+
+  // Number of shards holding at least one entry. Lets tests check that the hash actually spreads
+  // entries across shards rather than piling them into a few.
+  size_t TEST_NumNonEmptyShards() const;
 
  private:
-  mutable std::mutex mutex_;
-  std::unordered_set<yb::ash::WaitStateInfoPtr> entries_ GUARDED_BY(mutex_);
+  WaitStateTrackerShard& ShardForPtr(const WaitStateInfoPtr& p);
+
+  std::vector<WaitStateTrackerShard> shards_;
 };
 
 struct WaitStateSnapshot {
