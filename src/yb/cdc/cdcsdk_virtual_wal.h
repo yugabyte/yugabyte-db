@@ -175,6 +175,8 @@ class CDCSDKVirtualWAL {
 
   Status AddEntryForBeginRecord(const RecordInfo& record_id_to_record);
 
+  void MoveAbortedSubtxnsToResponse(RowMessage* row_message, GetConsistentChangesResponsePB* resp);
+
   Status TruncateMetaMap(const uint64_t restart_lsn);
 
   Status UpdateSlotEntryInCDCState(
