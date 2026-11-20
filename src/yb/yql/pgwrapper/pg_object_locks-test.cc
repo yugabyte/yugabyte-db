@@ -2271,7 +2271,9 @@ class PgObjectLocksTestSlowHeartbeat : public PgObjectLocksTestMixModeDuringProm
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgObjectLocksTestMixModeDuringPromotion::UpdateMiniClusterOptions(opts);
     opts->extra_tserver_flags.emplace_back("--heartbeat_interval_ms=3000");
-    opts->extra_tserver_flags.emplace_back("--ysql_separate_ddl_txn_lock_hold_heartbeats=2");
+    // Two heartbeat intervals.
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_separate_ddl_txn_inval_propagation_wait_ms=6000");
   }
 };
 

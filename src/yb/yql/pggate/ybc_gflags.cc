@@ -307,8 +307,8 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
       .ysql_enable_concurrent_ddl = &FLAGS_ysql_enable_concurrent_ddl,
-      .ysql_separate_ddl_txn_lock_hold_heartbeats =
-          &FLAGS_ysql_separate_ddl_txn_lock_hold_heartbeats,
+      .ysql_separate_ddl_txn_inval_propagation_wait_ms =
+          &FLAGS_ysql_separate_ddl_txn_inval_propagation_wait_ms,
       .ysql_yb_enable_ddl_savepoint_support =
           &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_bypass_anonymous_savepoint_ddl_check =
