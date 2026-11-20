@@ -887,9 +887,15 @@ bool ShouldDeleteNonMember(
   }
 
   const auto pending_config_op_id = pending_config_op_id_result.get();
+  // The reported pending config op is known to be resolved if its index is not higher than the
+  // committed config op index known to the master (with the same term): everything up to that index
+  // is committed. Without checking the index, a replica that was added and removed in the same term
+  // before receiving updates from the leader would never be deleted, because it doesn't receive
+  // updates anymore and keeps reporting the pending config op id of its ADD_SERVER.
   const auto reported_config_may_still_be_pending =
       pending_config_op_id.has_value() &&
-      pending_config_op_id->term >= prev_cstate.current_term();
+      pending_config_op_id->term >= prev_cstate.current_term() &&
+      pending_config_op_id->index > prev_opid_index;
   return report_opid_index <= prev_opid_index && !reported_config_may_still_be_pending;
 }
 
