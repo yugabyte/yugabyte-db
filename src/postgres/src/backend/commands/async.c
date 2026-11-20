@@ -1805,7 +1805,7 @@ ybCleanupListenState(BackendId unregisteredBackend)
 		/* Fail the remaining listeners, waiting in ybWaitForNotifsPollerInit. */
 		poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
 		strlcpy(poller_data->error_message,
-				"The LISTEN that was starting it did not complete.",
+				"The LISTEN in another session that was starting it did not complete.",
 				sizeof(poller_data->error_message));
 
 		/*
@@ -3277,9 +3277,10 @@ ybStartNotifsPollerBgWorker(void)
  * Wait for the node's notifications poller to initialize, and fail if it does
  * not. The poller reports how its initialization went in init_status, and so
  * does ybCleanupListenState if the listener that started the poller
- * unregisters before the poller reports. A poller that failed to initialize
- * keeps being restarted until the last listener unregisters and
- * ybCleanupListenState terminates it.
+ * unregisters before the poller reports. A poller that fails to initialize is
+ * restarted until ybCleanupListenState terminates it as the last listener
+ * unregisters. On a first startup that is right away, as every listener is
+ * waiting here and fails with it.
  */
 static void
 ybWaitForNotifsPollerInit(void)
@@ -3312,7 +3313,9 @@ ybWaitForNotifsPollerInit(void)
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("notifications poller background worker "
 							"failed to initialize"),
-					 (error_message[0] ? errdetail("%s", error_message) : 0)));
+					 (error_message[0] ? errdetail("%s", error_message) : 0),
+					 errhint("Retry the LISTEN. If it keeps failing, check the "
+							 "server log.")));
 		}
 
 		/*

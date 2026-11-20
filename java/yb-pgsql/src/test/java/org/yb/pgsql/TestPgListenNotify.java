@@ -534,7 +534,7 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       SQLException[] errors =
           listenWhileFirstListenFails("joined_cancelled", /* cancelFirst */ true);
       assertErrorContains(errors[0], "canceling statement due to user request");
-      assertErrorContains(errors[1], "The LISTEN that was starting it did not complete.");
+      assertErrorContains(errors[1], "that was starting it did not complete.");
     } finally {
       setPollerInitDelay(0, 0);
     }
