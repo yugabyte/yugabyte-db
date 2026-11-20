@@ -84,7 +84,7 @@ public class RemoveTabletServers extends UniverseTaskBase {
   @Override
   public void run() {
     Universe universe = getUniverse();
-    Map<String, Set<String>> pendingIps = getNodeIps(universe);
+    Map<String, Set<String>> pendingIps = mapNodesToIps(universe);
     if (pendingIps.isEmpty()) {
       return;
     }
@@ -129,7 +129,7 @@ public class RemoveTabletServers extends UniverseTaskBase {
    * on-prem nodes whose instance is DECOMMISSIONED: their servers may still run, so they stay
    * blacklisted and registered.
    */
-  private Map<String, Set<String>> getNodeIps(Universe universe) {
+  private Map<String, Set<String>> mapNodesToIps(Universe universe) {
     Map<String, Set<String>> nodeIps = new HashMap<>();
     for (NodeDetails node : taskParams().nodes) {
       try {
@@ -146,12 +146,12 @@ public class RemoveTabletServers extends UniverseTaskBase {
             e.getMessage());
         continue;
       }
-      Set<String> ips = new HashSet<>();
-      ips.add(Util.getNodeIp(universe, node));
-      if (node.cloudInfo != null) {
-        ips.add(node.cloudInfo.secondary_private_ip);
+      Set<String> ips = new HashSet<>(Util.getNodeIps(node));
+      // Falls back to the universe's copy of the node when the given one has no private IP.
+      String privateIp = Util.getNodeIp(universe, node);
+      if (StringUtils.isNotBlank(privateIp)) {
+        ips.add(privateIp);
       }
-      ips.removeIf(StringUtils::isBlank);
       if (!ips.isEmpty()) {
         nodeIps.put(node.getNodeName(), ips);
       }
