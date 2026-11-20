@@ -44,7 +44,7 @@ For more information, refer to [How the connector works](../../../additional-fea
 
 - Kafka environment. This can be a [Self-managed Kafka](../../../additional-features/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as [Confluent Cloud](https://www.confluent.io/confluent-cloud/) or [AWS MSK Connect](https://aws.amazon.com/msk/features/msk-connect/).
 
-- YugabyteDB Connector. Download the latest version of the Connector JAR file from the [YugabyteDB Connector repository](https://github.com/yugabyte/debezium/releases).
+- YugabyteDB Connector. Download the latest version of the Connector JAR file from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
 
 ## Permissions
 
@@ -286,7 +286,7 @@ To stop streaming changes, stop your connector on the client side. You don't nee
 
 To upgrade the YugabyteDB Connector for an existing CDC configuration:
 
-1. Download the latest Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/).
+1. Download the latest Connector JAR file from the [CDC connector releases](/stable/releases/cdc-connector/logical-replication/) page.
 1. Replace the older version with the new JAR file in your Kafka Connect environment.
 
     For example, if you are using Confluent Cloud, upload the new JAR file to the plugin you created.

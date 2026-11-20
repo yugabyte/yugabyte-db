@@ -14,11 +14,11 @@ rightNav:
   hideH4: true
 ---
 
-The YugabyteDB gRPC connector is based on Debezium and is published as a Kafka Connect plugin at [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}}. This page explains how to move an existing gRPC connector deployment to a later version without losing your stream position, and how to handle the cases that need additional steps.
+The YugabyteDB gRPC connector is based on Debezium and is published as a Kafka Connect plugin. JAR downloads and release notes are on the [CDC connector releases](/stable/releases/cdc-connector/grpc/) page. This page explains how to move an existing gRPC connector deployment to a later version without losing your stream position, and how to handle the cases that need additional steps.
 
 ## When to upgrade
 
-Check [yugabyte/debezium-connector-yugabytedb GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) for new versions, and review the release notes as part of planning any YugabyteDB upgrade.
+Check the [CDC connector releases](/stable/releases/cdc-connector/grpc/) page for new versions, and review the release notes as part of planning any YugabyteDB upgrade.
 
 Upgrade the connector:
 
@@ -27,7 +27,7 @@ Upgrade the connector:
 - _On YugabyteDB v2024.2_, if your connector is earlier than `dz.1.9.5.yb.grpc.2024.2.3`, which v2024.2 requires. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 - _When a release fixes a bug or security issue_ that affects your deployment.
 - _When a release adds a feature or improvement_ that you need.
-- _To run on Kafka Connect 4.x_, use connector version [`dz.1.9.5.yb.grpc.2026.1.2.0.2`](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/tag/vdz.1.9.5.yb.grpc.2026.1.2.0.2) or later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
+- _To run on Kafka Connect 4.x_, use connector version [dz.1.9.5.yb.grpc.2026.1.2.0.2](/stable/releases/cdc-connector/grpc/#dz.1.9.5.yb.grpc.2026.1.2.0.2) or later. See [Connector compatibility](../debezium-connector-yugabytedb/#connector-compatibility).
 
 Otherwise, you don't need to upgrade the connector, including when you upgrade YugabyteDB within the same release series.
 
@@ -66,7 +66,7 @@ Expect a small number of duplicate events around the restart; Debezium events ar
 
 1. Record the current connector version, `database.streamid`, the SMT (transforms) configuration, and the full connector configuration. Confirm the connector is healthy and lag is low.
 
-1. Download the new version of the connector JAR file (`debezium-connector-yugabytedb-<version>.jar`) from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases) {{<icon/github>}}.
+1. Download the new version of the connector JAR file (`debezium-connector-yugabytedb-<version>.jar`) from the [CDC connector releases](/stable/releases/cdc-connector/grpc/) page.
 
 1. Stop the Kafka Connect worker gracefully.
 
