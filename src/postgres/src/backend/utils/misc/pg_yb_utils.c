@@ -2746,10 +2746,15 @@ YBClearDdlTransactionState()
 	};
 }
 
+/* Whether YbLockDatabaseForLegacyDdl sent its lock for the current DDL. */
+static bool yb_separate_ddl_holds_database_lock = false;
+
 static void
 YBResetDdlState()
 {
 	YbcStatus	status = NULL;
+
+	yb_separate_ddl_holds_database_lock = false;
 
 	if (ddl_transaction_state.mem_context)
 	{
@@ -2937,11 +2942,13 @@ YbTrackAlteredTableId(Oid relid)
 static void
 YbLockDatabaseForLegacyDdl(void)
 {
+	yb_separate_ddl_holds_database_lock = false;
 	if (YBCIsObjectLockingLatchedForCurrTxn())
 		return;
 
 	LockSharedObject(DatabaseRelationId, MyDatabaseId,
 					 YB_DATABASE_DDL_MODE_LOCK_OBJSUBID, RowExclusiveLock);
+	yb_separate_ddl_holds_database_lock = YbUsingObjectLocksLocally();
 }
 
 /*
@@ -3906,7 +3913,17 @@ YBCommitTransactionContainingDDL()
 		YBC_LOG_INFO("%s: got %d invalidation messages, local catalog version %" PRIu64,
 			 __func__, nmsgs, yb_catalog_cache_version);
 		yb_catalog_prefetch_wave_pending = true;
+
+		/*
+		 * A DDL with global object locks learns of this DDL only through the
+		 * heartbeat. Hold the database lock of YbLockDatabaseForLegacyDdl for
+		 * a heartbeat interval, so that a DDL that waits for it on another
+		 * node sees this DDL's catalog changes once it gets the lock.
+		 */
+		if (yb_separate_ddl_holds_database_lock)
+			pg_usleep(YBGetHeartbeatIntervalMs() * 1000L);
 	}
+	yb_separate_ddl_holds_database_lock = false;
 }
 
 void
