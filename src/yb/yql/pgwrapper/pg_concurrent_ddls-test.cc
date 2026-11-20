@@ -979,12 +979,21 @@ TEST_F(PgConcurrentDDLsTest, YB_DISABLE_TEST_IN_TSAN(NonConcurrentIndexFinalizeA
 }
 
 // A transaction reads an index it created before it commits, i.e. while the index is still
-// BIRTH_TIME_PENDING_DDL_COMMIT (#37091). The parameters are the isolation level and whether the
-// new-relation fastpath applies in transaction blocks: with it, the index (and a table created in
-// the transaction) is written to the regular db; without it, to the intents db.
+// BIRTH_TIME_PENDING_DDL_COMMIT (#37091). The parameters are:
+// - the isolation level;
+// - whether the new-relation fastpath applies in transaction blocks: with it, a table created in
+//   the transaction and its indexes are written to the regular db; without it, to the intents db;
+// - whether the reads are forced into a parallel plan. A read issued by a parallel worker has to
+//   carry the transaction's id too.
+//   TODO(#36825): until parallel workers are launched after a DDL in the transaction, these cases
+//   run their plans in the leader.
+// - whether the database is colocated. There the index is read through a request nested in the
+//   table's, and the new-relation fastpath never applies.
+using PgReadIndexInCreatingTxnTestParam = std::tuple<const char*, bool, bool, bool>;
+
 class PgReadIndexInCreatingTxnTest
     : public PgConcurrentDDLsTest,
-      public ::testing::WithParamInterface<std::tuple<const char*, bool>> {
+      public ::testing::WithParamInterface<PgReadIndexInCreatingTxnTestParam> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     PgConcurrentDDLsTest::UpdateMiniClusterOptions(opts);
@@ -996,16 +1005,28 @@ class PgReadIndexInCreatingTxnTest
 
   void SetUp() override {
     PgConcurrentDDLsTest::SetUp();
-    auto conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", kColocatedDbName));
+    if (IsColocated()) {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE DATABASE $0 WITH colocation = true", kColocatedDbName));
+    }
+  }
+
+  bool IsColocated() const { return std::get<3>(GetParam()); }
+
+  Result<PGConn> ConnectToTestDb() {
+    return ConnectToDB(IsColocated() ? kColocatedDbName : "yugabyte");
   }
 
   // A hang on a pending index is retried until the RPC deadline; fail fast instead.
-  Result<PGConn> ConnectAndBegin(const std::string& db_name = "yugabyte") {
-    auto conn = VERIFY_RESULT(ConnectToDB(db_name));
+  Result<PGConn> ConnectAndBegin() {
+    auto conn = VERIFY_RESULT(ConnectToTestDb());
     RETURN_NOT_OK(conn.ExecuteFormat(
         "SET yb_enable_new_relation_fastpath_write_in_txn_blocks = $0",
         std::get<1>(GetParam()) ? "on" : "off"));
+    if (std::get<2>(GetParam())) {
+      RETURN_NOT_OK(conn.Execute("SET force_parallel_mode = on"));
+    }
     RETURN_NOT_OK(conn.ExecuteFormat(
         "SET statement_timeout = '$0s'", 30 * kTimeMultiplier));
     RETURN_NOT_OK(conn.ExecuteFormat("BEGIN ISOLATION LEVEL $0", std::get<0>(GetParam())));
@@ -1020,13 +1041,13 @@ class PgReadIndexInCreatingTxnTest
     return Status::OK();
   }
 
-  Status TestNewIndexOnExistingTable(const std::string& db_name) {
-    auto setup_conn = VERIFY_RESULT(ConnectToDB(db_name));
+  Status TestNewIndexOnExistingTable() {
+    auto setup_conn = VERIFY_RESULT(ConnectToTestDb());
     RETURN_NOT_OK(setup_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT, w INT)"));
     RETURN_NOT_OK(setup_conn.Execute(
         "INSERT INTO t SELECT g, g % 10, g FROM generate_series(1, 100) g"));
 
-    auto conn = VERIFY_RESULT(ConnectAndBegin(db_name));
+    auto conn = VERIFY_RESULT(ConnectAndBegin());
     RETURN_NOT_OK(conn.Execute("CREATE INDEX t_v ON t (v)"));
     // Index only scan and index scan.
     RETURN_NOT_OK(CheckCount(conn, "SELECT count(*) FROM t WHERE v = 5", 10));
@@ -1044,8 +1065,8 @@ class PgReadIndexInCreatingTxnTest
     return CheckCount(conn, "SELECT count(*) FROM t WHERE v = 5", 11);
   }
 
-  Status TestNewTableWithUniqueConstraint(const std::string& db_name) {
-    auto conn = VERIFY_RESULT(ConnectAndBegin(db_name));
+  Status TestNewTableWithUniqueConstraint() {
+    auto conn = VERIFY_RESULT(ConnectAndBegin());
     RETURN_NOT_OK(conn.Execute("CREATE TABLE p (k INT PRIMARY KEY, u INT UNIQUE)"));
     RETURN_NOT_OK(conn.Execute("INSERT INTO p SELECT g, g FROM generate_series(1, 100) g"));
     RETURN_NOT_OK(conn.Execute("INSERT INTO p VALUES (101, 5) ON CONFLICT (u) DO NOTHING"));
@@ -1057,8 +1078,8 @@ class PgReadIndexInCreatingTxnTest
     // Foreign keys to the new unique constraint, declared with the table and added afterwards.
     // TODO(#38492): in REPEATABLE READ, the foreign key check conflicts with the rows of p that
     // this transaction wrote on the fastpath. Colocated tables don't use the fastpath.
-    const auto [isolation, fastpath] = GetParam();
-    if (!(fastpath && isolation == "REPEATABLE READ"s && db_name != kColocatedDbName)) {
+    const auto [isolation, fastpath, parallel, colocated] = GetParam();
+    if (!(fastpath && isolation == "REPEATABLE READ"s && !colocated)) {
       RETURN_NOT_OK(conn.Execute("CREATE TABLE c1 (k INT PRIMARY KEY, u INT REFERENCES p (u))"));
       RETURN_NOT_OK(conn.Execute("INSERT INTO c1 VALUES (1, 5), (2, 1000)"));
       RETURN_NOT_OK(conn.Execute("CREATE TABLE c2 (k INT PRIMARY KEY, u INT)"));
@@ -1071,8 +1092,8 @@ class PgReadIndexInCreatingTxnTest
   }
 
   // Statements that give an existing table new index storage in the transaction.
-  Status TestRewrites(const std::string& db_name) {
-    auto setup_conn = VERIFY_RESULT(ConnectToDB(db_name));
+  Status TestRewrites() {
+    auto setup_conn = VERIFY_RESULT(ConnectToTestDb());
     RETURN_NOT_OK(setup_conn.Execute("CREATE TABLE r1 (k INT PRIMARY KEY, v INT)"));
     RETURN_NOT_OK(setup_conn.Execute("CREATE INDEX r1_v ON r1 (v)"));
     RETURN_NOT_OK(setup_conn.Execute("INSERT INTO r1 SELECT g, g FROM generate_series(1, 10) g"));
@@ -1080,7 +1101,7 @@ class PgReadIndexInCreatingTxnTest
     RETURN_NOT_OK(setup_conn.Execute("CREATE INDEX r2_v ON r2 (v)"));
     RETURN_NOT_OK(setup_conn.Execute("INSERT INTO r2 SELECT g, g FROM generate_series(1, 10) g"));
 
-    auto conn = VERIFY_RESULT(ConnectAndBegin(db_name));
+    auto conn = VERIFY_RESULT(ConnectAndBegin());
     RETURN_NOT_OK(conn.Execute("TRUNCATE r1"));
     RETURN_NOT_OK(conn.Execute("INSERT INTO r1 SELECT g, g FROM generate_series(1, 5) g"));
     RETURN_NOT_OK(CheckCount(conn, "SELECT count(*) FROM r1 WHERE v IN (1, 2, 30)", 2));
@@ -1091,35 +1112,48 @@ class PgReadIndexInCreatingTxnTest
   }
 };
 
+namespace {
+
+const auto kReadIndexInCreatingTxnIsolationLevels =
+    ::testing::Values("READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE");
+
+std::string ReadIndexInCreatingTxnTestName(
+    const ::testing::TestParamInfo<PgReadIndexInCreatingTxnTestParam>& info) {
+  const auto& [isolation_level, fastpath, parallel, colocated] = info.param;
+  const std::string isolation = isolation_level;
+  return Format(
+      "$0_$1$2",
+      isolation == "READ COMMITTED" ? "RC" : isolation == "REPEATABLE READ" ? "RR" : "SR",
+      fastpath ? "Fastpath" : "NoFastpath", parallel ? "_Parallel" : "");
+}
+
+}  // namespace
+
 INSTANTIATE_TEST_SUITE_P(
     , PgReadIndexInCreatingTxnTest,
     ::testing::Combine(
-        ::testing::Values("READ COMMITTED", "REPEATABLE READ", "SERIALIZABLE"),
-        ::testing::Bool()),
-    [](const ::testing::TestParamInfo<std::tuple<const char*, bool>>& info) {
-      const std::string isolation = std::get<0>(info.param);
-      return Format(
-          "$0_$1",
-          isolation == "READ COMMITTED" ? "RC" : isolation == "REPEATABLE READ" ? "RR" : "SR",
-          std::get<1>(info.param) ? "Fastpath" : "NoFastpath");
-    });
+        kReadIndexInCreatingTxnIsolationLevels, ::testing::Bool(), ::testing::Bool(),
+        ::testing::Values(false)),
+    ReadIndexInCreatingTxnTestName);
+
+// The fastpath setting makes no difference in a colocated database, so it is left at its default.
+INSTANTIATE_TEST_SUITE_P(
+    Colocated, PgReadIndexInCreatingTxnTest,
+    ::testing::Combine(
+        kReadIndexInCreatingTxnIsolationLevels, ::testing::Values(true), ::testing::Bool(),
+        ::testing::Values(true)),
+    ReadIndexInCreatingTxnTestName);
 
 TEST_P(PgReadIndexInCreatingTxnTest, YB_DISABLE_TEST_IN_TSAN(NewIndexOnExistingTable)) {
-  ASSERT_OK(TestNewIndexOnExistingTable("yugabyte"));
+  ASSERT_OK(TestNewIndexOnExistingTable());
 }
 
 TEST_P(PgReadIndexInCreatingTxnTest, YB_DISABLE_TEST_IN_TSAN(NewTableWithUniqueConstraint)) {
-  ASSERT_OK(TestNewTableWithUniqueConstraint("yugabyte"));
+  ASSERT_OK(TestNewTableWithUniqueConstraint());
 }
 
 TEST_P(PgReadIndexInCreatingTxnTest, YB_DISABLE_TEST_IN_TSAN(Rewrites)) {
-  ASSERT_OK(TestRewrites("yugabyte"));
-}
-
-TEST_P(PgReadIndexInCreatingTxnTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
-  ASSERT_OK(TestNewIndexOnExistingTable(kColocatedDbName));
-  ASSERT_OK(TestNewTableWithUniqueConstraint(kColocatedDbName));
-  ASSERT_OK(TestRewrites(kColocatedDbName));
+  ASSERT_OK(TestRewrites());
 }
 
 }  // namespace yb::pgwrapper
