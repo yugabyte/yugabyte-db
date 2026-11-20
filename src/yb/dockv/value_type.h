@@ -202,6 +202,8 @@ namespace yb::dockv {
     \
     ((kUuid, '_')) /* ASCII code 95 */ \
     \
+    /* YSQL command id of the statement that wrote an intent, see KeyValuePairPB::command_id. */ \
+    ((kCommandId, 'c'))  /* ASCII code 99 */ \
     /* Indicator for whether an intent is for a row lock. */ \
     ((kRowLock, 'l'))  /* ASCII code 108 */ \
     ((kSubTransactionId, 'n')) /* ASCII code 110 */ \

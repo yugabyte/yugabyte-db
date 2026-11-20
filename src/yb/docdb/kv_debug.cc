@@ -208,6 +208,14 @@ Result<std::string> DocDBValueToDebugStrInternal(
       value_slice.remove_prefix(sizeof(SubTransactionId));
       prefix += Format("SubTransactionId($0) ", subtransaction_id);
     }
+    if (value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kCommandId)) {
+      if (value_slice.size() < sizeof(uint32_t)) {
+        return STATUS_FORMAT(Corruption, "Not enough bytes for command id: $0", value_slice.size());
+      }
+      auto command_id = BigEndian::Load32(value_slice.data());
+      value_slice.remove_prefix(sizeof(command_id));
+      prefix += Format("CommandId($0) ", command_id);
+    }
     if (!value_slice.empty()) {
       RETURN_NOT_OK(value_slice.consume_byte(dockv::ValueEntryTypeAsChar::kWriteId));
       if (value_slice.size() < sizeof(IntraTxnWriteId)) {
