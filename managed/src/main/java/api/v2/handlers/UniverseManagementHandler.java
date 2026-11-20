@@ -358,6 +358,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             .findAny()
             .orElse(null);
     universeEditSpec = inheritFromPrimaryBeforeMapping(universeEditSpec, primaryV2Cluster);
+
     boolean isRREdited =
         universeEditSpec.getClusters().stream()
             .filter(c -> !c.getUuid().equals(primaryV2Cluster.getUuid()))
@@ -370,17 +371,30 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+
+    Set<UUID> editedNodesClusterUUIDs = universeEditSpec.getClusters().stream()
+        .filter(c -> c.getNodeSpec() != null)
+        .map(c -> c.getUuid())
+        .collect(Collectors.toSet());
+
     for (Cluster cluster : v1Params.clusters) {
       // Since in V2 API is based on partial updates,
       // we cannot detect the case when these fields are removed (during dedicated mode switch)
       // Keeping these fields will lead to error in validation.
       clearNonDedicatedFields(cluster.userIntent);
+
+      // Before we completely replace instance type with resourceSpec for k8s,
+      // initializing missing tserver/master resource specs from respective instanceType.
+      // Explicitly requested specs and specs of clusters not changed by the request are kept as is
+      // (the mapper clears them when the node spec is passed without them).
+      if (editedNodesClusterUUIDs.contains(cluster.uuid)) {
+        KubernetesUtil.initializeK8sNodeResourceSpecsFromInstanceType(
+            cluster.clusterType,
+            cluster.userIntent,
+            false, /* overwrite */
+            confGetter);
+      }
     }
-    // Before we completely replace instance type with resourceSpec for k8s,
-    // initializing missing tserver/master resource specs from respective instanceType.
-    // Explicitly requested specs and specs of clusters not changed by the request are kept as is
-    // (the mapper clears them when the node spec is passed without them).
-    KubernetesUtil.fillMissingK8sNodeResourceSpecsFromInstanceType(v1Params, confGetter);
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec

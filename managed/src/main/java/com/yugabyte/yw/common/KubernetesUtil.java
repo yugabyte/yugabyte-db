@@ -1976,8 +1976,8 @@ public class KubernetesUtil {
   }
 
   /**
-   * Same as {@link #initializeK8sNodeResourceSpecsFromInstanceType(UniverseDefinitionTaskParams)},
-   * but keeps specs that are already set, so explicitly requested specs are not replaced.
+   * Sets k8s resource specs of every cluster with unset properties, so explicitly requested specs
+   * are not replaced.
    */
   public static void fillMissingK8sNodeResourceSpecsFromInstanceType(
       UniverseDefinitionTaskParams taskParams, RuntimeConfGetter runtimeConfGetter) {
@@ -2012,7 +2012,7 @@ public class KubernetesUtil {
         clusterType, userIntent, false /* overwrite */, runtimeConfGetter);
   }
 
-  private static void initializeK8sNodeResourceSpecsFromInstanceType(
+  public static void initializeK8sNodeResourceSpecsFromInstanceType(
       ClusterType clusterType,
       UserIntent userIntent,
       boolean overwrite,
