@@ -2339,6 +2339,12 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitHoldsNoDatabaseLoc
   auto index_future = std::async(std::launch::async, [&index_conn]() {
     return index_conn.Execute("CREATE INDEX t_v ON t(v)");
   });
+  // Unpause on early failure, or index_future's destructor waits for the paused CREATE INDEX.
+  auto unpause = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"),
+        "Failed to unpause CREATE INDEX");
+  });
   ASSERT_OK(pause_log.WaitFor(30s * kTimeMultiplier));
 
   // A wait would show as a statement timeout.
@@ -2372,6 +2378,12 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexAndDdlHolderDeadlockIs
   ASSERT_OK(index_conn.ExecuteFormat("SET statement_timeout = '$0s'", 60 * kTimeMultiplier));
   auto index_future = std::async(std::launch::async, [&index_conn]() {
     return index_conn.Execute("CREATE INDEX t_v ON t(v)");
+  });
+  // Unpause on early failure, or index_future's destructor waits for the paused CREATE INDEX.
+  auto unpause = ScopeExit([this] {
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("TEST_pause_wait_for_lockers", "false"),
+        "Failed to unpause CREATE INDEX");
   });
   ASSERT_OK(pause_log.WaitFor(30s * kTimeMultiplier));
 

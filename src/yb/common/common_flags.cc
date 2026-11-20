@@ -293,7 +293,8 @@ DEFINE_NON_RUNTIME_bool(enable_object_lock_fastpath, !yb::kIsMac,
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_concurrent_ddl, true,
     "When true, DDLs with global object locks in the same database run concurrently, as allowed "
-    "by object locks. When false, they run one at a time.");
+    "by object locks. When false, those that increment the catalog version run one at a time. "
+    "Set the same value on every tserver: a DDL on a tserver where it is true does not wait.");
 
 DEFINE_validator(enable_object_locking_for_table_locks,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled),
