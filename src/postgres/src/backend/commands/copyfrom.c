@@ -1014,7 +1014,7 @@ yb_process_more_batches:
 
 	/*
 	 * Warn if non-txn COPY enabled and relation does not meet non-txn
-	 * criteria.
+	 * criteria.  YB: once per COPY, not once per batch.
 	 */
 	if (YBIsNonTxnCopyEnabled() && !useNonTxnInsert && !cstate->yb_loaded_a_batch)
 		ereport(WARNING,
@@ -1026,7 +1026,7 @@ yb_process_more_batches:
 
 	has_more_tuples = true;
 
-	/* Skip num_initial_skipped_rows. */
+	/* Skip num_initial_skipped_rows.  YB: in the first batch only. */
 	for (uint64 i = 0;
 		 !cstate->yb_loaded_a_batch && i < cstate->opts.num_initial_skipped_rows;
 		 i++)

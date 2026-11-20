@@ -56,6 +56,16 @@ typedef enum CopyInsertMethod
 /*
  * This struct contains all the state variables used throughout a COPY FROM
  * operation.
+ *
+ * YB: A batched COPY (opts.batch_size > 0) loads one batch per pass through
+ * CopyFrom.  A pass ends like a COPY; if input is left, the batch is
+ * committed and the next pass starts again from the top of CopyFrom, which
+ * resets its local variables.  The yb_ fields carry what must survive that:
+ * yb_more_batches is set when a pass ends with input left, and starts the
+ * next pass; yb_loaded_a_batch is set from the second pass on, so that work
+ * done once per COPY (skipping the initial rows, the non-transactional COPY
+ * warning) is not repeated; yb_processed and yb_excluded hold the row counts
+ * of the passes before.
  */
 typedef struct CopyFromStateData
 {
@@ -170,10 +180,10 @@ typedef struct CopyFromStateData
 	uint64		bytes_processed;	/* number of bytes processed so far */
 
 	/* YB fields */
-	bool		yb_more_batches;	/* input left after this batch? */
-	bool		yb_loaded_a_batch;	/* is this a later batch? */
-	int64		yb_processed;	/* rows loaded by earlier batches */
-	int64		yb_excluded;	/* rows excluded by earlier batches */
+	bool		yb_more_batches;
+	bool		yb_loaded_a_batch;
+	int64		yb_processed;
+	int64		yb_excluded;
 } CopyFromStateData;
 
 extern void ReceiveCopyBegin(CopyFromState cstate);
