@@ -19,6 +19,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -93,5 +94,27 @@ public class TestConnMgrTlsReadahead extends BaseYsqlConnMgr {
           .query("SELECT '" + literal + "'").row(literal)
           .run();
     }
+  }
+
+  /**
+   * TestProtocolEdgeCases#testNoBusyLoopWhilePausedAfterSync over TLS. OpenSSL pulls one record
+   * (at most 16 KB) off the socket per read, so a 64 KB Query leaves the records after the first
+   * on the socket while the client is paused after its Sync.
+   */
+  @Test
+  public void testNoBusyLoopWhilePausedAfterSyncWithSsl() throws Exception {
+    assertNoBusyLoopWhilePausedAfterSync(rawConnBuilder().ssl(), 65536);
+  }
+
+  /**
+   * TestProtocolEdgeCases#testDisconnectWithFullReadaheadWhilePausedAfterSync over TLS, with a
+   * 64 KB Query so that TLS records stay on the socket ahead of the client's FIN.
+   */
+  @Test
+  public void testDisconnectWithFullReadaheadWhilePausedAfterSyncWithSsl() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
+    tserverFlags.put("ysql_conn_mgr_wait_timeout_ms", "2000");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+    assertDisconnectWhilePausedAfterSyncCancelsStatement(rawConnBuilder().ssl(), 65536);
   }
 }

@@ -16,6 +16,7 @@ package org.yb.ysqlconnmgr;
 import static com.google.common.base.Preconditions.checkArgument;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.fail;
@@ -27,11 +28,15 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -863,6 +868,122 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         String.format("ps -p %d -o rss=", pid));
     try (Scanner scanner = new Scanner(process.getInputStream())) {
       return scanner.nextLong();
+    }
+  }
+
+  /** User plus system CPU time used so far by the process, in seconds. Linux only. */
+  protected static double getCpuSecondsForPid(int pid) throws Exception {
+    String stat = new String(Files.readAllBytes(Paths.get("/proc/" + pid + "/stat")),
+        StandardCharsets.UTF_8);
+    // The fields after "(comm) " start at field 3, so utime and stime (fields 14 and 15, in
+    // USER_HZ ticks of 1/100 s) are at indexes 11 and 12.
+    String[] fields = stat.substring(stat.lastIndexOf(')') + 2).split(" ");
+    return (Long.parseLong(fields[11]) + Long.parseLong(fields[12])) / 100.0;
+  }
+
+  /**
+   * Sends Parse/Bind/Execute/Sync for a slow statement followed by a Query of about tailBytes,
+   * and checks that Odyssey stays idle while the client is paused on the Sync. The Query does
+   * not fit in the readahead, so most of it waits on the client socket during the pause. The
+   * Query goes once in the same write as the Sync, and once in a second write sent after the
+   * pause has started.
+   */
+  protected void assertNoBusyLoopWhilePausedAfterSync(WireConn.Builder builder, int tailBytes)
+      throws Exception {
+    for (boolean secondWrite : new boolean[] {false, true}) {
+      assertNoBusyLoopWhilePausedAfterSync(builder, tailBytes, secondWrite);
+    }
+  }
+
+  private void assertNoBusyLoopWhilePausedAfterSync(
+      WireConn.Builder builder, int tailBytes, boolean secondWrite) throws Exception {
+    final int sleepSec = 4;
+    String literal = String.join("", Collections.nCopies(tailBytes, "a"));
+    ByteArrayOutputStream head = new ByteArrayOutputStream();
+    head.write(PgWireProtocol.buildParse("SELECT pg_sleep(" + sleepSec + ")"));
+    head.write(PgWireProtocol.buildBind());
+    head.write(PgWireProtocol.buildExecute());
+    head.write(PgWireProtocol.buildSync());
+    byte[] tail = PgWireProtocol.buildQuery("SELECT '" + literal + "'");
+    int odysseyPid = getOdysseyPidForHost(
+        miniCluster.getYsqlConnMgrContactPoints().get(0).getHostString());
+    try (WireConn conn = builder.socketTimeoutMs(30000).connect()) {
+      double cpuBefore = getCpuSecondsForPid(odysseyPid);
+      if (secondWrite) {
+        conn.sendRaw(head.toByteArray());
+        Thread.sleep(1000);
+        conn.sendRaw(tail);
+      } else {
+        head.write(tail);
+        conn.sendRaw(head.toByteArray());
+      }
+      int readyForQuery = 0;
+      List<String> lastRow = null;
+      while (readyForQuery < 2) {
+        PgWireProtocol.PgMessage msg = conn.readMessage();
+        if (msg.type == PgWireProtocol.BE_ERROR_RESPONSE) {
+          fail("Unexpected error: " + ErrorResponse.parse(msg.body));
+        } else if (msg.type == PgWireProtocol.BE_DATA_ROW) {
+          lastRow = PgWireProtocol.parseDataRow(msg.body);
+        } else if (msg.type == PgWireProtocol.BE_READY_FOR_QUERY) {
+          readyForQuery++;
+        }
+      }
+      assertEquals(Collections.singletonList(literal), lastRow);
+      double cpuUsed = getCpuSecondsForPid(odysseyPid) - cpuBefore;
+      // A busy loop burns about one core for the whole sleep; an idle wait takes milliseconds.
+      double limit = sleepSec / 4.0;
+      String msg = String.format(
+          "Odyssey used %.2f s of CPU during a %d s statement with the client paused after its"
+          + " Sync, Query sent %s (limit %.2f s)", cpuUsed, sleepSec,
+          secondWrite ? "in a second write" : "with the Sync", limit);
+      LOG.info(msg);
+      assertLessThan(msg, cpuUsed, limit);
+    }
+  }
+
+  /**
+   * A client sends Parse/Bind/Execute/Sync for a 60 s sleep, followed by a Query of tailBytes
+   * characters when tailBytes is above 0, and goes away while conn mgr has it paused on the Sync:
+   * once with a FIN and once with a RST. Each time, conn mgr must notice, cancel the sleep and give
+   * the backend to the next client within seconds, however much of the Query is still unread.
+   * Expects a cluster with SINGLE_BACKEND_FLAGS and ysql_conn_mgr_wait_timeout_ms of 2000.
+   */
+  protected void assertDisconnectWhilePausedAfterSyncCancelsStatement(
+      WireConn.Builder builder, int tailBytes) throws Exception {
+    for (boolean reset : new boolean[] {false, true}) {
+      ByteArrayOutputStream buf = new ByteArrayOutputStream();
+      buf.write(PgWireProtocol.buildParse("SELECT pg_sleep(60)"));
+      buf.write(PgWireProtocol.buildBind());
+      buf.write(PgWireProtocol.buildExecute());
+      buf.write(PgWireProtocol.buildSync());
+      if (tailBytes > 0) {
+        String literal = String.join("", Collections.nCopies(tailBytes, "a"));
+        buf.write(PgWireProtocol.buildQuery("SELECT '" + literal + "'"));
+      }
+      long startMs;
+      try (WireConn conn = builder.connect()) {
+        conn.sendRaw(buf.toByteArray());
+        Thread.sleep(1000);
+        // Over TLS, close() can block until conn mgr closes its side, so time from here.
+        startMs = System.currentTimeMillis();
+        if (reset) {
+          conn.resetAbruptly();
+        } else {
+          conn.closeAbruptly();
+        }
+      }
+
+      try (WireConn conn = builder.socketTimeoutMs(30000).connect()) {
+        conn.createPipeline().query("SELECT 1").row("1").run();
+      }
+      long elapsedMs = System.currentTimeMillis() - startMs;
+      String msg = String.format(
+          "The next client got the backend %d ms after a client closed its socket with a"
+          + " %s while paused after its Sync, with a %d byte Query after the Sync",
+          elapsedMs, reset ? "RST" : "FIN", tailBytes);
+      LOG.info(msg);
+      assertLessThan(msg, elapsedMs, 20000L);
     }
   }
 

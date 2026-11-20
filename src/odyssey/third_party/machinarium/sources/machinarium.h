@@ -280,6 +280,7 @@ MACHINE_API int machine_read_active(machine_io_t *);
 MACHINE_API int machine_read_start(machine_io_t *, machine_cond_t *);
 
 MACHINE_API int machine_read_stop(machine_io_t *);
+MACHINE_API int yb_machine_read_hangup_start(machine_io_t *, machine_cond_t *);
 
 MACHINE_API ssize_t machine_read_raw(machine_io_t *, void *, size_t);
 

@@ -91,6 +91,35 @@ MACHINE_API int machine_read_stop(machine_io_t *obj)
 	return mm_read_stop(io);
 }
 
+/*
+ * YB: Stop reading the io but keep watching it for the peer's hangup, which
+ * signals on_read. machine_read_start() and machine_read_stop() end the watch.
+ */
+MACHINE_API int yb_machine_read_hangup_start(machine_io_t *obj,
+					     machine_cond_t *on_read)
+{
+	mm_io_t *io = mm_cast(mm_io_t *, obj);
+	mm_errno_set(0);
+	if (mm_call_is_active(&io->call)) {
+		mm_errno_set(EINPROGRESS);
+		return -1;
+	}
+	if (!io->attached) {
+		mm_errno_set(ENOTCONN);
+		return -1;
+	}
+	io->on_read = on_read;
+	int rc;
+	rc = yb_mm_loop_read_hangup(&mm_self->loop, &io->handle, mm_read_cb,
+				    io);
+	if (rc == -1) {
+		io->on_read = NULL;
+		mm_errno_set(errno);
+		return -1;
+	}
+	return 0;
+}
+
 MACHINE_API int yb_machine_tls_read_pending(machine_io_t *obj)
 {
 	return yb_mm_tls_read_pending(mm_cast(mm_io_t *, obj));

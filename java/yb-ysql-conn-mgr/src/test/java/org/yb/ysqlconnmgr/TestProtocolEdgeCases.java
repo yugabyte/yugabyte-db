@@ -139,6 +139,44 @@ public class TestProtocolEdgeCases extends BaseYsqlConnMgr {
         }
     }
 
+    // ConnMgr stops reading a client after its Sync until the backend's ReadyForQuery. Writing
+    // that Sync to the server must not start the client read again: with the readahead full and
+    // more client bytes on the socket, level-triggered epoll would wake the client coroutine in a
+    // busy loop for as long as the statement before the Sync runs.
+    @Test
+    public void testNoBusyLoopWhilePausedAfterSync() throws Exception {
+        restartClusterWithAdditionalFlags(Collections.emptyMap(),
+            Collections.singletonMap("ysql_conn_mgr_readahead_buffer_size", "64"));
+        assertNoBusyLoopWhilePausedAfterSync(rawConnBuilder(), 4096);
+    }
+
+    // A client that goes away while it is paused after its Sync must be noticed, so its cleanup
+    // cancels the running statement and returns the only backend to the pool, instead of leaving
+    // the statement running with nobody listening until it ends.
+    @Test
+    public void testDisconnectWhilePausedAfterSync() throws Exception {
+        restartClusterWithAdditionalFlags(Collections.emptyMap(), pausedDisconnectFlags());
+        assertDisconnectWhilePausedAfterSyncCancelsStatement(rawConnBuilder(), 0);
+    }
+
+    // As above, with more client bytes after the Sync than the readahead holds. Conn mgr does not
+    // read them during the pause, so the client's FIN waits behind them on the socket; conn mgr
+    // must still notice the hangup.
+    @Test
+    public void testDisconnectWithFullReadaheadWhilePausedAfterSync() throws Exception {
+        Map<String, String> tserverFlags = pausedDisconnectFlags();
+        tserverFlags.put("ysql_conn_mgr_readahead_buffer_size", "64");
+        restartClusterWithAdditionalFlags(Collections.emptyMap(), tserverFlags);
+        assertDisconnectWhilePausedAfterSyncCancelsStatement(rawConnBuilder(), 4096);
+    }
+
+    private static Map<String, String> pausedDisconnectFlags() {
+        Map<String, String> tserverFlags = new HashMap<>(SINGLE_BACKEND_FLAGS);
+        // How long the client's cleanup waits for the statement before cancelling it.
+        tserverFlags.put("ysql_conn_mgr_wait_timeout_ms", "2000");
+        return tserverFlags;
+    }
+
     // A client disconnects mid-Query on a backend holding more prepared statements than
     // ysql_conn_mgr_max_prepared_statements.
     // 1. BEGIN keeps the client attached, so no detach-time reset evicts s1/s2 before the

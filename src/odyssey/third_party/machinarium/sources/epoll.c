@@ -66,6 +66,12 @@ static inline int mm_epoll_is_read_event(const struct epoll_event *ev)
 	return ev->events & EPOLLIN;
 }
 
+/* YB: the peer closed or reset the connection */
+static inline int yb_mm_epoll_is_hangup_event(const struct epoll_event *ev)
+{
+	return ev->events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR);
+}
+
 static inline int mm_epoll_is_write_event(const struct epoll_event *ev)
 {
 	return ev->events & EPOLLOUT || ev->events & EPOLLERR ||
@@ -86,7 +92,9 @@ static int mm_epoll_step(mm_poll_t *poll, int timeout)
 		struct epoll_event *ev = &epoll->list[i];
 		mm_fd_t *fd = ev->data.ptr;
 
-		if (mm_epoll_is_read_event(ev) && (fd->mask & MM_R)) {
+		if ((mm_epoll_is_read_event(ev) && (fd->mask & MM_R)) ||
+		    (yb_mm_epoll_is_hangup_event(ev) &&
+		     (fd->mask & MM_RDHUP))) {
 			assert(fd->on_read);
 			fd->on_read(fd);
 		}
@@ -112,6 +120,8 @@ static inline int mm_epoll_modify(mm_poll_t *poll, mm_fd_t *fd, int mask)
 	ev.events = 0;
 	if (mask & MM_R)
 		ev.events |= EPOLLIN;
+	if (mask & MM_RDHUP)
+		ev.events |= EPOLLRDHUP;
 	if (mask & MM_W)
 		ev.events |= EPOLLOUT;
 	ev.data.ptr = fd;
@@ -153,7 +163,8 @@ static int mm_epoll_add(mm_poll_t *poll, mm_fd_t *fd, int mask)
 static int mm_epoll_read(mm_poll_t *poll, mm_fd_t *fd, mm_fd_callback_t on_read,
 			 void *arg, int enable)
 {
-	int mask = fd->mask;
+	/* YB: a read replaces a hangup watch, and stopping it stops both */
+	int mask = fd->mask & ~MM_RDHUP;
 	if (enable)
 		mask |= MM_R;
 	else
@@ -183,7 +194,8 @@ static int mm_epoll_write(mm_poll_t *poll, mm_fd_t *fd,
 static int mm_epoll_read_write(mm_poll_t *poll, mm_fd_t *fd,
 			       mm_fd_callback_t on_event, void *arg, int enable)
 {
-	int mask = fd->mask;
+	/* YB: clear a hangup watch too, so mm_epoll_del() removes the fd */
+	int mask = fd->mask & ~MM_RDHUP;
 	if (enable)
 		mask |= MM_W | MM_R;
 	else
@@ -191,6 +203,23 @@ static int mm_epoll_read_write(mm_poll_t *poll, mm_fd_t *fd,
 	fd->on_write = on_event;
 	fd->on_write_arg = arg;
 	fd->on_read = on_event;
+	fd->on_read_arg = arg;
+	if (mask == fd->mask)
+		return 0;
+	return mm_epoll_modify(poll, fd, mask);
+}
+
+/*
+ * YB: Watch the fd only for the peer's hangup, in place of a read. Data
+ * waiting on the socket does not wake the reader, so a reader that cannot
+ * take more data still learns at once that the peer went away, even with
+ * unread data queued ahead of its FIN.
+ */
+static int yb_mm_epoll_read_hangup(mm_poll_t *poll, mm_fd_t *fd,
+				   mm_fd_callback_t on_read, void *arg)
+{
+	int mask = (fd->mask & ~MM_R) | MM_RDHUP;
+	fd->on_read = on_read;
 	fd->on_read_arg = arg;
 	if (mask == fd->mask)
 		return 0;
@@ -211,4 +240,5 @@ mm_pollif_t mm_epoll_if = { .name = "epoll",
 			    .read = mm_epoll_read,
 			    .write = mm_epoll_write,
 			    .read_write = mm_epoll_read_write,
+			    .yb_read_hangup = yb_mm_epoll_read_hangup,
 			    .del = mm_epoll_del };

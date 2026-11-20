@@ -116,6 +116,12 @@ static inline int od_io_read_stop(od_io_t *io)
 	return machine_read_stop(io->io);
 }
 
+/* YB: stop reading the io but wake on_read if the peer hangs up */
+static inline int yb_od_io_read_hangup_start(od_io_t *io)
+{
+	return yb_machine_read_hangup_start(io->io, io->on_read);
+}
+
 static inline int od_io_write_start(od_io_t *io)
 {
 	return machine_write_start(io->io, io->on_write);
