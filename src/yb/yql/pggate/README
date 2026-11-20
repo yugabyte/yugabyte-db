@@ -42,17 +42,20 @@ write from a previous SQL statement that a read is supposed to see, should have 
 in_txn_limit is picked; so that the write timestamp of that write is lower than the in_txn_limit of
 the read. (See PgSession::RunHelper::Apply() where this is ensured)
 
-TODO: the in_txn_limit for reads is picked on the first read operation/ first non-buffered write
+The in_txn_limit for reads is picked on the first read operation/ first non-buffered write
 operation of the SQL statement. However, there could be some buffered write operations as part of
-the same SQL statmeent before the first read op and hence they become visible to the reads of the
-statement.
+the same SQL statement before the first read op, and they would be visible to the reads of the
+statement (#10142).
 
-This causes bug #10142 (as commented out in the yb_query_consistent_snapshot regress test) as
-follows: the buffered write ops due to the INSERT are done first. And the in_txn_limit_ht for reads
-for the SQL statement is picked later. This causes the SELECT to see the writes from the INSERT.
-
-Fixing this bug is not easy because RI_FKey_restrict_upd() requires that the read op sees the write
-done as part of the same SQL statement.
+So with ysql_yb_enable_command_id_infra, YSQL also identifies statements the way PostgreSQL does,
+by command id. Each write records the current PG command id in its intents, and each read of an
+executor or a catalog scan sends its snapshot's command id (PgsqlReadRequestPB::read_command_id).
+An intent of the reading transaction that records a command id is then visible exactly when that
+id is lower than the read's, regardless of the in_txn_limit, which only applies to intents written
+without a command id and to reads that send none. Reads that need to see the writes of their own
+statement, such as unique and foreign key checks, send no command id. Requirement (1) then needs
+only that the writes of earlier statements have completed before a read of the same table runs,
+which the flush on a table conflict in PgSession::RunHelper ensures.
 
 2)
 

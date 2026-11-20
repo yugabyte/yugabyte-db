@@ -459,14 +459,14 @@ create or replace function max_xacttest() returns smallint language sql as
 'select max(a) from xacttest' stable;
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest; -- YB: TODO(#22947): fix output
+select * from xacttest;
   a  |    b    
 -----+---------
    0 | 0.09561
  787 |     7.8
- 797 |  99.097
- 807 |  324.78
- 817 | 777.777
+ 787 |  99.097
+ 787 |  324.78
+ 787 | 777.777
 (5 rows)
 
 rollback;
@@ -491,14 +491,14 @@ create or replace function max_xacttest() returns smallint language plpgsql as
 'begin return max(a) from xacttest; end' stable;
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest; -- YB: TODO(#22947): fix output
+select * from xacttest;
   a  |    b    
 -----+---------
    0 | 0.09561
  787 |     7.8
- 797 |  99.097
- 807 |  324.78
- 817 | 777.777
+ 787 |  99.097
+ 787 |  324.78
+ 787 | 777.777
 (5 rows)
 
 rollback;
