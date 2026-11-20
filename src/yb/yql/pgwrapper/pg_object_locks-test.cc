@@ -2352,9 +2352,7 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexWaitHoldsNoDatabaseLoc
 
 // With ysql_enable_concurrent_ddl off, a DDL transaction holds the database DDL lock and then waits
 // on t, which a CREATE INDEX holds across its phases. The later phases take no database lock, so
-// the CREATE INDEX finishes and the DDL then goes on. A phase that waited on the database lock
-// would block both: the CREATE INDEX's lock on t belongs to the session's transaction and the
-// phase's wait to the phase's, so the deadlock detector would not see the cycle.
+// the CREATE INDEX finishes and the DDL then goes on.
 TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexLaterPhasesDoNotWaitForDatabaseLock) {
   auto* ts1 = cluster_->tablet_server(0);
   auto* ts2 = cluster_->tablet_server(1);
