@@ -31,7 +31,7 @@ Retaining resources has an impact on the system. Clients are expected to consume
 
 Use the [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) and [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-tserver/#cdc-wal-retention-time-secs) flags to control the duration for which resources are retained.
 
-`cdc_intent_retention_ms` must be no larger than `cdc_wal_retention_time_secs` * 1000. Equal values are valid, and the defaults (8 hours) are equal. Change the two flags together so intent retention never exceeds WAL retention. YB-Master and YB-TServer both check the constraint at startup. A process whose flags break it doesn't start, and the log reports `Must be less than cdc_wal_retention_time_secs * 1000` or `Must be greater than cdc_intent_retention_ms (in seconds)`, depending on which flag is out of range. An equal value is accepted.
+`cdc_intent_retention_ms` must be no larger than `cdc_wal_retention_time_secs` * 1000. Equal values are valid, and the defaults (8 hours) are equal. Change the two flags together so intent retention never exceeds WAL retention. YB-Master and YB-TServer don't start when their flags violate this constraint, and the log reports `Must be less than cdc_wal_retention_time_secs * 1000` or `Must be greater than cdc_intent_retention_ms (in seconds)`, depending on which flag is out of range. An equal value is accepted.
 
 Resources are retained for each tablet of a table that is part of a database whose changes are being consumed using a replication slot. This includes those tables that may not be currently part of the publication specification.
 
