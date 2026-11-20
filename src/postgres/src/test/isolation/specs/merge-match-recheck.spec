@@ -10,7 +10,7 @@ setup
   INSERT INTO target VALUES (1, 160, 's1', 'setup');
 
   CREATE TABLE target_pa (key int, balance integer, status text, val text) PARTITION BY RANGE (balance);
-  CREATE TABLE target_pa1 PARTITION OF target_pa FOR VALUES FROM (0) TO (200);
+  CREATE TABLE target_pa1 PARTITION OF target_pa FOR VALUES FROM (-100) TO (200);
   CREATE TABLE target_pa2 PARTITION OF target_pa FOR VALUES FROM (200) TO (1000);
   INSERT INTO target_pa VALUES (1, 160, 's1', 'setup');
 
@@ -78,24 +78,30 @@ step "merge_bal"
   MERGE INTO target t
   USING (SELECT 1 as key) s
   ON s.key = t.key
+  WHEN MATCHED AND balance < 0 THEN
+    DELETE
   WHEN MATCHED AND balance < 100 THEN
 	UPDATE SET balance = balance * 2, val = t.val || ' when1'
   WHEN MATCHED AND balance < 200 THEN
 	UPDATE SET balance = balance * 4, val = t.val || ' when2'
   WHEN MATCHED AND balance < 300 THEN
-	UPDATE SET balance = balance * 8, val = t.val || ' when3';
+	UPDATE SET balance = balance * 8, val = t.val || ' when3'
+  RETURNING t.key, old.balance AS old_balance, new.balance AS new_balance, t.status, t.val;
 }
 step "merge_bal_pa"
 {
   MERGE INTO target_pa t
   USING (SELECT 1 as key) s
   ON s.key = t.key
+  WHEN MATCHED AND balance < 0 THEN
+    DELETE
   WHEN MATCHED AND balance < 100 THEN
 	UPDATE SET balance = balance * 2, val = t.val || ' when1'
   WHEN MATCHED AND balance < 200 THEN
 	UPDATE SET balance = balance * 4, val = t.val || ' when2'
   WHEN MATCHED AND balance < 300 THEN
-	UPDATE SET balance = balance * 8, val = t.val || ' when3';
+	UPDATE SET balance = balance * 8, val = t.val || ' when3'
+  RETURNING t.key, old.balance AS old_balance, new.balance AS new_balance, t.status, t.val;
 }
 step "merge_bal_tg"
 {
@@ -103,13 +109,15 @@ step "merge_bal_tg"
     MERGE INTO target_tg t
     USING (SELECT 1 as key) s
     ON s.key = t.key
+    WHEN MATCHED AND balance < 0 THEN
+      DELETE
     WHEN MATCHED AND balance < 100 THEN
       UPDATE SET balance = balance * 2, val = t.val || ' when1'
     WHEN MATCHED AND balance < 200 THEN
       UPDATE SET balance = balance * 4, val = t.val || ' when2'
     WHEN MATCHED AND balance < 300 THEN
       UPDATE SET balance = balance * 8, val = t.val || ' when3'
-    RETURNING t.*
+    RETURNING t.key, old.balance AS old_balance, new.balance AS new_balance, t.status, t.val
   )
   SELECT * FROM t;
 }
@@ -189,6 +197,11 @@ permutation "update_bal1_tg" "merge_bal_tg" "c2" "select1_tg" "c1"
 permutation "update1" "update6" "merge_bal" "c2" "select1" "c1"
 permutation "update1_pa" "update6_pa" "merge_bal_pa" "c2" "select1_pa" "c1"
 permutation "update1_tg" "update6_tg" "merge_bal_tg" "c2" "select1_tg" "c1"
+
+# merge_bal sees row concurrently updated twice and rechecks WHEN conditions, different check passes, and row is deleted
+permutation "update6" "update6" "merge_bal" "c2" "select1" "c1"
+permutation "update6_pa" "update6_pa" "merge_bal_pa" "c2" "select1_pa" "c1"
+permutation "update6_tg" "update6_tg" "merge_bal_tg" "c2" "select1_tg" "c1"
 
 # merge_bal sees row concurrently updated twice, first update would cause all checks to fail, second update causes different check to pass, so final balance = 2000
 permutation "update7" "update6" "merge_bal" "c2" "select1" "c1"

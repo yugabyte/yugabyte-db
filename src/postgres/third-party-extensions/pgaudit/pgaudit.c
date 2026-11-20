@@ -1120,10 +1120,23 @@ log_select_dml(Oid auditOid, List *rangeTabls, List *permInfos)
          * rewriting but keep their relkind and perminfoindex so permissions
          * on the view/graph are still checked here.
          */
+        /*
+         * YB_TODO_PG19MERGE: pull in the latest pgaudit (tag 19.0,
+         * ee057ae20ec67997746aa10771d696c6406d7270). It includes pgaudit commit
+         * 1276f0b0d44f9ef72954be94cc30714b7678136a, which reverts property graph
+         * support to match the upstream PG SQL/PGQ revert. Then drop this
+         * #ifdef RELKIND_PROPGRAPH and the one in the relkind switch below.
+         */
+#ifdef RELKIND_PROPGRAPH
         Assert(rte->rtekind == RTE_RELATION ||
                (rte->rtekind == RTE_SUBQUERY &&
                 (rte->relkind == RELKIND_VIEW ||
                  rte->relkind == RELKIND_PROPGRAPH)));
+#else
+        Assert(rte->rtekind == RTE_RELATION ||
+               (rte->rtekind == RTE_SUBQUERY &&
+                rte->relkind == RELKIND_VIEW));
+#endif
 
         found = true;
 
@@ -1253,9 +1266,12 @@ log_select_dml(Oid auditOid, List *rangeTabls, List *permInfos)
                 auditEventStack->auditEvent.objectType = OBJECT_TYPE_MATVIEW;
                 break;
 
+            /* YB_TODO_PG19MERGE: see the RELKIND_PROPGRAPH TODO above. */
+#ifdef RELKIND_PROPGRAPH
             case RELKIND_PROPGRAPH:
                 auditEventStack->auditEvent.objectType = OBJECT_TYPE_PROPGRAPH;
                 break;
+#endif
 
             default:
                 auditEventStack->auditEvent.objectType = OBJECT_TYPE_UNKNOWN;

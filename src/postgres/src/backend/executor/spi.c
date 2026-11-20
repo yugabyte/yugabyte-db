@@ -222,6 +222,10 @@ SPI_finish(void)
 	/* Restore memory context as it was before procedure call */
 	MemoryContextSwitchTo(_SPI_current->savedcxt);
 
+	/* queryEnv will become invalid; drop portals that need it */
+	if (_SPI_current->queryEnv != NULL)
+		DropQueryEnvPortals(_SPI_current->queryEnv);
+
 	/* Release memory used in procedure call (including tuptables) */
 	MemoryContextDelete(_SPI_current->execCxt);
 	_SPI_current->execCxt = NULL;
@@ -746,7 +750,7 @@ SPI_execute_plan(SPIPlanPtr plan, const Datum *Values, const char *Nulls,
 
 /* Obsolete version of SPI_execute_plan */
 int
-SPI_execp(SPIPlanPtr plan, Datum *Values, const char *Nulls, long tcount)
+SPI_execp(SPIPlanPtr plan, const Datum *Values, const char *Nulls, long tcount)
 {
 	return SPI_execute_plan(plan, Values, Nulls, false, tcount);
 }
@@ -1140,6 +1144,13 @@ SPI_returntuple(HeapTuple tuple, TupleDesc tupdesc)
 
 	oldcxt = MemoryContextSwitchTo(_SPI_current->savedcxt);
 
+	/*
+	 * NB: This could "launder" an "outdated" input tuple, stamping it with
+	 * the current version of the tupledesc used here. But we can't really do
+	 * a good job protecting against that here, because we don't have the
+	 * "original" tupledesc to check against. Existing callers all seem fine.
+	 */
+
 	dtup = DatumGetHeapTupleHeader(heap_copy_tuple_as_datum(tuple, tupdesc));
 
 	MemoryContextSwitchTo(oldcxt);
@@ -1149,7 +1160,7 @@ SPI_returntuple(HeapTuple tuple, TupleDesc tupdesc)
 
 HeapTuple
 SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
-				Datum *Values, const char *Nulls)
+				const Datum *Values, const char *Nulls)
 {
 	MemoryContext oldcxt;
 	HeapTuple	mtuple;
@@ -1195,10 +1206,18 @@ SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
 		mtuple = heap_form_tuple(rel->rd_att, v, n);
 
 		/*
-		 * copy the identification info of the old tuple: t_ctid, t_self, and
-		 * OID (if any)
+		 * Copy the identification info of the old tuple: t_self, and OID (if
+		 * any). If the source is not a versioned tuple and has a valid
+		 * t_ctid, also copy t_ctid, which makes mtuple an unversioned datum.
+		 *
+		 * This is not optimal behavior, but this function is effectively
+		 * unused (there seem to be no out-of-core extensions using it when
+		 * building against a recent PG and there's no in-core user), so it
+		 * doesn't seem worth doing more.
 		 */
-		mtuple->t_data->t_ctid = tuple->t_data->t_ctid;
+		if (!HeapTupleHeaderIsVersionedDatum(tuple->t_data) &&
+			ItemPointerIsValid(&tuple->t_data->t_ctid))
+			mtuple->t_data->t_ctid = tuple->t_data->t_ctid;
 		mtuple->t_self = tuple->t_self;
 		HEAPTUPLE_COPY_YBCTID(tuple, mtuple);
 		mtuple->t_tableOid = tuple->t_tableOid;
@@ -1518,7 +1537,7 @@ Portal
 SPI_cursor_open_with_args(const char *name,
 						  const char *src,
 						  int nargs, Oid *argtypes,
-						  Datum *Values, const char *Nulls,
+						  const Datum *Values, const char *Nulls,
 						  bool read_only, int cursorOptions)
 {
 	Portal		result;
@@ -3427,6 +3446,11 @@ _SPI_find_ENR_by_name(const char *name)
 /*
  * Register an ephemeral named relation for use by the planner and executor on
  * subsequent calls using this SPI connection.
+ *
+ * NB: The query environment for the ENR will not last after the SPI
+ * connection; if SPI_register_relation() is called, all portals created on
+ * this SPI connection must be closed.  Remaining portals (e.g. returned using
+ * a refcursor) will be closed at SPI_finish time.
  */
 int
 SPI_register_relation(EphemeralNamedRelation enr)
@@ -3494,6 +3518,11 @@ SPI_unregister_relation(const char *name)
  * This should be called by PL implementations' trigger handlers after
  * connecting, in order to make transition tables visible to any queries run
  * in this connection.
+ *
+ * NB: The query environment for the ENR will not last after the SPI
+ * connection; if SPI_register_trigger_data() is called, all portals created
+ * on this SPI connection must be closed.  Remaining portals (e.g. returned
+ * using a refcursor) will be closed at SPI_finish time.
  */
 int
 SPI_register_trigger_data(TriggerData *tdata)

@@ -63,19 +63,6 @@ PostgreSQL documentation
     <variablelist>
 
      <varlistentry>
-      <term><option>-d <replaceable class="parameter">duration</replaceable></option></term>
-      <term><option>--duration=<replaceable class="parameter">duration</replaceable></option></term>
-      <listitem>
-       <para>
-        Specifies the test duration, in seconds. Longer durations
-        give slightly better accuracy, and are more likely to discover
-        problems with the system clock moving backwards. The default
-        test duration is 3 seconds.
-       </para>
-      </listitem>
-     </varlistentry>
-
-     <varlistentry>
       <term><option>-c <replaceable class="parameter">cutoff</replaceable></option></term>
       <term><option>--cutoff=<replaceable class="parameter">cutoff</replaceable></option></term>
       <listitem>
@@ -86,6 +73,19 @@ PostgreSQL documentation
         percentage total reaches or exceeds this value, except that the
         largest observed duration will always be printed.  The default
         cutoff is 99.99.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-d <replaceable class="parameter">duration</replaceable></option></term>
+      <term><option>--duration=<replaceable class="parameter">duration</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the test duration, in seconds. Longer durations
+        give slightly better accuracy, and are more likely to discover
+        problems with the system clock moving backwards. The default
+        test duration is 3 seconds.
        </para>
       </listitem>
      </varlistentry>
@@ -283,8 +283,10 @@ Observed timing durations up to 99.9900%:
 ...
 61594291       0.0000   100.0000          1
 
+TSC frequency source: x86, cpuid 0x15
 TSC frequency in use: 2449228 kHz
 TSC frequency from calibration: 2448603 kHz
+
 TSC clock source will be used by default, unless timing_clock_source is set to 'system'.
 ]]></screen>
   </para>

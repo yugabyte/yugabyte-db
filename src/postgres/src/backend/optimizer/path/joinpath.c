@@ -98,6 +98,9 @@ static void generate_mergejoin_paths(PlannerInfo *root,
 									 Path *inner_cheapest_total,
 									 List *merge_pathkeys,
 									 bool is_partial);
+static bool pull_exec_params_walker(Node *node, List **params);
+static bool memoize_add_cache_key(Node *expr, List **param_exprs,
+								  List **operators, bool *binary_mode);
 
 /* YB declarations */
 static bool yb_join_splits_batched_rels(Relids batched_together,
@@ -533,6 +536,9 @@ paraminfo_get_equal_hashops(PlannerInfo *root, ParamPathInfo *param_info,
 
 {
 	List	   *lateral_vars;
+	List	   *params;
+	Bitmapset  *outer_paramids;
+	PlannerInfo *proot;
 	ListCell   *lc;
 
 	*param_exprs = NIL;
@@ -586,6 +592,17 @@ paraminfo_get_equal_hashops(PlannerInfo *root, ParamPathInfo *param_info,
 			}
 
 			/*
+			 * Ensure we use the clause's input collation so that cache
+			 * lookups are performed using that collation rather than the
+			 * expr's collation.  This is not required for binary mode, which
+			 * compares keys bit-by-bit, but we don't yet know which mode
+			 * we'll end up in.
+			 */
+			expr = (Node *) canonicalize_ec_expression((Expr *) expr,
+													   exprType(expr),
+													   opexpr->inputcollid);
+
+			/*
 			 * 'expr' may already exist as a parameter from a previous item in
 			 * ppi_clauses.  No need to include it again, however we'd better
 			 * ensure we do switch into binary mode if required.  See below.
@@ -617,7 +634,6 @@ paraminfo_get_equal_hashops(PlannerInfo *root, ParamPathInfo *param_info,
 	foreach(lc, lateral_vars)
 	{
 		Node	   *expr = (Node *) lfirst(lc);
-		TypeCacheEntry *typentry;
 
 		/* Reject if there are any volatile functions in lateral vars */
 		if (contain_volatile_functions(expr))
@@ -627,42 +643,125 @@ paraminfo_get_equal_hashops(PlannerInfo *root, ParamPathInfo *param_info,
 			return false;
 		}
 
-		typentry = lookup_type_cache(exprType(expr),
-									 TYPECACHE_HASH_PROC | TYPECACHE_EQ_OPR);
-
-		/* can't use memoize without a valid hash proc and equals operator */
-		if (!OidIsValid(typentry->hash_proc) || !OidIsValid(typentry->eq_opr))
+		if (!memoize_add_cache_key(expr, param_exprs, operators, binary_mode))
 		{
 			list_free(*operators);
 			list_free(*param_exprs);
 			return false;
 		}
+	}
 
-		/*
-		 * 'expr' may already exist as a parameter from the ppi_clauses.  No
-		 * need to include it again, however we'd better ensure we do switch
-		 * into binary mode.
-		 */
-		if (!list_member(*param_exprs, expr))
+	/*
+	 * A Param buried inside a larger cache key expression isn't determined by
+	 * the key's value, so create_memoize_plan() arranges for the cache to be
+	 * purged whenever it changes, which commonly happens on every rescan of
+	 * the enclosing plan.  We're better off making a cache key of the Param
+	 * by itself so that the cached results survive.  This is only an
+	 * optimization, so we needn't refuse to memoize when one isn't hashable.
+	 *
+	 * Only Params supplied by an outer query level are safe to evaluate as
+	 * cache keys.  Others, such as the output Params of initPlans and
+	 * SubPlans, may not have a value yet.  Outer query levels list the Params
+	 * they supply in their plan_params.
+	 */
+	if (root->glob->paramExecTypes == NIL)
+		return true;			/* no PARAM_EXEC Params at all */
+
+	outer_paramids = NULL;
+	for (proot = root->parent_root; proot != NULL; proot = proot->parent_root)
+	{
+		foreach(lc, proot->plan_params)
 		{
-			*operators = lappend_oid(*operators, typentry->eq_opr);
-			*param_exprs = lappend(*param_exprs, expr);
-		}
+			PlannerParamItem *pitem = lfirst_node(PlannerParamItem, lc);
 
-		/*
-		 * We must go into binary mode as we don't have too much of an idea of
-		 * how these lateral Vars are being used.  See comment above when we
-		 * set *binary_mode for the non-lateral Var case. This could be
-		 * relaxed a bit if we had the RestrictInfos and knew the operators
-		 * being used, however for cases like Vars that are arguments to
-		 * functions we must operate in binary mode as we don't have
-		 * visibility into what the function is doing with the Vars.
-		 */
-		*binary_mode = true;
+			outer_paramids = bms_add_member(outer_paramids, pitem->paramId);
+		}
+	}
+
+	/* Nothing to do if no outer level supplies any Params */
+	if (outer_paramids == NULL)
+		return true;
+
+	params = NIL;
+	(void) pull_exec_params_walker((Node *) *param_exprs, &params);
+
+	foreach(lc, params)
+	{
+		Param	   *param = lfirst_node(Param, lc);
+
+		if (bms_is_member(param->paramid, outer_paramids))
+			(void) memoize_add_cache_key((Node *) param, param_exprs,
+										 operators, binary_mode);
 	}
 
 	/* We're okay to use memoize */
 	return true;
+}
+
+/*
+ * memoize_add_cache_key
+ *		Add 'expr' to the Memoize cache keys collected in *param_exprs and
+ *		*operators, unless it's a cache key already.
+ *
+ * Returns false if 'expr' has a type which Memoize can't hash.  It's up to the
+ * caller to decide whether that's fatal.
+ */
+static bool
+memoize_add_cache_key(Node *expr, List **param_exprs, List **operators,
+					  bool *binary_mode)
+{
+	/*
+	 * 'expr' may already have been added as a cache key, in which case it has
+	 * been through the checks below already.
+	 */
+	if (!list_member(*param_exprs, expr))
+	{
+		TypeCacheEntry *typentry;
+
+		typentry = lookup_type_cache(exprType(expr),
+									 TYPECACHE_HASH_PROC | TYPECACHE_EQ_OPR);
+
+		/* can't use memoize without a valid hash proc and equals operator */
+		if (!OidIsValid(typentry->hash_proc) || !OidIsValid(typentry->eq_opr))
+			return false;
+
+		*operators = lappend_oid(*operators, typentry->eq_opr);
+		*param_exprs = lappend(*param_exprs, expr);
+	}
+
+	/*
+	 * We must go into binary mode as we don't have too much of an idea of how
+	 * 'expr' is being used.  See the comment above where we set *binary_mode
+	 * for the join clause case.  This could be relaxed a bit if we knew the
+	 * operators being used, however for cases like Vars that are arguments to
+	 * functions, or Params appearing in quals we've not examined, we must
+	 * operate in binary mode as we've no visibility into what's done with the
+	 * value.
+	 */
+	*binary_mode = true;
+
+	return true;
+}
+
+/*
+ * pull_exec_params_walker
+ *		Collect the distinct PARAM_EXEC Params found in 'node' into *params.
+ */
+static bool
+pull_exec_params_walker(Node *node, List **params)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Param))
+	{
+		Param	   *param = (Param *) node;
+
+		if (param->paramkind == PARAM_EXEC &&
+			!list_member(*params, param))
+			*params = lappend(*params, param);
+		return false;
+	}
+	return expression_tree_walker(node, pull_exec_params_walker, params);
 }
 
 /*
@@ -851,16 +950,16 @@ get_memoize_path(PlannerInfo *root, RelOptInfo *innerrel,
 	 */
 	if (extra->inner_unique)
 	{
-		Bitmapset  *ppi_serials;
+		Bitmapset  *pserials;
 
 		if (inner_path->param_info == NULL)
 			return NULL;
 
-		ppi_serials = inner_path->param_info->ppi_serials;
+		pserials = get_param_path_clause_serials(inner_path);
 
 		foreach_node(RestrictInfo, rinfo, extra->restrictlist)
 		{
-			if (!bms_is_member(rinfo->rinfo_serial, ppi_serials))
+			if (!bms_is_member(rinfo->rinfo_serial, pserials))
 				return NULL;
 		}
 	}

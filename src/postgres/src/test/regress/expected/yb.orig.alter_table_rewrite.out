@@ -935,7 +935,7 @@ CREATE TABLE test_table (c1 int, c2 varchar, c3 varchar, c4 varchar);
 CREATE VIEW test_view AS SELECT c2 FROM test_table;
 ALTER TABLE test_table ALTER c2 TYPE int USING length(c2); -- should fail.
 ERROR:  cannot alter type of a column used by a view or rule
-DETAIL:  rule _RETURN on view test_view depends on column "c2"
+DETAIL:  rule _RETURN on view test_view depends on column "c2".
 ALTER TABLE test_table ALTER c3 TYPE varchar(1);
 CREATE TABLE dummy_table (c3 varchar);
 CREATE RULE "_RETURN" AS

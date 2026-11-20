@@ -73,6 +73,15 @@ copy copytest3 to stdout csv header;
 c1,"col with , comma","col with "" quote"
 1,a,1
 2,b,2
+-- testing explicit column order
+create temp table copytest_order (a int, b int, c int);
+copy copytest_order from stdin;
+copy copytest_order (c, b, a) to stdout;
+3	2	1
+copy copytest_order (c, b, a) to stdout (format csv);
+3,2,1
+copy copytest_order (c, b, a) to stdout (format json);
+{"c":3,"b":2,"a":1}
 --- test copying in JSON mode with various styles
 copy (select 1 union all select 2) to stdout with (format json);
 {"?column?":1}
@@ -108,6 +117,19 @@ copy (select * from copytest) to stdout (format json);
 {"style":"Unix","test":"abc\ndef","filler":2}
 {"style":"Mac","test":"abc\rdef","filler":3}
 {"style":"esc\\ape","test":"a\\r\\\r\\\n\\nb","filler":4}
+-- keys are the query's column names, also when a scan does not project
+copy (select a as x, b as y, c as z from copytest_order) to stdout (format json);
+{"x":1,"y":2,"z":3}
+create temp table copytest_order2 (c int, b int, a int);
+insert into copytest_order2 values (4, 5, 6);
+copy (select * from copytest_order union all select * from copytest_order2)
+  to stdout (format json);
+{"a":1,"b":2,"c":3}
+{"a":4,"b":5,"c":6}
+-- columns with missing values force a projection
+alter table copytest_order2 add column d int default 7;
+copy (select * from copytest_order2) to stdout (format json);
+{"c":4,"b":5,"a":6,"d":7}
 -- all of the following should yield error
 copy copytest to stdout (format json, delimiter '|');
 ERROR:  cannot specify DELIMITER in JSON mode
@@ -509,13 +531,9 @@ copy oversized_column_default from stdin;
 -- error if the column is excluded
 copy oversized_column_default (col2) from stdin;
 ERROR:  value too long for type character varying(5)
-\.
-invalid command \.
 -- error if the DEFAULT option is given
 copy oversized_column_default from stdin (default '');
 ERROR:  value too long for type character varying(5)
-\.
-invalid command \.
 drop table oversized_column_default;
 --
 -- Create partitioned table that does not allow bulk insertions, to test bugs
@@ -594,3 +612,14 @@ id	val
 5	15
 6	16
 DROP TABLE PP;
+-- Check if COPY TO handles dropped columns in partitions.
+CREATE TABLE pp_dropcol (id int, val int) PARTITION BY RANGE (id);
+CREATE TABLE pp_dropcol_1 (dropme int, id int, val int);
+ALTER TABLE pp_dropcol_1 DROP COLUMN dropme;
+ALTER TABLE pp_dropcol ATTACH PARTITION pp_dropcol_1 FOR VALUES FROM (1) TO (10);
+INSERT INTO pp_dropcol VALUES (1, 11), (2, 12);
+COPY pp_dropcol TO stdout(header);
+id	val
+1	11
+2	12
+DROP TABLE pp_dropcol;

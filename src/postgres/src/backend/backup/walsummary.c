@@ -111,9 +111,9 @@ FilterWalSummaries(List *wslist, TimeLineID tli,
 		/* Skip if it doesn't match the filter criteria. */
 		if (tli != 0 && tli != ws->tli)
 			continue;
-		if (XLogRecPtrIsValid(start_lsn) && start_lsn > ws->end_lsn)
+		if (XLogRecPtrIsValid(start_lsn) && start_lsn >= ws->end_lsn)
 			continue;
-		if (XLogRecPtrIsValid(end_lsn) && end_lsn < ws->start_lsn)
+		if (XLogRecPtrIsValid(end_lsn) && end_lsn <= ws->start_lsn)
 			continue;
 
 		/* Add it to the result list. */
@@ -319,7 +319,7 @@ WriteWalSummary(void *wal_summary_io, void *data, int length)
  * Error-reporting callback for use with CreateBlockRefTableReader.
  */
 void
-ReportWalSummaryError(void *callback_arg, char *fmt,...)
+ReportWalSummaryError(void *callback_arg, char *fmt, ...)
 {
 	StringInfoData buf;
 	va_list		ap;

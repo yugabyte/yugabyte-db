@@ -29,7 +29,6 @@
 #include "optimizer/paths.h"
 #include "optimizer/placeholder.h"
 #include "optimizer/planmain.h"
-#include "optimizer/planner.h"
 #include "optimizer/restrictinfo.h"
 #include "parser/analyze.h"
 #include "rewrite/rewriteManip.h"
@@ -95,6 +94,18 @@ typedef struct JoinTreeItem
 									 * lateral references */
 } JoinTreeItem;
 
+/*
+ * Compatibility info for one GROUP BY item, precomputed for use by
+ * remove_useless_groupby_columns() when matching unique-index columns against
+ * GROUP BY items.
+ */
+typedef struct GroupByColInfo
+{
+	AttrNumber	attno;			/* var->varattno */
+	List	   *eq_opfamilies;	/* mergejoin opfamilies of sgc->eqop */
+	Oid			coll;			/* var->varcollid */
+} GroupByColInfo;
+
 
 static bool is_partial_agg_memory_risky(PlannerInfo *root);
 static void create_agg_clause_infos(PlannerInfo *root);
@@ -147,7 +158,6 @@ static void distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 									bool has_clone,
 									bool is_clone,
 									List **postponed_oj_qual_list);
-static bool check_redundant_nullability_qual(PlannerInfo *root, Node *clause);
 static Relids get_join_domain_min_rels(PlannerInfo *root, Relids domain_relids);
 static void check_mergejoinable(RestrictInfo *restrictinfo);
 static void check_hashjoinable(RestrictInfo *restrictinfo);
@@ -312,8 +322,6 @@ build_base_rel_tlists(PlannerInfo *root, List *final_tlist)
  *	  have a single owning relation; we keep their attr_needed info in
  *	  root->placeholder_list instead.  Find or create the associated
  *	  PlaceHolderInfo entry, and update its ph_needed.
- *
- *	  See also add_vars_to_attr_needed.
  */
 void
 add_vars_to_targetlist(PlannerInfo *root, List *vars,
@@ -386,63 +394,6 @@ add_vars_to_targetlist(PlannerInfo *root, List *vars,
 	}
 }
 
-/*
- * add_vars_to_attr_needed
- *	  This does a subset of what add_vars_to_targetlist does: it just
- *	  updates attr_needed for Vars and ph_needed for PlaceHolderVars.
- *	  We assume the Vars are already in their relations' targetlists.
- *
- *	  This is used to rebuild attr_needed/ph_needed sets after removal
- *	  of a useless outer join.  The removed join clause might have been
- *	  the only upper-level use of some other relation's Var, in which
- *	  case we can reduce that Var's attr_needed and thereby possibly
- *	  open the door to further join removals.  But we can't tell that
- *	  without tedious reconstruction of the attr_needed data.
- *
- *	  Note that if a Var's attr_needed is successfully reduced to empty,
- *	  it will still be in the relation's targetlist even though we do
- *	  not really need the scan plan node to emit it.  The extra plan
- *	  inefficiency seems tiny enough to not be worth spending planner
- *	  cycles to get rid of it.
- */
-void
-add_vars_to_attr_needed(PlannerInfo *root, List *vars,
-						Relids where_needed)
-{
-	ListCell   *temp;
-
-	Assert(!bms_is_empty(where_needed));
-
-	foreach(temp, vars)
-	{
-		Node	   *node = (Node *) lfirst(temp);
-
-		if (IsA(node, Var))
-		{
-			Var		   *var = (Var *) node;
-			RelOptInfo *rel = find_base_rel(root, var->varno);
-			int			attno = var->varattno;
-
-			if (bms_is_subset(where_needed, rel->relids))
-				continue;
-			Assert(attno >= rel->min_attr && attno <= rel->max_attr);
-			attno -= rel->min_attr;
-			rel->attr_needed[attno] = bms_add_members(rel->attr_needed[attno],
-													  where_needed);
-		}
-		else if (IsA(node, PlaceHolderVar))
-		{
-			PlaceHolderVar *phv = (PlaceHolderVar *) node;
-			PlaceHolderInfo *phinfo = find_placeholder_info(root, phv);
-
-			phinfo->ph_needed = bms_add_members(phinfo->ph_needed,
-												where_needed);
-		}
-		else
-			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
-	}
-}
-
 /*****************************************************************************
  *
  *	  GROUP BY
@@ -469,6 +420,7 @@ remove_useless_groupby_columns(PlannerInfo *root)
 {
 	Query	   *parse = root->parse;
 	Bitmapset **groupbyattnos;
+	List	  **groupbycols;
 	Bitmapset **surplusvars;
 	bool		tryremove = false;
 	ListCell   *lc;
@@ -485,14 +437,20 @@ remove_useless_groupby_columns(PlannerInfo *root)
 	/*
 	 * Scan the GROUP BY clause to find GROUP BY items that are simple Vars.
 	 * Fill groupbyattnos[k] with a bitmapset of the column attnos of RTE k
-	 * that are GROUP BY items.
+	 * that are GROUP BY items, and groupbycols[k] with a parallel list of
+	 * GroupByColInfo records.  We need the latter so that, when checking a
+	 * unique index against this rel's GROUP BY items, we can verify that the
+	 * index's notion of equality agrees with at least one GROUP BY item per
+	 * index column.
 	 */
 	groupbyattnos = palloc0_array(Bitmapset *, list_length(parse->rtable) + 1);
+	groupbycols = palloc0_array(List *, list_length(parse->rtable) + 1);
 	foreach(lc, root->processed_groupClause)
 	{
 		SortGroupClause *sgc = lfirst_node(SortGroupClause, lc);
 		TargetEntry *tle = get_sortgroupclause_tle(sgc, parse->targetList);
 		Var		   *var = (Var *) tle->expr;
+		GroupByColInfo *info;
 
 		/*
 		 * Ignore non-Vars and Vars from other query levels.
@@ -518,6 +476,12 @@ remove_useless_groupby_columns(PlannerInfo *root)
 		tryremove |= !bms_is_empty(groupbyattnos[relid]);
 		groupbyattnos[relid] = bms_add_member(groupbyattnos[relid],
 											  var->varattno - FirstLowInvalidHeapAttributeNumber);
+
+		info = palloc(sizeof(GroupByColInfo));
+		info->attno = var->varattno;
+		info->eq_opfamilies = get_mergejoin_opfamilies(sgc->eqop);
+		info->coll = var->varcollid;
+		groupbycols[relid] = lappend(groupbycols[relid], info);
 	}
 
 	/*
@@ -572,7 +536,7 @@ remove_useless_groupby_columns(PlannerInfo *root)
 		foreach_node(IndexOptInfo, index, rel->indexlist)
 		{
 			Bitmapset  *ind_attnos;
-			bool		nulls_check_ok;
+			bool		index_check_ok;
 
 			/*
 			 * Skip any non-unique and deferrable indexes.  Predicate indexes
@@ -587,9 +551,14 @@ remove_useless_groupby_columns(PlannerInfo *root)
 				continue;
 
 			ind_attnos = NULL;
-			nulls_check_ok = true;
+			index_check_ok = true;
 			for (int i = 0; i < index->nkeycolumns; i++)
 			{
+				AttrNumber	indkey_attno = index->indexkeys[i];
+				Oid			indkey_opfamily = index->opfamily[i];
+				Oid			indkey_coll = index->indexcollations[i];
+				ListCell   *lc2;
+
 				/*
 				 * We must insist that the index columns are all defined NOT
 				 * NULL otherwise duplicate NULLs could exist.  However, we
@@ -599,20 +568,41 @@ remove_useless_groupby_columns(PlannerInfo *root)
 				 * despite the NULL.
 				 */
 				if (!index->nullsnotdistinct &&
-					!bms_is_member(index->indexkeys[i],
-								   rel->notnullattnums))
+					!bms_is_member(indkey_attno, rel->notnullattnums))
 				{
-					nulls_check_ok = false;
+					index_check_ok = false;
+					break;
+				}
+
+				/*
+				 * The index proves uniqueness only under its own opfamily and
+				 * collation.  Require some GROUP BY item on this column to
+				 * use a compatible eqop and collation, the same check
+				 * relation_has_unique_index_for() applies to join clauses.
+				 */
+				foreach(lc2, groupbycols[relid])
+				{
+					GroupByColInfo *info = (GroupByColInfo *) lfirst(lc2);
+
+					if (info->attno != indkey_attno)
+						continue;
+					if (list_member_oid(info->eq_opfamilies, indkey_opfamily) &&
+						collations_agree_on_equality(indkey_coll, info->coll))
+						break;
+				}
+				if (lc2 == NULL)
+				{
+					index_check_ok = false;
 					break;
 				}
 
 				ind_attnos =
 					bms_add_member(ind_attnos,
-								   index->indexkeys[i] -
+								   indkey_attno -
 								   FirstLowInvalidHeapAttributeNumber);
 			}
 
-			if (!nulls_check_ok)
+			if (!index_check_ok)
 				continue;
 
 			/*
@@ -1189,17 +1179,13 @@ extract_lateral_references(PlannerInfo *root, RelOptInfo *brel, Index rtindex)
 			PlaceHolderVar *phv = (PlaceHolderVar *) node;
 			int			levelsup = phv->phlevelsup;
 
-			/* Have to work harder to adjust the contained expression too */
+			/*
+			 * Have to work harder to adjust the contained expression too.
+			 * (Its expression has already been preprocessed by
+			 * subquery_planner(), so we must not do that again here.)
+			 */
 			if (levelsup != 0)
 				IncrementVarSublevelsUp(node, -levelsup, 0);
-
-			/*
-			 * If we pulled the PHV out of a subquery RTE, its expression
-			 * needs to be preprocessed.  subquery_planner() already did this
-			 * for level-zero PHVs in function and values RTEs, though.
-			 */
-			if (levelsup > 0)
-				phv->phexpr = preprocess_phv_expression(root, phv->phexpr);
 		}
 		else
 			Assert(false);
@@ -1223,52 +1209,8 @@ extract_lateral_references(PlannerInfo *root, RelOptInfo *brel, Index rtindex)
 	 */
 	add_vars_to_targetlist(root, newvars, where_needed);
 
-	/*
-	 * Remember the lateral references for rebuild_lateral_attr_needed and
-	 * create_lateral_join_info.
-	 */
+	/* Remember the lateral references for create_lateral_join_info */
 	brel->lateral_vars = newvars;
-}
-
-/*
- * rebuild_lateral_attr_needed
- *	  Put back attr_needed bits for Vars/PHVs needed for lateral references.
- *
- * This is used to rebuild attr_needed/ph_needed sets after removal of a
- * useless outer join.  It should match what find_lateral_references did,
- * except that we call add_vars_to_attr_needed not add_vars_to_targetlist.
- */
-void
-rebuild_lateral_attr_needed(PlannerInfo *root)
-{
-	Index		rti;
-
-	/* We need do nothing if the query contains no LATERAL RTEs */
-	if (!root->hasLateralRTEs)
-		return;
-
-	/* Examine the same baserels that find_lateral_references did */
-	for (rti = 1; rti < root->simple_rel_array_size; rti++)
-	{
-		RelOptInfo *brel = root->simple_rel_array[rti];
-		Relids		where_needed;
-
-		if (brel == NULL)
-			continue;
-		if (brel->reloptkind != RELOPT_BASEREL)
-			continue;
-
-		/*
-		 * We don't need to repeat all of extract_lateral_references, since it
-		 * kindly saved the extracted Vars/PHVs in lateral_vars.
-		 */
-		if (brel->lateral_vars == NIL)
-			continue;
-
-		where_needed = bms_make_singleton(rti);
-
-		add_vars_to_attr_needed(root, brel->lateral_vars, where_needed);
-	}
 }
 
 /*
@@ -1741,19 +1683,16 @@ deconstruct_recurse(PlannerInfo *root, Node *jtnode,
 									child_domain->jd_relids);
 				jtitem->qualscope = bms_union(left_item->qualscope,
 											  right_item->qualscope);
-				/* caution: ANTI join derived from SEMI will lack rtindex */
-				if (j->rtindex != 0)
-				{
-					parent_domain->jd_relids =
-						bms_add_member(parent_domain->jd_relids,
-									   j->rtindex);
-					jtitem->qualscope = bms_add_member(jtitem->qualscope,
+				Assert(j->rtindex != 0);
+				parent_domain->jd_relids =
+					bms_add_member(parent_domain->jd_relids,
+								   j->rtindex);
+				jtitem->qualscope = bms_add_member(jtitem->qualscope,
+												   j->rtindex);
+				root->outer_join_rels = bms_add_member(root->outer_join_rels,
 													   j->rtindex);
-					root->outer_join_rels = bms_add_member(root->outer_join_rels,
-														   j->rtindex);
-					mark_rels_nulled_by_join(root, j->rtindex,
-											 right_item->qualscope);
-				}
+				mark_rels_nulled_by_join(root, j->rtindex,
+										 right_item->qualscope);
 				jtitem->inner_join_rels = bms_union(left_item->inner_join_rels,
 													right_item->inner_join_rels);
 				jtitem->left_rels = left_item->qualscope;
@@ -2223,6 +2162,13 @@ make_outerjoininfo(PlannerInfo *root,
 	 */
 	strict_relids = find_nonnullable_rels((Node *) clause);
 
+	/*
+	 * find_nonnullable_rels looks inside PlaceHolderVars, so it can report
+	 * rels that the clause references only laterally.  Ignore those, since
+	 * like clause_relids we treat a PHV as computed at its ph_eval_at.
+	 */
+	strict_relids = bms_int_members(strict_relids, clause_relids);
+
 	/* Remember whether the clause is strict for any LHS relations */
 	sjinfo->lhs_strict = bms_overlap(strict_relids, left_rels);
 
@@ -2623,9 +2569,18 @@ compute_semijoin_info(PlannerInfo *root, SpecialJoinInfo *sjinfo, List *clause)
 		if (!(all_btree || all_hash))
 			return;
 
+		/*
+		 * Ensure the RHS expression exposes the join's input collation (its
+		 * type should be OK already); see comments for
+		 * canonicalize_ec_expression.
+		 */
+		right_expr = (Node *) canonicalize_ec_expression((Expr *) copyObject(right_expr),
+														 exprType(right_expr),
+														 op->inputcollid);
+
 		/* so far so good, keep building lists */
 		semi_operators = lappend_oid(semi_operators, opno);
-		semi_rhs_exprs = lappend(semi_rhs_exprs, copyObject(right_expr));
+		semi_rhs_exprs = lappend(semi_rhs_exprs, right_expr);
 	}
 
 	/* Punt if we didn't find at least one column to unique-ify */
@@ -2971,10 +2926,6 @@ distribute_quals_to_rels(PlannerInfo *root, List *clauses,
  * 'qualscope' identifies what level of JOIN the qual came from syntactically.
  * 'ojscope' is needed if we decide to force the qual up to the outer-join
  * level, which will be ojscope not necessarily qualscope.
- *
- * At the time this is called, root->join_info_list must contain entries for
- * at least those special joins that are syntactically below this qual.
- * (We now need that only for detection of redundant IS NULL quals.)
  */
 static void
 distribute_qual_to_rels(PlannerInfo *root, Node *clause,
@@ -3178,15 +3129,6 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 		 */
 		is_pushed_down = true;
 
-		/*
-		 * It's possible that this is an IS NULL clause that's redundant with
-		 * a lower antijoin; if so we can just discard it.  We need not test
-		 * in any of the other cases, because this will only be possible for
-		 * pushed-down clauses.
-		 */
-		if (check_redundant_nullability_qual(root, clause))
-			return;
-
 		/* Feed qual to the equivalence machinery, if allowed by caller */
 		maybe_equivalence = allow_equivalence;
 
@@ -3223,9 +3165,6 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 * joins, which would often be an overestimate.  For such clauses, correct
 	 * var propagation is ensured by making ojscope include input rels from
 	 * both sides of the join.
-	 *
-	 * See also rebuild_joinclause_attr_needed, which has to partially repeat
-	 * this work after removal of an outer join.
 	 *
 	 * Note: if the clause gets absorbed into an EquivalenceClass then this
 	 * may be unnecessary, but for now we have to do it to cover the case
@@ -3358,53 +3297,6 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 
 	/* No EC special case applies, so push it into the clause lists */
 	distribute_restrictinfo_to_rels(root, restrictinfo);
-}
-
-/*
- * check_redundant_nullability_qual
- *	  Check to see if the qual is an IS NULL qual that is redundant with
- *	  a lower JOIN_ANTI join.
- *
- * We want to suppress redundant IS NULL quals, not so much to save cycles
- * as to avoid generating bogus selectivity estimates for them.  So if
- * redundancy is detected here, distribute_qual_to_rels() just throws away
- * the qual.
- */
-static bool
-check_redundant_nullability_qual(PlannerInfo *root, Node *clause)
-{
-	Var		   *forced_null_var;
-	ListCell   *lc;
-
-	/* Check for IS NULL, and identify the Var forced to NULL */
-	forced_null_var = find_forced_null_var(clause);
-	if (forced_null_var == NULL)
-		return false;
-
-	/*
-	 * If the Var comes from the nullable side of a lower antijoin, the IS
-	 * NULL condition is necessarily true.  If it's not nulled by anything,
-	 * there is no point in searching the join_info_list.  Otherwise, we need
-	 * to find out whether the nulling rel is an antijoin.
-	 */
-	if (forced_null_var->varnullingrels == NULL)
-		return false;
-
-	foreach(lc, root->join_info_list)
-	{
-		SpecialJoinInfo *sjinfo = (SpecialJoinInfo *) lfirst(lc);
-
-		/*
-		 * This test will not succeed if sjinfo->ojrelid is zero, which is
-		 * possible for an antijoin that was converted from a semijoin; but in
-		 * such a case the Var couldn't have come from its nullable side.
-		 */
-		if (sjinfo->jointype == JOIN_ANTI && sjinfo->ojrelid != 0 &&
-			bms_is_member(sjinfo->ojrelid, forced_null_var->varnullingrels))
-			return true;
-	}
-
-	return false;
 }
 
 /*
@@ -3804,11 +3696,6 @@ process_implied_equality(PlannerInfo *root,
 	 * some of the Vars could have missed having that done because they only
 	 * appeared in single-relation clauses originally.  So do it here for
 	 * safety.
-	 *
-	 * See also rebuild_joinclause_attr_needed, which has to partially repeat
-	 * this work after removal of an outer join.  (Since we will put this
-	 * clause into the joininfo lists, that function needn't do any extra work
-	 * to find it.)
 	 */
 	if (bms_membership(relids) == BMS_MULTIPLE)
 	{
@@ -3955,72 +3842,6 @@ get_join_domain_min_rels(PlannerInfo *root, Relids domain_relids)
 
 
 /*
- * rebuild_joinclause_attr_needed
- *	  Put back attr_needed bits for Vars/PHVs needed for join clauses.
- *
- * This is used to rebuild attr_needed/ph_needed sets after removal of a
- * useless outer join.  It should match what distribute_qual_to_rels did,
- * except that we call add_vars_to_attr_needed not add_vars_to_targetlist.
- */
-void
-rebuild_joinclause_attr_needed(PlannerInfo *root)
-{
-	/*
-	 * We must examine all join clauses, but there's no value in processing
-	 * any join clause more than once.  So it's slightly annoying that we have
-	 * to find them via the per-base-relation joininfo lists.  Avoid duplicate
-	 * processing by tracking the rinfo_serial numbers of join clauses we've
-	 * already seen.  (This doesn't work for is_clone clauses, so we must
-	 * waste effort on them.)
-	 */
-	Bitmapset  *seen_serials = NULL;
-	Index		rti;
-
-	/* Scan all baserels for join clauses */
-	for (rti = 1; rti < root->simple_rel_array_size; rti++)
-	{
-		RelOptInfo *brel = root->simple_rel_array[rti];
-		ListCell   *lc;
-
-		if (brel == NULL)
-			continue;
-		if (brel->reloptkind != RELOPT_BASEREL)
-			continue;
-
-		foreach(lc, brel->joininfo)
-		{
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
-			Relids		relids = rinfo->required_relids;
-
-			if (!rinfo->is_clone)	/* else serial number is not unique */
-			{
-				if (bms_is_member(rinfo->rinfo_serial, seen_serials))
-					continue;	/* saw it already */
-				seen_serials = bms_add_member(seen_serials,
-											  rinfo->rinfo_serial);
-			}
-
-			if (bms_membership(relids) == BMS_MULTIPLE)
-			{
-				List	   *vars = pull_var_clause((Node *) rinfo->clause,
-												   PVC_RECURSE_AGGREGATES |
-												   PVC_RECURSE_WINDOWFUNCS |
-												   PVC_INCLUDE_PLACEHOLDERS);
-				Relids		where_needed;
-
-				if (rinfo->is_clone)
-					where_needed = bms_intersect(relids, root->all_baserels);
-				else
-					where_needed = relids;
-				add_vars_to_attr_needed(root, vars, where_needed);
-				list_free(vars);
-			}
-		}
-	}
-}
-
-
-/*
  * match_foreign_keys_to_quals
  *		Match foreign-key constraints to equivalence classes and join quals
  *
@@ -4049,9 +3870,9 @@ match_foreign_keys_to_quals(PlannerInfo *root)
 
 		/*
 		 * Either relid might identify a rel that is in the query's rtable but
-		 * isn't referenced by the jointree, or has been removed by join
-		 * removal, so that it won't have a RelOptInfo.  Hence don't use
-		 * find_base_rel() here.  We can ignore such FKs.
+		 * isn't referenced by the jointree (typically because it's been
+		 * removed by join removal), so that it won't have a RelOptInfo. Hence
+		 * don't use find_base_rel() here.  We can ignore such FKs.
 		 */
 		if (fkinfo->con_relid >= root->simple_rel_array_size ||
 			fkinfo->ref_relid >= root->simple_rel_array_size)

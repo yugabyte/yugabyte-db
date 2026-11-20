@@ -827,7 +827,7 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheEfficiency, PgCatalogWithUnlimitedCach
   constexpr auto kExpectedColumns = kAlterTableCount + 2;
   ASSERT_OK(conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
   ASSERT_OK(aux_conn.FetchMatrix(select_all, kExpectedRows, kExpectedColumns));
-  constexpr size_t kUniqueQueriesPerRefresh = 2;
+  constexpr size_t kUniqueQueriesPerRefresh = 1;
   constexpr auto kUniqueQueries = kAlterTableCount * kUniqueQueriesPerRefresh;
   constexpr auto kTotalQueries = kConnectionCount * kUniqueQueries;
   ASSERT_EQ(metrics.cache.queries, kTotalQueries);
@@ -843,8 +843,8 @@ TEST_F_EX(PgCatalogPerfTest,
     RETURN_NOT_OK(Connect());
     return static_cast<Status>(Status::OK());
   }));
-  ASSERT_EQ(metrics.cache.queries, 3);
-  ASSERT_EQ(metrics.cache.hits, 3);
+  ASSERT_EQ(metrics.cache.queries, 2);
+  ASSERT_EQ(metrics.cache.hits, 2);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
@@ -940,7 +940,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(first_connection_cache_metrics.hits, 0);
-  ASSERT_EQ(first_connection_cache_metrics.queries, 6);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(
       2 * FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms));
@@ -949,7 +949,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(second_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 1);
   ASSERT_EQ(second_connection_cache_metrics.hits, 1);
-  ASSERT_EQ(second_connection_cache_metrics.queries, 8);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 7);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
@@ -964,13 +964,13 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_EQ(first_connection_cache_metrics.renew_hard, 0);
   ASSERT_EQ(first_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(first_connection_cache_metrics.hits, 0);
-  ASSERT_EQ(first_connection_cache_metrics.queries, 6);
+  ASSERT_EQ(first_connection_cache_metrics.queries, 5);
 
   auto second_connection_cache_metrics = ASSERT_RESULT(metrics_->Delta(connector)).cache;
   ASSERT_EQ(second_connection_cache_metrics.renew_hard, 1);
   ASSERT_EQ(second_connection_cache_metrics.renew_soft, 0);
   ASSERT_EQ(second_connection_cache_metrics.hits, 2);
-  ASSERT_EQ(second_connection_cache_metrics.queries, 10);
+  ASSERT_EQ(second_connection_cache_metrics.queries, 9);
 }
 
 // The test checks that GC keeps response cache memory lower than limit
@@ -1135,7 +1135,7 @@ TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatTablesPreload,
           PgPreloadAdditionalCatTablesTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountAdditionalCatPreload + ASHCollectorRPCCount());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables + ASHCollectorRPCCount());
 }
 
 TEST_F_EX(PgCatalogPerfTest,
@@ -1173,10 +1173,10 @@ TEST_F_EX(PgCatalogPerfTest, ResponseCacheIsDBSpecific, PgCatalogWithUnlimitedCa
   };
   // The cluster's first-ever connection also builds the relcache init file, one
   // read more than a connection to a database created later, which finds it.
-  ASSERT_OK(rpc_count_checker(kFirstConnectionRPCCountAdditionalCatPreload));
+  ASSERT_OK(rpc_count_checker(kFirstConnectionRPCCountWithAdditionalTables));
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
-  ASSERT_OK(rpc_count_checker(kFirstConnectionRPCCountWithAdditionalTables, kDBName));
+  ASSERT_OK(rpc_count_checker(kFirstConnectionRPCCountWithAdditionalTables - 1, kDBName));
 }
 
 TEST_F_EX(PgCatalogPerfTest,
@@ -1201,7 +1201,7 @@ TEST_F_EX(
     ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
     // CREATE DATABASE increments the catalog version for all databases.
     const auto create_db_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-    ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+    ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables - 1);
     auto conn_with_temp_table = ASSERT_RESULT(ConnectToDB(kDBName));
     ASSERT_OK(conn_with_temp_table.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
   }
@@ -1209,7 +1209,7 @@ TEST_F_EX(
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
 
-  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables - 1,
                                   kSubsequentConnectionRPCCount}) {
     const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
     ASSERT_EQ(connect_rpc_count, expected_rpc_count);
@@ -1226,7 +1226,7 @@ TEST_F_EX(PgCatalogPerfTest,
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
   // CREATE DATABASE increments the catalog version for all databases.
   const auto create_db_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+  ASSERT_EQ(create_db_rpc_count, kFirstConnectionRPCCountWithAdditionalTables - 1);
 
   auto aux_conn = ASSERT_RESULT(ConnectToDB(kDBName));
   ASSERT_OK(aux_conn.Execute("CREATE TEMP TABLE t(k INT PRIMARY KEY)"));
@@ -1239,7 +1239,7 @@ TEST_F_EX(PgCatalogPerfTest,
   const auto default_db_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(default_db_connect_rpc_count, kSubsequentConnectionRPCCount);
 
-  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+  for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables - 1,
                                   kSubsequentConnectionRPCCount}) {
     const auto connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp(kDBName));
     ASSERT_EQ(connect_rpc_count, expected_rpc_count);

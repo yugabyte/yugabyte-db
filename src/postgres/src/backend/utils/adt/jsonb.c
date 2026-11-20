@@ -13,10 +13,13 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#include "catalog/objectaccess.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/json.h"
@@ -636,6 +639,7 @@ datum_to_jsonb_internal(Datum val, bool is_null, JsonbInState *result,
 	bool		numeric_to_string;
 	JsonbValue	jb;
 	bool		scalar_jsonb = false;
+	AclResult	aclresult;
 
 	check_stack_depth();
 
@@ -770,6 +774,12 @@ datum_to_jsonb_internal(Datum val, bool is_null, JsonbInState *result,
 				break;
 			case JSONTYPE_CAST:
 				/* cast to JSON, and then process as JSON */
+				aclresult = object_aclcheck(ProcedureRelationId, outfuncoid,
+											GetUserId(), ACL_EXECUTE);
+				if (aclresult != ACLCHECK_OK)
+					aclcheck_error(aclresult, OBJECT_FUNCTION,
+								   get_func_name(outfuncoid));
+				InvokeFunctionExecuteHook(outfuncoid);
 				val = OidFunctionCall1(outfuncoid, val);
 				pg_fallthrough;
 			case JSONTYPE_JSON:
@@ -1076,14 +1086,45 @@ add_jsonb(Datum val, bool is_null, JsonbInState *result,
 
 /*
  * Is the given type immutable when coming out of a JSONB context?
+ *
+ * At present, datetimes are all considered mutable, because they
+ * depend on timezone.  XXX we should also drill down into objects and
+ * arrays, but do not.
  */
 bool
 to_jsonb_is_immutable(Oid typoid)
 {
-	bool		has_mutable = false;
+	JsonTypeCategory tcategory;
+	Oid			outfuncoid;
 
-	json_check_mutability(typoid, true, &has_mutable);
-	return !has_mutable;
+	json_categorize_type(typoid, true, &tcategory, &outfuncoid);
+
+	switch (tcategory)
+	{
+		case JSONTYPE_NULL:
+		case JSONTYPE_BOOL:
+		case JSONTYPE_JSON:
+		case JSONTYPE_JSONB:
+			return true;
+
+		case JSONTYPE_DATE:
+		case JSONTYPE_TIMESTAMP:
+		case JSONTYPE_TIMESTAMPTZ:
+			return false;
+
+		case JSONTYPE_ARRAY:
+			return false;		/* TODO recurse into elements */
+
+		case JSONTYPE_COMPOSITE:
+			return false;		/* TODO recurse into fields */
+
+		case JSONTYPE_NUMERIC:
+		case JSONTYPE_CAST:
+		case JSONTYPE_OTHER:
+			return func_volatile(outfuncoid) == PROVOLATILE_IMMUTABLE;
+	}
+
+	return false;				/* not reached */
 }
 
 /*
@@ -1708,6 +1749,7 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 {
 	JsonbAggState *arg;
 	JsonbInState result;
+	JsonbParseState copyps;
 	Jsonb	   *out;
 
 	/* cannot be called directly because of internal-type argument */
@@ -1725,11 +1767,28 @@ jsonb_object_agg_finalfn(PG_FUNCTION_ARGS)
 	 * itself, so we can simply invoke pushJsonbValue on a local copy of that.
 	 * Note that this will run uniqueifyJsonbObject each time; that's hard to
 	 * avoid, since duplicate pairs may have been added since the previous
-	 * finalization.  We assume uniqueifyJsonbObject can be applied repeatedly
-	 * (with the same unique_keys/skip_nulls options) without damaging the
-	 * data structure.
+	 * finalization.  uniqueifyJsonbObject can be applied repeatedly (with the
+	 * same unique_keys/skip_nulls options) without breaking the data
+	 * structure invariants, except that it removes null values if told to.
+	 * That's problematic when unique_keys is also set, since that might
+	 * prevent detection of a later-added key that duplicates an existing one
+	 * with null value.  Therefore, when both options are set, make a copy of
+	 * the pairs array and uniqueify that, keeping the original unmodified.
 	 */
 	result = arg->pstate;
+	if (result.parseState->unique_keys && result.parseState->skip_nulls)
+	{
+		JsonbParseState *oldps = result.parseState;
+		int			npairs = oldps->contVal.val.object.nPairs;
+
+		Assert(oldps->next == NULL);
+		copyps = *oldps;
+		copyps.contVal.val.object.pairs = palloc_array(JsonbPair, npairs);
+		memcpy(copyps.contVal.val.object.pairs,
+			   oldps->contVal.val.object.pairs,
+			   npairs * sizeof(JsonbPair));
+		result.parseState = &copyps;
+	}
 
 	pushJsonbValue(&result, WJB_END_OBJECT, NULL);
 

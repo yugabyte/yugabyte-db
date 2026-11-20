@@ -216,6 +216,55 @@ IsInplaceUpdateOid(Oid relid)
 }
 
 /*
+ * HasVersionedAttributes
+ *		Return whether the relation has versioned attributes.
+ */
+bool
+HasVersionedAttributes(Relation relation)
+{
+	Assert(RelationGetRelid(relation) != InvalidOid);
+
+	/*
+	 * If the relation does not have a rowtype, its attributes obviously are
+	 * not versioned, since attribute versioning exists to protect against
+	 * deforming composite datums incompatible with the current type
+	 * definition.
+	 */
+	if (!RELKIND_HAS_ROWTYPE(relation->rd_rel->relkind))
+	{
+		Assert(relation->rd_rel->reltype == InvalidOid);
+		return false;
+	}
+
+	Assert(relation->rd_rel->reltype != InvalidOid);
+
+	/*
+	 * Bootstrapped relations are not versioned, for two reasons:
+	 *
+	 * First, they can't ever change, i.e. we never need to detect mismatches.
+	 *
+	 * Second, to determine an attribute's version, we might need to do
+	 * syscache lookups, which could lead to recursion dangers (this is not
+	 * the case right now, but might again be at a later point). As there's no
+	 * reason to version, it's not worth analyzing further.
+	 */
+	if (RelationGetRelid(relation) < FirstUnpinnedObjectId)
+		return false;
+
+	/*
+	 * YB: attribute versions need a cluster-wide, increasing version source
+	 * (upstream uses the WAL insert position), which YB does not have yet,
+	 * so leave all relations unversioned.
+	 */
+	if (IsYugaByteEnabled())
+		return false;
+
+	Assert(!IsBootstrapProcessingMode());
+
+	return true;
+}
+
+/*
  * IsToastRelation
  *		True iff relation is a TOAST support relation (or index).
  *

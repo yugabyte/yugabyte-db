@@ -369,8 +369,9 @@ stats_fill_fcinfo_from_arg_pairs(FunctionCallInfo pairs_fcinfo,
 
 	if (nargs % 2 != 0)
 		ereport(ERROR,
-				errmsg("variadic arguments must be name/value pairs"),
-				errhint("Provide an even number of variadic arguments that can be divided into pairs."));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("variadic arguments must be name/value pairs"),
+				 errhint("Provide an even number of variadic arguments that can be divided into pairs.")));
 
 	/*
 	 * For each argument name/value pair, find corresponding positional
@@ -384,11 +385,13 @@ stats_fill_fcinfo_from_arg_pairs(FunctionCallInfo pairs_fcinfo,
 
 		if (argnulls[i])
 			ereport(ERROR,
-					(errmsg("name at variadic position %d is null", i + 1)));
+					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+					 errmsg("name at variadic position %d is null", i + 1)));
 
 		if (types[i] != TEXTOID)
 			ereport(ERROR,
-					(errmsg("name at variadic position %d has type %s, expected type %s",
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("name at variadic position %d has type %s, expected type %s",
 							i + 1, format_type_be(types[i]),
 							format_type_be(TEXTOID))));
 
@@ -431,6 +434,9 @@ stats_fill_fcinfo_from_arg_pairs(FunctionCallInfo pairs_fcinfo,
  * This duplicates the logic in examine_attribute() but it will not skip the
  * attribute if the attstattarget is 0.
  *
+ * *atttypid and *atttypmod describe the type as declared.  *basetypcache is
+ * the cache entry of the base type behind any domain.
+ *
  * This information, retrieved from pg_attribute and pg_type with some
  * specific handling for index expressions, is a prerequisite to calling
  * any of the other statatt_*() functions.
@@ -438,14 +444,13 @@ stats_fill_fcinfo_from_arg_pairs(FunctionCallInfo pairs_fcinfo,
 void
 statatt_get_type(Oid reloid, AttrNumber attnum,
 				 Oid *atttypid, int32 *atttypmod,
-				 char *atttyptype, Oid *atttypcoll,
+				 TypeCacheEntry **basetypcache, Oid *atttypcoll,
 				 Oid *eq_opr, Oid *lt_opr)
 {
 	Relation	rel = relation_open(reloid, AccessShareLock);
 	Form_pg_attribute attr;
 	HeapTuple	atup;
 	Node	   *expr;
-	TypeCacheEntry *typcache;
 
 	atup = SearchSysCache2(ATTNUM, ObjectIdGetDatum(reloid),
 						   Int16GetDatum(attnum));
@@ -491,43 +496,43 @@ statatt_get_type(Oid reloid, AttrNumber attnum,
 	}
 	ReleaseSysCache(atup);
 
-	/*
-	 * If it's a multirange, step down to the range type, as is done by
-	 * multirange_typanalyze().
-	 */
-	if (type_is_multirange(*atttypid))
-		*atttypid = get_multirange_range(*atttypid);
-
 	/* finds the right operators even if atttypid is a domain */
-	typcache = lookup_type_cache(*atttypid, TYPECACHE_LT_OPR | TYPECACHE_EQ_OPR);
-	*atttyptype = typcache->typtype;
-	*eq_opr = typcache->eq_opr;
-	*lt_opr = typcache->lt_opr;
+	*basetypcache = lookup_type_cache(*atttypid, TYPECACHE_LT_OPR |
+									  TYPECACHE_EQ_OPR |
+									  TYPECACHE_DOMAIN_BASE_INFO);
+	if (OidIsValid((*basetypcache)->domainBaseType))
+		*basetypcache = lookup_type_cache((*basetypcache)->domainBaseType,
+										  TYPECACHE_LT_OPR |
+										  TYPECACHE_EQ_OPR);
+
+	*eq_opr = (*basetypcache)->eq_opr;
+	*lt_opr = (*basetypcache)->lt_opr;
 
 	/*
 	 * Special case: collation for tsvector is DEFAULT_COLLATION_OID. See
 	 * compute_tsvector_stats().
 	 */
-	if (*atttypid == TSVECTOROID)
+	if ((*basetypcache)->type_id == TSVECTOROID)
 		*atttypcoll = DEFAULT_COLLATION_OID;
 
 	relation_close(rel, NoLock);
 }
 
 /*
- * Derive element type information from the attribute type.  This information
- * is needed when the given type is one that contains elements of other types.
+ * Derive element type information from the base type of an attribute.  This
+ * information is needed when the given type is one that contains elements of
+ * other types.
  *
- * The atttypid and atttyptype should be derived from a previous call to
+ * The type cache entry should be derived from a previous call to
  * statatt_get_type().
  */
 bool
-statatt_get_elem_type(Oid atttypid, char atttyptype,
+statatt_get_elem_type(TypeCacheEntry *basetypcache,
 					  Oid *elemtypid, Oid *elem_eq_opr)
 {
 	TypeCacheEntry *elemtypcache;
 
-	if (atttypid == TSVECTOROID)
+	if (basetypcache->type_id == TSVECTOROID)
 	{
 		/*
 		 * Special case: element type for tsvector is text. See
@@ -537,8 +542,8 @@ statatt_get_elem_type(Oid atttypid, char atttyptype,
 	}
 	else
 	{
-		/* find underlying element type through any domain */
-		*elemtypid = get_base_element_type(atttypid);
+		/* find the underlying element type */
+		*elemtypid = get_element_type(basetypcache->type_id);
 	}
 
 	if (!OidIsValid(*elemtypid))
@@ -555,7 +560,34 @@ statatt_get_elem_type(Oid atttypid, char atttyptype,
 }
 
 /*
- * Build an array with element type elemtypid from a text datum, used as
+ * Derive the range type to use from the attribute type, returning false if
+ * the attribute cannot have range statistics at all.
+ *
+ * For a multirange type, we step down to its range type, because
+ * compute_range_stats() stores range bounds even when analyzing a multirange
+ * column (see also range_typanalyze() and multirange_typanalyze()).
+ *
+ * The type cache entry should be derived from a previous call to
+ * statatt_get_type(), so that any domain has already been looked through.
+ */
+bool
+statatt_get_range_type(TypeCacheEntry *basetypcache, Oid *rangetypid)
+{
+	if (basetypcache->typtype == TYPTYPE_MULTIRANGE)
+		*rangetypid = get_multirange_range(basetypcache->type_id);
+	else if (basetypcache->typtype == TYPTYPE_RANGE)
+		*rangetypid = basetypcache->type_id;
+	else
+	{
+		*rangetypid = InvalidOid;
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * Build an array with element type typid from a text datum, used as
  * value of an attribute in a tuple to-be-inserted into pg_statistic.
  *
  * The typid and typmod should be derived from a previous call to
@@ -569,7 +601,6 @@ Datum
 statatt_build_stavalues(const char *staname, FmgrInfo *array_in, Datum d, Oid typid,
 						int32 typmod, bool *ok)
 {
-	LOCAL_FCINFO(fcinfo, 8);
 	char	   *s;
 	Datum		result;
 	ErrorSaveContext escontext = {T_ErrorSaveContext};
@@ -578,24 +609,23 @@ statatt_build_stavalues(const char *staname, FmgrInfo *array_in, Datum d, Oid ty
 
 	s = TextDatumGetCString(d);
 
-	InitFunctionCallInfoData(*fcinfo, array_in, 3, InvalidOid,
-							 (Node *) &escontext, NULL);
-
-	fcinfo->args[0].value = CStringGetDatum(s);
-	fcinfo->args[0].isnull = false;
-	fcinfo->args[1].value = ObjectIdGetDatum(typid);
-	fcinfo->args[1].isnull = false;
-	fcinfo->args[2].value = Int32GetDatum(typmod);
-	fcinfo->args[2].isnull = false;
-
-	result = FunctionCallInvoke(fcinfo);
+	if (!InputFunctionCallSafe(array_in, s, typid, typmod,
+							   (Node *) &escontext, &result))
+	{
+		pfree(s);
+		escontext.error_data->elevel = WARNING;
+		ThrowErrorData(escontext.error_data);
+		*ok = false;
+		return (Datum) 0;
+	}
 
 	pfree(s);
 
-	if (escontext.error_occurred)
+	if (ARR_NDIM(DatumGetArrayTypeP(result)) != 1)
 	{
-		escontext.error_data->elevel = WARNING;
-		ThrowErrorData(escontext.error_data);
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("\"%s\" must be a one-dimensional array", staname)));
 		*ok = false;
 		return (Datum) 0;
 	}
@@ -662,7 +692,8 @@ statatt_set_slot(Datum *values, bool *nulls, bool *replaces,
 
 	if (slotidx >= STATISTIC_NUM_SLOTS)
 		ereport(ERROR,
-				(errmsg("maximum number of statistics slots exceeded: %d",
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("maximum number of statistics slots exceeded: %d",
 						slotidx + 1)));
 
 	stakind_attnum = Anum_pg_statistic_stakind1 - 1 + slotidx;

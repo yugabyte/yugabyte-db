@@ -3,7 +3,8 @@ setup
 {
 	CREATE EXTENSION injection_points;
 
-	CREATE TABLE repack_test(i int PRIMARY KEY, j int);
+	CREATE TABLE repack_test(i int PRIMARY KEY, j int,
+				 k int GENERATED ALWAYS AS (j * 2) STORED);
 	INSERT INTO repack_test(i, j) VALUES (1, 1), (2, 2), (3, 3), (4, 4);
 
 	CREATE TABLE relfilenodes(node oid);

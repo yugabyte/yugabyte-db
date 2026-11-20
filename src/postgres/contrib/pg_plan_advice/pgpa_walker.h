@@ -71,8 +71,8 @@ typedef struct pgpa_query_feature
  * scans is an array of lists of pgpa_scan objects. The array is indexed by
  * the scan's pgpa_scan_strategy.
  *
- * no_gather_scans is the set of scan RTIs that do not appear beneath any
- * Gather or Gather Merge node.
+ * no_gather_scans is the set of scan RTIs for which NO_GATHER advice should
+ * be generated.
  *
  * toplevel_unrolled_joins is a list of all pgpa_unrolled_join objects that
  * are not a child of some other pgpa_unrolled_join.
@@ -114,6 +114,7 @@ extern void pgpa_add_future_feature(pgpa_plan_walker_context *walker,
 extern ElidedNode *pgpa_last_elided_node(PlannedStmt *pstmt, Plan *plan);
 extern Bitmapset *pgpa_relids(Plan *plan);
 extern Index pgpa_scanrelid(Plan *plan);
+extern bool pgpa_is_scan_level_materialize(Plan *plan);
 extern Bitmapset *pgpa_filter_out_join_relids(Bitmapset *relids, List *rtable);
 
 extern bool pgpa_walker_would_advise(pgpa_plan_walker_context *walker,

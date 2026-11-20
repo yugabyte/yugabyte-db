@@ -286,7 +286,7 @@ INSERT INTO PKTABLE VALUES (1, 'Test1');
 INSERT INTO PKTABLE VALUES (2, 'Test2');
 INSERT INTO PKTABLE VALUES (3, 'Test3');
 
--- Grant usage on PKTABLE to user regress_foreign_key_user
+-- Grant SELECT on PKTABLE to user regress_foreign_key_user
 CREATE USER regress_foreign_key_user NOLOGIN;
 GRANT SELECT ON PKTABLE TO regress_foreign_key_user;
 
@@ -295,14 +295,91 @@ ALTER TABLE PKTABLE OWNER to regress_foreign_key_user;
 -- Inserting into FKTABLE should work
 INSERT INTO FKTABLE VALUES (3, 5);
 
--- Revoke usage on PKTABLE from user regress_foreign_key_user
+-- Revoke SELECT on PKTABLE from user regress_foreign_key_user
 REVOKE SELECT ON PKTABLE FROM regress_foreign_key_user;
 
 -- Inserting into FKTABLE should fail
 INSERT INTO FKTABLE VALUES (2, 6);
 
+-- SELECT on the referenced key column is enough, without SELECT on ptest2.
+GRANT SELECT (ptest1) ON PKTABLE TO regress_foreign_key_user;
+INSERT INTO FKTABLE VALUES (2, 6);
+
+-- SELECT on an unrelated column does not suffice.
+REVOKE SELECT (ptest1) ON PKTABLE FROM regress_foreign_key_user;
+GRANT SELECT (ptest2) ON PKTABLE TO regress_foreign_key_user;
+INSERT INTO FKTABLE VALUES (2, 6); -- fails
+REVOKE SELECT (ptest2) ON PKTABLE FROM regress_foreign_key_user;
+GRANT SELECT (ptest1) ON PKTABLE TO regress_foreign_key_user;
+
+-- FOR KEY SHARE also requires UPDATE privilege.
+REVOKE UPDATE ON PKTABLE FROM regress_foreign_key_user;
+INSERT INTO FKTABLE VALUES (2, 6); -- fails
+
+-- UPDATE on any column suffices, even one that the check does not read.
+GRANT UPDATE (ptest2) ON PKTABLE TO regress_foreign_key_user;
+INSERT INTO FKTABLE VALUES (2, 6);
+
+-- Table-level SELECT can be combined with column-level UPDATE.
+GRANT SELECT ON PKTABLE TO regress_foreign_key_user;
+INSERT INTO FKTABLE VALUES (2, 6);
+REVOKE UPDATE (ptest2) ON PKTABLE FROM regress_foreign_key_user;
+INSERT INTO FKTABLE VALUES (2, 6); -- fails
+
 DROP TABLE FKTABLE;
 DROP TABLE PKTABLE;
+
+-- Check all referenced columns, including when index and FK order differ.
+CREATE TABLE PKTABLE ( ptest0 text, ptest1 int, ptest2 int,
+                      PRIMARY KEY (ptest2, ptest1) );
+CREATE TABLE FKTABLE ( ftest1 int, ftest2 int );
+INSERT INTO PKTABLE VALUES ('unused', 1, 2);
+INSERT INTO FKTABLE VALUES (1, 2);
+ALTER TABLE FKTABLE ADD CONSTRAINT fktable_fk
+    FOREIGN KEY (ftest1, ftest2) REFERENCES PKTABLE (ptest1, ptest2) NOT VALID;
+ALTER TABLE PKTABLE OWNER TO regress_foreign_key_user;
+ALTER TABLE FKTABLE OWNER TO regress_foreign_key_user;
+REVOKE SELECT ON PKTABLE FROM regress_foreign_key_user;
+GRANT SELECT (ptest1) ON PKTABLE TO regress_foreign_key_user;
+
+-- Lack of SELECT on FKTABLE forces validation to check each row.
+REVOKE SELECT ON FKTABLE FROM regress_foreign_key_user;
+SET ROLE regress_foreign_key_user;
+ALTER TABLE FKTABLE VALIDATE CONSTRAINT fktable_fk; -- fails
+GRANT SELECT (ptest2) ON PKTABLE TO regress_foreign_key_user;
+
+-- Per-row validation also requires UPDATE privilege.
+REVOKE UPDATE ON PKTABLE FROM regress_foreign_key_user;
+ALTER TABLE FKTABLE VALIDATE CONSTRAINT fktable_fk; -- fails
+-- UPDATE on the unrelated column is enough.
+GRANT UPDATE (ptest0) ON PKTABLE TO regress_foreign_key_user;
+ALTER TABLE FKTABLE VALIDATE CONSTRAINT fktable_fk;
+RESET ROLE;
+
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+
+-- Comparing the old and new key values to decide whether an UPDATE needs a
+-- check applies the FK column's cast function, as the user issuing the UPDATE.
+CREATE TYPE fk_acl_enum AS ENUM ('one');
+CREATE FUNCTION fk_acl_enum_to_int4(fk_acl_enum) RETURNS int4
+  AS 'SELECT 1' LANGUAGE sql IMMUTABLE STRICT;
+CREATE CAST (fk_acl_enum AS int4) WITH FUNCTION fk_acl_enum_to_int4(fk_acl_enum) AS IMPLICIT;
+REVOKE EXECUTE ON FUNCTION fk_acl_enum_to_int4(fk_acl_enum) FROM PUBLIC;
+CREATE TABLE PKTABLE ( ptest1 int PRIMARY KEY );
+CREATE TABLE FKTABLE ( ftest1 fk_acl_enum REFERENCES PKTABLE, ftest2 int );
+INSERT INTO PKTABLE VALUES (1);
+INSERT INTO FKTABLE VALUES ('one', 1);
+GRANT UPDATE ON FKTABLE TO regress_foreign_key_user;
+SET ROLE regress_foreign_key_user;
+UPDATE FKTABLE SET ftest2 = 2; -- fails
+RESET ROLE;
+
+DROP TABLE FKTABLE;
+DROP TABLE PKTABLE;
+DROP CAST (fk_acl_enum AS int4);
+DROP FUNCTION fk_acl_enum_to_int4(fk_acl_enum);
+DROP TYPE fk_acl_enum;
 
 DROP USER regress_foreign_key_user;
 
@@ -585,7 +662,7 @@ CREATE TABLE FKTABLE (
   FOREIGN KEY (tid, fk_id_del_set_default) REFERENCES PKTABLE ON DELETE SET DEFAULT (fk_id_del_set_default, fk_id_del_set_default)
 );
 
-SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'fktable'::regclass::oid ORDER BY oid;
+SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'fktable'::regclass::oid ORDER BY conname COLLATE "C";
 
 INSERT INTO PKTABLE VALUES (1, 0), (1, 1), (1, 2);
 INSERT INTO FKTABLE VALUES
@@ -691,6 +768,65 @@ ptest3) REFERENCES pktable(ptest1, ptest2));
 -- Not this one either... Same as the last one except we didn't defined the columns being referenced.
 CREATE TABLE PKTABLE (ptest1 int, ptest2 inet, ptest3 int, ptest4 inet, PRIMARY KEY(ptest1, ptest2), FOREIGN KEY(ptest4,
 ptest3) REFERENCES pktable);
+
+-- Replace the equality operator the FK recorded with an identical
+-- implementation, so only opfamily membership changes.  The recorded operator
+-- is now absent from the family; the fast path must fall back to SPI instead
+-- of probing with it.  Run inside a transaction that is rolled back: the
+-- family holds built-in integer operators, and the planner finds btree
+-- opfamilies by content (get_mergejoin_opfamilies), not by schema, so if it
+-- were committed it would be visible to concurrent tests and disturb their
+-- plans.
+begin;
+create schema fk_opfamily;
+set search_path = fk_opfamily, pg_catalog;
+create operator family fam using btree;
+create operator class int_ops for type integer using btree family fam as
+  operator 1 <(integer,integer), operator 2 <=(integer,integer),
+  operator 3 =(integer,integer), operator 4 >=(integer,integer),
+  operator 5 >(integer,integer), function 1 btint4cmp(integer,integer);
+alter operator family fam using btree add
+  operator 1 <(integer,bigint), operator 2 <=(integer,bigint),
+  operator 3 =(integer,bigint), operator 4 >=(integer,bigint),
+  operator 5 >(integer,bigint),
+  operator 1 <(bigint,integer), operator 2 <=(bigint,integer),
+  operator 3 =(bigint,integer), operator 4 >=(bigint,integer),
+  operator 5 >(bigint,integer),
+  operator 1 <(bigint,bigint), operator 2 <=(bigint,bigint),
+  operator 3 =(bigint,bigint), operator 4 >=(bigint,bigint),
+  operator 5 >(bigint,bigint),
+  function 1 (integer,bigint) btint48cmp(integer,bigint),
+  function 1 (bigint,integer) btint84cmp(bigint,integer),
+  function 1 (bigint,bigint) btint8cmp(bigint,bigint);
+create operator =#= (leftarg=integer, rightarg=bigint, function=int48eq);
+create table p(k integer);
+create unique index p_idx on p(k int_ops);
+
+-- Two identical FKs to exercise both cache states: warm gets a row now so its
+-- fast-path metadata is built and cached; cold is left empty and has none.
+create table warm(k bigint references p(k));
+create table cold(k bigint references p(k));
+insert into p values (1), (2);
+insert into warm values (1);
+
+-- Change only pg_amop.  warm's cached metadata now names an operator the
+-- opfamily no longer contains; cold is still evaluated fresh.
+alter operator family fam using btree drop operator 3(integer,bigint);
+alter operator family fam using btree add operator 3 =#=(integer,bigint);
+
+-- A present key must be accepted and a missing one rejected, via SPI.
+insert into warm values (2);
+savepoint s;
+insert into warm values (99);
+rollback to s;
+insert into cold values (2);
+savepoint s;
+insert into cold values (99);
+rollback to s;
+select * from warm order by k;
+select * from cold order by k;
+reset search_path;
+rollback;
 
 --
 -- Now some cases with inheritance
@@ -1449,14 +1585,14 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_1 FOR VALUES FR
 
 -- Child constraint will remain valid.
 SELECT conname, convalidated, conrelid::regclass FROM pg_constraint
-WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY oid::regclass::text;
+WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY conname COLLATE "C";
 
 -- Validate the constraint
 ALTER TABLE fk_partitioned_fk VALIDATE CONSTRAINT fk_partitioned_fk_a_b_fkey;
 
 -- All constraints are now valid.
 SELECT conname, convalidated, conrelid::regclass FROM pg_constraint
-WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY oid::regclass::text;
+WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY conname COLLATE "C";
 
 -- Attaching a child with a NOT VALID constraint.
 CREATE TABLE fk_partitioned_fk_2 (a int, b int);
@@ -1472,7 +1608,7 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2 FOR VALUES FR
 
 -- The child constraint will also be valid.
 SELECT conname, convalidated FROM pg_constraint
-WHERE conrelid = 'fk_partitioned_fk_2'::regclass ORDER BY oid::regclass::text;
+WHERE conrelid = 'fk_partitioned_fk_2'::regclass ORDER BY conname COLLATE "C";
 
 -- Test case where the child constraint is invalid, the grandchild constraint
 -- is valid, and the validation for the grandchild should be skipped when a
@@ -1486,7 +1622,7 @@ ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_3 FOR VALUES FR
 
 -- All constraints are now valid.
 SELECT conname, convalidated, conrelid::regclass FROM pg_constraint
-WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY oid::regclass::text;
+WHERE conrelid::regclass::text like 'fk_partitioned_fk%' ORDER BY conname COLLATE "C";
 
 DROP TABLE fk_partitioned_fk, fk_notpartitioned_pk;
 
@@ -1505,14 +1641,14 @@ ALTER TABLE fk_notpartitioned_fk ADD CONSTRAINT fk_notpartitioned_fk_a_b_fkey2
 
 -- All constraints will be invalid, and _fkey2 constraints will not be enforced.
 SELECT conname, conenforced, convalidated FROM pg_constraint
-WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY oid::regclass::text;
+WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY conname COLLATE "C";
 
 ALTER TABLE fk_notpartitioned_fk VALIDATE CONSTRAINT fk_notpartitioned_fk_a_b_fkey;
 ALTER TABLE fk_notpartitioned_fk ALTER CONSTRAINT fk_notpartitioned_fk_a_b_fkey2 ENFORCED;
 
 -- All constraints are now valid and enforced.
 SELECT conname, conenforced, convalidated FROM pg_constraint
-WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY oid::regclass::text;
+WHERE conrelid = 'fk_notpartitioned_fk'::regclass ORDER BY conname COLLATE "C";
 
 -- test a self-referential FK
 ALTER TABLE fk_partitioned_pk ADD CONSTRAINT selffk FOREIGN KEY (a, b) REFERENCES fk_partitioned_pk NOT VALID;
@@ -1521,12 +1657,12 @@ CREATE TABLE fk_partitioned_pk_3 PARTITION OF fk_partitioned_pk FOR VALUES FROM 
 CREATE TABLE fk_partitioned_pk_3_1 PARTITION OF fk_partitioned_pk_3 FOR VALUES FROM (2000) TO (2100);
 SELECT conname, conenforced, convalidated FROM pg_constraint
 WHERE conrelid = 'fk_partitioned_pk'::regclass AND contype = 'f'
-ORDER BY oid::regclass::text;
+ORDER BY conname COLLATE "C";
 ALTER TABLE fk_partitioned_pk_2 VALIDATE CONSTRAINT selffk;
 ALTER TABLE fk_partitioned_pk VALIDATE CONSTRAINT selffk;
 SELECT conname, conenforced, convalidated FROM pg_constraint
 WHERE conrelid = 'fk_partitioned_pk'::regclass AND contype = 'f'
-ORDER BY oid::regclass::text;
+ORDER BY conname COLLATE "C";
 
 DROP TABLE fk_notpartitioned_fk, fk_partitioned_pk;
 
@@ -2536,25 +2672,43 @@ WITH cte AS (
 DROP SCHEMA fkpart13 CASCADE;
 RESET search_path;
 
--- Tests foreign key check fast-path no-cache path.
+-- Test the fast-path ALTER TABLE validation path.  RLS on the referenced
+-- table makes RI_Initial_Check() decline the set-based check, so validation
+-- invokes the RI trigger once per referencing row.
+CREATE ROLE regress_fk_fastpath_role;
 CREATE TABLE fp_pk_alter (a int PRIMARY KEY);
 INSERT INTO fp_pk_alter SELECT generate_series(1, 100);
+ALTER TABLE fp_pk_alter ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fp_pk_alter_all ON fp_pk_alter
+    FOR ALL USING (true) WITH CHECK (true);
+GRANT REFERENCES, SELECT ON fp_pk_alter TO regress_fk_fastpath_role;
 CREATE TABLE fp_fk_alter (a int);
 INSERT INTO fp_fk_alter SELECT generate_series(1, 100);
+ALTER TABLE fp_fk_alter OWNER TO regress_fk_fastpath_role;
 -- Validation path: should succeed
+SET ROLE regress_fk_fastpath_role;
 ALTER TABLE fp_fk_alter ADD FOREIGN KEY (a) REFERENCES fp_pk_alter;
 INSERT INTO fp_fk_alter VALUES (101);  -- should fail (constraint active)
+RESET ROLE;
 DROP TABLE fp_fk_alter, fp_pk_alter;
 
 -- Separate test: validation catches existing violation
 CREATE TABLE fp_pk_alter2 (a int PRIMARY KEY);
 INSERT INTO fp_pk_alter2 VALUES (1);
+ALTER TABLE fp_pk_alter2 ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fp_pk_alter2_all ON fp_pk_alter2
+    FOR ALL USING (true) WITH CHECK (true);
+GRANT REFERENCES, SELECT ON fp_pk_alter2 TO regress_fk_fastpath_role;
 CREATE TABLE fp_fk_alter2 (a int);
 INSERT INTO fp_fk_alter2 VALUES (1), (200);  -- 200 has no PK match
+ALTER TABLE fp_fk_alter2 OWNER TO regress_fk_fastpath_role;
+SET ROLE regress_fk_fastpath_role;
 ALTER TABLE fp_fk_alter2 ADD FOREIGN KEY (a) REFERENCES fp_pk_alter2;  -- should fail
+RESET ROLE;
 DROP TABLE fp_fk_alter2, fp_pk_alter2;
+DROP ROLE regress_fk_fastpath_role;
 
--- Tests that the fast-path handles caching for multiple constraints
+-- Tests that the fast-path handles multiple constraints
 CREATE TABLE fp_pk1 (a int PRIMARY KEY);
 CREATE TABLE fp_pk2 (b int PRIMARY KEY);
 INSERT INTO fp_pk1 VALUES (1);
@@ -2563,11 +2717,11 @@ CREATE TABLE fp_multi_fk (
     a int REFERENCES fp_pk1,
     b int REFERENCES fp_pk2
 );
-INSERT INTO fp_multi_fk VALUES (1, 1);  -- two constraints, one batch
+INSERT INTO fp_multi_fk VALUES (1, 1);  -- two constraints
 INSERT INTO fp_multi_fk VALUES (1, 2);  -- second constraint fails
 DROP TABLE fp_multi_fk, fp_pk1, fp_pk2;
 
--- Test that fast-path cache handles deferred constraints and SET CONSTRAINTS IMMEDIATE
+-- Test that fast-path handles deferred constraints and SET CONSTRAINTS IMMEDIATE
 CREATE TABLE fp_pk_defer (a int PRIMARY KEY);
 CREATE TABLE fp_fk_defer (a int REFERENCES fp_pk_defer DEFERRABLE INITIALLY DEFERRED);
 INSERT INTO fp_pk_defer VALUES (1), (2);
@@ -2575,24 +2729,47 @@ INSERT INTO fp_pk_defer VALUES (1), (2);
 BEGIN;
 INSERT INTO fp_fk_defer VALUES (1);
 INSERT INTO fp_fk_defer VALUES (2);
-SET CONSTRAINTS ALL IMMEDIATE;  -- fires batch callback here
-INSERT INTO fp_fk_defer VALUES (3);  -- should fail, also tests that cache was cleaned up
+SET CONSTRAINTS ALL IMMEDIATE;  -- fires deferred checks here
+INSERT INTO fp_fk_defer VALUES (3);  -- should fail
 COMMIT;
 DROP TABLE fp_pk_defer, fp_fk_defer;
 
--- Subtransaction abort: cached state must be invalidated on ROLLBACK TO
-CREATE TABLE fp_pk_subxact (a int PRIMARY KEY);
-CREATE TABLE fp_fk_subxact (a int REFERENCES fp_pk_subxact);
-INSERT INTO fp_pk_subxact VALUES (1), (2);
+-- A deferred FK check queued while firing deferred triggers at commit must
+-- not be lost.  An RI check runs during the deferred firing loop and can run
+-- user cast code whose DML queues a further deferred check; that check must
+-- still fire.  fk_defer_main's deferred check runs a cast whose function
+-- inserts a violating row into fk_defer_t2, queueing fk_defer_t2's own
+-- deferred check, which must still be reported.
+CREATE TABLE fk_defer_t2_pk (id int PRIMARY KEY);
+CREATE TABLE fk_defer_t2 (a int REFERENCES fk_defer_t2_pk(id)
+    DEFERRABLE INITIALLY DEFERRED);
+CREATE TYPE fk_defer_vch AS (v int);
+CREATE FUNCTION fk_defer_cast(fk_defer_vch) RETURNS int
+    LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO fk_defer_t2 VALUES (999);   -- 999 absent, queues deferred check
+    RETURN $1.v;
+END$$;
+CREATE CAST (fk_defer_vch AS int) WITH FUNCTION fk_defer_cast(fk_defer_vch)
+    AS IMPLICIT;
+CREATE TABLE fk_defer_main_pk (id int PRIMARY KEY);
+INSERT INTO fk_defer_main_pk VALUES (1);
+CREATE TABLE fk_defer_main (a fk_defer_vch REFERENCES fk_defer_main_pk(id)
+    DEFERRABLE INITIALLY DEFERRED);
+-- At COMMIT the queued fk_defer_t2 check must fire and report the violation
 BEGIN;
-INSERT INTO fp_fk_subxact VALUES (1);
-SAVEPOINT sp1;
-INSERT INTO fp_fk_subxact VALUES (2);
-ROLLBACK TO sp1;
-INSERT INTO fp_fk_subxact VALUES (1);
-COMMIT;
-SELECT * FROM fp_fk_subxact;
-DROP TABLE fp_fk_subxact, fp_pk_subxact;
+INSERT INTO fk_defer_main VALUES (row(1)::fk_defer_vch);
+COMMIT;   -- expected: ERROR on fk_defer_t2_a_fkey
+-- The queued check must fire at transaction end, not early: making the
+-- referenced row present in the same transaction lets the commit succeed.
+INSERT INTO fk_defer_t2_pk VALUES (999);
+BEGIN;
+INSERT INTO fk_defer_main VALUES (row(1)::fk_defer_vch);
+COMMIT;   -- expected: success
+DROP TABLE fk_defer_main, fk_defer_main_pk, fk_defer_t2, fk_defer_t2_pk;
+DROP CAST (fk_defer_vch AS int);
+DROP FUNCTION fk_defer_cast(fk_defer_vch);
+DROP TYPE fk_defer_vch;
 
 -- FK check must see PK rows inserted by earlier AFTER triggers
 -- firing on the same statement
@@ -2616,7 +2793,144 @@ INSERT INTO fp_fk_cci VALUES (1), (2), (3);
 DROP TABLE fp_fk_cci, fp_pk_cci;
 DROP FUNCTION fp_auto_pk;
 
--- Multi-column FK: exercises batched per-row probing with composite keys
+-- An FK check must check EXECUTE, as the referenced table's owner, on the
+-- functions it applies to the FK values: the equality operator's function
+-- and, for an FK needing an implicit cast function, the cast.  Validation of
+-- a new constraint by a role that cannot use the bulk check (RLS is enabled
+-- on the referenced table) runs per-row checks, through the fast path for
+-- the operator case and through SPI for the cast case, since FK values that
+-- need a cast function are not checked by the fast path.
+--
+-- Wrapped with BEGIN...ROLLBACK to ensure opclasses used here don't interfere
+-- with nearby tests.
+BEGIN;
+CREATE ROLE regress_ri_pkowner;
+CREATE ROLE regress_ri_fkowner;
+
+-- A private btree opclass whose equality function we can revoke without
+-- affecting anything else.
+CREATE FUNCTION regress_ri_int4eq(int4, int4) RETURNS bool
+  AS 'int4eq' LANGUAGE internal IMMUTABLE STRICT;
+CREATE OPERATOR === (LEFTARG = int4, RIGHTARG = int4,
+  FUNCTION = regress_ri_int4eq, COMMUTATOR = ===,
+  RESTRICT = eqsel, JOIN = eqjoinsel);
+CREATE OPERATOR CLASS regress_ri_int4_ops FOR TYPE int4 USING btree AS
+  OPERATOR 1 <, OPERATOR 2 <=, OPERATOR 3 ===, OPERATOR 4 >=, OPERATOR 5 >,
+  FUNCTION 1 btint4cmp(int4, int4);
+REVOKE EXECUTE ON FUNCTION regress_ri_int4eq(int4, int4) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION regress_ri_int4eq(int4, int4) TO regress_ri_fkowner;
+
+-- An FK column type needing a user-defined implicit cast to the PK type.
+CREATE TYPE fkenum AS ENUM ('one');
+CREATE FUNCTION fkenum_to_int4(fkenum) RETURNS int4
+  AS 'SELECT 1' LANGUAGE sql IMMUTABLE STRICT;
+CREATE CAST (fkenum AS int4) WITH FUNCTION fkenum_to_int4(fkenum) AS IMPLICIT;
+REVOKE EXECUTE ON FUNCTION fkenum_to_int4(fkenum) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fkenum_to_int4(fkenum) TO regress_ri_fkowner;
+
+CREATE TABLE pktable_acl_op (a int4);
+CREATE UNIQUE INDEX ON pktable_acl_op (a regress_ri_int4_ops);
+CREATE TABLE pktable_acl_cast (a int4 PRIMARY KEY);
+CREATE TABLE pktable_acl_op_part (a int4) PARTITION BY LIST (a regress_ri_int4_ops);
+CREATE TABLE pktable_acl_op_part1 PARTITION OF pktable_acl_op_part DEFAULT;
+CREATE UNIQUE INDEX ON pktable_acl_op_part (a regress_ri_int4_ops);
+CREATE TABLE pktable_acl_cast_part (a int4 PRIMARY KEY) PARTITION BY LIST (a);
+INSERT INTO pktable_acl_op VALUES (1);
+INSERT INTO pktable_acl_cast VALUES (1);
+ALTER TABLE pktable_acl_op OWNER TO regress_ri_pkowner;
+ALTER TABLE pktable_acl_cast OWNER TO regress_ri_pkowner;
+ALTER TABLE pktable_acl_op_part OWNER TO regress_ri_pkowner;
+ALTER TABLE pktable_acl_cast_part OWNER TO regress_ri_pkowner;
+ALTER TABLE pktable_acl_op ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pktable_acl_cast ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pktable_acl_op_part ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pktable_acl_cast_part ENABLE ROW LEVEL SECURITY;
+GRANT REFERENCES ON pktable_acl_op, pktable_acl_cast, pktable_acl_op_part, pktable_acl_cast_part TO regress_ri_fkowner;
+
+CREATE TABLE fktable_acl_op (a int4);
+CREATE TABLE fktable_acl_cast (a fkenum);
+INSERT INTO fktable_acl_op VALUES (1);
+INSERT INTO fktable_acl_cast VALUES ('one');
+ALTER TABLE fktable_acl_op OWNER TO regress_ri_fkowner;
+ALTER TABLE fktable_acl_cast OWNER TO regress_ri_fkowner;
+
+-- The FK owner holds EXECUTE on both functions; the PK owner does not, and
+-- it is the PK owner whose privileges apply.
+SET ROLE regress_ri_fkowner;
+SAVEPOINT s;
+ALTER TABLE fktable_acl_op
+  ADD FOREIGN KEY (a) REFERENCES pktable_acl_op (a);	-- fails
+ROLLBACK TO SAVEPOINT s;
+SAVEPOINT s;
+ALTER TABLE fktable_acl_cast
+  ADD FOREIGN KEY (a) REFERENCES pktable_acl_cast (a);	-- fails (SPI path message)
+ROLLBACK TO SAVEPOINT s;
+SAVEPOINT s;
+ALTER TABLE fktable_acl_op
+  ADD FOREIGN KEY (a) REFERENCES pktable_acl_op_part (a);	-- fails (SPI path message)
+ROLLBACK TO SAVEPOINT s;
+SAVEPOINT s;
+ALTER TABLE fktable_acl_cast
+  ADD FOREIGN KEY (a) REFERENCES pktable_acl_cast_part (a);	-- fails (SPI path message)
+ROLLBACK TO SAVEPOINT s;
+RESET ROLE;
+ROLLBACK;
+
+-- A STABLE equality function used by an FK check must see changes made by
+-- earlier AFTER triggers, using the check's snapshot rather than the outer
+-- query's snapshot.  Compare the fast path (pk_fast) with a partitioned-parent
+-- SPI check (pk_spi).  The equality function of the referenced index's
+-- opclass is the user code that runs during a fast-path check.
+BEGIN;
+CREATE SCHEMA ri_snapshot;
+SET LOCAL search_path = ri_snapshot, pg_catalog;
+
+CREATE TABLE lookup_rows (v int);
+-- Considers two values equal only if a lookup row exists for them.
+CREATE FUNCTION lookup_eq(a int, b int) RETURNS bool
+LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    RETURN a = b AND EXISTS (SELECT 1 FROM lookup_rows AS r WHERE r.v = a);
+END;
+$$;
+CREATE OPERATOR === (LEFTARG = int, RIGHTARG = int, FUNCTION = lookup_eq);
+CREATE OPERATOR CLASS lookup_ops FOR TYPE int USING btree AS
+    OPERATOR 1 <, OPERATOR 2 <=, OPERATOR 3 ===, OPERATOR 4 >=, OPERATOR 5 >,
+    FUNCTION 1 btint4cmp(int, int);
+
+CREATE TABLE pk_fast (v int);
+CREATE UNIQUE INDEX ON pk_fast (v lookup_ops);
+CREATE TABLE pk_spi (v int) PARTITION BY RANGE (v lookup_ops);
+CREATE TABLE pk_spi_p PARTITION OF pk_spi
+    FOR VALUES FROM (MINVALUE) TO (MAXVALUE);
+CREATE UNIQUE INDEX ON pk_spi (v lookup_ops);
+INSERT INTO pk_fast VALUES (1);
+INSERT INTO pk_spi VALUES (1);
+CREATE TABLE fk_fast (k int REFERENCES pk_fast(v));
+CREATE TABLE fk_spi (k int REFERENCES pk_spi(v));
+
+CREATE FUNCTION add_lookup_row() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO lookup_rows VALUES (NEW.k);
+    RETURN NEW;
+END;
+$$;
+-- Sort before the RI trigger, so the lookup row is inserted first.
+CREATE TRIGGER "AAA_lookup" AFTER INSERT ON fk_fast
+    FOR EACH ROW EXECUTE FUNCTION add_lookup_row();
+CREATE TRIGGER "AAA_lookup" AFTER INSERT ON fk_spi
+    FOR EACH ROW EXECUTE FUNCTION add_lookup_row();
+
+-- Both checks must succeed.  Without the check's snapshot active, the
+-- STABLE equality function misses the lookup row, so no PK row matches.
+INSERT INTO fk_fast VALUES (1);
+SELECT count(*) FROM fk_fast;
+DELETE FROM lookup_rows;
+INSERT INTO fk_spi VALUES (1);
+SELECT count(*) FROM fk_spi;
+ROLLBACK;
+
+-- Multi-column FK: exercises direct per-row probing with composite keys
 CREATE TABLE fp_pk_multi (a int, b int, PRIMARY KEY (a, b));
 INSERT INTO fp_pk_multi SELECT i, i FROM generate_series(1, 100) i;
 CREATE TABLE fp_fk_multi (x int, a int, b int,
@@ -2625,7 +2939,34 @@ INSERT INTO fp_fk_multi SELECT i, i, i FROM generate_series(1, 100) i;
 INSERT INTO fp_fk_multi VALUES (1, 999, 999);
 DROP TABLE fp_fk_multi, fp_pk_multi;
 
--- Deferred constraint: batch flushed at COMMIT, not at statement end
+-- Multi-column FK with columns in different order than PK index.
+-- The FK references columns in a different order than they appear in the
+-- PK's primary key, which requires mapping constraint key positions to
+-- index column positions when building scan keys.
+CREATE TABLE fp_pk_order (a int, b text, c int, PRIMARY KEY (a, b, c));
+INSERT INTO fp_pk_order VALUES (1, 'one', 10), (2, 'two', 20);
+CREATE TABLE fp_fk_order (
+    x int,
+    c int,
+    b text,
+    a int,
+    FOREIGN KEY (a, c, b) REFERENCES fp_pk_order (a, c, b)  -- c and b swapped
+);
+INSERT INTO fp_fk_order VALUES (1, 10, 'one', 1);  -- should succeed
+INSERT INTO fp_fk_order VALUES (2, 20, 'two', 2);  -- should succeed
+INSERT INTO fp_fk_order VALUES (3, 99, 'none', 9);  -- should fail
+DROP TABLE fp_fk_order, fp_pk_order;
+
+-- Same-type columns in different order:
+CREATE TABLE fp_pk_same (c1 int, c2 int, PRIMARY KEY (c1, c2));
+INSERT INTO fp_pk_same VALUES (1, 2);
+CREATE TABLE fp_fk_same (c1 int, c2 int,
+    FOREIGN KEY (c2, c1) REFERENCES fp_pk_same (c2, c1));
+INSERT INTO fp_fk_same VALUES (1, 2);  -- should succeed
+INSERT INTO fp_fk_same VALUES (9, 9);  -- should fail
+DROP TABLE fp_fk_same, fp_pk_same;
+
+-- Deferred constraint: deferred check fired at COMMIT, not at statement end
 CREATE TABLE fp_pk_commit (a int PRIMARY KEY);
 CREATE TABLE fp_fk_commit (a int REFERENCES fp_pk_commit
     DEFERRABLE INITIALLY DEFERRED);
@@ -2646,10 +2987,361 @@ INSERT INTO fp_fk_cross SELECT generate_series(1, 200);
 INSERT INTO fp_fk_cross VALUES (999);
 DROP TABLE fp_fk_cross, fp_pk_cross;
 
--- Duplicate FK values: when using the batched SAOP path, every
--- row must be recognized as satisfied, not just the first match
-CREATE TABLE fp_pk_dup (a int PRIMARY KEY);
-INSERT INTO fp_pk_dup VALUES (1);
-CREATE TABLE fp_fk_dup (a int REFERENCES fp_pk_dup);
-INSERT INTO fp_fk_dup SELECT 1 FROM generate_series(1, 100);
-DROP TABLE fp_fk_dup, fp_pk_dup;
+-- Domain-typed FK column whose base type differs from the PK type: the
+-- fast path must look through the domain to its base type when deciding
+-- whether the cross-type comparison needs a cast.  Otherwise valid rows
+-- were wrongly rejected with "no conversion function from ... to ...".
+CREATE DOMAIN fp_int8dom AS int8;
+CREATE TABLE fp_pk_dom (a int4 PRIMARY KEY);
+INSERT INTO fp_pk_dom SELECT generate_series(1, 200);
+CREATE TABLE fp_fk_dom (a fp_int8dom REFERENCES fp_pk_dom);
+INSERT INTO fp_fk_dom SELECT generate_series(1, 200);
+INSERT INTO fp_fk_dom VALUES (999);
+INSERT INTO fp_fk_dom VALUES (NULL);
+DROP TABLE fp_fk_dom, fp_pk_dom;
+DROP DOMAIN fp_int8dom;
+
+-- Re-entrant FK check: DML on the same FK table from a cast function
+CREATE TABLE fp_reentry_pk (id int PRIMARY KEY);
+INSERT INTO fp_reentry_pk VALUES (1), (2);
+CREATE TYPE fp_vch AS (v int);
+CREATE FUNCTION fp_vcast(fp_vch) RETURNS int LANGUAGE plpgsql AS $$
+BEGIN
+    IF $1.v = 1 THEN
+        INSERT INTO fp_reentry_fk VALUES (row(2)::fp_vch);
+    END IF;
+    RETURN $1.v;
+END$$;
+CREATE CAST (fp_vch AS int) WITH FUNCTION fp_vcast(fp_vch) AS IMPLICIT;
+CREATE TABLE fp_reentry_fk (a fp_vch
+    REFERENCES fp_reentry_pk (id));
+-- The cast re-enters with DML on the same FK, so the inner check looks up
+-- the same cached SPI plan while the outer check is still executing it.
+-- If the plan has been invalidated meanwhile (as CLOBBER_CACHE_ALWAYS makes
+-- certain), the inner check must not free it out from under the outer one.
+INSERT INTO fp_reentry_fk SELECT row(1)::fp_vch FROM generate_series(1, 2);
+SELECT a, count(*) FROM fp_reentry_fk GROUP BY a ORDER BY a;
+DROP TABLE fp_reentry_fk, fp_reentry_pk;
+DROP CAST (fp_vch AS int);
+DROP FUNCTION fp_vcast(fp_vch);
+DROP TYPE fp_vch;
+
+-- Re-entrant ON DELETE CASCADE whose trigger invalidates the cached RI plan.
+-- The cascade for id = 2 runs a BEFORE DELETE trigger that does GRANT/REVOKE
+-- on the table, invalidating the cached plan the cascade is executing, and
+-- then deletes more rows, whose own cascade fetches that plan again.  The
+-- inner fetch must not free the plan out from under the outer cascade.
+-- Unlike the case above, this reproduces the crash without cache clobbering.
+CREATE TABLE fk_self_ref (
+    id int PRIMARY KEY,
+    parent_id int REFERENCES fk_self_ref (id) ON DELETE CASCADE
+);
+CREATE FUNCTION fk_self_ref_before_del() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.id = 2 THEN
+        GRANT SELECT ON fk_self_ref TO PUBLIC;
+        REVOKE SELECT ON fk_self_ref FROM PUBLIC;
+        DELETE FROM fk_self_ref WHERE parent_id = OLD.id;
+    ELSIF OLD.id = 4 AND current_setting('fk_self_ref.fail', true) = 'on' THEN
+        RAISE EXCEPTION 'fk_self_ref: deleting %', OLD.id;
+    END IF;
+    RETURN OLD;
+END$$;
+CREATE TRIGGER fk_self_ref_before_del BEFORE DELETE ON fk_self_ref
+    FOR EACH ROW EXECUTE PROCEDURE fk_self_ref_before_del();
+INSERT INTO fk_self_ref VALUES
+    (1, NULL), (2, 1), (3, 2), (4, 3), (5, 4), (10, NULL), (11, 10);
+DELETE FROM fk_self_ref WHERE id = 1;
+SELECT * FROM fk_self_ref ORDER BY id;
+-- The same with the nested cascade raising an error while the plans are in
+-- use, repeatedly, then a normal delete after another invalidation.
+INSERT INTO fk_self_ref VALUES (1, NULL), (2, 1), (3, 2), (4, 3), (5, 4);
+SET fk_self_ref.fail = on;
+DO $$
+DECLARE
+    failures int := 0;
+BEGIN
+    FOR i IN 1..10 LOOP
+        BEGIN
+            DELETE FROM fk_self_ref WHERE id = 1;
+        EXCEPTION WHEN raise_exception THEN
+            failures := failures + 1;
+        END;
+    END LOOP;
+    RAISE NOTICE 'failures: %', failures;
+END$$;
+SELECT * FROM fk_self_ref ORDER BY id;
+RESET fk_self_ref.fail;
+GRANT SELECT ON fk_self_ref TO PUBLIC;
+REVOKE SELECT ON fk_self_ref FROM PUBLIC;
+DELETE FROM fk_self_ref WHERE id = 1;
+SELECT * FROM fk_self_ref ORDER BY id;
+DROP TABLE fk_self_ref;
+DROP FUNCTION fk_self_ref_before_del();
+
+-- Errors raised from inside an RI check's query, as opposed to by the check
+-- itself afterwards, must leave the stack of executing RI plans exact (an
+-- assertion at end of transaction checks that), and a subtransaction abort
+-- in the middle of all that must not disturb the plans queued to be freed.
+-- The cast raises for v = 97, so a check on row(97) errors out while its
+-- plan is being executed.  For v = 1 it first invalidates the plan of the
+-- check calling it, so that the nested check on row(97) finds that plan
+-- invalid while it is executing and queues it, and then errors out, which
+-- the cast catches: a subtransaction abort inside the outer check, with the
+-- outer check's plan queued.  The same error is then caught above every
+-- check, by a PL/pgSQL exception block and by ROLLBACK TO SAVEPOINT; more
+-- checks and a commit follow each.
+CREATE ROLE regress_fk_err_role;
+CREATE TABLE fk_err_pk (id int PRIMARY KEY);
+INSERT INTO fk_err_pk VALUES (1), (2);
+CREATE TYPE fk_err_vch AS (v int);
+CREATE FUNCTION fk_err_vcast(fk_err_vch) RETURNS int LANGUAGE plpgsql AS $$
+BEGIN
+    IF $1.v = 97 THEN
+        RAISE EXCEPTION 'fk_err_vcast: %', $1.v;
+    END IF;
+    IF $1.v = 1 THEN
+        IF current_setting('fk_err.flip', true) = 'on' THEN
+            GRANT SELECT ON fk_err_pk TO regress_fk_err_role;
+            PERFORM set_config('fk_err.flip', 'off', true);
+        ELSE
+            REVOKE SELECT ON fk_err_pk FROM regress_fk_err_role;
+            PERFORM set_config('fk_err.flip', 'on', true);
+        END IF;
+        BEGIN
+            INSERT INTO fk_err_fk VALUES (row(97)::fk_err_vch);
+        EXCEPTION WHEN raise_exception THEN NULL;
+        END;
+    END IF;
+    RETURN $1.v;
+END$$;
+CREATE CAST (fk_err_vch AS int) WITH FUNCTION fk_err_vcast(fk_err_vch) AS IMPLICIT;
+CREATE TABLE fk_err_fk (a fk_err_vch REFERENCES fk_err_pk (id));
+-- caught inside the outer check
+INSERT INTO fk_err_fk SELECT row(1)::fk_err_vch FROM generate_series(1, 3);
+-- caught above every check, then more checks in the same transaction
+BEGIN;
+DO $$
+BEGIN
+    FOR i IN 1..3 LOOP
+        BEGIN
+            INSERT INTO fk_err_fk VALUES (row(97)::fk_err_vch);
+        EXCEPTION WHEN raise_exception THEN NULL;
+        END;
+    END LOOP;
+END$$;
+INSERT INTO fk_err_fk SELECT row(2)::fk_err_vch FROM generate_series(1, 3);
+COMMIT;
+-- the same with savepoints, including one rolled back after the check whose
+-- cast caught the error had already succeeded
+BEGIN;
+SAVEPOINT s1;
+INSERT INTO fk_err_fk VALUES (row(97)::fk_err_vch);
+ROLLBACK TO SAVEPOINT s1;
+INSERT INTO fk_err_fk SELECT row(2)::fk_err_vch FROM generate_series(1, 3);
+SAVEPOINT s2;
+INSERT INTO fk_err_fk SELECT row(1)::fk_err_vch FROM generate_series(1, 3);
+ROLLBACK TO SAVEPOINT s2;
+INSERT INTO fk_err_fk SELECT row(1)::fk_err_vch FROM generate_series(1, 3);
+COMMIT;
+SELECT a, count(*) FROM fk_err_fk GROUP BY a ORDER BY a;
+DROP TABLE fk_err_fk, fk_err_pk;
+DROP CAST (fk_err_vch AS int);
+DROP FUNCTION fk_err_vcast(fk_err_vch);
+DROP TYPE fk_err_vch;
+DROP ROLE regress_fk_err_role;
+
+--
+-- Cache invalidation arriving during a fast-path check.
+--
+-- The equality function of the referenced index's opclass runs while the
+-- fast path scans the index.  One that performs DDL raises an invalidation
+-- there, detaching the constraint's fast-path metadata while the check is
+-- still using it.  This is done in a transaction that is rolled back, so that
+-- other tests never see the operator class.
+--
+BEGIN;
+-- Renames the constraint the first time it is called, and so raises an
+-- invalidation partway through the check.  Guarded on the catalog so the
+-- second and later calls are no-ops.
+CREATE FUNCTION fp_inval_eq(int4, int4) RETURNS bool AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint
+                WHERE conrelid = 'fktable_inval'::regclass
+                  AND conname = 'fktable_inval_fk') THEN
+        EXECUTE 'ALTER TABLE fktable_inval'
+                ' RENAME CONSTRAINT fktable_inval_fk TO fktable_inval_fk2';
+    END IF;
+    RETURN $1 OPERATOR(pg_catalog.=) $2;
+END $$ LANGUAGE plpgsql;
+CREATE OPERATOR =@= (LEFTARG = int4, RIGHTARG = int4, FUNCTION = fp_inval_eq);
+CREATE OPERATOR CLASS fp_inval_ops FOR TYPE int4 USING btree AS
+    OPERATOR 1 pg_catalog.<, OPERATOR 2 pg_catalog.<=, OPERATOR 3 =@=,
+    OPERATOR 4 pg_catalog.>=, OPERATOR 5 pg_catalog.>,
+    FUNCTION 1 btint4cmp(int4, int4);
+
+CREATE TABLE pktable_inval (a int4, b int4);
+CREATE UNIQUE INDEX pktable_inval_a_b ON pktable_inval (a fp_inval_ops, b);
+INSERT INTO pktable_inval VALUES (1, 1), (2, 2);
+CREATE TABLE fktable_inval (a int4, b int4,
+  CONSTRAINT fktable_inval_fk FOREIGN KEY (a, b)
+    REFERENCES pktable_inval (a, b));
+
+-- The first row invalidates the metadata; the second check must repopulate
+-- and use it safely.
+INSERT INTO fktable_inval VALUES (1, 1), (2, 2);
+
+-- Confirms the equality function actually ran and raised the invalidation.
+-- Without this the insert above could pass merely by not exercising the path
+-- at all.
+SELECT conname FROM pg_constraint
+  WHERE conrelid = 'fktable_inval'::regclass AND contype = 'f';
+
+SELECT count(*) FROM fktable_inval;
+ROLLBACK;
+
+-- An FK check locks the referenced row, which a read-only transaction does
+-- not allow unless the referenced table is temporary.
+CREATE TABLE fp_pk_ro (a int PRIMARY KEY);
+INSERT INTO fp_pk_ro VALUES (1);
+CREATE TABLE fp_fk_ro (a int REFERENCES fp_pk_ro DEFERRABLE INITIALLY DEFERRED);
+BEGIN;
+INSERT INTO fp_fk_ro VALUES (1);
+SET TRANSACTION READ ONLY;
+COMMIT;	-- fails
+CREATE TEMP TABLE fp_pk_ro_tmp (a int PRIMARY KEY);
+INSERT INTO fp_pk_ro_tmp VALUES (1);
+CREATE TEMP TABLE fp_fk_ro_tmp (a int REFERENCES fp_pk_ro_tmp
+    DEFERRABLE INITIALLY DEFERRED);
+BEGIN;
+INSERT INTO fp_fk_ro_tmp VALUES (1);
+SET TRANSACTION READ ONLY;
+COMMIT;	-- succeeds
+SELECT count(*) FROM fp_fk_ro;
+SELECT count(*) FROM fp_fk_ro_tmp;
+DROP TABLE fp_fk_ro, fp_pk_ro, fp_fk_ro_tmp, fp_pk_ro_tmp;
+
+-- The row lock must use the command ID the check's snapshot was taken
+-- with.  An equality function that updates the referenced row advances the
+-- command counter before the lock; the row must then count as updated by
+-- the check's own command, so that the check reports a violation, as the
+-- SPI path does, rather than failing to lock an "invisible" tuple.  The
+-- equality function runs while the scan holds the index page locked; its
+-- UPDATE is a HOT update, since v isn't indexed, so it doesn't touch the
+-- index.  This is done in a transaction that is rolled back, so that other
+-- tests never see the operator class.
+BEGIN;
+CREATE TABLE fp_pk_cid (id int, v int DEFAULT 0);
+CREATE FUNCTION fp_cid_eq(int, int) RETURNS bool LANGUAGE plpgsql AS $$
+BEGIN
+    UPDATE fp_pk_cid SET v = v + 1 WHERE id OPERATOR(pg_catalog.=) $1;
+    RETURN $1 OPERATOR(pg_catalog.=) $2;
+END$$;
+CREATE OPERATOR =~= (LEFTARG = int, RIGHTARG = int, FUNCTION = fp_cid_eq);
+CREATE OPERATOR CLASS fp_cid_ops FOR TYPE int USING btree AS
+    OPERATOR 1 pg_catalog.<, OPERATOR 2 pg_catalog.<=, OPERATOR 3 =~=,
+    OPERATOR 4 pg_catalog.>=, OPERATOR 5 pg_catalog.>,
+    FUNCTION 1 btint4cmp(int, int);
+CREATE UNIQUE INDEX fp_pk_cid_id ON fp_pk_cid (id fp_cid_ops);
+INSERT INTO fp_pk_cid VALUES (1);
+CREATE TABLE fp_fk_cid (a int REFERENCES fp_pk_cid (id));
+SAVEPOINT fp_cid;
+INSERT INTO fp_fk_cid VALUES (1);	-- fails, as a violation
+ROLLBACK TO SAVEPOINT fp_cid;
+ROLLBACK;
+
+--
+-- FK values that need a coercion to reach the equality operator's input type
+-- are checked through SPI, which applies the coercion as part of the query.
+-- The fast path used to call the cast function directly.
+--
+BEGIN;
+CREATE SCHEMA ri_cast;
+SET LOCAL search_path = ri_cast, pg_catalog;
+
+-- A cast that returns NULL for a non-NULL key: an FK violation, as for any
+-- other key without a match, not an internal error.
+CREATE TYPE ri_word AS ENUM ('one', 'none');
+CREATE FUNCTION ri_word_to_int4(ri_word) RETURNS int4
+    LANGUAGE sql IMMUTABLE AS $$ SELECT CASE WHEN $1::text = 'one' THEN 1 END $$;
+CREATE CAST (ri_word AS int4) WITH FUNCTION ri_word_to_int4(ri_word) AS IMPLICIT;
+CREATE TABLE ri_pk (id int4 PRIMARY KEY);
+INSERT INTO ri_pk VALUES (1);
+CREATE TABLE ri_fk (a ri_word REFERENCES ri_pk);
+INSERT INTO ri_fk VALUES ('one');
+SAVEPOINT s;
+INSERT INTO ri_fk VALUES ('none');	-- fails
+ROLLBACK TO SAVEPOINT s;
+
+-- Replacing the cast and dropping its old function must not leave a later
+-- check in this session calling the dropped function.
+CREATE FUNCTION ri_word_to_int4_v2(ri_word) RETURNS int4
+    LANGUAGE sql IMMUTABLE AS $$ SELECT 1 $$;
+DROP CAST (ri_word AS int4);
+CREATE CAST (ri_word AS int4) WITH FUNCTION ri_word_to_int4_v2(ri_word) AS IMPLICIT;
+DROP FUNCTION ri_word_to_int4(ri_word);
+INSERT INTO ri_fk VALUES ('none');	-- succeeds through the new cast
+
+-- A collation-sensitive cast from a collatable type gets the input
+-- collation an expression would give it.
+CREATE TYPE ri_ctext;
+CREATE FUNCTION ri_ctext_in(cstring) RETURNS ri_ctext
+    AS 'textin' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION ri_ctext_out(ri_ctext) RETURNS cstring
+    AS 'textout' LANGUAGE internal IMMUTABLE STRICT;
+CREATE TYPE ri_ctext (INPUT = ri_ctext_in, OUTPUT = ri_ctext_out,
+                      LIKE = text, COLLATABLE = true);
+CREATE FUNCTION ri_ctext_lower(ri_ctext) RETURNS text
+    AS 'lower' LANGUAGE internal IMMUTABLE STRICT;
+CREATE CAST (ri_ctext AS text) WITH FUNCTION ri_ctext_lower(ri_ctext) AS IMPLICIT;
+CREATE TABLE ri_pk_text (k text PRIMARY KEY);
+INSERT INTO ri_pk_text VALUES ('abc');
+CREATE TABLE ri_fk_text (a ri_ctext REFERENCES ri_pk_text);
+INSERT INTO ri_fk_text VALUES ('ABC');	-- succeeds; the cast lowercases
+
+-- An array coercion (int2[] to int4[], allowed with an opclass declared for
+-- int4[]) has no single cast function to call.
+CREATE FUNCTION ri_i4a_lt(int4[], int4[]) RETURNS bool
+    AS 'array_lt' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION ri_i4a_le(int4[], int4[]) RETURNS bool
+    AS 'array_le' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION ri_i4a_eq(int4[], int4[]) RETURNS bool
+    AS 'array_eq' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION ri_i4a_ge(int4[], int4[]) RETURNS bool
+    AS 'array_ge' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION ri_i4a_gt(int4[], int4[]) RETURNS bool
+    AS 'array_gt' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION ri_i4a_cmp(int4[], int4[]) RETURNS int4
+    AS 'btarraycmp' LANGUAGE internal IMMUTABLE STRICT;
+CREATE OPERATOR ri_cast.<<< (LEFTARG = int4[], RIGHTARG = int4[], FUNCTION = ri_i4a_lt);
+CREATE OPERATOR ri_cast.<<= (LEFTARG = int4[], RIGHTARG = int4[], FUNCTION = ri_i4a_le);
+CREATE OPERATOR ri_cast.=== (LEFTARG = int4[], RIGHTARG = int4[], FUNCTION = ri_i4a_eq);
+CREATE OPERATOR ri_cast.>>= (LEFTARG = int4[], RIGHTARG = int4[], FUNCTION = ri_i4a_ge);
+CREATE OPERATOR ri_cast.>>> (LEFTARG = int4[], RIGHTARG = int4[], FUNCTION = ri_i4a_gt);
+CREATE OPERATOR CLASS ri_i4a_ops FOR TYPE int4[] USING btree AS
+    OPERATOR 1 ri_cast.<<<, OPERATOR 2 ri_cast.<<=, OPERATOR 3 ri_cast.===,
+    OPERATOR 4 ri_cast.>>=, OPERATOR 5 ri_cast.>>>,
+    FUNCTION 1 ri_i4a_cmp(int4[], int4[]);
+CREATE TABLE ri_pk_arr (k int4[]);
+CREATE UNIQUE INDEX ON ri_pk_arr (k ri_i4a_ops);
+INSERT INTO ri_pk_arr VALUES ('{1,2}');
+CREATE TABLE ri_fk_arr (a int2[] REFERENCES ri_pk_arr (k));
+INSERT INTO ri_fk_arr VALUES ('{1,2}');	-- succeeds
+SAVEPOINT s;
+INSERT INTO ri_fk_arr VALUES ('{3}');	-- fails
+ROLLBACK TO SAVEPOINT s;
+
+-- A coercion via I/O has no cast function to call either.
+CREATE TYPE ri_ioint;
+CREATE FUNCTION ri_ioint_in(cstring) RETURNS ri_ioint
+    AS 'int4in' LANGUAGE internal IMMUTABLE STRICT;
+CREATE FUNCTION ri_ioint_out(ri_ioint) RETURNS cstring
+    AS 'int4out' LANGUAGE internal IMMUTABLE STRICT;
+CREATE TYPE ri_ioint (INPUT = ri_ioint_in, OUTPUT = ri_ioint_out, LIKE = int4);
+CREATE CAST (ri_ioint AS int4) WITH INOUT AS IMPLICIT;
+CREATE TABLE ri_fk_io (a ri_ioint REFERENCES ri_pk);
+INSERT INTO ri_fk_io VALUES ('1');	-- succeeds
+SAVEPOINT s;
+INSERT INTO ri_fk_io VALUES ('2');	-- fails
+ROLLBACK TO SAVEPOINT s;
+ROLLBACK;

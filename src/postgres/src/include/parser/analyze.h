@@ -43,8 +43,7 @@ extern List *transformInsertRow(ParseState *pstate, List *exprlist,
 								List *stmtcols, List *icolumns, List *attrnos,
 								bool strip_indirection);
 extern List *transformUpdateTargetList(ParseState *pstate,
-									   List *origTlist,
-									   ForPortionOfExpr *forPortionOf);
+									   List *origTlist);
 extern void transformReturningClause(ParseState *pstate, Query *qry,
 									 ReturningClause *returningClause,
 									 ParseExprKind exprKind);
@@ -65,8 +64,5 @@ extern List *BuildOnConflictExcludedTargetlist(Relation targetrel,
 											   Index exclRelIndex);
 
 extern SortGroupClause *makeSortGroupClauseForSetOp(Oid rescoltype, bool require_hash);
-extern void constructSetOpTargetlist(ParseState *pstate, SetOperationStmt *op,
-									 const List *ltargetlist, const List *rtargetlist,
-									 List **targetlist, const char *context, bool recursive);
 
 #endif							/* ANALYZE_H */

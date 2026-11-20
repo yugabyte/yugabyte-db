@@ -631,7 +631,7 @@ SELECT shoe_ready.shoename, shoe_ready.sh_avail,
          WHERE rsl.sl_color = rsh.slcolor
            AND rsl.sl_len_cm &gt;= rsh.slminlen_cm
            AND rsl.sl_len_cm &lt;= rsh.slmaxlen_cm) shoe_ready
- WHERE shoe_ready.total_avail &gt; 2;
+ WHERE shoe_ready.total_avail &gt;= 2;
 </programlisting>
    </para>
 

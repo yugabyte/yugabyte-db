@@ -105,9 +105,15 @@
 /* has this backend called EmitConnectionWarnings()? */
 static bool ConnectionWarningsEmitted;
 
-/* content of warnings to send via EmitConnectionWarnings() */
-static List *ConnectionWarningMessages;
-static List *ConnectionWarningDetails;
+typedef struct ConnectionWarning
+{
+	char	   *message;
+	char	   *detail;
+	ConnectionWarningFilter filter;
+} ConnectionWarning;
+
+/* warnings to send via EmitConnectionWarnings() */
+static List *ConnectionWarnings;
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -757,11 +763,12 @@ CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connect
 	datum = SysCacheGetAttrNotNull(DATABASEOID, tup, Anum_pg_database_datctype);
 	ctype = TextDatumGetCString(datum);
 
-	/*
-	 * Historically, we set LC_COLLATE from datcollate, as well. That's no
-	 * longer necessary because all collation behavior is handled through
-	 * pg_locale_t.
-	 */
+	if (pg_perm_setlocale(LC_COLLATE, collate) == NULL)
+		ereport(FATAL,
+				(errmsg("database locale is incompatible with operating system"),
+				 errdetail("The database was initialized with LC_COLLATE \"%s\", "
+						   " which is not recognized by setlocale().", collate),
+				 errhint("Recreate the database with another locale or install the missing locale.")));
 
 	if (pg_perm_setlocale(LC_CTYPE, ctype) == NULL)
 		ereport(FATAL,
@@ -993,9 +1000,6 @@ BaseInit(void)
 	/* Initialize lock manager's local structs */
 	InitLockManagerAccess();
 
-	/* Initialize logical info WAL logging state */
-	InitializeProcessXLogLogicalInfo();
-
 	/*
 	 * Initialize replication slots after pgstat. The exit hook might need to
 	 * drop ephemeral slots, which in turn triggers stats reporting.
@@ -1106,24 +1110,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	ProcSignalInit(MyCancelKey, MyCancelKeyLength);
 
 	/*
-	 * Initialize a local cache of the data_checksum_version, to be updated by
-	 * the procsignal-based barriers.
-	 *
-	 * This intentionally happens after initializing the procsignal, otherwise
-	 * we might miss a state change. This means we can get a barrier for the
-	 * state we've just initialized.
-	 *
-	 * The postmaster (which is what gets forked into the new child process)
-	 * does not handle barriers, therefore it may not have the current value
-	 * of LocalDataChecksumVersion value (it'll have the value read from the
-	 * control file, which may be arbitrarily old).
-	 *
-	 * NB: Even if the postmaster handled barriers, the value might still be
-	 * stale, as it might have changed after this process forked.
-	 */
-	InitLocalDataChecksumState();
-
-	/*
 	 * Also set up timeout handlers needed for backend operation.  We need
 	 * these in every case except bootstrap.
 	 */
@@ -1171,6 +1157,16 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		before_shmem_exit(pgstat_before_server_shutdown, 0);
 		before_shmem_exit(ShutdownXLOG, 0);
 	}
+
+	/*
+	 * Initialize the process-local logical info WAL logging state.
+	 *
+	 * This must be called after ProcSignalInit() so that the process can
+	 * participate in procsignal-based barriers that update this state.
+	 * Furthermore, in !IsUnderPostmaster cases, this must occur after
+	 * StartupXLOG() where the shared state is first established.
+	 */
+	InitializeProcessXLogLogicalInfo();
 
 	/*
 	 * Initialize the relation cache and the system catalog caches.  Note that
@@ -1377,7 +1373,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 					 errhint("You should immediately run CREATE USER \"%s\" SUPERUSER;.",
 							 username != NULL ? username : "postgres")));
 	}
-	else if (AmBackgroundWorkerProcess() || AmDataChecksumsWorkerProcess())
+	else if (AmBackgroundWorkerProcess())
 	{
 		if (username == NULL && !OidIsValid(useroid))
 		{
@@ -2315,15 +2311,19 @@ ThereIsAtLeastOneRole(void)
 
 /*
  * Stores a warning message to be sent later via EmitConnectionWarnings().
- * Both msg and detail must be non-NULL.
+ * Both msg and detail must be non-NULL.  If filter is non-NULL, it is called
+ * just before the warning is emitted, after startup and role/database settings
+ * have been applied.
  *
- * NB: Caller should ensure the strings are allocated in a long-lived context
- * like TopMemoryContext.
+ * NB: Caller should ensure the strings are palloc'd in a long-lived context
+ * like TopMemoryContext.  This function takes ownership of the strings, which
+ * will be pfree'd in EmitConnectionWarnings().
  */
 void
-StoreConnectionWarning(char *msg, char *detail)
+StoreConnectionWarning(char *msg, char *detail, ConnectionWarningFilter filter)
 {
 	MemoryContext oldcontext;
+	ConnectionWarning *warning;
 
 	Assert(msg);
 	Assert(detail);
@@ -2338,8 +2338,11 @@ StoreConnectionWarning(char *msg, char *detail)
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
-	ConnectionWarningMessages = lappend(ConnectionWarningMessages, msg);
-	ConnectionWarningDetails = lappend(ConnectionWarningDetails, detail);
+	warning = palloc_object(ConnectionWarning);
+	warning->message = msg;
+	warning->detail = detail;
+	warning->filter = filter;
+	ConnectionWarnings = lappend(ConnectionWarnings, warning);
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -2353,36 +2356,25 @@ StoreConnectionWarning(char *msg, char *detail)
 static void
 EmitConnectionWarnings(void)
 {
-	ListCell   *lc_msg;
-	ListCell   *lc_detail;
-
 	if (ConnectionWarningsEmitted)
 		elog(ERROR, "EmitConnectionWarnings() called more than once");
 	else
 		ConnectionWarningsEmitted = true;
 
-	forboth(lc_msg, ConnectionWarningMessages,
-			lc_detail, ConnectionWarningDetails)
+	foreach_ptr(ConnectionWarning, warning, ConnectionWarnings)
 	{
-		ereport(WARNING,
-				(errmsg("%s", (char *) lfirst(lc_msg)),
-				 errdetail("%s", (char *) lfirst(lc_detail))));
+		if (warning->filter == NULL || warning->filter())
+			ereport(WARNING,
+					(errmsg("%s", warning->message),
+					 errdetail("%s", warning->detail)));
+
+		pfree(warning->message);
+		pfree(warning->detail);
+		pfree(warning);
 	}
 
-	list_free_deep(ConnectionWarningMessages);
-	list_free_deep(ConnectionWarningDetails);
-
-	/*
-	 * YB: an auth passthrough control backend reuses these lists for every
-	 * client it authenticates after this, and frees them again in
-	 * YbResetAuthPassthroughConnectionWarnings(), so drop the pointers to the
-	 * lists freed above. Upstream never touches them again.
-	 */
-	if (YbIsAuthPassthroughControlBackend())
-	{
-		ConnectionWarningMessages = NIL;
-		ConnectionWarningDetails = NIL;
-	}
+	list_free(ConnectionWarnings);
+	ConnectionWarnings = NIL;
 }
 
 /*
@@ -2392,10 +2384,15 @@ EmitConnectionWarnings(void)
 void
 YbResetAuthPassthroughConnectionWarnings(void)
 {
-	list_free_deep(ConnectionWarningMessages);
-	list_free_deep(ConnectionWarningDetails);
-	ConnectionWarningMessages = NIL;
-	ConnectionWarningDetails = NIL;
+	foreach_ptr(ConnectionWarning, warning, ConnectionWarnings)
+	{
+		pfree(warning->message);
+		pfree(warning->detail);
+		pfree(warning);
+	}
+
+	list_free(ConnectionWarnings);
+	ConnectionWarnings = NIL;
 }
 
 /*
@@ -2406,15 +2403,12 @@ YbResetAuthPassthroughConnectionWarnings(void)
 static void
 YbEmitAuthPassthroughConnectionWarnings(void)
 {
-	ListCell   *lc_msg;
-	ListCell   *lc_detail;
-
-	forboth(lc_msg, ConnectionWarningMessages,
-			lc_detail, ConnectionWarningDetails)
+	foreach_ptr(ConnectionWarning, warning, ConnectionWarnings)
 	{
-		ereport(WARNING,
-				(errmsg("%s", (char *) lfirst(lc_msg)),
-				 errdetail("%s", (char *) lfirst(lc_detail))));
+		if (warning->filter == NULL || warning->filter())
+			ereport(WARNING,
+					(errmsg("%s", warning->message),
+					 errdetail("%s", warning->detail)));
 	}
 
 	YbResetAuthPassthroughConnectionWarnings();

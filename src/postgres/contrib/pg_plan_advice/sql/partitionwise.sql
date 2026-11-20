@@ -54,6 +54,25 @@ INSERT INTO ptmismatch (id, dimm, valm)
 	  FROM generate_series(1,3000) g;
 VACUUM ANALYZE ptmismatch;
 
+CREATE TABLE mllpt (a int not null, b int not null)
+	PARTITION BY LIST (a);
+CREATE TABLE mllpt_a1 PARTITION OF mllpt FOR VALUES IN (1)
+	PARTITION BY LIST (b);
+CREATE TABLE mllpt_a1_b1 PARTITION OF mllpt_a1 FOR VALUES IN (1)
+	WITH (autovacuum_enabled = false);
+CREATE TABLE mllpt_a1_b2 PARTITION OF mllpt_a1 FOR VALUES IN (2)
+	WITH (autovacuum_enabled = false);
+CREATE TABLE mllpt_a1_b3 PARTITION OF mllpt_a1 FOR VALUES IN (3)
+	WITH (autovacuum_enabled = false);
+CREATE TABLE mllpt_a2 PARTITION OF mllpt FOR VALUES IN (2)
+	PARTITION BY LIST (b);
+CREATE TABLE mllpt_a2_b1 PARTITION OF mllpt_a2 FOR VALUES IN (1)
+	WITH (autovacuum_enabled = false);
+CREATE TABLE mllpt_a2_b2 PARTITION OF mllpt_a2 FOR VALUES IN (2)
+	WITH (autovacuum_enabled = false);
+CREATE TABLE mllpt_a2_b3 PARTITION OF mllpt_a2 FOR VALUES IN (3)
+	WITH (autovacuum_enabled = false);
+
 EXPLAIN (PLAN_ADVICE, COSTS OFF)
 SELECT * FROM pt1, pt2, pt3 WHERE pt1.id = pt2.id AND pt2.id = pt3.id
    AND val1 = 1 AND val2 = 1 AND val3 = 1;
@@ -78,6 +97,14 @@ SELECT * FROM pt1, pt2, pt3 WHERE pt1.id = pt2.id AND pt2.id = pt3.id
    AND val1 = 1 AND val2 = 1 AND val3 = 1;
 COMMIT;
 
+-- Test use of join order for the partitionwise join case.
+BEGIN;
+SET LOCAL pg_plan_advice.advice = 'PARTITIONWISE((pt1 pt2)) JOIN_ORDER({pt1 pt2} pt3)';
+EXPLAIN (PLAN_ADVICE, COSTS OFF)
+SELECT * FROM pt1, pt2, pt3 WHERE pt1.id = pt2.id AND pt2.id = pt3.id
+   AND val1 = 1 AND val2 = 1 AND val3 = 1;
+COMMIT;
+
 -- Can't force a partitionwise join with a mismatched table.
 BEGIN;
 SET LOCAL pg_plan_advice.advice = 'PARTITIONWISE((pt1 ptmismatch))';
@@ -85,15 +112,28 @@ EXPLAIN (PLAN_ADVICE, COSTS OFF)
 SELECT * FROM pt1, ptmismatch WHERE pt1.id = ptmismatch.id;
 COMMIT;
 
--- Force join order for a particular branch of the partitionwise join with
--- and without mentioning the schema name.
+-- PARTITIONWISE is only applicable to inheritance parents.
+BEGIN;
+SET LOCAL pg_plan_advice.advice = 'PARTITIONWISE(pt3a)';
+EXPLAIN (PLAN_ADVICE, COSTS OFF)
+SELECT * FROM pt1, pt3a WHERE pt1.id = pt3a.id;
+SET LOCAL pg_plan_advice.advice = 'PARTITIONWISE((pt1 pt3a))';
+EXPLAIN (PLAN_ADVICE, COSTS OFF)
+SELECT * FROM pt1, pt3a WHERE pt1.id = pt3a.id;
+COMMIT;
+
+-- Force join order for a particular branch of the partitionwise join.
 BEGIN;
 SET LOCAL pg_plan_advice.advice = 'JOIN_ORDER(pt3/public.pt3a pt2/public.pt2a pt1/public.pt1a)';
 EXPLAIN (PLAN_ADVICE, COSTS OFF)
 SELECT * FROM pt1, pt2, pt3 WHERE pt1.id = pt2.id AND pt2.id = pt3.id
    AND val1 = 1 AND val2 = 1 AND val3 = 1;
-SET LOCAL pg_plan_advice.advice = 'JOIN_ORDER(pt3/pt3a pt2/pt2a pt1/pt1a)';
-EXPLAIN (PLAN_ADVICE, COSTS OFF)
-SELECT * FROM pt1, pt2, pt3 WHERE pt1.id = pt2.id AND pt2.id = pt3.id
-   AND val1 = 1 AND val2 = 1 AND val3 = 1;
 COMMIT;
+
+-- We should get PARTITIONWISE advice for all unpruned partition tables.
+EXPLAIN (PLAN_ADVICE, COSTS OFF)
+SELECT * FROM mllpt WHERE a = 1 UNION ALL SELECT * FROM mllpt;
+
+-- Same, but prune down to a single leaf so the Append is elided.
+EXPLAIN (PLAN_ADVICE, COSTS OFF)
+SELECT * FROM mllpt WHERE a = 1 AND b = 1;

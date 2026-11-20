@@ -15,6 +15,7 @@
 #include "pgpa_ast.h"
 
 #include "funcapi.h"
+#include "miscadmin.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 
@@ -169,6 +170,8 @@ pgpa_parse_advice_tag(const char *tag, bool *fail)
 void
 pgpa_format_advice_target(StringInfo str, pgpa_advice_target *target)
 {
+	check_stack_depth();
+
 	if (target->ttype != PGPA_TARGET_IDENTIFIER)
 	{
 		bool		first = true;
@@ -234,6 +237,8 @@ pgpa_index_targets_equal(pgpa_index_target *i1, pgpa_index_target *i2)
 bool
 pgpa_identifier_matches_target(pgpa_identifier *rid, pgpa_advice_target *target)
 {
+	check_stack_depth();
+
 	/* For non-identifiers, check all descendants. */
 	if (target->ttype != PGPA_TARGET_IDENTIFIER)
 	{
@@ -252,19 +257,17 @@ pgpa_identifier_matches_target(pgpa_identifier *rid, pgpa_advice_target *target)
 		return false;
 
 	/*
-	 * If a relation identifier mentions a partition name, it should also
-	 * specify a partition schema. But the target may leave the schema NULL to
-	 * match anything.
+	 * A relation identifier should either include both of partition name and
+	 * partition schema, or neither one.
 	 */
-	Assert(rid->partnsp != NULL || rid->partrel == NULL);
-	if (rid->partnsp != NULL && target->rid.partnsp != NULL &&
-		strcmp(rid->partnsp, target->rid.partnsp) != 0)
-		return false;
+	Assert((rid->partnsp == NULL) == (rid->partrel == NULL));
 
 	/*
 	 * These fields can be NULL on either side, but NULL only matches another
 	 * NULL.
 	 */
+	if (!strings_equal_or_both_null(rid->partnsp, target->rid.partnsp))
+		return false;
 	if (!strings_equal_or_both_null(rid->partrel, target->rid.partrel))
 		return false;
 	if (!strings_equal_or_both_null(rid->plan_name, target->rid.plan_name))
@@ -287,6 +290,13 @@ pgpa_identifiers_match_target(int nrids, pgpa_identifier *rids,
 	bool		any_rids_used = false;
 	bool		all_targets_used;
 	bool	   *rids_used = palloc0_array(bool, nrids);
+
+	/*
+	 * This function is called from within various loops within
+	 * pgpa_planner.c; to avoid needing a separate CHECK_FOR_INTERRUPTS() in
+	 * each one, we check here instead.
+	 */
+	CHECK_FOR_INTERRUPTS();
 
 	all_targets_used =
 		pgpa_identifiers_cover_target(nrids, rids, target, rids_used);
@@ -321,7 +331,7 @@ pgpa_identifiers_match_target(int nrids, pgpa_identifier *rids,
  * Returns true if every target or sub-target is matched by at least one
  * identifier, and otherwise false.
  *
- * Also sets rids_used[i] = true for each idenifier that matches at least one
+ * Also sets rids_used[i] = true for each identifier that matches at least one
  * target.
  */
 static bool
@@ -329,6 +339,8 @@ pgpa_identifiers_cover_target(int nrids, pgpa_identifier *rids,
 							  pgpa_advice_target *target, bool *rids_used)
 {
 	bool		result = false;
+
+	check_stack_depth();
 
 	if (target->ttype != PGPA_TARGET_IDENTIFIER)
 	{

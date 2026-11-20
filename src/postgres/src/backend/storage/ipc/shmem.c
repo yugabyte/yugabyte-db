@@ -145,6 +145,8 @@
 #include "utils/builtins.h"
 #include "utils/tuplestore.h"
 
+typedef struct ShmemIndexEnt ShmemIndexEnt;
+
 /*
  * Registered callbacks.
  *
@@ -159,15 +161,20 @@ static List *registered_shmem_callbacks;
 
 /*
  * In the shmem request phase, all the shmem areas requested with the
- * ShmemRequest*() functions are accumulated here.
+ * ShmemRequest*() functions are accumulated in the 'pending_shmem_requests'
+ * list.  The List, the ShmemRequest structs, and the 'options' are all
+ * allocated in TopMemoryContext.
  */
 typedef struct
 {
 	ShmemStructOpts *options;
 	ShmemRequestKind kind;
+
+	/* InitShmemIndexEntry() sets this pointer when the area is allocated */
+	ShmemIndexEnt *index_entry;
 } ShmemRequest;
 
-static List *pending_shmem_requests;
+static List *pending_shmem_requests;	/* List of ShmemRequests */
 
 /*
  * Per-process state machine, for sanity checking that we do things in the
@@ -263,18 +270,20 @@ static HTAB *ShmemIndex;
 #define SHMEM_INDEX_ADDITIONAL_SIZE		 (128)
 
 /* this is a hash bucket in the shmem index table */
-typedef struct
+typedef struct ShmemIndexEnt
 {
 	char		key[SHMEM_INDEX_KEYSIZE];	/* string name */
 	void	   *location;		/* location in shared mem */
 	Size		size;			/* # bytes requested for the structure */
 	Size		allocated_size; /* # bytes actually allocated */
+	bool		initialized;	/* has the init callback been run? */
 } ShmemIndexEnt;
 
 /* To get reliable results for NUMA inquiry we need to "touch pages" once */
 static bool firstNumaTouch = true;
 
 static void CallShmemCallbacksAfterStartup(const ShmemCallbacks *callbacks);
+static void ProcessShmemRequestsAfterStartup(const ShmemCallbacks *callbacks);
 static void InitShmemIndexEntry(ShmemRequest *request);
 static bool AttachShmemIndexEntry(ShmemRequest *request, bool missing_ok);
 
@@ -336,34 +345,29 @@ ShmemRequestStructWithOpts(const ShmemStructOpts *options)
 void
 ShmemRequestInternal(ShmemStructOpts *options, ShmemRequestKind kind)
 {
+	MemoryContext oldcontext;
 	ShmemRequest *request;
+
+	/* Check that we're in the right state */
+	if (shmem_request_state != SRS_REQUESTING)
+		elog(ERROR, "ShmemRequestStruct can only be called from a shmem_request callback");
 
 	/* Check the options */
 	if (options->name == NULL)
 		elog(ERROR, "shared memory request is missing 'name' option");
 
-	if (IsUnderPostmaster)
+	if (options->size == SHMEM_ATTACH_UNKNOWN_SIZE)
 	{
-		if (options->size <= 0 && options->size != SHMEM_ATTACH_UNKNOWN_SIZE)
-			elog(ERROR, "invalid size %zd for shared memory request for \"%s\"",
-				 options->size, options->name);
-	}
-	else
-	{
-		if (options->size == SHMEM_ATTACH_UNKNOWN_SIZE)
+		if (ShmemIndex == NULL)
 			elog(ERROR, "SHMEM_ATTACH_UNKNOWN_SIZE cannot be used during startup");
-		if (options->size <= 0)
-			elog(ERROR, "invalid size %zd for shared memory request for \"%s\"",
-				 options->size, options->name);
 	}
+	else if (options->size <= 0)
+		elog(ERROR, "invalid size %zd for shared memory request for \"%s\"",
+			 options->size, options->name);
 
 	if (options->alignment != 0 && pg_nextpower2_size_t(options->alignment) != options->alignment)
 		elog(ERROR, "invalid alignment %zu for shared memory request for \"%s\"",
 			 options->alignment, options->name);
-
-	/* Check that we're in the right state */
-	if (shmem_request_state != SRS_REQUESTING)
-		elog(ERROR, "ShmemRequestStruct can only be called from a shmem_request callback");
 
 	/* Check that it's not already registered in this process */
 	foreach_ptr(ShmemRequest, existing, pending_shmem_requests)
@@ -375,10 +379,13 @@ ShmemRequestInternal(ShmemStructOpts *options, ShmemRequestKind kind)
 	}
 
 	/* Request looks valid, remember it */
-	request = palloc(sizeof(ShmemRequest));
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	request = palloc_object(ShmemRequest);
 	request->options = options;
 	request->kind = kind;
+	request->index_entry = NULL;
 	pending_shmem_requests = lappend(pending_shmem_requests, request);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*
@@ -436,10 +443,7 @@ ShmemInitRequested(void)
 	foreach_ptr(ShmemRequest, request, pending_shmem_requests)
 	{
 		InitShmemIndexEntry(request);
-		pfree(request->options);
 	}
-	list_free_deep(pending_shmem_requests);
-	pending_shmem_requests = NIL;
 
 	/*
 	 * Call the subsystem-specific init callbacks to finish initialization of
@@ -450,6 +454,15 @@ ShmemInitRequested(void)
 		if (callbacks->init_fn)
 			callbacks->init_fn(callbacks->opaque_arg);
 	}
+
+	/* Now we can mark all the areas as initialized and free the requests */
+	foreach_ptr(ShmemRequest, request, pending_shmem_requests)
+	{
+		request->index_entry->initialized = true;
+		pfree(request->options);
+	}
+	list_free_deep(pending_shmem_requests);
+	pending_shmem_requests = NIL;
 
 	shmem_request_state = SRS_DONE;
 }
@@ -517,6 +530,9 @@ InitShmemIndexEntry(ShmemRequest *request)
 	size_t		allocated_size;
 	void	   *structPtr;
 
+	/* Size must be known at this point. */
+	Assert(request->options->size != SHMEM_ATTACH_UNKNOWN_SIZE);
+
 	/* look it up in the shmem index */
 	index_entry = (ShmemIndexEnt *)
 		hash_search(ShmemIndex, name, HASH_ENTER_NULL, &found);
@@ -545,14 +561,19 @@ InitShmemIndexEntry(ShmemRequest *request)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("not enough shared memory for data structure"
-						" \"%s\" (%zu bytes requested)",
+						" \"%s\" (%zd bytes requested)",
 						name, request->options->size)));
 	}
 	index_entry->size = request->options->size;
 	index_entry->allocated_size = allocated_size;
 	index_entry->location = structPtr;
 
-	/* Initialize depending on the kind of shmem area it is */
+	/*
+	 * The area is considered fully initialized only after the subsystem's
+	 * init callback has been called.  For now, perform only basic
+	 * initialization based on the kind of shmem area it is.
+	 */
+	index_entry->initialized = false;
 	switch (request->kind)
 	{
 		case SHMEM_KIND_STRUCT:
@@ -566,6 +587,9 @@ InitShmemIndexEntry(ShmemRequest *request)
 			shmem_slru_init(structPtr, request->options);
 			break;
 	}
+
+	/* return the pointer to the entry to the caller */
+	request->index_entry = index_entry;
 }
 
 /*
@@ -595,13 +619,27 @@ AttachShmemIndexEntry(ShmemRequest *request, bool missing_ok)
 		return false;
 	}
 
+	/*
+	 * If it was previously allocated but not fully initialized, error out.
+	 * There is currently no way of retrying or cleaning up an uninitialized
+	 * entry, it just lingers until the server is shut down.  But this can
+	 * only happen when allocating areas after postmaster startup, and it's
+	 * unlikely that you could successfully retry anyway.  The most likely
+	 * reason for failed initialization is that you are out of shared memory
+	 * and retrying won't help with that.
+	 */
+	if (!index_entry->initialized)
+		ereport(ERROR,
+				(errmsg("cannot attach to shared memory struct \"%s\" because it was not fully initialized",
+						request->options->name)));
+
 	/* Check that the size in the index matches the request */
 	if (index_entry->size != request->options->size &&
 		request->options->size != SHMEM_ATTACH_UNKNOWN_SIZE)
 	{
 		ereport(ERROR,
 				(errmsg("shared memory struct \"%s\" was created with"
-						" different size: existing %zu, requested %zu",
+						" different size: existing %zu, requested %zd",
 						name, index_entry->size, request->options->size)));
 	}
 
@@ -622,6 +660,8 @@ AttachShmemIndexEntry(ShmemRequest *request, bool missing_ok)
 			shmem_slru_attach(index_entry->location, request->options);
 			break;
 	}
+
+	request->index_entry = index_entry;
 
 	return true;
 }
@@ -733,6 +773,7 @@ InitShmemAllocator(PGShmemHeader *seghdr)
 		result->size = ShmemAllocator->index_size;
 		result->allocated_size = ShmemAllocator->index_size;
 		result->location = ShmemAllocator->index;
+		result->initialized = true;
 	}
 }
 
@@ -743,6 +784,8 @@ void
 ResetShmemAllocator(void)
 {
 	Assert(!IsUnderPostmaster);
+	ShmemAllocator = NULL;
+	ShmemIndex = NULL;
 	shmem_request_state = SRS_INITIAL;
 
 	pending_shmem_requests = NIL;
@@ -793,6 +836,8 @@ ShmemAllocNoError(Size size)
  *
  * Also sets *allocated_size to the number of bytes allocated, which will
  * be equal to the number requested plus any padding we choose to add.
+ *
+ * Returns NULL in case space can not be allocated.
  */
 static void *
 ShmemAllocRaw(Size size, Size alignment, Size *allocated_size)
@@ -823,8 +868,13 @@ ShmemAllocRaw(Size size, Size alignment, Size *allocated_size)
 	rawStart = ShmemAllocator->free_offset;
 	newStart = TYPEALIGN(alignment, rawStart);
 
-	newFree = newStart + size;
-	if (newFree <= ShmemSegHdr->totalsize)
+	/*
+	 * newFree = newStart + size, which is the start of the remaining space
+	 * after the allocation.  If it exceeds the shmem segment size, we don't
+	 * have enough space available.
+	 */
+	if (!pg_add_size_overflow(newStart, size, &newFree) &&
+		newFree <= ShmemSegHdr->totalsize)
 	{
 		newSpace = (char *) ShmemBase + newStart;
 		ShmemAllocator->free_offset = newFree;
@@ -873,23 +923,29 @@ ShmemAddrIsValid(const void *addr)
 void
 RegisterShmemCallbacks(const ShmemCallbacks *callbacks)
 {
-	if (shmem_request_state == SRS_DONE && IsUnderPostmaster)
+	if (shmem_request_state == SRS_DONE)
 	{
 		/*
 		 * After-startup initialization or attachment.  Call the appropriate
 		 * callbacks immediately.
+		 *
+		 * This is not allowed from the postmaster, because the postmaster
+		 * cannot acquire locks.
 		 */
 		if ((callbacks->flags & SHMEM_CALLBACKS_ALLOW_AFTER_STARTUP) == 0)
 			elog(ERROR, "cannot request shared memory at this time");
+		Assert(IsUnderPostmaster || !IsPostmasterEnvironment);
 
 		CallShmemCallbacksAfterStartup(callbacks);
 	}
-	else
+	else if (shmem_request_state == SRS_INITIAL)
 	{
 		/* Remember the callbacks for later */
 		registered_shmem_callbacks = lappend(registered_shmem_callbacks,
 											 (void *) callbacks);
 	}
+	else
+		elog(ERROR, "cannot request shared memory at this time");
 }
 
 /*
@@ -898,28 +954,54 @@ RegisterShmemCallbacks(const ShmemCallbacks *callbacks)
 static void
 CallShmemCallbacksAfterStartup(const ShmemCallbacks *callbacks)
 {
+	Assert(shmem_request_state == SRS_DONE);
+	Assert(pending_shmem_requests == NIL);
+
+	PG_TRY();
+	{
+		shmem_request_state = SRS_REQUESTING;
+
+		/*
+		 * Call the request callback first.  The callback makes
+		 * ShmemRequest*() calls for each shmem area, adding them to
+		 * pending_shmem_requests.
+		 */
+		if (callbacks->request_fn)
+			callbacks->request_fn(callbacks->opaque_arg);
+
+		/* Process all the requests */
+		shmem_request_state = SRS_AFTER_STARTUP_ATTACH_OR_INIT;
+		if (pending_shmem_requests != NIL)
+			ProcessShmemRequestsAfterStartup(callbacks);
+	}
+	PG_FINALLY();
+	{
+		foreach_ptr(ShmemRequest, request, pending_shmem_requests)
+			pfree(request->options);
+		list_free_deep(pending_shmem_requests);
+		pending_shmem_requests = NIL;
+
+		shmem_request_state = SRS_DONE;
+	}
+	PG_END_TRY();
+}
+
+static void
+ProcessShmemRequestsAfterStartup(const ShmemCallbacks *callbacks)
+{
 	bool		found_any;
 	bool		notfound_any;
 
-	Assert(shmem_request_state == SRS_DONE);
-	shmem_request_state = SRS_REQUESTING;
+	/* There should be some requests to process */
+	Assert(pending_shmem_requests != NIL);
+
+	/* Caller manages the global state variable */
+	Assert(shmem_request_state == SRS_AFTER_STARTUP_ATTACH_OR_INIT);
 
 	/*
-	 * Call the request callback first.  The callback makes ShmemRequest*()
-	 * calls for each shmem area, adding them to pending_shmem_requests.
+	 * Hold ShmemIndexLock while we allocate all the shmem entries and run all
+	 * the initializers.
 	 */
-	Assert(pending_shmem_requests == NIL);
-	if (callbacks->request_fn)
-		callbacks->request_fn(callbacks->opaque_arg);
-	shmem_request_state = SRS_AFTER_STARTUP_ATTACH_OR_INIT;
-
-	if (pending_shmem_requests == NIL)
-	{
-		shmem_request_state = SRS_DONE;
-		return;
-	}
-
-	/* Hold ShmemIndexLock while we allocate all the shmem entries */
 	LWLockAcquire(ShmemIndexLock, LW_EXCLUSIVE);
 
 	/*
@@ -932,13 +1014,34 @@ CallShmemCallbacksAfterStartup(const ShmemCallbacks *callbacks)
 	found_any = notfound_any = false;
 	foreach_ptr(ShmemRequest, request, pending_shmem_requests)
 	{
-		if (hash_search(ShmemIndex, request->options->name, HASH_FIND, NULL))
+		ShmemIndexEnt *index_entry;
+
+		index_entry = (ShmemIndexEnt *)
+			hash_search(ShmemIndex, request->options->name, HASH_FIND, NULL);
+		if (index_entry)
+		{
+			/*
+			 * Check for a half-initialized area.  (See also similar check in
+			 * AttachShmemIndexEntry())
+			 */
+			if (!index_entry->initialized)
+				ereport(ERROR,
+						(errmsg("cannot attach to shared memory struct \"%s\" because it was not fully initialized",
+								request->options->name)));
 			found_any = true;
+		}
 		else
+		{
+			if (request->options->size == SHMEM_ATTACH_UNKNOWN_SIZE)
+				ereport(ERROR,
+						(errmsg("cannot attach to shared memory struct \"%s\" because it does not exist",
+								request->options->name),
+						 errdetail("SHMEM_ATTACH_UNKNOWN_SIZE can only be used to attach to an existing shared memory structure.")));
 			notfound_any = true;
+		}
 	}
 	if (found_any && notfound_any)
-		elog(ERROR, "found some but not all");
+		elog(ERROR, "some of the requested shmem areas have already been initialized");
 
 	/*
 	 * Allocate or attach all the shmem areas requested by the request_fn
@@ -950,11 +1053,7 @@ CallShmemCallbacksAfterStartup(const ShmemCallbacks *callbacks)
 			AttachShmemIndexEntry(request, false);
 		else
 			InitShmemIndexEntry(request);
-
-		pfree(request->options);
 	}
-	list_free_deep(pending_shmem_requests);
-	pending_shmem_requests = NIL;
 
 	/* Finish by calling the appropriate subsystem-specific callback */
 	if (found_any)
@@ -968,8 +1067,12 @@ CallShmemCallbacksAfterStartup(const ShmemCallbacks *callbacks)
 			callbacks->init_fn(callbacks->opaque_arg);
 	}
 
+	foreach_ptr(ShmemRequest, request, pending_shmem_requests)
+	{
+		request->index_entry->initialized = true;
+	}
+
 	LWLockRelease(ShmemIndexLock);
-	shmem_request_state = SRS_DONE;
 }
 
 /*
@@ -1024,51 +1127,21 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 
 	LWLockAcquire(ShmemIndexLock, LW_EXCLUSIVE);
 
-	/*
-	 * During postmaster startup, look up the existing entry if any.
-	 */
-	*foundPtr = false;
-	if (IsUnderPostmaster)
-		*foundPtr = AttachShmemIndexEntry(&request, true);
+	/* Look up the existing entry if any */
+	*foundPtr = AttachShmemIndexEntry(&request, true);
 
 	/* Initialize it if not found */
 	if (!*foundPtr)
+	{
 		InitShmemIndexEntry(&request);
+		/* no additional initialization needed */
+		request.index_entry->initialized = true;
+	}
 
 	LWLockRelease(ShmemIndexLock);
 
 	Assert(ptr != NULL);
 	return ptr;
-}
-
-/*
- * Add two Size values, checking for overflow
- */
-Size
-add_size(Size s1, Size s2)
-{
-	Size		result;
-
-	if (pg_add_size_overflow(s1, s2, &result))
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("requested shared memory size overflows size_t")));
-	return result;
-}
-
-/*
- * Multiply two Size values, checking for overflow
- */
-Size
-mul_size(Size s1, Size s2)
-{
-	Size		result;
-
-	if (pg_mul_size_overflow(s1, s2, &result))
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("requested shared memory size overflows size_t")));
-	return result;
 }
 
 /* SQL SRF showing allocated shared memory */
@@ -1298,7 +1371,7 @@ pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS)
  * If the shared segment was allocated using huge pages, returns the size of
  * a huge page. Otherwise returns the size of regular memory page.
  *
- * This should be used only after the server is started.
+ * This should be used only after shared memory has been initialized.
  */
 Size
 pg_get_shmem_pagesize(void)
@@ -1313,7 +1386,6 @@ pg_get_shmem_pagesize(void)
 	os_page_size = sysconf(_SC_PAGESIZE);
 #endif
 
-	Assert(IsUnderPostmaster);
 	Assert(huge_pages_status != HUGE_PAGES_UNKNOWN);
 
 	if (huge_pages_status == HUGE_PAGES_ON)

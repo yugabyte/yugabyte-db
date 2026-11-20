@@ -8,9 +8,9 @@
  */
 #include "postgres.h"
 
-#include "common/string.h"
 #include "nodes/miscnodes.h"
 #include "parser/scansup.h"
+#include "utils/builtins.h"
 
 #include "pgpa_ast.h"
 #include "pgpa_parser.h"
@@ -82,6 +82,7 @@ identifier		{ident_start}{ident_cont}*
 
 decdigit		[0-9]
 decinteger		{decdigit}(_?{decdigit})*
+integer_junk	{decinteger}{identifier}
 
 space			[ \t\n\r\f\v]
 whitespace		{space}+
@@ -128,21 +129,28 @@ xcinside		[^*/]+
 					else if (tag == PGPA_TAG_SEQ_SCAN ||
 							 tag == PGPA_TAG_TID_SCAN ||
 							 tag == PGPA_TAG_BITMAP_HEAP_SCAN ||
-							 tag == PGPA_TAG_NO_GATHER)
+							 tag == PGPA_TAG_NO_GATHER ||
+							 tag == PGPA_TAG_DO_NOT_SCAN)
 						return TOK_TAG_SIMPLE;
 					else
 						return TOK_TAG_GENERIC;
 				}
 
 {decinteger}	{
-					char   *endptr;
+					ErrorSaveContext escontext = {T_ErrorSaveContext};
 
-					errno = 0;
-					yylval->integer = strtoint(yytext, &endptr, 10);
-					if (*endptr != '\0' || errno == ERANGE)
+					yylval->integer = pg_strtoint32_safe(yytext,
+														 (Node *) &escontext);
+					if (escontext.error_occurred)
 						pgpa_yyerror(result, parse_error_msg_p, yyscanner,
 									 "integer out of range");
 					return TOK_INTEGER;
+				}
+
+{integer_junk}	{
+					BEGIN(INITIAL);
+					pgpa_yyerror(result, parse_error_msg_p, yyscanner,
+								 "trailing junk after numeric literal");
 				}
 
 {xcstart}		{

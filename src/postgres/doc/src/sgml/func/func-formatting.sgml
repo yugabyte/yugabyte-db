@@ -424,8 +424,8 @@
        </row>
        <row>
         <entry><literal>OF</literal></entry>
-        <entry>time-zone offset from UTC (<replaceable>HH</replaceable>
-         or <replaceable>HH</replaceable><literal>:</literal><replaceable>MM</replaceable>)</entry>
+        <entry>time-zone offset from UTC (<replaceable>hh</replaceable>
+         or <replaceable>hh</replaceable><literal>:</literal><replaceable>mi</replaceable>)</entry>
        </row>
       </tbody>
      </tgroup>
@@ -1128,7 +1128,7 @@
        </row>
        <row>
         <entry><literal>to_char(485, 'PL999')</literal></entry>
-        <entry><literal>'+485'</literal></entry>
+        <entry><literal>'+ 485'</literal></entry>
        </row>
        <row>
         <entry><literal>to_char(485, 'SG999')</literal></entry>

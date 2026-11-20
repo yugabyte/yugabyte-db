@@ -191,12 +191,14 @@ Generic_Text_IC_like(text *str, text *pat, Oid collation)
 
 	/*
 	 * For efficiency reasons, in the C locale we don't call lower() on the
-	 * pattern and text, but instead lowercase each character lazily.
+	 * pattern and text, but instead lowercase each character lazily. This
+	 * only works for single-byte encodings, otherwise "_" may incorrectly
+	 * match an incomplete byte sequence.
 	 *
 	 * XXX: use casefolding instead?
 	 */
 
-	if (locale->ctype_is_c)
+	if (locale->ctype_is_c && pg_database_encoding_max_length() == 1)
 	{
 		p = VARDATA_ANY(pat);
 		plen = VARSIZE_ANY_EXHDR(pat);

@@ -1761,13 +1761,13 @@ select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
  MixedAggregate
    Hash Key: (InitPlan expr_3).col1
    Group Key: ()
-   InitPlan expr_2
-     ->  Result *RESULT*_1
+   InitPlan expr_1
+     ->  Result *RESULT*
    InitPlan expr_3
      ->  Result *RESULT*_2
    ->  Result *RESULT*_3
-   SubPlan expr_1
-     ->  Result *RESULT*
+   SubPlan expr_2
+     ->  Result *RESULT*_1
 (10 rows)
 
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);

@@ -166,6 +166,10 @@ sub configure_test_server_for_ssl
 		$node->psql('postgres', "CREATE DATABASE $db");
 	}
 
+	# Grant pg_read_all_settings to ssltestuser so that relevant GUCs can be
+	# examined during tests
+	$node->psql('postgres', "GRANT pg_read_all_settings TO ssltestuser");
+
 	# Update password of each user as needed.
 	if (defined($params{password}))
 	{
@@ -323,8 +327,7 @@ sub switch_server_cert
 	$node->append_conf('sslconfig.conf', 'ssl=on');
 	$node->append_conf('sslconfig.conf', $backend->set_server_cert(\%params));
 	# use lists of ECDH curves and cipher suites for syntax testing
-	$node->append_conf('sslconfig.conf',
-		'ssl_groups=prime256v1:secp521r1');
+	$node->append_conf('sslconfig.conf', 'ssl_groups=prime256v1:secp521r1');
 	$node->append_conf('sslconfig.conf',
 		'ssl_tls13_ciphers=TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256');
 

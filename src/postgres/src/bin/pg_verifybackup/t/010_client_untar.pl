@@ -135,10 +135,21 @@ for my $tc (@test_configuration)
 
 		# Verify tar backup.
 		$primary->command_ok(
-			[
-				'pg_verifybackup', '--exit-on-error', $backup_path,
-			],
+			[ 'pg_verifybackup', '--exit-on-error', $backup_path, ],
 			"verify backup, compression $method");
+
+		if ($method ne 'none')
+		{
+			my $flen = -s $backup_path . "/" . $tc->{'backup_archive'};
+			ok( truncate(
+					$backup_path . "/" . $tc->{'backup_archive'},
+					$flen - 1),
+				"file truncated");
+			$primary->command_fails_like(
+				[ 'pg_verifybackup', '--exit-on-error', $backup_path, ],
+				qr/could not decompress data/,
+				"backup is corrupted, compression $method");
+		}
 
 		# Cleanup.
 		rmtree($backup_path);

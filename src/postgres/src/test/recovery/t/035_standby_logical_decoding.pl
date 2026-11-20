@@ -71,12 +71,13 @@ sub drop_logical_slots
 }
 
 # Acquire one of the standby logical slots created by create_logical_slots().
-# In case wait is true we are waiting for an active pid on the 'activeslot' slot.
-# If wait is not true it means we are testing a known failure scenario.
+# If wait is true, wait for pg_recvlogical to enter streaming mode.
+# Otherwise, starting replication is expected to fail.
 sub make_slot_active
 {
 	my ($node, $slot_prefix, $wait, $to_stdout, $to_stderr) = @_;
 	my $slot_user_handle;
+	my $timeout = IPC::Run::timeout($default_timeout);
 
 	my $active_slot = $slot_prefix . 'activeslot';
 	$slot_user_handle = IPC::Run::start(
@@ -87,19 +88,20 @@ sub make_slot_active
 			'--option' => 'include-xids=0',
 			'--option' => 'skip-empty-xacts=1',
 			'--file' => '-',
+			'--verbose',
 			'--no-loop',
 			'--start',
 		],
 		'>' => $to_stdout,
 		'2>' => $to_stderr,
-		IPC::Run::timeout($default_timeout));
+		$timeout);
 
 	if ($wait)
 	{
-		# make sure activeslot is in use
-		$node->poll_query_until('testdb',
-			qq[SELECT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '$active_slot' AND active_pid IS NOT NULL)]
-		) or die "slot never became active";
+		# Make sure that pg_recvlogical has entered streaming mode.
+		pump_until($slot_user_handle, $timeout, $to_stderr,
+			qr/streaming initiated/)
+		  or die "pg_recvlogical did not enter streaming mode";
 	}
 	return $slot_user_handle;
 }
@@ -758,12 +760,14 @@ wait_until_vacuum_can_remove(
 
 # message should not be issued
 ok( !$node_standby->log_contains(
-		"invalidating obsolete replication slot \"no_conflict_inactiveslot\"", $logstart),
+		"invalidating obsolete replication slot \"no_conflict_inactiveslot\"",
+		$logstart),
 	'inactiveslot slot invalidation is not logged with vacuum on conflict_test'
 );
 
 ok( !$node_standby->log_contains(
-		"invalidating obsolete replication slot \"no_conflict_activeslot\"", $logstart),
+		"invalidating obsolete replication slot \"no_conflict_activeslot\"",
+		$logstart),
 	'activeslot slot invalidation is not logged with vacuum on conflict_test'
 );
 
@@ -926,7 +930,7 @@ is( $node_standby->safe_psql(
 	'f',
 	'database dropped on standby');
 
-check_slots_dropped('drop_db', $handle);
+check_slots_dropped('drop_db_', $handle);
 
 is($node_standby->slot('otherslot')->{'slot_type'},
 	'logical', 'otherslot on standby not dropped');
@@ -1057,5 +1061,87 @@ chomp($cascading_stdout);
 is($cascading_stdout, $expected,
 	'got same expected output from pg_recvlogical decoding session on cascading standby'
 );
+
+##################################################
+# Test that logical decoding on standby correctly handles a timeline
+# change during promotion.  This relies on an injection point that
+# waits between the moment the segments of the old timeline are removed
+# and the moment RecoveryInProgress() would set, catching that a WAL
+# sender is still able to decode changes across a promotion.
+##################################################
+
+# Create a logical slot on the cascading standby for this test.
+$node_cascading_standby->create_logical_slot_on_standby($node_standby,
+	'race_slot', 'testdb');
+$node_cascading_standby->create_logical_slot_on_standby($node_standby,
+	'race_slot_sql', 'testdb');
+
+$node_standby->safe_psql('testdb',
+	qq[INSERT INTO decoding_test(x,y) SELECT s, s::text FROM generate_series(10,13) s;]
+);
+$node_standby->wait_for_replay_catchup($node_cascading_standby);
+
+$expected = q{BEGIN
+table public.decoding_test: INSERT: x[integer]:10 y[text]:'10'
+table public.decoding_test: INSERT: x[integer]:11 y[text]:'11'
+table public.decoding_test: INSERT: x[integer]:12 y[text]:'12'
+table public.decoding_test: INSERT: x[integer]:13 y[text]:'13'
+COMMIT};
+
+$node_standby->safe_psql('testdb', 'CREATE EXTENSION injection_points;');
+$node_standby->wait_for_replay_catchup($node_cascading_standby);
+
+# Open a background psql session BEFORE promotion for the SQL decoding
+# test.
+my $decode_session = $node_cascading_standby->background_psql('testdb');
+
+# Attach injection point to pause startup after WAL segment cleanup
+# but before RecoveryInProgress() flips to false.
+$node_cascading_standby->safe_psql('testdb',
+	"SELECT injection_points_attach('promotion-after-wal-segment-cleanup', 'wait');"
+);
+
+# Promote, wait for the removal of the segments on the old timeline.
+$node_cascading_standby->safe_psql('testdb', "SELECT pg_promote(false)");
+$node_cascading_standby->wait_for_event('startup',
+	'promotion-after-wal-segment-cleanup');
+
+# Start pg_recvlogical.
+my ($stdout2, $stderr2);
+my $handle2 = IPC::Run::start(
+	[
+		'pg_recvlogical',
+		'--dbname' => $node_cascading_standby->connstr('testdb'),
+		'--slot' => 'race_slot',
+		'--option' => 'include-xids=0',
+		'--option' => 'skip-empty-xacts=1',
+		'--file' => '-',
+		'--no-loop',
+		'--start',
+	],
+	'>' => \$stdout2,
+	'2>' => \$stderr2,
+	IPC::Run::timeout($default_timeout));
+
+# Verify that pg_recvlogical successfully decodes the data while startup
+# is still paused in the injection point.
+$pump_timeout = IPC::Run::timer($default_timeout);
+ok( pump_until($handle2, $pump_timeout, \$stdout2, qr/COMMIT/s),
+	'pg_recvlogical works during promotion timeline switch');
+chomp($stdout2);
+is($stdout2, $expected,
+	'got expected output from pg_recvlogical during promotion timeline switch'
+);
+
+# Verify SQL decoding.
+my $sql_out = $decode_session->query_safe(
+	"SELECT data FROM pg_logical_slot_peek_changes('race_slot_sql', NULL, NULL, 'include-xids', '0', 'skip-empty-xacts', '1')"
+);
+is($sql_out, $expected,
+	'pg_logical_slot_peek_changes works during promotion timeline switch');
+
+# Resume promotion.
+$node_cascading_standby->safe_psql('testdb',
+	"SELECT injection_points_wakeup('promotion-after-wal-segment-cleanup');");
 
 done_testing();

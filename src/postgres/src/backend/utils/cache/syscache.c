@@ -193,15 +193,7 @@ StaticAssertDecl(lengthof(cacheinfo) == SysCacheSize,
 	YB_CATCACHE_ENTRY(YBTABLEGROUPOID, 83, "pg_yb_tablegroup_oid_index", YbCatalogCacheTable_pg_yb_tablegroup) \
 	YB_CATCACHE_ENTRY(YBCONSTRAINTRELIDTYPIDNAME, 84, "pg_constraint_conrelid_contypid_conname_index", YbCatalogCacheTable_pg_constraint) \
 	YB_CATCACHE_ENTRY(EXTENSIONOID, 85, "pg_extension_oid_index", YbCatalogCacheTable_pg_extension) \
-	YB_CATCACHE_ENTRY(EXTENSIONNAME, 86, "pg_extension_name_index", YbCatalogCacheTable_pg_extension) \
-	YB_CATCACHE_ENTRY(PROPGRAPHELALIAS, 87, "pg_propgraph_element_alias_index", YbCatalogCacheTable_pg_propgraph_element) \
-	YB_CATCACHE_ENTRY(PROPGRAPHELEMENTLABELELEMENTLABEL, 88, "pg_propgraph_element_label_element_label_index", YbCatalogCacheTable_pg_propgraph_element_label) \
-	YB_CATCACHE_ENTRY(PROPGRAPHELOID, 89, "pg_propgraph_element_oid_index", YbCatalogCacheTable_pg_propgraph_element) \
-	YB_CATCACHE_ENTRY(PROPGRAPHLABELNAME, 90, "pg_propgraph_label_graph_name_index", YbCatalogCacheTable_pg_propgraph_label) \
-	YB_CATCACHE_ENTRY(PROPGRAPHLABELOID, 91, "pg_propgraph_label_oid_index", YbCatalogCacheTable_pg_propgraph_label) \
-	YB_CATCACHE_ENTRY(PROPGRAPHLABELPROP, 92, "pg_propgraph_label_property_label_prop_index", YbCatalogCacheTable_pg_propgraph_label_property) \
-	YB_CATCACHE_ENTRY(PROPGRAPHPROPNAME, 93, "pg_propgraph_property_name_index", YbCatalogCacheTable_pg_propgraph_property) \
-	YB_CATCACHE_ENTRY(PROPGRAPHPROPOID, 94, "pg_propgraph_property_oid_index", YbCatalogCacheTable_pg_propgraph_property)
+	YB_CATCACHE_ENTRY(EXTENSIONNAME, 86, "pg_extension_name_index", YbCatalogCacheTable_pg_extension)
 
 static const char *yb_cache_index_name_table[] = {
 #define YB_CATCACHE_ENTRY(name, id, idx, tbl) idx,
@@ -247,7 +239,7 @@ static_assert(SysCacheSize ==
 
 static CatCache *SysCache[SysCacheSize];
 
-static bool CacheInitialized = false;
+static bool CacheInitialized PG_USED_FOR_ASSERTS_ONLY = false;
 
 /* Sorted array of OIDs of tables that have caches on them */
 static Oid	SysCacheRelationOid[SysCacheSize];
@@ -1501,9 +1493,8 @@ YbCheckCatalogCacheIds()
 	 * but old PG backend cannot provide that message needed. In this case
 	 * interop isn't possible so we need to bump YbSharedInvalCatcacheMsgVersion.
 	 *
-	 * The ids added by the PG19 merge (86-94) were evaluated as follows:
-	 * the PROPGRAPH* caches (87-94) are case (1). EXTENSIONNAME (86) is
-	 * case (2), on pg_extension, but needs no bump: the only releases without
+	 * The id added by the PG19 merge (86) was evaluated as follows:
+	 * EXTENSIONNAME (86) is case (2), on pg_extension, but needs no bump: the only releases without
 	 * it are PG15-based, and during a PG15 to PG19 major upgrade the master
 	 * rejects all non-forced catalog writes until every yb-tserver runs the
 	 * new version, so no old-release backend can change pg_extension while

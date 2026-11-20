@@ -365,19 +365,20 @@ OPTIONS (ADD password_required 'false');
     </varlistentry>
 
     <varlistentry>
-     <term><literal>restore_stats</literal> (<type>boolean</type>)</term>
+     <term><literal>import_stats</literal> (<type>boolean</type>)</term>
      <listitem>
       <para>
        This option, which can be specified for a foreign table or a foreign
        server, determines if <command>ANALYZE</command> on a foreign table
-       will instead attempt to fetch the existing statistics for the foreign
-       table on the remote server, and restore those statistics directly to
-       the local server.  If the attempt failed, statistics are collected by
-       row sampling on the foreign table.
+       will instead attempt to fetch the existing statistics for the remote
+       table, and import those statistics directly to the local server
+       (without applying the foreign table columns'
+       <literal>n_distinct</literal> option).  If the attempt failed,
+       statistics are collected by row sampling on the foreign table.
        This option is only useful if the remote table is one that can have
-       regular statistics (tables and materialized views).
+       regular statistics (tables, not inherited, and materialized views).
        When using this option, <emphasis>it is the user's responsibility
-       </emphasis> to ensure that the existing statistics for the foreign
+       </emphasis> to ensure that the existing statistics for the remote
        table are up-to-date.
        The default is <literal>false</literal>.
       </para>
@@ -386,7 +387,14 @@ OPTIONS (ADD password_required 'false');
        If the foreign table is a partition of a partitioned table, analyzing
        the partitioned table will still result in row sampling on the foreign
        table regardless of this setting, though direct analysis of the foreign
-       table would have attempted to fetch and restore remote statistics first.
+       table would have attempted to fetch and import the remote statistics
+       first if this option was enabled.
+      </para>
+
+      <para>
+       Note that this option doesn't currently support the case where the
+       remote table is (or was once) inherited.  This is an implementation
+       restriction that might be fixed in a future release.
       </para>
      </listitem>
     </varlistentry>
@@ -803,7 +811,9 @@ OPTIONS (ADD password_required 'false');
        <para>
         This option controls whether <filename>postgres_fdw</filename> will
         use the SCRAM pass-through authentication to connect to the foreign
-        server.  With SCRAM pass-through authentication,
+        server.  It can be specified for a foreign server or a user mapping.
+        A user mapping setting overrides the foreign server setting.
+        With SCRAM pass-through authentication,
         <filename>postgres_fdw</filename> uses SCRAM-hashed secrets instead of
         plain-text user passwords to connect to the remote server.  This
         avoids storing plain-text user passwords in PostgreSQL system
@@ -857,6 +867,13 @@ OPTIONS (ADD password_required 'false');
            for its incoming client connection.  (Hence
            <quote>pass-through</quote>: SCRAM must be used going in and out.)
            This is a technical requirement of the SCRAM protocol.
+          </para>
+         </listitem>
+
+         <listitem>
+          <para>
+           The foreign server must not be used for subscription connections
+           (see <xref linkend="postgres-fdw-server-subscription"/>).
           </para>
          </listitem>
         </itemizedlist>
@@ -1131,20 +1148,17 @@ CREATE SUBSCRIPTION my_subscription SERVER subscription_server PUBLICATION testp
   </para>
 
   <para>
-   The remote transaction is opened in the same read/write mode as the local
-   transaction: if the local transaction is <literal>READ ONLY</literal>,
-   the remote transaction is opened in <literal>READ ONLY</literal> mode,
-   otherwise it is opened in <literal>READ WRITE</literal> mode.
-   (This rule is also applied to remote and local subtransactions.)
+   Local <literal>READ ONLY</literal> transactions propagate their read-only
+   mode to remote sessions.
+   (This rule is also applied to local subtransactions.)
    Note that this does not prevent login triggers executed on the remote
    server from writing.
   </para>
 
   <para>
-   The remote transaction is also opened in the same deferrable mode as the
-   local transaction: if the local transaction is <literal>DEFERRABLE</literal>,
-   the remote transaction is opened in <literal>DEFERRABLE</literal> mode,
-   otherwise it is opened in <literal>NOT DEFERRABLE</literal> mode.
+   Also, local <literal>DEFERRABLE</literal> transactions propagate their
+   deferrable mode to remote sessions.
+   (This rule is only applied to remote servers 9.1 and newer.)
   </para>
 
   <para>
