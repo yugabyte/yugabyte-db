@@ -237,13 +237,16 @@ static bool YBIsCurrentStmtCreateFunction();
 static uint64_t function_cache_generation = 0;
 
 /*
- * Set while YBCommitTransactionContainingDDL commits a transaction block that
- * ran DDL. The DDL transaction state is cleared before the commit RPC, so this
- * is what tells YBCAbortTransaction that a failed commit rolled back DDL.
+ * Set while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block). A DDL statement sets that state,
+ * and so does YBAddDdlTxnState for a catalog change made without one, such as
+ * by the statistics restore functions or the pg_hint_plan hint table trigger.
+ * The DDL transaction state is cleared before the commit RPC, so this is what
+ * tells YBCAbortTransaction that a failed commit rolled back DDL.
  */
 static bool ddl_txn_block_commit_in_progress = false;
 
-static void yb_maybe_test_fail_ddl(void);
+static void yb_maybe_test_fail_ddl(bool before_commit_rpc);
 static YbcPgSkipIntentsOptimizationInfo YbGetSkipIntentsOptimizationInfoRead(Relation rel);
 
 uint64_t
@@ -2859,6 +2862,19 @@ YBGetDdlUseRegularTransactionBlock()
 }
 
 /*
+ * True while YBCommitTransactionContainingDDL commits a transaction with DDL
+ * transaction state (use_regular_txn_block), which a DDL statement or a
+ * catalog change registered through YBAddDdlTxnState sets: from just before it
+ * clears that state and sends the commit RPC, until that RPC succeeds or the
+ * transaction is aborted.
+ */
+bool
+YBIsDdlTxnBlockCommitInProgress()
+{
+	return ddl_txn_block_commit_in_progress;
+}
+
+/*
  * Whether the current transaction takes object locks. pggate decides it, for
  * the locks it sends and for this. A transaction without locks does not refresh
  * its catalog cache when PG acquires a lock. An autonomous DDL transaction, for
@@ -3501,7 +3517,7 @@ YBCommitTransactionContainingDDL()
 									has_change);
 
 	Assert(ddl_transaction_state.nesting_level == 0);
-	yb_maybe_test_fail_ddl();
+	yb_maybe_test_fail_ddl(false /* before_commit_rpc */ );
 
 	if (yb_test_delay_next_ddl > 0)
 	{
@@ -3711,6 +3727,7 @@ YBCommitTransactionContainingDDL()
 
 	if (use_regular_txn_block)
 	{
+		yb_maybe_test_fail_ddl(true /* before_commit_rpc */ );
 		HandleYBStatus(YBCPgCommitPlainTransactionContainingDDL(MyDatabaseId, is_silent_altering));
 		ddl_txn_block_commit_in_progress = false;
 		/*
@@ -10790,14 +10807,21 @@ YbNewTruncateColocatedIgnoreNotFound(Relation rel, YbcPgTransactionSetting trans
 
 /*
  * Check yb_test_fail_next_ddl and trigger the appropriate error if set.
- * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * 0 = disabled, 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash, 5 = conflict,
+ * 6 = deadlock, all raised at the start of YBCommitTransactionContainingDDL.
+ * 7 = conflict and 8 = deadlock are raised just before the commit RPC
+ * (before_commit_rpc), standing in for an error from that RPC.  That point is
+ * reached only when a transaction with DDL transaction state commits through a
+ * regular transaction block (transactional DDL); until then they stay set.
  * Resets to 0 after triggering.
  */
 static void
-yb_maybe_test_fail_ddl(void)
+yb_maybe_test_fail_ddl(bool before_commit_rpc)
 {
 	int fail_mode = yb_test_fail_next_ddl;
-	if (fail_mode == 0)
+	bool		commit_rpc_mode = (fail_mode == 7 || fail_mode == 8);
+
+	if (fail_mode == 0 || commit_rpc_mode != before_commit_rpc)
 		return;
 	yb_test_fail_next_ddl = 0;
 	if (YbIsClientYsqlConnMgr())
@@ -10825,6 +10849,21 @@ yb_maybe_test_fail_ddl(void)
 			ereport(ERROR,
 					(errcode(ERRCODE_YB_TXN_CONFLICT),
 					 errmsg("failed DDL operation with conflict as requested")));
+			break;
+		case 6:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL operation with deadlock as requested")));
+			break;
+		case 7:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_TXN_CONFLICT),
+					 errmsg("failed DDL commit with conflict as requested")));
+			break;
+		case 8:
+			ereport(ERROR,
+					(errcode(ERRCODE_YB_DEADLOCK),
+					 errmsg("failed DDL commit with deadlock as requested")));
 			break;
 		default:
 			break;
