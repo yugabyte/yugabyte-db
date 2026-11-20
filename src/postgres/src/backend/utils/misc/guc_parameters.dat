@@ -4252,6 +4252,13 @@
   boot_val => 'true',
 },
 
+{ name => 'yb_enable_global_object_locking_infra', type => 'bool', context => 'PGC_SIGHUP', group => 'LOCK_MANAGEMENT',
+  short_desc => 'Gates global object locking during upgrade.',
+  flags => 'GUC_NOT_IN_SAMPLE',
+  variable => 'yb_enable_global_object_locking_infra',
+  boot_val => 'true',
+},
+
 { name => 'yb_enable_global_views', type => 'bool', context => 'PGC_SUSET', group => 'CUSTOM_OPTIONS',
   short_desc => 'Enables querying of global views.',
   variable => 'yb_enable_global_views',
@@ -4356,13 +4363,6 @@
   short_desc => 'Enable nop alter role statement optimization to avoid catalog version increment if the alter role statement does not involve any change.',
   flags => 'GUC_NOT_IN_SAMPLE',
   variable => 'yb_enable_nop_alter_role_optimization',
-  boot_val => 'true',
-},
-
-{ name => 'yb_enable_object_locking_infra', type => 'bool', context => 'PGC_SIGHUP', group => 'LOCK_MANAGEMENT',
-  short_desc => 'Allow enabling object-level locking for table locks.',
-  flags => 'GUC_NOT_IN_SAMPLE',
-  variable => 'yb_enable_object_locking_infra',
   boot_val => 'true',
 },
 
@@ -4743,7 +4743,7 @@
   max => 'INT_MAX',
 },
 
-{ name => 'yb_insert_on_conflict_read_batch_size', type => 'int', context => 'PGC_SUSET', group => 'CLIENT_CONN_STATEMENT',
+{ name => 'yb_insert_on_conflict_read_batch_size', type => 'int', context => 'PGC_USERSET', group => 'CLIENT_CONN_STATEMENT',
   short_desc => 'Maximum batch size for arbiter index reads during INSERT ON CONFLICT.',
   long_desc => 'A value of 0 disables this feature.',
   variable => 'yb_insert_on_conflict_read_batch_size',

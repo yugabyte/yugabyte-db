@@ -220,15 +220,29 @@ InitGUC() {
 	                           "Allow DuckDB to load extensions with invalid or missing signatures",
 	                           &duckdb_allow_unsigned_extensions, PGC_SUSET);
 
+	/*
+	 * YB: in lake_io mode, pin both off. Otherwise a query that needs a non-bundled extension (e.g.
+	 * read_parquet('az://...') -> azure) makes DuckDB download the official build, which is compiled
+	 * against libstdc++ while YB's DuckDB uses libc++; loading it hangs or crashes the backend. With
+	 * both off, such a query fails fast with DuckDB's "requires the extension ... to be loaded" error.
+	 * The bundled json/icu/httpfs are statically linked and don't depend on these settings.
+	 */
+	GucContext yb_extension_autoload_context = PGC_SUSET;
+	if (YbIsLakeIoMode()) {
+		duckdb_autoinstall_known_extensions = false;
+		duckdb_autoload_known_extensions = false;
+		yb_extension_autoload_context = PGC_INTERNAL;
+	}
+
 	DefineCustomDuckDBVariable(
 	    "duckdb.autoinstall_known_extensions",
 	    "Whether known extensions are allowed to be automatically installed when a DuckDB query depends on them",
-	    &duckdb_autoinstall_known_extensions, PGC_SUSET);
+	    &duckdb_autoinstall_known_extensions, yb_extension_autoload_context);
 
 	DefineCustomDuckDBVariable(
 	    "duckdb.autoload_known_extensions",
 	    "Whether known extensions are allowed to be automatically loaded when a DuckDB query depends on them",
-	    &duckdb_autoload_known_extensions, PGC_SUSET);
+	    &duckdb_autoload_known_extensions, yb_extension_autoload_context);
 
 	DefineCustomDuckDBVariable("duckdb.max_memory", "The maximum memory DuckDB can use in MB (e.g., 4096 for 4GB)",
 	                           &duckdb_maximum_memory, 0, INT_MAX, PGC_SUSET, GUC_UNIT_MB);

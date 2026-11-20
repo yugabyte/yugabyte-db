@@ -39,6 +39,9 @@ Environment="AWS_PROFILE=otel-collector"
 {% if otel_col_gcp_creds_present is true %}
 Environment="GOOGLE_APPLICATION_CREDENTIALS={{yb_home_dir}}/otel-collector/gcp_creds"
 {% endif %}
+{% if otel_col_secret_env_present is true %}
+EnvironmentFile={{yb_home_dir}}/otel-collector/secrets.env
+{% endif %}
 Environment="HOME={{yb_home_dir}}"
 
 [Install]

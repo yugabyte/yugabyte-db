@@ -622,6 +622,7 @@ YbExecDoDeleteIndexTuple(ResultRelInfo *resultRelInfo,
 						 IndexInfo *indexInfo,
 						 TupleTableSlot *slot,
 						 Datum ybctid,
+						 bool persist_missing_row,
 						 EState *estate)
 {
 	Datum		values[INDEX_MAX_KEYS];
@@ -645,7 +646,8 @@ YbExecDoDeleteIndexTuple(ResultRelInfo *resultRelInfo,
 						isnull, /* null flags */
 						ybctid, /* ybctid */
 						heapRelation,	/* heap relation */
-						indexInfo); /* index AM may need this */
+						indexInfo,	/* index AM may need this */
+						persist_missing_row);
 		MemoryContextSwitchTo(oldContext);
 	}
 }
@@ -660,7 +662,8 @@ YbExecDoDeleteIndexTuple(ResultRelInfo *resultRelInfo,
  * ----------------------------------------------------------------
  */
 void
-ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple, EState *estate)
+ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
+					  bool persist_missing_row, EState *estate)
 {
 	int			i;
 	int			numIndices;
@@ -740,7 +743,7 @@ ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tupl
 		}
 
 		YbExecDoDeleteIndexTuple(resultRelInfo, indexRelation, indexInfo,
-								 slot, ybctid, estate);
+								 slot, ybctid, persist_missing_row, estate);
 	}
 
 	/* Drop the temporary slot */
@@ -1132,7 +1135,7 @@ YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 		index = lfirst_int(lc);
 		YbExecDoDeleteIndexTuple(resultRelInfo, relationDescs[index],
 								 indexInfoArray[index], deleteSlot, ybctid,
-								 estate);
+								 false /* persist_missing_row */ , estate);
 	}
 
 	econtext->ecxt_scantuple = slot;

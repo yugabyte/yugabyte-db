@@ -480,7 +480,9 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const { return is_running() && !is_hidden(); }
+  // A HIDING table is already dropped or removed by PITR. Exposing it would let a client with a
+  // stale cache write to a colocated table whose parent tablet still accepts writes.
+  bool visible_to_client() const { return is_running() && !started_hiding(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;

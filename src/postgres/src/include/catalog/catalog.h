@@ -33,7 +33,7 @@
  * last used OID (<system_catalog>.<object_name>). This is intended to act as a
  * safeguard against silent rebases.
  */
-#define YB_LAST_USED_OID 8123 /* corresponds to pg_proc.yb_backfill_online_schema_change_chunk */
+#define YB_LAST_USED_OID 8128 /* corresponds to pg_proc.yb_online_schema_change_trigger */
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);

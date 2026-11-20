@@ -833,7 +833,7 @@ extern ResultRelInfo *ExecLookupResultRelByOid(ModifyTableState *node,
 
 /* YB */
 extern void ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
-								  EState *estate);
+								  bool persist_missing_row, EState *estate);
 extern List *YbExecUpdateIndexTuples(ResultRelInfo *resultRelInfo,
 									 TupleTableSlot *slot,
 									 Datum ybctid,

@@ -18,6 +18,7 @@ import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -54,6 +55,11 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
 
   @Override
   public void validate(CustomerConfigData data) {
+    validate(data, null);
+  }
+
+  @Override
+  public void validate(CustomerConfigData data, @Nullable CustomerConfigData stored) {
     super.validate(data);
 
     CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) data;
@@ -63,6 +69,23 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
     // GCP DB node, and there is no universe/provider context here to resolve the role/audience.
     // Skip the credential + bucket checks (URL already validated); the node/YBC do the real check.
     if (AWSUtil.isCrossCloudFederationConfig(s3data)) {
+      // With IAM_INSTANCE_PROFILE set, keys on a federated config are never used: YBA's own client
+      // uses its IAM role where it does not federate. So that combination is refused. Without the
+      // flag, the keys are YBA's own credential where it does not federate, such as after an HA
+      // promotion or for a restore onto a new YBA (see BackupHelper.hasCredentialsOfItsOwn), so
+      // they are accepted. A config saved with keys, the flag and federation keeps taking edits
+      // such as a rename.
+      if (newlyViolates(
+          CustomerConfigStorageS3Validator::hasKeysWithFederationAndIamRole,
+          s3data,
+          (CustomerConfigStorageS3Data) stored)) {
+        throwBeanConfigDataValidatorError(
+            AWSUtil.AWS_ACCESS_KEY_ID_FIELDNAME,
+            "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY cannot be used together with"
+                + " USE_CROSS_CLOUD_FEDERATION and IAM_INSTANCE_PROFILE, as YBA then uses its IAM"
+                + " role and never the keys. Remove the keys, or set IAM_INSTANCE_PROFILE to false"
+                + " so YBA uses them where it does not federate.");
+      }
       return;
     }
 
@@ -142,5 +165,12 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
         throwBeanConfigDataValidatorError(fieldName, e.getMessage(), e);
       }
     }
+  }
+
+  private static boolean hasKeysWithFederationAndIamRole(CustomerConfigStorageS3Data s3data) {
+    return AWSUtil.isCrossCloudFederationConfig(s3data)
+        && s3data.isIAMInstanceProfile
+        && (StringUtils.isNotEmpty(s3data.awsAccessKeyId)
+            || StringUtils.isNotEmpty(s3data.awsSecretAccessKey));
   }
 }
