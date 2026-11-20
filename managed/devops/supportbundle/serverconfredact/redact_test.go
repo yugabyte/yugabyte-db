@@ -246,6 +246,39 @@ func TestSensitiveFlagValueRunsToEndOfLine(t *testing.T) {
 	}
 }
 
+// gflags reads a dash in a flag name as an underscore, so a sensitive flag is redacted under either
+// spelling, and ysql_hba_conf_csv still keeps its ACL.
+func TestRedactDashedFlagNames(t *testing.T) {
+	sensitive := []string{"my_secret_flag", "ysql_hba_conf_csv"}
+	cases := []struct{ input, want string }{
+		{"--ycql-ldap-bind-passwd=abc,def=ghi", "--ycql-ldap-bind-passwd=REDACTED"},
+		{"--ycql_ldap-bind_passwd=abc", "--ycql_ldap-bind_passwd=REDACTED"},
+		{"--my-secret-flag=pw\n--port=5433", "--my-secret-flag=REDACTED\n--port=5433"},
+		{"ycql-ldap-bind-passwd=abc, webserver_port=9000",
+			"ycql-ldap-bind-passwd=REDACTED, webserver_port=9000"},
+		{`{"my-secret-flag":"pw"}`, `{"my-secret-flag":"REDACTED"}`},
+		{"--ysql-hba-conf-csv=host all all 0.0.0.0/0 trust",
+			"--ysql-hba-conf-csv=host all all 0.0.0.0/0 trust"},
+	}
+	for _, c := range cases {
+		out := serverconfredact.RedactSensitiveInfo(c.input, sensitive)
+		if out != c.want {
+			t.Fatalf("%q: got %q, want %q", c.input, out, c.want)
+		}
+		if err := serverconfredact.VerifyRedacted(out, sensitive); err != nil {
+			t.Fatalf("%q -> %q: %v", c.input, out, err)
+		}
+	}
+	hba := `--ysql-hba-conf-csv="host all all 0.0.0.0/0 ldap ldapbindpasswd=dummypw ldapport=389"`
+	out := serverconfredact.RedactSensitiveInfo(hba, sensitive)
+	if strings.Contains(out, "dummypw") || !strings.HasPrefix(out, `--ysql-hba-conf-csv="host all`) {
+		t.Fatalf("%q: got %q", hba, out)
+	}
+	if err := serverconfredact.VerifyRedacted(out, sensitive); err != nil {
+		t.Fatalf("%q -> %q: %v", hba, out, err)
+	}
+}
+
 func TestVerifyRedactedFindsLeftoverSecrets(t *testing.T) {
 	const hba = `--ysql_hba_conf_csv=host all all 0.0.0.0/0 ldap `
 	leftovers := []string{
@@ -267,6 +300,8 @@ func TestVerifyRedactedFindsLeftoverSecrets(t *testing.T) {
 		`--my_secret_flag="REDACTED" leakpw`,
 		`radiussecrets=leakpw`,
 		`--ysql_hba_conf_csv="host all all 0.0.0.0/0 radius radiussecrets=""leakpw"""`,
+		`--ycql-ldap-bind-passwd=leakpw`,
+		`--my_secret-flag=leakpw`,
 	}
 	for _, s := range leftovers {
 		err := serverconfredact.VerifyRedacted(s, []string{"my_secret_flag"})

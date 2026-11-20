@@ -1131,6 +1131,69 @@ public class GFlagsUtilTest extends FakeDBApplication {
     }
   }
 
+  /** gflags reads a dash in a flag name as an underscore, so these name the same secrets. */
+  @Test
+  public void testSensitiveGFlagNamesWithDashesRestoredAndChecked() {
+    try (var mockedRedactingService =
+        Mockito.mockStatic(RedactingService.class, Mockito.CALLS_REAL_METHODS)) {
+      mockedRedactingService
+          .when(() -> RedactingService.getSensitiveGflagsForRedaction(any(), any()))
+          .thenReturn(Set.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv"));
+      mockedRedactingService
+          .when(RedactingService::isGFlagsSensitiveDataApiRedactionEnabled)
+          .thenReturn(true);
+      String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pw ldaptls=0";
+      Map<String, String> stored =
+          Map.of(
+              "ysql-hba-conf-csv", hba,
+              "ycql-ldap-bind-passwd", "dummy-ycql-pw",
+              "webserver_port", "9000");
+      ObjectNode tserver = Json.newObject();
+      stored.forEach(tserver::put);
+      ObjectNode universe = Json.newObject();
+      universe
+          .putArray("clusters")
+          .addObject()
+          .putObject("userIntent")
+          .set("tserverGFlags", tserver);
+
+      Map<String, String> fromApi =
+          tserverGFlagsFromUniverseJson(
+              RedactingService.filterSecretFields(
+                  universe, RedactionTarget.APIS, null, null, true));
+      assertEquals(SECRET_REPLACEMENT, fromApi.get("ycql-ldap-bind-passwd"));
+      assertTrue(fromApi.get("ysql-hba-conf-csv").contains(SECRET_REPLACEMENT));
+      assertEquals(
+          stored, GFlagsUtil.mergeSensitiveGFlags(stored, fromApi, gFlagsValidation, "2.18"));
+
+      assertEquals(
+          Map.of("ycql_ldap_bind_passwd", "dummy-ycql-pw"),
+          GFlagsUtil.mergeSensitiveGFlags(
+              Map.of("ycql-ldap-bind-passwd", "dummy-ycql-pw"),
+              Map.of("ycql_ldap_bind_passwd", SECRET_REPLACEMENT),
+              gFlagsValidation,
+              "2.18"));
+      PlatformServiceException noStored =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  GFlagsUtil.mergeSensitiveGFlags(
+                      Map.of("webserver_port", "9000"),
+                      Map.of("ycql-ldap-bind-passwd", SECRET_REPLACEMENT),
+                      gFlagsValidation,
+                      "2.18"));
+      assertEquals(BAD_REQUEST, noStored.getHttpStatus());
+
+      UserIntent create = new UserIntent();
+      create.tserverGFlags = new HashMap<>(Map.of("ycql-ldap-bind-passwd", SECRET_REPLACEMENT));
+      PlatformServiceException onCreate =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> GFlagsUtil.checkNoRedactedGFlagsOnCreate(create, "2.25.0.0", null));
+      assertEquals(BAD_REQUEST, onCreate.getHttpStatus());
+    }
+  }
+
   /**
    * Changing other HBA fields while keeping REDACTED ldapbindpasswd throws BAD_REQUEST; the user
    * must supply the full ysql_hba_conf_csv with the actual ldapbindpasswd when editing HBA fields.

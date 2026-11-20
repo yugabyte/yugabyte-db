@@ -76,7 +76,8 @@ public class RedactingService {
           "$..dbuserPassword",
           "$..catalogUpgradePassword");
 
-  private static final String YCQL_LDAP_BIND_PASSWD_PATH = "$..ycql_ldap_bind_passwd";
+  private static final String YCQL_LDAP_BIND_PASSWD = "ycql_ldap_bind_passwd";
+  private static final String YCQL_LDAP_BIND_PASSWD_PATH = "$.." + YCQL_LDAP_BIND_PASSWD;
 
   public static final List<String> SECRET_QUERY_PARAMS_FOR_LOGS =
       ImmutableList.of(/* SAS Token */ "sig");
@@ -358,19 +359,22 @@ public class RedactingService {
     }
     if (node.isObject()) {
       ObjectNode object = (ObjectNode) node;
-      boolean hbaChange = GFlagsUtil.YSQL_HBA_CONF_CSV.equals(object.path("name").asText());
+      boolean hbaChange =
+          GFlagsUtil.YSQL_HBA_CONF_CSV.equals(
+              GFlagsUtil.canonicalGFlagName(object.path("name").asText()));
       List<String> fieldNames = new ArrayList<>();
       object.fieldNames().forEachRemaining(fieldNames::add);
       for (String name : fieldNames) {
         JsonNode value = object.get(name);
-        if (names.contains(name)) {
+        String canonicalName = GFlagsUtil.canonicalGFlagName(name);
+        if (names.contains(canonicalName)) {
           if (!value.isNull()) {
             object.put(name, SECRET_REPLACEMENT);
           }
         } else if (value.isTextual()) {
           String text = value.asText();
           String redacted =
-              GFlagsUtil.YSQL_HBA_CONF_CSV.equals(name)
+              GFlagsUtil.YSQL_HBA_CONF_CSV.equals(canonicalName)
                       || (hbaChange && GFLAG_CHANGE_FIELDS.contains(name))
                   ? HbaConfRedactor.redact(text)
                   : redactTextValue(text, names);
@@ -445,7 +449,11 @@ public class RedactingService {
     return output;
   }
 
-  /** Names whose values are secrets, apart from ysql_hba_conf_csv, which keeps all but them. */
+  /**
+   * Names whose values are secrets, apart from ysql_hba_conf_csv, which keeps all but them. Holds
+   * each gflag name with underscores and with dashes, for the text scans; a field or map key is
+   * matched by its {@link GFlagsUtil#canonicalGFlagName}, which covers mixed spellings too.
+   */
   private static Set<String> sensitiveNames(
       String ybSoftwareVersion, GFlagsValidation gFlagsValidation) {
     Set<String> names = new HashSet<>();
@@ -462,6 +470,11 @@ public class RedactingService {
         }
       } catch (Exception e) {
         log.warn("Exception in sensitive gflags processing: ", e);
+      }
+    }
+    for (String name : List.copyOf(names)) {
+      if (name.indexOf('_') >= 0) {
+        names.add(name.replace('_', '-'));
       }
     }
     return names;
@@ -498,10 +511,11 @@ public class RedactingService {
     if (value == null) {
       return null;
     }
-    if (GFlagsUtil.YSQL_HBA_CONF_CSV.equals(name)) {
+    String canonicalName = GFlagsUtil.canonicalGFlagName(name);
+    if (GFlagsUtil.YSQL_HBA_CONF_CSV.equals(canonicalName)) {
       return HbaConfRedactor.redact(value);
     }
-    if (names.contains(name)) {
+    if (names.contains(canonicalName)) {
       return SECRET_REPLACEMENT;
     }
     return redactSensitiveInfoInString(value, names);
@@ -1299,7 +1313,8 @@ public class RedactingService {
     }
     // A parse-error fallback holds the gflag changes only as text, where neither the redaction
     // above nor the string scan reliably finds their values.
-    String fallbackPayload = additionalDetails.path(REDACTED_PAYLOAD_KEY).asText();
+    String fallbackPayload =
+        GFlagsUtil.canonicalGFlagName(additionalDetails.path(REDACTED_PAYLOAD_KEY).asText());
     if (fallbackPayload.contains("\"name\":\"ycql_ldap_bind_passwd\"")
         || fallbackPayload.contains("\"name\":\"ysql_hba_conf_csv\"")) {
       ((ObjectNode) additionalDetails).put(REDACTED_PAYLOAD_KEY, SECRET_REPLACEMENT);
@@ -1311,7 +1326,10 @@ public class RedactingService {
     return HbaConfRedactor.redact(input);
   }
 
-  /** Redacts ldapbindpasswd within ysql_hba_conf_csv fields in API response JSON. */
+  /**
+   * Redacts ldapbindpasswd within ysql_hba_conf_csv fields in API response JSON, and the values of
+   * ycql_ldap_bind_passwd spelled with dashes, which the JSON path doesn't match.
+   */
   private static JsonNode redactLdapBindPasswdInYsqlHbaConf(JsonNode input) {
     if (input == null) {
       return input;
@@ -1335,8 +1353,13 @@ public class RedactingService {
           .forEachRemaining(
               fieldName -> {
                 JsonNode fieldValue = objNode.get(fieldName);
-                if (fieldValue != null && fieldValue.isTextual()) {
-                  if (fieldName.equals("ysql_hba_conf_csv")) {
+                String canonicalName = GFlagsUtil.canonicalGFlagName(fieldName);
+                if (canonicalName.equals(YCQL_LDAP_BIND_PASSWD)) {
+                  if (fieldValue != null && !fieldValue.isNull()) {
+                    objNode.put(fieldName, SECRET_REPLACEMENT);
+                  }
+                } else if (fieldValue != null && fieldValue.isTextual()) {
+                  if (canonicalName.equals(GFlagsUtil.YSQL_HBA_CONF_CSV)) {
                     String originalValue = fieldValue.asText();
                     String redactedValue = redactAllLdapBindPasswdHbaFormattedValues(originalValue);
                     objNode.put(fieldName, redactedValue);
@@ -1371,7 +1394,7 @@ public class RedactingService {
         if (gflags.has(gflagType) && gflags.get(gflagType).isArray()) {
           for (JsonNode flag : gflags.get(gflagType)) {
             if (flag != null && flag.has("name")) {
-              String flagName = flag.get("name").asText();
+              String flagName = GFlagsUtil.canonicalGFlagName(flag.get("name").asText());
               // Since we had excluded ysql_hba_conf_csv from sensitive gflags, manually added in
               // condition.
               if (sensitiveGflags.contains(flagName)

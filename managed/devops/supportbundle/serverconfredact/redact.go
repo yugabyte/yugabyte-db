@@ -36,6 +36,8 @@ var defaultPatterns = []string{
 // Patterns are sorted before use so that output does not depend on map iteration order. The Java
 // iterates a HashSet here and is order-dependent; sorting is a deliberate improvement, and is
 // safe because the redactors are applied to disjoint field names.
+//
+// Each name is also matched with its underscores as dashes, which gflags reads the same way.
 func RedactSensitiveInfo(input string, sensitiveGflags []string) string {
 	if input == "" {
 		return input
@@ -43,12 +45,14 @@ func RedactSensitiveInfo(input string, sensitiveGflags []string) string {
 	patterns := make(map[string]struct{})
 	for _, p := range defaultPatterns {
 		patterns[p] = struct{}{}
+		patterns[dashedFlagName(p)] = struct{}{}
 	}
 	for _, g := range sensitiveGflags {
-		if g == "" || g == "ysql_hba_conf_csv" {
+		if g == "" || canonicalFlagName(g) == "ysql_hba_conf_csv" {
 			continue
 		}
 		patterns[g] = struct{}{}
+		patterns[dashedFlagName(g)] = struct{}{}
 	}
 	ordered := make([]string, 0, len(patterns))
 	for p := range patterns {
@@ -97,9 +101,22 @@ func redactFlagLines(input, name string) string {
 	return b.String()
 }
 
-// flagLinePattern matches "--<name>=" at the start of a line, leading blanks allowed.
+// flagLinePattern matches "--<name>=" at the start of a line, leading blanks allowed, with any
+// underscore or dash in name matching either.
 func flagLinePattern(name string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*--` + regexp.QuoteMeta(name) + `=`)
+	quoted := strings.NewReplacer("_", "[-_]", "-", "[-_]").Replace(regexp.QuoteMeta(name))
+	return regexp.MustCompile(`(?m)^[ \t]*--` + quoted + `=`)
+}
+
+// canonicalFlagName is name with its dashes as underscores. gflags reads a dash in a flag name as
+// an underscore, so --ycql-ldap-bind-passwd= sets ycql_ldap_bind_passwd.
+func canonicalFlagName(name string) string {
+	return strings.ReplaceAll(name, "-", "_")
+}
+
+// dashedFlagName is name with its underscores as dashes.
+func dashedFlagName(name string) string {
+	return strings.ReplaceAll(name, "_", "-")
 }
 
 // lineEnd returns the end of the line holding i.
@@ -285,7 +302,7 @@ func VerifyRedacted(output string, sensitiveGflags []string) error {
 func flagNames(sensitiveGflags []string) []string {
 	var names []string
 	for _, name := range append(append([]string{}, defaultPatterns...), sensitiveGflags...) {
-		if name != "" && !isHbaAttribute(name) && name != "ysql_hba_conf_csv" {
+		if name != "" && !isHbaAttribute(name) && canonicalFlagName(name) != "ysql_hba_conf_csv" {
 			names = append(names, name)
 		}
 	}

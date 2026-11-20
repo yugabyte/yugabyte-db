@@ -17,6 +17,7 @@ import com.yugabyte.yw.forms.LdapUnivSyncFormData;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -887,7 +888,12 @@ public class RedactingServiceTest {
 
   @Test
   public void testFilterSecretFieldsForLogsReplacesFallbackNamingLdapGFlag() {
-    for (String name : List.of("ycql_ldap_bind_passwd", "ysql_hba_conf_csv")) {
+    for (String name :
+        List.of(
+            "ycql_ldap_bind_passwd",
+            "ysql_hba_conf_csv",
+            "ycql-ldap-bind-passwd",
+            "ysql-hba-conf-csv")) {
       ObjectNode fallback =
           Json.newObject()
               .put("_redactionParseError", true)
@@ -908,6 +914,75 @@ public class RedactingServiceTest {
     assertEquals(
         otherFallback,
         RedactingService.filterSecretFields(otherFallback, RedactionTarget.LOGS, null, null, true));
+  }
+
+  /** gflags reads a dash in a flag name as an underscore, so these name the same secrets. */
+  @Test
+  public void testSensitiveGFlagNamesWithDashes() {
+    String hba = "host all all 0.0.0.0/0 ldap ldapbindpasswd=dummy-hba-pw ldaptls=0";
+    String redactedHba =
+        "host all all 0.0.0.0/0 ldap ldapbindpasswd=" + SECRET_REPLACEMENT + " ldaptls=0";
+
+    ObjectNode gflags =
+        Json.newObject()
+            .put("ycql-ldap-bind-passwd", "dummy-ycql-pw")
+            .put("ycql_ldap-bind_passwd", "dummy-mixed-pw")
+            .put("ysql-hba-conf-csv", hba)
+            .put("webserver-port", "9000");
+    ObjectNode details = Json.newObject();
+    ArrayNode changes = details.putObject("gflags").putArray("tserver");
+    changes.addObject().put("name", "ycql-ldap-bind-passwd").put("new", "dummy-ycql-pw");
+    changes.addObject().put("name", "ysql-hba-conf-csv").put("new", hba);
+    changes.addObject().put("name", "webserver-port").put("new", "9000");
+    for (RedactionTarget target : List.of(RedactionTarget.APIS, RedactionTarget.LOGS)) {
+      JsonNode redacted = RedactingService.filterSecretFields(gflags, target, null, null, true);
+      assertEquals(
+          target.name(), SECRET_REPLACEMENT, redacted.get("ycql-ldap-bind-passwd").asText());
+      assertEquals(
+          target.name(), SECRET_REPLACEMENT, redacted.get("ycql_ldap-bind_passwd").asText());
+      assertEquals(target.name(), redactedHba, redacted.get("ysql-hba-conf-csv").asText());
+      assertEquals(target.name(), "9000", redacted.get("webserver-port").asText());
+
+      JsonNode redactedChanges =
+          RedactingService.filterSecretFields(details, target, null, null, true)
+              .get("gflags")
+              .get("tserver");
+      assertEquals(target.name(), SECRET_REPLACEMENT, redactedChanges.get(0).get("new").asText());
+      assertEquals(target.name(), redactedHba, redactedChanges.get(1).get("new").asText());
+      assertEquals(target.name(), "9000", redactedChanges.get(2).get("new").asText());
+    }
+
+    assertEquals(
+        Map.of(
+            "ycql-ldap-bind-passwd", SECRET_REPLACEMENT,
+            "ysql-hba-conf-csv", redactedHba,
+            "webserver-port", "9000"),
+        RedactingService.redactGFlags(
+            Map.of(
+                "ycql-ldap-bind-passwd", "dummy-ycql-pw",
+                "ysql-hba-conf-csv", hba,
+                "webserver-port", "9000"),
+            null,
+            null));
+    assertEquals(
+        List.of(
+            "yb-tserver",
+            "--ycql_ldap-bind_passwd=" + SECRET_REPLACEMENT,
+            "--ysql-hba-conf-csv=" + redactedHba),
+        RedactingService.redactGFlagCommand(
+            List.of(
+                "yb-tserver",
+                "--ycql_ldap-bind_passwd=dummy-ycql-pw",
+                "--ysql-hba-conf-csv=" + hba),
+            null,
+            null));
+    String text = "--ycql-ldap-bind-passwd=dummy-ycql-pw\n--webserver-port=9000";
+    assertEquals(
+        "--ycql-ldap-bind-passwd=" + SECRET_REPLACEMENT + "\n--webserver-port=9000",
+        RedactingService.redactSensitiveInfoInString(text));
+    assertEquals(
+        "--ycql-ldap-bind-passwd=" + SECRET_REPLACEMENT + "\n--webserver-port=9000",
+        RedactingService.redactShellProcessOutput(text, RedactionTarget.LOGS));
   }
 
   @Test
