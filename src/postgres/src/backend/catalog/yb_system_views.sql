@@ -95,6 +95,10 @@ CREATE VIEW yb_pg_stat_plans_insights AS
 		   CASE WHEN avg_exec_time = min_avg_exec_time THEN 'Yes' ELSE 'No' END AS plan_min_exec_time 
 		FROM cte ORDER BY queryid, planid, last_used;
 
+-- query can quote literals from the statement that started a job, so the
+-- catalog is read through the view, which leaves it out.
+REVOKE ALL ON pg_catalog.pg_yb_online_schema_change FROM public;
+
 CREATE VIEW yb_online_schema_change AS
     SELECT
         m.job_id,
@@ -111,9 +115,10 @@ CREATE VIEW yb_online_schema_change AS
         p.error_message,
         m.created_at,
         m.updated_at,
-        m.origin,
-        m.cutover_mode,
-        m.query
+        CASE m.origin WHEN 'manual' THEN 'yb_begin_mirror_table'
+                      WHEN 'alter_table' THEN 'ALTER TABLE CONCURRENTLY'
+        END                                 AS command,
+        m.cutover_mode
     FROM pg_catalog.pg_yb_online_schema_change m,
          -- The master reports an active job's copy. The function is strict, so a
          -- NULL id skips the call for a job that has ended.
@@ -136,9 +141,8 @@ COMMENT ON COLUMN yb_online_schema_change.progress_pct IS 'Copy completion perce
 COMMENT ON COLUMN yb_online_schema_change.error_message IS 'Why the copy failed, shown only to a role that may ALTER the source.';
 COMMENT ON COLUMN yb_online_schema_change.created_at IS 'When the job began.';
 COMMENT ON COLUMN yb_online_schema_change.updated_at IS 'When the job last changed status.';
-COMMENT ON COLUMN yb_online_schema_change.origin IS 'Who started the job: manual (the SQL lifecycle functions) or alter_table (ALTER TABLE ... CONCURRENTLY).';
+COMMENT ON COLUMN yb_online_schema_change.command IS 'What started the job: yb_begin_mirror_table or ALTER TABLE CONCURRENTLY.';
 COMMENT ON COLUMN yb_online_schema_change.cutover_mode IS 'What finish does: rename (the target takes the source''s name) or swap (the source keeps its OID and takes the target''s storage).';
-COMMENT ON COLUMN yb_online_schema_change.query IS 'Text of the statement that started the job: the yb_begin_mirror_table call or the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source. NULL if unknown.';
 
 COMMENT ON TABLE pg_catalog.pg_yb_online_schema_change IS
     'Online schema change jobs, one row per job. The yb_online_schema_change view adds names and the progress of the copy.';
@@ -151,4 +155,4 @@ COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.updated_at IS 'When the 
 COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.status IS 'active, finished or aborted.';
 COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.origin IS 'Who started the job: manual (the SQL lifecycle functions) or alter_table (ALTER TABLE ... CONCURRENTLY).';
 COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.cutover_mode IS 'What finish does: rename (the target takes the source''s name) or swap (the source keeps its OID and takes the target''s storage).';
-COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.query IS 'Text of the statement that started the job: the yb_begin_mirror_table call or the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source. NULL if unknown.';
+COMMENT ON COLUMN pg_catalog.pg_yb_online_schema_change.query IS 'Text of the statement that started the job: the yb_begin_mirror_table call or the ALTER TABLE ... CONCURRENTLY statement, which a swap re-runs on the source. NULL if unknown. The catalog is not publicly readable, since the text can hold literals.';

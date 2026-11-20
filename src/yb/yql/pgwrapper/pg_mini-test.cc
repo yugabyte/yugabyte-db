@@ -198,12 +198,13 @@ Result<int64_t> BeginOnlineSchemaChange(
       source_table, target_table, transform_fn));
 }
 
-// The id of the latest job over the pair, which the other lifecycle functions take.
+// The id of the latest job over the pair, which the other lifecycle functions take. Read from
+// the view: the catalog is not readable by a table owner who is not a superuser.
 Result<int64_t> OnlineSchemaChangeJobId(
     PGConn* conn, const std::string& source_table, const std::string& target_table) {
   return conn->FetchRow<int64_t>(Format(
-      "SELECT job_id FROM pg_catalog.pg_yb_online_schema_change "
-      "WHERE source_table_oid = '$0'::regclass AND target_table_oid = '$1'::regclass "
+      "SELECT job_id FROM pg_catalog.yb_online_schema_change "
+      "WHERE source_table = '$0'::regclass AND target_table = '$1'::regclass "
       "ORDER BY job_id DESC LIMIT 1",
       source_table, target_table));
 }
@@ -1779,11 +1780,15 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeLifecycleByReturnedJobId)
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(
       "SELECT job_id FROM pg_catalog.pg_yb_online_schema_change ORDER BY job_id DESC LIMIT 1")),
       job_id) << "yb_begin_mirror_table did not return the job id";
-  const auto how = ASSERT_RESULT((conn.FetchRow<std::string, std::string, std::string>(Format(
-      "SELECT origin, cutover_mode, query FROM pg_catalog.yb_online_schema_change "
-      "WHERE job_id = $0", job_id))));
-  ASSERT_EQ(how, (decltype(how){
-      "manual", "rename",
+  const auto how = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(Format(
+      "SELECT command, cutover_mode FROM pg_catalog.yb_online_schema_change WHERE job_id = $0",
+      job_id))));
+  ASSERT_EQ(how, (decltype(how){"yb_begin_mirror_table", "rename"}));
+  const auto recorded = ASSERT_RESULT((conn.FetchRow<std::string, std::string>(Format(
+      "SELECT origin, query FROM pg_catalog.pg_yb_online_schema_change WHERE job_id = $0",
+      job_id))));
+  ASSERT_EQ(recorded, (decltype(recorded){
+      "manual",
       "SELECT yb_begin_mirror_table('t1'::regclass, 't2'::regclass, 't1_to_t2'::regproc)"}));
   ASSERT_RESULT(conn.FetchFormat("SELECT yb_wait_mirror_table($0)", job_id));
   ASSERT_RESULT(conn.FetchFormat("SELECT yb_finish_mirror_table($0)", job_id));
@@ -1794,7 +1799,7 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeLifecycleByReturnedJobId)
                           "is finished");
 }
 
-// The view shows only the begin statement of a multi-statement query string.
+// The job records only the begin statement of a multi-statement query string.
 TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRecordsBeginStatement) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(CreateOnlineSchemaChangePair(&conn));
@@ -1803,7 +1808,8 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeRecordsBeginStatement) {
   ASSERT_OK(conn.Execute(
       "SET client_min_messages = notice; " + begin_stmt + "; RESET client_min_messages"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
-      "SELECT query FROM pg_catalog.yb_online_schema_change WHERE source_table = 't1'::regclass")),
+      "SELECT query FROM pg_catalog.pg_yb_online_schema_change "
+      "WHERE source_table_oid = 't1'::regclass")),
       begin_stmt);
   const auto job_id = ASSERT_RESULT(OnlineSchemaChangeJobId(&conn, "t1", "t2"));
   ASSERT_RESULT(conn.FetchFormat("SELECT yb_wait_mirror_table($0)", job_id));
@@ -2854,8 +2860,12 @@ TEST_F(PgMiniOnlineSchemaChangeTest, OnlineSchemaChangeBackfillRunsAsTransformOw
   ASSERT_OK(conn.Execute("CREATE ROLE osc_reader"));
   ASSERT_OK(conn.Execute("SET ROLE osc_reader"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(
-      "SELECT status || ':' || coalesce(error_message, '<hidden>') "
-      "FROM pg_catalog.yb_online_schema_change")), "failed:<hidden>");
+      "SELECT status || ':' || coalesce(error_message, '<hidden>') || ':' || command "
+      "FROM pg_catalog.yb_online_schema_change")), "failed:<hidden>:yb_begin_mirror_table");
+  // The catalog keeps the text of the statement that started the job, which can quote literals.
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Fetch("SELECT query FROM pg_catalog.pg_yb_online_schema_change"),
+      "permission denied for table pg_yb_online_schema_change");
   ASSERT_OK(conn.Execute("RESET ROLE"));
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2")), 0);
 }
