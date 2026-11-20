@@ -150,7 +150,6 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     public static void mapToCloudInfoPB(
         PlacementInfo placementInfo, BiConsumer<PlacementAZ, CloudInfoPB> callback) {
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
-        Provider cloud = Provider.getOrBadRequest(placementCloud.uuid);
         for (PlacementRegion placementRegion : placementCloud.regionList) {
           Region region = Region.getOrBadRequest(placementRegion.uuid);
           for (PlacementAZ placementAz : placementRegion.azList) {
