@@ -1335,4 +1335,74 @@ TEST_F(PgTxnTest, ColumnTombstoneCollectedByPartialCompaction) {
       "1, NULL");
 }
 
+// The test checks in flight COMMIT completes in case of session shutdown.
+TEST_F(PgTxnTest, SessionShutdownDuringCommit) {
+  constexpr auto kTimeout = 10s * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+  const auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  // Signalled when the commit is parked; awaited by the commit until the test releases it.
+  CountDownLatch commit_parked{1}, release_commit{1}, shutdown_performed{1};
+
+  auto& sync_point = *SyncPoint::GetInstance();
+  // Parks this backend's commit until the test releases it. Other sessions on this tserver reach
+  // the same sync point, so match on the pid it reports and let them through.
+  sync_point.SetCallBack(
+      "PgClientSession::DoFinishTransaction:BeforeSwap",
+      [&commit_parked, &release_commit, backend_pid, kTimeout](void* arg) {
+        if (*static_cast<pid_t*>(arg) != backend_pid) {
+          return;
+        }
+        commit_parked.CountDown();
+        LOG_IF(ERROR, !release_commit.WaitFor(kTimeout))
+            << "Commit was not released in time";
+      });
+
+  sync_point.SetCallBack(
+      "LockablePgClientSession::StartShutdown::Exit",
+      [&shutdown_performed, backend_pid](void* arg) {
+        if (*pointer_cast<const pid_t*>(arg) != backend_pid) {
+          return;
+        }
+        LOG(INFO) << "Shutdown performed";
+        shutdown_performed.CountDown();
+      });
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 1)"));
+
+  {
+    TestThreadHolder thread_holder;
+    sync_point.EnableProcessing();
+    // Declared after the thread holder so an early exit releases the commit before joining it.
+    auto sync_point_cleanup = ScopeExit([&sync_point, &release_commit] {
+      release_commit.CountDown();
+      sync_point.DisableProcessing();
+      sync_point.ClearAllCallBacks();
+      sync_point.ClearTrace();
+    });
+
+    thread_holder.AddThreadFunctor([&conn] {
+      ASSERT_NOK(conn.CommitTransaction());
+    });
+
+    ASSERT_TRUE(commit_parked.WaitFor(kTimeout));
+
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(WaitFor(
+        [&aux_conn, backend_pid] {
+          return TryTerminateBackendWithRunningQuery(
+              aux_conn, backend_pid, /* min_query_running_time_msecs= */ 1000);
+        },
+        kTimeout, "Active query termination", 200ms));
+    ASSERT_TRUE(shutdown_performed.WaitFor(kTimeout));
+  }
+
+  auto new_conn = ASSERT_RESULT(Connect());
+  const auto row = ASSERT_RESULT((new_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t")));
+  ASSERT_EQ(row, (decltype(row){1, 1}));
+}
+
 } // namespace yb::pgwrapper

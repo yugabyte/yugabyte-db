@@ -232,6 +232,12 @@ auto RequestSequenceNumFromPB(
           ? std::optional(pb.predecessor_serial_no().value()) : std::nullopt};
 }
 
+YB_DEFINE_ENUM(SessionState,
+    (kActive)
+    (kIndividualShutdownRequested)
+    (kServiceShutdownRequested)
+    (kInactive));
+
 class LockablePgClientSession {
  private:
   using SharedThisSource = std::shared_ptr<void>;
@@ -272,7 +278,8 @@ class LockablePgClientSession {
                       CoarseTimePoint deadline) {
                     return this->RegisterRequestForProcessing(
                         guard, RequestSequenceNumFromPB(request_seq_num), deadline);
-                  }));
+                  }),
+              EnsureIsActive());
         });
     auto status = exchange_runnable_->Start(thread_pool);
     if (!status.ok()) {
@@ -282,43 +289,52 @@ class LockablePgClientSession {
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
-    if (pg_service_shutting_down) {
-      // Service is going down. Drain synchronously: the messenger thread pool
-      // is about to shut down, so a deferred drain may never run, leaving
-      // parked InboundCall references that prevent the reactor from exiting.
-      // mutex_ is normally uncontended on this path.
-      std::lock_guard lock(mutex_);
-      request_sequencer_.Shutdown();
-    } else {
-      // Session expired (e.g., backend killed). An in-flight Perform RPC
-      // (e.g., slow BackfillIndex) may hold mutex_ for an unbounded time.
-      // Defer the drain to the messenger thread pool so session_.StartShutdown()
-      // which aborts the session's transactions is not gated on that RPC.
-      messenger_.ThreadPool().EnqueueFunctor([shared_this = shared_this_] {
-        auto obj = shared_this.lock();
-        if (!obj) {
-          return;
-        }
-        std::lock_guard lock(obj->mutex_);
-        obj->request_sequencer_.Shutdown();
-      });
-    }
+    const auto se = ScopeExit([this] {
+      auto backend_pid = pid();
+      TEST_SYNC_POINT_CALLBACK("LockablePgClientSession::StartShutdown::Exit", &backend_pid);
+    });
+    request_sequencer_.StartShutdown();
+    auto expected = SessionState::kActive;
+    const auto new_state = pg_service_shutting_down ?
+        SessionState::kServiceShutdownRequested : SessionState::kIndividualShutdownRequested;
+    const auto state_applied = state_.compare_exchange_strong(expected, new_state);
+    LOG_IF_WITH_FUNC(DFATAL, !state_applied)
+        << "Failed to apply new session state " << new_state
+        << " due to unexpected state " << expected;
     if (exchange_runnable_) {
       exchange_runnable_->StartShutdown();
     }
-    session_.StartShutdown(pg_service_shutting_down);
+    session_.SharedMemInfraStartShutdown();
   }
 
-  bool ReadyToShutdown() const {
-    return (!exchange_runnable_ || exchange_runnable_->ReadyToShutdown()) &&
-           session_.ReadyToShutdown();
+  bool ReadyToShutdown() {
+    // Evaluate all conditions separately. The exchange may stay busy until the session rejects
+    // all requests.
+    const auto session_rejects_requests = TryEnsureSessionRejectsAllRequests();
+    const auto shared_infra_ready_to_shutdown =
+        (!exchange_runnable_ || exchange_runnable_->ReadyToShutdown()) &&
+        session_.SharedMemInfraReadyToShutdown();
+    return session_rejects_requests && shared_infra_ready_to_shutdown;
   }
 
   void CompleteShutdown() {
+    EnsureSessionRejectsAllRequests();
     if (exchange_runnable_) {
       exchange_runnable_->CompleteShutdown();
     }
-    session_.CompleteShutdown();
+    session_.SharedMemInfraCompleteShutdown();
+    auto guard = Guard();
+    request_sequencer_.CompleteShutdown();
+    const auto state = state_.load(std::memory_order_acquire);
+    auto is_service_shutdown = false;
+    if (state == SessionState::kServiceShutdownRequested) [[unlikely]] {
+      is_service_shutdown = true;
+    } else {
+      LOG_IF_WITH_FUNC(DFATAL, state != SessionState::kIndividualShutdownRequested)
+          << "Unexpected session state: " << state;
+    }
+    session_.Shutdown(is_service_shutdown);
+    state_.store(SessionState::kInactive, std::memory_order_release);
   }
 
   CoarseTimePoint expiration() const {
@@ -436,10 +452,9 @@ class LockablePgClientSession {
     return DoGuard(std::try_to_lock);
   }
 
-  template<class... Args>
-  [[nodiscard]] PgSessionGuard DoGuard(Args&&... args) {
-    return PgSessionGuard{
-        SharedField(shared_this_.lock(), &guard_state_), std::forward<Args>(args)...};
+  template <class... LockMode>
+  [[nodiscard]] PgSessionGuard DoGuard(LockMode... mode) {
+    return PgSessionGuard{SharedField(shared_this_.lock(), &guard_state_), mode...};
   }
 
   Status RegisterRequestForProcessing(
@@ -452,7 +467,48 @@ class LockablePgClientSession {
     return CoarseMonoClock::now() + lifetime_;
   }
 
+  [[nodiscard]] bool TryEnsureSessionRejectsAllRequests() {
+    return DoEnsureSessionRejectsAllRequests(std::try_to_lock);
+  }
+
+  void EnsureSessionRejectsAllRequests() {
+    DoEnsureSessionRejectsAllRequests();
+  }
+
+  // Returns false (std::try_to_lock mode only) while a request admitted before shutdown still holds
+  // the session. Once it returns true, the result is sticky: later lock holders are rejected as the
+  // session is inactive.
+  template <class... LockMode>
+  bool DoEnsureSessionRejectsAllRequests(LockMode... mode) {
+    if (is_free_guard_observed_after_shutdown_start_.load(std::memory_order_acquire)) {
+      return true;
+    }
+    DCHECK(!IsActive());
+    const auto guard = DoGuard(mode...);
+    if constexpr (sizeof...(LockMode) > 0) {
+      if (!guard.OwnsLock()) {
+        return false;
+      }
+    }
+    DCHECK(guard.OwnsLock());
+    // Make sure all the waiters in request sequencer are notified about shutdown.
+    request_sequencer_.ProcessPending(session_);
+    is_free_guard_observed_after_shutdown_start_.store(true, std::memory_order_release);
+    return true;
+  }
+
+  Status EnsureIsActive() const {
+    SCHECK(IsActive(), ShutdownInProgress, "Session is inactive");
+    return Status::OK();
+  }
+
+  [[nodiscard]] bool IsActive() const {
+    return state_.load(std::memory_order_acquire) == SessionState::kActive;
+  }
+
   const std::weak_ptr<LockablePgClientSession> shared_this_;
+  std::atomic<SessionState> state_{SessionState::kActive};
+  std::atomic<bool> is_free_guard_observed_after_shutdown_start_{false};
   rpc::Messenger& messenger_;
   std::mutex mutex_;
   PgSessionGuardState guard_state_;
@@ -492,7 +548,7 @@ class SessionInfo : public ClientSession {
   void StartShutdown(bool service_shutting_down) override {
     session_->StartShutdown(service_shutting_down);
   }
-  bool ReadyToShutdown() const override { return session_->ReadyToShutdown(); }
+  bool ReadyToShutdown() override { return session_->ReadyToShutdown(); }
   void CompleteShutdown() override { session_->CompleteShutdown(); }
 
   template <class... Args>
@@ -650,6 +706,7 @@ class SessionAccessor {
       LockablePgClientSessionPtr&& lockable,
       std::optional<PgRequestSequencer::SequenceNum> request_serial_no) {
     auto guard = lockable->Guard();
+    RETURN_NOT_OK(lockable->EnsureIsActive());
     if (request_serial_no &&
         VERIFY_RESULT(lockable->request_sequencer_.TryRegisterForProcessing(*request_serial_no))) {
       request_serial_no.reset();

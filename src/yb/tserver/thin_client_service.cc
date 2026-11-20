@@ -146,7 +146,7 @@ class ThinSession : public ClientSessionBase,
       : ClientSessionBase(id), client_(*client), clock_(clock), table_cache_(table_cache),
         mutation_counter_(mutation_counter), prefix_logger_(id) {}
 
-  bool ReadyToShutdown() const override { return true; }
+  bool ReadyToShutdown() override { return true; }
 
   void CompleteShutdown() override {}
 

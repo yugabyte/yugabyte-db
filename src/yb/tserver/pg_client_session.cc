@@ -2992,13 +2992,16 @@ class PgClientSession::Impl {
 
   template <QueryTraitsType T, class... Args>
   void HandleSharedExchangeQuery(
-      const RequestProcessingPreconditionWaiter& precondition_waiter,
-      SharedExchange& exchange, uint8_t* input, size_t size, Args&&... args) {
+      SharedExchange& exchange, uint8_t* input, size_t size,
+      const RequestProcessingPreconditionWaiter& precondition_waiter, const Status& precheck_status,
+      Args&&... args) {
     auto query = SharedExchangeQuery<T>::MakeShared(
         SharedSessionFromThis(), exchange, stats_exchange_response_size(),
         shared_exchange_queries_);
-    const auto status = DoHandleSharedExchangeQuery(
-        precondition_waiter, *query, input, size, id(), pid_, std::forward<Args>(args)...);
+    const auto status = !precheck_status.ok()
+        ? precheck_status
+        : DoHandleSharedExchangeQuery(
+              precondition_waiter, *query, input, size, id(), pid_, std::forward<Args>(args)...);
     if (!status.ok()) {
       query->SendErrorResponse(status);
     }
@@ -3006,7 +3009,8 @@ class PgClientSession::Impl {
 
   void ProcessSharedRequest(
       size_t size, SharedExchange* exchange,
-      const RequestProcessingPreconditionWaiter& precondition_waiter) {
+      const RequestProcessingPreconditionWaiter& precondition_waiter,
+      const Status& precheck_status) {
     ReleaseAbandonedBigSharedMemSegment();
     auto input = to_uchar_ptr(exchange->Obtain(size));
     const auto req_type_id = *input;
@@ -3015,11 +3019,13 @@ class PgClientSession::Impl {
     auto req_type = static_cast<tserver::PgSharedExchangeReqType>(req_type_id);
     switch (req_type) {
       case tserver::PgSharedExchangeReqType::PERFORM:
-        return HandleSharedExchangeQuery<PerformQueryTraits>(
-            precondition_waiter, *exchange, input, size, table_cache());
+        HandleSharedExchangeQuery<PerformQueryTraits>(
+            *exchange, input, size, precondition_waiter, precheck_status, table_cache());
+        return;
       case tserver::PgSharedExchangeReqType::ACQUIRE_OBJECT_LOCK:
-        return HandleSharedExchangeQuery<ObjectLockQueryTraits>(
-            precondition_waiter, *exchange, input, size);
+        HandleSharedExchangeQuery<ObjectLockQueryTraits>(
+            *exchange, input, size, precondition_waiter, precheck_status);
+        return;
       case tserver::PgSharedExchangeReqType_INT_MIN_SENTINEL_DO_NOT_USE_: [[fallthrough]];
       case tserver::PgSharedExchangeReqType_INT_MAX_SENTINEL_DO_NOT_USE_: break;
     }
@@ -3428,34 +3434,38 @@ class PgClientSession::Impl {
     }
   }
 
-  void StartShutdown(bool pg_service_shutting_down) {
-    VLOG(2) << "StartShutdown for session id: " << id();
+  void Shutdown(bool pg_service_shutting_down) {
+    VLOG(2) << "Shutdown for session id: " << id();
     ClearReadTimePin();
-    if (!pg_service_shutting_down) {
-      WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
-
-      // Abort txns attached to this session
-      for (const auto kind :
-           {PgClientSessionKind::kPlain, PgClientSessionKind::kAutonomousDdl,
-            PgClientSessionKind::kPgSession}) {
-        const auto& txn = Transaction(kind);
-        if (!txn) {
-          continue;
-        }
-        LOG(INFO) << "Aborting txn of kind " << yb::ToString(kind) << " with id " << txn->id()
-                  << " belonging to expired PG session ID: " << id();
-        txn->Abort();
-      }
+    if (pg_service_shutting_down) {
+      return;
     }
+    WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
+
+    // Abort txns attached to this session
+    for (const auto kind :
+          {PgClientSessionKind::kPlain, PgClientSessionKind::kAutonomousDdl,
+          PgClientSessionKind::kPgSession}) {
+      const auto& txn = Transaction(kind);
+      if (!txn) {
+        continue;
+      }
+      LOG(INFO) << "Aborting txn of kind " << yb::ToString(kind) << " with id " << txn->id()
+                << " belonging to expired PG session ID: " << id();
+      txn->Abort();
+    }
+  }
+
+  void SharedMemInfraStartShutdown() {
     big_shared_mem_expiration_task_.StartShutdown();
   }
 
-  bool ReadyToShutdown() {
+  bool SharedMemInfraReadyToShutdown() {
     return big_shared_mem_expiration_task_.ReadyToShutdown() &&
            shared_exchange_queries_.ReadyToShutdown();
   }
 
-  void CompleteShutdown() {
+  void SharedMemInfraCompleteShutdown() {
     big_shared_mem_expiration_task_.CompleteShutdown();
   }
 
@@ -4767,6 +4777,8 @@ class PgClientSession::Impl {
     // finishing. This is applicable to both separate DDL transactions or regular transactions with
     // txn ddl enabled.
     client::YBTransactionPtr txn_value;
+    pid_t pid = pid_;
+    TEST_SYNC_POINT_CALLBACK("PgClientSession::DoFinishTransaction:BeforeSwap", &pid);
     txn.swap(txn_value);
     ClearTransaction(*Session(kind));
 
@@ -5222,8 +5234,9 @@ void PgClientSession::Perform(
 
 void PgClientSession::ProcessSharedRequest(
     size_t size, SharedExchange* exchange,
-    const RequestProcessingPreconditionWaiter& precondition_waiter) {
-  impl_->ProcessSharedRequest(size, exchange, precondition_waiter);
+    const RequestProcessingPreconditionWaiter& precondition_waiter,
+    const Status& precheck_status) {
+  impl_->ProcessSharedRequest(size, exchange, precondition_waiter, precheck_status);
 }
 
 size_t PgClientSession::SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars) {
@@ -5250,16 +5263,20 @@ std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(si
   return impl_->ObtainBigSharedMemorySegment(size);
 }
 
-void PgClientSession::StartShutdown(bool pg_service_shutting_down) {
-  return impl_->StartShutdown(pg_service_shutting_down);
+void PgClientSession::Shutdown(bool pg_service_shutting_down) {
+  return impl_->Shutdown(pg_service_shutting_down);
 }
 
-bool PgClientSession::ReadyToShutdown() const {
-  return impl_->ReadyToShutdown();
+void PgClientSession::SharedMemInfraStartShutdown() {
+  return impl_->SharedMemInfraStartShutdown();
 }
 
-void PgClientSession::CompleteShutdown() {
-  impl_->CompleteShutdown();
+bool PgClientSession::SharedMemInfraReadyToShutdown() const {
+  return impl_->SharedMemInfraReadyToShutdown();
+}
+
+void PgClientSession::SharedMemInfraCompleteShutdown() {
+  impl_->SharedMemInfraCompleteShutdown();
 }
 
 Result<ReadHybridTime> PgClientSession::GetTxnSnapshotReadTime(
