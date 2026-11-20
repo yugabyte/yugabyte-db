@@ -39,6 +39,7 @@ import com.google.gson.JsonObject;
 // ALTER DATABASE SET) audits every statement of every logical session while Conn Mgr shares
 // backends between clients, without making connections sticky. Audit lines are read from client
 // NOTICEs; STATEMENT_ID is ignored since it is a per-backend counter.
+// TODO(#38683): Check STATEMENT_ID once pgaudit counts it per logical session.
 @RequiresLinux
 @RunWith(value = YBTestRunner.class)
 public class TestPgauditBackendSharing extends BaseYsqlConnMgr {
