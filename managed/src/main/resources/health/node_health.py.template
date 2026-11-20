@@ -2166,7 +2166,8 @@ class NodeChecker():
 
     def _is_pss_source(self):
         # The per-minute metrics-only run feeds the graphs through the textfile, so the full run
-        # skips PSS, unless nothing scrapes that textfile (k8s runs no metrics-only run at all).
+        # skips PSS, unless nothing scrapes that textfile
+        # (k8s case or on-prem node with a customer-managed node_exporter).
         return (self.metrics_only or self.is_k8s
                 or not self._is_textfile_collector_present())
 
@@ -2705,9 +2706,11 @@ class NodeChecker():
                 res['proportional_memory_kb'] += int(lst[1])
                 pss_found = True
         if with_pss and not pss_found:
-            # A backend that exited since we listed it is not a failure to read PSS.
-            alive = self._check_output('cat /proc/{}/stat'.format(pid)).strip()
-            if alive and 'no such' not in alive.lower():
+            # A backend that exited since we listed it is not a failure to read PSS. Its mm is
+            # released at exit, so status has no VmRSS, though /proc/<pid>/stat still answers
+            # until the postmaster reaps the zombie. A live process always has VmRSS.
+            status = self._check_output('cat /proc/{}/status'.format(pid))
+            if any(line.startswith('VmRSS:') for line in status.split('\n')):
                 res['proportional_memory_kb'] = PSS_UNAVAILABLE
         if not rss_found:
             # smaps_rollup is unreadable for processes of another user, and missing before
