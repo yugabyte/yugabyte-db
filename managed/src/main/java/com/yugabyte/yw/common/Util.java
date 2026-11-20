@@ -69,12 +69,13 @@ import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
@@ -82,6 +83,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,7 +92,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
@@ -1074,6 +1075,16 @@ public class Util {
       throw new RuntimeException("Failed to create " + dirPath);
     }
     return dirPath;
+  }
+
+  // Older YBA versions restored files from the DB as 0400, which makes in-place rewrites fail with
+  // "Permission denied" (PLAT-23953).
+  public static void ensureOwnerWritable(Path file) throws IOException {
+    if (Files.exists(file) && !Files.isWritable(file)) {
+      Set<PosixFilePermission> permissions = new HashSet<>(Files.getPosixFilePermissions(file));
+      permissions.add(PosixFilePermission.OWNER_WRITE);
+      Files.setPosixFilePermissions(file, permissions);
+    }
   }
 
   public static String getNodeHomeDir(UUID universeUUID, NodeDetails node) {
@@ -2114,22 +2125,34 @@ public class Util {
     return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 
-  /** Get randomly generated password inline with YB's password policy */
+  private static final String RANDOM_PASSWORD_CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+  private static final SecureRandom RANDOM_PASSWORD_SOURCE = new SecureRandom();
+
+  /**
+   * A random password that meets the default password policy: 16 letters and digits plus a special
+   * character, a lower and an upper case letter and a digit, in random order. Decoding random bytes
+   * as UTF-8 instead produced the default disallowed character (`) in about 6% of passwords.
+   */
   public static String getRandomPassword() {
-    byte[] password = new byte[16];
-    new Random().nextBytes(password);
-    String generatedPassword = new String(password, Charset.forName("UTF-8"));
-    // To be consistent with password policy
-    Integer randomInt = new Random().nextInt(26);
-    String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
-    String uppercaseLetter = lowercaseLetter.toUpperCase();
-    generatedPassword +=
-        (SPECIAL_CHARACTERS_STRING_LIST.get(
-                new Random().nextInt(SPECIAL_CHARACTERS_STRING_LIST.size()))
-            + lowercaseLetter
-            + uppercaseLetter
-            + String.valueOf(randomInt));
-    return generatedPassword;
+    List<String> chars = new ArrayList<>();
+    for (int i = 0; i < 16; i++) {
+      chars.add(randomCharOf(RANDOM_PASSWORD_CHARS));
+    }
+    // One of each kind the password policy requires.
+    chars.add(
+        SPECIAL_CHARACTERS_STRING_LIST.get(
+            RANDOM_PASSWORD_SOURCE.nextInt(SPECIAL_CHARACTERS_STRING_LIST.size())));
+    chars.add(randomCharOf("abcdefghijklmnopqrstuvwxyz"));
+    chars.add(randomCharOf("ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+    chars.add(randomCharOf("0123456789"));
+    Collections.shuffle(chars, RANDOM_PASSWORD_SOURCE);
+    return String.join("", chars);
+  }
+
+  private static String randomCharOf(String alphabet) {
+    return String.valueOf(alphabet.charAt(RANDOM_PASSWORD_SOURCE.nextInt(alphabet.length())));
   }
 
   /**
@@ -2648,5 +2671,20 @@ public class Util {
     // Universe can't have both migrated and non-migrated so we can check any.
     return universe.getUniverseDetails().clusters.stream()
         .anyMatch(c -> c.userIntent.isMulticloudSupport());
+  }
+
+  // For backward compatibility we need to choose single provider deterministically.
+  public static UUID getDefaultProviderUUID(Universe universe) {
+    return getDefaultProviderUUID(universe.getUniverseDetails());
+  }
+
+  // For backward compatibility we need to choose single provider deterministically.
+  public static UUID getDefaultProviderUUID(UniverseDefinitionTaskParams taskParams) {
+    return getDefaultProviderUUID(taskParams.getPrimaryCluster());
+  }
+
+  // For backward compatibility we need to choose single provider deterministically.
+  public static UUID getDefaultProviderUUID(Cluster cluster) {
+    return cluster.userIntent.getAllProviderUUIDs().stream().sorted().findFirst().get();
   }
 }

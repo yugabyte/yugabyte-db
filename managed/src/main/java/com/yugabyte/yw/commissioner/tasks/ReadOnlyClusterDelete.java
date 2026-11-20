@@ -21,6 +21,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.jsonwebtoken.lang.Collections;
 import java.util.Collection;
 import java.util.List;
@@ -73,7 +74,11 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
       log.error(msg);
       throw new RuntimeException(msg);
     }
-    addBasicPrecheckTasks();
+    // After a failed create the read replica is inconsistent by definition (e.g. tservers running
+    // on nodes not yet marked Live), so these checks would block deleting it.
+    if (!isPlacementLockHeldBy(universe, TaskType.ReadOnlyClusterCreate)) {
+      addBasicPrecheckTasks();
+    }
   }
 
   @Override
@@ -102,6 +107,12 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
                 true /* deleteRootVolumes */,
                 true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+
+        // After node teardown, as in DestroyUniverse. A force delete removes the cluster even if a
+        // delete fails.
+        createDeleteManagedLoadBalancerTasks(
+            lb -> lb.getClusterUuid().equals(cluster.uuid),
+            params().isForceDelete /* ignoreErrors */);
 
         // Remove the cluster entry from the universe db entry.
         createDeleteClusterFromUniverseTask(params().clusterUUID)

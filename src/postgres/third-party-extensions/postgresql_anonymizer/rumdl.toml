@@ -1,0 +1,42 @@
+[global]
+
+# Disable specific rules
+disable = [
+    	"MD004",
+	"MD012",
+	"MD026",
+	"MD029",
+	"MD034",
+	"MD041",
+	"MD046",
+	"MD050",
+]
+
+# Add opt-in rules on top of defaults (additive)
+#extend-enable = ["MD060", "MD063"]
+
+# Exclude files and directories
+exclude = [
+    "target",
+    "docs/tutorials/**",
+    "**/.cargo/registry"
+]
+
+# Set markdown flavor (standard, gfm, mkdocs, mdx, pandoc, quarto, obsidian, kramdown, azure_devops)
+flavor = "mkdocs"
+
+# Disable specific rules for specific files
+[per-file-ignores]
+"NEWS.md" = [ "MD013", "MD024", "MD025", "MD053", ]
+".gitlab/issue_templates/*.md" = [ "MD053", "MD057"]
+"docs/runbooks/*.md" = ["MD040"]
+
+[MD003]
+style = "consistent"
+
+[MD013]
+line-length = 88
+code-blocks = false
+tables = false
+headings = true
+strict = false

@@ -56,6 +56,8 @@ public class RedactSecretsFromAuditTest extends FakeDBApplication {
     ObjectNode otherChange = gflagChange("webserver_port", "9000", "9100");
     UUID otherTask = createAudit(otherChange);
     UUID noDetailsTask = createAudit(null);
+    String hba = "host all all 0.0.0.0/0 ldap LDAP\"BIND\"PASSWD=";
+    UUID hbaTask = createAudit(gflagChange("ysql_hba_conf_csv", hba + "old", hba + "new"));
     DB.sqlUpdate("UPDATE audit SET last_redacted_version = 0").execute();
 
     runRedaction();
@@ -63,6 +65,9 @@ public class RedactSecretsFromAuditTest extends FakeDBApplication {
     assertEquals(
         gflagChange("ycql_ldap_bind_passwd", SECRET_REPLACEMENT, SECRET_REPLACEMENT),
         Audit.getFromTaskUUID(plainTask).getAdditionalDetails());
+    assertEquals(
+        gflagChange("ysql_hba_conf_csv", hba + SECRET_REPLACEMENT, hba + SECRET_REPLACEMENT),
+        Audit.getFromTaskUUID(hbaTask).getAdditionalDetails());
     assertEquals(
         SECRET_REPLACEMENT,
         Audit.getFromTaskUUID(fallbackTask)

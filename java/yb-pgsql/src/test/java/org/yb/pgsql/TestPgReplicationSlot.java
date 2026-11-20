@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotEquals;
@@ -636,10 +637,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           add(PgOutputUpdateMessage.CreateForComparison(
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
-                // All columns for before image in FULL come out as null.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("ghij"),
+                new PgOutputMessageTupleColumnValue("t"))),
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("3"),
@@ -654,12 +654,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("4"),
               new PgOutputMessageTupleColumnValue("jklm"),
               new PgOutputMessageTupleColumnValue("t")))));
-          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          // The full old row is found within the transaction, so it is sent as 'O', not 'K'.
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("4"),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull()))));
+                new PgOutputMessageTupleColumnValue("jklm"),
+                new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/3B"), LogSequenceNumber.valueOf("0/3C")));
         }
@@ -809,10 +810,11 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           add(PgOutputUpdateMessage.CreateForComparison(
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
-                // All columns for before image in FULL come out as null.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+                // Before image in FULL is the row written by the INSERT earlier in the same
+                // transaction (cdc_enable_intra_transactional_before_image), same as in PG.
+                new PgOutputMessageTupleColumnValue("3"),
+                new PgOutputMessageTupleColumnValue("ghij"),
+                new PgOutputMessageTupleColumnValue("t"))),
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("3"),
@@ -827,12 +829,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               new PgOutputMessageTupleColumnValue("4"),
               new PgOutputMessageTupleColumnValue("jklm"),
               new PgOutputMessageTupleColumnValue("t")))));
-          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ true,
+          // The full old row is found within the transaction, so it is sent as 'O', not 'K'.
+          add(PgOutputDeleteMessage.CreateForComparison(/* hasKey */ false,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("4"),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull()))));
+                new PgOutputMessageTupleColumnValue("jklm"),
+                new PgOutputMessageTupleColumnValue("t")))));
           add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/29"), LogSequenceNumber.valueOf("0/2A")));
         }
@@ -931,7 +934,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   void testDynamicTableAdditionForAllTablesPublication(boolean usePubRefresh) throws Exception {
+    final boolean txnDdl = isTransactionalDdlEnabled();
     String slotName = "test_dynamic_table_addition_for_all_tables_pub";
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && txnDdl);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1007,7 +1013,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
 
         // begin
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        add(PgOutputBeginMessage.CreateForComparison(
+          LogSequenceNumber.valueOf(txnDdl ? "0/22" : "0/B"), txnDdl ? 5 : 3));
         // insert 1
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
           Arrays.asList(
@@ -1036,7 +1043,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("wxyz")))));
         // commit
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/22" : "0/B"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/23" : "0/C")));
       }
     };
 
@@ -1089,7 +1097,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   void testDynamicTableAdditionForTablesCreatedBeforeStreamCreation(boolean usePubRefresh)
       throws Exception {
+    final boolean txnDdl = !usePubRefresh && isTransactionalDdlEnabled();
     String slotName = "test_dynamic_table_addition_slot_before_stream_creation";
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && isTransactionalDdlEnabled());
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1188,7 +1199,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
     // Txn 2.
     expectedResult.add(
-        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/F" : "0/B"), txnDdl ? 5 : 3));
     if (!usePubRefresh) {
       expectedResult.add(relT1);
     }
@@ -1210,11 +1222,13 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
           new PgOutputMessageTupleColumnValue("wxyz")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+        LogSequenceNumber.valueOf(txnDdl ? "0/F" : "0/B"),
+        LogSequenceNumber.valueOf(txnDdl ? "0/10" : "0/C")));
 
     // Txn 3.
     expectedResult.add(
-        PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 4));
+        PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/17" : "0/F"), txnDdl ? 8 : 4));
     if (!usePubRefresh) {
       expectedResult.add(relT3);
     }
@@ -1228,7 +1242,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         (short) 2, Arrays.asList(new PgOutputMessageTupleColumnValue("9"),
           new PgOutputMessageTupleColumnValue("rstu")))));
     expectedResult.add(PgOutputCommitMessage.CreateForComparison(
-        LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+        LogSequenceNumber.valueOf(txnDdl ? "0/17" : "0/F"),
+        LogSequenceNumber.valueOf(txnDdl ? "0/18" : "0/10")));
 
     assertEquals(expectedResult, result);
 
@@ -1254,6 +1269,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   void testNonPKTablesNeverPolledForStreamCreatedWhenFlagUnset(boolean usePubRefresh)
       throws Exception {
     String slotName = "test_non_pk_tables_never_polled_for_stream_created_when_flag_unset";
+    final boolean txnDdl = isTransactionalDdlEnabled();
+    assumeFalse("Transactional DDL only works with implicit pub refresh streams",
+        usePubRefresh && txnDdl);
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS t1");
       stmt.execute("DROP TABLE IF EXISTS t2");
@@ -1326,7 +1344,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(PgOutputCommitMessage.CreateForComparison(
             LogSequenceNumber.valueOf("0/4"), LogSequenceNumber.valueOf("0/5")));
 
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
+        // With transactional DDL, DDL records also get LSN values.
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/16" : "0/8"), txnDdl ? 5 : 3));
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(new PgOutputMessageTupleColumnValue("3"),
                 new PgOutputMessageTupleColumnValue("mnop")))));
@@ -1337,7 +1357,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("6"),
                 new PgOutputMessageTupleColumnValue("wxyz")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/16" : "0/8"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/17" : "0/9")));
       }
     };
 
@@ -5383,6 +5404,211 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testAddExtensionTypeColumnAfterSlotCreation() throws Exception {
+    final String slotName = "test_add_extension_type_column_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the new column')");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (2, 'with hstore', 'a=>1')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 6);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'before the new column'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:2 note[text]:'with hstore' "
+            + "hs[hstore]:'\"a\"=>\"1\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  // #36725: the type did not exist when the slot was created, and the change before the DDLs uses
+  // the old schema while sharing a GetConsistentChanges batch with the change after them. The
+  // domain and array columns resolve to their base type when converting the values.
+  @Test
+  public void testCreateExtensionAndAddColumnsAfterSlotCreation() throws Exception {
+    final String slotName = "test_create_extension_after_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP EXTENSION IF EXISTS hstore CASCADE");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text, x int)");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the DDLs', 10)");
+      stmt.execute("CREATE EXTENSION hstore");
+      stmt.execute("CREATE DOMAIN hstore_domain AS hstore");
+      stmt.execute("ALTER TABLE test_table DROP COLUMN x");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs_array hstore[]");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs_domain hstore_domain");
+      stmt.execute("INSERT INTO test_table VALUES "
+          + "(2, 'after the DDLs', 'a=>1', ARRAY['b=>2'::hstore], 'c=>3')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 6);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'before the DDLs' "
+            + "x[integer]:10",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:2 note[text]:'after the DDLs' "
+            + "hs[hstore]:'\"a\"=>\"1\"' hs_array[hstore[]]:'{\"\\\"b\\\"=>\\\"2\\\"\"}' "
+            + "hs_domain[hstore_domain]:'\"c\"=>\"3\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testUpdateAndDeleteExtensionTypeColumnAddedAfterSlotCreation() throws Exception {
+    final String slotName = "test_update_delete_extension_type_column_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+      stmt.execute("ALTER TABLE test_table REPLICA IDENTITY FULL");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, "test_decoding");
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (1, 'row', 'a=>1')");
+      stmt.execute("UPDATE test_table SET hs = 'a=>2' WHERE id = 1");
+      stmt.execute("DELETE FROM test_table WHERE id = 1");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("include-xids", false)
+                                     .withSlotOption("skip-empty-xacts", true)
+                                     .start();
+
+    List<String> result = receiveStringMessages(stream, 9);
+
+    List<String> expectedResult = Arrays.asList(
+        "BEGIN",
+        "table public.test_table: INSERT: id[integer]:1 note[text]:'row' hs[hstore]:'\"a\"=>\"1\"'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: UPDATE: old-key: id[integer]:1 note[text]:'row' "
+            + "hs[hstore]:'\"a\"=>\"1\"' new-tuple: id[integer]:1 note[text]:'row' "
+            + "hs[hstore]:'\"a\"=>\"2\"'",
+        "COMMIT",
+        "BEGIN",
+        "table public.test_table: DELETE: id[integer]:1 note[text]:'row' hs[hstore]:'\"a\"=>\"2\"'",
+        "COMMIT");
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
+  public void testAddExtensionTypeColumnAfterSlotCreationWithYbOutput() throws Exception {
+    final String slotName = "test_add_extension_type_column_yboutput_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE EXTENSION IF NOT EXISTS hstore");
+      stmt.execute("CREATE TABLE test_table (id int PRIMARY KEY, note text)");
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'before the new column')");
+      stmt.execute("ALTER TABLE test_table ADD COLUMN hs hstore");
+      stmt.execute("INSERT INTO test_table VALUES (2, 'with hstore', 'a=>1')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    // Read through the second transaction's COMMIT and keep the relations and inserts, so the
+    // check does not depend on the LSNs or on the TYPE messages sent for hstore.
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    int commits = 0;
+    while (commits < 2) {
+      PgOutputMessage message = receiveMessage(stream, 1).get(0);
+      if (message instanceof PgOutputCommitMessage) {
+        commits++;
+      } else if (message instanceof PgOutputRelationMessage
+                 || message instanceof PgOutputInsertMessage) {
+        result.add(message);
+      }
+    }
+
+    List<PgOutputMessage> expectedResult = Arrays.asList(
+        PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("note", 25))),
+        PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("before the new column")))),
+        PgOutputRelationMessage.CreateForComparison("public", "test_table", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("id", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("note", 25),
+                PgOutputRelationMessageColumn.CreateForComparison("hs"))),
+        PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("with hstore"),
+                new PgOutputMessageTupleColumnValue("\"a\"=>\"1\"")))));
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    conn.close();
+  }
+
+  @Test
   public void testPgoutputWithChangeReplicaIdentityNotInPublication() throws Exception {
     final String slotName = "test_pgoutput_and_change_slot";
     try (Statement stmt = connection.createStatement()) {
@@ -5998,6 +6224,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testWithTableRewrite() throws Exception {
+    final boolean txnDdl = isTransactionalDdlEnabled();
     setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
         false /* usePubRefresh */, false /* streamTablesWithoutPrimaryKey */);
 
@@ -6070,8 +6297,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       .start();
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 12 from first txn, 8 from DDLs, 5 from third txn.
-    result.addAll(receiveMessage(stream, 25));
+    // 12 from first txn, 8 from DDLs, 5 from third txn. With transactional DDL, the DDL of a
+    // rewrite is decoded after the rewritten row, so the third txn re-sends the RELATIONs of t1
+    // and t2.
+    result.addAll(receiveMessage(stream, txnDdl ? 27 : 25));
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
@@ -6116,7 +6345,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
 
         // DDL for t1 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/20" : "0/B"), 3));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
           Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
             PgOutputRelationMessageColumn.CreateForComparison("b", 20))));
@@ -6125,10 +6355,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/20" : "0/B"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/21" : "0/C")));
 
         // DDL for t2 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/E"), 4));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/3C" : "0/E"), 4));
         add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
           Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
             PgOutputRelationMessageColumn.CreateForComparison("b", 23),
@@ -6139,14 +6371,27 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/3C" : "0/E"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/3D" : "0/F")));
 
         // Remaining txn.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 5));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/51" : "0/13"), txnDdl ? 8 : 5));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+              PgOutputRelationMessageColumn.CreateForComparison("b", 20))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
           Arrays.asList(
             new PgOutputMessageTupleColumnValue("2"),
             new PgOutputMessageTupleColumnValue("2")))));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+              PgOutputRelationMessageColumn.CreateForComparison("b", 23),
+              PgOutputRelationMessageColumn.CreateForComparison("serial_num", 23))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
           Arrays.asList(
             new PgOutputMessageTupleColumnValue("2"),
@@ -6157,7 +6402,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1"),
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-          LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+          LogSequenceNumber.valueOf(txnDdl ? "0/51" : "0/13"),
+          LogSequenceNumber.valueOf(txnDdl ? "0/52" : "0/14")));
       }
     };
     assertEquals(expectedResult, result);
@@ -6342,6 +6588,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testAddDropPrimaryKey() throws Exception {
+    final boolean txnDdl = isTransactionalDdlEnabled();
     setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
         false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);
 
@@ -6394,8 +6641,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                                      .start();
 
     List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
-    // 6 from first txn, 8 from DDLs, 4 from third txn.
-    result.addAll(receiveMessage(stream, 18));
+    // 6 from first txn, 8 from DDLs, 4 from third txn. With transactional DDL, the DDL of a rewrite
+    // is decoded after the rewritten row, so the third txn re-sends the RELATIONs of t1 and t2.
+    result.addAll(receiveMessage(stream, txnDdl ? 20 : 18));
 
     List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
       {
@@ -6417,7 +6665,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
 
         // Add primary key DDL for t1 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/1E" : "0/8"), 3));
         add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
@@ -6425,10 +6674,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/1E" : "0/8"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/1F" : "0/9")));
 
         // Drop primary key DDL for t2 and the re-written row.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 4));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/35" : "0/B"), 4));
         add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
             Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
                 PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
@@ -6436,18 +6687,31 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
                 new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/35" : "0/B"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/36" : "0/C")));
 
         // Remaining txn.
-        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
+        add(PgOutputBeginMessage.CreateForComparison(
+            LogSequenceNumber.valueOf(txnDdl ? "0/39" : "0/F"), 5));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+              Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                  PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("2")))));
+        if (txnDdl) {
+          add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+              Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                  PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
             Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
                 new PgOutputMessageTupleColumnValue("2")))));
         add(PgOutputCommitMessage.CreateForComparison(
-            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
+            LogSequenceNumber.valueOf(txnDdl ? "0/39" : "0/F"),
+            LogSequenceNumber.valueOf(txnDdl ? "0/3A" : "0/10")));
       }
     };
     assertEquals(expectedResult, result);
@@ -7931,7 +8195,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   private void addConcurrentDdlFlags(Map<String, String> flags) {
     toggleDDLMode(flags, /* useLegacy */ false);
-    flags.put("ysql_yb_enable_object_locking_infra", "true");
+    flags.put("ysql_yb_enable_global_object_locking_infra", "true");
   }
 
   @Test

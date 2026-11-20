@@ -624,6 +624,26 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertAddNodeSequence(subTasksByPosition, true, false, false);
   }
 
+  /** The re-added node gets a new machine, so the cloud recorded for its old one is dropped. */
+  @Test
+  public void testAddNodeOnPremForDecommissionedNodeClearsRecordedCloud() throws Exception {
+    mockWaits(mockClient, 4);
+    decomissionOnPremNode(DEFAULT_NODE_NAME);
+    // A node decommissioned by an earlier YBA version still has its old machine's cloud.
+    Universe universe =
+        Universe.saveDetails(
+            onPremUniverse.getUniverseUUID(),
+            getNodeUpdater(DEFAULT_NODE_NAME, node -> node.cloudInfo.physicalCloud = "aws"));
+    TaskInfo taskInfo =
+        submitTask(
+            universe.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, universe.getVersion());
+    assertEquals(Success, taskInfo.getTaskState());
+
+    NodeDetails node =
+        Universe.getOrBadRequest(onPremUniverse.getUniverseUUID()).getNode(DEFAULT_NODE_NAME);
+    assertNull(node.cloudInfo.physicalCloud);
+  }
+
   @Test
   public void testAddNodeOnPrem_FailedPreflightCheck() throws Exception {
     mockWaits(mockClient, 4);

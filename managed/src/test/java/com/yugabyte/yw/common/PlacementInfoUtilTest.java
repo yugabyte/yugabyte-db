@@ -2204,6 +2204,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     "Case 4a, 3, r1-az1-2-2-0-1;r1-az2-2-0-1-1;r1-az3-1-0-2-1, 1",
     // Case 5a. Master without tserver.
     "Case 5a, 3, r1-az1-2-0-1-1;r1-az2-0-1-0-1;r1-az3-1-0-1-1, 0",
+    // Fewer tservers than masters. Spare onprem nodes in the zone cover the gap.
+    "Case 6a, 5, r1-az1-1-0-3-3;r1-az2-1-0-1-1;r1-az3-1-0-1-1, 0",
+    "Case 7a, 3, r1-az1-1-1-2-3, 0",
+    // Zone with no tserver: extra masters are cloned from the existing master.
+    "Case 8a, 3, r1-az1-1-0-1-1;r1-az2-0-1-1-2, 0",
   })
   // @formatter:on
   public void testSelectMastersForDedicatedOnprem(
@@ -5175,6 +5180,129 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Map<NodeState, Integer> counts = new HashMap<>();
     params.nodeDetailsSet.forEach(n -> counts.merge(n.state, 1, Integer::sum));
     assertEquals(Map.of(ToBeRemoved, 3, ToBeAdded, 5), counts);
+  }
+
+  @Test
+  public void testMergePlacements() {
+    assertTrue(PlacementInfoUtil.mergePlacements(null).cloudList.isEmpty());
+
+    UUID cloudUuid = UUID.randomUUID();
+    UUID region1Uuid = UUID.randomUUID();
+    UUID region2Uuid = UUID.randomUUID();
+    UUID az1Uuid = UUID.randomUUID();
+    UUID az2Uuid = UUID.randomUUID();
+    UUID az3Uuid = UUID.randomUUID();
+
+    PlacementInfo first = placementWithCloud(cloudUuid, "aws", region1Uuid);
+    first.cloudList.get(0).defaultRegion = region1Uuid;
+    PlacementRegion region1 = first.cloudList.get(0).regionList.get(0);
+    region1.lbFQDN = "lb.example.com";
+    region1.azList.add(
+        placementAz(az1Uuid, "az1", "subnet-1", 1, 2, true, "lb-az1", 1, 2, 3, "subnet-1b"));
+
+    PlacementInfo second = placementWithCloud(cloudUuid, "aws", region2Uuid);
+    PlacementRegion region2 = second.cloudList.get(0).regionList.get(0);
+    region2.code = "r2";
+    region2.name = "region-2";
+    region2.azList.add(placementAz(az2Uuid, "az2", "subnet-2", 1, 1, false, null, 2, 4, 5, null));
+    PlacementRegion sharedRegion = new PlacementRegion();
+    sharedRegion.uuid = region1Uuid;
+    sharedRegion.code = region1.code;
+    sharedRegion.name = region1.name;
+    sharedRegion.azList.add(
+        placementAz(az3Uuid, "az3", "subnet-3", 2, 3, false, null, 3, 6, 7, null));
+
+    second.cloudList.get(0).regionList.add(sharedRegion);
+
+    PlacementInfo merged = PlacementInfoUtil.mergePlacements(Arrays.asList(first, second, null));
+
+    assertEquals(1, merged.cloudList.size());
+    PlacementCloud mergedCloud = merged.cloudList.get(0);
+    assertEquals(cloudUuid, mergedCloud.uuid);
+    assertEquals("aws", mergedCloud.code);
+    assertEquals(region1Uuid, mergedCloud.defaultRegion);
+    assertEquals(2, mergedCloud.regionList.size());
+    assertEquals("lb.example.com", mergedCloud.regionList.get(0).lbFQDN);
+
+    PlacementAZ mergedAz1 = merged.findByAZUUID(az1Uuid);
+    assertEquals("az1", mergedAz1.name);
+    assertEquals("subnet-1", mergedAz1.subnet);
+    assertEquals("subnet-1b", mergedAz1.secondarySubnet);
+    assertEquals(1, mergedAz1.replicationFactor);
+    assertEquals(2, mergedAz1.numNodesInAZ);
+    assertTrue(mergedAz1.isAffinitized);
+    assertEquals("lb-az1", mergedAz1.lbName);
+    assertEquals(1, mergedAz1.leaderPreference);
+    assertEquals(2, mergedAz1.masterStsIndex);
+    assertEquals(3, mergedAz1.tsStsIndex);
+
+    PlacementAZ mergedAz2 = merged.findByAZUUID(az2Uuid);
+    assertEquals("az2", mergedAz2.name);
+    assertEquals("subnet-2", mergedAz2.subnet);
+    assertEquals(1, mergedAz2.replicationFactor);
+    assertEquals(1, mergedAz2.numNodesInAZ);
+    assertFalse(mergedAz2.isAffinitized);
+    assertEquals(2, mergedAz2.leaderPreference);
+    assertEquals(4, mergedAz2.masterStsIndex);
+    assertEquals(5, mergedAz2.tsStsIndex);
+
+    PlacementAZ mergedAz3 = merged.findByAZUUID(az3Uuid);
+    assertEquals("az3", mergedAz3.name);
+    assertEquals("subnet-3", mergedAz3.subnet);
+    assertEquals(2, mergedAz3.replicationFactor);
+    assertEquals(3, mergedAz3.numNodesInAZ);
+    assertFalse(mergedAz3.isAffinitized);
+    assertEquals(3, mergedAz3.leaderPreference);
+    assertEquals(6, mergedAz3.masterStsIndex);
+    assertEquals(7, mergedAz3.tsStsIndex);
+
+    sharedRegion.azList.add(
+        placementAz(az1Uuid, "az1", "subnet-1", 5, 5, true, "lb-az1", 1, 2, 3, "subnet-1b"));
+
+    assertThrows(
+        IllegalStateException.class,
+        () -> PlacementInfoUtil.mergePlacements(Arrays.asList(first, second)));
+  }
+
+  private static PlacementInfo placementWithCloud(UUID cloudUuid, String code, UUID regionUuid) {
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementCloud cloud = new PlacementCloud();
+    cloud.uuid = cloudUuid;
+    cloud.code = code;
+    PlacementRegion region = new PlacementRegion();
+    region.uuid = regionUuid;
+    region.code = "r1";
+    region.name = "region-1";
+    cloud.regionList.add(region);
+    placementInfo.cloudList.add(cloud);
+    return placementInfo;
+  }
+
+  private static PlacementAZ placementAz(
+      UUID uuid,
+      String name,
+      String subnet,
+      int replicationFactor,
+      int numNodes,
+      boolean affinitized,
+      String lbName,
+      int leaderPreference,
+      int masterStsIndex,
+      int tsStsIndex,
+      String secondarySubnet) {
+    PlacementAZ az = new PlacementAZ();
+    az.uuid = uuid;
+    az.name = name;
+    az.subnet = subnet;
+    az.secondarySubnet = secondarySubnet;
+    az.replicationFactor = replicationFactor;
+    az.numNodesInAZ = numNodes;
+    az.isAffinitized = affinitized;
+    az.lbName = lbName;
+    az.leaderPreference = leaderPreference;
+    az.masterStsIndex = masterStsIndex;
+    az.tsStsIndex = tsStsIndex;
+    return az;
   }
 
   // getOverallPlacement() rebuilds the PlacementInfo from partitions. It must carry over the K8s

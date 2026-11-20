@@ -1542,7 +1542,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     Context context = new Context(mockRuntimeConfig, dbUniverse);
     com.yugabyte.yw.cloud.UniverseResourceDetails v1UniverseResourceDetails =
         com.yugabyte.yw.cloud.UniverseResourceDetails.create(
-            dbUniverse.getUniverseDetails(), context);
+            Optional.empty(),
+            dbUniverse.getNodes(),
+            dbUniverse.getUniverseDetails(),
+            context,
+            true);
     validateUniverseInfoResources(v2UnivInfo.getResources(), v1UniverseResourceDetails);
     assertThat(
         v2UnivInfo.getSoftwareUpgradeState().getValue(), is(dbUniv.softwareUpgradeState.name()));

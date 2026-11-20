@@ -72,9 +72,16 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   // enforce_xcluster_guarded_lease.
   bool HasUnexpiredXClusterGuardedInfoLease() const EXCLUDES(mutex_);
 
+  // The map arrives via a master heartbeat response or an ApplyXClusterGuardedInfoIfNewer RPC.
+  // Sequence-cache epochs for namespaces that left AUTOMATIC_TARGET are advanced under mutex_
+  // before GetXClusterRole can observe the new roles. mutex_ is a non-recursive shared_mutex
+  // and GetXClusterRole locks it shared, so the callback must not call back into another method
+  // of this context that locks mutex_ again: the same thread would deadlock on itself.
+  // Also, it must not block, because it runs on the heartbeat thread or the admin RPC thread.
   void UpdateXClusterInfoPerNamespace(
       const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
-          automatic_mode_replication_state_per_namespace) EXCLUDES(mutex_);
+          automatic_mode_replication_state_per_namespace,
+      const std::function<void(NamespaceIdView)>& bump_sequence_cache_epoch_fn) EXCLUDES(mutex_);
 
   void UpdateTargetNamespacesInAutomaticModeSet(
       const std::unordered_set<NamespaceId>& target_namespaces_in_automatic_mode) override

@@ -42,8 +42,10 @@
 
 #include "yb/master/master.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/pg_catalog_versions_cache.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_manager.h"
@@ -52,6 +54,7 @@
 
 #include "yb/server/skewed_clock.h"
 
+#include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
@@ -59,6 +62,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -66,6 +70,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
@@ -124,9 +129,11 @@ DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
+DECLARE_double(auto_compact_percent_obsolete);
 
 DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
+DECLARE_int32(auto_compact_check_interval_sec);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
@@ -143,6 +150,8 @@ DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_int32(ysql_ddl_rpc_timeout_sec);
+DECLARE_uint32(auto_compact_min_obsolete_keys_found);
+DECLARE_uint32(auto_compact_stat_window_seconds);
 DECLARE_uint32(yb_max_recursion_depth);
 
 DECLARE_int64(TEST_inject_random_delay_on_txn_status_response_ms);
@@ -1695,6 +1704,63 @@ TEST_F(PgMiniTest, TestNoStaleDataOnColocationIdReuse) {
   auto scan_result =
       ASSERT_RESULT(conn.FetchAllAsString(Format("SELECT * FROM $0", kColocatedTableName2)));
   ASSERT_TRUE(scan_result.empty());
+}
+
+// DROP INDEX and table rewrites drop colocated indexes, which must not leave their rows behind.
+TEST_F(PgMiniTest, TestNoStaleIndexDataOnColocationIdReuse) {
+  const std::string kDbName = "testdb";
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated=true", kDbName));
+  conn = ASSERT_RESULT(ConnectToDB(kDbName));
+  // Use index-only scans, which read only the index rows.
+  ASSERT_OK(conn.Execute("SET enable_seqscan = off"));
+  ASSERT_OK(conn.Execute("SET enable_bitmapscan = off"));
+
+  auto CreateIndexedTable = [&](const std::string& table, int index_colocation_id) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int PRIMARY KEY, v int, w int)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX $0_v ON $0 (v) WITH (colocation_id=$1)",
+        table, index_colocation_id));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 SELECT i, i, i FROM generate_series(1, 10) i",
+        table));
+  };
+
+  auto VerifyNoStaleIndexRows = [&](int colocation_id) {
+    const auto table = Format("reuse_$0", colocation_id);
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k int PRIMARY KEY, v int)", table));
+    ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (v) WITH (colocation_id=$1)",
+        table, colocation_id));
+    auto result = ASSERT_RESULT(conn.FetchRows<int>(
+        Format("SELECT v FROM $0 WHERE v > 0", table)));
+    ASSERT_TRUE(result.empty()) << AsString(result);
+  };
+
+  CreateIndexedTable("t0", 20001);
+  ASSERT_OK(conn.Execute("DROP INDEX t0_v"));
+  VerifyNoStaleIndexRows(20001);
+
+  CreateIndexedTable("t1", 20002);
+  // A failed TRUNCATE keeps the old index, so the tombstone must roll back with it.
+  ASSERT_OK(conn.Execute(
+      "CREATE FUNCTION fail() RETURNS trigger LANGUAGE plpgsql AS "
+      "$$ BEGIN RAISE EXCEPTION 'injected failure'; END $$"));
+  ASSERT_OK(conn.Execute("CREATE TRIGGER fail AFTER TRUNCATE ON t1 EXECUTE FUNCTION fail()"));
+  ASSERT_NOK_STR_CONTAINS(conn.Execute("TRUNCATE t1"), "injected failure");
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t1 WHERE v > 0")), 10);
+  ASSERT_OK(conn.Execute("DROP TRIGGER fail ON t1"));
+  ASSERT_OK(conn.Execute("TRUNCATE t1"));
+  VerifyNoStaleIndexRows(20002);
+
+  CreateIndexedTable("t2", 20003);
+  ASSERT_OK(conn.Execute("ALTER TABLE t2 ALTER COLUMN w TYPE bigint"));
+  VerifyNoStaleIndexRows(20003);
+  // The rebuilt index keeps its rows.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM t2 WHERE v > 0")), 10);
+
+  ASSERT_OK(conn.Execute("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t2"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX mv_v ON mv (v) WITH (colocation_id=20004)"));
+  ASSERT_OK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
+  VerifyNoStaleIndexRows(20004);
 }
 
 TEST_F_EX(PgMiniTest, VerifyTombstoneTimeCache, PgMiniTestSingleNode) {
@@ -3361,6 +3427,90 @@ TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   uint64_t new_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
   LOG(INFO) << "Base file size: " << base_file_size << ", new file size: " << new_file_size;
   ASSERT_LE(new_file_size, base_file_size + 100_KB);
+}
+
+class PgSysCatalogFullCompactionTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    // Disable the background task of the full compaction manager. The test collects the
+    // statistics and schedules the compactions itself.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_check_interval_sec) = 0;
+    PgMiniTestBase::SetUp();
+  }
+};
+
+// Dropped tables leave dead pg_attribute rows in the sys catalog tablet. Scans of pg_attribute
+// read these rows as obsolete keys, which must trigger a full compaction of the sys catalog tablet.
+TEST_F(PgSysCatalogFullCompactionTest, CompactBasedOnStats) {
+  constexpr int kNumColumns = 1000;
+  constexpr int kNumTables = 5;
+  constexpr int kNumDeadRows = kNumColumns * kNumTables;
+  constexpr int kHistoryRetentionSec = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_stat_window_seconds) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_percent_obsolete) = 50;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_compact_min_obsolete_keys_found) = kNumDeadRows;
+
+  auto& sys_catalog =
+      *ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager().sys_catalog();
+  auto tablet = ASSERT_RESULT(sys_catalog.tablet_peer()->shared_tablet());
+  auto* compact_manager = sys_catalog.full_compaction_manager();
+  // One check interval per stats window: each window holds the stats between two consecutive
+  // ScheduleFullCompactions() calls.
+  compact_manager->TEST_SetCheckIntervalSec(1);
+
+  auto conn = ASSERT_RESULT(Connect());
+  std::string columns;
+  for (int i = 0; i < kNumColumns; ++i) {
+    columns += Format("$0c$1 INT", i == 0 ? "" : ", ", i);
+  }
+  for (int i = 0; i < kNumTables; ++i) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0 ($1)", i, columns));
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE t$0", i));
+  }
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
+
+  const auto collect_stats_after_scan = [&]() -> Result<tserver::KeyStatistics> {
+    compact_manager->ScheduleFullCompactions();
+    RETURN_NOT_OK(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM pg_attribute"));
+    compact_manager->ScheduleFullCompactions();
+    const auto stats = compact_manager->TEST_CurrentWindowStats(master::kSysCatalogTabletId);
+    LOG(INFO) << "Sys catalog key stats: total: " << stats.total
+              << ", obsolete past cutoff: " << stats.obsolete_cutoff;
+    return stats;
+  };
+
+  // The sys catalog tablet still retains the deleted rows for
+  // timestamp_syscatalog_history_retention_interval_sec, so they are not counted as obsolete
+  // past the history cutoff, and no compaction is scheduled.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) =
+      kHistoryRetentionSec;
+  SleepFor(2s * kHistoryRetentionSec);
+  auto stats = ASSERT_RESULT(collect_stats_after_scan());
+  ASSERT_GE(stats.total, kNumDeadRows);
+  ASSERT_EQ(stats.obsolete_cutoff, 0);
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 0);
+
+  // Move the history cutoff of the sys catalog tablet past the deletes of the dropped tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_syscatalog_history_retention_interval_sec) =
+      kHistoryRetentionSec;
+  SleepFor(2s * kHistoryRetentionSec);
+  const auto before_compaction = tablet->clock()->Now();
+  stats = ASSERT_RESULT(collect_stats_after_scan());
+  ASSERT_GE(stats.obsolete_cutoff, kNumDeadRows);
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 1);
+  ASSERT_OK(LoggedWaitFor(
+      [&tablet, before_compaction] {
+        const auto last_compact_time = HybridTime(tablet->metadata()->last_full_compaction_time());
+        return !last_compact_time.is_special() && last_compact_time >= before_compaction &&
+               !tablet->HasActiveFullCompaction();
+      },
+      30s * kTimeMultiplier, "Waiting for full compaction of the sys catalog tablet"));
+
+  // The compaction removed the dead rows, so the next scan does not trigger another compaction.
+  stats = ASSERT_RESULT(collect_stats_after_scan());
+  ASSERT_GT(stats.total, 0);
+  ASSERT_LT(stats.obsolete_cutoff, kNumColumns);
+  ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 0);
 }
 
 // The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
@@ -5265,6 +5415,55 @@ TEST_F_EX(
   ASSERT_OK(CreateIndexedTableAndFill(" SPLIT AT VALUES ((700), (1400))", kNumRows));
   ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
   ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 3));
+}
+
+// The master's catalog versions cache refresh runs on a pool of its own, so it keeps refreshing
+// while every worker of the catalog manager's shared background pool is busy. Before, its body
+// was submitted to that shared pool and queued behind whatever held the workers.
+TEST_F(PgMiniTest, CatalogVersionsCacheRefreshesWhileBackgroundPoolIsBusy) {
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager_impl();
+  auto cached_read_time = [&catalog_manager] {
+    master::DbOidToCatalogVersionMap versions;
+    uint64_t fingerprint = 0;
+    HybridTime read_ht;
+    catalog_manager.pg_catalog_versions_cache().GetAll(&versions, &fingerprint, &read_ht);
+    return read_ht;
+  };
+  ASSERT_OK(WaitFor(
+      [&cached_read_time] { return cached_read_time().is_valid(); }, 30s * kTimeMultiplier,
+      "First catalog versions cache refresh"));
+
+  // The shared pool is built with the default worker count, NumEffectiveCPUs(). Hold every worker,
+  // and wait until each holder runs, so nothing queued behind them can be running.
+  //
+  // Each holder shares the latches rather than reaching them on this stack: the test can return
+  // while holders are still running or, after the ASSERT below fails, still queued in the pool,
+  // and the master outlives the test body.
+  struct Holders {
+    explicit Holders(int num_workers) : started(num_workers) {}
+    CountDownLatch started;
+    CountDownLatch release{1};
+  };
+  const auto num_workers = NumEffectiveCPUs();
+  auto holders = std::make_shared<Holders>(num_workers);
+  auto release_workers = ScopeExit([holders] { holders->release.CountDown(); });
+  for (int i = 0; i != num_workers; ++i) {
+    ASSERT_OK(catalog_manager.SubmitBackgroundTask([holders] {
+      holders->started.CountDown();
+      holders->release.Wait();
+    }));
+  }
+  ASSERT_TRUE(holders->started.WaitFor(30s * kTimeMultiplier))
+      << holders->started.count() << " of " << num_workers
+      << " background workers never started";
+
+  // The refresh runs every heartbeat_interval_ms / 2. Allow many periods, so only a refresh that
+  // cannot run at all fails this.
+  const auto before = cached_read_time();
+  ASSERT_OK(WaitFor(
+      [&cached_read_time, before] { return cached_read_time() > before; },
+      MonoDelta::FromMilliseconds(20 * FLAGS_heartbeat_interval_ms) * kTimeMultiplier,
+      "Catalog versions cache refresh while the background pool is busy"));
 }
 
 // ------------------------------------------------------------------------------------------------
