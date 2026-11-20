@@ -519,16 +519,10 @@ func validateOCIRegionAndZoneNames(
 		}
 	}
 
-	addedRegions := make(map[string]bool, len(addRegions))
-	for _, regionString := range addRegions {
-		addedRegions[providerutil.BuildRegionMapFromString(regionString, "add")["name"]] = true
-	}
-	for _, zoneString := range addZones {
-		regionName := providerutil.BuildZoneMapFromString(zoneString, "add")["region-name"]
-		if !addedRegions[regionName] && findOCIRegion(regionName, providerRegions) == nil {
-			return fmt.Errorf(
-				"region %s in --add-zone is not in the provider or in --add-region", regionName)
-		}
+	if err := providerutil.ValidateUpdateAddZoneRegions(
+		addRegions, addZones, providerRegions,
+	); err != nil {
+		return err
 	}
 
 	for _, op := range []struct {
