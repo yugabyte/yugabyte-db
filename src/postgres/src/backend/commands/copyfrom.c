@@ -1407,12 +1407,26 @@ yb_process_more_batches:
 		 * and relevant transaction state properties have been previously set.
 		 */
 		if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
-			YbHoldTxnObjectLocksForSession();
-
-		YBCommitTransactionIntermediate();
-
-		if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
-			YbReacquireTxnObjectLocks();
+		{
+			/*
+			 * A session lock outlives the transaction: if the commit fails,
+			 * nothing else would release the ones taken for it.
+			 */
+			PG_TRY();
+			{
+				YbHoldTxnObjectLocksForSession();
+				YBCommitTransactionIntermediate();
+				YbReacquireTxnObjectLocks();
+			}
+			PG_CATCH();
+			{
+				YbReleaseAllSessionObjectLocks();
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+		}
+		else
+			YBCommitTransactionIntermediate();
 
 		/*
 		 * Update progress of the COPY command as well.

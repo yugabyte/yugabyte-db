@@ -5140,7 +5140,7 @@ YbTxnObjectLockTags(void)
 	return tags;
 }
 
-static void
+void
 YbReleaseAllSessionObjectLocks(void)
 {
 	HASH_SEQ_STATUS status;
