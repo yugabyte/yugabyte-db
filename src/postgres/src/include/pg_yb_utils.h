@@ -80,7 +80,6 @@
 #define YB_CATCACHE_MSGS (0)
 #define YB_RELCACHE_MSGS (1)
 
-
 /*
  * Postgres code uses process-level storage (e.g. static variables) to store
  * long-lived data in a backend process. During expression pushdown, we may be
