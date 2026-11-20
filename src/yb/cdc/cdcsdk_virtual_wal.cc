@@ -2075,11 +2075,11 @@ CDCSDKVirtualWAL::PubRefreshTrigger CDCSDKVirtualWAL::DeterminePubRefreshFromMas
     return PubRefreshTrigger::kNone;
   } else if (table_id == pg_class_table_id_) {
     if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
-      LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
       // CheckForTableRewriteOrDrop() reports a drop as a DELETE, a rewrite as an INSERT / UPDATE.
-      return record->row_message().op() == RowMessage_Op_DELETE
-                 ? PubRefreshTrigger::kTableDropped
-                 : PubRefreshTrigger::kTableRewritten;
+      const bool is_drop = record->row_message().op() == RowMessage_Op_DELETE;
+      LOG_WITH_PREFIX(INFO) << "Table " << (is_drop ? "drop" : "rewrite")
+                            << " detected, will trigger a publication refresh";
+      return is_drop ? PubRefreshTrigger::kTableDropped : PubRefreshTrigger::kTableRewritten;
     }
 
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
@@ -2251,7 +2251,9 @@ Result<std::optional<TableId>> CDCSDKVirtualWAL::GetPublishedTableIdFromPgCatalo
 
 bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record) {
   auto row_message = record->row_message();
-  auto oid = GetPgCatalogUint32Column(row_message, "oid", true /* use_new_tuple */);
+  // A DELETE record carries the row's key only in the old tuple.
+  auto oid = GetPgCatalogUint32Column(
+      row_message, "oid", row_message.op() != RowMessage_Op_DELETE /* use_new_tuple */);
   if (!oid || !oid_to_relfilenode_.contains(*oid)) {
     return false;
   }

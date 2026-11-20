@@ -4,7 +4,7 @@ Add an instance type to YugabyteDB Anywhere on-premises provider
 
 ### Synopsis
 
-Add an instance type to YugabyteDB Anywhere on-premises provider
+Add an instance type to YugabyteDB Anywhere on-premises provider. If the instance type exists, it is updated and unset flags keep their current values.
 
 ```
 yba provider onprem instance-type add [flags]
@@ -22,7 +22,7 @@ yba provider onprem instance-type add \
 
 ```
       --instance-type-name string   [Required] Instance type name.
-      --volume stringArray          [Required] Volumes associated per node of an instance type. Minimum number of required volumes = 1. Provide the following double colon (::) separated fields as key-value pairs: "type=<volume-type>::size=<volume-size>::mount-points=<comma-separated-mount-points>". Mount points is a required key-value. Volume type (Defaults to SSD, Allowed values: EBS, SSD, HDD, NVME) and Volume size (Defaults to 100) are optional. Each volume needs to be added using a separate --volume flag.
+      --volume stringArray          [Required for a new instance type] Volumes associated per node of an instance type. Minimum number of required volumes = 1. Provide the following double colon (::) separated fields as key-value pairs: "type=<volume-type>::size=<volume-size>::mount-points=<comma-separated-mount-points>". Mount points is a required key-value. Volume type (Defaults to SSD, Allowed values: EBS, SSD, HDD, NVME) and Volume size (Defaults to 100) are optional. Each volume needs to be added using a separate --volume flag.
       --mem-size float              [Optional] Memory size of the node in GB. (default 8)
       --num-cores float             [Optional] Number of cores per node. (default 4)
       --tenancy string              [Optional] Tenancy of the nodes of this type. Allowed values (case sensitive): Shared, Dedicated, Host.
