@@ -38,16 +38,20 @@ describe('getGFlagDiffs', () => {
   });
 });
 
-describe('getGFlagDiffs with legacy flags', () => {
+describe('getGFlagDiffs with the gflags audit entries', () => {
   it('does not list unchanged legacy flags as added', () => {
-    const cluster = (userIntent: unknown) => ({
-      clusters: [{ clusterType: 'PRIMARY', userIntent }]
-    });
-    const after = cluster({
-      specificGFlags: { perProcessFlags: { value: { MASTER: { a: '1', b: '3' } } } }
-    });
-    const fullBefore = cluster({ masterGFlags: { a: '1', b: '2' } });
-    const diffs = getGFlagDiffs(cluster({}), after, fullBefore);
-    expect(diffs.master).toEqual([{ name: 'b', old: '2', new: '3', default: '' }]);
+    const after = {
+      clusters: [
+        {
+          clusterType: 'PRIMARY',
+          userIntent: {
+            specificGFlags: { perProcessFlags: { value: { MASTER: { a: '1', b: '3' } } } }
+          }
+        }
+      ]
+    };
+    const audit = { master: [{ name: 'b', old: '2', new: '3', default: 'd' }], tserver: [] };
+    const diffs = getGFlagDiffs({}, after, audit);
+    expect(diffs.master).toEqual([{ name: 'b', old: '2', new: '3', default: 'd' }]);
   });
 });

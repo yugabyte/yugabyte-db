@@ -18,11 +18,11 @@ import {
   showTaskInDrawer
 } from '../../../actions/tasks';
 import { TargetType, Task, TaskState, TaskType } from './dtos';
-import { AuditLogProps, DiffApiResp } from './components/diffComp/dtos';
+import { AuditLogProps, DiffApiResp, GFlagsDiffProps } from './components/diffComp/dtos';
 import {
   getTaskDiffValue,
   withDefaultClusterType,
-  withDedicatedNodesFromPayload,
+  withUnchangedIntentFromPayload,
   withIdentityFromPayload
 } from './components/diffComp/taskDiffUtils';
 import {
@@ -107,15 +107,14 @@ export const mapAuditLogToTaskDiffApiResp = (
   if (!auditLog) return undefined;
   // Without a taskDiff there is nothing to show.
   if (isEmpty(auditLog.taskDiff)) return undefined;
-  const taskDiff = withDedicatedNodesFromPayload(
+  const taskDiff = withUnchangedIntentFromPayload(
     withDefaultClusterType(withIdentityFromPayload(auditLog.taskDiff, auditLog.payload)),
     auditLog.payload
   );
   return {
     afterData: getTaskDiffValue(taskDiff, 'new'),
     beforeData: getTaskDiffValue(taskDiff, 'old'),
-    // The full state before the task, for what the taskDiff leaves out.
-    fullBeforeData: auditLog.additionalDetails,
+    gflagsAudit: (auditLog.additionalDetails as Partial<GFlagsDiffProps>)?.gflags,
     parentUuid: auditLog.taskUUID,
     uuid: auditLog.auditID.toString()
   };

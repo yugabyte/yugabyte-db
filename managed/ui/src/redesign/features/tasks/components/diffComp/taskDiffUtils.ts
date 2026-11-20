@@ -77,7 +77,7 @@ const matchesPayload = (delta: any, payload: any): boolean => {
       : isEqual(delta.$newValue, payload);
   }
   if (Array.isArray(delta)) {
-    // Deleted elements are not in the payload. Collisions between changed-to values stay ambiguous.
+    // Deleted elements are not in the payload.
     return delta.every(
       (d) =>
         (isDeltaNode(d) && d.$deltaType === 'DELETE') ||
@@ -106,10 +106,15 @@ export const withIdentityFromPayload = (taskDiff: any, payload: any): any => {
       if (isDeltaNode(element) || typeof element !== 'object' || element === null) {
         return element;
       }
-      const index = payload.findIndex((p, i) => i >= cursor && matchesPayload(element, p));
-      if (index < 0) {
+      // Several candidates (e.g. equal leader preferences) cannot be told apart: leave the
+      // element without identity rather than pick the wrong one.
+      const candidates = payload
+        .map((p, i) => (i >= cursor && matchesPayload(element, p) ? i : -1))
+        .filter((i) => i >= 0);
+      if (candidates.length !== 1) {
         return element;
       }
+      const index = candidates[0];
       cursor = index + 1;
       const identity = pick(payload[index], IDENTITY_FIELDS);
       return { ...identity, ...withIdentityFromPayload(element, payload[index]) };
@@ -122,11 +127,11 @@ export const withIdentityFromPayload = (taskDiff: any, payload: any): any => {
 };
 
 /**
- * The taskDiff drops an unchanged userIntent.dedicatedNodes, which the master cards need to tell
- * dedicated from colocated masters. An absent value means unchanged, so the payload's value holds
- * on both sides.
+ * The taskDiff drops unchanged userIntent fields, but the master cards need dedicatedNodes and the
+ * K8s override card needs providerType. An absent value means unchanged, so the payload's value
+ * holds on both sides.
  */
-export const withDedicatedNodesFromPayload = (taskDiff: any, payload: any): any => {
+export const withUnchangedIntentFromPayload = (taskDiff: any, payload: any): any => {
   const clusters = taskDiff?.clusters;
   const payloadClusters = payload?.clusters;
   if (!Array.isArray(clusters) || !Array.isArray(payloadClusters)) {
@@ -136,20 +141,13 @@ export const withDedicatedNodesFromPayload = (taskDiff: any, payload: any): any 
     ...taskDiff,
     clusters: clusters.map((cluster) => {
       const userIntent = cluster?.userIntent;
-      if (
-        isDeltaNode(cluster) ||
-        !userIntent ||
-        isDeltaNode(userIntent) ||
-        'dedicatedNodes' in userIntent
-      ) {
+      if (isDeltaNode(cluster) || !userIntent || isDeltaNode(userIntent)) {
         return cluster;
       }
       const source =
         payloadClusters.find((c) => c?.clusterType === cluster.clusterType) ?? payloadClusters[0];
-      const dedicatedNodes = source?.userIntent?.dedicatedNodes;
-      return dedicatedNodes === undefined
-        ? cluster
-        : { ...cluster, userIntent: { ...userIntent, dedicatedNodes } };
+      const restored = pick(source?.userIntent, ['dedicatedNodes', 'providerType']);
+      return { ...cluster, userIntent: { ...restored, ...userIntent } };
     })
   };
 };

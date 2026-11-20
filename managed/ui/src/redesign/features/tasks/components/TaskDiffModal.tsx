@@ -121,7 +121,7 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
     );
   }
 
-  // Tasks that ran before the backend recorded taskDiff have nothing to show.
+  // No taskDiff: the task ran before the backend recorded it, or the audit fetch failed.
   const noDiff = !taskDiffDetails;
 
   return (

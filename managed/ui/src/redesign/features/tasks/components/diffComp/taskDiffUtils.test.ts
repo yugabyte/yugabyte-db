@@ -3,7 +3,7 @@ import {
   getTaskDiffValue,
   withDefaultClusterType,
   withIdentityFromPayload,
-  withDedicatedNodesFromPayload,
+  withUnchangedIntentFromPayload,
   isDeltaNode
 } from './taskDiffUtils';
 
@@ -184,9 +184,9 @@ describe('identity matching with several regions', () => {
   });
 });
 
-describe('withDedicatedNodesFromPayload', () => {
-  it('restores the unchanged dedicatedNodes on the modified userIntent', () => {
-    const out = withDedicatedNodesFromPayload(
+describe('withUnchangedIntentFromPayload', () => {
+  it('restores the unchanged dedicatedNodes and providerType on the modified userIntent', () => {
+    const out = withUnchangedIntentFromPayload(
       {
         clusters: [
           {
@@ -197,9 +197,31 @@ describe('withDedicatedNodesFromPayload', () => {
           }
         ]
       },
-      { clusters: [{ clusterType: 'PRIMARY', userIntent: { dedicatedNodes: true } }] }
+      {
+        clusters: [
+          {
+            clusterType: 'PRIMARY',
+            userIntent: { dedicatedNodes: true, providerType: 'kubernetes' }
+          }
+        ]
+      }
     );
     expect(getTaskDiffValue(out, 'old').clusters[0].userIntent.dedicatedNodes).toBe(true);
     expect(getTaskDiffValue(out, 'new').clusters[0].userIntent.dedicatedNodes).toBe(true);
+    expect(getTaskDiffValue(out, 'new').clusters[0].userIntent.providerType).toBe('kubernetes');
+  });
+});
+
+describe('ambiguous identity', () => {
+  it('gives no identity when several payload elements match', () => {
+    const lp = { leaderPreference: { $deltaType: 'REPLACE', $oldValue: 0, $newValue: 1 } };
+    const out = withIdentityFromPayload(
+      [lp],
+      [
+        { name: 'az-a', leaderPreference: 1 },
+        { name: 'az-b', leaderPreference: 1 }
+      ]
+    );
+    expect(out[0].name).toBeUndefined();
   });
 });

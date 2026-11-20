@@ -75,4 +75,26 @@ describe('UniverseDiff with a partial taskDiff', () => {
     differ.getDiffComponent();
     expect(JSON.stringify(differ.cards.PRIMARY)).not.toContain('Leader Preference');
   });
+
+  it('renders a read replica only change', () => {
+    const diff = {
+      clusters: [
+        {
+          clusterType: 'ASYNC',
+          userIntent: {
+            deviceInfo: { volumeSize: { $deltaType: 'REPLACE', $oldValue: 100, $newValue: 200 } }
+          }
+        }
+      ]
+    };
+    const differ = new UniverseDiff({
+      beforeData: getTaskDiffValue(diff, 'old'),
+      afterData: getTaskDiffValue(diff, 'new'),
+      task: {} as any
+    });
+    differ.getDiffComponent();
+    expect(differ.changesCount).toBe(1);
+    expect(differ.cards.ASYNC).toHaveLength(1);
+    expect(differ.cards.PRIMARY).toHaveLength(0);
+  });
 });

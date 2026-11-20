@@ -13,7 +13,7 @@ import { differenceWith, intersectionWith, isEqual, keys, size } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 
-import { getPrimaryCluster } from '../../../../universe/universe-form/utils/helpers';
+import { getAsyncCluster, getPrimaryCluster } from '../../../../universe/universe-form/utils/helpers';
 import { DiffActions } from '../DiffActions';
 import { DiffTitleBanner, TaskDiffBanner } from '../DiffBanners';
 import DiffCard, { DiffCardRef } from '../DiffCard';
@@ -368,7 +368,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
   }
 
   // Leader preference of the AZs that changed. An added or removed AZ is on one side only, so the
-  // AZs are matched by uuid or name (see withIdentityFromPayload), never by position.
+  // AZs are matched by uuid or name (see withIdentityFromPayload). Only AZs without an identity are
+  // paired by position, and only when both lists have the same length.
   getLeaderPreferenceDiffComponent(
     beforeValue: Cluster,
     afterValue: Cluster,
@@ -449,7 +450,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
   };
 
   isMasterPlacementPresent(beforeValue: Cluster, afterValue: Cluster) {
-    // taskDiff drops unchanged fields, so dedicatedNodes is absent when only master values changed.
+    // dedicatedNodes is restored from the payload (withUnchangedIntentFromPayload); a master value
+    // in the delta also means the master has its own settings, so use the master card.
     return [beforeValue, afterValue].some(
       (c) =>
         c?.userIntent?.dedicatedNodes === true ||
@@ -925,62 +927,47 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     );
   }
 
+  // The diff cards of one cluster.
+  getClusterDiffs(before: Cluster, after: Cluster, clusterType: ClusterType) {
+    this.getInstanceTypeDiff(before, after, clusterType);
+    this.getCloudListDiffComponent(before, after, clusterType);
+
+    if (this.isMasterPlacementPresent(before, after)) {
+      this.getMasterPlacementDiffComponent(before, after, clusterType);
+    } else {
+      this.getDeviceInfoDiffComponent(before, after, clusterType);
+    }
+
+    this.getLeaderPreferenceDiffComponent(before, after, clusterType);
+    this.getK8sAzOverridesDiffComponent(before, after, clusterType);
+  }
+
   getDiffComponent(): React.ReactElement {
     this.changesCount = 0;
-    // Get the primary cluster before and after the edit operation.
-    const beforePrimaryCluster = getPrimaryCluster(this.diffProps.beforeData as UniverseDetails);
-    const afterPrimaryCluster = getPrimaryCluster(this.diffProps.afterData as UniverseDetails);
+    const before = this.diffProps.beforeData as UniverseDetails;
+    const after = this.diffProps.afterData as UniverseDetails;
+    const beforePrimaryCluster = getPrimaryCluster(before);
+    const afterPrimaryCluster = getPrimaryCluster(after);
+    const beforeAsyncCluster = getAsyncCluster(before);
+    const afterAsyncCluster = getAsyncCluster(after);
+    const hasPrimary = !!beforePrimaryCluster && !!afterPrimaryCluster;
+    const hasAsync = !!beforeAsyncCluster && !!afterAsyncCluster;
 
-    if (!beforePrimaryCluster || !afterPrimaryCluster) {
+    if (!hasPrimary && !hasAsync) {
       return <Typography variant="h6">Changes not found</Typography>;
     }
-    // Get the differences in the instance type of the primary cluster.
-    this.getInstanceTypeDiff(beforePrimaryCluster!, afterPrimaryCluster!, ClusterType.PRIMARY);
 
-    // Get the differences in the cloud list of the primary cluster.
-    this.getCloudListDiffComponent(
-      beforePrimaryCluster!,
-      afterPrimaryCluster!,
-      ClusterType.PRIMARY
-    );
-
-    if (this.isMasterPlacementPresent(beforePrimaryCluster!, afterPrimaryCluster!)) {
-      this.getMasterPlacementDiffComponent(
-        beforePrimaryCluster!,
-        afterPrimaryCluster!,
-        ClusterType.PRIMARY
-      );
-    } else {
-      // Get the differences in the device info of the primary cluster.
-      this.getDeviceInfoDiffComponent(
-        beforePrimaryCluster!,
-        afterPrimaryCluster!,
-        ClusterType.PRIMARY
+    if (hasPrimary) {
+      this.getClusterDiffs(beforePrimaryCluster!, afterPrimaryCluster!, ClusterType.PRIMARY);
+      this.getCommunicationDiffComponent(before, after, ClusterType.PRIMARY);
+      this.getInstanceTagsDiffComponent(
+        beforePrimaryCluster!.userIntent?.instanceTags,
+        afterPrimaryCluster!.userIntent?.instanceTags
       );
     }
-
-    this.getLeaderPreferenceDiffComponent(
-      beforePrimaryCluster,
-      afterPrimaryCluster,
-      ClusterType.PRIMARY
-    );
-
-    this.getCommunicationDiffComponent(
-      this.diffProps.beforeData as UniverseDetails,
-      this.diffProps.afterData as UniverseDetails,
-      ClusterType.PRIMARY
-    );
-
-    this.getK8sAzOverridesDiffComponent(
-      beforePrimaryCluster,
-      afterPrimaryCluster,
-      ClusterType.PRIMARY
-    );
-
-    this.getInstanceTagsDiffComponent(
-      beforePrimaryCluster.userIntent?.instanceTags,
-      afterPrimaryCluster.userIntent?.instanceTags
-    );
+    if (hasAsync) {
+      this.getClusterDiffs(beforeAsyncCluster!, afterAsyncCluster!, ClusterType.ASYNC);
+    }
 
     return (
       <DiffCardWrapper>
@@ -993,8 +980,10 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
           changesCount={this.changesCount}
         />
         <TaskDiffBanner task={this.task} diffCount={this.changesCount} />
-        <DiffTitleBanner title="Primary Cluster" />
+        {hasPrimary && <DiffTitleBanner title="Primary Cluster" />}
         {this.cards[ClusterType.PRIMARY]}
+        {hasAsync && <DiffTitleBanner title="Read Replica" showLegends={!hasPrimary} />}
+        {this.cards[ClusterType.ASYNC]}
       </DiffCardWrapper>
     );
   }

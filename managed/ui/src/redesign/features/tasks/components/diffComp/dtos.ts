@@ -20,8 +20,8 @@ export enum DiffOperation {
 export interface DiffProps {
   beforeData: unknown;
   afterData: unknown;
-  // Full state before the task; the before/after values only have what the taskDiff carries.
-  fullBeforeData?: unknown;
+  // The GFlags audit entries (additionalDetails.gflags) of a GFlags task.
+  gflagsAudit?: GFlagsDiffProps['gflags'];
   operation?: DiffOperation;
   attribute?: string;
 }
@@ -42,10 +42,17 @@ export type GFlagDiff = {
   new: string | null;
   default: string;
 };
+export interface GFlagsDiffProps {
+  gflags: {
+    master: GFlagDiff[];
+    tserver: GFlagDiff[];
+  };
+}
 export interface AuditLogProps {
   customerUUID: string;
   payload: UniverseDetails;
-  additionalDetails: UniverseDetails;
+  // A GFlags task overwrites this with its gflags audit entries.
+  additionalDetails: UniverseDetails | Partial<GFlagsDiffProps>;
   // Changed parts of the universe details, see taskDiffUtils.ts.
   taskDiff?: Record<string, unknown>;
   target: string;

@@ -8,7 +8,7 @@
  */
 
 import { isEqual, keys, pick, union } from 'lodash';
-import { DiffOperation, GFlagDiff } from './dtos';
+import { DiffOperation, GFlagDiff, GFlagsDiffProps } from './dtos';
 import { UniverseDetails } from '../../../universe/universe-form/utils/dto';
 import { getPrimaryCluster } from '../../../universe/universe-form/utils/helpers';
 import { PlacementAZ } from '../../../universe/universe-form/utils/dto';
@@ -74,7 +74,11 @@ export const getFieldOpertions = (
 
 // The gflags of the primary cluster that the task changed, from the before/after values rebuilt
 // from the taskDiff. A flag that did not change is absent on both sides.
-export const getGFlagDiffs = (beforeData: unknown, afterData: unknown, fullBeforeData?: unknown) => {
+export const getGFlagDiffs = (
+  beforeData: unknown,
+  afterData: unknown,
+  gflagsAudit?: GFlagsDiffProps['gflags']
+) => {
   const flagsOf = (data: unknown, process: 'MASTER' | 'TSERVER') => {
     const intent = getPrimaryCluster(data as UniverseDetails)?.userIntent;
     return {
@@ -83,20 +87,19 @@ export const getGFlagDiffs = (beforeData: unknown, afterData: unknown, fullBefor
     } as Record<string, string>;
   };
   const diffsOf = (process: 'MASTER' | 'TSERVER'): GFlagDiff[] => {
-    const fullBefore = flagsOf(fullBeforeData, process);
+    const before = flagsOf(beforeData, process);
     const after = flagsOf(afterData, process);
-    // Legacy flags that moved into specificGFlags are unchanged, so the delta has no old value.
-    const before = { ...flagsOf(beforeData, process) };
-    keys(after).forEach((name) => {
-      if (!(name in before) && name in fullBefore) before[name] = fullBefore[name];
-    });
+    const audited = gflagsAudit?.[process === 'MASTER' ? 'master' : 'tserver'];
     return union(keys(before), keys(after))
       .filter((name) => before[name] !== after[name])
+      // The audit entries compare the effective flags, so a flag missing from them did not change
+      // (e.g. legacy flags that moved into specificGFlags look added in the delta).
+      .filter((name) => !audited || audited.some((entry) => entry.name === name))
       .map((name) => ({
         name,
-        old: before[name] ?? null,
+        old: before[name] ?? audited?.find((entry) => entry.name === name)?.old ?? null,
         new: after[name] ?? null,
-        default: ''
+        default: audited?.find((entry) => entry.name === name)?.default ?? ''
       }));
   };
   return { master: diffsOf('MASTER'), tserver: diffsOf('TSERVER') };

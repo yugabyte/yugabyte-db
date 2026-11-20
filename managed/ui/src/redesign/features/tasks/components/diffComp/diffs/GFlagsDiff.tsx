@@ -40,7 +40,7 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
     const flags = getGFlagDiffs(
       this.diffProps.beforeData,
       this.diffProps.afterData,
-      this.diffProps.fullBeforeData
+      this.diffProps.gflagsAudit
     );
 
     const cards: Record<string, React.ReactElement<typeof DiffCard>[]> = {
