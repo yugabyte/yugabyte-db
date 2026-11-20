@@ -950,23 +950,33 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
     const afterPrimaryCluster = getPrimaryCluster(after);
     const beforeAsyncCluster = getAsyncCluster(before);
     const afterAsyncCluster = getAsyncCluster(after);
-    const hasPrimary = !!beforePrimaryCluster && !!afterPrimaryCluster;
-    const hasAsync = !!beforeAsyncCluster && !!afterAsyncCluster;
+    // A cluster that was added or removed is on one side only.
+    const hasPrimary = !!beforePrimaryCluster || !!afterPrimaryCluster;
+    const hasAsync = !!beforeAsyncCluster || !!afterAsyncCluster;
+    const emptyCluster = { userIntent: {} } as Cluster;
 
     if (!hasPrimary && !hasAsync) {
       return <Typography variant="h6">Changes not found</Typography>;
     }
 
     if (hasPrimary) {
-      this.getClusterDiffs(beforePrimaryCluster!, afterPrimaryCluster!, ClusterType.PRIMARY);
+      this.getClusterDiffs(
+        beforePrimaryCluster ?? emptyCluster,
+        afterPrimaryCluster ?? emptyCluster,
+        ClusterType.PRIMARY
+      );
       this.getCommunicationDiffComponent(before, after, ClusterType.PRIMARY);
       this.getInstanceTagsDiffComponent(
-        beforePrimaryCluster!.userIntent?.instanceTags,
-        afterPrimaryCluster!.userIntent?.instanceTags
+        beforePrimaryCluster?.userIntent?.instanceTags,
+        afterPrimaryCluster?.userIntent?.instanceTags
       );
     }
     if (hasAsync) {
-      this.getClusterDiffs(beforeAsyncCluster!, afterAsyncCluster!, ClusterType.ASYNC);
+      this.getClusterDiffs(
+        beforeAsyncCluster ?? emptyCluster,
+        afterAsyncCluster ?? emptyCluster,
+        ClusterType.ASYNC
+      );
     }
 
     return (

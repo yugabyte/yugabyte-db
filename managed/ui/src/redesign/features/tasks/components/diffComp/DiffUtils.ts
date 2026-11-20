@@ -73,7 +73,8 @@ export const getFieldOpertions = (
 };
 
 // The gflags of the primary cluster that the task changed, from the before/after values rebuilt
-// from the taskDiff. A flag that did not change is absent on both sides.
+// from the taskDiff (a flag that did not change is absent on both sides), or the gflags audit
+// entries of the task when it has them.
 export const getGFlagDiffs = (
   beforeData: unknown,
   afterData: unknown,
@@ -87,20 +88,22 @@ export const getGFlagDiffs = (
     } as Record<string, string>;
   };
   const diffsOf = (process: 'MASTER' | 'TSERVER'): GFlagDiff[] => {
+    // The audit entries compare the effective flags of the task, which the taskDiff does not
+    // always carry (gflag groups, top-level legacy flags, redacted values).
+    const audited = gflagsAudit?.[process === 'MASTER' ? 'master' : 'tserver'];
+    if (audited) {
+      return audited.map(({ name, old, new: newValue, default: defaultValue }) => ({
+        name,
+        old: old ?? null,
+        new: newValue ?? null,
+        default: defaultValue ?? ''
+      }));
+    }
     const before = flagsOf(beforeData, process);
     const after = flagsOf(afterData, process);
-    const audited = gflagsAudit?.[process === 'MASTER' ? 'master' : 'tserver'];
     return union(keys(before), keys(after))
       .filter((name) => before[name] !== after[name])
-      // The audit entries compare the effective flags, so a flag missing from them did not change
-      // (e.g. legacy flags that moved into specificGFlags look added in the delta).
-      .filter((name) => !audited || audited.some((entry) => entry.name === name))
-      .map((name) => ({
-        name,
-        old: before[name] ?? audited?.find((entry) => entry.name === name)?.old ?? null,
-        new: after[name] ?? null,
-        default: audited?.find((entry) => entry.name === name)?.default ?? ''
-      }));
+      .map((name) => ({ name, old: before[name] ?? null, new: after[name] ?? null, default: '' }));
   };
   return { master: diffsOf('MASTER'), tserver: diffsOf('TSERVER') };
 };

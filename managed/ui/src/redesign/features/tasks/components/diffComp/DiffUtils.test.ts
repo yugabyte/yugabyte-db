@@ -55,3 +55,10 @@ describe('getGFlagDiffs with the gflags audit entries', () => {
     expect(diffs.master).toEqual([{ name: 'b', old: '2', new: '3', default: 'd' }]);
   });
 });
+
+describe('getGFlagDiffs without a delta', () => {
+  it('lists the audit entries even when the taskDiff has no flag change', () => {
+    const audit = { master: [{ name: 'x', old: '1', new: '2', default: 'd' }], tserver: [] };
+    expect(getGFlagDiffs({}, {}, audit).master).toEqual(audit.master);
+  });
+});

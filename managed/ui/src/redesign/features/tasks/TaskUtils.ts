@@ -108,7 +108,10 @@ export const mapAuditLogToTaskDiffApiResp = (
   // Without a taskDiff there is nothing to show.
   if (isEmpty(auditLog.taskDiff)) return undefined;
   const taskDiff = withUnchangedIntentFromPayload(
-    withDefaultClusterType(withIdentityFromPayload(auditLog.taskDiff, auditLog.payload)),
+    withDefaultClusterType(
+      withIdentityFromPayload(auditLog.taskDiff, auditLog.payload),
+      auditLog.payload
+    ),
     auditLog.payload
   );
   return {

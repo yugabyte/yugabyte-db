@@ -97,4 +97,26 @@ describe('UniverseDiff with a partial taskDiff', () => {
     expect(differ.cards.ASYNC).toHaveLength(1);
     expect(differ.cards.PRIMARY).toHaveLength(0);
   });
+
+  it('renders an added read replica', () => {
+    const diff = {
+      clusters: [
+        {
+          $deltaType: 'ADD',
+          $newValue: {
+            clusterType: 'ASYNC',
+            userIntent: { instanceType: 'c5.large', deviceInfo: { volumeSize: 100 } }
+          }
+        }
+      ]
+    };
+    const differ = new UniverseDiff({
+      beforeData: getTaskDiffValue(diff, 'old'),
+      afterData: getTaskDiffValue(diff, 'new'),
+      task: {} as any
+    });
+    expect(() => differ.getDiffComponent()).not.toThrow();
+    expect(differ.changesCount).toBeGreaterThan(0);
+    expect(differ.cards.ASYNC.length).toBeGreaterThan(0);
+  });
 });

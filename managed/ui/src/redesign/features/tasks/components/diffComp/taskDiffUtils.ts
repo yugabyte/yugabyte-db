@@ -51,43 +51,73 @@ export const getTaskDiffValue = (node: unknown, side: 'old' | 'new'): any => {
 };
 
 /**
- * The backend drops the unchanged clusterType from a modified cluster, so the first cluster of the
- * taskDiff is taken as the primary one when it has no clusterType.
- * shortcut: wrong for a read-replica-only edit; drop this once the backend keeps clusterType.
+ * The backend drops the unchanged clusterType from a modified cluster. A cluster that is still
+ * without one gets a cluster type of the payload that no other cluster of the taskDiff has; without
+ * a payload, the first cluster is the primary one.
+ * shortcut: a read-replica-only edit that cannot be matched to the payload is shown as the primary.
  */
-export const withDefaultClusterType = (taskDiff: Record<string, any>): Record<string, any> => {
+export const withDefaultClusterType = (
+  taskDiff: Record<string, any>,
+  payload?: any
+): Record<string, any> => {
   const clusters = taskDiff?.clusters;
   if (!Array.isArray(clusters) || clusters.length === 0) {
     return taskDiff;
   }
-  const [first, ...rest] = clusters;
-  if (isDeltaNode(first) || first?.clusterType) {
-    return taskDiff;
-  }
-  return { ...taskDiff, clusters: [{ clusterType: 'PRIMARY', ...first }, ...rest] };
+  const taken = clusters.map((c) => (isDeltaNode(c) ? undefined : c?.clusterType));
+  const available: string[] = (
+    Array.isArray(payload?.clusters)
+      ? payload.clusters.map((c: any) => c?.clusterType)
+      : ['PRIMARY']
+  ).filter((type: string | undefined) => type && !taken.includes(type));
+  return {
+    ...taskDiff,
+    clusters: clusters.map((cluster, i) => {
+      if (isDeltaNode(cluster) || cluster?.clusterType) {
+        return cluster;
+      }
+      const clusterType = available.shift() ?? (i === 0 ? 'PRIMARY' : undefined);
+      return clusterType ? { clusterType, ...cluster } : cluster;
+    })
+  };
 };
 
 const IDENTITY_FIELDS = ['clusterType', 'code', 'name', 'uuid'];
 
-// Whether the payload element has the values the modified (delta) element changed to.
-const matchesPayload = (delta: any, payload: any): boolean => {
+// How many of the values the delta element changed to the payload element has, or null if one
+// differs. A value the payload lacks cannot be checked (the taskDiff is taken from the task params at
+// freeze, which have fields the request does not, e.g. masterMoveStage), so it counts for nothing.
+const matchScore = (delta: any, payload: any): number | null => {
   if (isDeltaNode(delta)) {
-    return delta.$deltaType === 'DELETE'
-      ? payload === undefined
-      : isEqual(delta.$newValue, payload);
+    if (delta.$deltaType === 'DELETE' || payload === undefined) {
+      return 0;
+    }
+    return isEqual(delta.$newValue, payload) ? 1 : null;
   }
   if (Array.isArray(delta)) {
     // Deleted elements are not in the payload.
-    return delta.every(
-      (d) =>
-        (isDeltaNode(d) && d.$deltaType === 'DELETE') ||
-        (Array.isArray(payload) && payload.some((p) => matchesPayload(d, p)))
-    );
+    let total = 0;
+    for (const d of delta) {
+      if (isDeltaNode(d) && d.$deltaType === 'DELETE') continue;
+      const scores = (Array.isArray(payload) ? payload : [])
+        .map((p) => matchScore(d, p))
+        .filter((score): score is number => score !== null);
+      if (scores.length === 0) return null;
+      total += Math.max(...scores);
+    }
+    return total;
   }
   if (typeof delta === 'object' && delta !== null) {
-    return Object.entries(delta).every(([key, value]) => matchesPayload(value, payload?.[key]));
+    let total = 0;
+    for (const [key, value] of Object.entries(delta)) {
+      const score = matchScore(value, payload?.[key]);
+      if (score === null) return null;
+      total += score;
+    }
+    return total;
   }
-  return isEqual(delta, payload);
+  if (payload === undefined) return 0;
+  return isEqual(delta, payload) ? 1 : null;
 };
 
 /**
@@ -96,7 +126,7 @@ const matchesPayload = (delta: any, payload: any): boolean => {
  * the task, so take them from it: the modified elements are a subsequence of the payload's list, so
  * match them in order by the values they changed to.
  */
-export const withIdentityFromPayload = (taskDiff: any, payload: any): any => {
+export const withIdentityFromPayload = (taskDiff: any, payload: any, isClusters = false): any => {
   if (Array.isArray(taskDiff)) {
     if (!Array.isArray(payload)) {
       return taskDiff;
@@ -106,22 +136,27 @@ export const withIdentityFromPayload = (taskDiff: any, payload: any): any => {
       if (isDeltaNode(element) || typeof element !== 'object' || element === null) {
         return element;
       }
-      // Several candidates (e.g. equal leader preferences) cannot be told apart: leave the
-      // element without identity rather than pick the wrong one.
-      const candidates = payload
-        .map((p, i) => (i >= cursor && matchesPayload(element, p) ? i : -1))
-        .filter((i) => i >= 0);
-      if (candidates.length !== 1) {
+      const scored = payload
+        .map((p, i) => ({ i, score: i >= cursor ? matchScore(element, p) : null }))
+        .filter(({ score }) => score !== null && score >= 1) as { i: number; score: number }[];
+      const best = Math.max(0, ...scored.map(({ score }) => score));
+      const candidates = scored.filter(({ score }) => score === best);
+      // Equal candidates (e.g. equal leader preferences) cannot be told apart: leave the element
+      // without identity rather than pick the wrong one. Clusters are in payload order, so the
+      // first one wins there.
+      if (candidates.length === 0 || (candidates.length > 1 && !isClusters)) {
         return element;
       }
-      const index = candidates[0];
+      const index = candidates[0].i;
       cursor = index + 1;
       const identity = pick(payload[index], IDENTITY_FIELDS);
       return { ...identity, ...withIdentityFromPayload(element, payload[index]) };
     });
   }
   if (typeof taskDiff === 'object' && taskDiff !== null && !isDeltaNode(taskDiff)) {
-    return mapValues(taskDiff, (value, key) => withIdentityFromPayload(value, payload?.[key]));
+    return mapValues(taskDiff, (value, key) =>
+      withIdentityFromPayload(value, payload?.[key], key === 'clusters')
+    );
   }
   return taskDiff;
 };

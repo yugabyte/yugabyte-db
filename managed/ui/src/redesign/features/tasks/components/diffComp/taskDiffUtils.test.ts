@@ -115,9 +115,20 @@ describe('withDefaultClusterType', () => {
   });
 
   it('only types the first cluster, and leaves typed clusters alone', () => {
-    expect(withDefaultClusterType(taskDiff)).toBe(taskDiff);
+    expect(withDefaultClusterType(taskDiff)).toEqual(taskDiff);
     const two = withDefaultClusterType({ clusters: [{ a: 1 }, { b: 2 }] });
     expect(two.clusters).toEqual([{ clusterType: 'PRIMARY', a: 1 }, { b: 2 }]);
+  });
+
+  it('gives untyped clusters the payload cluster types no other cluster has', () => {
+    const payload = { clusters: [{ clusterType: 'PRIMARY' }, { clusterType: 'ASYNC' }] };
+    const out = withDefaultClusterType({ clusters: [{ a: 1 }, { b: 2 }] }, payload);
+    expect(out.clusters.map((c: any) => c.clusterType)).toEqual(['PRIMARY', 'ASYNC']);
+    const rr = withDefaultClusterType(
+      { clusters: [{ clusterType: 'PRIMARY' }, { b: 2 }] },
+      payload
+    );
+    expect(rr.clusters[1].clusterType).toBe('ASYNC');
   });
 });
 
@@ -223,5 +234,35 @@ describe('ambiguous identity', () => {
       ]
     );
     expect(out[0].name).toBeUndefined();
+  });
+});
+
+describe('identity with task-internal fields', () => {
+  it('ignores a changed value the payload lacks, e.g. masterMoveStage', () => {
+    const diff = {
+      clusters: [
+        {
+          masterMoveStage: { $deltaType: 'ADD', $newValue: 'STARTED' },
+          userIntent: { numNodes: { $deltaType: 'REPLACE', $oldValue: 3, $newValue: 4 } }
+        }
+      ]
+    };
+    const out = withIdentityFromPayload(diff, {
+      clusters: [{ clusterType: 'PRIMARY', uuid: 'u1', userIntent: { numNodes: 4 } }]
+    });
+    expect(out.clusters[0].uuid).toBe('u1');
+  });
+
+  it('picks the cluster with the most matching values when several match', () => {
+    const diff = {
+      clusters: [{ userIntent: { volume: { $deltaType: 'REPLACE', $oldValue: 1, $newValue: 5 } } }]
+    };
+    const out = withIdentityFromPayload(diff, {
+      clusters: [
+        { clusterType: 'PRIMARY', userIntent: { volume: 5 } },
+        { clusterType: 'ASYNC', userIntent: { volume: 5 } }
+      ]
+    });
+    expect(out.clusters[0].clusterType).toBe('PRIMARY');
   });
 });

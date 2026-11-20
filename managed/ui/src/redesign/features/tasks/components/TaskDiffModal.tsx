@@ -65,7 +65,7 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
   const isSoftwareUpgrade =
     currentTask?.target === TargetType.UNIVERSE && currentTask?.type === TaskType.SOFTWARE_UPGRADE;
 
-  // Software upgrade is rendered from task.details, so it has no taskDiff.
+  // SoftwareUpgradeDiff reads task.details, not the diff data, so it renders without an audit row.
   const taskDiffDetails = useMemo(
     () =>
       mapAuditLogToTaskDiffApiResp(auditData) ??
