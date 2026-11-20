@@ -28,6 +28,9 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
@@ -37,6 +40,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -255,6 +260,16 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
             java.util.Collections.singletonMap(
                 ConditionalGets.HEADER_IF_NONE_MATCH, "W/\"universe:ignored:1\""));
     assertOk(second);
+  }
+
+  @Test
+  public void testOnlyApiRedactionReadsGFlagsApiRedactionConfig() {
+    String key = GlobalConfKeys.enableGFlagsSensitiveDataApiRedaction.getKey();
+    clearInvocations(mockRuntimeConfig);
+    RedactingService.filterSecretFields(Json.newObject(), RedactionTarget.LOGS);
+    verify(mockRuntimeConfig, never()).getBoolean(key);
+    RedactingService.filterSecretFields(Json.newObject(), RedactionTarget.APIS);
+    verify(mockRuntimeConfig).getBoolean(key);
   }
 
   @Test

@@ -470,7 +470,9 @@ Enables advanced folding of multiple conditions on the same index column when bi
 
 For example, when an IN array and an inequality both apply to the same column, the inequality can cull the array before the scan instead of fetching the full array and discarding rows after DocDB returns them.
 
-Available in v2026.1.0.0 and later. In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
+Available in v2026.1.0.0 and later.
+
+In v2026.1.1.0 and later, folding also applies to merge scan pinned IN-list conditions.
 
 ##### yb_enable_cbo
 
@@ -715,7 +717,9 @@ Default: `on`
 
 Enables faster writes into tables that the same transaction created or rebuilt. When on, qualifying statements skip the provisional-write (intents) path and write straight to the main store.
 
-Available in v2026.1.2 and later. Any user can change this setting; superuser privileges are not required. You cannot set it to a value with `SET` after the first query of a transaction has run, or in a function's `SET` clause. `RESET` and `SET ... TO DEFAULT` are accepted at any time; a change made after the transaction has started using the optimization takes effect from the next transaction.
+Available in v2026.1.2 and later.
+
+Any user can change this setting; superuser privileges are not required. You cannot set it to a value with `SET` after the first query of a transaction has run, or in a function's `SET` clause. `RESET` and `SET ... TO DEFAULT` are accepted at any time; a change made after the transaction has started using the optimization takes effect from the next transaction.
 
 Can be set using the [--ysql_yb_enable_new_relation_fastpath_write](#ysql-yb-enable-new-relation-fastpath-write) flag.
 
