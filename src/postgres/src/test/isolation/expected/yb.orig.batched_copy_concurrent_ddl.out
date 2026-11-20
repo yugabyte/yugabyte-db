@@ -249,6 +249,37 @@ count|max
 (1 row)
 
 
+starting permutation: s3_lock s1_copy_pf s2_add_fk_pf s3_pf_fk s3_unlock s2_pf_result
+step s3_lock: SELECT pg_advisory_lock(1);
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step s1_copy_pf: COPY pf FROM PROGRAM $$seq -f "%g,1" 1 25; echo 1500,1; seq -f "%g,999" 26 40$$ WITH (FORMAT csv, ROWS_PER_TRANSACTION 10); <waiting ...>
+step s2_add_fk_pf: ALTER TABLE pf ADD CONSTRAINT pf_fk FOREIGN KEY (w) REFERENCES p (id); <waiting ...>
+step s3_pf_fk: SELECT count(*) FROM pg_constraint WHERE conrelid = 'pf'::regclass AND contype = 'f';
+count
+-----
+    0
+(1 row)
+
+step s3_unlock: SELECT pg_advisory_unlock(1);
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+step s1_copy_pf: <... completed>
+step s2_add_fk_pf: <... completed>
+ERROR:  Failed to acquire object locks within deadline: Heartbeat: Transaction aborted due to a deadlock: kDeadlock
+step s2_pf_result: SELECT count(*) AS loaded, count(*) FILTER (WHERE w NOT IN (SELECT id FROM p)) AS orphans, (SELECT count(*) FROM pg_constraint WHERE conrelid = 'pf'::regclass AND contype = 'f' AND convalidated) AS valid_fks FROM pf;
+loaded|orphans|valid_fks
+------+-------+---------
+    41|     15|        0
+(1 row)
+
+
 starting permutation: s3_lock s1_copy_pt s2_index_partition s3_indexes s3_unlock s2_count_pt
 step s3_lock: SELECT pg_advisory_lock(1);
 pg_advisory_lock
