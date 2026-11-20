@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.operator;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
@@ -22,7 +23,9 @@ import io.yugabyte.operator.v1alpha1.YBUniverse;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -286,10 +289,27 @@ public class UniverseServerCertRotationReconciler
   // All retries in the given task's chain, i.e. cert rotation tasks on the universe that carry the
   // same originalTaskUUID, excluding the first task itself.
   private static List<TaskInfo> findRetries(TaskInfo taskInfo, UUID universeUUID) {
-    UUID root = taskInfo.getRootTaskUUID();
-    return TaskInfo.findChain(root, universeUUID, CustomerTask.TaskType.CertsRotate).stream()
-        .filter(t -> !t.getUuid().equals(root))
+    UUID root = originalTaskUUID(taskInfo);
+    Date since =
+        TaskInfo.maybeGet(root).map(TaskInfo::getCreateTime).orElse(taskInfo.getCreateTime());
+    return CustomerTask.findByTargetUUIDsAndTypesSince(
+            Collections.singletonList(universeUUID),
+            CustomerTask.TargetType.Universe,
+            Collections.singletonList(CustomerTask.TaskType.CertsRotate),
+            since)
+        .stream()
+        .map(ct -> TaskInfo.maybeGet(ct.getTaskUUID()))
+        .flatMap(Optional::stream)
+        .filter(t -> !t.getUuid().equals(root) && root.equals(originalTaskUUID(t)))
         .collect(Collectors.toList());
+  }
+
+  private static UUID originalTaskUUID(TaskInfo taskInfo) {
+    JsonNode node = taskInfo.getTaskParams().get("originalTaskUUID");
+    if (node == null || node.isNull() || node.asText().isEmpty()) {
+      return taskInfo.getUuid();
+    }
+    return UUID.fromString(node.asText());
   }
 
   // A failed placement-modifying task stays recorded on the universe until a retry succeeds.

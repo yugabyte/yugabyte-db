@@ -629,11 +629,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return true;
   }
 
-  /** Whether a new submission of the task type can rerun its failed run on the universe. */
-  public static boolean isRerunnable(TaskType taskType) {
-    return RERUNNABLE_PLACEMENT_MODIFICATION_TASKS.contains(taskType);
-  }
-
   /**
    * Returns the allowed tasks object when the universe is in a frozen failed state.
    *

@@ -7,6 +7,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -25,6 +26,7 @@ import api.v2.models.VMImageClusterSpec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
@@ -282,34 +284,32 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         .addTask(TaskType.MarkUniverseForHealthScriptReUpload, null)
         .verifyTasks(taskInfo.getSubTasks());
 
-    // Captured fstab UUID mapping is stored in runtime info and passed into each YNP config.
-    JsonNode deviceMappingByNode = taskInfo.getRuntimeInfo().get("deviceMappingByNode");
-    assertNotNull(deviceMappingByNode);
-    assertEquals(nodeOrder.size(), deviceMappingByNode.size());
-    deviceMappingByNode
-        .fields()
-        .forEachRemaining(e -> assertEquals("abc", e.getValue().get("/mnt/d0").asText()));
+    // The captured fstab UUID mapping is passed into each YNP config and cleared from the node once
+    // it's upgraded.
+    assertNoSavedMappings();
+    List<String> uploadedMappings = getUploadedYnpMappings();
+    assertEquals(nodeOrder.size(), uploadedMappings.size());
+    uploadedMappings.forEach(m -> assertEquals("/mnt/d0=abc", m));
+  }
 
+  /** The path_to_uuid_mapping of each YNP config uploaded to a node. */
+  private List<String> getUploadedYnpMappings() {
     ArgumentCaptor<String> uploadedSourceCaptor = ArgumentCaptor.forClass(String.class);
-    verify(mockNodeUniverseManager, atLeast(nodeOrder.size()))
+    verify(mockNodeUniverseManager, atLeast(1))
         .uploadFileToNode(
             any(), any(), uploadedSourceCaptor.capture(), anyString(), anyString(), any());
-    List<JsonNode> ynpConfigs =
-        uploadedSourceCaptor.getAllValues().stream()
-            .map(
-                path -> {
-                  try {
-                    return Json.mapper().readTree(Files.readAllBytes(Paths.get(path)));
-                  } catch (Exception e) {
-                    return null;
-                  }
-                })
-            .filter(node -> node != null && node.has("ynp") && node.has("extra"))
-            .collect(Collectors.toList());
-    assertEquals(nodeOrder.size(), ynpConfigs.size());
-    for (JsonNode ynpConfig : ynpConfigs) {
-      assertEquals("/mnt/d0=abc", ynpConfig.path("extra").path("path_to_uuid_mapping").asText());
-    }
+    return uploadedSourceCaptor.getAllValues().stream()
+        .map(
+            path -> {
+              try {
+                return Json.mapper().readTree(Files.readAllBytes(Paths.get(path)));
+              } catch (Exception e) {
+                return null;
+              }
+            })
+        .filter(node -> node != null && node.has("ynp") && node.has("extra"))
+        .map(node -> node.path("extra").path("path_to_uuid_mapping").asText())
+        .collect(Collectors.toList());
   }
 
   @Test
@@ -805,10 +805,10 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         .nodeCommand(eq(NodeCommandType.Replace_Root_Volume), any());
     TaskInfo failedTask = submitOciOnlyUpgradeTask(ociBundle, false);
     assertEquals(TaskInfo.State.Failure, failedTask.getTaskState());
-    assertFalse(failedTask.getTaskParams().hasNonNull("originalTaskUUID"));
     NodeDetails node =
         Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNode(failedNode.get());
     assertEquals(NodeDetails.NodeState.VMImageUpgrade, node.state);
+    assertEquals(ImmutableMap.of("/mnt/d0", "abc"), node.pathToUUIDMapping);
 
     // As after the swap: until the node has its new root volume, its node agent record is gone,
     // and the yugabyte user can't log in to read its fstab.
@@ -828,8 +828,6 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
 
     // A new submission, not a retry.
     TaskInfo rerun = submitOciOnlyUpgrade(ociBundle, false);
-    assertEquals(
-        failedTask.getUuid().toString(), rerun.getTaskParams().get("originalTaskUUID").asText());
     String otherNode = failedNode.get().equals("host-n4") ? "host-n5" : "host-n4";
     List<JsonNode> failedNodeStops = getStopsBeforeReplacement(rerun, failedNode.get());
     assertFalse(failedNodeStops.isEmpty());
@@ -842,6 +840,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     assertTrue(getSubTaskParams(rerun, TaskType.RunNodeCommand, failedNode.get()).isEmpty());
     assertEquals(1, getSubTaskParams(rerun, TaskType.RunNodeCommand, otherNode).size());
     assertEquals("abc", getYnpMount(rerun, failedNode.get()));
+    assertNoSavedMappings();
     checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
   }
 
@@ -887,27 +886,49 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     // captured the second node's fstab.
     TaskInfo first = submitOciOnlyUpgradeTask(ociBundle, false);
     assertEquals(TaskInfo.State.Failure, first.getTaskState());
-    createCustomerTask(first);
     failNextReplacement.set(true);
     TaskInfo second = submitOciOnlyUpgradeTask(ociBundle, false);
     assertEquals(TaskInfo.State.Failure, second.getTaskState());
-    createCustomerTask(second);
     assertEquals(2, swappedNodes.size());
-    assertEquals(
-        first.getUuid().toString(), second.getTaskParams().get("originalTaskUUID").asText());
-    assertEquals(2, second.getRuntimeInfo().get("deviceMappingByNode").size());
-
-    TaskInfo third = submitOciOnlyUpgrade(ociBundle, false);
-    assertEquals(
-        first.getUuid().toString(), third.getTaskParams().get("originalTaskUUID").asText());
     String secondNode =
         getSubTaskParams(second, TaskType.RunNodeCommand, null).get(0).get("nodeName").asText();
+    assertEquals(
+        ImmutableMap.of("/mnt/d0", "abc"),
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+            .getNode(secondNode)
+            .pathToUUIDMapping);
+
+    TaskInfo third = submitOciOnlyUpgrade(ociBundle, false);
     List<JsonNode> secondNodeStops = getStopsBeforeReplacement(third, secondNode);
     assertFalse(secondNodeStops.isEmpty());
     secondNodeStops.forEach(p -> assertTrue(p.toString(), p.get("isIgnoreError").asBoolean()));
     assertTrue(getSubTaskParams(third, TaskType.RunNodeCommand, secondNode).isEmpty());
     assertEquals("abc", getYnpMount(third, secondNode));
+    assertNoSavedMappings();
     checkUniverseNodesStates(defaultUniverse.getUniverseUUID());
+  }
+
+  @Test
+  public void testVMImageUpgradeOciReusesSavedMappingOnlyIfMountPointsMatch() {
+    ImageBundle ociBundle = addOciNodes();
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              u.getNode("host-n4").pathToUUIDMapping = ImmutableMap.of("/mnt/d0", "saved");
+              u.getNode("host-n5").pathToUUIDMapping = ImmutableMap.of("/mnt/d1", "stale");
+            });
+
+    TaskInfo taskInfo = submitOciOnlyUpgrade(ociBundle, false);
+    assertTrue(getSubTaskParams(taskInfo, TaskType.RunNodeCommand, "host-n4").isEmpty());
+    assertEquals("saved", getYnpMount(taskInfo, "host-n4"));
+    assertEquals(1, getSubTaskParams(taskInfo, TaskType.RunNodeCommand, "host-n5").size());
+    // host-n5's mapping is captured when the task runs, so only its uploaded YNP config has it.
+    List<String> uploadedMappings = getUploadedYnpMappings();
+    assertEquals(2, uploadedMappings.size());
+    assertEquals(
+        ImmutableSet.of("/mnt/d0=saved", "/mnt/d0=abc"), ImmutableSet.copyOf(uploadedMappings));
+    assertNoSavedMappings();
   }
 
   private void failFstabReads(Set<String> nodeNames) {
@@ -921,14 +942,10 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
         .thenReturn(ShellResponse.create(1, "Permission denied (publickey)"));
   }
 
-  private void createCustomerTask(TaskInfo taskInfo) {
-    CustomerTask.create(
-        defaultCustomer,
-        defaultUniverse.getUniverseUUID(),
-        taskInfo.getUuid(),
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.VMImageUpgrade,
-        "fake-name");
+  private void assertNoSavedMappings() {
+    Universe.getOrBadRequest(defaultUniverse.getUniverseUUID())
+        .getNodes()
+        .forEach(n -> assertNull(n.nodeName, n.pathToUUIDMapping));
   }
 
   /** Params of the subtasks of the given type, on the given node if it is set. */
