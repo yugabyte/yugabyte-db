@@ -2293,6 +2293,32 @@ TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DatabaseLockHeldUntilBlockEnds) {
   ASSERT_OK(ddl_conn.Execute("CREATE TABLE z(k INT PRIMARY KEY)"));
 }
 
+// With ysql_enable_concurrent_ddl off, a DDL that does not increment the catalog version, such as
+// CREATE TEMP TABLE, does not take the database DDL lock, so it does not wait for another DDL.
+TEST_F(PgObjectLocksTestConcurrentDdlDisabled, DdlWithoutVersionIncrementDoesNotWait) {
+  auto* ts1 = cluster_->tablet_server(0);
+  auto* ts2 = cluster_->tablet_server(1);
+  {
+    auto conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    ASSERT_OK(conn.Execute("CREATE TABLE a(k INT PRIMARY KEY)"));
+    ASSERT_OK(conn.Execute("CREATE TABLE b(k INT PRIMARY KEY)"));
+  }
+
+  // Holds the database lock until COMMIT.
+  auto holder = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+  ASSERT_OK(holder.Execute("BEGIN"));
+  ASSERT_OK(holder.Execute("ALTER TABLE a ADD COLUMN v INT"));
+
+  // A wait shows as a statement timeout.
+  auto ddl_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
+  ASSERT_OK(ddl_conn.ExecuteFormat("SET statement_timeout = '$0s'", 5 * kTimeMultiplier));
+  ASSERT_OK(ddl_conn.Execute("CREATE TEMP TABLE tt(k INT)"));
+  ASSERT_NOK_STR_CONTAINS(
+      ddl_conn.Execute("ALTER TABLE b ADD COLUMN v INT"),
+      "canceling statement due to statement timeout");
+  ASSERT_OK(holder.Execute("COMMIT"));
+}
+
 // With ysql_enable_concurrent_ddl off, each phase of a CREATE INDEX takes the database DDL lock in
 // its transaction, so another DDL in the database waits while the CREATE INDEX waits for lockers.
 TEST_F(PgObjectLocksTestConcurrentDdlDisabled, CreateIndexPhaseHoldsDatabaseLock) {

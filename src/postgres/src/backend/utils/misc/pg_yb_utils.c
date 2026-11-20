@@ -3003,7 +3003,13 @@ YBAddDdlTxnState(YbDdlMode mode)
 {
 	Assert(YBIsDdlTransactionBlockEnabled());
 
-	YbLockDatabaseForGlobalDdl();
+	/*
+	 * A DDL that does not increment the catalog version, such as CREATE TEMP
+	 * TABLE, cannot conflict with another DDL, so it is not serialized. A
+	 * later DDL of the transaction that does increment it takes the lock then.
+	 */
+	if (mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT)
+		YbLockDatabaseForGlobalDdl();
 
 	/*
 	 * If we have already executed a DDL in the current transaction block, then
