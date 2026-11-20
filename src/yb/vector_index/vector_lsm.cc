@@ -834,17 +834,47 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   // Reported as in-memory frontiers only, the saved chunk gets applied_frontiers.
   storage::UserFrontiersPtr registered_frontiers;
 
+  // Deletions take the capacity of the chunk, counted in vectors, by their memory: each
+  // vector_bytes of it take the capacity of a vector. Must be accessed under VectorLSM::mutex_.
+  size_t vector_bytes = 1;
+  size_t num_deletions = 0;
+
+  void InitVectorBytes() {
+    // The memory of a vector in the index, averaged over the vectors of a large enough budget.
+    constexpr size_t kBytes = 1_MB;
+    vector_bytes = std::max<size_t>(
+        kBytes / std::max<size_t>(index->EstimateNumVectorsForBytes(kBytes), 1), 1);
+  }
+
+  size_t UsedCapacity(size_t extra_entries, size_t extra_deletions) const {
+    const auto deletion_bytes =
+        (num_deletions + extra_deletions) * VectorLSMDeletionMap::kAverageEntryBytes;
+    return num_entries + extra_entries + ceil_div(deletion_bytes, vector_bytes);
+  }
+
+  // Must be triggered under VectorLSM::mutex_.
+  bool HasNewData() const {
+    return num_entries || num_deletions;
+  }
+
   // Returns true if registration was successful. Otherwise, new mutable chunk should be allocated.
   // Invoked when owning VectorLSM holds the mutex.
   bool RegisterInsert(
       const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
-      const storage::UserFrontiers* frontiers) {
+      const VectorLSMInsertContext& context) {
     // An empty chunk is not always sized for the batch: empty inserts could have created it.
     if (!entries.empty() && num_entries + entries.size() > index->Capacity()) {
       return false;
     }
+    // A chunk without data takes the deletions of any batch, so the new chunk does after a roll.
+    if ((!entries.empty() || !context.deletions.empty()) && HasNewData() &&
+        UsedCapacity(entries.size(), context.deletions.size()) > index->Capacity()) {
+      return false;
+    }
     num_entries += entries.size();
+    num_deletions += context.deletions.size();
     num_tasks += new_tasks;
+    const auto* frontiers = context.frontiers;
     if (!frontiers) {
       return true;
     }
@@ -879,14 +909,16 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
     // Clone so later successful Insert()s can still ApplyFrontiers on this MutableChunk;
     // DoFlush merges those into the immutable copy before save.
     // No insert registers on this chunk any more, so registered_frontiers are moved.
+    // The index also keeps the deletions, so a chunk without vectors hands it over too.
     return std::make_shared<ImmutableChunk>(
-        order_no, num_entries ? index : VectorIndexPtr{},
+        order_no, HasNewData() ? index : VectorIndexPtr{},
         applied_frontiers ? applied_frontiers->Clone() : storage::UserFrontiersPtr{},
         std::move(registered_frontiers), flush_promise);
   }
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(num_entries, num_tasks, applied_frontiers, registered_frontiers);
+    return YB_STRUCT_TO_STRING(
+        num_entries, num_tasks, applied_frontiers, registered_frontiers, num_deletions);
   }
 };
 
@@ -1626,10 +1658,10 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
     if (!mutable_chunk_) {
       RETURN_NOT_OK(CreateNewMutableChunk(entries.size(), context));
     }
-    if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers)) {
+    if (!mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context)) {
       RETURN_NOT_OK(RollChunk(entries.size(), context));
       RSTATUS_DCHECK(
-          mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context.frontiers),
+          mutable_chunk_->RegisterInsert(entries, options_, num_tasks, context),
           RuntimeError, "Failed to register insert into a new mutable chunk");
     }
     chunk = mutable_chunk_;
@@ -1637,8 +1669,17 @@ Status VectorLSM<Vector, DistanceResult>::Insert(
       // Counted as one more task, so the chunk is saved only after the hold is released.
       ++chunk->num_tasks;
     }
+    if (!context.deletions.empty()) {
+      // Same for the deletions, added below without holding mutex_.
+      ++chunk->num_tasks;
+    }
   }
   release_tasks.Cancel();
+
+  if (!context.deletions.empty()) {
+    chunk->index->InsertDeletions(context.deletions);
+    ReleaseChunkHold(*chunk);
+  }
 
   if (!num_tasks) {
     // Empty insert could be used to update frontiers.
@@ -1856,6 +1897,22 @@ auto VectorLSM<Vector, DistanceResult>::Search(
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+VectorLSMDeletionsLookup VectorLSM<Vector, DistanceResult>::DeletionsLookup() const {
+  VectorLSMDeletionsLookup result;
+  SharedLock lock(mutex_);
+  result.Reserve(immutable_chunks_.size() + 1);
+  for (const auto& chunk : immutable_chunks_) {
+    if (chunk->index && chunk->index->NumDeletions()) {
+      result.Add(chunk->index);
+    }
+  }
+  if (mutable_chunk_ && mutable_chunk_->num_deletions) {
+    result.Add(mutable_chunk_->index);
+  }
+  return result;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Result<size_t> VectorLSM<Vector, DistanceResult>::TotalEntries() const {
   while (insert_registry_->HasRunningTasks()) {
     std::this_thread::sleep_for(10ms);
@@ -1998,6 +2055,7 @@ Status VectorLSM<Vector, DistanceResult>::DoSaveChunk(const ImmutableChunkPtr& c
     if (chunk->index && chunk->index->Size() == 0) {
       // RegisterInsert can bump num_entries before any vector is written. Cancelled tasks leave
       // Size() == 0; SaveToFile rejects that and would pin the chunk in updates_queue_.
+      // TODO(vector_index): save the deletions of a chunk without vectors, #37982.
       chunk->index = {};
     }
     index = chunk->index;
@@ -2300,8 +2358,9 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(
       << ", capacity: " << capacity;
   VectorIndexPtr index;
   // Only an empty chunk's index can be reused: DoFlush hands a chunk's index over to the
-  // immutable chunk being saved when the chunk has entries (see MutableChunk::Immutate).
-  if (mutable_chunk_ && mutable_chunk_->num_entries == 0 &&
+  // immutable chunk being saved when the chunk has entries or deletions (see
+  // MutableChunk::Immutate).
+  if (mutable_chunk_ && !mutable_chunk_->HasNewData() &&
       mutable_chunk_->index->Capacity() >= capacity) {
     // Not reachable with the current code.
     VLOG_WITH_PREFIX_AND_FUNC(2) << "reusing index of " << AsString(*mutable_chunk_);
@@ -2312,6 +2371,7 @@ Status VectorLSM<Vector, DistanceResult>::CreateNewMutableChunk(
 
   mutable_chunk_ = std::make_shared<MutableChunk>();
   mutable_chunk_->index = std::move(index);
+  mutable_chunk_->InitVectorBytes();
   return Status::OK();
 }
 
@@ -2368,7 +2428,7 @@ Status VectorLSM<Vector, DistanceResult>::ModifyChunkFrontiers(
     if (!failed_status_.ok()) {
       return failed_status_;
     }
-    SCHECK(!mutable_chunk_ || !mutable_chunk_->num_entries, IllegalState,
+    SCHECK(!mutable_chunk_ || !mutable_chunk_->HasNewData(), IllegalState,
            "Cannot modify chunk frontiers of a vector index with unflushed entries");
     for (const auto& chunk : immutable_chunks_) {
       SCHECK(chunk->IsInManifest(), IllegalState,
@@ -2423,7 +2483,7 @@ Result<bool> VectorLSM<Vector, DistanceResult>::AdvanceFlushedFrontier(
     if (!failed_status_.ok()) {
       return failed_status_;
     }
-    if (mutable_chunk_ && mutable_chunk_->num_entries) {
+    if (mutable_chunk_ && mutable_chunk_->HasNewData()) {
       return false;
     }
     for (const auto& immutable_chunk : immutable_chunks_) {
@@ -2542,7 +2602,7 @@ storage::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
       return storage::FlushAbility::kAlreadyFlushing;
     }
   }
-  if (mutable_chunk_ && mutable_chunk_->num_entries) {
+  if (mutable_chunk_ && mutable_chunk_->HasNewData()) {
     return storage::FlushAbility::kHasNewData;
   }
   return storage::FlushAbility::kNoNewData;

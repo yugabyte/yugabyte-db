@@ -18,6 +18,7 @@
 #include <future>
 #include <map>
 #include <mutex>
+#include <span>
 #include <unordered_set>
 
 #include "yb/rpc/rpc_fwd.h"
@@ -32,6 +33,7 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_lsm_deletions.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
 
 namespace yb {
@@ -76,6 +78,9 @@ struct VectorLSMInsertContext {
   // the caller must keep the hold until the write that carries the reverse mappings of the inserted
   // vectors is visible to readers, and should release it right after.
   VectorLSMChunkHolds* chunk_holds = nullptr;
+  // Deletions of vectors in any chunk. They take capacity of the chunk the insert goes to, which
+  // keeps them until it is saved.
+  std::span<const VectorLSMDeletion> deletions = {};
 };
 
 template<IndexableVectorType Vector,
@@ -186,6 +191,9 @@ class VectorLSM {
   size_t DefaultChunkCapacity() const;
 
   Result<SearchResults> Search(const Vector& query_vector, const SearchOptions& options) const;
+
+  // Returns the deletions of all chunks.
+  VectorLSMDeletionsLookup DeletionsLookup() const EXCLUDES(mutex_);
 
   Result<size_t> TotalEntries() const;
 
