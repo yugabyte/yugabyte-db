@@ -117,9 +117,10 @@ public class TaskGarbageCollector {
   @VisibleForTesting
   void purgeStaleTasks(Customer c, List<CustomerTask> staleTasks) {
     NUM_TASK_GC_RUNS_COUNT.inc();
+    CustomerTaskDeletionValidator validator = new CustomerTaskDeletionValidator(c);
     int numRowsGCdInThisRun =
         staleTasks.stream()
-            .filter(CustomerTask::isDeletable)
+            .filter(validator::isDeletable)
             .map(
                 customerTask -> {
                   int numRowsDeleted = customerTask.cascadeDeleteCompleted();
