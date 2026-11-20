@@ -55,15 +55,21 @@ func TestImageBundleSSHPort(t *testing.T) {
 		t.Errorf("create ssh port = %d, want 2222", port)
 	}
 
-	edited := editAWSImageBundles([]string{
+	edited, err := editAWSImageBundles([]string{
 		"image-bundle-uuid=u1::ssh-port=2222",
 	}, nil, sshBundle(22))
+	if err != nil {
+		t.Fatalf("edit with ssh-port: %v", err)
+	}
 	if port := sshPortValue(edited[0]); port != 2222 {
 		t.Errorf("edit ssh port = %d, want 2222", port)
 	}
-	edited = editAWSImageBundles([]string{
+	edited, err = editAWSImageBundles([]string{
 		"image-bundle-uuid=u1::ssh-user=ec2-user",
 	}, nil, sshBundle(2200))
+	if err != nil {
+		t.Fatalf("edit without ssh-port: %v", err)
+	}
 	if port := sshPortValue(edited[0]); port != 2200 {
 		t.Errorf("edit without ssh-port = %d, want the stored 2200", port)
 	}
