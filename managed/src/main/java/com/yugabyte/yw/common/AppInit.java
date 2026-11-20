@@ -77,6 +77,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.crypto.CryptoServicesRegistrar;
 import org.bouncycastle.crypto.fips.FipsStatus;
@@ -297,10 +298,15 @@ public class AppInit {
           log.debug("skipping fetch latest arm build for cloud enabled deployment");
         }
 
+        CompletableFuture<Void> sensitiveGFlagPathsRegistered = new CompletableFuture<>();
         Thread flagsThread =
             new Thread(
                 () -> {
-                  updateSensitiveGflagsforRedaction(gFlagsValidation);
+                  try {
+                    updateSensitiveGflagsforRedaction(gFlagsValidation);
+                  } finally {
+                    sensitiveGFlagPathsRegistered.complete(null);
+                  }
                 });
         flagsThread.start();
 
@@ -325,7 +331,7 @@ public class AppInit {
         setUniverseKey.start();
 
         // Start the background task to redact secrets from audit table.
-        redactSecretsFromAudit.start();
+        redactSecretsFromAudit.start(sensitiveGFlagPathsRegistered);
         // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
         refreshKmsService.start();
 
