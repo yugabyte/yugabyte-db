@@ -2596,6 +2596,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
   // queue our request
   ManifestWriter w(mu, column_family_data, edit);
   manifest_writers_.push_back(&w);
+  DEBUG_ONLY_TEST_SYNC_POINT("VersionSet::LogAndApply:Queued");
   while (!w.done && &w != manifest_writers_.front()) {
     w.cv.Wait();
   }

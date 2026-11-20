@@ -1880,6 +1880,16 @@ TEST_P(DocDBTestWrapper, YB_DEBUG_ONLY_TEST(FlushedFrontierOfGroupCommittedEdits
           release_write.Wait();
         }
       });
+  // Counts the edits that queue while the first write is held.
+  constexpr int kNumQueuedEdits = 2;
+  std::atomic<int> num_queued{0};
+  CountDownLatch queued(kNumQueuedEdits);
+  SyncPoint::GetInstance()->SetCallBack(
+      "VersionSet::LogAndApply:Queued", [&](void*) {
+        if (!hold_write && num_queued++ < kNumQueuedEdits) {
+          queued.CountDown();
+        }
+      });
   SyncPoint::GetInstance()->EnableProcessing();
 
   auto modify = [this](const ConsensusFrontier& frontier) {
@@ -1900,8 +1910,8 @@ TEST_P(DocDBTestWrapper, YB_DEBUG_ONLY_TEST(FlushedFrontierOfGroupCommittedEdits
   write_started.Wait();
   std::thread op_id_thread([&] { modify(with_op_id); });
   std::thread hybrid_time_thread([&] { modify(with_hybrid_time); });
-  // Let both edits queue behind the held write.
-  SleepFor(MonoDelta::FromMilliseconds(500 * kTimeMultiplier));
+  // Both edits must be in the queue before the held write is released.
+  queued.Wait();
   release_write.CountDown();
   held_thread.join();
   op_id_thread.join();
