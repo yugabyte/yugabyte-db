@@ -25,8 +25,10 @@ import {
   deleteSupportBundle as deleteSupportBundleRequest,
   downloadSupportBundle as downloadSupportBundleRequest,
   estimateSupportBundleSize as estimateSupportBundleSizeRequest,
+  isSupportBundleRedesignEnabled,
   isSupportBundleUiV2Enabled,
-  listSupportBundles
+  listSupportBundles,
+  SupportBundleV2
 } from '../../../redesign/features/universe/universe-actions/support-bundle';
 import { filterTypes } from '../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider';
 import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -81,7 +83,16 @@ export const UniverseSupportBundleModal = (props) => {
     );
   }
 
-  const useV2Api = isSupportBundleUiV2Enabled(globalRuntimeConfigsQuery.data?.configEntries);
+  const configEntries = globalRuntimeConfigsQuery.data?.configEntries;
+  const useV2Api = isSupportBundleUiV2Enabled(configEntries);
+  if (isSupportBundleRedesignEnabled(configEntries)) {
+    return (
+      <SupportBundleV2
+        universeUuid={currentUniverse.universeDetails.universeUUID}
+        onClose={closeModal}
+      />
+    );
+  }
 
   return (
     <UniverseSupportBundleWizard
